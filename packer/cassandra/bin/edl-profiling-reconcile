@@ -6,8 +6,10 @@
 #
 #   1. reads desired state from /etc/easy-db-lab/profiling.json (written by the CLI),
 #   2. attaches, detaches, or replaces async-profiler against the LIVE Cassandra JVM,
-#   3. ships completed JFR chunks to Pyroscope's /ingest,
-#   4. prunes the profile directory under both an age bound and a byte bound,
+#   3. ships completed JFR chunks to Pyroscope's /ingest, in the cluster's tenant,
+#   4. prunes SHIPPED chunks under both an age bound and a byte bound — never an unshipped or a
+#      rejected one, because that chunk is data the operator cannot get back — and stops recording
+#      when the directory is at its byte bound with nothing left that may be pruned,
 #   5. rewrites effective state, and reports counters both as a local Prometheus textfile and as
 #      OTLP pushed to the node-local collector.
 #
@@ -16,8 +18,8 @@
 # node's profiling state", not three.
 #
 # It exits 0 on every non-fatal condition, because a timer unit that fails is noise; problems are
-# reported as structured logfmt lines to journald (which Fluent Bit ships to VictoriaLogs) and as
-# counters pushed to the node's OTel collector, which remote-writes them to VictoriaMetrics.
+# reported as structured logfmt lines to journald (which Fluent Bit ships to Loki) and as
+# counters pushed to the node's OTel collector, which remote-writes them to Mimir.
 #
 # The textfile is a convenience for someone already SSH'd into the node; it is deliberately NOT the
 # collection path, because nothing on the node reads it — there is no node_exporter and no textfile
@@ -97,7 +99,7 @@ HOSTNAME_LABEL="${EDL_HOSTNAME:-$(hostname)}"
 
 # The node-local OTel collector. It is a hostNetwork DaemonSet, so every cluster node answers here,
 # and its metrics/otlp pipeline stamps cluster and host.name before remote-writing to
-# VictoriaMetrics. Pushing is how these counters reach a backend at all: no node runs node_exporter
+# Mimir. Pushing is how these counters reach a backend at all: no node runs node_exporter
 # and no collector receiver reads Prometheus textfiles, so a file alone would be ungraphable.
 OTLP_METRICS_ENDPOINT="${EDL_OTLP_METRICS_ENDPOINT:-http://localhost:4318/v1/metrics}"
 
@@ -128,16 +130,12 @@ COUNTER_ATTACH_DEFERRED="${PROFILE_DIR}/.attach_deferred"
 COUNTER_SESSION_STARTS="${PROFILE_DIR}/.session_starts"
 COUNTER_PRUNED_AGE="${PROFILE_DIR}/.pruned_age"
 COUNTER_PRUNED_SIZE="${PROFILE_DIR}/.pruned_size"
-# Chunks deleted before they ever reached Pyroscope, under either bound. This is the one pruning
-# number that means lost data rather than reclaimed disk, so it is counted on its own.
-COUNTER_PRUNED_UNSHIPPED="${PROFILE_DIR}/.pruned_unshipped"
 
 # A chunk must be at least one rotation plus this margin old before it is considered complete.
 # Skipping the newest file is the exact rule; this covers rotations landing in the same second.
 #
 # Mirrored by Constants.Profiling.SHIP_GRACE_SECONDS, which the CLI uses to refuse a retention
-# window shorter than the shipping window. The two must stay equal: a CLI that allowed a window this
-# script cannot ship inside would let every chunk be pruned before it was ever eligible to ship.
+# window shorter than the shipping window. The two must stay equal.
 readonly GRACE_EXTRA_SECONDS=10
 readonly UPLOAD_TIMEOUT_SECONDS=30
 readonly METRICS_EXPORT_TIMEOUT_SECONDS=10
@@ -159,7 +157,7 @@ readonly ASPROF_METRICS_TIMEOUT_SECONDS=5
 # inverts and the queue grows every pass forever, so Constants.Profiling.MIN_LOOP_SECONDS —
 # 60 / SHIP_MAX_CHUNKS_PER_PASS — refuses that configuration at the CLI. The two must stay in step:
 # raising this cap without raising the upload budget's time cost, or lowering that floor, reintroduces
-# a queue that can only be drained by pruning chunks that never shipped.
+# a queue that never drains, until the directory reaches its byte bound and recording stops.
 readonly SHIP_MAX_CHUNKS_PER_PASS=6
 
 # Bounds used when the desired-state document cannot be read and the last-known-good record carries
@@ -169,6 +167,17 @@ readonly SHIP_MAX_CHUNKS_PER_PASS=6
 readonly FALLBACK_LOOP_INTERVAL=1m
 readonly FALLBACK_RETENTION_MINUTES=60
 readonly FALLBACK_MAX_BYTES=2147483648
+
+# The tenant of a desired-state document written before tenants existed.
+readonly DEFAULT_TENANT=default
+
+# A tenant name is a directory in every backend, and Pyroscope rejects one that starts with a digit.
+# Mirrors Constants.Observability.TENANT_PATTERN.
+readonly TENANT_FORM='^[a-z][a-z0-9_-]{0,62}$'
+
+# A tenant name TENANT_FORM allows but no cluster may use: a Loki tenant named `index` would put its
+# chunks under Loki's index path. Mirrors Constants.Observability.RESERVED_TENANT.
+readonly RESERVED_TENANT='index'
 
 # OTLP AGGREGATION_TEMPORALITY_CUMULATIVE. Counters must be cumulative or rate() is meaningless.
 readonly OTLP_CUMULATIVE=2
@@ -180,7 +189,7 @@ readonly OTLP_CUMULATIVE=2
 # The `<N>` prefix is sd-daemon's syslog priority, which systemd's stdout parser strips and turns
 # into the journal entry's PRIORITY (SyslogLevelPrefix, on by default). That field is the *only*
 # thing carrying severity downstream: Fluent Bit's mapper derives severity from PRIORITY and ships
-# the rest of the line as an opaque body, so without this every failure would reach VictoriaLogs as
+# the rest of the line as an opaque body, so without this every failure would reach Loki as
 # severity=INFO and no severity filter or alert in Grafana could ever see it.
 log() {
   local priority
@@ -312,6 +321,19 @@ chunk_bytes() {
   echo "$total"
 }
 
+# Bytes pruning may never reclaim: every unshipped chunk (including the open one) and every rejected
+# chunk. When these alone exceed the byte bound, recording stops.
+unprunable_bytes() {
+  local total=0 path
+  for path in "${PROFILE_DIR}"/*.jfr "${PROFILE_DIR}"/$REJECTED_GLOB; do
+    [[ -f "$path" ]] || continue
+    # shellcheck disable=SC2053  # SHIPPED_GLOB is a glob on purpose.
+    [[ "${path##*/}" == $SHIPPED_GLOB ]] && continue
+    total=$((total + $(file_size "$path")))
+  done
+  echo "$total"
+}
+
 count_matching() {
   local pattern="$1" exclude="${2:-}" count=0 path
   for path in "${PROFILE_DIR}"/$pattern; do
@@ -388,6 +410,7 @@ RETENTION_MINUTES="$FALLBACK_RETENTION_MINUTES"
 MAX_BYTES="$FALLBACK_MAX_BYTES"
 PYROSCOPE_URL=""
 CLUSTER_NAME=""
+TENANT="$DEFAULT_TENANT"
 USER_ARGS=()
 DESIRED_FINGERPRINT=""
 DESIRED_ARGS_JSON='[]'
@@ -421,6 +444,12 @@ NOT_READY_REASON=database_not_ready
 # A probe that silently answered `uptime` on every node cost ten minutes of every node start.
 READY_VERDICT=unknown
 
+# Why recording is stopped when the operator wants it on: `size_bound` when the profile directory is
+# at its byte bound and only unshipped or rejected chunks — which are never deleted — remain. Empty
+# otherwise. Carried into effective state, the journal and edl_jfr_recording_stopped_at_bound.
+RECORDING_STOPPED=""
+RECORDED_RECORDING_STOPPED=""
+
 # Set when a pass hits SHIP_MAX_CHUNKS_PER_PASS with chunks still queued. Reported as its own gauge
 # so a slow Pyroscope reads as "shipping is behind" rather than as a dead reconciler.
 SHIP_TRUNCATED=0
@@ -437,7 +466,6 @@ REJECTED="$(read_counter "$COUNTER_REJECTED")"
 LAST_SUCCESS="$(read_counter "$COUNTER_LAST_SUCCESS")"
 PRUNED_FOR_AGE="$(read_counter "$COUNTER_PRUNED_AGE")"
 PRUNED_FOR_SIZE="$(read_counter "$COUNTER_PRUNED_SIZE")"
-PRUNED_UNSHIPPED="$(read_counter "$COUNTER_PRUNED_UNSHIPPED")"
 
 # --- report ------------------------------------------------------------------
 
@@ -451,7 +479,6 @@ write_counters() {
   echo "$SESSION_STARTS" >"$COUNTER_SESSION_STARTS"
   echo "$PRUNED_FOR_AGE" >"$COUNTER_PRUNED_AGE"
   echo "$PRUNED_FOR_SIZE" >"$COUNTER_PRUNED_SIZE"
-  echo "$PRUNED_UNSHIPPED" >"$COUNTER_PRUNED_UNSHIPPED"
 }
 
 # What the operator asked for and what the JVM actually has, as two 0/1 gauges.
@@ -470,14 +497,23 @@ set_gauges() {
   [[ "$ENABLED" == "true" ]] && DESIRED_GAUGE=1
   ATTACHED_GAUGE=0
   [[ "$SESSION_RUNNING" == "true" ]] && ATTACHED_GAUGE=1
+  # Only a document that is present and cannot be used. A node with no document at all — every app
+  # and control node, and a database node never given one — is unconfigured, not broken, and
+  # counting it here made a healthy cluster indistinguishable from a corrupt one. effective-state
+  # still names it, as configError=no_desired_state.
   CONFIG_UNREADABLE_GAUGE=0
-  [[ -n "$CONFIG_ERROR" ]] && CONFIG_UNREADABLE_GAUGE=1
+  [[ "$CONFIG_ERROR" == "config_unreadable" ]] && CONFIG_UNREADABLE_GAUGE=1
   # Every node start produces a pass or two with profiling desired and nothing attached, because the
   # database is not yet ready to be signalled. This gauge is what keeps the documented
   # `edl_jfr_profiling_desired == 1 and edl_jfr_session_attached == 0` alert able to exclude that
   # window without also excluding a database that has genuinely stopped.
   ATTACH_DEFERRED_GAUGE=0
   [[ "$ATTACH_DEFERRED_NOW" == "true" ]] && ATTACH_DEFERRED_GAUGE=1
+  # Profiling wanted and deliberately not recording, because the directory is full of chunks that
+  # may not be deleted. Distinct from a failed attach: the answer is to fix shipping or remove
+  # chunks by hand, not to look at the JVM.
+  STOPPED_AT_BOUND_GAUGE=0
+  [[ "$RECORDING_STOPPED" == "size_bound" ]] && STOPPED_AT_BOUND_GAUGE=1
 }
 
 write_metrics() {
@@ -514,7 +550,7 @@ write_metrics() {
     echo "edl_jfr_ship_truncated ${SHIP_TRUNCATED}"
     echo "edl_jfr_pruned_for_age_total ${PRUNED_FOR_AGE}"
     echo "edl_jfr_pruned_for_size_total ${PRUNED_FOR_SIZE}"
-    echo "edl_jfr_pruned_unshipped_total ${PRUNED_UNSHIPPED}"
+    echo "edl_jfr_recording_stopped_at_bound ${STOPPED_AT_BOUND_GAUGE}"
     echo "edl_jfr_chunks_pending $(count_pending)"
     echo "edl_jfr_bytes_on_disk $(chunk_bytes)"
     echo "edl_jfr_ship_last_success_timestamp_seconds ${LAST_SUCCESS}"
@@ -550,7 +586,7 @@ otlp_metrics_payload() {
     EDL_M_SHIP_TRUNCATED="$SHIP_TRUNCATED" \
     EDL_M_PRUNED_AGE="$PRUNED_FOR_AGE" \
     EDL_M_PRUNED_SIZE="$PRUNED_FOR_SIZE" \
-    EDL_M_PRUNED_UNSHIPPED="$PRUNED_UNSHIPPED" \
+    EDL_M_STOPPED_AT_BOUND="$STOPPED_AT_BOUND_GAUGE" \
     EDL_M_PENDING="$(count_pending)" \
     EDL_M_BYTES="$(chunk_bytes)" \
     EDL_M_LAST_SUCCESS="$LAST_SUCCESS" \
@@ -564,8 +600,7 @@ otlp_metrics_payload() {
       {"name": "edl_jfr_attach_deferred_total", "value": strenv(EDL_M_ATTACH_DEFERRED)},
       {"name": "edl_jfr_session_starts_total", "value": strenv(EDL_M_SESSION_STARTS)},
       {"name": "edl_jfr_pruned_for_age_total", "value": strenv(EDL_M_PRUNED_AGE)},
-      {"name": "edl_jfr_pruned_for_size_total", "value": strenv(EDL_M_PRUNED_SIZE)},
-      {"name": "edl_jfr_pruned_unshipped_total", "value": strenv(EDL_M_PRUNED_UNSHIPPED)}
+      {"name": "edl_jfr_pruned_for_size_total", "value": strenv(EDL_M_PRUNED_SIZE)}
     ] as $counters |
     [
       {"name": "edl_jfr_profiling_desired", "value": strenv(EDL_M_DESIRED)},
@@ -573,6 +608,7 @@ otlp_metrics_payload() {
       {"name": "edl_jfr_config_unreadable", "value": strenv(EDL_M_CONFIG_UNREADABLE)},
       {"name": "edl_jfr_attach_deferred", "value": strenv(EDL_M_DEFERRED_NOW)},
       {"name": "edl_jfr_ship_truncated", "value": strenv(EDL_M_SHIP_TRUNCATED)},
+      {"name": "edl_jfr_recording_stopped_at_bound", "value": strenv(EDL_M_STOPPED_AT_BOUND)},
       {"name": "edl_jfr_chunks_pending", "value": strenv(EDL_M_PENDING)},
       {"name": "edl_jfr_bytes_on_disk", "value": strenv(EDL_M_BYTES)},
       {"name": "edl_jfr_ship_last_success_timestamp_seconds", "value": strenv(EDL_M_LAST_SUCCESS)}
@@ -635,13 +671,14 @@ write_effective_state() {
   # attachFailures are cumulative counters, deliberately, because a chunk that was rejected and has
   # since been pruned still happened and is still what the operator needs to see.
   #
-  # retentionMinutes, maxBytes, pyroscopeUrl and clusterName are recorded so a later pass whose
-  # desired-state document has gone unreadable can keep shipping and pruning under the operator's
-  # own numbers instead of silently reverting to the built-in defaults.
+  # retentionMinutes, maxBytes, pyroscopeUrl, clusterName and tenant are recorded so a later pass
+  # whose desired-state document has gone unreadable can keep shipping and pruning under the
+  # operator's own numbers, into the cluster's own tenant, instead of silently reverting to the
+  # built-in defaults.
   #
-  # prunedUnshipped is the one counter that means irreversible loss rather than reclaimed disk, and
-  # it lived only in journald and the metrics push — so `profile status`, which is where an
-  # operator asks "why did my profiles never show up?", could not answer.
+  # recordingStopped names why a node that should be profiling is deliberately not recording:
+  # `size_bound` when the directory is full of chunks that may not be deleted. `profile status`
+  # renders it; without it that node would read as a failed attach.
   #
   # configError names why this pass refused to act, so `status` can say "the document on this node
   # is corrupt" instead of blaming the reconcile timer, which is the one component still working.
@@ -670,6 +707,7 @@ write_effective_state() {
     EDL_S_MAX_BYTES="$MAX_BYTES" \
     EDL_S_PYROSCOPE_URL="$PYROSCOPE_URL" \
     EDL_S_CLUSTER_NAME="$CLUSTER_NAME" \
+    EDL_S_TENANT="$TENANT" \
     EDL_S_STARTED_AT="$SESSION_STARTED_AT" \
     EDL_S_CHUNKS_PENDING="$(count_pending)" \
     EDL_S_CHUNKS_SHIPPED="$(count_shipped)" \
@@ -677,12 +715,12 @@ write_effective_state() {
     EDL_S_SHIP_FAILURES="$FAILURES" \
     EDL_S_PRUNED_FOR_AGE="$PRUNED_FOR_AGE" \
     EDL_S_PRUNED_FOR_SIZE="$PRUNED_FOR_SIZE" \
-    EDL_S_PRUNED_UNSHIPPED="$PRUNED_UNSHIPPED" \
     EDL_S_BYTES_ON_DISK="$(chunk_bytes)" \
     EDL_S_LAST_ERROR="$LAST_ERROR" \
     EDL_S_ATTACH_FAILURES="$ATTACH_FAILURES" \
     EDL_S_LAST_ATTACH_ERROR="$LAST_ATTACH_ERROR" \
     EDL_S_ATTACH_DEFERRED="$ATTACH_DEFERRED_NOW" \
+    EDL_S_RECORDING_STOPPED="$RECORDING_STOPPED" \
     EDL_S_CONFIG_ERROR="$CONFIG_ERROR" \
     EDL_S_UPDATED_AT="$NOW" \
     yq -n -o=json -I=2 '
@@ -696,6 +734,7 @@ write_effective_state() {
       "maxBytes": env(EDL_S_MAX_BYTES),
       "pyroscopeUrl": strenv(EDL_S_PYROSCOPE_URL),
       "clusterName": strenv(EDL_S_CLUSTER_NAME),
+      "tenant": strenv(EDL_S_TENANT),
       "startedAt": env(EDL_S_STARTED_AT),
       "chunksPending": env(EDL_S_CHUNKS_PENDING),
       "chunksShipped": env(EDL_S_CHUNKS_SHIPPED),
@@ -703,12 +742,12 @@ write_effective_state() {
       "shipFailures": env(EDL_S_SHIP_FAILURES),
       "prunedForAge": env(EDL_S_PRUNED_FOR_AGE),
       "prunedForSize": env(EDL_S_PRUNED_FOR_SIZE),
-      "prunedUnshipped": env(EDL_S_PRUNED_UNSHIPPED),
       "bytesOnDisk": env(EDL_S_BYTES_ON_DISK),
       "lastError": strenv(EDL_S_LAST_ERROR),
       "attachFailures": env(EDL_S_ATTACH_FAILURES),
       "lastAttachError": strenv(EDL_S_LAST_ATTACH_ERROR),
       "attachDeferred": env(EDL_S_ATTACH_DEFERRED),
+      "recordingStopped": strenv(EDL_S_RECORDING_STOPPED),
       "configError": strenv(EDL_S_CONFIG_ERROR),
       "updatedAt": env(EDL_S_UPDATED_AT)
     }' >"${STATE_PATH}.tmp" && mv -f "${STATE_PATH}.tmp" "$STATE_PATH"
@@ -766,6 +805,9 @@ else
   MAX_BYTES="$(read_scalar '.maxBytes' "$CONFIG_PATH")"
   PYROSCOPE_URL="$(read_scalar '.pyroscopeUrl' "$CONFIG_PATH")"
   CLUSTER_NAME="$(read_scalar '.clusterName' "$CONFIG_PATH")"
+  # A document written before tenants existed carries none, and belongs to the default tenant.
+  TENANT="$(read_scalar '.tenant' "$CONFIG_PATH")"
+  [[ "$TENANT" == "null" || -z "$TENANT" ]] && TENANT="$DEFAULT_TENANT"
   ARGS_TAG="$(read_scalar '.asprofArgs | tag' "$CONFIG_PATH")"
 
   # The ingest URL is inside the guard rather than outside it because a missing one is not a
@@ -777,6 +819,8 @@ else
     [[ ! "$MAX_BYTES" =~ ^[0-9]+$ ]] ||
     [[ "$ARGS_TAG" != "!!seq" ]] ||
     [[ ! "$PYROSCOPE_URL" =~ ^https?:// ]] ||
+    [[ ! "$TENANT" =~ $TENANT_FORM ]] ||
+    [[ "$TENANT" == "$RESERVED_TENANT" ]] ||
     [[ ! "$LOOP_INTERVAL" =~ $LOOP_INTERVAL_FORM ]]; then
     CONFIG_ERROR=config_unreadable
     log error config_unreadable "path=${CONFIG_PATH}"
@@ -811,7 +855,7 @@ recover_bound() {
 # variable before testing it, so on a failure the rejected bytes are already loaded; gating the reset
 # on effective-state.json existing left a node whose reconciler has never completed a pass running on
 # exactly the values it had just refused. RETENTION_MINUTES then reached
-# `$((NOW - RETENTION_MINUTES * 60))` and MAX_BYTES reached `((PRUNE_TOTAL <= MAX_BYTES))`, and bash
+# `$((NOW - RETENTION_MINUTES * 60))` and MAX_BYTES reached `((total <= MAX_BYTES))`, and bash
 # arithmetic expands array subscripts — so `NAME[$(command)]` executes the command as `cassandra`,
 # and with no array of that name `set -u` aborted the pass instead, leaving the directory unpruned
 # and the unit failed.
@@ -821,6 +865,7 @@ if [[ -n "$CONFIG_ERROR" ]]; then
   RETENTION_MINUTES="$(recover_bound '.retentionMinutes' '^[0-9]+$' "$FALLBACK_RETENTION_MINUTES")"
   MAX_BYTES="$(recover_bound '.maxBytes' '^[0-9]+$' "$FALLBACK_MAX_BYTES")"
   PYROSCOPE_URL="$(recover_bound '.pyroscopeUrl' '^https?://' '')"
+  TENANT="$(recover_bound '.tenant' "$TENANT_FORM" "$DEFAULT_TENANT")"
   # Not a bound, so there is no pattern to recover it against — but it is reset the same way. An
   # absent document answers empty and an absent key answers "null"; both mean "nothing recollected".
   CLUSTER_NAME="$(read_scalar '.clusterName' "$STATE_PATH")"
@@ -878,6 +923,13 @@ fi
 # from the fingerprint: an empty argument list — "profile with async-profiler's own defaults" —
 # fingerprints to the empty string, so testing the fingerprint for emptiness would read a converged
 # session as an unknown one and restart it on every single pass, forever.
+# Whether the last pass had recording stopped at the bound, whatever process it described — so the
+# pass that resumes can say so, once.
+if [[ -f "$STATE_PATH" ]]; then
+  RECORDED_RECORDING_STOPPED="$(read_scalar '.recordingStopped' "$STATE_PATH")"
+  [[ "$RECORDED_RECORDING_STOPPED" == "null" ]] && RECORDED_RECORDING_STOPPED=""
+fi
+
 RECORD_PRESENT=false
 RECORDED_RUNNING=false
 RECORDED_FINGERPRINT=""
@@ -924,7 +976,22 @@ fi
 
 # --- decide ------------------------------------------------------------------
 
-if [[ -n "$CONFIG_ERROR" ]]; then
+# Whether the directory is at its byte bound with nothing that may be pruned. Pruning removes only
+# shipped chunks, so after this pass prunes, what remains is at least every unshipped and rejected
+# byte; when those alone exceed the bound, pruning cannot bring the directory back within it, and the
+# only way to keep it from growing onto the database's volume is to stop producing chunks. Measured
+# before shipping, so a pass that is about to ship its backlog may stop one pass early; the next pass
+# resumes.
+AT_BOUND=false
+(($(unprunable_bytes) > MAX_BYTES)) && AT_BOUND=true
+
+if [[ "$AT_BOUND" == "true" && "$ENABLED" == "true" && "$SESSION_RUNNING" == "true" ]]; then
+  # Ahead of an unreadable config on purpose: the byte bound protects the database's disk, and the
+  # bound itself survives an unreadable document (recovered from the last good pass), as does the
+  # desired state it is gated on. A disabled node takes the plain stop below instead: the operator
+  # asked for that stop, and the size-bound warning would blame the disk for it.
+  SESSION_ACTION=stop_at_bound
+elif [[ -n "$CONFIG_ERROR" ]]; then
   # The attach/detach decision is the one thing an unreadable document cannot be trusted for, so it
   # is the one thing this pass does not do. Everything below — shipping, pruning, reporting — runs.
   SESSION_ACTION=none
@@ -935,6 +1002,9 @@ elif [[ "$CASSANDRA_PID" == "0" ]]; then
   # cassandra-pid is missing, or this unit is running as the wrong user. Shipping and pruning still
   # run below, so this is not a reason to stop the pass — but it is a reason to say so.
   SESSION_ACTION=no_process
+elif [[ "$AT_BOUND" == "true" ]]; then
+  # Stopped at the bound on an earlier pass, and still there: do not re-attach only to stop again.
+  SESSION_ACTION=held_at_bound
 elif [[ "$SESSION_RUNNING" == "false" ]]; then
   SESSION_ACTION=start
 elif [[ "$RECORD_PRESENT" == "true" && "$RECORDED_FINGERPRINT" == "$DESIRED_FINGERPRINT" ]]; then
@@ -954,7 +1024,7 @@ fi
 # deferred a stop" are the difference between a node coming up and an operator's stop not landing.
 SESSION_ACTION_WANTED="$SESSION_ACTION"
 case "$SESSION_ACTION" in
-  start | stop | restart)
+  start | stop | restart | stop_at_bound)
     [[ "$DB_READY" == "true" ]] || SESSION_ACTION=not_ready
     ;;
 esac
@@ -1000,12 +1070,16 @@ start_session() {
     APPLIED_ARGS_JSON="$DESIRED_ARGS_JSON"
     SESSION_STARTS=$((SESSION_STARTS + 1))
     # startedAt otherwise lives only in the node-local state file, reachable only over SSH, so
-    # nothing in VictoriaLogs would record that this node ever began profiling — or when.
+    # nothing in Loki would record that this node ever began profiling — or when.
     # ready= names which answer the readiness gate gave, once per attach rather than once per pass.
     # It is the only place the journal records that a node reached `listening` rather than waiting
     # out the ten-minute backstop, and a whole cluster attaching on `uptime` is a broken probe.
     log info jfr_session_started \
       "pid=${CASSANDRA_PID} loop=${LOOP_INTERVAL} action=${SESSION_ACTION} ready=${READY_VERDICT}"
+    # Once, on the pass that ends a stop at the bound.
+    if [[ -n "$RECORDED_RECORDING_STOPPED" ]]; then
+      log info jfr_recording_resumed "reason=${RECORDED_RECORDING_STOPPED} bytes=$(chunk_bytes) max_bytes=${MAX_BYTES}"
+    fi
   else
     SESSION_RUNNING=false
     SESSION_STARTED_AT=0
@@ -1020,8 +1094,8 @@ start_session() {
 }
 
 # The one outcome this script used to leave no trace of. Profiling is enabled, nothing is attached,
-# and the pass converges with no log line and no counter movement — identical, in both VictoriaLogs
-# and VictoriaMetrics, to a healthy node that is profiling normally. A node whose database died
+# and the pass converges with no log line and no counter movement — identical, in both Loki
+# and Mimir, to a healthy node that is profiling normally. A node whose database died
 # hours ago looked exactly like one that never had a problem.
 #
 # Warned rather than errored: the database being stopped is usually a deliberate act, and a
@@ -1057,6 +1131,15 @@ note_not_ready() {
 
 case "$SESSION_ACTION" in
   stop) stop_session ;;
+  stop_at_bound)
+    stop_session
+    # Warned, not errored: the node is doing what it should — keeping chunks it may not delete and
+    # protecting the database's disk. What it needs is shipping fixed or chunks removed by hand.
+    [[ "$SESSION_RUNNING" == "false" ]] &&
+      log warn jfr_recording_stopped \
+        "reason=size_bound bytes=$(chunk_bytes) unprunable_bytes=$(unprunable_bytes) max_bytes=${MAX_BYTES} hint=fix_shipping_or_remove_chunks"
+    ;;
+  held_at_bound) ;;
   start) start_session ;;
   no_process) note_no_process ;;
   not_ready) note_not_ready ;;
@@ -1073,6 +1156,11 @@ esac
 
 # Nothing attached means nothing applied. Stated once here rather than in each branch above.
 [[ "$SESSION_RUNNING" == "true" ]] || APPLIED_ARGS_JSON='[]'
+
+# Profiling is wanted, nothing is recording, and the reason is the bound rather than a fault.
+if [[ "$AT_BOUND" == "true" && "$ENABLED" == "true" && "$SESSION_RUNNING" == "false" ]]; then
+  RECORDING_STOPPED=size_bound
+fi
 
 # --- ship --------------------------------------------------------------------
 
@@ -1093,6 +1181,7 @@ upload_chunk() {
     --write-out '%{http_code}' \
     --request POST \
     --header 'Content-Type: application/octet-stream' \
+    --header "X-Scope-OrgID: ${TENANT}" \
     --data-binary "@${path}" \
     "$url" 2>"$stderr_file")"
   curl_exit=$?
@@ -1175,72 +1264,38 @@ ship_chunks() {
 
 # --- prune -------------------------------------------------------------------
 
-# What a chunk about to be deleted is worth, which is the distinction that matters when pruning:
+# Only shipped chunks are ever deleted: Pyroscope has them, so the local copy costs nothing. An
+# unshipped chunk could still reach Pyroscope and a rejected one is the only copy of that interval's
+# profile; both are data the operator cannot get back, so neither bound touches them. When they
+# alone fill the directory, recording stops instead — see AT_BOUND.
 #
-#   shipped  — Pyroscope has it; deleting the local copy costs nothing.
-#   rejected — Pyroscope refused it permanently and it is already counted by the rejection counter;
-#              deleting it is not a shipping problem and must not fire the data-loss signal.
-#   pending  — never shipped and still could have been. Deleting this destroys it, which is exactly
-#              what this loop does on a timer while shipping is failing.
-chunk_class() {
-  local name="${1##*/}"
-  # shellcheck disable=SC2053  # Both globs are globs on purpose.
-  case "$name" in
-    $SHIPPED_GLOB) echo shipped ;;
-    $REJECTED_GLOB) echo rejected ;;
-    *) echo pending ;;
-  esac
-}
-
-# Both bounds enforced in the same pass, because the failure mode is not "lost profiles" but "dead
-# node": filling /mnt/db1 takes Cassandra down via disk_failure_policy.
-# Deletes oldest-first from one class of chunk until the directory is back within MAX_BYTES.
-# Reads and updates PRUNE_TOTAL so successive classes share one running total.
-prune_class() {
-  local pattern="$1" exclude="${2:-}" path class
-  while IFS= read -r path; do
-    ((PRUNE_TOTAL <= MAX_BYTES)) && return
-    PRUNE_TOTAL=$((PRUNE_TOTAL - $(file_size "$path")))
-    class="$(chunk_class "$path")"
-    [[ "$class" == "pending" ]] && PRUNED_UNSHIPPED=$((PRUNED_UNSHIPPED + 1))
-    PRUNED_FOR_SIZE=$((PRUNED_FOR_SIZE + 1))
-    rm -f "$path"
-    # Always a warning: the byte ceiling engaging at all means the node is producing faster than it
-    # can ship or than retention can reclaim.
-    log warn jfr_pruned_for_size "chunk=${path##*/} class=${class}"
-  done < <(list_by_mtime "$pattern" "$exclude")
-}
-
+# Both bounds are enforced in the same pass, because the failure mode is not "lost profiles" but
+# "dead node": filling /mnt/db1 takes Cassandra down via disk_failure_policy.
 prune_chunks() {
-  local cutoff=$((NOW - RETENTION_MINUTES * 60)) path mtime class
+  local cutoff=$((NOW - RETENTION_MINUTES * 60)) path mtime
 
-  for path in "${PROFILE_DIR}"/*.jfr "${PROFILE_DIR}"/$REJECTED_GLOB; do
+  for path in "${PROFILE_DIR}"/$SHIPPED_GLOB; do
     [[ -f "$path" ]] || continue
     mtime="$(file_mtime "$path")"
     if ((mtime < cutoff)); then
-      class="$(chunk_class "$path")"
-      if [[ "$class" == "pending" ]]; then
-        # A profile that could still have reached Pyroscope and is now gone. Warned, not merely
-        # counted, because this is the mechanism by which "my profiles never showed up" becomes
-        # unanswerable after the fact.
-        PRUNED_UNSHIPPED=$((PRUNED_UNSHIPPED + 1))
-        log warn jfr_pruned_for_age "chunk=${path##*/} class=${class} age_seconds=$((NOW - mtime))"
-      else
-        log info jfr_pruned_for_age "chunk=${path##*/} class=${class} age_seconds=$((NOW - mtime))"
-      fi
       PRUNED_FOR_AGE=$((PRUNED_FOR_AGE + 1))
       rm -f "$path"
+      log info jfr_pruned_for_age "chunk=${path##*/} class=shipped age_seconds=$((NOW - mtime))"
     fi
   done
 
-  PRUNE_TOTAL="$(chunk_bytes)"
-
-  # Oldest first, and shipped before rejected before unshipped — give up the least useful bytes
-  # first. The chunk being written sorts last within its class, so it goes only if nothing else is
-  # left, which needs no special case.
-  prune_class "$SHIPPED_GLOB"
-  prune_class "$REJECTED_GLOB"
-  prune_class '*.jfr' "$SHIPPED_GLOB"
+  # Oldest first, until the directory is back within MAX_BYTES or no shipped chunk is left.
+  local total
+  total="$(chunk_bytes)"
+  while IFS= read -r path; do
+    ((total <= MAX_BYTES)) && return
+    total=$((total - $(file_size "$path")))
+    PRUNED_FOR_SIZE=$((PRUNED_FOR_SIZE + 1))
+    rm -f "$path"
+    # A warning: the byte bound engaging at all means the node is producing faster than retention
+    # reclaims.
+    log warn jfr_pruned_for_size "chunk=${path##*/} class=shipped"
+  done < <(list_by_mtime "$SHIPPED_GLOB")
 }
 
 # --- run ---------------------------------------------------------------------

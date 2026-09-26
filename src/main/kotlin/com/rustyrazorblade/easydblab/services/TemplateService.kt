@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.User
 import org.apache.commons.text.StringSubstitutor
 import java.io.File
@@ -31,30 +32,22 @@ class TemplateService(
         val state = clusterStateManager.load()
         val region = state.initConfig?.region ?: user.region
         val controlHost = state.getControlHost()
+        val store = ObservabilityStore(state.s3Bucket.orEmpty(), state.tenant())
         return mapOf(
-            "BUCKET_NAME" to state.dataBucket.ifBlank { state.s3Bucket.orEmpty() },
+            "ACCOUNT_BUCKET" to store.bucket,
             "AWS_REGION" to region,
             "CLUSTER_NAME" to state.clusterLabelName(),
             "CONTROL_NODE_IP" to (controlHost?.privateIp.orEmpty()),
             "METRICS_FILTER_ID" to buildMetricsFilterId(state),
             "CLUSTER_S3_PREFIX" to buildClusterPrefix(state),
-            "PYROSCOPE_STORAGE_PREFIX" to buildPyroscopeStoragePrefix(state),
+            "PROFILES_S3_PREFIX" to store.profilesPrefix(),
+            "TENANT" to store.tenant,
         )
     }
 
     private fun buildMetricsFilterId(state: ClusterState): String = state.metricsConfigId()
 
     private fun buildClusterPrefix(state: ClusterState): String = state.clusterPrefix()
-
-    /**
-     * Builds a flat storage prefix for Pyroscope (no forward slashes allowed).
-     * Converts "clusters/name-id" to "pyroscope.name-id".
-     */
-    private fun buildPyroscopeStoragePrefix(state: ClusterState): String {
-        val name = state.initConfig?.name ?: "cluster"
-        val id = state.clusterId
-        return "pyroscope.$name-$id"
-    }
 
     fun renderKitTemplate(
         templateContent: String,

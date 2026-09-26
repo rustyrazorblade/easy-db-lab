@@ -84,4 +84,4 @@ easy-db-lab kit uninstall ignite3
 
 ## Metrics
 
-Ignite 3 metrics are pushed to the cluster's OTel Collector via OTLP automatically at start time. No additional configuration is needed. Metrics appear in VictoriaMetrics and are accessible from Grafana.
+Ignite 3 metrics are pushed to the cluster's OTel Collector via OTLP automatically at start time. No additional configuration is needed. Metrics appear in Mimir and are accessible from Grafana.

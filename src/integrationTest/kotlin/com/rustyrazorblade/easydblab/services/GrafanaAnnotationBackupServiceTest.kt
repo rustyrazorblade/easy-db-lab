@@ -48,8 +48,9 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
         ClusterState(
             name = "perf-test",
             versions = mutableMapOf(),
+            clusterId = "c0ffee",
             s3Bucket = bucket,
-            initConfig = InitConfig(region = "us-west-2"),
+            initConfig = InitConfig(region = "us-west-2", tenant = "acme"),
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
         )
 
@@ -77,6 +78,7 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
                 treeUploader = mock<GrafanaDashboardTreeUploader>(),
                 eventBus = getKoin().get<EventBus>(),
                 okHttpClient = OkHttpClient.Builder().addInterceptor(interceptor).build(),
+                configChangeReport = ConfigChangeReport(mock(), getKoin().get<EventBus>()),
             )
         service = DefaultGrafanaAnnotationBackupService(grafanaService, objectStore, getKoin().get<EventBus>())
     }
@@ -99,12 +101,11 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
 
         // The exact JSON Grafana returned is uploaded verbatim.
         assertThat(contentCaptor.firstValue).isEqualTo(annotationsJson)
-        // Account-level destination, not a per-cluster prefix that teardown expires.
+        // The tenant's annotations directory, named by time and cluster.
         assertThat(pathCaptor.firstValue.getKey())
-            .startsWith("grafana-annotations/perf-test/")
-            .doesNotStartWith("clusters/")
+            .matches("observability/annotations/acme/\\d{8}-\\d{6}_perf-test-c0ffee\\.json")
         assertThat(result.annotationCount).isEqualTo(2)
-        assertThat(result.s3Path.toUri()).startsWith("s3://acct-bucket/grafana-annotations/perf-test/")
+        assertThat(result.s3Path.toUri()).startsWith("s3://acct-bucket/observability/annotations/acme/")
 
         val request = mockWebServer.takeRequest()
         assertThat(request.url.encodedPath).isEqualTo("/api/annotations")

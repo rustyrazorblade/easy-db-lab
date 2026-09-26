@@ -235,7 +235,7 @@ If the kit declares a `scrape` metrics entry, three additional files SHOULD be c
 
 ### Workflow
 
-1. **Install and start the workload** on a live cluster so metrics are flowing to VictoriaMetrics.
+1. **Install and start the workload** on a live cluster so metrics are flowing to Mimir.
 2. **Export the catalog.** The script sources `env.sh`, so run it from the cluster workspace (the directory holding `env.sh`), calling it by its path in the checkout:
    ```bash
    cd <cluster-workspace>
@@ -254,9 +254,10 @@ If the kit declares a `scrape` metrics entry, three additional files SHOULD be c
    ```
    Only include metrics that are genuinely useful for diagnosing workload health. All metric names MUST appear in `metrics-catalog.json`.
 4. **Author `dashboards/<name>.json`** — a Grafana dashboard JSON built from metric names in `METRICS.md`. Requirements:
-   - Include a `cluster` multi-select template variable querying `label_values(up, cluster)` against the VictoriaMetrics datasource
+   - Include a `cluster` multi-select template variable querying `label_values(up, cluster)` against the Mimir datasource
    - Scope all panel queries with `{cluster=~"$cluster",job="<name>"}`
-   - Use the VictoriaMetrics datasource UID `"VictoriaMetrics"`
+   - Use the Mimir datasource UID `"mimir"` (type `prometheus`) for metric panels
+   - Log panels use the Loki datasource UID `"loki"` (type `loki`) with LogQL, and every stream selector is scoped by cluster: `{cluster=~"$cluster", service_name="<name>"}`. Loki refuses a selector whose every matcher can match an empty value, so the `cluster` variable's `allValue` is `".+"`
 5. **Copy all three** into the workload's resource directory:
    ```
    src/main/resources/.../kits/<name>/metrics-catalog.json

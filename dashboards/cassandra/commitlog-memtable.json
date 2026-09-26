@@ -39,7 +39,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Bytes of commitlog segments on disk on each node. Every write is appended here before it is acknowledged, so this is the durability cost of the write path. A flat line at the configured commitlog_total_space is the ceiling: at that point Cassandra must force a flush to recycle a segment. A steadily growing line means writes arrive faster than memtables flush. There is no keyspace or table label on this family; one series per node is all that exists.",
       "fieldConfig": {
@@ -121,7 +121,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_commitlog_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}",
@@ -137,7 +137,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Writes queued for the commitlog executor on each node. This is the earliest sign the commit path is falling behind: it rises before latency does and before any client-visible error appears. A value that returns to zero between samples is healthy. A value that stays above zero means the commitlog writer cannot keep up with the incoming write rate, and the two latency panels below will tell you which half of the writer is the cause.",
       "fieldConfig": {
@@ -219,7 +219,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_commitlog_tasks_pending{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}",
@@ -235,7 +235,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "How long a write waits for its commitlog entry to become durable \u2014 the fsync cost. This is a DISK SPEED problem when it rises: the device cannot complete the sync fast enough. Compare it against the segment-allocation panel beside it; the two are different failures and the fix for each is different. A FLAT ZERO HERE IS NORMAL and does not mean the panel is broken: under commitlog_sync: periodic, the Cassandra default, the writer never blocks on the fsync, so nothing is recorded. The gauge only carries a value under commitlog_sync: batch or group, where it is the device latency every write pays for. Read one series per node \u2014 this gauge is pre-aggregated on the node and is never summed or averaged across nodes.",
       "fieldConfig": {
@@ -317,7 +317,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_commitlog_waiting_on_commit_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
@@ -333,7 +333,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "How long a write blocks waiting for a commitlog segment to be handed to it. This is a CAPACITY problem, not a disk-speed one: the commitlog is out of space, so the writer is stalled until an old segment is recycled, and a segment can only be recycled once every memtable holding data in it has been flushed. If this panel is high while Waiting on Commit is flat, do not go looking at the disk \u2014 raise commitlog_total_space, or find the table whose memtable is not flushing (see the memtable row below). Pre-aggregated per node; one series per node, never aggregated.",
       "fieldConfig": {
@@ -415,7 +415,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_commitlog_waiting_on_segment_allocation_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
@@ -444,7 +444,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The two halves of a memtable's memory footprint, per table per node. On-heap holds the index structures and, by default, the partition keys; off-heap holds the cell data when memtable_allocation_type is offheap_objects or offheap_buffers. The split matters because only the on-heap half competes with the JVM heap and can drive GC pressure: a table that is large off-heap and small on-heap is cheap, the reverse is not. Both halves count toward the flush threshold. OFF-HEAP READS ZERO ON A DEFAULT CONFIG: memtable_allocation_type is heap_buffers unless it is changed, which puts every byte on the heap. Filtered to $keyspace so the ~57 system tables do not drown the workload.",
       "fieldConfig": {
@@ -526,7 +526,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_table_memtable_heap_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}",
@@ -538,7 +538,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_table_memtable_offheap_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}",
@@ -554,7 +554,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The size of the user data actually held in the memtable, excluding the allocator overhead counted by the heap and off-heap gauges. Compare it with the panel to its left: a large gap between live data and total footprint is allocator overhead, which is normal for small cells and worth noticing when it is extreme. A sawtooth is healthy \u2014 each drop is a flush. A line that climbs without dropping means the table is not flushing, which is what eventually stalls commitlog segment allocation.",
       "fieldConfig": {
@@ -636,7 +636,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_table_memtable_live_data_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}",
@@ -652,7 +652,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The number of columns (cells) buffered in the memtable for each table on each node. Read it alongside live data size: many columns holding few bytes means a wide, sparse write pattern, which costs more per byte to flush and produces SSTables with a high cell count. A high column count with a low byte count is the signature of writing many tiny cells, often one column at a time.",
       "fieldConfig": {
@@ -734,7 +734,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_table_memtable_columns{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}",
@@ -750,7 +750,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Memtable switches per second. A switch IS a flush: the active memtable is swapped out and written to a new SSTable. A rising rate therefore means more SSTables, each smaller, and more compaction work downstream \u2014 the cost of this panel is paid on the read path and in compaction throughput, not here. Frequent switches usually mean the memtable threshold is small relative to the write rate, or that commitlog pressure is forcing flushes early. Compare against the segment-allocation panel above when both are elevated.",
       "fieldConfig": {
@@ -832,7 +832,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "rate(cassandra_table_memtable_switches_total{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}[$__rate_interval])",
@@ -848,7 +848,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "On-heap memtable bytes summed across every table matching $keyspace and $table, one series per node. This is the number to compare against memtable_heap_space: when it approaches that limit Cassandra flushes the largest memtable regardless of how full it is. Summing here is legitimate because these are byte gauges, not percentiles \u2014 bytes add, latencies do not. Use it to spot a single node carrying more buffered data than its peers, which usually points at an uneven token range or a hot partition.",
       "fieldConfig": {
@@ -930,7 +930,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (cassandra_table_memtable_heap_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"})",
@@ -1034,10 +1034,10 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_storage_load_bytes, cluster)",
-        "description": "Cluster scoping. Every panel filters on this so a second cluster writing to the same VictoriaMetrics cannot blend into the graphs.",
+        "description": "Cluster scoping. Every panel filters on this so a second cluster writing to the same metrics store cannot blend into the graphs.",
         "hide": 0,
         "includeAll": true,
         "label": "Cluster",
@@ -1067,7 +1067,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_storage_load_bytes, host_name)",
         "description": "Database nodes only. Derived from a Cassandra-only metric, so control and app nodes never appear.",
@@ -1101,7 +1101,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_table_memtable_heap_size_bytes, keyspace)",
         "description": "Applies to the memtable row only; the commitlog families carry no keyspace label. Defaults to the workload keyspace because selecting All puts roughly 57 system tables on every memtable panel.",
@@ -1135,7 +1135,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_table_memtable_heap_size_bytes{keyspace=~\"$keyspace\"}, table)",
         "description": "Tables within the selected keyspaces. Applies to the memtable row only.",
@@ -1159,7 +1159,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

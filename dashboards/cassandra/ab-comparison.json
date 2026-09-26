@@ -16,7 +16,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "enable": true,
         "expr": "resets(jvm_cpu_time_seconds_total{job=\"cassandra\"}[$__interval]) > 0",
@@ -31,22 +31,18 @@
       },
       {
         "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
+          "type": "loki",
+          "uid": "loki"
         },
         "enable": true,
+        "expr": "{source=\"annotation\", cluster=~\".+\"} | dashboard_uid=\"\"",
         "hide": false,
         "iconColor": "green",
+        "instant": false,
         "name": "easy-db-lab markers",
-        "target": {
-          "limit": 100,
-          "matchAny": false,
-          "tags": [
-            "easydblab"
-          ],
-          "type": "tags"
-        },
-        "type": "tags"
+        "tagKeys": "tags",
+        "textFormat": "",
+        "titleFormat": "{{cluster}}"
       }
     ]
   },
@@ -94,7 +90,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in read latency at ${percentile}, candidate build against baseline build. Negative is better: the candidate answers reads faster. Set Baseline and Candidate at the top before reading this number.",
       "fieldConfig": {
@@ -151,7 +147,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"read\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})",
@@ -167,7 +163,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in write latency at ${percentile}, candidate build against baseline build. Negative is better: the candidate acknowledges writes faster.",
       "fieldConfig": {
@@ -224,7 +220,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"write\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})",
@@ -240,7 +236,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in coordinator requests per second per node. Positive is better: the candidate serves more work. Read it beside the per-node request rate panel; if the client is not spreading work evenly this number moves without any code change.",
       "fieldConfig": {
@@ -297,7 +293,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
@@ -313,7 +309,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in the share of wall clock time spent in stop-the-world GC pauses. Negative is better. Concurrent cycles are excluded with jvm_gc_name!~\".*Cycles\"; without that filter a concurrent collector's cycle time counts as pause time and it looks worse than a stop-the-world collector, which is backwards.",
       "fieldConfig": {
@@ -370,7 +366,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
@@ -386,7 +382,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in SSTables touched per read at p99, user keyspaces only. Negative is better: fewer files per query. System keyspaces are excluded here because there are dozens of idle ones and they flatten the number; the sliceable twin further down leaves them in so an ad-hoc keyspace filter can re-scope it. This gauge has no p999, so it stays at p99 and does not follow the Percentile picker.",
       "fieldConfig": {
@@ -443,7 +439,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$candidate\", keyspace!~\"system.*|sidecar_internal\"})\n  - avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})\n) / avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})",
@@ -459,7 +455,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in block device read latency at p99, measured in the kernel by ebpf_exporter. Negative is better. ebpf_exporter does not carry cassandra_build, so the series are narrowed to the nodes of each build with an 'and on (host_name)' join against a Cassandra metric. This family is a real histogram, so histogram_quantile is correct here.",
       "fieldConfig": {
@@ -516,7 +512,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))\n  - histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))\n) / histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
@@ -545,9 +541,9 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
-      "description": "Change in CPU busy (all non-idle states) averaged over the nodes of each build. Negative is better. OTel hostmetrics carries no cassandra_build, so nodes are narrowed to a build with an 'and on (host_name)' join against a Cassandra metric.",
+      "description": "Change in CPU busy (all non-idle states) averaged over the nodes of each build. Negative is better. The OTel host_metrics receiver carries no cassandra_build, so nodes are narrowed to a build with an 'and on (host_name)' join against a Cassandra metric.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -602,7 +598,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "instant": true,
@@ -618,7 +614,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in bytes read from the data disk per second, averaged over the nodes of each build. Negative is better at equal offered load: fewer bytes read for the same requests means more of them were served from memory.",
       "fieldConfig": {
@@ -675,7 +671,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "instant": true,
@@ -691,7 +687,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in page cache size (memory in state=cached). Positive is better: a build that keeps more of the data set resident serves more reads without touching the disk.",
       "fieldConfig": {
@@ -748,7 +744,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "instant": true,
@@ -764,7 +760,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in data-disk bytes read per coordinator read request. A page-cache hit-rate proxy: at equal load, a build that misses the cache more reads more bytes per request. Negative is better. Undefined while no reads flow.",
       "fieldConfig": {
@@ -821,7 +817,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "instant": true,
@@ -837,7 +833,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Change in page cache hit ratio, in percentage points, averaged over the nodes of each build. Positive is better. Hit ratio is (cache_access - page_add_lru) / cache_access from ebpf_exporter's cachestat, which needs the folio-aware object built into the AMI; on an older AMI this panel is blank and 'Disk read bytes per read request' is the proxy.",
       "fieldConfig": {
@@ -894,7 +890,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "instant": true,
@@ -910,7 +906,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Percent of CPU time in any non-idle state, per node, labelled by build. The offered load is the same for every node, so a build that does the same work with less CPU sits lower.",
       "fieldConfig": {
@@ -1022,7 +1018,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -1033,7 +1029,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -1048,7 +1044,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Bytes per second read from and written to the data disk, per node. Reads are the page-cache signal: at equal load, more disk reads means more cache misses.",
       "fieldConfig": {
@@ -1160,7 +1156,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -1171,7 +1167,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -1182,7 +1178,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -1193,7 +1189,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -1208,7 +1204,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Read latency at the block layer at p99, per node, from ebpf_exporter's biolatency histogram. Shows whether the disk itself is the difference between the builds.",
       "fieldConfig": {
@@ -1320,7 +1316,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -1331,7 +1327,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -1346,7 +1342,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Memory in state=cached, per node. A build whose compaction bypasses the page cache should hold more of the working set here and evict less of it.",
       "fieldConfig": {
@@ -1458,7 +1454,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -1469,7 +1465,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -1484,7 +1480,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Data-disk bytes read divided by coordinator read requests, per node. The page-cache hit-rate proxy: the same request stream at a higher bytes-per-request means more cache misses. Blank while no reads flow.",
       "fieldConfig": {
@@ -1596,7 +1592,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -1607,7 +1603,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -1622,7 +1618,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Read and write operations per second on the data disk, per node.",
       "fieldConfig": {
@@ -1734,7 +1730,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -1745,7 +1741,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -1756,7 +1752,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -1767,7 +1763,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -1782,7 +1778,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Page cache hit ratio per node: (cache_access - page_add_lru) / cache_access from ebpf_exporter's cachestat. The direct signal for whether compaction is evicting the working set. Blank on an AMI without the folio-aware cachestat object.",
       "fieldConfig": {
@@ -1896,7 +1892,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -1907,7 +1903,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -1922,7 +1918,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Page cache accesses (folio_mark_accessed) and misses (filemap_add_folio) per second, per node. The numerator and denominator of the hit ratio; a build that bypasses the cache for compaction should show fewer misses at the same access rate.",
       "fieldConfig": {
@@ -2034,7 +2030,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -2045,7 +2041,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -2056,7 +2052,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -2067,7 +2063,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -2095,7 +2091,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "One row per node, read from live labels. cassandra_build is derived on each node from the target of the current symlink, so it carries the commit sha and follows a per-node version change on its own. Count the rows for a build to get its node count. The heap ceiling uses max by, never sum: a generational concurrent collector reports the whole heap limit on both its young and its old pool, and a sum would double it on that side only.",
       "fieldConfig": {
@@ -2166,7 +2162,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max by (cassandra_build, host_name) (jvm_memory_limit_bytes{job=\"cassandra\", jvm_memory_type=\"heap\"})",
@@ -2199,7 +2195,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "One row per build and collector, read from live labels. The collector name is the clearest single marker of what differs between two JVM configurations: a G1 build shows Young and Old Generation rows, a ZGC build shows Pauses and Cycles rows. Cycles are kept here on purpose so the collector's full shape is visible; every pause measurement elsewhere on this page excludes them.",
       "fieldConfig": {
@@ -2258,7 +2254,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (cassandra_build, jvm_gc_name) (rate(jvm_gc_duration_seconds_count{job=\"cassandra\"}[$__rate_interval]))",
@@ -2324,7 +2320,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Highest request rate divided by the lowest, among the nodes of each build. 1.00 means the nodes of that build are doing equal work and an average over them is trustworthy. The further above 1.00, the more the group average is really describing one node. A build running on a single node always reads 1.00. This panel reports the spread and does not claim a cause.",
       "fieldConfig": {
@@ -2381,7 +2377,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))\n/ min(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
@@ -2393,7 +2389,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n/ min(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
@@ -2409,7 +2405,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "How many nodes run each build right now. The groups do not have to be the same size; every aggregation on this page averages. A zero means the group selection is empty and every delta above is meaningless.",
       "fieldConfig": {
@@ -2462,7 +2458,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "count(count by (host_name) (cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
@@ -2474,7 +2470,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "count(count by (host_name) (cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
@@ -2490,7 +2486,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Read latency at ${percentile} for every node separately, labelled with the build it runs. Two nodes of the same build should sit on top of each other. When they do not, the group average above is describing nodes that disagree, and the aggregate deserves less weight. This panel states the disagreement and offers no explanation for it.",
       "fieldConfig": {
@@ -2571,7 +2567,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg by (host_name, cassandra_build) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline|$candidate\", host_name=~\"$host\", cassandra_operation=\"read\"}) / ${latency_unit}",
@@ -2586,7 +2582,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Coordinator request rate for every node separately, labelled with the build it runs. Use it to see whether the two groups are being asked to do the same amount of work before you read anything into a latency difference.",
       "fieldConfig": {
@@ -2667,7 +2663,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name, cassandra_build) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline|$candidate\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -2695,7 +2691,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Read latency at ${percentile}, averaged across the nodes of each build. The dashed line on the right axis is the percentage change of the candidate against the baseline; below zero the candidate is faster.",
       "fieldConfig": {
@@ -2847,7 +2843,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"}) / ${latency_unit}",
@@ -2858,7 +2854,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"read\"}) / ${latency_unit}",
@@ -2869,7 +2865,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"read\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})",
@@ -2884,7 +2880,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Write latency at ${percentile}, averaged across the nodes of each build. The dashed line on the right axis is the percentage change of the candidate against the baseline; below zero the candidate is faster.",
       "fieldConfig": {
@@ -3036,7 +3032,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"}) / ${latency_unit}",
@@ -3047,7 +3043,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"write\"}) / ${latency_unit}",
@@ -3058,7 +3054,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"write\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})",
@@ -3086,7 +3082,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Coordinator requests per second per node, averaged across the nodes of each build. Higher is better. Averaged and never summed, so the two builds stay comparable at any node count.",
       "fieldConfig": {
@@ -3238,7 +3234,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
@@ -3249,7 +3245,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
@@ -3260,7 +3256,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
@@ -3275,7 +3271,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Messages dropped per second per node. Lower is better. The third series is an absolute difference, not a percentage, because a healthy group drops nothing and a percentage of zero says nothing.",
       "fieldConfig": {
@@ -3423,7 +3419,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
@@ -3434,7 +3430,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
@@ -3445,7 +3441,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n- avg(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
@@ -3460,7 +3456,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Client request errors per second per node across every status. Lower is better. The third series is an absolute difference because a healthy group errors at zero. Add an ad-hoc cassandra_status filter to look at one status alone.",
       "fieldConfig": {
@@ -3608,7 +3604,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
@@ -3619,7 +3615,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
@@ -3630,7 +3626,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n- avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
@@ -3645,7 +3641,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Hints written per second per node, with hints in flight as the two extra series. A node writes a hint when a replica does not answer, so a rise on one side points at a slower or busier peer rather than at the node itself.",
       "fieldConfig": {
@@ -3810,7 +3806,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_storage_hints_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
@@ -3821,7 +3817,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(cassandra_storage_hints_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
@@ -3832,7 +3828,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_storage_hints_in_progress{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
@@ -3843,7 +3839,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_storage_hints_in_progress{job=\"cassandra\", cassandra_build=~\"$candidate\"})",
@@ -3871,7 +3867,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Share of wall clock time spent in stop-the-world GC pauses. Lower is better. Concurrent cycles are excluded with jvm_gc_name!~\".*Cycles\"; without that filter a concurrent collector's cycle time is added to pause time and it looks worse than a stop-the-world collector, which is the wrong answer. The collector each build runs is in the table at the top of the page.",
       "fieldConfig": {
@@ -4019,7 +4015,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
@@ -4030,7 +4026,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
@@ -4041,7 +4037,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
@@ -4056,7 +4052,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Heap in use per node, averaged across the nodes of each build, against the heap ceiling. The ceiling uses max by (host_name), never sum: a generational concurrent collector reports the whole heap limit on both its young and its old pool, so a sum doubles the ceiling on that side only.",
       "fieldConfig": {
@@ -4241,7 +4237,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_memory_type=\"heap\"}))",
@@ -4252,7 +4248,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_memory_type=\"heap\"}))",
@@ -4263,7 +4259,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(max by (host_name) (jvm_memory_limit_bytes{job=\"cassandra\", cassandra_build=~\"$baseline|$candidate\", jvm_memory_type=\"heap\"}))",
@@ -4274,7 +4270,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_memory_type=\"heap\"}))\n  - avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_memory_type=\"heap\"}))\n) / avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_memory_type=\"heap\"}))",
@@ -4302,7 +4298,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "SSTables touched per read at p99, user keyspaces only. Lower is better: compaction is keeping up and a read visits fewer files. This gauge exists only at p50, p99 and max, so it stays at p99 and does not follow the Percentile picker.",
       "fieldConfig": {
@@ -4454,7 +4450,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})",
@@ -4465,7 +4461,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$candidate\", keyspace!~\"system.*|sidecar_internal\"})",
@@ -4476,7 +4472,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$candidate\", keyspace!~\"system.*|sidecar_internal\"})\n  - avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})\n) / avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})",
@@ -4491,7 +4487,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Compaction tasks waiting per node. Lower is better. The third series is an absolute difference, not a percentage, because a healthy backlog is zero.",
       "fieldConfig": {
@@ -4639,7 +4635,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_compaction_tasks_pending{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
@@ -4650,7 +4646,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_compaction_tasks_pending{job=\"cassandra\", cassandra_build=~\"$candidate\"})",
@@ -4661,7 +4657,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_compaction_tasks_pending{job=\"cassandra\", cassandra_build=~\"$candidate\"})\n- avg(cassandra_compaction_tasks_pending{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
@@ -4676,7 +4672,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Compactions finished per second per node. Higher is better while the backlog panel is not empty: the node clears work faster. Storage and I/O changes act here first.",
       "fieldConfig": {
@@ -4828,7 +4824,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval]))",
@@ -4839,7 +4835,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval]))",
@@ -4850,7 +4846,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval]))\n  - avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval]))\n) / avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval]))",
@@ -4865,7 +4861,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Live data on disk per node. The two builds should track each other. A lasting gap means one side holds data the other has already compacted away, or that a node joined the ring later and carries less. Either way it makes a latency comparison suspect, because the two sides are no longer reading the same shape of data.",
       "fieldConfig": {
@@ -5017,7 +5013,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
@@ -5028,7 +5024,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\"})",
@@ -5039,7 +5035,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\"})\n  - avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\"})\n) / avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
@@ -5067,7 +5063,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Block device read latency at p99, measured in the kernel by ebpf_exporter. Lower is better. ebpf_exporter does not carry cassandra_build, so each series is narrowed to the nodes of one build with an 'and on (host_name)' join against a Cassandra metric. This family is a real histogram, so histogram_quantile is correct here, unlike the Cassandra latency gauges.",
       "fieldConfig": {
@@ -5219,7 +5215,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
@@ -5230,7 +5226,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))",
@@ -5241,7 +5237,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (\n    histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))\n  - histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))\n) / histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
@@ -5256,7 +5252,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Page cache work per second per node, from ebpf_exporter, narrowed to the nodes of each build with an 'and on (host_name)' join. A build that reads around the page cache does less of this. Four series rather than a delta line, because the split between cache writes and dirty pages is the point and one percentage would hide it.",
       "fieldConfig": {
@@ -5405,7 +5401,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_writes\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
@@ -5416,7 +5412,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_writes\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))",
@@ -5427,7 +5423,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_mark_dirties\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
@@ -5438,7 +5434,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_mark_dirties\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))",
@@ -5466,7 +5462,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Client latency at ${percentile}, cut by ${groupby}, across every node the Host picker allows. Honours cassandra_build, host_name, cluster and cassandra_operation. Range slice requests are left out because they idle at zero in most tests and a zero series drags any average that mixes operations. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -5547,7 +5543,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=~\"read|write\"})) / ${latency_unit}",
@@ -5562,7 +5558,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Coordinator request rate cut by ${groupby}. Honours cassandra_build, host_name, cluster and cassandra_operation. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -5643,7 +5639,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (${groupby}) (rate(cassandra_client_request_count_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -5658,7 +5654,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Client request errors cut by ${groupby}. Honours cassandra_build, host_name, cluster, cassandra_operation and cassandra_status. Group by cassandra_status to separate unavailable from timeout from failure. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -5739,7 +5735,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (${groupby}) (rate(cassandra_client_request_error_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -5754,7 +5750,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Dropped messages cut by ${groupby}. Honours cassandra_build, host_name, cluster and message_type. Group by message_type to see which verb is being shed. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -5835,7 +5831,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (${groupby}) (rate(cassandra_messages_dropped_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -5850,7 +5846,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Thread pool queue depth cut by ${groupby}. Honours cassandra_build, host_name, cluster, pool and pool_path. Group by pool to find which stage is backing up; a rising queue here is the cause of the symptoms above. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -5931,7 +5927,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (${groupby}) (cassandra_thread_pool_tasks_pending{job=\"cassandra\", host_name=~\"$host\"}))",
@@ -5946,7 +5942,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Rate at which thread pool tasks are blocked, cut by ${groupby}. Honours cassandra_build, host_name, cluster, pool and pool_path. Anything above zero means a caller is being made to wait, which is real backpressure rather than a queue that is merely deep. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -6027,7 +6023,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (${groupby}) (rate(cassandra_thread_pool_tasks_blocked_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -6042,7 +6038,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "SSTables touched per read at p99, cut by ${groupby}. Honours cassandra_build, host_name, cluster, keyspace and table. No keyspace is excluded here, so an ad-hoc keyspace or table filter can scope it to whatever the test writes. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -6123,7 +6119,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, avg by (${groupby}) (cassandra_table_sstables_per_read_p99{job=\"cassandra\", host_name=~\"$host\"}))",
@@ -6138,7 +6134,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Live bytes on disk cut by ${groupby}. Honours cassandra_build, host_name, cluster, keyspace and table. Group by table to see which table is actually growing. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -6219,7 +6215,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (${groupby}) (cassandra_table_disk_space_live_bytes{job=\"cassandra\", host_name=~\"$host\"}))",
@@ -6234,7 +6230,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Stop-the-world GC pause overhead cut by ${groupby}. Honours cassandra_build, host_name, cluster and jvm_gc_name. Concurrent cycles are excluded, so grouping by jvm_gc_name shows the pause phases only; the table at the top of the page keeps the cycles in. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -6315,7 +6311,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, 100 * sum by (${groupby}) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
@@ -6330,7 +6326,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Heap in use cut by ${groupby}. Honours cassandra_build, host_name, cluster and jvm_memory_pool_name. Group by jvm_memory_pool_name to see the shape of the heap, which is where two collectors differ most. Only the ten largest series are drawn.",
       "fieldConfig": {
@@ -6411,7 +6407,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (${groupby}) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))",
@@ -6441,7 +6437,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_client_request_count_total, cassandra_build)",
         "description": "The reference build. Read from the cassandra_build label, which each node derives from the target of its own current symlink, so it carries the commit sha and follows a per-node version change.",
@@ -6470,7 +6466,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_client_request_count_total, cassandra_build)",
         "description": "The build under test. The two groups do not have to hold the same number of nodes; every panel averages rather than sums.",
@@ -6503,7 +6499,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_storage_load_bytes, host_name)",
         "description": "Drill-down. Narrows the per-node panels and the whole Slice and dice section to chosen nodes. Leave it on All for the normal build against build view.",
@@ -6674,7 +6670,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

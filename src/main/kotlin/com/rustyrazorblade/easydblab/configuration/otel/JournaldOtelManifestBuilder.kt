@@ -28,7 +28,7 @@ class JournaldOtelManifestBuilder(
         private const val CONFIGMAP_NAME = "fluent-bit-journald-config"
         private const val CONFIG_DATA_KEY = "fluent-bit-journald.yaml"
         private const val SEVERITY_MAPPER_KEY = "severity-mapper.lua"
-        private const val IMAGE = "fluent/fluent-bit:latest"
+        private const val IMAGE = "fluent/fluent-bit:5.1.2"
         private const val HTTP_PORT = 2020
         private const val LIVENESS_INITIAL_DELAY = 10
         private const val LIVENESS_PERIOD = 30

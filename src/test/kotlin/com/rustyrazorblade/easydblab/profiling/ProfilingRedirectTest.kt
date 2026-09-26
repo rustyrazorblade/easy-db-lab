@@ -149,6 +149,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
                 .buildAllResources(
                     controlNodeIp = CONTROL_NODE_IP,
                     clusterName = "test-cluster",
+                    tenant = "acme",
                     telemetryRedirect = redirect,
                 ).filterIsInstance<DaemonSet>()
                 .single()
@@ -160,6 +161,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
 
         assertThat(javaToolOptions).contains(redirect.profiles)
         assertThat(javaToolOptions).doesNotContain(localPyroscopeUrl)
+        assertThat(javaToolOptions).contains("-Dpyroscope.tenant.id=acme")
     }
 
     companion object {

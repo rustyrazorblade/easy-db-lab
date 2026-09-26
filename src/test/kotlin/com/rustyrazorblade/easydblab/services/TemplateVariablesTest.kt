@@ -8,9 +8,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
@@ -349,5 +352,49 @@ class TemplateVariablesTest : BaseKoinTest() {
         val vars = TemplateVariables.from(state = state, kitName = "trino", storageSize = "0Gi")
 
         assertThat(vars.toMap()).containsEntry("OPENSEARCH_ENDPOINT", "search-my-domain-xyz.us-east-1.es.amazonaws.com")
+    }
+
+    @Test
+    fun `a kit's profile endpoint is the control node's Pyroscope on a local cluster`() {
+        val vars = TemplateVariables.from(state = stateWith(), kitName = "trino", storageSize = "1Gi").toMap()
+
+        assertThat(vars).containsEntry("PYROSCOPE_URL", "http://10.0.1.1:${Constants.K8s.PYROSCOPE_PORT}")
+    }
+
+    @Test
+    fun `a kit's profile endpoint follows the telemetry redirect`() {
+        val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
+        val state = stateWith().copy(initConfig = InitConfig(telemetryRedirect = redirect))
+
+        val vars = TemplateVariables.from(state = state, kitName = "trino", storageSize = "1Gi").toMap()
+
+        assertThat(vars).containsEntry("PYROSCOPE_URL", redirect.profiles)
+    }
+
+    @Test
+    fun `a kit gets the cluster's tenant`() {
+        val state = stateWith().copy(initConfig = InitConfig(tenant = "acme"))
+
+        val vars = TemplateVariables.from(state = state, kitName = "trino", storageSize = "1Gi").toMap()
+
+        assertThat(vars).containsEntry("TENANT", "acme")
+    }
+
+    /**
+     * The Trino and Presto start scripts attach the Pyroscope agent to their JVMs. They take the
+     * profile endpoint and the tenant from the kit variables, so they follow telemetry redirect and
+     * write to the cluster's tenant, instead of hard-coding the control node.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = ["trino", "presto"])
+    fun `the kit start script profiles to the cluster's endpoint and tenant`(kit: String) {
+        val script =
+            checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$kit/bin/start.sh.template")) {
+                "no start script for $kit"
+            }.readText()
+
+        assertThat(script).contains("-Dpyroscope.server.address=\${PYROSCOPE_URL}")
+        assertThat(script).contains("-Dpyroscope.tenant.id=\${TENANT}")
+        assertThat(script).doesNotContain(":4040")
     }
 }

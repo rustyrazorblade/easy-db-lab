@@ -75,6 +75,7 @@ class DefaultSidecarService(
                     image = image,
                     controlNodeIp = controlHost.privateIp,
                     clusterName = clusterName,
+                    tenant = state.tenant(),
                     imagePullSecretName = pullSecretName,
                     telemetryRedirect = state.initConfig?.telemetryRedirect,
                 )

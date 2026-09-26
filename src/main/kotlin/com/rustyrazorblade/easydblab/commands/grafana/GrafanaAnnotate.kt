@@ -8,8 +8,10 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.converters.PicoEpochMillisConverter
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.AnnotationMirror
 import com.rustyrazorblade.easydblab.services.GrafanaAnnotationRequest
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.toMirrored
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -19,12 +21,16 @@ import picocli.CommandLine.Option
  *
  * Operators use this to drop an A/B config-change marker on the dashboards' timeline, for example
  * before and after changing a Cassandra setting. A global marker (no `--dashboard`/`--panel` scope)
- * is automatically tagged with [Constants.Grafana.GLOBAL_ANNOTATION_TAG] so it renders on the core
- * dashboards via their tag-filtered annotation query; a scoped marker renders on its target dashboard.
+ * is automatically tagged with [Constants.Grafana.GLOBAL_ANNOTATION_TAG]; a scoped marker renders on
+ * its target dashboard.
+ *
+ * Right after Grafana accepts the annotation it is mirrored to Loki ([AnnotationMirror]), where the
+ * core dashboards read global annotations from and where it outlives the cluster.
  *
  * The command reaches Grafana over the proxied HTTP client, so it carries `@RequiresProxy`. If the
  * Grafana API cannot be reached, [GrafanaDashboardService.createAnnotation] throws and the command
- * exits non-zero, naming the unreachable endpoint. It does NOT emit a failure event and return 0.
+ * exits non-zero, naming the unreachable endpoint; if Loki refuses the mirror, it exits non-zero
+ * too. It does NOT emit a failure event and return 0.
  */
 @McpCommand
 @RequireProfileSetup
@@ -67,6 +73,7 @@ class GrafanaAnnotate : PicoBaseCommand() {
     var panelId: Int? = null
 
     private val grafanaDashboardService: GrafanaDashboardService by inject()
+    private val annotationMirror: AnnotationMirror by inject()
 
     override fun execute() {
         val controlHost =
@@ -86,7 +93,9 @@ class GrafanaAnnotate : PicoBaseCommand() {
             )
 
         val response = grafanaDashboardService.createAnnotation(controlHost, annotation)
+        val mirrored = annotationMirror.push(annotation.toMirrored(response.id))
 
+        // Grafana holds the annotation whether or not Loki took it, so it is reported either way.
         eventBus.emit(
             Event.Grafana.AnnotationCreated(
                 id = response.id,
@@ -95,6 +104,13 @@ class GrafanaAnnotate : PicoBaseCommand() {
                 time = time,
             ),
         )
+        mirrored.onFailure { cause ->
+            throw IllegalStateException(
+                "Annotation #${response.id} is in Grafana but was not mirrored to Loki: ${cause.message}. " +
+                    "The next `grafana backup` or `down` mirrors it.",
+                cause,
+            )
+        }
     }
 
     /**

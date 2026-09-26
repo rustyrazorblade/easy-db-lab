@@ -14,19 +14,17 @@ import picocli.CommandLine.Spec
  * - System logs (/var/log/)
  * - EMR/Spark logs
  *
- * Logs are collected by OTel and stored in Victoria Logs on the control node.
+ * Logs are collected by OTel and stored in Loki on the control node, which writes them to S3 as it
+ * runs; there is no separate logs backup.
  *
  * Available sub-commands:
- * - query: Query logs from Victoria Logs
+ * - query: Query logs from Loki
  */
 @Command(
     name = "logs",
-    description = ["Query logs from Victoria Logs"],
+    description = ["Query logs from Loki"],
     mixinStandardHelpOptions = true,
     subcommands = [
-        LogsBackup::class,
-        LogsImport::class,
-        LogsLs::class,
         LogsQuery::class,
     ],
 )

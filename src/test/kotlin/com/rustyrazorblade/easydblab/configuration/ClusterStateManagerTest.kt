@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -98,5 +99,18 @@ class ClusterStateManagerTest {
 
         val afterIncrement = manager.load().lastAccessedAt
         assertThat(afterIncrement).isAfter(beforeIncrement)
+    }
+
+    /** The name flows raw into config files, Loki file names, S3 keys and labels. */
+    @Test
+    fun `a state whose cluster name breaks the rule is refused at load, naming the rule`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        ClusterStateManager(stateFile).save(ClusterState(name = "My/Cluster", versions = mutableMapOf()))
+
+        assertThatThrownBy { ClusterStateManager(stateFile).load() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
     }
 }

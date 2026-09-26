@@ -136,7 +136,8 @@ sealed class AWSPolicy {
          * S3 access policy granting full S3 access to all easy-db-lab buckets.
          * Uses wildcard pattern to support per-environment buckets.
          * Attached to IAM roles to allow EC2 instances to access cluster data.
-         * Also includes s3:ListAllMyBuckets for S3Manager web UI.
+         * Also includes s3:ListAllMyBuckets for S3Manager web UI, and denies deleting observability
+         * data (metrics, logs, traces, annotations). `up` re-applies it every time.
          */
         data class S3AccessWildcard(
             val accountId: String,
@@ -189,6 +190,23 @@ sealed class AWSPolicy {
                                         ),
                                     ),
                                 resource = IamPolicyResource.single("arn:aws:ecr:*:$accountId:repository/*"),
+                            ),
+                            // No code path on a cluster may delete observability data (issue 967, D3). An
+                            // explicit deny beats the s3:* above; the owner's own deletes from a
+                            // workstation are not affected. Profiles are left out: Pyroscope v2
+                            // compaction deletes the segments it merged into a block.
+                            IamPolicyStatement(
+                                effect = "Deny",
+                                action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
+                                resource =
+                                    IamPolicyResource.multiple(
+                                        listOf(
+                                            "${Constants.Observability.METRICS_ROOT}/*",
+                                            "${Constants.Observability.PREFIX}/${Constants.Observability.LOGS_DIR}/*",
+                                            "${Constants.Observability.PREFIX}/${Constants.Observability.TRACES_DIR}/*",
+                                            "${Constants.Observability.PREFIX}/${Constants.Observability.ANNOTATIONS_DIR}/*",
+                                        ).map { "arn:aws:s3:::easy-db-lab-*/$it" },
+                                    ),
                             ),
                         ),
                 ).toJson()

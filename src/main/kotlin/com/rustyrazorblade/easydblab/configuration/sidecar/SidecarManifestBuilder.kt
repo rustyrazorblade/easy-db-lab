@@ -55,6 +55,7 @@ class SidecarManifestBuilder(
      * @param image Container image for the sidecar (default: ghcr.io/apache/cassandra-sidecar:latest)
      * @param controlNodeIp Private IP of the control node (for Pyroscope server address)
      * @param clusterName Cluster name (for Pyroscope labels)
+     * @param tenant The cluster's observability tenant, sent by the Pyroscope agent on every write
      * @param telemetryRedirect When non-null, the Pyroscope agent ships to this external stack.
      * @return List of: ConfigMap, DaemonSet
      */
@@ -62,12 +63,13 @@ class SidecarManifestBuilder(
         image: String = DEFAULT_IMAGE,
         controlNodeIp: String,
         clusterName: String,
+        tenant: String,
         imagePullSecretName: String = "",
         telemetryRedirect: TelemetryRedirect? = null,
     ): List<HasMetadata> =
         listOf(
             buildConfigMap(),
-            buildDaemonSet(image, controlNodeIp, clusterName, imagePullSecretName, telemetryRedirect),
+            buildDaemonSet(image, controlNodeIp, clusterName, tenant, imagePullSecretName, telemetryRedirect),
         )
 
     /**
@@ -102,6 +104,7 @@ class SidecarManifestBuilder(
         image: String,
         controlNodeIp: String,
         clusterName: String,
+        tenant: String,
         imagePullSecretName: String = "",
         telemetryRedirect: TelemetryRedirect? = null,
     ) = DaemonSetBuilder()
@@ -172,7 +175,7 @@ class SidecarManifestBuilder(
         .endEnv()
         .addNewEnv()
         .withName("JAVA_TOOL_OPTIONS")
-        .withValue(buildJavaToolOptions(controlNodeIp, clusterName, telemetryRedirect))
+        .withValue(buildJavaToolOptions(controlNodeIp, clusterName, tenant, telemetryRedirect))
         .endEnv()
         .addNewEnv()
         .withName("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -251,6 +254,7 @@ class SidecarManifestBuilder(
     private fun buildJavaToolOptions(
         controlNodeIp: String,
         clusterName: String,
+        tenant: String,
         telemetryRedirect: TelemetryRedirect?,
     ): String {
         val pyroscopeServerAddress =
@@ -261,6 +265,8 @@ class SidecarManifestBuilder(
             "-Dpyroscope.application.name=$APP_LABEL",
             "-Dpyroscope.server.address=$pyroscopeServerAddress",
             "-Dpyroscope.labels=hostname:\$(NODE_NAME),cluster:$clusterName",
+            // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
+            "-Dpyroscope.tenant.id=$tenant",
             "-Dpyroscope.profiler.event=cpu",
             "-Dpyroscope.profiler.alloc=512k",
             "-Dpyroscope.profiler.lock=10ms",

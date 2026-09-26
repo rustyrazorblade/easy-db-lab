@@ -180,6 +180,17 @@ fi
 # Test Step Functions
 # ============================================================================
 
+
+# The cluster's observability tenant; a state written before tenants existed is the default tenant.
+cluster_tenant() {
+    jq -r '.initConfig.tenant // "default"' state.json
+}
+
+# The cluster label every series and log line carries: <name>-<clusterId>.
+cluster_label() {
+    jq -r '.name + "-" + .clusterId' state.json
+}
+
 step_build_project() {
     echo "=== Building project ==="
     if [ "$ENABLE_SPARK" = true ]; then
@@ -854,18 +865,18 @@ step_spark_status() {
     easy-db-lab spark logs
 
     if [ "$SPARK_JOB_RAN" = true ]; then
-        echo "=== Verifying Spark logs reached VictoriaLogs via OTel ==="
-        local spark_logs=$(ssh control0 "curl -s 'http://localhost:9428/select/logsql/query?query=service.name%3A~%22spark-.*%22&limit=5'")
-        local spark_log_count=$(echo "$spark_logs" | grep -c '^{' || true)
-        if [ "$spark_log_count" -gt 0 ]; then
-            echo "Spark OTel logs found in VictoriaLogs: OK ($spark_log_count entries)"
+        echo "=== Verifying Spark logs reached Loki via OTel ==="
+        local spark_query="{cluster=\"$(cluster_label)\", service_name=~\"spark-.+\"}"
+        local spark_log_count=$(ssh control0 "curl -s -G -H 'X-Scope-OrgID: $(cluster_tenant)' 'http://localhost:3100/loki/api/v1/query_range' --data-urlencode 'query=${spark_query}' --data-urlencode 'since=1h' --data-urlencode 'limit=5'" | jq '[.data.result[].values[]] | length')
+        if [ "${spark_log_count:-0}" -gt 0 ]; then
+            echo "Spark OTel logs found in Loki: OK ($spark_log_count entries)"
         else
-            echo "ERROR: No Spark logs found in VictoriaLogs with service.name:~\"spark-*\""
+            echo "ERROR: No Spark logs found in Loki with service_name=~\"spark-.+\""
             echo "OTel Java agent may not be exporting logs to the control node"
             spark_failed=true
         fi
     else
-        echo "=== Skipping Spark VictoriaLogs check (no Spark job was submitted successfully) ==="
+        echo "=== Skipping Spark Loki check (no Spark job was submitted successfully) ==="
     fi
 
     if [ "$spark_failed" = true ]; then
@@ -1296,52 +1307,48 @@ step_generate_s3_traffic() {
 }
 
 step_test_observability() {
-    echo "=== Testing VictoriaMetrics and VictoriaLogs ==="
+    echo "=== Testing Mimir and Loki ==="
+    local tenant
+    tenant="$(cluster_tenant)"
 
-    # Wait for VictoriaMetrics to be ready
-    echo "=== Waiting for VictoriaMetrics pod to be ready ==="
-    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=victoriametrics --timeout=120s
+    echo "=== Waiting for the Mimir and Loki pods to be ready ==="
+    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=mimir --timeout=300s
+    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=loki --timeout=300s
 
-    # Wait for VictoriaLogs to be ready
-    echo "=== Waiting for VictoriaLogs pod to be ready ==="
-    kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=victorialogs --timeout=120s
+    echo "=== Testing Mimir and Loki health ==="
+    echo "Mimir ready: $(ssh control0 "curl -s http://localhost:9009/ready")"
+    echo "Loki ready:  $(ssh control0 "curl -s http://localhost:3100/ready")"
 
-    # Test VictoriaMetrics health endpoint
-    echo "=== Testing VictoriaMetrics health ==="
-    local vm_health=$(ssh control0 "curl -s http://localhost:8428/health")
-    echo "VictoriaMetrics health: $vm_health"
-
-    # Test VictoriaLogs health endpoint
-    echo "=== Testing VictoriaLogs health ==="
-    local vl_health=$(ssh control0 "curl -s http://localhost:9428/health")
-    echo "VictoriaLogs health: $vl_health"
-
-    # Query VictoriaMetrics for metrics (should have some metrics from OTel)
-    echo "=== Querying VictoriaMetrics for metrics ==="
-    local metrics_count=$(ssh control0 "curl -s 'http://localhost:8428/api/v1/label/__name__/values' | jq '.data | length'")
-    echo "Number of metric names in VictoriaMetrics: $metrics_count"
-    if [ "$metrics_count" -lt 1 ]; then
-        echo "WARNING: No metrics found in VictoriaMetrics yet (may need more time for OTel to send data)"
+    # Every query carries the cluster's tenant: Mimir and Loki run native multi-tenancy.
+    echo "=== Querying Mimir for metric names (tenant ${tenant}) ==="
+    local metric_names
+    metric_names=$(ssh control0 "curl -s -H 'X-Scope-OrgID: ${tenant}' 'http://localhost:9009/prometheus/api/v1/label/__name__/values'")
+    local metrics_count
+    metrics_count=$(echo "$metric_names" | jq '.data | length')
+    echo "Number of metric names in Mimir: $metrics_count"
+    if [ "${metrics_count:-0}" -lt 1 ]; then
+        echo "WARNING: No metrics found in Mimir yet (may need more time for OTel to send data)"
     fi
 
     # Check YACE CloudWatch metrics if Spark/EMR is enabled
     if [ "$ENABLE_SPARK" = true ]; then
         echo "=== Checking YACE CloudWatch metrics for S3 ==="
-        local s3_metrics=$(ssh control0 "curl -s 'http://localhost:8428/api/v1/label/__name__/values' | jq '[.data[] | select(startswith(\"aws_s3\"))] | length'")
+        local s3_metrics
+        s3_metrics=$(echo "$metric_names" | jq '[.data[] | select(startswith("aws_s3"))] | length')
         echo "S3 CloudWatch metric names via YACE: $s3_metrics"
-        if [ "$s3_metrics" -lt 1 ]; then
+        if [ "${s3_metrics:-0}" -lt 1 ]; then
             echo "WARNING: No aws_s3_* metrics found yet - YACE scrapes CloudWatch every 5 minutes"
         else
             echo "YACE S3 metrics: OK"
         fi
     fi
 
-    # Query VictoriaLogs to check it's accepting connections
-    echo "=== Testing VictoriaLogs query endpoint ==="
-    local vl_query=$(ssh control0 "curl -s -o /dev/null -w '%{http_code}' 'http://localhost:9428/select/logsql/query?query=*'")
-    echo "VictoriaLogs query endpoint response code: $vl_query"
-    if [ "$vl_query" != "200" ]; then
-        echo "WARNING: VictoriaLogs query endpoint returned unexpected status: $vl_query"
+    echo "=== Testing the Loki query endpoint ==="
+    local loki_query
+    loki_query=$(ssh control0 "curl -s -o /dev/null -w '%{http_code}' -G -H 'X-Scope-OrgID: ${tenant}' 'http://localhost:3100/loki/api/v1/labels'")
+    echo "Loki query endpoint response code: $loki_query"
+    if [ "$loki_query" != "200" ]; then
+        echo "WARNING: Loki query endpoint returned unexpected status: $loki_query"
     fi
 
     # Test Grafana is up and datasources are configured
@@ -1350,25 +1357,19 @@ step_test_observability() {
     echo "Grafana database status: $grafana_health"
 
     echo "=== Testing Grafana datasources ==="
-    local datasources=$(ssh control0 "curl -s http://localhost:3000/api/datasources | jq -r '.[].name'")
-    echo "Configured datasources:"
-    echo "$datasources"
+    local datasource_uids=$(ssh control0 "curl -s http://localhost:3000/api/datasources | jq -r '.[].uid'")
+    echo "Configured datasource uids:"
+    echo "$datasource_uids"
 
-    # Verify VictoriaMetrics datasource exists
-    if echo "$datasources" | grep -q "VictoriaMetrics"; then
-        echo "VictoriaMetrics datasource: OK"
-    else
-        echo "ERROR: VictoriaMetrics datasource not found!"
-        return 1
-    fi
-
-    # Verify VictoriaLogs datasource exists
-    if echo "$datasources" | grep -q "VictoriaLogs"; then
-        echo "VictoriaLogs datasource: OK"
-    else
-        echo "ERROR: VictoriaLogs datasource not found!"
-        return 1
-    fi
+    local uid
+    for uid in mimir loki; do
+        if echo "$datasource_uids" | grep -qx "$uid"; then
+            echo "Datasource ${uid}: OK"
+        else
+            echo "ERROR: Datasource ${uid} not found!"
+            return 1
+        fi
+    done
 
     echo "=== Observability stack test completed ==="
 }
@@ -1412,7 +1413,7 @@ step_test_logs_query() {
     echo "=== Testing logs query command ==="
 
     # Query logs using the CLI - this tests the full pipeline:
-    # OTel Collector -> VictoriaLogs -> VictoriaLogsService -> CLI output
+    # OTel Collector -> Loki -> LokiQueryService -> CLI output
     echo "=== Querying all logs (should have systemd/journald logs) ==="
     local log_output=$(easy-db-lab logs query --since 1h --limit 10 2>&1) || true
     echo "$log_output"
@@ -1437,54 +1438,6 @@ step_test_logs_query() {
     echo "=== Logs query test completed ==="
 }
 
-step_test_metrics_backup() {
-    echo "=== Testing VictoriaMetrics backup ==="
-
-    # Run metrics backup command
-    easy-db-lab metrics backup
-
-    local s3_fullpath=$(cat .s3-fullpath)
-
-    # Verify backup was created in S3
-    echo "=== Checking VictoriaMetrics backup in S3 ==="
-    local backup_count=$(aws s3 ls "s3://${s3_fullpath}/victoriametrics/" 2>/dev/null | wc -l)
-    if [ "$backup_count" -gt 0 ]; then
-        echo "  victoriametrics backup: OK ($backup_count entries)"
-        aws s3 ls "s3://${s3_fullpath}/victoriametrics/" | head -5
-    else
-        echo "ERROR: VictoriaMetrics backup not found in S3"
-        echo "Contents of s3://${s3_fullpath}/:"
-        aws s3 ls "s3://${s3_fullpath}/" 2>/dev/null || echo "(listing failed)"
-        return 1
-    fi
-
-    echo "=== VictoriaMetrics backup test completed ==="
-}
-
-step_test_logs_backup() {
-    echo "=== Testing VictoriaLogs backup ==="
-
-    # Run logs backup command
-    easy-db-lab logs backup
-
-    local s3_fullpath=$(cat .s3-fullpath)
-
-    # Verify backup was created in S3
-    echo "=== Checking VictoriaLogs backup in S3 ==="
-    local backup_count=$(aws s3 ls "s3://${s3_fullpath}/victorialogs/" 2>/dev/null | wc -l)
-    if [ "$backup_count" -gt 0 ]; then
-        echo "  victorialogs backup: OK ($backup_count entries)"
-        aws s3 ls "s3://${s3_fullpath}/victorialogs/" | head -5
-    else
-        echo "ERROR: VictoriaLogs backup not found in S3"
-        echo "Contents of s3://${s3_fullpath}/:"
-        aws s3 ls "s3://${s3_fullpath}/" 2>/dev/null || echo "(listing failed)"
-        return 1
-    fi
-
-    echo "=== VictoriaLogs backup test completed ==="
-}
-
 step_teardown() {
     # Kill stale server if still running
     if [ -f .mcp-server.pid ]; then
@@ -1495,9 +1448,27 @@ step_teardown() {
     rm -f .s3-fullpath
     rm -f "$STEP_LOG"
 
+    # The pre-teardown flush must leave Mimir's head as blocks and Loki's index in S3.
+    local bucket tenant label blocks_before
+    bucket="$(jq -r '.s3Bucket' state.json)"
+    tenant="$(cluster_tenant)"
+    label="$(cluster_label)"
+    blocks_before=$(aws s3 ls --recursive "s3://${bucket}/observabilitymetrics/${tenant}/" 2>/dev/null | grep -c '/meta.json$' || true)
+
     echo "=== Tearing down cluster ==="
     easy-db-lab down --yes
     echo "=== Teardown complete ==="
+
+    echo "=== Checking the teardown flush reached S3 ==="
+    local blocks_after index_files
+    blocks_after=$(aws s3 ls --recursive "s3://${bucket}/observabilitymetrics/${tenant}/" 2>/dev/null | grep -c '/meta.json$' || true)
+    index_files=$(aws s3 ls --recursive "s3://${bucket}/observability/logs/index/" 2>/dev/null | grep -c "${tenant}\.${label}" || true)
+    echo "Mimir blocks under observabilitymetrics/${tenant}/: ${blocks_before} before down, ${blocks_after} after"
+    echo "Loki index files named for ${tenant}.${label}: ${index_files}"
+    if [ "${blocks_after}" -le "${blocks_before}" ] || [ "${index_files}" -lt 1 ]; then
+        echo "ERROR: the teardown flush did not put Mimir's head and Loki's index in S3"
+        return 1
+    fi
 }
 
 # ============================================================================
@@ -1554,8 +1525,6 @@ STEPS_WORKDIR=(
     "step_test_observability:Test observability stack"
     "step_test_dashboards:Validate Grafana dashboards"
     "step_test_logs_query:Test logs query command"
-    "step_test_metrics_backup:Test VictoriaMetrics backup"
-    "step_test_logs_backup:Test VictoriaLogs backup"
     "step_teardown:Teardown cluster"
 )
 

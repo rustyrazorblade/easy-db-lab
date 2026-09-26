@@ -58,7 +58,7 @@
       "description": "aws_ec2_cpuutilization_average beside the kernel's own figure for the same node. The in-box form takes idle as a fraction of total across all states, which is core-count independent; system_cpu_time_seconds_total has no per-core label, so an avg-based formula would be wrong. A steady CloudWatch reading below the in-box one is the signature of steal or a hypervisor limit.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -133,7 +133,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "label_replace((aws_ec2_cpuutilization_average{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")",
@@ -145,7 +145,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (1 - sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])))",
@@ -169,7 +169,7 @@
       "description": "Zero means both views agree. A persistent positive value means the guest thinks it is busier than AWS measured; a persistent negative value means AWS sees work the guest does not account for. Empty whenever the CloudWatch series has a gap, because subtraction needs both sides at the same timestamp.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -242,7 +242,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(100 * (1 - sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])))) - on (host_name) (sum by (host_name) (label_replace((aws_ec2_cpuutilization_average{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")))",
@@ -266,7 +266,7 @@
       "description": "CloudWatch DiskReadOps + DiskWriteOps, converted from a 60-second Sum to a per-second rate, against the kernel's system_disk_operations_total over whole NVMe devices (partitions excluded so nothing is double counted). CloudWatch covers instance-store volumes only, so root-EBS traffic shows on the in-box line and not on the CloudWatch line.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -340,7 +340,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (label_replace(((aws_ec2_disk_read_ops_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_disk_write_ops_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"))",
@@ -352,7 +352,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
@@ -376,7 +376,7 @@
       "description": "CloudWatch NetworkIn + NetworkOut against system_network_io_bytes_total on the physical NIC only (device matches en.*|eth.*), so veth, cni0, flannel and loopback traffic is excluded. Overlay traffic inflates the in-box line if you widen that filter.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -450,7 +450,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (label_replace(((aws_ec2_network_in_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_network_out_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"))",
@@ -462,7 +462,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(system_network_io_bytes_total{host_name=~\"$host\", device=~\"en.*|eth.*\"}[$__rate_interval]))",
@@ -499,7 +499,7 @@
       "description": "system_disk_operation_time_seconds_total divided by system_disk_operations_total. This is the number that separates a slow device from a busy one: a node doing the same IOPS at ten times the service time is waiting on hardware, not on Cassandra. Unit: MILLISECONDS per operation. WARNING: NVMe device names are not stable across nodes. The instance-store volume is not always nvme1n1. Read this panel together with the device-to-mount-point table below before comparing two nodes by device name.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -573,7 +573,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "1000 * (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
@@ -597,7 +597,7 @@
       "description": "The slowest and fastest node for each device, and the ratio between them. The aggregation is over whatever nodes the Host variable selects, so it stays correct for any group size. A ratio far above 1 means one node is served by slower storage than its peers on the same workload.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -671,7 +671,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "1000 * max by (device, direction) (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
@@ -683,7 +683,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "1000 * min by (device, direction) (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
@@ -707,7 +707,7 @@
       "description": "system_disk_pending_operations. Service time rises with queue depth on a healthy device; service time rising while the queue stays flat points at the device or the hypervisor instead.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -781,7 +781,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (system_disk_pending_operations{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"})",
@@ -805,7 +805,7 @@
       "description": "Bytes per second and operations per second from the kernel. Read these beside the service-time panels: high service time at low throughput is a device problem, high service time at saturating throughput is a capacity problem.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -892,7 +892,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(system_disk_io_bytes_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
@@ -904,7 +904,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
@@ -928,7 +928,7 @@
       "description": "Which physical device actually holds the data directory on each node. NVMe enumeration is assigned by the hypervisor and is NOT consistent across nodes: the large instance-store volume can appear as nvme0n1 on one node and nvme1n1 on another. Comparing two nodes by device name without checking this table compares the data disk on one against the root volume on the other. Size is the filesystem total.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -984,7 +984,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name, device, mountpoint) (system_filesystem_usage_bytes{host_name=~\"$host\", mountpoint!~\"/boot.*\"})",
@@ -1025,7 +1025,7 @@
       "description": "system_filesystem_utilization_ratio, a fraction between 0 and 1, shown as a percentage. A data mount filling up changes compaction behaviour long before it runs out.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1100,7 +1100,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name, mountpoint) (system_filesystem_utilization_ratio{host_name=~\"$host\", mountpoint!~\"/boot.*\"})",
@@ -1137,7 +1137,7 @@
       "description": "Straight from CloudWatch, one series per instance in this cluster. Legend uses tag_Name because CloudWatch has no host_name.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1212,7 +1212,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(aws_ec2_cpuutilization_average{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"})",
@@ -1236,7 +1236,7 @@
       "description": "DiskReadOps and DiskWriteOps, each a 60-second Sum converted to a per-second rate. Instance-store volumes only.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1310,7 +1310,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(aws_ec2_disk_read_ops_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) / 60",
@@ -1322,7 +1322,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(aws_ec2_disk_write_ops_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) / 60",
@@ -1346,7 +1346,7 @@
       "description": "NetworkIn and NetworkOut, converted from 60-second Sums to per-second rates. This is the figure AWS bills and throttles against, unlike the NIC counter.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1420,7 +1420,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(aws_ec2_network_in_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) / 60",
@@ -1432,7 +1432,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(aws_ec2_network_out_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) / 60",
@@ -1456,7 +1456,7 @@
       "description": "The mapping every CloudWatch panel depends on. If a node is missing here it is missing from every CloudWatch panel too, and the cause is a tag, not a metric.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1499,7 +1499,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}",
@@ -1568,7 +1568,7 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "### EBS credit metrics are configured but return nothing on this cluster\n\nThe YACE config already asks for the whole `AWS/EBS` job, including **BurstBalance**,\n**VolumeQueueLength**, **VolumeTotalReadTime** and **VolumeTotalWriteTime**. No\n`aws_ebs_*` family exists in VictoriaMetrics, and the YACE pod logs\n`No tagged resources made it through filtering` on every cycle.\n\n**Why.** The job filters on the tag `easy_cass_lab=1`, and the EBS volumes carry no\ntags at all. Only the instances are tagged.\n\n**What it would take.** Tag the volumes at creation, the same way the instances are\ntagged, so the `AWS/EBS` discovery job can find them.\n\n**What it would tell you, and what it would not.** These nodes are i4i, so Cassandra's\ndata lives on **instance-store NVMe**, which has no EBS credits and no CloudWatch\nvolume metrics of any kind. The only EBS volume attached is a 20 GiB **gp3** root\nvolume, and gp3 has no BurstBalance; that metric exists for gp2, st1 and sc1. So EBS\ncredit exhaustion cannot explain a difference in data-disk service time on this\ninstance family, tagged or not. The panels below are wired and will fill in if the\nvolumes are ever tagged on a burstable volume type.\n"
+        "content": "### EBS credit metrics are configured but return nothing on this cluster\n\nThe YACE config already asks for the whole `AWS/EBS` job, including **BurstBalance**,\n**VolumeQueueLength**, **VolumeTotalReadTime** and **VolumeTotalWriteTime**. No\n`aws_ebs_*` family exists in Mimir, and the YACE pod logs\n`No tagged resources made it through filtering` on every cycle.\n\n**Why.** The job filters on the tag `easy_cass_lab=1`, and the EBS volumes carry no\ntags at all. Only the instances are tagged.\n\n**What it would take.** Tag the volumes at creation, the same way the instances are\ntagged, so the `AWS/EBS` discovery job can find them.\n\n**What it would tell you, and what it would not.** These nodes are i4i, so Cassandra's\ndata lives on **instance-store NVMe**, which has no EBS credits and no CloudWatch\nvolume metrics of any kind. The only EBS volume attached is a 20 GiB **gp3** root\nvolume, and gp3 has no BurstBalance; that metric exists for gp2, st1 and sc1. So EBS\ncredit exhaustion cannot explain a difference in data-disk service time on this\ninstance family, tagged or not. The panels below are wired and will fill in if the\nvolumes are ever tagged on a burstable volume type.\n"
       },
       "transparent": false,
       "gridPos": {
@@ -1585,7 +1585,7 @@
       "description": "aws_ebs_burst_balance_average. Empty on this cluster: see the note above. Falling towards zero is credit exhaustion, and it is the one thing that makes a volume abruptly slower with no change in workload.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1660,7 +1660,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_ebs_burst_balance_average",
@@ -1684,7 +1684,7 @@
       "description": "aws_ebs_volume_queue_length_average. Empty on this cluster: see the note above. A queue that grows while IOPS stays flat is throttling.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1758,7 +1758,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_ebs_volume_queue_length_average",
@@ -1782,7 +1782,7 @@
       "description": "aws_ebs_volume_read_ops_sum and aws_ebs_volume_write_ops_sum, converted from 60-second Sums. Empty on this cluster: see the note above.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1856,7 +1856,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_ebs_volume_read_ops_sum / 60",
@@ -1868,7 +1868,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_ebs_volume_write_ops_sum / 60",
@@ -1905,7 +1905,7 @@
       "description": "CloudWatch reports these in MILLISECONDS. They exist only for buckets that have an S3 request-metrics filter configured; buckets without one are absent rather than zero. Narrow with an ad-hoc filter on dimension_BucketName.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1979,7 +1979,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_s3_first_byte_latency_average",
@@ -1991,7 +1991,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_s3_first_byte_latency_p99",
@@ -2003,7 +2003,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_s3_total_request_latency_average",
@@ -2015,7 +2015,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_s3_total_request_latency_p99",
@@ -2039,7 +2039,7 @@
       "description": "Both are 60-second Sums, converted to per-second rates. Same request-metrics caveat as the latency panel.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -2126,7 +2126,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_s3_get_requests_sum / 60",
@@ -2138,7 +2138,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_s3_bytes_downloaded_sum / 60",
@@ -2162,7 +2162,7 @@
       "description": "Scoped with aws_s3_info{tag_cluster_id=~\"$cluster_id\"}. CloudWatch publishes BucketSizeBytes and NumberOfObjects once a day, so a bucket created today has no datapoint yet and this panel is empty until the first daily roll-up.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -2249,7 +2249,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_s3_bucket_size_bytes_average and on (name) aws_s3_info{tag_cluster_id=~\"$cluster_id\"}",
@@ -2261,7 +2261,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_s3_number_of_objects_average and on (name) aws_s3_info{tag_cluster_id=~\"$cluster_id\"}",
@@ -2285,7 +2285,7 @@
       "description": "Unscoped view of BucketSizeBytes across all buckets YACE discovered, so the cluster-scoped panel beside it can be told apart from a collection failure.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -2359,7 +2359,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "aws_s3_bucket_size_bytes_average",
@@ -2397,7 +2397,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(aws_ec2_info, cluster)",
         "description": "UUID suffix of this cluster's name, extracted by regex from the cluster label on aws_ec2_info. Every CloudWatch query is scoped by it, because the AWS account holds instances from other clusters with the same tag_Name. Hidden: it is a join key, not a control.",
@@ -2430,7 +2430,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(system_cpu_logical_count, host_name)",
         "description": "Every node the host-metrics scraper covers, which is also every node CloudWatch reports on. All expands to the explicit list; allValue is deliberately unset. CloudWatch panels match it against tag_Name, host panels against host_name.",
@@ -2488,7 +2488,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

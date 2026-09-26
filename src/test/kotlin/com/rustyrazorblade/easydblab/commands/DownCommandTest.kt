@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -25,6 +26,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import picocli.CommandLine
 import java.io.ByteArrayInputStream
 
 class DownCommandTest : BaseKoinTest() {
@@ -343,5 +345,15 @@ class DownCommandTest : BaseKoinTest() {
 
             assertThat(exitCode).isEqualTo(0)
         }
+    }
+
+    /**
+     * `down` never schedules the owner's data for deletion, so the option that set the expiry is gone.
+     */
+    @Test
+    fun `retention-days is an unknown option`() {
+        assertThatThrownBy { CommandLine(Down()).parseArgs("--retention-days", "1") }
+            .isInstanceOf(CommandLine.UnmatchedArgumentException::class.java)
+            .hasMessageContaining("--retention-days")
     }
 }

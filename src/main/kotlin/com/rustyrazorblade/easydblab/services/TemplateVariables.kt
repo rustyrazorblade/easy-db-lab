@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import java.io.File
 
 /**
@@ -29,6 +30,8 @@ data class TemplateVariables(
     val runningKits: String,
     val vpcCidr: String,
     val opensearchEndpoint: String,
+    val pyroscopeUrl: String,
+    val tenant: String,
 ) {
     fun toMap(): Map<String, String> =
         mapOf(
@@ -51,6 +54,8 @@ data class TemplateVariables(
             "RUNNING_KITS" to runningKits,
             "VPC_CIDR" to vpcCidr,
             "OPENSEARCH_ENDPOINT" to opensearchEndpoint,
+            "PYROSCOPE_URL" to pyroscopeUrl,
+            "TENANT" to tenant,
         )
 
     companion object {
@@ -91,6 +96,10 @@ data class TemplateVariables(
                 // fallback because templates using VPC_CIDR only execute post-up
                 vpcCidr = state.initConfig?.cidr ?: Constants.Vpc.DEFAULT_CIDR,
                 opensearchEndpoint = state.openSearchDomain?.endpoint.orEmpty(),
+                // Where a kit's Pyroscope agent ships profiles: the control node's server, or the
+                // external stack on a redirect cluster. Every write carries the cluster's tenant.
+                pyroscopeUrl = pyroscopeIngestBaseUrl(controlHost?.privateIp.orEmpty(), state.initConfig?.telemetryRedirect),
+                tenant = state.tenant(),
             )
         }
     }

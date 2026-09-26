@@ -260,7 +260,7 @@ TiDB registers itself as **`TiDB`** (capital T) in Tempo. Tag search is case-sen
 
 ### In Grafana
 
-Once traces are flowing, TiDB log rows in any VictoriaLogs panel automatically show a **"View Trace in Tempo"** button when a log entry contains a `trace_id` field. This is configured globally on the VictoriaLogs datasource via `derivedFields` in `GrafanaDatasourceConfig.kt` — no per-dashboard configuration needed.
+Once traces are flowing, TiDB log rows in any Loki panel automatically show a **"View Trace in Tempo"** button when a log entry contains a `trace_id` field. This is configured globally on the Loki datasource via `derivedFields` in `GrafanaDatasourceConfig.kt` — no per-dashboard configuration needed.
 
 ---
 

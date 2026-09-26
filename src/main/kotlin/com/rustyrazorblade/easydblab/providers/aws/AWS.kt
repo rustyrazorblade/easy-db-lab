@@ -21,19 +21,12 @@ import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.BucketAlreadyExistsException
 import software.amazon.awssdk.services.s3.model.BucketAlreadyOwnedByYouException
-import software.amazon.awssdk.services.s3.model.BucketLifecycleConfiguration
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest
 import software.amazon.awssdk.services.s3.model.DeleteBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.DeleteBucketRequest
-import software.amazon.awssdk.services.s3.model.ExpirationStatus
-import software.amazon.awssdk.services.s3.model.GetBucketLifecycleConfigurationRequest
 import software.amazon.awssdk.services.s3.model.GetBucketTaggingRequest
-import software.amazon.awssdk.services.s3.model.LifecycleExpiration
-import software.amazon.awssdk.services.s3.model.LifecycleRule
-import software.amazon.awssdk.services.s3.model.LifecycleRuleFilter
 import software.amazon.awssdk.services.s3.model.MetricsConfiguration
 import software.amazon.awssdk.services.s3.model.MetricsFilter
-import software.amazon.awssdk.services.s3.model.PutBucketLifecycleConfigurationRequest
 import software.amazon.awssdk.services.s3.model.PutBucketMetricsConfigurationRequest
 import software.amazon.awssdk.services.s3.model.PutBucketTaggingRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
@@ -391,12 +384,14 @@ class AWS(
     }
 
     /**
-     * Deletes an S3 bucket. Fails gracefully if the bucket is non-empty.
+     * Deletes an S3 bucket. S3 refuses to delete a bucket that still holds objects, so a non-empty
+     * bucket is left in place.
      *
      * @param bucketName The bucket to delete
-     * @return true if deleted, false if non-empty or other non-fatal error
+     * @return success if deleted; failure carrying S3's error if the bucket is non-empty or S3
+     *   refused the delete for another reason
      */
-    fun deleteS3Bucket(bucketName: String): Boolean =
+    fun deleteS3Bucket(bucketName: String): Result<Unit> =
         try {
             val request =
                 DeleteBucketRequest
@@ -405,10 +400,10 @@ class AWS(
                     .build()
             s3Client.deleteBucket(request)
             log.info { "Deleted S3 bucket: $bucketName" }
-            true
+            Result.success(Unit)
         } catch (e: S3Exception) {
             log.warn { "Could not delete bucket $bucketName: ${e.message}" }
-            false
+            Result.failure(e)
         }
 
     // IAM role validation and OpenSearch service-linked role are in AWSIamExtensions.kt
@@ -755,47 +750,6 @@ class AWS(
     // ── S3 helpers ───────────────────────────────────────────────────────────────
 
     /**
-     * Sets an S3 lifecycle expiration rule on an entire bucket (no prefix filter).
-     * Replaces any existing lifecycle rules on the bucket.
-     *
-     * @param bucketName The S3 bucket
-     * @param days Number of days before expiration
-     */
-    fun setFullBucketLifecycleExpiration(
-        bucketName: String,
-        days: Int,
-    ) {
-        val rule =
-            LifecycleRule
-                .builder()
-                .id("expire-all-objects")
-                .filter(LifecycleRuleFilter.builder().prefix("").build())
-                .expiration(LifecycleExpiration.builder().days(days).build())
-                .status(ExpirationStatus.ENABLED)
-                .build()
-
-        val config =
-            BucketLifecycleConfiguration
-                .builder()
-                .rules(listOf(rule))
-                .build()
-
-        val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
-        val retry = Retry.of("s3-set-full-bucket-lifecycle", retryConfig)
-        Retry
-            .decorateRunnable(retry) {
-                s3Client.putBucketLifecycleConfiguration(
-                    PutBucketLifecycleConfigurationRequest
-                        .builder()
-                        .bucket(bucketName)
-                        .lifecycleConfiguration(config)
-                        .build(),
-                )
-            }.run()
-        log.info { "Set lifecycle expiration on entire bucket: $bucketName, days: $days" }
-    }
-
-    /**
      * Enables S3 request metrics on a bucket for CloudWatch monitoring.
      * Idempotent - overwrites any existing configuration with the same ID.
      *
@@ -864,65 +818,5 @@ class AWS(
                 throw e
             }
         }
-    }
-
-    /**
-     * Sets an S3 lifecycle expiration rule on a prefix within a bucket.
-     * Preserves any existing lifecycle rules on other prefixes.
-     *
-     * @param bucketName The S3 bucket
-     * @param prefix The key prefix to expire
-     * @param days Number of days before expiration
-     */
-    fun setLifecycleExpirationRule(
-        bucketName: String,
-        prefix: String,
-        days: Int,
-    ) {
-        // Get existing rules to preserve them
-        val existingRules =
-            try {
-                s3Client
-                    .getBucketLifecycleConfiguration(
-                        GetBucketLifecycleConfigurationRequest.builder().bucket(bucketName).build(),
-                    )?.rules()
-                    ?.filter { it.filter()?.prefix() != prefix }
-                    ?: emptyList()
-            } catch (e: S3Exception) {
-                if (e.statusCode() == Constants.HttpStatus.NOT_FOUND) {
-                    emptyList()
-                } else {
-                    throw e
-                }
-            }
-
-        val newRule =
-            LifecycleRule
-                .builder()
-                .id("expire-${prefix.trimEnd('/').replace("/", "-")}")
-                .filter(LifecycleRuleFilter.builder().prefix(prefix).build())
-                .expiration(LifecycleExpiration.builder().days(days).build())
-                .status(ExpirationStatus.ENABLED)
-                .build()
-
-        val config =
-            BucketLifecycleConfiguration
-                .builder()
-                .rules(existingRules + newRule)
-                .build()
-
-        val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
-        val retry = Retry.of("s3-set-lifecycle-rule", retryConfig)
-        Retry
-            .decorateRunnable(retry) {
-                s3Client.putBucketLifecycleConfiguration(
-                    PutBucketLifecycleConfigurationRequest
-                        .builder()
-                        .bucket(bucketName)
-                        .lifecycleConfiguration(config)
-                        .build(),
-                )
-            }.run()
-        log.info { "Set lifecycle expiration rule on bucket: $bucketName, prefix: $prefix, days: $days" }
     }
 }

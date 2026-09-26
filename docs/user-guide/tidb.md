@@ -92,7 +92,7 @@ automatically — no configuration needed:
 | `tikv` | TiKV | Raft, RocksDB storage, coprocessor |
 | `tiflash` | TiFlash | MPP tasks, data exchange, storage throughput |
 
-Metrics are available in Grafana and VictoriaMetrics as soon as the kit starts.
+Metrics are available in Grafana and Mimir as soon as the kit starts.
 
 TiDB also exports traces to Tempo (via the OTel Collector's Jaeger receiver, since TiDB
 v8.x has no native OTLP support). Search for them in Grafana with `service.name=TiDB` —

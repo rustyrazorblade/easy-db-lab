@@ -945,16 +945,15 @@ class Up(
         // `grafana update-config` command: on a redirect cluster that command refuses, but bring-up
         // must still deploy the collectors pointed at the external stack. The service is the shared
         // deploy path; the command is the operator-facing local-stack reconfigure wrapper.
-        val telemetryRedirect = workingState.initConfig?.telemetryRedirect
         observabilityStackService
-            .deploy(controlHosts.first(), telemetryRedirect)
+            .deploy(controlHosts.first())
             .getOrElse { exception ->
                 error("Observability stack deployment failed during provisioning: ${exception.message}")
             }
 
         // Grafana exists only now, and only in local mode: post the Cilium install markers that
         // were recorded on the server-ready hook. A redirect cluster has no local Grafana to mark.
-        if (telemetryRedirect == null) {
+        if (workingState.initConfig?.telemetryRedirect == null) {
             postCiliumInstallAnnotations(controlHosts.first())
         }
     }
@@ -984,7 +983,7 @@ class Up(
 
     /**
      * Labels db and app nodes with ordinal values for StatefulSet pod-to-node pinning,
-     * and labels the control node with type=control for OTel k8sattributes processor.
+     * and labels the control node with type=control for the OTel k8s_attributes processor.
      *
      * This enables workloads (ClickHouse, Presto, etc.) to guarantee that pod X runs on node X
      * by using Local PersistentVolumes with node affinity.

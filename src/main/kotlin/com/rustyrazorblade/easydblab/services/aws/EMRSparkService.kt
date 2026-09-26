@@ -8,10 +8,11 @@ import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.services.LogQl
+import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkJobRequest
 import com.rustyrazorblade.easydblab.services.SparkService
-import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.emr.EmrClient
@@ -52,14 +53,14 @@ import java.util.zip.GZIPInputStream
  * @property clusterStateManager Manager for cluster state persistence
  * @property pollInterval Delay between job-status polls. Defaults to [Constants.EMR.POLL_INTERVAL_MS]
  *   so production timing is unchanged; tests inject [Duration.ZERO] to poll without waiting.
- * @property logIngestionWait Pause before querying Victoria Logs on failure, allowing logs to be
+ * @property logIngestionWait Pause before querying Loki on failure, allowing logs to be
  *   ingested. Defaults to [Constants.EMR.LOG_INGESTION_WAIT_MS]; tests inject [Duration.ZERO].
  */
 class EMRSparkService(
     private val emrClient: EmrClient,
     private val objectStore: ObjectStore,
     private val clusterStateManager: ClusterStateManager,
-    private val victoriaLogsService: VictoriaLogsService,
+    private val lokiQueryService: LokiQueryService,
     private val eventBus: EventBus,
     private val pollInterval: Duration = Duration.ofMillis(Constants.EMR.POLL_INTERVAL_MS),
     private val logIngestionWait: Duration = Duration.ofMillis(Constants.EMR.LOG_INGESTION_WAIT_MS),
@@ -175,7 +176,7 @@ class EMRSparkService(
         val emrLogsPath = "${Constants.EMR.S3_LOG_PREFIX}$clusterId/steps/$stepId/"
 
         displayFailureDetails(clusterId, stepId, currentStatus)
-        queryVictoriaLogs(stepId)
+        queryStepLogs(stepId)
         downloadAndDisplayLogs(clusterId, stepId, s3Bucket, emrLogsPath)
 
         val errorMessage = "Job failed: ${currentStatus.failureDetails ?: "Unknown reason"}"
@@ -205,17 +206,17 @@ class EMRSparkService(
     }
 
     @Suppress("TooGenericExceptionCaught")
-    private fun queryVictoriaLogs(stepId: String) {
+    private fun queryStepLogs(stepId: String) {
         println("\n=== Step Logs ===")
         try {
             Thread.sleep(logIngestionWait.toMillis())
 
             // Query using OTel Java agent log attributes (service.name) instead of defunct step_id tag
             // The Java agent tags logs with service.name=spark-<job-name>
-            val query = """service.name:~"spark-.*""""
+            val query = LogQl.sparkJobs(clusterStateManager.load().clusterLabelName())
 
-            victoriaLogsService
-                .query(query = query, timeRange = "1h", limit = Constants.EMR.MAX_LOG_LINES)
+            lokiQueryService
+                .query(logql = query, since = "1h", limit = Constants.EMR.MAX_LOG_LINES)
                 .onSuccess { logs ->
                     if (logs.isEmpty()) {
                         println("No logs found yet. Try: easy-db-lab spark logs --step-id $stepId")
@@ -228,7 +229,7 @@ class EMRSparkService(
                     println("Try: easy-db-lab spark logs --step-id $stepId")
                 }
         } catch (e: Exception) {
-            log.warn { "Failed to query Victoria Logs: ${e.message}" }
+            log.warn { "Failed to query Loki: ${e.message}" }
             eventBus.emit(Event.Emr.SparkLogQueryFailed)
             println("Try: easy-db-lab spark logs --step-id $stepId")
         }
@@ -639,8 +640,8 @@ class EMRSparkService(
     ): Map<String, String> {
         val otelVars =
             mapOf(
-                "OTEL_SERVICE_NAME" to "spark-$jobName",
-                "PYROSCOPE_APPLICATION_NAME" to "spark-$jobName",
+                "OTEL_SERVICE_NAME" to Constants.EMR.SERVICE_NAME_PREFIX + jobName,
+                "PYROSCOPE_APPLICATION_NAME" to Constants.EMR.SERVICE_NAME_PREFIX + jobName,
             )
 
         return otelVars + envVars

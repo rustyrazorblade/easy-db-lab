@@ -72,11 +72,11 @@ On a Cilium cluster the OTel collector scrapes three Cilium jobs:
 | `hubble` | `localhost:9965` on every node | Hubble metrics (`dns`, `drop`, `tcp`, `flow`, `port-distribution`, `icmp`, `http`) |
 | `cilium-operator` | Port 9963 on the one node that runs the operator | Found by pod discovery in `kube-system` on the `io.cilium/app=operator` label |
 
-The metrics land in VictoriaMetrics with the `cluster` label like every other scrape. A Flannel cluster renders none of these jobs.
+The metrics land in Mimir with the `cluster` label like every other scrape. A Flannel cluster renders none of these jobs.
 
 ### Logs
 
-The Cilium agent, operator, and Hubble pods run in `kube-system`. Their stdout and stderr are collected by the same container log pipeline as every other pod, so they are in VictoriaLogs with `k8s.namespace.name=kube-system`. Nothing needs to be enabled.
+The Cilium agent, operator, and Hubble pods run in `kube-system`. Their stdout and stderr are collected by the same container log pipeline as every other pod, so they are in Loki under the stream label `k8s_namespace_name="kube-system"`. Nothing needs to be enabled.
 
 ### Install markers on the timeline
 

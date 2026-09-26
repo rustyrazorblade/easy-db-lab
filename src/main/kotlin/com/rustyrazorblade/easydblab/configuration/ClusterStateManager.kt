@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.rustyrazorblade.easydblab.Constants
 import java.io.File
 import java.time.Instant
 
@@ -46,7 +47,14 @@ class ClusterStateManager(
         if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {
             initConfig.put(CNI_FIELD, CniMode.Flannel.name)
         }
-        return mapper.treeToValue(tree, ClusterState::class.java)
+        val state = mapper.treeToValue(tree, ClusterState::class.java)
+        // The name flows raw into config files, Loki index file names, S3 keys and labels; a
+        // hand-edited or pre-rule state must not reach any of them.
+        check(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(state.name)) {
+            "Invalid cluster name '${state.name}' in state.json: a cluster name must match " +
+                Constants.Observability.CLUSTER_NAME_PATTERN
+        }
+        return state
     }
 
     /**

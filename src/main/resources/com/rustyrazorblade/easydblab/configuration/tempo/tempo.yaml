@@ -1,4 +1,9 @@
 stream_over_http_enabled: true
+
+# Native multi-tenancy: every write and query carries the cluster's tenant in X-Scope-OrgID, and
+# Tempo keeps each tenant in its own directory under storage.trace.s3.prefix.
+multitenancy_enabled: true
+
 server:
   http_listen_port: 3200
   grpc_listen_port: 9096
@@ -11,6 +16,11 @@ query_frontend:
     duration_slo: 5s
 
 distributor:
+  # 0 = never truncate an attribute value; spans are stored exactly as sent. Tempo 3.0.3 defaults
+  # to 2048 bytes, which cut values such as process.command_line (over 3 KB for a JVM). This must be
+  # set here: a per-tenant override of 0 falls back to this distributor setting, so the override
+  # cannot turn truncation off.
+  max_attribute_bytes: 0
   receivers:
     otlp:
       protocols:
@@ -19,12 +29,30 @@ distributor:
         http:
           endpoint: 0.0.0.0:4321
 
-ingester:
+# Tempo 3 has no ingester: the live store holds recent traces and cuts them into blocks. A block is
+# cut at most every five minutes, so traces reach S3 while the cluster is up (Tempo 3's default is
+# 30s). Its WAL lives on the control node's disk (/var/tempo is a hostPath), so a pod restart does
+# not lose spans that were received but not yet in a block.
+live_store:
   max_block_duration: 5m
-
-compactor:
-  compaction:
-    block_retention: 48h
+  # 0 turns off the live-trace size backpressure. Past this size Tempo 3.0.3 stalls each push a
+  # second at a time, and a push whose context ends while stalled is dropped with no error and no
+  # counter. A test cluster's live traces fit in the control node's memory: each is held only until
+  # it is idle for 1s (10s at most) and is then cut into the WAL.
+  max_live_traces_bytes: 0
+  # Shrink the window between acknowledging a push and writing it to the WAL to about 2s. Tempo
+  # acknowledges a push while its spans are only in memory, and a trace reaches the WAL once it has
+  # been idle for max_trace_idle, checked every flush_check_period, or after max_trace_live if it is
+  # still receiving spans. With the 3.0.3 defaults (5s, 5s, 30s), a kill -9 2s after a push lost
+  # 20 of 20 spans on a real cluster. In single-binary mode the window cannot close: there is no
+  # Kafka to replay from. The WAL is not fsynced, so this covers a killed Tempo process, not a node
+  # crash. A graceful stop writes every live trace to the WAL and loses nothing.
+  # commit_interval is not set here: it applies only when the live store consumes from Kafka.
+  flush_check_period: 1s
+  max_trace_idle: 1s
+  max_trace_live: 10s
+  wal:
+    path: /var/tempo/live-store/wal
 
 # Configured but INERT: `overrides.defaults.metrics_generator.processors` is empty, so
 # nothing is generated and nothing is remote-written. Kept so re-enabling is one edit —
@@ -36,8 +64,10 @@ metrics_generator:
       cluster: ${CLUSTER_NAME}
   storage:
     path: /var/tempo/generator/wal
+    # Mimir runs native multi-tenancy: each write carries the tenant of the spans it came from.
+    remote_write_add_org_id_header: true
     remote_write:
-      - url: http://victoriametrics.default.svc.cluster.local:8428/api/v1/write
+      - url: http://mimir.default.svc.cluster.local:9009/api/v1/push
         send_exemplars: true
 
 storage:
@@ -49,20 +79,42 @@ storage:
       bucket: ${S3_BUCKET}
       endpoint: s3.${AWS_REGION}.amazonaws.com
       region: ${AWS_REGION}
-      prefix: ${CLUSTER_S3_PREFIX}/tempo/
+      prefix: ${TRACES_S3_PREFIX}
 
 overrides:
   defaults:
+    # NEVER drop a span. Tempo's per-tenant ingestion limits are sized for shared multi-tenant
+    # clusters. A span past any of them is discarded while the push still succeeds, so the loss
+    # shows only in tempo_discarded_spans_total. One cassandra-easy-stress job passed the default of
+    # 10000 live traces and lost half its spans (reason live_traces_exceeded).
+    ingestion:
+      # 0 = no limit on live traces (Tempo 3.0.3 default: 10000).
+      max_traces_per_user: 0
+      # 1 GB/s rate and burst (default 30 MB/s, reason rate_limited). 0 does not mean unlimited
+      # here: the limiter would refuse every push, so both are set far above what a test cluster
+      # sends.
+      rate_limit_bytes: 1000000000
+      burst_size_bytes: 1000000000
+    global:
+      # 0 = no per-trace size limit (default 5 MB, reason trace_too_large).
+      max_bytes_per_trace: 0
+    # NEVER delete a block. In Tempo 3 retention runs inside compaction, so turning compaction off
+    # for every tenant is what stops both. Do NOT set a zero block retention for this: in Tempo 3 a
+    # zero retention makes every block eligible for deletion at once. Compaction must stay off even per cluster:
+    # clusters in one tenant are independent Tempo instances sharing one tenant directory, and each
+    # compactor would act as if it owned it.
+    compaction:
+      compaction_disabled: true
     metrics_generator:
       # DELIBERATELY EMPTY. Do not put [service-graphs, span-metrics] back without
-      # first removing the OTel collector's spanmetrics and servicegraph connectors.
+      # first removing the OTel collector's span_metrics and service_graph connectors.
       #
-      # The collector's traces pipeline already exports to BOTH otlp/tempo and its own
-      # spanmetrics + servicegraph connectors, so enabling these processors makes Tempo
+      # The collector's traces pipeline already exports to BOTH otlp_grpc/tempo and its own
+      # span_metrics + service_graph connectors, so enabling these processors makes Tempo
       # compute the same two metric families a second time from the same spans. Tempo's
       # namespaces for them are `traces_spanmetrics` and `traces_service_graph`, which
       # are exactly the names the collector emits, and Tempo remote-writes straight to
-      # VictoriaMetrics — so both land in one store under one name.
+      # Mimir — so both land in one store under one name.
       #
       # Measured on a live cluster: traces_spanmetrics_calls_total carried 25 collector
       # series alongside 9 Tempo ones covering the IDENTICAL nine spans, and

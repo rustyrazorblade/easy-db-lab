@@ -203,7 +203,7 @@ ClickHouse is configured with three storage policies. You select the policy when
 | **Performance** | Best latency, highest throughput | Higher latency, cache-dependent | Good initially, degrades as data moves to S3 |
 | **Capacity** | Limited by disk size | Virtually unlimited | Virtually unlimited |
 | **Cost** | Included in instance cost | S3 storage + request costs | S3 storage + request costs |
-| **Data Persistence** | Lost when cluster is destroyed | Expires with the data bucket after `down` | Expires with the data bucket after `down` |
+| **Data Persistence** | Lost when cluster is destroyed | Kept in the data bucket after `down` | Kept in the data bucket after `down` |
 | **Best For** | Benchmarks, low-latency queries | Large datasets, cost-sensitive workloads | Mixed hot/cold workloads with automatic tiering |
 
 ### Local Storage (`default`)
@@ -249,8 +249,9 @@ SETTINGS storage_policy = 's3_main';
 - Datasets larger than the local disks
 - Cost-sensitive workloads where storage cost > compute cost
 
-`down` sets a lifecycle expiration on the data bucket (`--retention-days`, default 1), so data in
-it does not outlive the cluster. Use [Backup and Restore](#backup-and-restore) to keep a dataset.
+`down` sets no expiry on the data bucket and deletes nothing in it, so data in it outlives the
+cluster until you delete it. Use [Backup and Restore](#backup-and-restore) to keep a dataset in a
+place that is not tied to the cluster.
 
 **How the cache works:**
 

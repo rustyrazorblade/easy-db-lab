@@ -16,13 +16,13 @@ processors:
   batch:
     timeout: 1s
     send_batch_size: 1024
-  resourcedetection:
+  resource_detection:
     detectors: [env]
     timeout: 2s
     override: false
 
 exporters:
-  otlp:
+  otlp_grpc:
     endpoint: ${env:HOST_IP}:4317
     tls:
       insecure: true
@@ -36,5 +36,5 @@ service:
   pipelines:
     metrics:
       receivers: [prometheus]
-      processors: [resourcedetection, batch]
-      exporters: [otlp]
+      processors: [resource_detection, batch]
+      exporters: [otlp_grpc]

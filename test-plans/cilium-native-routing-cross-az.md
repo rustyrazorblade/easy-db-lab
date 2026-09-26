@@ -2,7 +2,7 @@
 
 ## Objective
 
-Prove that a cluster provisioned with `--cni=cilium` runs Cilium in ENI native-routing mode with no tunnel, that all agents reach Ready, that pods get VPC-routable IPs from their node's AZ subnet, and that cross-AZ pod-to-pod, pod-to-ClusterIP, and pod-to-external traffic all work.  This is task 6.2 of `openspec/changes/cilium-native-routing/tasks.md`.  The plan also proves the Cilium observability additions on the same PR: agent and operator metrics scraped, kube-state-metrics up, Cilium pod logs in VictoriaLogs, `platform cni` read-back, Hubble UI reachable, install annotations present, and the three networking dashboards populated.  Success: every check in steps 2 through 17 passes.
+Prove that a cluster provisioned with `--cni=cilium` runs Cilium in ENI native-routing mode with no tunnel, that all agents reach Ready, that pods get VPC-routable IPs from their node's AZ subnet, and that cross-AZ pod-to-pod, pod-to-ClusterIP, and pod-to-external traffic all work.  This is task 6.2 of `openspec/changes/cilium-native-routing/tasks.md`.  The plan also proves the Cilium observability additions on the same PR: agent and operator metrics scraped, kube-state-metrics up, Cilium pod logs in Loki, `platform cni` read-back, Hubble UI reachable, install annotations present, and the three networking dashboards populated.  Success: every check in steps 2 through 17 passes.
 
 ## Cluster Name
 
@@ -140,13 +140,14 @@ curl -s --max-time 5 http://$DB0_IP:9965/metrics | grep -c '^hubble_'
 
 Pass: at least one flow line `srv-db0 -> srv-db1` with `FORWARDED`; metric count `> 0`.
 
-### 12. Cilium agent, operator, and kube-state-metrics are scraped into VictoriaMetrics
+### 12. Cilium agent, operator, and kube-state-metrics are scraped into Mimir
 
 Wait 60 seconds after step 11 so at least three scrape intervals have run.
 
 ```bash
 sleep 60
-vmq() { curl -s --max-time 10 "http://$CTL_IP:8428/api/v1/query" --data-urlencode "query=$1" | jq -r '.data.result[] | "\(.metric.instance // .metric.node // .metric.daemonset) \(.value[1])"'; }
+TENANT=${TENANT:-default}
+vmq() { curl -s --max-time 10 -H "X-Scope-OrgID: $TENANT" "http://$CTL_IP:9009/prometheus/api/v1/query" --data-urlencode "query=$1" | jq -r '.data.result[] | "\(.metric.instance // .metric.node // .metric.daemonset) \(.value[1])"'; }
 echo "== cilium-agent up"; vmq 'up{job="cilium-agent"}'
 echo "== cilium-operator up"; vmq 'up{job="cilium-operator"}'
 echo "== kube-state-metrics up"; vmq 'up{job="kube-state-metrics"}'
@@ -155,16 +156,16 @@ echo "== operator ipam"; vmq 'sum by (type) (cilium_operator_ipam_ips)'
 echo "== endpoint state"; vmq 'sum by (endpoint_state) (cilium_endpoint_state)'
 ```
 
-Pass: `up{job="cilium-agent"}` is `1` on 3 instances; `up{job="cilium-operator"}` is `1` on 1 instance; `up{job="kube-state-metrics"}` is `1`; `kube_daemonset_status_number_ready{daemonset="cilium"}` is `3`; `cilium_operator_ipam_ips` has `available` and `used` series with non-zero values; `cilium_endpoint_state{endpoint_state="ready"}` is `> 0`.  Fail: any query returns no series.
+Pass: `up{job="cilium-agent"}` is `1` on 3 instances; `up{job="cilium-operator"}` is `1` on 1 instance; `up{job="kube-state-metrics"}` is `1`; `kube_daemonset_status_number_ready{daemonset="cilium"}` is `3`; `cilium_operator_ipam_ips` has `available` and `used` series with non-zero values; `cilium_endpoint_state{endpoint_state="ready"}` is `> 0`.  Fail: any query returns no series.  `TENANT` is the cluster's observability tenant (`init --tenant`, `default` if none was given); Mimir and Loki return nothing to a query without it.
 
-### 13. Cilium pod logs are in VictoriaLogs
+### 13. Cilium pod logs are in Loki
 
 ```bash
-$EDB logs query 'k8s.namespace.name:kube-system AND k8s.pod.name:cilium-operator*' --limit 5
-$EDB logs query 'k8s.namespace.name:kube-system AND k8s.pod.name:cilium-*' --limit 5
+$EDB logs query -q '{k8s_namespace_name="kube-system", k8s_pod_name=~"cilium-operator.*"}' --limit 5
+$EDB logs query -q '{k8s_namespace_name="kube-system", k8s_pod_name=~"cilium-.*"}' --limit 5
 ```
 
-Pass: both return at least one line.  Fail: zero lines from either.  Check `$EDB logs query --help` for the exact flag names before running; adjust the query syntax to what `--help` documents.
+Pass: both return at least one line.  Fail: zero lines from either.  `-q` sends the LogQL unchanged; pod logs carry the `k8s_namespace_name` and `k8s_pod_name` stream labels.
 
 ### 14. Hubble UI answers over Tailscale, and the install annotations exist
 
@@ -179,7 +180,7 @@ Pass: Hubble UI returns `200`; the annotations query returns two entries, one co
 
 ### 15. Networking dashboards are deployed and every panel has data
 
-Spawn the `dashboard-editor` agent against this live cluster with the worktree path, `$CLUSTER_DIR`, and Grafana at `http://$CTL_IP:3000`.  It writes `dashboards/networking/cilium-datapath.json`, `dashboards/networking/cilium-eni-ipam.json`, and `dashboards/networking/hubble-flows.json`, verifies every metric name against VictoriaMetrics before it goes in a query, runs `./gradlew installDist` and `$EDB grafana update-config`, and reads each dashboard back from Grafana.  For each panel it runs the panel's query against VictoriaMetrics and reports the series count.
+Spawn the `dashboard-editor` agent against this live cluster with the worktree path, `$CLUSTER_DIR`, and Grafana at `http://$CTL_IP:3000`.  It writes `dashboards/networking/cilium-datapath.json`, `dashboards/networking/cilium-eni-ipam.json`, and `dashboards/networking/hubble-flows.json`, verifies every metric name against Mimir before it goes in a query, runs `./gradlew installDist` and `$EDB grafana update-config`, and reads each dashboard back from Grafana.  For each panel it runs the panel's query against Mimir and reports the series count.
 
 Pass: all three dashboards exist in the `networking` folder in Grafana; every panel's query returns at least one series.  A panel with zero series is a failure, not a note.  The only allowed zero-series panel is the ICMP panel on `hubble-flows`, which must be zero because the security group has no ICMP rule; the agent must label it as such in the panel description.
 

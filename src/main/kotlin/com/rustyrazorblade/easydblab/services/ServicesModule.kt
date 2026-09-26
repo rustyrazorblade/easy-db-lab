@@ -11,6 +11,8 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatal
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -18,7 +20,6 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
@@ -41,7 +42,6 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
-import java.time.Duration
 
 /**
  * Koin module for registering business services.
@@ -59,7 +59,9 @@ val servicesModule =
         factoryOf(::DefaultCassandraProfilingService) bind CassandraProfilingService::class
         // Singleton: CiliumService records the install window on it during K3s bring-up and `up`
         // posts the annotations later, after Grafana is deployed, so the state must be shared.
-        single { CiliumInstallAnnotator(get()) }
+        single { CiliumInstallAnnotator(get(), get()) }
+        single { LokiPushClient(get()) }
+        single<AnnotationMirror> { DefaultAnnotationMirror(get(), get<GrafanaDashboardService>(), get(), get()) }
         factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
@@ -99,7 +101,8 @@ val servicesModule =
         factoryOf(::RegistryManifestBuilder)
         factoryOf(::S3ManagerManifestBuilder)
         factoryOf(::TempoManifestBuilder)
-        factoryOf(::VictoriaManifestBuilder)
+        factoryOf(::MimirManifestBuilder)
+        factoryOf(::LokiManifestBuilder)
         factoryOf(::YaceManifestBuilder)
         factoryOf(::KubeStateMetricsManifestBuilder)
         factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
@@ -115,30 +118,22 @@ val servicesModule =
         factory { (kubeconfigPath: String) -> KitWorkloadProbe(get { parametersOf(kubeconfigPath) }, get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
+        factory { ConfigChangeReport(get<K8sService>(), get()) }
         factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
-        factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
         factory<GrafanaAnnotationBackupService> {
             DefaultGrafanaAnnotationBackupService(get(), get(), get())
         }
-        // Couples the metrics + annotations backup for the teardown path. The metrics backup Job
-        // gets a short timeout here (not the standalone default) so a stuck backup does not delay
-        // the abort/`--force` decision at `down`.
-        factory<TeardownBackupService> {
-            DefaultTeardownBackupService(
-                victoriaBackupService =
-                    DefaultVictoriaBackupService(
-                        get(),
-                        get(),
-                        jobTimeout =
-                            Duration.ofSeconds(Constants.Victoria.TEARDOWN_METRICS_BACKUP_TIMEOUT_SECONDS),
-                    ),
-                annotationBackupService = get(),
-            )
-        }
-        factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
-        singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class
-        singleOf(::DefaultVictoriaLogsService) bind VictoriaLogsService::class
+        // The pre-teardown flush `down` runs: annotation mirror, Loki and Mimir flushes, annotations
+        // backup, in whole attempts that roll back on failure.
+        factory<BackendWorkloads> { K8sBackendWorkloads(get()) }
+        factory { LokiTailFlush(get(), get(), get(), get()) }
+        factory { MimirTailFlush(get(), get(), get(), get()) }
+        factory<TeardownFlushService> { DefaultTeardownFlushService(get(), get(), get(), get(), get(), get()) }
+        factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
+        singleOf(::DefaultObservabilityHttp) bind ObservabilityHttp::class
+        singleOf(::DefaultMimirQueryService) bind MimirQueryService::class
+        singleOf(::DefaultLokiQueryService) bind LokiQueryService::class
         factoryOf(::SidecarManifestBuilder)
         factoryOf(::DefaultSidecarService) bind SidecarService::class
 

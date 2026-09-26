@@ -16,7 +16,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "enable": true,
         "expr": "resets(jvm_cpu_time_seconds_total{job=\"cassandra\"}[$__interval]) > 0",
@@ -75,7 +75,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Pending compaction tasks per node (left axis, `cassandra_compaction_tasks_pending`) against compactions finished per second (right axis, rate of `cassandra_compaction_tasks_completed_total`). The failure mode is backlog climbing while completion stays flat: compaction is running as fast as it can and still losing. Backlog climbing WITH completion means the write rate simply exceeds compaction throughput.",
       "fieldConfig": {
@@ -186,7 +186,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_compaction_tasks_pending{host_name=~\"$host\"}",
@@ -197,7 +197,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "rate(cassandra_compaction_tasks_completed_total{host_name=~\"$host\"}[$__rate_interval])",
@@ -212,7 +212,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`cassandra_table_compaction_pending`, restricted to tables with a non-zero backlog and cut to the ten largest. This is where a node-level backlog actually lives. Labels: bare `keyspace` and `table`.",
       "fieldConfig": {
@@ -292,7 +292,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, cassandra_table_compaction_pending{host_name=~\"$host\"} > 0)",
@@ -320,7 +320,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`cassandra_compaction_progress_completed_bytes` divided by `cassandra_compaction_progress_size_bytes` for each compaction currently running. A line that climbs to 1 and disappears is a compaction finishing. A line that barely moves is a long compaction holding a slot. Labels on this family are PREFIXED: `cassandra_keyspace` and `cassandra_table`, not the bare names used elsewhere.",
       "fieldConfig": {
@@ -402,7 +402,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_compaction_progress_completed_bytes{host_name=~\"$host\"} / (cassandra_compaction_progress_size_bytes{host_name=~\"$host\"} > 0)",
@@ -417,7 +417,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Total size minus completed bytes for each running compaction. Read with the panel on the left: a high fraction complete on a very large compaction can still be hours of work.",
       "fieldConfig": {
@@ -497,7 +497,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_compaction_progress_size_bytes{host_name=~\"$host\"} - cassandra_compaction_progress_completed_bytes{host_name=~\"$host\"}",
@@ -525,7 +525,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`cassandra_table_sstable_count_live`, non-zero series only, ten largest. This is the first visible consequence of section 1. A count that ratchets up and never comes down is a compaction backlog you can see. Labels: bare `keyspace` and `table`.",
       "fieldConfig": {
@@ -605,7 +605,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, cassandra_table_sstable_count_live{host_name=~\"$host\"} > 0)",
@@ -620,7 +620,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The same metric aggregated by the Group by dimension. Honours host_name, cassandra_build, cluster, and the bare `keyspace` and `table`. It does NOT carry `cassandra_keyspace` or `cassandra_table`: choosing either of those collapses this panel to one series.",
       "fieldConfig": {
@@ -700,7 +700,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (${groupby}) (cassandra_table_sstable_count_live{host_name=~\"$host\"})",
@@ -728,7 +728,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The mechanism that turns SSTable count into latency. Shown as a ladder rather than through the Percentile variable on purpose: this family publishes only p50, p99 and max, so a Percentile of p999 would return nothing. p99 pulling away from p50 means a minority of reads is merging many more files.",
       "fieldConfig": {
@@ -808,7 +808,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max by (keyspace, table) (cassandra_table_sstables_per_read_p50{host_name=~\"$host\"}) > 0",
@@ -819,7 +819,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max by (keyspace, table) (cassandra_table_sstables_per_read_p99{host_name=~\"$host\"}) > 0",
@@ -830,7 +830,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max by (keyspace, table) (cassandra_table_sstables_per_read_max{host_name=~\"$host\"}) > 0",
@@ -845,7 +845,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The same p99, left per node so a single lagging node is visible. Non-zero series only, ten largest.",
       "fieldConfig": {
@@ -925,7 +925,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, cassandra_table_sstables_per_read_p99{host_name=~\"$host\"} > 0)",
@@ -953,7 +953,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`cassandra_table_disk_space_live_bytes` over `cassandra_table_disk_space_total_bytes`. Live counts only SSTables a read can reach; total counts everything on disk for the table. A ratio well under 1 is space held by superseded files that have not been dropped yet. Shown as the ten LOWEST ratios, because low is the interesting end. Tables with no data on disk are excluded by the non-zero denominator.",
       "fieldConfig": {
@@ -1035,7 +1035,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "bottomk(10, cassandra_table_disk_space_live_bytes{host_name=~\"$host\"} / (cassandra_table_disk_space_total_bytes{host_name=~\"$host\"} > 0))",
@@ -1050,7 +1050,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`cassandra_table_disk_space_total_bytes`, ten largest. The absolute companion to the ratio on the left: a poor ratio on a tiny table costs nothing.",
       "fieldConfig": {
@@ -1130,7 +1130,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, cassandra_table_disk_space_total_bytes{host_name=~\"$host\"} > 0)",
@@ -1158,7 +1158,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`cassandra_storage_load_bytes`, the total the node reports for its own data. Diverging lines across nodes mean an uneven token range or a node that is not compacting.",
       "fieldConfig": {
@@ -1238,7 +1238,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_storage_load_bytes{host_name=~\"$host\"}",
@@ -1253,7 +1253,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`deriv()` of storage load over a 15 minute window, in bytes per second. Negative means compaction is reclaiming faster than writes arrive. The 15 minute window is deliberately wider than the scrape interval so a single compaction release does not dominate.",
       "fieldConfig": {
@@ -1333,7 +1333,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "deriv(cassandra_storage_load_bytes{host_name=~\"$host\"}[15m])",
@@ -1348,7 +1348,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Free bytes on the largest filesystem for the node, divided by the current storage growth rate. The largest filesystem is the data mount on any normal layout; narrow Mount point if it is not. Growth at or below zero is clamped to 1 byte per second, so a flat or shrinking dataset shows an absurdly large time rather than an error. This is a straight-line projection from the last 15 minutes, not a forecast.",
       "fieldConfig": {
@@ -1428,7 +1428,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max by (host_name) (system_filesystem_usage_bytes{state=\"free\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"}) / clamp_min(max by (host_name) (deriv(cassandra_storage_load_bytes{host_name=~\"$host\"}[15m])), 1)",
@@ -1456,7 +1456,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Used bytes as a percentage of used plus free plus reserved, kept per mount so the data mount is never averaged with the root partition. With Mount point on All this includes boot partitions, which are small and static.",
       "fieldConfig": {
@@ -1538,7 +1538,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * sum by (host_name, mountpoint) (system_filesystem_usage_bytes{state=\"used\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"}) / sum by (host_name, mountpoint) (system_filesystem_usage_bytes{host_name=~\"$host\", mountpoint=~\"$mountpoint\"})",
@@ -1553,7 +1553,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The absolute headroom behind the projection in section 6. Read this before trusting the time-to-full number.",
       "fieldConfig": {
@@ -1633,7 +1633,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name, mountpoint) (system_filesystem_usage_bytes{state=\"free\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"})",
@@ -1661,7 +1661,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`cassandra_client_request_latency_${percentile}_microseconds` for reads, divided by the Latency unit divisor. This is the symptom the whole page explains. If it climbs while sections 1 to 4 are flat, compaction is not the cause and this dashboard has answered no.",
       "fieldConfig": {
@@ -1742,7 +1742,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"} / ${latency_unit}",
@@ -1757,7 +1757,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The same gauge aggregated by the Group by dimension. The client-request family carries host_name, cluster, cassandra_build and cassandra_operation only; any keyspace or table choice collapses this panel to one series.",
       "fieldConfig": {
@@ -1838,7 +1838,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"}) / ${latency_unit}",
@@ -1867,7 +1867,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Stream sessions in flight on each node. Read it as: non-zero means this node is sending or receiving SSTable data right now, for a repair, a bootstrap, a decommission or a rebuild, and the compaction and disk panels above should be read in that light. Flat at zero is the normal state of an idle cluster and is not a broken panel.",
       "fieldConfig": {
@@ -1948,7 +1948,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_streaming_active{job=\"cassandra\", host_name=~\"$host\"}",
@@ -1963,7 +1963,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Bytes per second streamed into and out of each node, over all stream types. Read it as the disk and network cost the streaming operation is imposing while it runs, and compare it with the filesystem and compaction panels above: incoming stream bytes land as new SSTables and feed straight back into the compaction backlog. Flat at zero is normal unless a repair, bootstrap, decommission or rebuild is running, and is not a broken panel.",
       "fieldConfig": {
@@ -2044,7 +2044,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "rate(cassandra_streaming_incoming_bytes_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
@@ -2055,7 +2055,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "rate(cassandra_streaming_outgoing_bytes_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
@@ -2070,7 +2070,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Bytes per second streamed out of each node specifically for repair. Read it against the total outgoing rate in the panel above: the difference is bootstrap, decommission or rebuild traffic. Cassandra publishes the repair breakdown for the outgoing direction only, so there is no matching incoming series to compare against. Flat at zero is normal unless a repair is running and is not a broken panel.",
       "fieldConfig": {
@@ -2151,7 +2151,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "rate(cassandra_streaming_repair_outgoing_bytes_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
@@ -2166,7 +2166,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "SSTables per second sent by each node as part of repair. Read it with the repair byte rate to its left: dividing one by the other gives the average size of the SSTables repair is moving, and many small files cost far more in compaction afterwards than the byte count suggests. Flat at zero is normal unless a repair is running and is not a broken panel.",
       "fieldConfig": {
@@ -2247,7 +2247,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "rate(cassandra_streaming_repair_sstables_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
@@ -2262,7 +2262,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Rate at which each node retries a repair message. Read it as: sustained non-zero while a repair runs means the repair is struggling against a slow or flapping peer, or against internode timeouts, and the repair will take far longer than the byte rate suggests. Flat at zero is normal both when no repair is running and when a repair is running cleanly; it is not a broken panel.",
       "fieldConfig": {
@@ -2343,7 +2343,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "rate(cassandra_repair_retries_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
@@ -2371,7 +2371,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "id": 201,
       "type": "timeseries",
@@ -2484,7 +2484,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(cassandra_compaction_bytes_compacted_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -2495,7 +2495,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{host_name=~\"$host\"}[$__rate_interval]))",
@@ -2508,7 +2508,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "id": 202,
       "type": "bargauge",
@@ -2561,7 +2561,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (increase(jvm_memory_allocation_bytes_sum{host_name=~\"$host\"}[$__range])) / sum by (host_name) (increase(cassandra_compaction_bytes_compacted_total{host_name=~\"$host\"}[$__range]))",
@@ -2662,7 +2662,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_storage_load_bytes, host_name)",
         "description": "Database nodes. Derived from a Cassandra-only metric, so All expands to the database nodes and never widens a panel to the load generator or the control node.",
@@ -2695,7 +2695,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(system_filesystem_usage_bytes, mountpoint)",
         "description": "Filesystems to show. All includes the root and boot partitions as well as the data mount. The headroom panel takes the largest filesystem per node, which is the data mount on any normal layout; narrow this variable if it is not.",
@@ -2788,7 +2788,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

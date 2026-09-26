@@ -19,17 +19,20 @@ data class PostedAnnotation(
  * is deployed, so the annotations cannot be posted at the moment the install runs. Instead
  * [CiliumService] records the start and the finish (or failure) here with their real timestamps,
  * and `up` calls [post] after the stack is up. The markers then land on the dashboards at the time
- * the install actually happened, tagged [Constants.Cilium.ANNOTATION_TAG] and the global tag so the
- * core dashboards' tag-filtered annotation query renders them.
+ * the install actually happened, tagged [Constants.Cilium.ANNOTATION_TAG] and the global tag. Each is
+ * mirrored to Loki ([AnnotationMirror]) right after Grafana accepts it, which is where the core
+ * dashboards read global annotations from.
  *
  * This is a Koin singleton: the service that records and the command that posts are different
  * objects, and the pending list must be shared between them within one process.
  *
  * @property grafanaDashboardService Posts the annotations over the Grafana HTTP API.
+ * @property annotationMirror Copies each posted annotation to Loki.
  * @property clock Time source; tests inject a fixed clock to assert the recorded timestamps.
  */
 class CiliumInstallAnnotator(
     private val grafanaDashboardService: GrafanaDashboardService,
+    private val annotationMirror: AnnotationMirror,
     private val clock: Clock = Clock.systemUTC(),
 ) {
     companion object {
@@ -56,8 +59,11 @@ class CiliumInstallAnnotator(
     /**
      * Posts every pending annotation to the cluster's Grafana and clears the pending list.
      *
-     * Annotations are posted in record order. If a post fails, the annotations already posted are
-     * dropped and the rest stay pending, so the failure surfaces and a retry does not duplicate.
+     * Annotations are posted in record order, each mirrored to Loki as soon as Grafana accepts it. If
+     * a post or a mirror fails, the annotations Grafana already holds are dropped and the rest stay
+     * pending, so the failure surfaces and a retry does not post one twice. An annotation Grafana
+     * holds but Loki does not is mirrored by the next [AnnotationMirror.syncAll] (`grafana backup`,
+     * `down`).
      *
      * @param controlHost The control node running Grafana.
      * @return The annotations posted, in order; empty when nothing was pending.
@@ -67,8 +73,10 @@ class CiliumInstallAnnotator(
             val posted = mutableListOf<PostedAnnotation>()
             while (_pending.isNotEmpty()) {
                 val request = _pending.first()
-                posted += PostedAnnotation(request, grafanaDashboardService.createAnnotation(controlHost, request))
+                val response = grafanaDashboardService.createAnnotation(controlHost, request)
                 _pending.removeAt(0)
+                annotationMirror.push(request.toMirrored(response.id)).getOrThrow()
+                posted += PostedAnnotation(request, response)
             }
             posted.toList()
         }

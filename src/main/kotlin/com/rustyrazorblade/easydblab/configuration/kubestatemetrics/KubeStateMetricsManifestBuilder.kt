@@ -16,7 +16,7 @@ import io.fabric8.kubernetes.api.model.rbac.PolicyRuleBuilder
  * Builds the kube-state-metrics K8s resources as typed Fabric8 objects.
  *
  * kube-state-metrics turns the state of Kubernetes objects (pods, deployments, nodes, PVCs, jobs)
- * into Prometheus metrics. Nothing else in the stack reports that: hostmetrics sees processes, not
+ * into Prometheus metrics. Nothing else in the stack reports that: host_metrics sees processes, not
  * pods, and a kit's own exporter sees only itself. It runs on every cluster regardless of CNI so a
  * dashboard can show pod phase, restarts, and node conditions on Flannel and Cilium alike.
  *

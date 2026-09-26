@@ -117,7 +117,7 @@ Produces well-organized debug reports:
 See `reference/common-issues.md` for detailed troubleshooting of:
 - SSH connection failures
 - Kubernetes pod issues (Pending, CrashLoopBackOff, ImagePullBackOff)
-- Observability stack problems (Grafana, VictoriaMetrics, VictoriaLogs, Tempo)
+- Observability stack problems (Grafana, Mimir, Loki, Tempo)
 - Database-specific issues (Cassandra, ClickHouse, OpenSearch)
 - Configuration and build problems
 - AWS/cloud infrastructure issues
@@ -206,7 +206,7 @@ Read cluster state and configuration:
    - "Pods stuck in Pending state"
 
 3. **Mention recent changes** - If you made code or config changes:
-   - "After updating the VictoriaMetrics configuration..."
+   - "After updating the Mimir configuration..."
    - "Since modifying the K8s manifest builder..."
 
 4. **Provide error messages** - If you have specific errors, include them:
@@ -234,12 +234,12 @@ Follow the recommendations sequentially and verify after each step.
 
 ### Example 1: Pod Startup Issues
 
-**User:** "My VictoriaMetrics pod won't start"
+**User:** "My Mimir pod won't start"
 
 **Skill Actions:**
 1. Checks kubeconfig and K8s connectivity
 2. Lists pods in monitoring namespace
-3. Describes the VictoriaMetrics pod
+3. Describes the Mimir pod
 4. Checks pod logs and events
 5. Identifies root cause (e.g., ConfigMap missing)
 6. Provides fix (create ConfigMap or fix reference)

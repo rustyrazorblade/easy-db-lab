@@ -67,6 +67,7 @@ class ProfilingStatus : ProfilingHostCommand() {
             when {
                 state.running -> renderAsprofCommandLine(state.args, state.loopInterval, state.pid)
                 state.attachDeferred -> "(waiting for the database to become ready)"
+                state.stoppedAtBound -> "(stopped at the size bound)"
                 else -> "(no session attached)"
             }
 
@@ -89,8 +90,8 @@ class ProfilingStatus : ProfilingHostCommand() {
             your args:  ${state.args.joinToString(" ").ifEmpty { "(none)" }}
             full command: $commandLine
             chunks:   ${state.chunksPending} pending, ${state.chunksShipped} shipped, ${state.chunksRejected} rejected
-            pruned:   ${state.prunedForAge} for age, ${state.prunedForSize} for size, ${state.prunedUnshipped} never shipped
-            on disk:  ${state.bytesOnDisk} bytes
+            pruned:   ${state.prunedForAge} for age, ${state.prunedForSize} for size (shipped chunks only)
+            on disk:  ${state.bytesOnDisk} of ${state.maxBytes} bytes
             last ship error: ${state.lastError.ifEmpty { "(none)" }}
             last attach error: ${state.lastAttachError.ifEmpty { "(none)" }}
             """.trimIndent()
@@ -117,9 +118,22 @@ class ProfilingStatus : ProfilingHostCommand() {
         when {
             state.configUnreadable -> configBanner(state.configError, freshness)
             freshness is ProfilingFreshness.Stale -> staleBanner(freshness)
+            state.stoppedAtBound -> stoppedAtBoundBanner(state)
             state.attachDeferred -> waitingBanner()
             else -> ""
         }
+
+    /**
+     * A node that stopped recording because its profile directory is full of chunks that are never
+     * deleted. It is a banner because the body reads `desired: enabled, attached: no`, which is what
+     * a broken attach looks like too, and the answer here is shipping or disk, not the JVM.
+     */
+    private fun stoppedAtBoundBanner(state: ProfilingEffectiveState): String =
+        "  STOPPED:  the profile directory holds ${state.bytesOnDisk} of ${state.maxBytes} bytes in " +
+            "chunks that have not\n            shipped or were rejected. Those are never deleted, so " +
+            "the node stopped recording.\n            It resumes on its own once the directory is " +
+            "back under the bound: fix shipping,\n            raise --max-bytes, or fetch and remove " +
+            "chunks.\n"
 
     /**
      * A node that wants to profile and is waiting for its database to be ready to attach to.
@@ -179,6 +193,7 @@ class ProfilingStatus : ProfilingHostCommand() {
         when {
             state.running -> "yes"
             state.attachDeferred -> "no (waiting for the database to become ready)"
+            state.stoppedAtBound -> "no (stopped at the size bound)"
             else -> "no"
         }
 
@@ -232,8 +247,14 @@ class ProfilingStatus : ProfilingHostCommand() {
                 ),
             )
         }
-        if (state.prunedUnshipped > 0) {
-            eventBus.emit(Event.Profiling.ChunksLost(host = host.alias, lost = state.prunedUnshipped))
+        if (state.stoppedAtBound) {
+            eventBus.emit(
+                Event.Profiling.RecordingStoppedAtBound(
+                    host = host.alias,
+                    bytesOnDisk = state.bytesOnDisk,
+                    maxBytes = state.maxBytes,
+                ),
+            )
         }
         if (state.shipFailures > 0) {
             eventBus.emit(

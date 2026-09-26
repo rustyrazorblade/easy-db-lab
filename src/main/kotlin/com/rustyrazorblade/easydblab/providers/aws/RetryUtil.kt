@@ -83,7 +83,8 @@ object RetryUtil {
      *
      * EC2 instance operations require special handling due to AWS eventual consistency:
      * - Higher retry count (5 attempts) to handle propagation delays after instance creation
-     * - Retries on 400 errors with "does not exist" message (instance not yet visible)
+     * - Retries on InvalidInstanceID.NotFound (instance not yet visible). Matched on the error
+     *   code: the message reads "does not exist" for one id and "do not exist" for several
      * - Retries on 5xx server errors
      * - Does NOT retry on other 4xx client errors (e.g., permission errors)
      *
@@ -101,9 +102,8 @@ object RetryUtil {
             }.retryOnException { throwable ->
                 when {
                     throwable !is AwsServiceException -> false
-                    // Retry on "does not exist" errors - eventual consistency after instance creation
-                    throwable.statusCode() == Constants.HttpStatus.BAD_REQUEST &&
-                        throwable.message?.contains("does not exist") == true -> {
+                    // Instance not visible yet - eventual consistency after instance creation
+                    throwable.awsErrorDetails()?.errorCode() == Constants.AWS.EC2_INSTANCE_NOT_FOUND -> {
                         log.warn { "Instance not yet visible (eventual consistency) - will retry" }
                         true
                     }

@@ -44,7 +44,7 @@ abstract class PicoBaseCommand :
 
     /**
      * Refuses to run a command that depends on the local observability stack when the cluster is in
-     * telemetry-redirect mode. A redirect cluster has no local VictoriaMetrics, VictoriaLogs, Tempo,
+     * telemetry-redirect mode. A redirect cluster has no local Mimir, Loki, Tempo,
      * Pyroscope, or Grafana — that data lives on the external stack — so a command that reads or
      * reconfigures those backends has nothing here to act on. It refuses cleanly rather than failing
      * later with an opaque connection error.

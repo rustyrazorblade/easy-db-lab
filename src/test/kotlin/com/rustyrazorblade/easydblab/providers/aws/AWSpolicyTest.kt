@@ -1,5 +1,10 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -55,6 +60,38 @@ class AWSpolicyTest {
 
             // Inline policies should not have Principal field
             assertThat(json).doesNotContain(""""Principal":""")
+        }
+
+        /**
+         * The cluster must not be able to delete observability data: the instance role is denied
+         * deletes on the metrics, logs, traces and annotations prefixes. Profiles are left out because
+         * Pyroscope v2 compaction deletes the segments it merged.
+         */
+        @Test
+        fun `S3AccessWildcard denies deletes on every observability prefix but profiles`() {
+            val statements =
+                Json
+                    .parseToJsonElement(AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson())
+                    .jsonObject
+                    .getValue("Statement")
+                    .jsonArray
+                    .map { it.jsonObject }
+            val deny = statements.single { it.getValue("Effect").jsonPrimitive.content == "Deny" }
+
+            fun values(key: String) =
+                when (val element = deny.getValue(key)) {
+                    is JsonArray -> element.map { it.jsonPrimitive.content }
+                    else -> listOf(element.jsonPrimitive.content)
+                }
+
+            assertThat(values("Action")).containsExactlyInAnyOrder("s3:DeleteObject", "s3:DeleteObjectVersion")
+            assertThat(values("Resource")).containsExactlyInAnyOrder(
+                "arn:aws:s3:::easy-db-lab-*/observabilitymetrics/*",
+                "arn:aws:s3:::easy-db-lab-*/observability/logs/*",
+                "arn:aws:s3:::easy-db-lab-*/observability/traces/*",
+                "arn:aws:s3:::easy-db-lab-*/observability/annotations/*",
+            )
+            assertThat(values("Resource")).noneMatch { it.contains("profiles") }
         }
 
         @Test

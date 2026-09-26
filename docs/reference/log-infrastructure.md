@@ -1,6 +1,6 @@
 # Log Infrastructure
 
-This page documents the centralized logging infrastructure in easy-db-lab, including OTel for log collection and Victoria Logs for storage and querying.
+This page documents the centralized logging infrastructure in easy-db-lab, including OTel for log collection and Loki for storage and querying. See [Logs (Loki)](../user-guide/loki.md) for the user guide.
 
 ## Architecture Overview
 
@@ -9,7 +9,7 @@ This page documents the centralized logging infrastructure in easy-db-lab, inclu
 │                          All Nodes                                │
 ├──────────────────────────────────────────────────────────────────┤
 │  /var/log/system logs     │  /mnt/db1/container-logs/ (NVMe)     │
-│  /mnt/db1/cassandra/logs/ │    K8s pod stdout/stderr             │
+│  cassandra gc.log*        │    K8s pod stdout/stderr             │
 │  journald                 │    (symlinked from /var/log/pods)    │
 │                           │                                       │
 └──────────────┬────────────────────────────┬──────────────────────┘
@@ -17,8 +17,8 @@ This page documents the centralized logging infrastructure in easy-db-lab, inclu
                ▼                            ▼
               ┌────────────────────────────────────────┐
               │  OTel Collector (DaemonSet)             │      ┌──────────────────┐
-              │  filelog/system  filelog/containers      │◀─────│  EMR Spark JVMs  │
-              │  filelog/cassandra                       │ OTLP │  (OTel Java Agent│
+              │  file_log/system  file_log/containers    │◀─────│  EMR Spark JVMs  │
+              │  file_log/cassandra (GC log)             │ OTLP │  (OTel Java Agent│
               │  + OTLP receiver                        │      │   v2.25.0)       │
               └───────────────────┬─────────────────────┘      └──────────────────┘
                                   │
@@ -27,8 +27,8 @@ This page documents the centralized logging infrastructure in easy-db-lab, inclu
 ├─────────────────────────────────┼────────────────────────────┤
 │                                 ▼                             │
 │                    ┌──────────────────┐                       │
-│                    │  Victoria Logs   │                       │
-│                    │    (:9428)       │                       │
+│                    │      Loki        │                       │
+│                    │    (:3100)       │                       │
 │                    └────────┬─────────┘                      │
 └─────────────────────────────┼──────────────────────────────────┘
                               │
@@ -48,28 +48,28 @@ The OpenTelemetry Collector runs on all nodes as a DaemonSet, collecting logs fr
 - **`logs/local`** — host file-based logs:
   - System logs: `/var/log/**/*.log`, `/var/log/messages`, `/var/log/syslog` (excludes container log paths)
   - Tool runner logs: `/var/log/easydblab/tools/*.log`
-  - Cassandra logs: `/mnt/db1/cassandra/logs/*.log`
+  - Cassandra JVM GC log: `/mnt/db1/cassandra/logs/gc.log*` (`source="cassandra-gc"`). The JVM writes it directly, so the Java agent never sees it.
 - **`logs/containers`** — K8s pod stdout/stderr from all running pods, enriched with Kubernetes metadata (pod name, namespace, container name, kit label). Automatically covers any K8s-native kit without per-kit configuration. Logs are stored on NVMe at `/mnt/db1/container-logs/` (symlinked from `/var/log/pods`) to keep the boot volume free.
-- **`logs/otlp`** — logs pushed via OTLP from remote applications (e.g. EMR Spark JVMs)
+- **`logs/otlp`** — logs pushed via OTLP: Cassandra's application logs from the OpenTelemetry Java agent in the Cassandra JVM (`service_name="cassandra"`), Fluent Bit's journald lines, and remote applications (e.g. EMR Spark JVMs). This is the only path for Cassandra's `system.log` and `debug.log`; the collector does not tail those files, so each line is stored once.
 - **systemd journal** — collected via a separate Fluent Bit DaemonSet (`fluent-bit-journald`)
 
-All pipelines forward to Victoria Logs on the control node.
+All pipelines forward to Loki's OTLP endpoint on the control node, with the cluster's tenant in the `X-Scope-OrgID` header. Loki writes chunks and index to the account bucket under `observability/logs/`.
 
 ### Spark OTel Java Agent (EMR)
 
 When EMR Spark jobs are running, the Spark driver and executor JVMs are instrumented with the OpenTelemetry Java Agent (v2.25.0) via an EMR bootstrap action. The agent auto-instruments the JVMs and exports logs via OTLP to the control node's OTel Collector.
 
-Logs appear in VictoriaLogs with a `service.name` attribute like `spark-<job-name>`, making it easy to filter logs for specific Spark jobs.
+Logs appear in Loki with a `service_name` label like `spark-<job-name>`, making it easy to filter logs for specific Spark jobs: `{service_name=~"spark-.+"}`. The OTel Collector on each EMR node labels every line `source="emr"` and `node_role` (`spark-master` or `spark-worker`). `spark logs` selects one job's lines by `service_name`; no log line carries the EMR step id.
 
-The data flow is: Spark JVM → OTel Java Agent → OTLP → OTel Collector (control node) → VictoriaLogs.
+The data flow is: Spark JVM → OTel Java Agent → OTLP → OTel Collector (EMR node) → OTel Collector (control node) → Loki.
 
-### Victoria Logs
+### Loki
 
-Victoria Logs runs on the control node and provides:
+Loki runs on the control node as a single process and provides:
 
-- Log storage with efficient compression
-- LogsQL query language
-- HTTP API for querying (port 9428)
+- Log storage in S3 that outlives the cluster; nothing is compacted away or deleted
+- The LogQL query language
+- An HTTP API for querying (port 3100); every request needs the `X-Scope-OrgID` tenant header
 
 ## Querying Logs
 
@@ -79,15 +79,16 @@ Victoria Logs runs on the control node and provides:
 # Query all logs from last hour
 easy-db-lab logs query
 
-# Filter by source
+# Filter by source (`cassandra` is the application log over OTLP, `cassandra-gc` the JVM GC log)
 easy-db-lab logs query --source cassandra
-easy-db-lab logs query --source systemd
+easy-db-lab logs query --source cassandra-gc
+easy-db-lab logs query --source journald
 
 # Filter by host
 easy-db-lab logs query --source cassandra --host db0
 
 # Filter by systemd unit
-easy-db-lab logs query --source systemd --unit docker.service
+easy-db-lab logs query --source journald --unit docker.service
 
 # Search for text
 easy-db-lab logs query --grep "OutOfMemory"
@@ -95,43 +96,40 @@ easy-db-lab logs query --grep "OutOfMemory"
 # Time range and limit
 easy-db-lab logs query --since 30m --limit 500
 
-# Raw Victoria Logs query (LogsQL syntax)
-easy-db-lab logs query -q 'source:cassandra AND host:db0'
+# Raw LogQL query, sent unchanged
+easy-db-lab logs query -q '{service_name="cassandra", host_name="db0"}'
 ```
 
-### Log Stream Fields
+### Labels and Structured Metadata
 
-**Common fields** (all sources):
+**Stream labels** (indexed; use them in the `{...}` selector):
+
+| Label | Description |
+|-------|-------------|
+| `cluster` | `<name>-<clusterId>`; every stream carries it |
+| `source` | Log source: `cassandra-gc`, `system`, `tool-runner`, `journald`, `annotation` |
+| `host_name` | Hostname (db0, app0, control0) |
+| `node_role` | `db`, `app` or `control` |
+| `service_name` | OTel service name; `unknown_service` when the sender sets none |
+| `k8s_pod_name` | Name of the pod that emitted the log (container logs) |
+| `k8s_namespace_name` | Kubernetes namespace (container logs) |
+| `k8s_container_name` | Container name within the pod (container logs) |
+
+**Structured metadata** (every other attribute; match it with a label filter after the selector, such as `| systemd_unit="docker.service"`):
 
 | Field | Description |
 |-------|-------------|
-| `source` | Log source: cassandra, system, tool-runner |
-| `host` | Hostname (db0, app0, control0) |
-| `timestamp` | Log timestamp |
-| `message` | Log message content |
-
-**K8s container log fields** (from `logs/containers` pipeline):
-
-| Field | Description |
-|-------|-------------|
-| `k8s.pod.name` | Name of the pod that emitted the log |
-| `k8s.namespace.name` | Kubernetes namespace |
-| `k8s.container.name` | Container name within the pod |
-| `k8s.app.instance` | Value of the `app.kubernetes.io/instance` pod label — identifies the kit (e.g. `presto`, `tidb`) |
-
-**Source-specific fields**:
-
-| Source | Field | Description |
-|--------|-------|-------------|
-| systemd | `unit` | systemd unit name |
+| `k8s_app_instance` | Value of the `app.kubernetes.io/instance` pod label — identifies the kit (e.g. `presto`, `tidb`) |
+| `systemd_unit` | systemd unit name (journald) |
+| `trace_id`, `span_id` | Trace context, for OTLP logs from instrumented JVMs |
 
 ## Troubleshooting
 
 ### No logs appearing
 
-1. **Check Victoria Logs is running**:
+1. **Check Loki is running**:
    ```bash
-   kubectl get pods | grep victoria
+   kubectl get pods -l app.kubernetes.io/name=loki
    ```
 
 2. **Check OTel Collector is running**:
@@ -146,7 +144,7 @@ easy-db-lab logs query -q 'source:cassandra AND host:db0'
 
 ### Connection errors
 
-The `logs query` command uses the internal SOCKS5 proxy to connect to Victoria Logs. If you see connection errors:
+The `logs query` command uses the internal SOCKS5 proxy to connect to Loki. If you see connection errors:
 
 1. Ensure the cluster is running: `easy-db-lab status`
 2. The proxy is started automatically when needed
@@ -156,4 +154,5 @@ The `logs query` command uses the internal SOCKS5 proxy to connect to Victoria L
 
 | Port | Service | Location |
 |------|---------|----------|
-| 9428 | Victoria Logs HTTP API | Control node |
+| 3100 | Loki HTTP API | Control node |
+| 9098 | Loki gRPC | Control node |

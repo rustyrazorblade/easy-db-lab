@@ -120,15 +120,16 @@ class ProfilingEventTest {
     }
 
     @Test
-    fun `chunks lost reports profiles that can never be recovered`() {
-        // Distinct from ChunksRejected: a rejected chunk is one Pyroscope refused and is still on
-        // disk to look at, while these were deleted by pruning before they ever shipped.
-        val event = Event.Profiling.ChunksLost(host = "db7", lost = 12)
+    fun `recording stopped at the bound says how full the directory is and that it resumes`() {
+        // Nothing is deleted any more: a full directory pauses profiling instead, and the operator
+        // needs to know it will come back on its own and what brings it back sooner.
+        val event = Event.Profiling.RecordingStoppedAtBound(host = "db7", bytesOnDisk = 3_000, maxBytes = 2_000)
 
         assertThat(event.toDisplayString())
             .contains("db7")
-            .contains("12")
-            .contains("cannot be recovered")
+            .contains("3000 of 2000 bytes")
+            .contains("never deleted")
+            .contains("resumes")
         assertThat(event.isError()).isTrue()
     }
 

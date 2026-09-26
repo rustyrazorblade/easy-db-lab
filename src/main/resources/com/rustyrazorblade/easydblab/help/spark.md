@@ -17,6 +17,6 @@ Steps:
 
 Notes:
 - Build example jobs in `../spark-examples`, then point `spark submit` at the built jar.
-- Logs ingested to VictoriaLogs; query via Grafana or `easy-db-lab logs query`.
+- Logs ingested to Loki; query via Grafana, `easy-db-lab spark logs` or `easy-db-lab logs query`.
 
 Related: `provisioning`, `observability`.

@@ -42,8 +42,8 @@ If you're looking for tools to help manage Cassandra in *production* environment
 
 ### Monitoring and Observability
 
-- **[VictoriaMetrics](user-guide/victoria-metrics.md)**: Time-series database for metrics storage
-- **[VictoriaLogs](user-guide/victoria-logs.md)**: Centralized log aggregation
+- **[Mimir](user-guide/mimir.md)**: Metrics storage, written to S3 so metrics outlive the cluster
+- **[Loki](user-guide/loki.md)**: Log storage, written to S3 so logs outlive the cluster
 - **Tempo**: Distributed trace storage with trace-to-metrics correlation
 - **[Pyroscope](user-guide/profiling.md)**: Continuous profiling of database and system processes
 - **[Grafana](user-guide/monitoring.md)**: Pre-configured dashboards for Cassandra, ClickHouse, and system metrics

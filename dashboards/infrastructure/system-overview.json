@@ -3,22 +3,18 @@
     "list": [
       {
         "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
+          "type": "loki",
+          "uid": "loki"
         },
         "enable": true,
+        "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\"",
         "hide": false,
         "iconColor": "green",
+        "instant": false,
         "name": "easy-db-lab markers",
-        "target": {
-          "limit": 100,
-          "matchAny": false,
-          "tags": [
-            "easydblab"
-          ],
-          "type": "tags"
-        },
-        "type": "tags"
+        "tagKeys": "tags",
+        "textFormat": "",
+        "titleFormat": "{{cluster}}"
       }
     ]
   },
@@ -5161,8 +5157,8 @@
       {
         "current": {
           "selected": true,
-          "text": "VictoriaMetrics",
-          "value": "VictoriaMetrics"
+          "text": "Mimir",
+          "value": "mimir"
         },
         "hide": 0,
         "includeAll": false,
@@ -5253,7 +5249,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

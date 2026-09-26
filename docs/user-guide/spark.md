@@ -147,17 +147,22 @@ Options:
 
 ## Retrieving Logs
 
-Download logs for a Spark job:
+Query a Spark job's logs from Loki, scoped to the current cluster:
 
 ```bash
 easy-db-lab spark logs --step-id <step-id>
 ```
 
-Logs are automatically decompressed and include:
+Without `--step-id`, shows the logs of the most recent job. The step's name is its job's name, and the
+job's lines are the ones whose `service_name` is `spark-<job-name>`; if a job name was run more than
+once within `--since`, every run's lines are returned.
 
-- `stdout.gz` - Standard output
-- `stderr.gz` - Standard error
-- `controller.gz` - EMR controller logs
+- `--step-id` - EMR step whose job's logs to show
+- `--limit`, `-n` - Maximum number of lines (default: 100)
+- `--since` - Time range, e.g. `1h`, `30m`, `1d` (default: `1d`)
+
+Every line from an EMR node also carries the label `source="emr"`, so
+`easy-db-lab logs query --source emr` shows all of them.
 
 ## Architecture
 

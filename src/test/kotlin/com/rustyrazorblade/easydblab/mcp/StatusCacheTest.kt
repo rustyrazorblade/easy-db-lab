@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.mcp
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -36,6 +37,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.io.File
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -417,6 +419,46 @@ class StatusCacheTest : BaseKoinTest() {
         assertThat(s3["bucket"]?.jsonPrimitive?.content).isEqualTo("test-bucket-abc")
         assertThat(s3["fullpath"]?.jsonPrimitive?.content)
             .isEqualTo("test-bucket-abc/clusters/test-cluster-test-cluster-id")
+    }
+
+    @Test
+    fun `s3 section shows the observability store of the cluster's tenant`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val paths =
+            Json
+                .parseToJsonElement(statusCache.getStatus("s3")!!)
+                .jsonObject["paths"]!!
+                .jsonObject
+
+        assertThat(paths["traces"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/observability/traces")
+        assertThat(paths["profiles"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/observability/profiles")
+        assertThat(paths["metrics"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/observabilitymetrics/default")
+        assertThat(paths["logs"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/observability/logs")
+        assertThat(paths["annotations"]?.jsonPrimitive?.content)
+            .isEqualTo("s3://test-bucket-abc/observability/annotations/default")
+    }
+
+    @Test
+    fun `accessInfo observability names every backend on the control node`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockK8sService.getNamespaceStatus(any(), any())).thenReturn(Result.success("No resources found"))
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val observability =
+            Json
+                .parseToJsonElement(statusCache.getStatus("accessInfo")!!)
+                .jsonObject["observability"]!!
+                .jsonObject
+
+        assertThat(observability["grafana"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3000")
+        assertThat(observability["mimir"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:9009")
+        assertThat(observability["loki"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3100")
+        assertThat(observability["tempo"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3200")
+        assertThat(observability["pyroscope"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:4040")
     }
 
     @Test

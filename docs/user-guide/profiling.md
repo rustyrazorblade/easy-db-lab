@@ -96,7 +96,9 @@ easy-db-lab cassandra profile start --loop 30s -- -e cpu
 
 ### Retention on the node
 
-Chunks are bounded by both age and total size, and pruning covers unshipped chunks too, so an unreachable Pyroscope cannot fill `/mnt/db1` and take the node down.
+Shipped chunks are pruned by age and by total size: their data is already in Pyroscope. A chunk that has not shipped, or that Pyroscope rejected, is **never** deleted — it is data you cannot get back.
+
+When the directory reaches `--max-bytes` and only unshipped or rejected chunks are left, the node **stops recording** instead of deleting anything, so an unreachable Pyroscope still cannot fill `/mnt/db1` and take the database down. Recording resumes on its own once the directory is back under the bound — when shipping recovers and shipped chunks are pruned, or when you fetch and remove chunks. The stop is reported by `cassandra profile status` (`STOPPED`), a typed `Profiling.RecordingStoppedAtBound` event, the `jfr_recording_stopped` journal line, and the `edl_jfr_recording_stopped_at_bound` metric.
 
 ```bash
 easy-db-lab cassandra profile start --retention 30 --max-bytes 1073741824 -- -e cpu
@@ -104,9 +106,9 @@ easy-db-lab cassandra profile start --retention 30 --max-bytes 1073741824 -- -e 
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--loop` | `1m` | JFR rotation interval: a whole number of seconds (`30`) or a number with a unit (`30s`, `5m`, `1h`). Anything else is refused before any node is contacted. async-profiler's `hh:mm:ss` time-of-day form is deliberately **not** accepted — it rotates once a day, and because easy-db-lab ships every completed chunk continuously and sizes the completion and upload windows from a fixed interval, a daily rotation yields no usable profiles. The interval also has a floor of **10s**: a node ships at most 6 chunks per 60-second pass, so anything faster produces chunks quicker than they can be drained and the queue grows until retention deletes them unshipped. That floor is refused before any node is contacted too. |
+| `--loop` | `1m` | JFR rotation interval: a whole number of seconds (`30`) or a number with a unit (`30s`, `5m`, `1h`). Anything else is refused before any node is contacted. async-profiler's `hh:mm:ss` time-of-day form is deliberately **not** accepted — it rotates once a day, and because easy-db-lab ships every completed chunk continuously and sizes the completion and upload windows from a fixed interval, a daily rotation yields no usable profiles. The interval also has a floor of **10s**: a node ships at most 6 chunks per 60-second pass, so anything faster produces chunks quicker than they can be drained and the queue grows until the directory reaches `--max-bytes` and recording stops. That floor is refused before any node is contacted too. |
 | `--retention` | `60` | Minutes of profile data kept on each node. Must be long enough to hold the rotation: a chunk is not shippable until one `--loop` interval plus 10s have passed and the node only looks every 60s, so a window shorter than that prunes every chunk before it can ship. That combination is refused before any node is contacted, naming both flags. |
-| `--max-bytes` | `2 GiB` | Byte ceiling for the profile directory, pruned oldest-first. Must be at least 1 MiB, for the same reason: a ceiling below one JFR chunk deletes each chunk as it lands. |
+| `--max-bytes` | `2 GiB` | Byte ceiling for the profile directory. Shipped chunks are pruned oldest-first to stay under it; when only unshipped or rejected chunks remain at the ceiling, recording stops until the directory is back under it. Must be at least 1 MiB. |
 
 Profiles live in `/mnt/db1/cassandra/profiles`, deliberately **not** `artifacts/` — that directory is world-writable and holds operator-dropped heap dumps and jstacks, which automatic pruning must never delete.
 
@@ -149,17 +151,19 @@ easy-db-lab cassandra profile status
 
 Reports per node: what you asked for (`desired`) and what is actually attached to the JVM (`attached`), reported separately, the process being profiled, how long the session has been running, **your arguments verbatim**, the **full command line as actually invoked** (including the `-o jfr --loop ... -f ...` the tool appended), chunks pending/shipped/rejected, bytes held on disk, and the most recent shipping and attach errors.
 
-It also reports `pruned:` — how many chunks the node reclaimed for age, for size, and how many it destroyed before they ever reached Pyroscope. That last number is the only one that means lost data rather than reclaimed disk, and a non-zero value emits a typed `Profiling.ChunksLost` event.
+It also reports `pruned:` — how many shipped chunks the node reclaimed for age and for size — and `on disk:` as bytes held against the `--max-bytes` ceiling.
+
+A node that stopped recording at its byte ceiling is marked `STOPPED` and reports `attached: no (stopped at the size bound)`. It emits a typed `Profiling.RecordingStoppedAtBound` event, and no `Profiling.AttachFailed`: nothing is wrong with the JVM. Fix shipping, raise `--max-bytes`, or fetch and remove chunks; recording resumes on the next pass once the directory is back under the ceiling.
 
 The report is a snapshot the node's reconciler left behind, not a live reading, so `status` also prints `updated:` — how long ago that node last completed a pass. If the reconciler has stopped running, the report is marked `STALE` above everything else in it and names the unit to check, and `status` emits a typed `Profiling.StateStale` event. Without that, a node whose timer is masked keeps reporting `attached: yes` with a session age that grows convincingly against the current clock while nothing is running.
 
-A node whose configuration document cannot be read is marked `CONFIG` instead, never `STALE`, and emits `Profiling.NodeConfigUnreadable`. The two are opposite diagnoses. A pass that cannot read `/etc/easy-db-lab/profiling.json` refuses only the attach/detach decision — it keeps shipping and pruning under the bounds the last good pass recorded, and keeps reporting every metric — so the reconciler is running perfectly and the file it reads is what is wrong. Run `cassandra profile start` to rewrite it.
+A node whose configuration document cannot be read is marked `CONFIG` instead, never `STALE`, and emits `Profiling.NodeConfigUnreadable`. The two are opposite diagnoses. A pass that cannot read `/etc/easy-db-lab/profiling.json` refuses only the attach/detach decision — it keeps shipping and pruning under the bounds the last good pass recorded, and keeps reporting every metric — so the reconciler is running perfectly and the file it reads is what is wrong. Run `cassandra profile start` to rewrite it. A node with no document at all has simply never been configured; it is not marked `CONFIG`.
 
 `desired` and `attached` are two lines rather than one because they answer different questions. A node showing `desired: enabled` with `attached: no` is a node whose profiler will not attach — usually `PrivateTmp` hiding the attach socket, a `java.io.tmpdir` mismatch, or `perf_event_paranoid` — and `status` emits a typed `Profiling.AttachFailed` event with the reconciler's captured error, rather than letting it look like a deliberate stop.
 
 A node that has just started is marked `WAITING` instead, and reports `attached: no (waiting for the database to become ready)`. The reconciler will not attach to a database whose native transport is not yet listening, because async-profiler attaches with jattach, jattach signals `SIGQUIT`, and a process that has not installed a handler for that signal yet is killed by it — which is how attaching to a starting node used to kill it. This state clears itself on the first pass after the database is up, so it emits a typed `Profiling.AttachDeferred` event, which is **not** an error, and no `Profiling.AttachFailed`. If it does not clear, see `edl_jfr_attach_deferred_total` below.
 
-Shipping and attach problems are also visible without the CLI. The reconciler writes structured logfmt lines to journald, which Fluent Bit ships to VictoriaLogs, and exports counters to the node's OTel collector, which forwards them to VictoriaMetrics:
+Shipping and attach problems are also visible without the CLI. The reconciler writes structured logfmt lines to journald, which Fluent Bit ships to Loki, and exports counters to the node's OTel collector, which forwards them to Mimir:
 
 | Metric | Meaning |
 |---|---|
@@ -171,11 +175,11 @@ Shipping and attach problems are also visible without the CLI. The reconciler wr
 | `edl_jfr_attach_deferred_total` | Passes that wanted to attach, detach or replace a session against a database that was present but not ready to be signalled. Every node restart moves this once or twice and then stops; a rate that never returns to zero means the database is not coming up, or its native transport is on a port the node's `cassandra-ready` probe was not told about. The journald line carries the reason: `reason=database_not_ready` for the ordinary case, `reason=readiness_probe_missing` if the node image is missing `cassandra-ready` altogether. Counted apart from both neighbours above because all three are fixed in different places. |
 | `edl_jfr_attach_deferred` | `1` when the last pass deferred for that reason. Pair it with `edl_jfr_profiling_desired == 1 and edl_jfr_session_attached == 0` so a node that has just restarted does not fire that alert. |
 | `edl_jfr_session_starts_total` | Profiler attaches that succeeded, counting every restart. A steady rate here means the node is tearing the session down and re-attaching every pass — samples are lost across each detach — rather than profiling continuously. |
-| `edl_jfr_pruned_unshipped_total` | Chunks deleted before they ever reached Pyroscope, under either bound, counting only chunks that could still have shipped — a chunk Pyroscope rejected is counted above instead. **This is lost data**, and rising here is the answer to "my profiles never showed up", usually shipping failing for longer than the retention window. |
-| `edl_jfr_pruned_for_age_total` / `edl_jfr_pruned_for_size_total` | Chunks reclaimed by the retention window and by the byte ceiling. Which one is moving says which bound to raise. |
+| `edl_jfr_pruned_for_age_total` / `edl_jfr_pruned_for_size_total` | Shipped chunks reclaimed by the retention window and by the byte ceiling. Only shipped chunks are ever pruned. |
+| `edl_jfr_recording_stopped_at_bound` | `1` while the node is not recording because the profile directory is at `--max-bytes` with only unshipped or rejected chunks left. Profiling is paused, not failing; it resumes once the directory is back under the ceiling. |
 | `edl_jfr_chunks_pending` | Chunks the shipper could have shipped and did not. Both the chunk currently being written and any chunk still inside its completion window are excluded — neither has had its chance yet — so on a healthy node this sits at `0` and any non-zero value is a real backlog. |
-| `edl_jfr_config_unreadable` | `1` when the node could not read its desired-state document on the last pass. The pass still ships, prunes and reports; it will not change what it profiles until the document is rewritten. Pair this with `edl_jfr_profiling_desired`, which keeps reporting the last known answer rather than dropping out — a series that stops being written silently *resolves* an alert instead of firing it. |
-| `edl_jfr_ship_truncated` | `1` when a pass hit its per-pass upload budget with chunks still queued. A backlog draining normally sets this on a few consecutive passes and then clears it, so the reconciler is not unwell. Watch it together with `edl_jfr_chunks_pending`: if this stays at `1` while pending keeps climbing, the node is producing faster than it can ship and nothing will ever drain — check `edl_jfr_pruned_unshipped_total`, which is the data already lost to it. |
+| `edl_jfr_config_unreadable` | `1` when the node's desired-state document is present but could not be read on the last pass. A node that was never given one — every app and control node — reports `0`, so any non-zero value is a real finding. The pass still ships, prunes and reports; it will not change what it profiles until the document is rewritten. Pair this with `edl_jfr_profiling_desired`, which keeps reporting the last known answer rather than dropping out — a series that stops being written silently *resolves* an alert instead of firing it. |
+| `edl_jfr_ship_truncated` | `1` when a pass hit its per-pass upload budget with chunks still queued. A backlog draining normally sets this on a few consecutive passes and then clears it, so the reconciler is not unwell. Watch it together with `edl_jfr_chunks_pending`: if this stays at `1` while pending keeps climbing, the node is producing faster than it can ship and nothing will ever drain — it will stop recording when the directory reaches its ceiling (`edl_jfr_recording_stopped_at_bound`). |
 | `edl_jfr_bytes_on_disk` | Size of the profile directory. If the byte ceiling ever engages, this is the signal. |
 | `edl_jfr_ship_last_success_timestamp_seconds` | When a chunk last shipped successfully. |
 
@@ -248,6 +252,12 @@ not affected.
 
 Cassandra profiles arrive under `service_name=cassandra` with `hostname` and `cluster` labels.
 
+Pyroscope runs native multi-tenancy, and the Grafana Pyroscope datasource sends the cluster's tenant (`init --tenant`, default `default`) on every query, so Explore and the dashboards show the cluster's tenant. Every profile writer sends the same tenant in `X-Scope-OrgID`. A request made directly against Pyroscope's HTTP API (port 4040) must send it too: `curl -H 'X-Scope-OrgID: <tenant>' ...`.
+
+### Pyroscope UI
+
+Pyroscope 2's own UI is served on port 4040, and the profiling dashboard links to it as **Pyroscope UI**. On the first visit the UI finds that the server runs multi-tenancy (its first query is refused with `401 no org id`) and shows an **Enter a Tenant ID** dialog. Enter the cluster's tenant: the value of `init --tenant`, `default` if none was given. The UI remembers it per browser (in localStorage, as `pyroscope:tenantID`) and sends it as `X-Scope-OrgID` on every query; the navbar can change it. The dashboard link cannot preselect the tenant, because the UI reads no URL parameter for it.
+
 ## Profile types
 
 ### Cassandra (runtime async-profiler)
@@ -311,7 +321,7 @@ The eBPF profiler runs as a privileged Grafana Alloy DaemonSet (`pyroscope-ebpf`
 
 ### Pyroscope server
 
-The Pyroscope server runs on the control node with data stored in S3 (`s3://<account-bucket>/clusters/<name>-<id>/pyroscope/`). Configuration is in the `pyroscope-config` ConfigMap.
+The Pyroscope server (2.3.1) runs on the control node with pure v2 storage in the account bucket under `s3://<account-bucket>/observability/profiles/`, and native multi-tenancy. Nothing is deleted by age: the metastore's retention cleanup is off and there is no retention period. Its metastore index lives on the control node at `/mnt/db1/pyroscope`, so profiles stay queryable across a Pyroscope restart. After `down` the profiles stay in S3, but v2 cannot find them without the cluster's index (see [Where observability data is stored](monitoring.md#where-observability-data-is-stored)). Configuration is in the `pyroscope-config` ConfigMap.
 
 ## Data flow
 

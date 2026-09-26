@@ -29,6 +29,7 @@ data class ProfilingEffectiveState(
     val maxBytes: Long = 0,
     val pyroscopeUrl: String = "",
     val clusterName: String = "",
+    val tenant: String = "",
     val startedAt: Long = 0,
     val chunksPending: Int = 0,
     val chunksShipped: Long = 0,
@@ -36,7 +37,6 @@ data class ProfilingEffectiveState(
     val shipFailures: Long = 0,
     val prunedForAge: Long = 0,
     val prunedForSize: Long = 0,
-    val prunedUnshipped: Long = 0,
     val bytesOnDisk: Long = 0,
     val lastError: String = "",
     val attachFailures: Long = 0,
@@ -51,6 +51,13 @@ data class ProfilingEffectiveState(
      * start — not a failure — and it is reported separately for exactly that reason.
      */
     val attachDeferred: Boolean = false,
+    /**
+     * Why the node is not recording although profiling is wanted: `size_bound` when the profile
+     * directory reached [maxBytes] holding only unshipped or rejected chunks, which are never
+     * deleted. Empty otherwise. Recording resumes on its own once the directory is back under the
+     * bound.
+     */
+    val recordingStopped: String = "",
     val configError: String = "",
     val updatedAt: Long = 0,
 ) {
@@ -65,7 +72,29 @@ data class ProfilingEffectiveState(
      * `desiredEnabled && !running`, and calling that a failed attach reports every node restart as
      * a fault while telling the operator nothing they can act on.
      */
-    val attachFailed: Boolean get() = desiredEnabled && !running && !attachDeferred
+    val attachFailed: Boolean get() = desiredEnabled && !running && !attachDeferred && !stoppedAtBound
+
+    /**
+     * True when the node stopped recording because its profile directory is at its byte bound and
+     * holds only chunks that may not be deleted.
+     *
+     * Like a deferred attach it has `desiredEnabled && !running`, and like it, it is not a failed
+     * attach: the node is doing what it should, and what it needs is shipping fixed or chunks
+     * removed by hand.
+     */
+    val stoppedAtBound: Boolean get() = recordingStopped == SIZE_BOUND
+
+    companion object {
+        /** The reconciler's reason when it stops recording at the byte bound. */
+        const val SIZE_BOUND = "size_bound"
+
+        /**
+         * The reconciler's [configError] when its desired-state document is present and unusable.
+         * A missing document is reported as `no_desired_state` instead: that node is unconfigured,
+         * not broken.
+         */
+        const val CONFIG_UNREADABLE = "config_unreadable"
+    }
 
     /**
      * True when the node's reconciler could not read its desired-state document on that pass.
@@ -73,8 +102,11 @@ data class ProfilingEffectiveState(
      * The pass still ships, prunes and reports — it simply declines to attach or detach anything on
      * the strength of a document it cannot read. That distinction is what [configError] exists to
      * carry: without it, `status` blamed the reconcile timer for a corrupt configuration file.
+     *
+     * A node with no document at all is not this: it was never configured, and reporting it as an
+     * unreadable file sends the operator looking for corruption that is not there.
      */
-    val configUnreadable: Boolean get() = configError.isNotEmpty()
+    val configUnreadable: Boolean get() = configError == CONFIG_UNREADABLE
 }
 
 /**
@@ -97,6 +129,7 @@ val PROFILING_EFFECTIVE_STATE_KEYS =
         "maxBytes",
         "pyroscopeUrl",
         "clusterName",
+        "tenant",
         "startedAt",
         "chunksPending",
         "chunksShipped",
@@ -104,12 +137,12 @@ val PROFILING_EFFECTIVE_STATE_KEYS =
         "shipFailures",
         "prunedForAge",
         "prunedForSize",
-        "prunedUnshipped",
         "bytesOnDisk",
         "lastError",
         "attachFailures",
         "lastAttachError",
         "attachDeferred",
+        "recordingStopped",
         "configError",
         "updatedAt",
     )

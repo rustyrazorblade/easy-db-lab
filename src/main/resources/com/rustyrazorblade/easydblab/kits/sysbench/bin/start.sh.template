@@ -9,7 +9,27 @@ LAST_RUN_FILE="${KIT_DIR}/last-run.txt"
 SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
 POD_NAME="sysbench-${KIT_NAME}-$(date +%s)"
 LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
-VICTORIA_URL="http://${CONTROL_HOST_PRIVATE}:8428/api/v1/import/prometheus"
+# The collector on the control node. Its OTLP pipeline stamps every series with the cluster label and
+# sends it to Mimir under the cluster's tenant.
+OTLP_METRICS_URL="http://${CONTROL_HOST_PRIVATE}:4318/v1/metrics"
+
+# Pushes gauges, labelled with the kit instance, to the collector as OTLP JSON.
+# Usage: push_gauges <name> <value> [<name> <value> ...]. A value that is not a number is sent as 0.
+push_gauges() {
+  local now points="" sep="" value
+  now="$(date +%s)000000000"
+  while [ "$#" -ge 2 ]; do
+    value="$2"
+    [[ "${value}" =~ ^-?[0-9]+([.][0-9]+)?([eE][-+]?[0-9]+)?$ ]] || value=0
+    points+="${sep}{\"name\":\"$1\",\"gauge\":{\"dataPoints\":[{\"asDouble\":${value},\"timeUnixNano\":\"${now}\",\"attributes\":[{\"key\":\"kit\",\"value\":{\"stringValue\":\"${KIT_NAME}\"}}]}]}}"
+    sep=","
+    shift 2
+  done
+  curl -sf --max-time 2 -X POST "${OTLP_METRICS_URL}" \
+    -H 'Content-Type: application/json' \
+    --data-binary "{\"resourceMetrics\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"sysbench\"}}]},\"scopeMetrics\":[{\"metrics\":[${points}]}]}]}" \
+    2>/dev/null || true
+}
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
   DB_ARGS="--db-driver=mysql \
@@ -66,7 +86,7 @@ kubectl --kubeconfig="${KUBECONFIG}" wait \
 } > "${LAST_RUN_FILE}"
 
 # Stream logs, echo every line, capture the full log, push interval stats to
-# VictoriaMetrics, and persist the final summary block to LAST_RUN_FILE.
+# the collector, and persist the final summary block to LAST_RUN_FILE.
 # Interval lines match:
 #   "[ Ns ] thds: N tps: N.NN qps: N.NN ... lat (ms,99%): N.NN err/s: N.NN ..."
 # sysbench interval reports only ever emit the single configured percentile (99%),
@@ -93,11 +113,8 @@ kubectl --kubeconfig="${KUBECONFIG}" logs -f "${POD_NAME}" | tee "${LOG_FILE}" |
       }
       print tps, qps, lat, err
     }')"
-    curl -sf --max-time 2 -X POST "${VICTORIA_URL}" \
-      --data-binary "sysbench_tps{kit=\"${KIT_NAME}\"} ${TPS:-0}
-sysbench_qps{kit=\"${KIT_NAME}\"} ${QPS:-0}
-sysbench_lat_p99_ms{kit=\"${KIT_NAME}\"} ${LAT:-0}
-sysbench_errors_per_second{kit=\"${KIT_NAME}\"} ${ERR:-0}" 2>/dev/null || true
+    push_gauges sysbench_tps "${TPS:-0}" sysbench_qps "${QPS:-0}" \
+      sysbench_lat_p99_ms "${LAT:-0}" sysbench_errors_per_second "${ERR:-0}"
   fi
 done
 
@@ -122,10 +139,7 @@ read -r P50 P95 P99 <<< "$(awk '
     print p50, p95, p99
   }
 ' "${LOG_FILE}")"
-curl -sf --max-time 2 -X POST "${VICTORIA_URL}" \
-  --data-binary "sysbench_lat_p50_ms{kit=\"${KIT_NAME}\"} ${P50:-0}
-sysbench_lat_p95_ms{kit=\"${KIT_NAME}\"} ${P95:-0}
-sysbench_lat_p99_ms{kit=\"${KIT_NAME}\"} ${P99:-0}" 2>/dev/null || true
+push_gauges sysbench_lat_p50_ms "${P50:-0}" sysbench_lat_p95_ms "${P95:-0}" sysbench_lat_p99_ms "${P99:-0}"
 rm -f "${LOG_FILE}"
 
 echo "Run summary written to ${LAST_RUN_FILE}"

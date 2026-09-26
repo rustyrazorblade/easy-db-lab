@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceConfig
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
@@ -29,23 +30,31 @@ import java.io.IOException
  * are built as Fabric8 typed objects and applied via the K8s API. One-off dashboards go through
  * the Grafana HTTP API.
  */
-interface GrafanaDashboardService {
+interface GrafanaDashboardService : GrafanaAnnotationSource {
     /**
      * Creates the grafana-datasources ConfigMap.
      *
      * @param controlHost The control node running K3s
+     * @param tenant The cluster's observability tenant; the Tempo and Pyroscope datasources query it
      * @return Result indicating success or failure
      */
-    fun createDatasourcesConfigMap(controlHost: ClusterHost): Result<Unit>
+    fun createDatasourcesConfigMap(
+        controlHost: ClusterHost,
+        tenant: String,
+    ): Result<Unit>
 
     /**
      * Puts the dashboard tree on the control node, then builds and applies the Grafana K8s
      * resources (datasources, provisioning, deployment).
      *
      * @param controlHost The control node running K3s
+     * @param tenant The cluster's observability tenant, passed to [createDatasourcesConfigMap]
      * @return Result indicating success or failure
      */
-    fun uploadDashboards(controlHost: ClusterHost): Result<Unit>
+    fun uploadDashboards(
+        controlHost: ClusterHost,
+        tenant: String,
+    ): Result<Unit>
 
     /**
      * Uploads a single dashboard JSON file to the running Grafana instance via HTTP API.
@@ -103,7 +112,7 @@ interface GrafanaDashboardService {
      * @throws IllegalStateException on a non-2xx response, an unreachable endpoint, or a response that
      *   fills the requested limit (a possible truncation).
      */
-    fun fetchAnnotations(controlHost: ClusterHost): String
+    override fun fetchAnnotations(controlHost: ClusterHost): String
 }
 
 /**
@@ -123,6 +132,7 @@ class DefaultGrafanaDashboardService(
     private val treeUploader: GrafanaDashboardTreeUploader,
     private val eventBus: EventBus,
     private val okHttpClient: OkHttpClient,
+    private val configChangeReport: ConfigChangeReport,
 ) : GrafanaDashboardService {
     companion object {
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
@@ -140,22 +150,28 @@ class DefaultGrafanaDashboardService(
             }
     }
 
-    override fun createDatasourcesConfigMap(controlHost: ClusterHost): Result<Unit> {
-        val config = GrafanaDatasourceConfig.create()
-        val yamlContent = config.toYaml()
-
-        return k8sService.createConfigMap(
+    override fun createDatasourcesConfigMap(
+        controlHost: ClusterHost,
+        tenant: String,
+    ): Result<Unit> =
+        k8sService.createConfigMap(
             controlHost = controlHost,
             namespace = DEFAULT_NAMESPACE,
             name = DATASOURCES_CONFIGMAP_NAME,
-            data = mapOf("datasources.yaml" to yamlContent),
+            data = datasourcesData(tenant),
             labels = mapOf("app.kubernetes.io/name" to "grafana"),
         )
-    }
 
-    override fun uploadDashboards(controlHost: ClusterHost): Result<Unit> {
+    /** The contents of the `grafana-datasources` ConfigMap for [tenant]. */
+    private fun datasourcesData(tenant: String): Map<String, String> =
+        mapOf("datasources.yaml" to GrafanaDatasourceConfig.create(tenant).toYaml())
+
+    override fun uploadDashboards(
+        controlHost: ClusterHost,
+        tenant: String,
+    ): Result<Unit> {
         eventBus.emit(Event.Grafana.DatasourcesCreating)
-        createDatasourcesConfigMap(controlHost).getOrElse { exception ->
+        createDatasourcesConfigMap(controlHost, tenant).getOrElse { exception ->
             return Result.failure(
                 IllegalStateException("Failed to create Grafana datasources ConfigMap: ${exception.message}", exception),
             )
@@ -167,7 +183,15 @@ class DefaultGrafanaDashboardService(
             )
         }
 
-        val resources = manifestBuilder.buildAllResources()
+        // Grafana reads grafana-datasources, created above rather than applied with the rest, so hash
+        // it in: a datasource change then rolls Grafana.
+        val resources =
+            ConfigHashAnnotator.annotate(
+                manifestBuilder.buildAllResources(),
+                mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(tenant)),
+            )
+        runCatching { configChangeReport.report(controlHost, resources, DEFAULT_NAMESPACE) }
+            .getOrElse { exception -> return Result.failure(exception) }
         eventBus.emit(Event.Grafana.ResourcesApplying(resources.size))
         for (resource in resources) {
             val kind = resource.kind

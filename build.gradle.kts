@@ -419,11 +419,21 @@ tasks.register("testScripts") {
         "testCassandraScripts",
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
+        "testSysbenchStartScript",
     )
 }
 
-// Unit-test bin/export-workload-metrics: it must export only series live in its window, not the
-// day's worth VictoriaMetrics' /api/v1/series returns. curl is stubbed; no cluster, no network.
+// Unit-test the sysbench kit's start script: it pushes its figures as OTLP JSON to the collector,
+// which labels them with the cluster and sends them to Mimir. kubectl and curl are stubbed.
+tasks.register<Exec>("testSysbenchStartScript") {
+    group = "Verification"
+    description = "Unit-test the sysbench kit start script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/sysbench-start.test.sh")
+}
+
+// Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,
+// in the cluster's tenant. curl is stubbed; no cluster, no network.
 tasks.register<Exec>("testExportWorkloadMetrics") {
     group = "Verification"
     description = "Unit-test the export-workload-metrics catalog script"
@@ -481,7 +491,7 @@ tasks.register<Exec>("testAxonSudoers") {
 
 // Unit-test the Fluent Bit journald filter's drop rule: Cassandra's logback lines are duplicates of
 // what the OTel agent already delivers, while its non-logback output (JVM crash, OOM, pre-logback)
-// reaches VictoriaLogs only through the journal. Runs Lua in Docker; no cluster, no Fluent Bit.
+// reaches Loki only through the journal. Runs Lua in Docker; no cluster, no Fluent Bit.
 tasks.register<Exec>("testFluentBitFilter") {
     group = "Verification"
     description = "Unit-test the Fluent Bit journald Lua filter"

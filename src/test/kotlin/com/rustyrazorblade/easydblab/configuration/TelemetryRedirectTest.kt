@@ -12,8 +12,8 @@ class TelemetryRedirectTest {
     fun `fromBaseHost derives all four endpoints from the base host and known ports`() {
         val redirect = TelemetryRedirect.fromBaseHost("10.0.0.5")
 
-        assertThat(redirect.metrics).isEqualTo("http://10.0.0.5:8428/api/v1/write")
-        assertThat(redirect.logs).isEqualTo("http://10.0.0.5:9428/insert/opentelemetry")
+        assertThat(redirect.metrics).isEqualTo("http://10.0.0.5:9009/api/v1/push")
+        assertThat(redirect.logs).isEqualTo("http://10.0.0.5:3100/otlp")
         assertThat(redirect.traces).isEqualTo("10.0.0.5:4320")
         assertThat(redirect.profiles).isEqualTo("http://10.0.0.5:4040")
     }
@@ -36,8 +36,8 @@ class TelemetryRedirectTest {
 
         assertThat(redirect.traces).isEqualTo("otel.example.com:4317")
         // The other three remain derived from the base host.
-        assertThat(redirect.metrics).isEqualTo("http://10.0.0.5:8428/api/v1/write")
-        assertThat(redirect.logs).isEqualTo("http://10.0.0.5:9428/insert/opentelemetry")
+        assertThat(redirect.metrics).isEqualTo("http://10.0.0.5:9009/api/v1/push")
+        assertThat(redirect.logs).isEqualTo("http://10.0.0.5:3100/otlp")
         assertThat(redirect.profiles).isEqualTo("http://10.0.0.5:4040")
     }
 

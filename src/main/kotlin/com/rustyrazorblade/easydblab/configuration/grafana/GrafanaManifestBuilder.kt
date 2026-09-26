@@ -33,11 +33,14 @@ class GrafanaManifestBuilder(
     private val templateService: TemplateService,
 ) {
     companion object {
+        /** The Grafana Deployment's name, which the deploy waits on to finish rolling out. */
+        const val DEPLOYMENT_NAME = "grafana"
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "grafana"
-        private const val GRAFANA_IMAGE = "grafana/grafana:13.0.2"
-        private const val IMAGE_RENDERER_IMAGE =
-            "grafana/grafana-image-renderer@sha256:6c432f1aed266ce56433becacd197cdab708f9089104d67664207b4fe0975055"
+
+        /** The Grafana image the cluster deploys; tests run the same one. */
+        const val GRAFANA_IMAGE = "grafana/grafana:13.2.2"
+        private const val IMAGE_RENDERER_IMAGE = "grafana/grafana-image-renderer:v5.12.4"
         private const val GRAFANA_PORT = 3000
         private const val IMAGE_RENDERER_PORT = 8081
         private const val PROVISIONING_CONFIGMAP_NAME = "grafana-dashboards-config"
@@ -72,7 +75,7 @@ class GrafanaManifestBuilder(
         // CrashLoopBackOffs. It is still declared as a datasource in GrafanaDatasourceConfig; the
         // bundled plugin serves it without an install.
         private const val GRAFANA_PLUGINS =
-            "grafana-clickhouse-datasource,victoriametrics-logs-datasource,grafana-polystat-panel"
+            "grafana-clickhouse-datasource,grafana-polystat-panel"
 
         private const val RENDERER_TOKEN = "easydblab-renderer"
     }
@@ -107,7 +110,7 @@ class GrafanaManifestBuilder(
 
         return DeploymentBuilder()
             .withNewMetadata()
-            .withName("grafana")
+            .withName(DEPLOYMENT_NAME)
             .withNamespace(NAMESPACE)
             .addToLabels("app.kubernetes.io/name", APP_LABEL)
             .endMetadata()

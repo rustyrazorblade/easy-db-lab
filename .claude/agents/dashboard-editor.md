@@ -60,7 +60,7 @@ DS=$(curl -s "$G/api/datasources" | jq -r '.[] | select(.type=="prometheus") | .
 curl -s -G "$G/api/datasources/proxy/uid/$DS/api/v1/query" --data-urlencode 'query=<expr>'
 ```
 
-Testing PromQL against VictoriaMetrics directly proves the *query* is correct. It says nothing
+Testing PromQL against Mimir directly proves the *query* is correct. It says nothing
 about what Grafana is serving. Those are different failures, and only the second is the one the
 user sees. Do both, and report the actual numbers you got back — never "it should now show
 positive values."

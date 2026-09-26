@@ -46,6 +46,7 @@ class ProfilingEffectiveStateTest {
         assertThat(state.maxBytes).isEqualTo(777)
         assertThat(state.pyroscopeUrl).isEqualTo("http://10.0.1.5:4040")
         assertThat(state.clusterName).isEqualTo("test-cluster")
+        assertThat(state.tenant).isEqualTo("acme")
         assertThat(state.startedAt).isEqualTo(1_755_999_000)
         assertThat(state.chunksPending).isEqualTo(3)
         assertThat(state.chunksShipped).isEqualTo(11)
@@ -53,12 +54,12 @@ class ProfilingEffectiveStateTest {
         assertThat(state.shipFailures).isEqualTo(5)
         assertThat(state.prunedForAge).isEqualTo(13)
         assertThat(state.prunedForSize).isEqualTo(7)
-        assertThat(state.prunedUnshipped).isEqualTo(4)
         assertThat(state.bytesOnDisk).isEqualTo(999)
         assertThat(state.lastError).isEqualTo("http_500")
         assertThat(state.attachFailures).isEqualTo(6)
         assertThat(state.lastAttachError).isEqualTo("Could not open /tmp/.java_pid4242")
         assertThat(state.attachDeferred).isTrue()
+        assertThat(state.recordingStopped).isEqualTo("size_bound")
         assertThat(state.configError).isEqualTo("config_unreadable")
         assertThat(state.updatedAt).isEqualTo(1_756_000_000)
     }
@@ -67,6 +68,13 @@ class ProfilingEffectiveStateTest {
     fun `a node reporting a corrupt configuration is distinguishable from one reporting nothing`() {
         assertThat(ProfilingEffectiveState(configError = "config_unreadable").configUnreadable).isTrue()
         assertThat(ProfilingEffectiveState().configUnreadable).isFalse()
+    }
+
+    @Test
+    fun `a node that was never given a configuration is not reporting a corrupt one`() {
+        // The reconciler names a missing document no_desired_state. That node is unconfigured, not
+        // broken, and telling the operator its file cannot be read sends them looking for corruption.
+        assertThat(ProfilingEffectiveState(configError = "no_desired_state").configUnreadable).isFalse()
     }
 
     @Test
@@ -81,6 +89,17 @@ class ProfilingEffectiveStateTest {
         assertThat(failing.attachFailed).isTrue()
     }
 
+    @Test
+    fun `a node stopped at its size bound is not reported as one that cannot attach`() {
+        // Profiling enabled and nothing running again — but deliberately: the directory is full of
+        // chunks that may not be deleted, so the node stopped recording.
+        val stopped = ProfilingEffectiveState(desiredEnabled = true, running = false, recordingStopped = "size_bound")
+
+        assertThat(stopped.stoppedAtBound).isTrue()
+        assertThat(stopped.attachFailed).isFalse()
+        assertThat(ProfilingEffectiveState(desiredEnabled = true, running = true).stoppedAtBound).isFalse()
+    }
+
     /** A distinct, non-default JSON value per key, so a field that failed to bind is visible. */
     private val samples =
         mapOf(
@@ -93,6 +112,7 @@ class ProfilingEffectiveStateTest {
             "maxBytes" to "777",
             "pyroscopeUrl" to """"http://10.0.1.5:4040"""",
             "clusterName" to """"test-cluster"""",
+            "tenant" to """"acme"""",
             "startedAt" to "1755999000",
             "chunksPending" to "3",
             "chunksShipped" to "11",
@@ -100,12 +120,12 @@ class ProfilingEffectiveStateTest {
             "shipFailures" to "5",
             "prunedForAge" to "13",
             "prunedForSize" to "7",
-            "prunedUnshipped" to "4",
             "bytesOnDisk" to "999",
             "lastError" to """"http_500"""",
             "attachFailures" to "6",
             "lastAttachError" to """"Could not open /tmp/.java_pid4242"""",
             "attachDeferred" to "true",
+            "recordingStopped" to """"size_bound"""",
             "configError" to """"config_unreadable"""",
             "updatedAt" to "1756000000",
         )

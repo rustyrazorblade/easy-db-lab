@@ -70,7 +70,7 @@ Neo4j Browser is at `http://<db node private IP>:30474/`.
 
 The OpenTelemetry Java agent from the base AMI is mounted into the pod and loaded by the Neo4j
 JVM. It pushes metrics over OTLP to the collector on the pod's own node every 5 seconds. The
-series land in VictoriaMetrics under `job="neo4j"`.
+series land in Mimir under `job="neo4j"`.
 
 ## Lifecycle
 

@@ -120,11 +120,8 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
                 .split(",")
 
         assertThat(plugins).doesNotContain("grafana-pyroscope-datasource")
-        assertThat(plugins).contains(
-            "grafana-clickhouse-datasource",
-            "victoriametrics-logs-datasource",
-            "grafana-polystat-panel",
-        )
+        // Loki is a core datasource too; the VictoriaLogs plugin went with VictoriaLogs.
+        assertThat(plugins).containsExactlyInAnyOrder("grafana-clickhouse-datasource", "grafana-polystat-panel")
     }
 
     @Test

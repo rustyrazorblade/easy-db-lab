@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.services.LogQl
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
@@ -34,74 +36,86 @@ data class GrafanaDatasourceConfig(
     }
 
     companion object {
+        /** The custom header slot Grafana sends the tenant in (`httpHeaderName1`/`httpHeaderValue1`). */
+        private const val TENANT_HEADER_VALUE_KEY = "httpHeaderValue1"
+
+        private typealias Uid = Constants.Grafana.DatasourceUid
+
         /**
-         * Creates the full Grafana datasource configuration with all datasources.
+         * Creates the full Grafana datasource configuration with all datasources: Mimir (metrics),
+         * Loki (logs), Tempo (traces) and Pyroscope (profiles).
          *
+         * Every backend runs native multi-tenancy, so each datasource sends [tenant] in
+         * `X-Scope-OrgID` on every query; without it they would read no data.
+         *
+         * @param tenant The cluster's observability tenant.
          * @return Complete datasource config ready for serialization
          */
-        fun create(): GrafanaDatasourceConfig =
-            GrafanaDatasourceConfig(
+        fun create(tenant: String): GrafanaDatasourceConfig {
+            // Every backend runs native multi-tenancy: each datasource sends the tenant on every query.
+            val tenantHeader = GrafanaDatasourceJsonData(httpHeaderName1 = Constants.Observability.TENANT_HEADER)
+            val tenantValue = mapOf(TENANT_HEADER_VALUE_KEY to tenant)
+            return GrafanaDatasourceConfig(
                 datasources =
                     listOf(
                         GrafanaDatasource(
-                            name = "VictoriaMetrics",
+                            name = "Mimir",
                             type = "prometheus",
-                            uid = "VictoriaMetrics",
-                            url = "http://localhost:8428",
+                            uid = Uid.MIMIR,
+                            url = "http://localhost:${Constants.K8s.MIMIR_HTTP_PORT}/prometheus",
                             isDefault = true,
-                            jsonData = GrafanaDatasourceJsonData(httpMethod = "POST"),
+                            jsonData = tenantHeader.copy(httpMethod = "POST"),
+                            secureJsonData = tenantValue,
                         ),
                         GrafanaDatasource(
-                            name = "VictoriaLogs",
-                            type = "victoriametrics-logs-datasource",
-                            uid = "victorialogs",
-                            url = "http://localhost:9428",
+                            name = "Loki",
+                            type = "loki",
+                            uid = Uid.LOKI,
+                            url = "http://localhost:${Constants.K8s.LOKI_HTTP_PORT}",
+                            secureJsonData = tenantValue,
+                            // Loki marks each line's level itself (detected_level), so no level rules.
                             jsonData =
-                                GrafanaDatasourceJsonData(
+                                tenantHeader.copy(
                                     derivedFields =
                                         listOf(
                                             GrafanaDerivedField(
                                                 name = "trace_id",
-                                                field = "trace_id",
-                                                matcherRegex = "(.*)",
-                                                url = "",
-                                                datasourceUid = "tempo",
+                                                // The collector keeps trace_id as structured metadata.
+                                                matcherType = "label",
+                                                matcherRegex = "trace_id",
+                                                // `$$` escapes Grafana's provisioning-time env expansion.
+                                                url = "\$\${__value.raw}",
+                                                datasourceUid = Uid.TEMPO,
                                                 urlDisplayLabel = "View Trace in Tempo",
                                             ),
-                                        ),
-                                    logLevelRules =
-                                        listOf(
-                                            GrafanaLogLevelRule("severity", "caseInsensitiveEquals", "error", "error"),
-                                            GrafanaLogLevelRule("severity", "caseInsensitiveEquals", "warn", "warning"),
-                                            GrafanaLogLevelRule("severity", "caseInsensitiveEquals", "warning", "warning"),
-                                            GrafanaLogLevelRule("severity", "caseInsensitiveEquals", "info", "info"),
-                                            GrafanaLogLevelRule("severity", "caseInsensitiveEquals", "debug", "debug"),
-                                            GrafanaLogLevelRule("severity", "caseInsensitiveEquals", "trace", "trace"),
                                         ),
                                 ),
                         ),
                         GrafanaDatasource(
                             name = "Tempo",
                             type = "tempo",
-                            uid = "tempo",
-                            url = "http://localhost:3200",
+                            uid = Uid.TEMPO,
+                            url = "http://localhost:${Constants.K8s.TEMPO_PORT}",
+                            secureJsonData = tenantValue,
                             jsonData =
-                                GrafanaDatasourceJsonData(
-                                    serviceMap = GrafanaServiceMapConfig(datasourceUid = "VictoriaMetrics"),
+                                tenantHeader.copy(
+                                    serviceMap = GrafanaServiceMapConfig(datasourceUid = Uid.MIMIR),
                                     nodeGraph = GrafanaNodeGraphConfig(enabled = true),
                                     tracesToLogsV2 =
                                         GrafanaTracesToLogsConfig(
-                                            datasourceUid = "victorialogs",
+                                            datasourceUid = Uid.LOKI,
                                             spanStartTimeShift = "-1m",
                                             spanEndTimeShift = "1m",
                                             filterByTraceID = true,
                                             filterBySpanID = false,
                                             customQuery = true,
-                                            query = "trace_id:\"\${__trace.traceId}\"",
+                                            // `$$` escapes Grafana's provisioning-time env expansion,
+                                            // which would otherwise turn the macro into an empty string.
+                                            query = LogQl.traceToLogs("\$\${__trace.traceId}"),
                                         ),
                                     tracesToMetrics =
                                         GrafanaTracesToMetricsConfig(
-                                            datasourceUid = "VictoriaMetrics",
+                                            datasourceUid = Uid.MIMIR,
                                             spanStartTimeShift = "-1m",
                                             spanEndTimeShift = "1m",
                                             queries =
@@ -123,11 +137,14 @@ data class GrafanaDatasourceConfig(
                         GrafanaDatasource(
                             name = "Pyroscope",
                             type = "grafana-pyroscope-datasource",
-                            uid = "pyroscope",
-                            url = "http://localhost:4040",
+                            uid = Uid.PYROSCOPE,
+                            url = "http://localhost:${Constants.K8s.PYROSCOPE_PORT}",
+                            jsonData = tenantHeader,
+                            secureJsonData = tenantValue,
                         ),
                     ),
             )
+        }
     }
 }
 
@@ -145,18 +162,21 @@ data class GrafanaDatasource(
     val isDefault: Boolean? = null,
     val editable: Boolean = false,
     val jsonData: GrafanaDatasourceJsonData? = null,
+    /** Values Grafana stores encrypted, such as the tenant header value (`httpHeaderValue1`). */
+    val secureJsonData: Map<String, String>? = null,
 )
 
 /** Union of all possible datasource jsonData fields across datasource types. */
 @Serializable
 data class GrafanaDatasourceJsonData(
     val httpMethod: String? = null,
+    /** Name of the first custom HTTP header sent on every query; its value is in secureJsonData. */
+    val httpHeaderName1: String? = null,
     val serviceMap: GrafanaServiceMapConfig? = null,
     val nodeGraph: GrafanaNodeGraphConfig? = null,
     val tracesToLogsV2: GrafanaTracesToLogsConfig? = null,
     val tracesToMetrics: GrafanaTracesToMetricsConfig? = null,
     val derivedFields: List<GrafanaDerivedField>? = null,
-    val logLevelRules: List<GrafanaLogLevelRule>? = null,
 )
 
 /** Links the service map view in Grafana Explore to a Prometheus-compatible datasource. */
@@ -179,8 +199,8 @@ data class GrafanaTracesToLogsConfig(
     val spanEndTimeShift: String,
     val filterByTraceID: Boolean,
     val filterBySpanID: Boolean,
-    // customQuery bypasses Grafana's default label generation which appends service_name (Loki-style
-    // dot→underscore conversion) incompatible with VictoriaLogs' native service.name field naming.
+    // customQuery replaces Grafana's generated query, which filters on the span's service labels,
+    // with a trace-id lookup across the selected clusters.
     val customQuery: Boolean = false,
     val query: String? = null,
 )
@@ -201,22 +221,16 @@ data class GrafanaTraceMetricQuery(
     val query: String,
 )
 
-/** Defines a derived field that extracts a value from a log record and renders it as a link or datasource reference. */
+/**
+ * A derived field of the Loki datasource: a value taken from each log line, rendered as a link.
+ * With `matcherType: label`, [matcherRegex] names the label or structured-metadata key to read.
+ */
 @Serializable
 data class GrafanaDerivedField(
     val name: String,
-    val field: String,
+    val matcherType: String,
     val matcherRegex: String,
     val url: String,
     val datasourceUid: String,
     val urlDisplayLabel: String,
-)
-
-/** Maps a log field value to a Grafana log level, used to color the logs volume histogram in Explore. */
-@Serializable
-data class GrafanaLogLevelRule(
-    val field: String,
-    val operator: String,
-    val value: String,
-    val level: String,
 )

@@ -15,22 +15,18 @@
       },
       {
         "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
+          "type": "loki",
+          "uid": "loki"
         },
         "enable": true,
+        "expr": "{source=\"annotation\", cluster=~\".+\"} | dashboard_uid=\"\"",
         "hide": false,
         "iconColor": "green",
+        "instant": false,
         "name": "easy-db-lab markers",
-        "target": {
-          "limit": 100,
-          "matchAny": false,
-          "tags": [
-            "easydblab"
-          ],
-          "type": "tags"
-        },
-        "type": "tags"
+        "tagKeys": "tags",
+        "textFormat": "",
+        "titleFormat": "{{cluster}}"
       }
     ]
   },
@@ -58,7 +54,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "One number per dimension: the highest node divided by the lowest. 1.00 means the nodes agree. Only strictly positive metrics appear here, so the ratio is always defined.",
       "fieldConfig": {
@@ -106,7 +102,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}) / min(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"})",
@@ -118,7 +114,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}) / min(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"})",
@@ -130,7 +126,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(cassandra_storage_load_bytes{job=\"cassandra\", host_name=~\"$host\"}) / min(cassandra_storage_load_bytes{job=\"cassandra\", host_name=~\"$host\"})",
@@ -142,7 +138,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (cassandra_table_sstable_count_live{job=\"cassandra\", host_name=~\"$host\"}))\n  / min(sum by (host_name) (cassandra_table_sstable_count_live{job=\"cassandra\", host_name=~\"$host\"}))",
@@ -154,7 +150,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))\n  / min(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))",
@@ -166,7 +162,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))\n  / min(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -195,7 +191,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "One series per node. The gauges are pre-aggregated on each node, so they are shown side by side and never combined into a cluster percentile.",
       "fieldConfig": {
@@ -277,7 +273,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"} / ${latency_unit}",
@@ -300,7 +296,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Slowest node minus fastest node at the same percentile. This is a spread statistic across per-node gauges, not a re-aggregated percentile.",
       "fieldConfig": {
@@ -413,7 +409,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(max(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}) - min(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"})) / ${latency_unit}",
@@ -425,7 +421,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}) / min(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"})",
@@ -441,7 +437,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Same treatment for writes.",
       "fieldConfig": {
@@ -523,7 +519,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"} / ${latency_unit}",
@@ -546,7 +542,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Slowest minus fastest node, and their ratio on the right axis.",
       "fieldConfig": {
@@ -659,7 +655,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(max(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}) - min(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"})) / ${latency_unit}",
@@ -671,7 +667,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}) / min(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"})",
@@ -700,7 +696,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Live bytes per node. With even token distribution these should track each other closely.",
       "fieldConfig": {
@@ -782,7 +778,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_storage_load_bytes{job=\"cassandra\", host_name=~\"$host\"}",
@@ -798,7 +794,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Largest node minus smallest. A widening gap means an imbalance in ownership or in compaction.",
       "fieldConfig": {
@@ -880,7 +876,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(cassandra_storage_load_bytes{job=\"cassandra\", host_name=~\"$host\"}) - min(cassandra_storage_load_bytes{job=\"cassandra\", host_name=~\"$host\"})",
@@ -896,7 +892,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "SSTables summed over all tables on each node. Different compaction behaviour shows here first.",
       "fieldConfig": {
@@ -978,7 +974,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (cassandra_table_sstable_count_live{job=\"cassandra\", host_name=~\"$host\"})",
@@ -1001,7 +997,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Most SSTables minus fewest. A node holding far more is doing more work on every read.",
       "fieldConfig": {
@@ -1083,7 +1079,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (cassandra_table_sstable_count_live{job=\"cassandra\", host_name=~\"$host\"}))\n  - min(sum by (host_name) (cassandra_table_sstable_count_live{job=\"cassandra\", host_name=~\"$host\"}))",
@@ -1099,7 +1095,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Pending compaction tasks per node.",
       "fieldConfig": {
@@ -1181,7 +1177,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_compaction_tasks_pending{job=\"cassandra\", host_name=~\"$host\"}",
@@ -1197,7 +1193,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Deepest backlog minus shallowest.",
       "fieldConfig": {
@@ -1279,7 +1275,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(cassandra_compaction_tasks_pending{job=\"cassandra\", host_name=~\"$host\"}) - min(cassandra_compaction_tasks_pending{job=\"cassandra\", host_name=~\"$host\"})",
@@ -1308,7 +1304,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Stop-the-world pause time as a share of wall clock. Concurrent ZGC cycles are excluded so the number means the same thing on a G1 node and on a ZGC node.",
       "fieldConfig": {
@@ -1390,7 +1386,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval]))",
@@ -1413,7 +1409,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Worst node minus best node. Only the difference is shown, because the ratio is undefined when a node reports no pause time at all.",
       "fieldConfig": {
@@ -1495,7 +1491,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * (max(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - min(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval]))))",
@@ -1511,7 +1507,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Heap occupancy summed over pools. Collector choice changes the shape of this line as much as load does.",
       "fieldConfig": {
@@ -1593,7 +1589,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})",
@@ -1616,7 +1612,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Fullest heap minus emptiest.",
       "fieldConfig": {
@@ -1698,7 +1694,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))\n  - min(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))",
@@ -1727,7 +1723,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "All pending tasks summed per node. A single node queueing while the others are idle is the clearest form of divergence.",
       "fieldConfig": {
@@ -1809,7 +1805,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (cassandra_thread_pool_tasks_pending{job=\"cassandra\", host_name=~\"$host\"})",
@@ -1832,7 +1828,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Deepest total queue minus shallowest.",
       "fieldConfig": {
@@ -1914,7 +1910,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (cassandra_thread_pool_tasks_pending{job=\"cassandra\", host_name=~\"$host\"}))\n  - min(sum by (host_name) (cassandra_thread_pool_tasks_pending{job=\"cassandra\", host_name=~\"$host\"}))",
@@ -1930,7 +1926,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "All dropped message types summed per node. Zero on every node is the healthy reading.",
       "fieldConfig": {
@@ -2012,7 +2008,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -2035,7 +2031,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Worst node minus best node. Any value above zero means one node is dropping and the others are not.",
       "fieldConfig": {
@@ -2117,7 +2113,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))\n  - min(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -2146,7 +2142,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Total client requests handled per node. Uneven throughput changes the meaning of every latency comparison above, so read this panel first.",
       "fieldConfig": {
@@ -2228,7 +2224,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -2244,7 +2240,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Busiest node minus quietest.",
       "fieldConfig": {
@@ -2326,7 +2322,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))\n  - min(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -2342,7 +2338,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Kernel block layer read latency. No job filter, because the eBPF exporter does not carry the Cassandra job label.",
       "fieldConfig": {
@@ -2424,7 +2420,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$host\", operation=\"read\"}[$__rate_interval])))",
@@ -2447,7 +2443,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Slowest device minus fastest, at p99. A node whose disk is slower will show it here before it shows anywhere in Cassandra's own metrics.",
       "fieldConfig": {
@@ -2529,7 +2525,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$host\", operation=\"read\"}[$__rate_interval]))))\n  - min(histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$host\", operation=\"read\"}[$__rate_interval]))))",
@@ -2559,7 +2555,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Round trip time each node measures to all of its peers, at ${percentile}. Read it as the internode network cost plus the peer response time that sits inside every non-local read or write: a node whose line sits above the others is either slow to reach its peers, or has peers that are slow to answer it. One series per node, three in total, with no extra label. These gauges are pre-aggregated on the node, so they are shown side by side and never summed or averaged across nodes.",
       "fieldConfig": {
@@ -2641,7 +2637,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_messaging_cross_node_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\"} / ${latency_unit}",
@@ -2657,7 +2653,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The same round trip time, broken out per destination datacenter, at ${percentile}. Read it as: one datacenter far above the others points at a cross-region link, while a single node high in one datacenter points at that node. Two facts about the labels, both verified on the running cluster. First, the `datacenter` label value carries a `-Latency` suffix, because the JMX rule reads it from the bean name `name=<dc>-Latency`; the observed values are `us-west-2-Latency` and `UNKNOWN-DC-Latency`. The legend strips that suffix with a rename transformation, and the query is deliberately left alone, so what you see in the query editor still matches the stored series. Second, `UNKNOWN-DC` is genuine Cassandra behaviour and not a collection artefact: it holds messages sent to peers whose datacenter is not yet resolved, which is normal shortly after start-up and during topology changes. One series per node and destination; these gauges are pre-aggregated on the node and are never summed or averaged across nodes.",
       "fieldConfig": {
@@ -2739,7 +2735,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_messaging_datacenter_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\"} / ${latency_unit}",
@@ -2851,7 +2847,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_storage_load_bytes, host_name)",
         "description": "Database nodes only. Derived from a Cassandra-only metric, so control and app nodes never appear.",

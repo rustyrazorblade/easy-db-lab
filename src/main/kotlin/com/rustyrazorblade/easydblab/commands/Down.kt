@@ -11,6 +11,8 @@ import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.Socks5ProxyStateFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.services.BackendState
+import com.rustyrazorblade.easydblab.services.FlushStepFailed
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
@@ -76,15 +78,8 @@ class Down : PicoBaseCommand() {
     var autoApprove = false
 
     @CommandLine.Option(
-        names = ["--retention-days"],
-        description = ["Days to retain S3 data after teardown (default: 1)"],
-        defaultValue = "1",
-    )
-    var retentionDays: Int = 1
-
-    @CommandLine.Option(
         names = ["--force"],
-        description = ["Skip the pre-teardown metrics + annotations backup and tear down anyway"],
+        description = ["Skip the pre-teardown annotation mirror, Loki and Mimir flushes and annotations backup, and tear down anyway"],
     )
     var force = false
 
@@ -108,26 +103,31 @@ class Down : PicoBaseCommand() {
         return exitCode
     }
 
+    /**
+     * How a teardown ended: it ran (successfully or not, or it had nothing to do), or the
+     * pre-teardown flush failed and aborted it with no infrastructure removed.
+     */
+    private sealed interface TeardownOutcome {
+        data class Finished(
+            val result: TeardownResult,
+        ) : TeardownOutcome
+
+        data object FlushAborted : TeardownOutcome
+    }
+
     override fun execute() {
         val mode = determineTeardownMode()
 
         eventBus.emit(Event.Teardown.Starting)
 
-        // Back up metrics and annotations FIRST, before any infrastructure is touched. If the
-        // backup fails, abort with no infrastructure removed so the data is not lost to teardown.
-        // Runs before the proxy is torn down; --force skips it. See design decision D3.
-        if (!backupBeforeTeardown(mode)) {
-            exitCode = Constants.ExitCodes.ERROR
-            return
-        }
-
-        // Clear JVM SOCKS proxy settings before teardown so all AWS SDK calls go directly
-        // to public AWS endpoints. The control node (and its SSH tunnel) will be terminated
-        // during teardown, which would break mid-flight proxy connections. AWS API calls
-        // never need the proxy — only private cluster network access does.
-        clearProxySystemProperties()
-
-        var result = executeTeardown(mode)
+        var result =
+            when (val outcome = executeTeardown(mode)) {
+                TeardownOutcome.FlushAborted -> {
+                    exitCode = Constants.ExitCodes.ERROR
+                    return
+                }
+                is TeardownOutcome.Finished -> outcome.result
+            }
 
         // Kill the proxy process and remove its state file after AWS operations complete.
         cleanupSocks5Proxy()
@@ -143,18 +143,22 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * Runs the coupled metrics + annotations backup before any teardown, and decides whether the
-     * teardown may proceed.
+     * Saves the cluster's tail (annotation mirror, Loki and Mimir flushes, annotations backup) once
+     * the current-cluster teardown is certain to go ahead: its preview found resources and the
+     * operator confirmed. The flush leaves Loki and Mimir stopped, so it must not run for a teardown
+     * that is then declined. See issue 967, decision D2.
      *
-     * The backup only applies to the current-cluster teardown of a running cluster: the other modes
-     * (`--all`, `--packer`, a specific VPC id, `--dry-run`) do not map to a single reachable control
-     * node, and `--force` skips it outright. When the backup runs and fails, the teardown aborts with
-     * no infrastructure removed. See design decisions D3 and D4.
+     * Only the current-cluster teardown of a running cluster saves its tail: the other modes
+     * (`--all`, `--packer`, a specific VPC id) do not map to a single reachable control node, and
+     * `--force` skips it outright. A flush an earlier `down` completed is not run again: Loki and
+     * Mimir are already at 0 and hold nothing new. When the flush fails it stops where it is —
+     * nothing is undone and no backend is started again (owner decision, 2026-09-26) — and the
+     * teardown does not run.
      *
-     * @return true to proceed with teardown, false to abort with nothing removed.
+     * @return whether the teardown may go ahead.
      */
-    private fun backupBeforeTeardown(mode: TeardownMode): Boolean {
-        if (force || dryRun || mode != TeardownMode.CurrentCluster || !clusterStateManager.exists()) {
+    private fun saveTailBeforeTeardown(): Boolean {
+        if (force || !clusterStateManager.exists()) {
             return true
         }
 
@@ -164,13 +168,28 @@ class Down : PicoBaseCommand() {
             return true
         }
 
-        // A redirect cluster runs no local VictoriaMetrics or Grafana, so there is nothing to back
-        // up here; the data already lives on the external stack.
+        // A redirect cluster runs no local Mimir, Loki or Grafana, so there is nothing to flush or
+        // back up here; the data already lives on the external stack.
         val redirect = state.initConfig?.telemetryRedirect
         if (redirect != null) {
             eventBus.emit(
                 Event.Teardown.BackupSkipped(
-                    "telemetry is redirected to ${redirect.metrics}; there is no local stack to back up",
+                    "telemetry is redirected to ${redirect.metrics}; there is no local stack to flush",
+                ),
+            )
+            return true
+        }
+
+        // Checked before the tunnel: after a teardown that failed part-way the control node may
+        // already be gone, and the backends it ran hold nothing the recorded flush missed.
+        val flushed = state.tailFlush
+        if (flushed != null) {
+            eventBus.emit(
+                Event.Teardown.TailAlreadyFlushed(
+                    completedAt = flushed.completedAt.toString(),
+                    lokiIndexFiles = flushed.lokiIndexFiles,
+                    lokiChunksFlushed = flushed.lokiChunksFlushed,
+                    mimirBlocks = flushed.mimirBlocks,
                 ),
             )
             return true
@@ -184,8 +203,8 @@ class Down : PicoBaseCommand() {
 
         eventBus.emit(Event.Teardown.BackupStarting)
         // The tunnel setup and the backup are one failure boundary: a tunnel failure is a backup
-        // failure. Both are inside the runCatching so either aborts teardown with the standard
-        // "no infrastructure removed / pass --force" guidance rather than a raw stack trace. The
+        // failure. Both are inside the runCatching so either stops `down` with the standard
+        // "no infrastructure removed / --force" guidance rather than a raw stack trace. The
         // tunnel is established here, before clearProxySystemProperties()/cleanupSocks5Proxy() tear
         // it down.
         return runCatching {
@@ -194,11 +213,35 @@ class Down : PicoBaseCommand() {
         }.fold(
             onSuccess = { true },
             onFailure = { failure ->
-                eventBus.emit(Event.Teardown.BackupFailedAbort(failure.message ?: "unknown error"))
+                eventBus.emit(abortEvent(failure))
                 false
             },
         )
     }
+
+    /**
+     * The report of a flush that stopped. A [FlushStepFailed] names its step and the backends as it
+     * left them; any other failure is the tunnel's, which touched no backend.
+     */
+    private fun abortEvent(failure: Throwable): Event.Teardown.BackupFailedAbort =
+        when (failure) {
+            is FlushStepFailed ->
+                Event.Teardown.BackupFailedAbort(
+                    step = failure.step.description,
+                    reason = failure.cause?.message ?: failure.message.orEmpty(),
+                    backends = failure.backends.mapValues { it.value.description },
+                    stoppedBackends =
+                        failure.backends
+                            .filterValues { it != BackendState.RUNNING }
+                            .keys
+                            .toList(),
+                )
+            else ->
+                Event.Teardown.BackupFailedAbort(
+                    step = "SOCKS tunnel to the control node",
+                    reason = failure.message ?: failure.toString(),
+                )
+        }
 
     /**
      * Determines the teardown mode based on command line options.
@@ -214,13 +257,20 @@ class Down : PicoBaseCommand() {
     /**
      * Executes the teardown based on the specified mode.
      */
-    private fun executeTeardown(mode: TeardownMode): TeardownResult =
+    private fun executeTeardown(mode: TeardownMode): TeardownOutcome =
         when (mode) {
             is TeardownMode.CurrentCluster -> teardownCurrentCluster()
-            is TeardownMode.SpecificVpc -> teardownSpecificVpc(mode.vpcId)
-            is TeardownMode.AllTagged -> teardownAllTagged()
-            is TeardownMode.PackerInfrastructure -> teardownPackerInfrastructure()
+            is TeardownMode.SpecificVpc -> teardownSpecificVpc(mode.vpcId, saveTail = false)
+            is TeardownMode.AllTagged -> TeardownOutcome.Finished(teardownAllTagged())
+            is TeardownMode.PackerInfrastructure -> TeardownOutcome.Finished(teardownPackerInfrastructure())
         }
+
+    /**
+     * Unpublishes the SOCKS proxy port just before infrastructure is removed. The control node (and
+     * its SSH tunnel) is terminated during teardown, which would break mid-flight proxy connections;
+     * AWS API calls never need the proxy, only private cluster network access does.
+     */
+    private fun beforeRemovingInfrastructure() = clearProxySystemProperties()
 
     /**
      * Tears down the current cluster using VPC ID from cluster state.
@@ -229,32 +279,40 @@ class Down : PicoBaseCommand() {
      * `down` that removed the infrastructure and failed only the device removal. There is no VPC
      * left to tear down, so this succeeds with nothing deleted and lets the device removal retry.
      */
-    private fun teardownCurrentCluster(): TeardownResult {
+    private fun teardownCurrentCluster(): TeardownOutcome {
         // Get the VPC ID from cluster state
         if (!clusterStateManager.exists()) {
             eventBus.emit(Event.Teardown.NoClusterState)
-            return TeardownResult.Companion.failure("No cluster state found")
+            return TeardownOutcome.Finished(TeardownResult.Companion.failure("No cluster state found"))
         }
 
         val clusterState = clusterStateManager.load()
         val currentVpcId = clusterState.vpcId
 
         if (currentVpcId == null && !clusterState.tailscaleDeviceId.isNullOrBlank()) {
-            return TeardownResult.success(emptyList())
+            return TeardownOutcome.Finished(TeardownResult.success(emptyList()))
         }
 
         if (currentVpcId == null) {
             eventBus.emit(Event.Teardown.NoVpcId(clusterState.name))
-            return TeardownResult.Companion.failure("No VPC ID in cluster state")
+            return TeardownOutcome.Finished(TeardownResult.Companion.failure("No VPC ID in cluster state"))
         }
 
-        return teardownSpecificVpc(currentVpcId)
+        return teardownSpecificVpc(currentVpcId, saveTail = true)
     }
 
     /**
      * Tears down a specific VPC by ID.
+     *
+     * The preview, the dry run and the confirmation all come first. Only once the teardown is
+     * certain to go ahead does [saveTail] run the pre-teardown flush, and only once that succeeded
+     * is any infrastructure removed. A removal that fails after the flush restores nothing: the
+     * owner wants the cluster down, so Loki and Mimir stay at 0 and the failure is reported.
      */
-    private fun teardownSpecificVpc(targetVpcId: String): TeardownResult {
+    private fun teardownSpecificVpc(
+        targetVpcId: String,
+        saveTail: Boolean,
+    ): TeardownOutcome {
         eventBus.emit(Event.Teardown.PreparingVpc(targetVpcId))
 
         // Preview to discover resources
@@ -262,23 +320,26 @@ class Down : PicoBaseCommand() {
 
         if (previewResult.resourcesDeleted.isEmpty()) {
             eventBus.emit(Event.Teardown.NoResourcesFound)
-            return previewResult
+            return TeardownOutcome.Finished(previewResult)
         }
 
         val summary = previewResult.resourcesDeleted.first().summary()
 
         if (dryRun) {
             eventBus.emit(Event.Teardown.DryRunPreview(summary))
-            return previewResult
+            return TeardownOutcome.Finished(previewResult)
         }
 
         // Confirm if not auto-approved
         if (!autoApprove && !confirmTeardown(summary)) {
             eventBus.emit(Event.Teardown.CancelledByUser)
-            return TeardownResult.Companion.failure("Teardown cancelled by user")
+            return TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
         }
 
-        return teardownService.teardownVpc(targetVpcId, dryRun = false)
+        if (saveTail && !saveTailBeforeTeardown()) return TeardownOutcome.FlushAborted
+
+        beforeRemovingInfrastructure()
+        return TeardownOutcome.Finished(teardownService.teardownVpc(targetVpcId, dryRun = false))
     }
 
     /**
@@ -309,6 +370,7 @@ class Down : PicoBaseCommand() {
             return TeardownResult.Companion.failure("Teardown cancelled by user")
         }
 
+        beforeRemovingInfrastructure()
         val result = teardownService.teardownAllTagged(dryRun = false, includePackerVpc = teardownPacker)
 
         // Also handle all data buckets when tearing down all resources
@@ -346,6 +408,7 @@ class Down : PicoBaseCommand() {
             return TeardownResult.Companion.failure("Teardown cancelled by user")
         }
 
+        beforeRemovingInfrastructure()
         return teardownService.teardownPackerInfrastructure(dryRun = false)
     }
 
@@ -456,10 +519,8 @@ class Down : PicoBaseCommand() {
                 // Delete Tailscale auth key if it exists
                 deleteTailscaleAuthKey(clusterState)
 
-                // Set lifecycle expiration rule on cluster prefix in account bucket
-                setClusterLifecycleRule(clusterState)
-
-                // Disable metrics and set lifecycle expiration on the data bucket
+                // Stop the data bucket's request metrics. The bucket and its objects are the
+                // owner's data and are never expired or deleted here.
                 teardownDataBucketIfNeeded(clusterState)
 
                 clusterState.markInfrastructureDown()
@@ -551,28 +612,8 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * Sets an S3 lifecycle expiration rule on the cluster's prefix.
-     * This schedules all objects under the cluster prefix for deletion after retentionDays.
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private fun setClusterLifecycleRule(clusterState: ClusterState) {
-        val bucketName = clusterState.s3Bucket
-        if (bucketName.isNullOrBlank()) {
-            log.debug { "No S3 bucket configured, skipping lifecycle rule" }
-            return
-        }
-
-        try {
-            val clusterPrefix = clusterState.clusterPrefix() + "/"
-            s3BucketService.setLifecycleExpirationRule(bucketName, clusterPrefix, retentionDays)
-            eventBus.emit(Event.S3.LifecycleRuleSet(clusterPrefix, retentionDays))
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to set S3 lifecycle rule" }
-        }
-    }
-
-    /**
-     * Disables metrics and sets lifecycle expiration on the per-cluster data bucket.
+     * Disables request metrics on the per-cluster data bucket. Sets no expiry: the bucket's objects
+     * are the owner's data.
      */
     @Suppress("TooGenericExceptionCaught")
     private fun teardownDataBucketIfNeeded(clusterState: ClusterState) {
@@ -583,15 +624,15 @@ class Down : PicoBaseCommand() {
         }
 
         try {
-            s3BucketService.teardownDataBucket(dataBucket, clusterState.metricsConfigId(), retentionDays)
+            s3BucketService.teardownDataBucket(dataBucket, clusterState.metricsConfigId())
         } catch (e: Exception) {
             log.warn(e) { "Failed to tear down data bucket: $dataBucket" }
         }
     }
 
     /**
-     * Finds all data buckets and sets lifecycle expiration on each, then attempts deletion.
-     * Called during --all teardown.
+     * Finds all data buckets and deletes each one that is empty. A bucket that still holds objects
+     * is kept as it is, with no expiry rule. Called during --all teardown.
      */
     @Suppress("TooGenericExceptionCaught")
     private fun teardownAllDataBuckets() {
@@ -613,13 +654,13 @@ class Down : PicoBaseCommand() {
     @Suppress("TooGenericExceptionCaught")
     private fun teardownSingleDataBucket(bucket: String) {
         try {
-            s3BucketService.setFullBucketLifecycleExpiration(bucket, retentionDays)
-            eventBus.emit(Event.S3.DataBucketExpiring(bucket, retentionDays))
-
             eventBus.emit(Event.S3.DataBucketDeleting(bucket))
-            if (s3BucketService.deleteEmptyBucket(bucket)) {
-                eventBus.emit(Event.S3.DataBucketDeleted(bucket))
-            }
+            s3BucketService
+                .deleteEmptyBucket(bucket)
+                .onSuccess { eventBus.emit(Event.S3.DataBucketDeleted(bucket)) }
+                .onFailure { exception ->
+                    eventBus.emit(Event.S3.DataBucketKept(bucket, exception.message ?: exception.toString()))
+                }
         } catch (e: Exception) {
             log.warn(e) { "Failed to handle data bucket: $bucket" }
         }

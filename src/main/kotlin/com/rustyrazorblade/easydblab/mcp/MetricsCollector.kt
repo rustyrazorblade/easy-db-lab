@@ -1,12 +1,11 @@
 package com.rustyrazorblade.easydblab.mcp
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.MimirQueryService
 import com.rustyrazorblade.easydblab.services.PromQueryResult
-import com.rustyrazorblade.easydblab.services.VictoriaMetricsQueryService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.Timer
 import kotlin.concurrent.fixedRateTimer
@@ -14,18 +13,18 @@ import kotlin.concurrent.fixedRateTimer
 private val log = KotlinLogging.logger {}
 
 /**
- * Collects metrics from VictoriaMetrics and emits them as events on the EventBus.
+ * Collects metrics from Mimir and emits them as events on the EventBus.
  *
- * Runs a daemon timer at 5-second intervals. Queries are the same PromQL expressions
- * used by the Grafana dashboards, ensuring consistency between the live stream and
- * dashboard views.
+ * Runs a daemon timer at 5-second intervals. Queries are the PromQL expressions the Grafana
+ * dashboards use, scoped to the current cluster ([MetricsQueries]), so the live stream and the
+ * dashboards agree and another cluster's series in the same tenant never leak in.
  *
  * System metrics are always collected. Cassandra metrics are only collected when the
  * cluster is running Cassandra. Each category is independent — a failed Cassandra query
  * does not prevent system metrics from being emitted.
  */
 class MetricsCollector(
-    private val queryService: VictoriaMetricsQueryService,
+    private val queryService: MimirQueryService,
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
 ) {
@@ -38,13 +37,14 @@ class MetricsCollector(
             return
         }
 
-        log.info { "Starting MetricsCollector with ${Constants.Victoria.METRICS_COLLECTION_INTERVAL_SECONDS}s interval" }
+        val intervalMillis = Constants.LiveMetrics.COLLECTION_INTERVAL_SECONDS * Constants.Time.MILLIS_PER_SECOND
+        log.info { "Starting MetricsCollector with ${Constants.LiveMetrics.COLLECTION_INTERVAL_SECONDS}s interval" }
         timer =
             fixedRateTimer(
                 name = "metrics-collector",
                 daemon = true,
-                initialDelay = Constants.Victoria.METRICS_COLLECTION_INTERVAL_SECONDS * Constants.Time.MILLIS_PER_SECOND,
-                period = Constants.Victoria.METRICS_COLLECTION_INTERVAL_SECONDS * Constants.Time.MILLIS_PER_SECOND,
+                initialDelay = intervalMillis,
+                period = intervalMillis,
             ) {
                 collect()
             }
@@ -60,25 +60,26 @@ class MetricsCollector(
     internal fun collect() {
         try {
             val clusterState = clusterStateManager.load()
-            val controlHost = clusterState.getControlHost() ?: return
+            if (clusterState.getControlHost() == null) return
+            val queries = MetricsQueries.forCluster(clusterState.clusterLabelName())
 
-            collectSystemMetrics(controlHost)
+            collectSystemMetrics(queries)
 
             if (clusterState.isRunningCassandra()) {
-                collectCassandraMetrics(controlHost)
+                collectCassandraMetrics(queries)
             }
         } catch (e: Exception) {
             log.debug { "Metrics collection cycle failed: ${e.message}" }
         }
     }
 
-    private fun collectSystemMetrics(controlHost: ClusterHost) {
+    private fun collectSystemMetrics(queries: MetricsQueries) {
         try {
-            val cpuResults = queryService.query(controlHost, SYSTEM_CPU_QUERY).getOrNull()
-            val memResults = queryService.query(controlHost, SYSTEM_MEMORY_QUERY).getOrNull()
-            val diskReadResults = queryService.query(controlHost, SYSTEM_DISK_READ_QUERY).getOrNull()
-            val diskWriteResults = queryService.query(controlHost, SYSTEM_DISK_WRITE_QUERY).getOrNull()
-            val fsResults = queryService.query(controlHost, SYSTEM_FILESYSTEM_QUERY).getOrNull()
+            val cpuResults = queryService.query(queries.systemCpu).getOrNull()
+            val memResults = queryService.query(queries.systemMemory).getOrNull()
+            val diskReadResults = queryService.query(queries.systemDiskRead).getOrNull()
+            val diskWriteResults = queryService.query(queries.systemDiskWrite).getOrNull()
+            val fsResults = queryService.query(queries.systemFilesystem).getOrNull()
 
             if (cpuResults.isNullOrEmpty() && memResults.isNullOrEmpty()) {
                 return // No system metrics available yet
@@ -112,15 +113,15 @@ class MetricsCollector(
         }
     }
 
-    private fun collectCassandraMetrics(controlHost: ClusterHost) {
+    private fun collectCassandraMetrics(queries: MetricsQueries) {
         try {
-            val readP99 = querySingleValue(controlHost, CASSANDRA_READ_P99_QUERY)
-            val writeP99 = querySingleValue(controlHost, CASSANDRA_WRITE_P99_QUERY)
-            val readOps = querySingleValue(controlHost, CASSANDRA_READ_OPS_QUERY)
-            val writeOps = querySingleValue(controlHost, CASSANDRA_WRITE_OPS_QUERY)
-            val compactionPending = querySingleValue(controlHost, CASSANDRA_COMPACTION_PENDING_QUERY)
-            val compactionCompleted = querySingleValue(controlHost, CASSANDRA_COMPACTION_COMPLETED_QUERY)
-            val compactionBytes = querySingleValue(controlHost, CASSANDRA_COMPACTION_BYTES_QUERY)
+            val readP99 = querySingleValue(queries.cassandraReadP99)
+            val writeP99 = querySingleValue(queries.cassandraWriteP99)
+            val readOps = querySingleValue(queries.cassandraReadOps)
+            val writeOps = querySingleValue(queries.cassandraWriteOps)
+            val compactionPending = querySingleValue(queries.cassandraCompactionPending)
+            val compactionCompleted = querySingleValue(queries.cassandraCompactionCompleted)
+            val compactionBytes = querySingleValue(queries.cassandraCompactionBytes)
 
             val noCassandraMetrics = readP99 == null && writeP99 == null && readOps == null && writeOps == null
             if (noCassandraMetrics) {
@@ -143,12 +144,9 @@ class MetricsCollector(
         }
     }
 
-    private fun querySingleValue(
-        controlHost: ClusterHost,
-        promql: String,
-    ): Double? =
+    private fun querySingleValue(promql: String): Double? =
         queryService
-            .query(controlHost, promql)
+            .query(promql)
             .getOrNull()
             ?.firstOrNull()
             ?.numericValue()
@@ -160,50 +158,67 @@ class MetricsCollector(
                 val value = result.numericValue() ?: return@mapNotNull null
                 host to value
             }?.toMap() ?: emptyMap()
+}
+
+/**
+ * The PromQL the live metrics stream runs for one cluster: the expressions of the Grafana
+ * system-overview and cassandra-overview dashboards, with every selector narrowed to
+ * `cluster="<name>-<id>"`.
+ */
+@Suppress("LongParameterList")
+data class MetricsQueries(
+    val systemCpu: String,
+    val systemMemory: String,
+    val systemDiskRead: String,
+    val systemDiskWrite: String,
+    val systemFilesystem: String,
+    val cassandraReadP99: String,
+    val cassandraWriteP99: String,
+    val cassandraReadOps: String,
+    val cassandraWriteOps: String,
+    val cassandraCompactionPending: String,
+    val cassandraCompactionCompleted: String,
+    val cassandraCompactionBytes: String,
+) {
+    /** The five host-level queries. */
+    fun system(): List<String> = listOf(systemCpu, systemMemory, systemDiskRead, systemDiskWrite, systemFilesystem)
+
+    /** The seven Cassandra queries. */
+    fun cassandra(): List<String> =
+        listOf(
+            cassandraReadP99,
+            cassandraWriteP99,
+            cassandraReadOps,
+            cassandraWriteOps,
+            cassandraCompactionPending,
+            cassandraCompactionCompleted,
+            cassandraCompactionBytes,
+        )
 
     companion object {
-        // System queries — match Grafana system-overview.json dashboard
-        const val SYSTEM_CPU_QUERY =
-            """100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state="idle"}[1m])) * 100)"""
-
-        const val SYSTEM_MEMORY_QUERY =
-            """system_memory_usage_bytes{state="used"}"""
-
-        const val SYSTEM_DISK_READ_QUERY =
-            """rate(system_disk_io_bytes_total{direction="read"}[1m])"""
-
-        const val SYSTEM_DISK_WRITE_QUERY =
-            """rate(system_disk_io_bytes_total{direction="write"}[1m])"""
-
-        const val SYSTEM_FILESYSTEM_QUERY =
-            """100 * system_filesystem_usage_bytes{state="used"} / (system_filesystem_usage_bytes{state="used"} + system_filesystem_usage_bytes{state="free"})"""
-
-        // Cassandra queries — match Grafana cassandra-overview.json dashboard
-        @Suppress("ktlint:standard:max-line-length")
-        const val CASSANDRA_READ_P99_QUERY =
-            """histogram_quantile(0.99, sum(rate({__name__=~"org_apache_cassandra_metrics_client_request_latency_read_.+_bucket"}[1m])) by (le))"""
-
-        @Suppress("ktlint:standard:max-line-length")
-        const val CASSANDRA_WRITE_P99_QUERY =
-            """histogram_quantile(0.99, sum(rate({__name__=~"org_apache_cassandra_metrics_client_request_latency_write_.+_bucket"}[1m])) by (le))"""
-
-        @Suppress("ktlint:standard:max-line-length")
-        const val CASSANDRA_READ_OPS_QUERY =
-            """sum(irate({__name__=~"org_apache_cassandra_metrics_client_request_latency_read_.+_count"}[1m]))"""
-
-        @Suppress("ktlint:standard:max-line-length")
-        const val CASSANDRA_WRITE_OPS_QUERY =
-            """sum(irate({__name__=~"org_apache_cassandra_metrics_client_request_latency_write_.+_count"}[1m]))"""
-
-        const val CASSANDRA_COMPACTION_PENDING_QUERY =
-            """sum(org_apache_cassandra_metrics_table_pending_compactions)"""
-
-        @Suppress("ktlint:standard:max-line-length")
-        const val CASSANDRA_COMPACTION_COMPLETED_QUERY =
-            """sum(irate(org_apache_cassandra_metrics_compaction_completed_tasks[1m]))"""
-
-        @Suppress("ktlint:standard:max-line-length")
-        const val CASSANDRA_COMPACTION_BYTES_QUERY =
-            """sum(irate(org_apache_cassandra_metrics_table_compaction_bytes_written[1m]))"""
+        /** The queries for the cluster labelled [cluster] (`<name>-<id>`). */
+        @Suppress("ktlint:standard:max-line-length", "MaxLineLength")
+        fun forCluster(cluster: String): MetricsQueries {
+            val c = """cluster="$cluster""""
+            val readLatency = """{__name__=~"org_apache_cassandra_metrics_client_request_latency_read_.+_bucket", $c}"""
+            val writeLatency = """{__name__=~"org_apache_cassandra_metrics_client_request_latency_write_.+_bucket", $c}"""
+            val readCount = """{__name__=~"org_apache_cassandra_metrics_client_request_latency_read_.+_count", $c}"""
+            val writeCount = """{__name__=~"org_apache_cassandra_metrics_client_request_latency_write_.+_count", $c}"""
+            return MetricsQueries(
+                systemCpu = """100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state="idle", $c}[1m])) * 100)""",
+                systemMemory = """system_memory_usage_bytes{state="used", $c}""",
+                systemDiskRead = """rate(system_disk_io_bytes_total{direction="read", $c}[1m])""",
+                systemDiskWrite = """rate(system_disk_io_bytes_total{direction="write", $c}[1m])""",
+                systemFilesystem =
+                    """100 * system_filesystem_usage_bytes{state="used", $c} / (system_filesystem_usage_bytes{state="used", $c} + system_filesystem_usage_bytes{state="free", $c})""",
+                cassandraReadP99 = """histogram_quantile(0.99, sum(rate($readLatency[1m])) by (le))""",
+                cassandraWriteP99 = """histogram_quantile(0.99, sum(rate($writeLatency[1m])) by (le))""",
+                cassandraReadOps = """sum(irate($readCount[1m]))""",
+                cassandraWriteOps = """sum(irate($writeCount[1m]))""",
+                cassandraCompactionPending = """sum(org_apache_cassandra_metrics_table_pending_compactions{$c})""",
+                cassandraCompactionCompleted = """sum(irate(org_apache_cassandra_metrics_compaction_completed_tasks{$c}[1m]))""",
+                cassandraCompactionBytes = """sum(irate(org_apache_cassandra_metrics_table_compaction_bytes_written{$c}[1m]))""",
+            )
+        }
     }
 }

@@ -38,7 +38,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -105,7 +105,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "up{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}",
@@ -122,7 +122,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -169,7 +169,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -186,7 +186,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -241,7 +241,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(rate(hubble_flows_processed_total{verdict=\"DROPPED\", job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -271,7 +271,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -412,7 +412,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (verdict) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -428,7 +428,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -508,7 +508,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (protocol) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -524,7 +524,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -604,7 +604,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, verdict) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -620,7 +620,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -700,7 +700,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (reason, protocol) (rate(hubble_drop_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -729,7 +729,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -870,7 +870,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (flag) (rate(hubble_tcp_flags_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -886,7 +886,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -936,7 +936,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(15, sum by (port, protocol) (increase(hubble_port_distribution_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__range])))",
@@ -953,7 +953,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1033,7 +1033,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (family, type) (rate(hubble_icmp_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -1049,7 +1049,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1133,7 +1133,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, source) (rate(hubble_lost_events_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -1160,7 +1160,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(up{job=\"cilium-agent\"}, cluster)",
         "hide": 0,
@@ -1185,7 +1185,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(up{job=\"hubble\", cluster=~\"$cluster\"}, instance)",
         "hide": 0,

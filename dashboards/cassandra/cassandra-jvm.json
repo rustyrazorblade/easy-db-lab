@@ -39,7 +39,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Recent CPU utilization reported by the JVM itself, as a fraction of the machine.",
       "fieldConfig": {
@@ -121,7 +121,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "jvm_cpu_recent_utilization_ratio{job=\"cassandra\", host_name=~\"$host\"}",
@@ -144,7 +144,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "rate of jvm_cpu_time_seconds_total, so one unit is one fully busy core. jvm_cpu_count is the ceiling for the node.",
       "fieldConfig": {
@@ -257,7 +257,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(jvm_cpu_time_seconds_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -269,7 +269,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max by (host_name) (jvm_cpu_count{job=\"cassandra\", host_name=~\"$host\"})",
@@ -285,7 +285,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Whole-heap totals. Used and committed sum across heap pools. The limit uses max for the reason given on Heap Utilization: ZGC repeats the whole-heap limit on every generation.",
       "fieldConfig": {
@@ -367,7 +367,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})",
@@ -379,7 +379,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (jvm_memory_committed_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})",
@@ -391,7 +391,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max by (host_name) (jvm_memory_limit_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})",
@@ -407,7 +407,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Heap used as a share of the heap limit. Used is summed over heap pools; the limit is taken with max, not sum, because Generational ZGC reports the whole-heap limit on both the young and the old pool while G1 reports it only on the old generation.",
       "fieldConfig": {
@@ -490,7 +490,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})\n  / max by (host_name) (jvm_memory_limit_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})",
@@ -513,7 +513,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Heap still occupied immediately after the last collection. This is the real working set: if it climbs steadily the node is retaining more, not merely allocating faster.",
       "fieldConfig": {
@@ -595,7 +595,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (jvm_memory_used_after_last_gc_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})",
@@ -611,7 +611,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Client latency next to the GC panels below, so a pause spike and a latency spike can be lined up on the same time axis. These gauges are pre-aggregated per node and are never combined.",
       "fieldConfig": {
@@ -693,7 +693,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"} / ${latency_unit}",
@@ -705,7 +705,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"} / ${latency_unit}",
@@ -746,7 +746,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Per-pool heap usage. Pool names differ by collector: db0/db1 show G1 Eden / Survivor / Old Gen, db2 shows ZGC Young and Old Generation. That difference is the point of this panel.",
       "fieldConfig": {
@@ -828,7 +828,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}",
@@ -844,7 +844,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Everything outside the heap: metaspace, compressed class space and the code cache segments.",
       "fieldConfig": {
@@ -926,7 +926,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"non_heap\"})",
@@ -938,7 +938,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (jvm_memory_committed_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"non_heap\"})",
@@ -954,7 +954,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Class metadata. Steady growth here without a matching class count rise points at a classloader leak.",
       "fieldConfig": {
@@ -1036,7 +1036,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_pool_name=~\"Metaspace|Compressed Class Space\"}",
@@ -1052,7 +1052,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "JIT-compiled code. If a segment reaches its limit the JVM stops compiling and throughput falls off with no other symptom.",
       "fieldConfig": {
@@ -1165,7 +1165,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_pool_name=~\"CodeHeap.*\"}",
@@ -1177,7 +1177,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "jvm_memory_limit_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_pool_name=~\"CodeHeap.*\"}",
@@ -1206,7 +1206,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Collections per minute, split by the collector's own name. G1 nodes report G1 Young Generation; the ZGC node reports Major Cycles and Major Pauses separately.",
       "fieldConfig": {
@@ -1288,7 +1288,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "60 * sum by (host_name, jvm_gc_name) (rate(jvm_gc_duration_seconds_count{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -1304,7 +1304,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Mean is _sum/_count and is exact. p99 comes from jvm_gc_duration_seconds_bucket, a real histogram, so histogram_quantile is valid; its default buckets are coarse, so read p99 as a bucket boundary.",
       "fieldConfig": {
@@ -1386,7 +1386,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name, jvm_gc_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))\n  / sum by (host_name, jvm_gc_name) (rate(jvm_gc_duration_seconds_count{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -1398,7 +1398,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (host_name, jvm_gc_name, le) (rate(jvm_gc_duration_seconds_bucket{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -1421,7 +1421,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Stop-the-world pause time as a share of wall clock, plus ZGC concurrent cycle time for reference. db0/db1 run G1 on JDK 11 and report only pauses; db2 runs Generational ZGC on JDK 21 and reports both, so the concurrent series exists only there.",
       "fieldConfig": {
@@ -1503,7 +1503,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval]))",
@@ -1515,7 +1515,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "100 * sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", host_name=~\"$host\", jvm_gc_name=~\".*Cycles\"}[$__rate_interval]))",
@@ -1538,7 +1538,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Total pause time divided by pause count across the whole dashboard range. Concurrent ZGC cycles are excluded so the number means the same thing on every node.",
       "fieldConfig": {
@@ -1585,7 +1585,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name, jvm_gc_name) (increase(jvm_gc_duration_seconds_sum{job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__range]))\n  / sum by (host_name, jvm_gc_name) (increase(jvm_gc_duration_seconds_count{job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__range]))",
@@ -1614,7 +1614,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Total live threads. jvm_thread_count is split by daemon flag and state, so it must be summed.",
       "fieldConfig": {
@@ -1696,7 +1696,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (jvm_thread_count{job=\"cassandra\", host_name=~\"$host\"})",
@@ -1719,7 +1719,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Runnable against waiting and timed_waiting. A jump in runnable threads with flat throughput means contention rather than work.",
       "fieldConfig": {
@@ -1801,7 +1801,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name, jvm_thread_state) (jvm_thread_count{job=\"cassandra\", host_name=~\"$host\"})",
@@ -1817,7 +1817,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Currently loaded classes per node.",
       "fieldConfig": {
@@ -1899,7 +1899,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "jvm_class_count{job=\"cassandra\", host_name=~\"$host\"}",
@@ -1915,7 +1915,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Sustained loading long after startup usually means dynamic class generation.",
       "fieldConfig": {
@@ -1997,7 +1997,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(jvm_class_loaded_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -2009,7 +2009,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(jvm_class_unloaded_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -2112,7 +2112,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_storage_load_bytes, host_name)",
         "description": "Database nodes only. Derived from a Cassandra-only metric, so control and app nodes never appear.",

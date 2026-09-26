@@ -66,7 +66,7 @@ fun profilingLoopSeconds(loopInterval: String): Long {
  * pass every [Constants.Profiling.RECONCILE_INTERVAL_SECONDS], while the profiler produces one chunk
  * per rotation. Below [Constants.Profiling.MIN_LOOP_SECONDS] the arithmetic inverts: `--loop 5s`
  * produces twelve chunks in the sixty seconds a pass ships six of, so the queue grows by six every
- * pass forever and everything aging past the retention window is deleted having never shipped.
+ * pass forever, until the directory reaches its byte bound and the node stops recording.
  *
  * The budget is not raisable to meet it. Six uploads at the node's 30-second upload timeout is 180
  * seconds inside the unit's 300-second `TimeoutStartSec`; twelve would be 360 and systemd would kill
@@ -101,8 +101,8 @@ fun requireProfilingBounds(
             "A pass uploads at most ${Constants.Profiling.SHIP_MAX_CHUNKS_PER_PASS} chunks and runs " +
             "every ${Constants.Profiling.RECONCILE_INTERVAL_SECONDS}s, so anything below " +
             "${Constants.Profiling.MIN_LOOP_SECONDS}s produces chunks faster than they can be " +
-            "drained. The queue then grows every pass and each chunk is deleted, unshipped, once it " +
-            "ages past --retention — with nothing reported as failing.\n" +
+            "drained. The queue then grows every pass until the directory reaches --max-bytes and " +
+            "the node stops recording — with nothing reported as failing until then.\n" +
             "The upload budget cannot simply be raised: it is what keeps a pass inside the unit's " +
             "start timeout. Use --loop ${Constants.Profiling.MIN_LOOP_SECONDS}s or slower."
     }

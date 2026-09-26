@@ -403,7 +403,7 @@ See `kits/presto/METRICS.md` for an example.
 
 ### Exporting the Metrics Catalog
 
-`metrics-catalog.json` lists every metric a running kit sends to VictoriaMetrics under
+`metrics-catalog.json` lists every metric a running kit sends to Mimir under
 `job="<kit>"`. It is exported from a live cluster by `bin/export-workload-metrics`, and the
 committed copy is what `METRICS.md` and the kit's dashboards are built from.
 
@@ -528,7 +528,7 @@ dashboards:
 Dashboard JSON files should:
 - Use `"uid": "<kit>-kit"` to make re-installs idempotent
 - Filter by `cluster=~"$cluster"` using a template variable
-- Set datasource to `{ "type": "prometheus", "uid": "VictoriaMetrics" }`
+- Set datasource to `{ "type": "prometheus", "uid": "mimir" }`
 - Include `"tags": ["<kit>", "kit"]`
 
 Dashboards are installed with `overwrite: true`, so re-running `start` never duplicates them.

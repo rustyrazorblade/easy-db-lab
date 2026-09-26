@@ -39,7 +39,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Coordinator-side write rate per node. Everything below answers whether the cluster is absorbing this rate or falling behind it.",
       "fieldConfig": {
@@ -121,7 +121,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}[$__rate_interval]))",
@@ -137,7 +137,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Per-node write latency at the selected percentile. These gauges are pre-aggregated on each node and are never summed or averaged together.",
       "fieldConfig": {
@@ -219,7 +219,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"} / ${latency_unit}",
@@ -242,7 +242,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "All four percentiles together, independent of the Percentile variable. Backpressure shows first in the tail: p999 and max move well before p50 does.",
       "fieldConfig": {
@@ -324,7 +324,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_p50_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"} / ${latency_unit}",
@@ -336,7 +336,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"} / ${latency_unit}",
@@ -348,7 +348,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_p999_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"} / ${latency_unit}",
@@ -360,7 +360,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_max_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"} / ${latency_unit}",
@@ -389,7 +389,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Queued tasks by pool. This is the earliest signal that the cluster is not keeping up; it moves before drops and before hints.",
       "fieldConfig": {
@@ -471,7 +471,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(8, cassandra_thread_pool_tasks_pending{job=\"cassandra\", host_name=~\"$host\"})",
@@ -487,7 +487,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "MutationStage, ReadStage and RequestResponseStage. Active at the pool ceiling with pending above zero means the pool, not the disk, is the limit.",
       "fieldConfig": {
@@ -569,7 +569,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_thread_pool_tasks_active{job=\"cassandra\", host_name=~\"$host\", pool_path=\"request\"}",
@@ -585,7 +585,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Tasks the pool refused to queue. Distinct from pending: pending is a queue, blocked is real backpressure applied to the caller. Any sustained non-zero value here is significant.",
       "fieldConfig": {
@@ -667,7 +667,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(8, sum by (host_name, pool) (rate(cassandra_thread_pool_tasks_blocked_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -683,7 +683,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Flush writers, post-flush and reclaim. A backlog here holds memory and eventually blocks the mutation stage.",
       "fieldConfig": {
@@ -765,7 +765,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_thread_pool_tasks_pending{job=\"cassandra\", host_name=~\"$host\", pool=~\"Memtable.*|PerDiskMemtable.*\"}",
@@ -794,7 +794,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Messages discarded after exceeding their timeout. Zero is the healthy reading; any non-zero series here means work was thrown away.",
       "fieldConfig": {
@@ -876,7 +876,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (message_type) (rate(cassandra_messages_dropped_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
@@ -892,7 +892,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Two different failures. A dropped mutation is data the cluster accepted and did not apply, so it must be repaired. A dropped read is only a failed request.",
       "fieldConfig": {
@@ -974,7 +974,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", host_name=~\"$host\", message_type=~\"MUTATION|MUTATION_REQ|COUNTER_MUTATION|COUNTER_MUTATION_REQ|BATCH_STORE|BATCH_STORE_REQ|HINT|HINT_REQ\"}[$__rate_interval]))",
@@ -986,7 +986,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", host_name=~\"$host\", message_type=~\"READ|READ_REQ|READ_REPAIR|READ_REPAIR_REQ|RANGE_SLICE|RANGE_REQ\"}[$__rate_interval]))",
@@ -1015,7 +1015,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Hints currently being stored or replayed. A rise means a replica is not accepting writes.",
       "fieldConfig": {
@@ -1097,7 +1097,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_storage_hints_in_progress{job=\"cassandra\", host_name=~\"$host\"}",
@@ -1113,7 +1113,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "New hints per second. Sustained accrual with nothing in progress means hints are being written as fast as they are replayed.",
       "fieldConfig": {
@@ -1195,7 +1195,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(cassandra_storage_hints_count_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -1211,7 +1211,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The pool that replays hints back to the recovered peer. Pending work here delays consistency.",
       "fieldConfig": {
@@ -1293,7 +1293,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_thread_pool_tasks_active{job=\"cassandra\", host_name=~\"$host\", pool=\"HintsDispatcher\"}",
@@ -1305,7 +1305,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_thread_pool_tasks_pending{job=\"cassandra\", host_name=~\"$host\", pool=\"HintsDispatcher\"}",
@@ -1334,7 +1334,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Pending tasks on the left axis, completions per second on the right. Writes that outrun compaction raise the SSTable count, which then shows up as read latency on the Read Path dashboard.",
       "fieldConfig": {
@@ -1447,7 +1447,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_compaction_tasks_pending{job=\"cassandra\", host_name=~\"$host\"}",
@@ -1459,7 +1459,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name) (rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -1482,7 +1482,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Bytes of live data per node. Compare the slope with the compaction completion rate on the left.",
       "fieldConfig": {
@@ -1564,7 +1564,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_storage_load_bytes{job=\"cassandra\", host_name=~\"$host\"}",
@@ -1600,7 +1600,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "unavailable means not enough replicas answered, timeout means they were too slow, failure means a replica returned an error. Each points somewhere different.",
       "fieldConfig": {
@@ -1682,7 +1682,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (host_name, cassandra_operation, cassandra_status) (rate(cassandra_client_request_error_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -1698,7 +1698,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Total errors accumulated across the dashboard time range, by operation and status.",
       "fieldConfig": {
@@ -1746,7 +1746,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (cassandra_operation, cassandra_status) (increase(cassandra_client_request_error_total{job=\"cassandra\", host_name=~\"$host\"}[$__range]))",
@@ -1849,7 +1849,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_storage_load_bytes, host_name)",
         "description": "Database nodes only. Derived from a Cassandra-only metric, so control and app nodes never appear.",

@@ -3,22 +3,18 @@
     "list": [
       {
         "datasource": {
-          "type": "grafana",
-          "uid": "-- Grafana --"
+          "type": "loki",
+          "uid": "loki"
         },
         "enable": true,
+        "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\"",
         "hide": false,
         "iconColor": "green",
+        "instant": false,
         "name": "easy-db-lab markers",
-        "target": {
-          "limit": 100,
-          "matchAny": false,
-          "tags": [
-            "easydblab"
-          ],
-          "type": "tags"
-        },
-        "type": "tags"
+        "tagKeys": "tags",
+        "textFormat": "",
+        "titleFormat": "{{cluster}}"
       }
     ]
   },
@@ -2597,7 +2593,7 @@
         "type": "prometheus",
         "uid": "${datasource}"
       },
-      "description": "Least-squares slope of storage load over a 30 minute window, per node. A positive value means the node is accumulating data. This cluster emits no free-space metric (the hostmetrics filesystem scraper is off), so a projected time-to-full cannot be drawn here.",
+      "description": "Least-squares slope of storage load over a 30 minute window, per node. A positive value means the node is accumulating data. Free space per filesystem comes from the host_metrics receiver (system_filesystem_usage_bytes), not from this panel.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2672,8 +2668,8 @@
       {
         "current": {
           "selected": true,
-          "text": "VictoriaMetrics",
-          "value": "VictoriaMetrics"
+          "text": "Mimir",
+          "value": "mimir"
         },
         "hide": 0,
         "includeAll": false,
@@ -2797,7 +2793,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

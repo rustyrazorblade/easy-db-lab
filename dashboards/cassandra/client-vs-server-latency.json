@@ -16,7 +16,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "enable": true,
         "expr": "resets(jvm_cpu_time_seconds_total{job=\"cassandra\"}[$__interval]) > 0",
@@ -75,7 +75,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Client-observed read latency from the stress summary (`selects`, seconds, scaled to microseconds) overlaid on coordinator-observed read latency per node (`cassandra_client_request_latency_${percentile}_microseconds`, microseconds). Units: the client summary is emitted in SECONDS and the server gauge in MICROSECONDS. Every client expression here multiplies by 1000000 first, so both sides reach the axis in microseconds and are then divided by the Latency unit divisor.",
       "fieldConfig": {
@@ -156,7 +156,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "selects{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}",
@@ -167,7 +167,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"} / ${latency_unit}",
@@ -182,7 +182,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Client-observed write latency from the stress summary (`mutations`, seconds, scaled to microseconds) overlaid on coordinator-observed write latency per node. Units: the client summary is emitted in SECONDS and the server gauge in MICROSECONDS. Every client expression here multiplies by 1000000 first, so both sides reach the axis in microseconds and are then divided by the Latency unit divisor.",
       "fieldConfig": {
@@ -263,7 +263,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "mutations{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}",
@@ -274,7 +274,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", host_name=~\"$host\"} / ${latency_unit}",
@@ -302,7 +302,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The point of this dashboard. Client read latency minus coordinator read latency, both in microseconds before the divide. What is left is network, driver queueing and coordinator dispatch. Both sides are averaged: the client across the selected workloads, the server across the selected hosts. A negative value is not an error; it means the slowest coordinator is slower than the client average, which happens when one node lags.",
       "fieldConfig": {
@@ -383,7 +383,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(avg(selects{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg(cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"})) / ${latency_unit}",
@@ -398,7 +398,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Client write latency minus coordinator write latency, both in microseconds before the divide. Writes normally show a smaller absolute gap than reads because the coordinator replies before every replica acknowledges.",
       "fieldConfig": {
@@ -479,7 +479,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(avg(mutations{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg(cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", host_name=~\"$host\"})) / ${latency_unit}",
@@ -507,7 +507,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "The same subtraction, but the server term is left per node instead of averaged. The client term is a single average across the selected workloads, because the load generator does not attribute its own latency to a coordinator. One node standing apart here is a node problem; all of them moving together is a path problem.",
       "fieldConfig": {
@@ -588,7 +588,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(scalar(avg(selects{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"})) * 1000000 - cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"}) / ${latency_unit}",
@@ -603,7 +603,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Per-node write gap. Same construction as the read panel: a scalar client average minus the per-node coordinator gauge.",
       "fieldConfig": {
@@ -684,7 +684,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "(scalar(avg(mutations{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"})) * 1000000 - cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", host_name=~\"$host\"}) / ${latency_unit}",
@@ -712,7 +712,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Client selects per second against coordinator reads per second. These two lines should sit on top of each other. If they do not, the client is talking to something the server side does not count, or a host filter is hiding coordinators, and every delta panel above is comparing unrelated work.",
       "fieldConfig": {
@@ -792,7 +792,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(rate(selects_count{job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
@@ -803,7 +803,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_count_total{cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -818,7 +818,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Client mutations per second against coordinator writes per second. The same agreement check as the read panel.",
       "fieldConfig": {
@@ -898,7 +898,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(rate(mutations_count{job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
@@ -909,7 +909,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_count_total{cassandra_operation=\"write\", host_name=~\"$host\"}[$__rate_interval]))",
@@ -937,7 +937,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`errors_total` from the stress process: a request the driver could not complete, including everything the driver retried away and everything that never reached a coordinator. The client has no status breakdown, only a total.",
       "fieldConfig": {
@@ -1017,7 +1017,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (job_name) (rate(errors_total{job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
@@ -1032,7 +1032,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "`cassandra_client_request_error_total` split by cassandra_status. unavailable, timeout and failure are three different events, and none of them is the same event as a client error: a request the coordinator never received cannot appear here, and a request the driver retried successfully appears here but not on the client.",
       "fieldConfig": {
@@ -1112,7 +1112,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (cassandra_operation, cassandra_status) (rate(cassandra_client_request_error_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1140,7 +1140,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Coordinator latency aggregated by the Group by dimension. Honours host_name, cluster, cassandra_build and cassandra_operation; the client-request family carries no keyspace or table, so those choices collapse this panel to one series.",
       "fieldConfig": {
@@ -1221,7 +1221,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{host_name=~\"$host\"}) / ${latency_unit}",
@@ -1236,7 +1236,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "description": "Coordinator request rate aggregated by the Group by dimension. Same label caveat as the panel on the left.",
       "fieldConfig": {
@@ -1316,7 +1316,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (${groupby}) (rate(cassandra_client_request_count_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1468,7 +1468,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(cassandra_storage_load_bytes, host_name)",
         "description": "Database nodes. Derived from a Cassandra-only metric, so All expands to the database nodes and never widens a panel to the load generator or the control node.",
@@ -1501,7 +1501,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(mutations{job=\"cassandra-easy-stress\"}, job_name)",
         "description": "Which stress workload the client side reads. Every running cassandra-easy-stress process publishes its own job_name. Two workloads with different shapes produce different client latency, so narrow this to one workload before you trust a delta.",
@@ -1584,7 +1584,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

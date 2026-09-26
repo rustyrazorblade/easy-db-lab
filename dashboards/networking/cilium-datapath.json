@@ -38,7 +38,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -105,7 +105,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "up{job=\"cilium-agent\", cluster=~\"$cluster\", instance=~\"$instance\"}",
@@ -122,7 +122,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -169,7 +169,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "count by (version) (cilium_version{job=\"cilium-agent\", cluster=~\"$cluster\", instance=~\"$instance\"})",
@@ -186,7 +186,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -237,7 +237,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(cilium_controllers_failing{cluster=~\"$cluster\", instance=~\"$instance\"})",
@@ -254,7 +254,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -334,7 +334,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (endpoint_state) (cilium_endpoint_state{cluster=~\"$cluster\", instance=~\"$instance\"})",
@@ -350,7 +350,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -446,7 +446,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, outcome) (rate(cilium_endpoint_regenerations_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -475,7 +475,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -555,7 +555,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le, instance) (rate(cilium_endpoint_regeneration_time_stats_seconds_bucket{scope=\"total\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])))",
@@ -571,7 +571,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -682,7 +682,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, level, subsystem) (rate(cilium_errors_warnings_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -698,7 +698,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -778,7 +778,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le, instance) (rate(cilium_k8s_client_api_latency_time_seconds_bucket{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])))",
@@ -794,7 +794,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -874,7 +874,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, method) (rate(cilium_k8s_client_api_calls_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -903,7 +903,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -983,7 +983,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, reason, direction) (rate(cilium_drop_count_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -999,7 +999,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1079,7 +1079,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, reason, direction) (rate(cilium_drop_bytes_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -1095,7 +1095,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1175,7 +1175,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, direction) (rate(cilium_forward_bytes_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -1191,7 +1191,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1271,7 +1271,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, direction) (rate(cilium_forward_count_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -1287,7 +1287,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1377,7 +1377,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max by (instance, map_name) (cilium_bpf_map_pressure{cluster=~\"$cluster\", instance=~\"$instance\"})",
@@ -1393,7 +1393,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1473,7 +1473,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, protocol, status) (cilium_datapath_conntrack_gc_entries{cluster=~\"$cluster\", instance=~\"$instance\"})",
@@ -1489,7 +1489,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1569,7 +1569,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, protocol, status) (rate(cilium_datapath_conntrack_gc_runs_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
@@ -1585,7 +1585,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1665,7 +1665,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by (instance, protocol) (cilium_datapath_conntrack_gc_duration_seconds_sum{cluster=~\"$cluster\", instance=~\"$instance\"}) / sum by (instance, protocol) (cilium_datapath_conntrack_gc_duration_seconds_count{cluster=~\"$cluster\", instance=~\"$instance\"})",
@@ -1691,7 +1691,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(up{job=\"cilium-agent\"}, cluster)",
         "hide": 0,
@@ -1716,7 +1716,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(up{job=\"cilium-agent\", cluster=~\"$cluster\"}, instance)",
         "hide": 0,

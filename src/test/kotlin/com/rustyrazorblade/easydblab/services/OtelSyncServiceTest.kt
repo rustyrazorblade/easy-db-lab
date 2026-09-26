@@ -8,8 +8,14 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapList
+import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.dsl.AnyNamespaceOperation
 import io.fabric8.kubernetes.client.dsl.FilterWatchListDeletable
@@ -22,6 +28,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -76,9 +83,17 @@ class OtelSyncServiceTest : BaseKoinTest() {
 
         whenever(mockK8sClientProvider.createClient(any())).thenReturn(mockK8sClient)
         whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
 
-        service = DefaultOtelSyncService(mockK8sClientProvider, mockK8sService, otelManifestBuilder, getKoin().get())
+        service =
+            DefaultOtelSyncService(
+                mockK8sClientProvider,
+                mockK8sService,
+                otelManifestBuilder,
+                getKoin().get(),
+                getKoin().get(),
+                ConfigChangeReport(mockK8sService, getKoin().get()),
+            )
     }
 
     @Test
@@ -90,31 +105,90 @@ class OtelSyncServiceTest : BaseKoinTest() {
 
     @Test
     fun `syncConfigMap applies the OTel collector ConfigMap`() {
+        val applied = captureApplied()
+
         service.syncConfigMap(controlHost)
 
-        verify(mockK8sService).applyResource(any(), any())
+        assertThat(applied.filterIsInstance<ConfigMap>().map { it.metadata.name }).containsExactly("otel-collector-config")
     }
 
-    @Test
-    fun `syncConfigMap applies a ConfigMap resource`() {
-        var appliedResource: Any? = null
+    /** Every resource the sync applies, in order. */
+    private fun captureApplied(): MutableList<HasMetadata> {
+        val applied = mutableListOf<HasMetadata>()
         whenever(mockK8sService.applyResource(any(), any())).thenAnswer { invocation ->
-            appliedResource = invocation.getArgument(1)
+            applied += invocation.getArgument<HasMetadata>(1)
             Result.success(Unit)
         }
+        return applied
+    }
 
+    private fun appliedConfigHash(applied: List<HasMetadata>): String =
+        applied
+            .filterIsInstance<DaemonSet>()
+            .single { it.metadata.name == Constants.OtelCollector.SERVICE_NAME }
+            .spec.template.metadata.annotations
+            .getValue(Constants.K8s.CONFIG_HASH_ANNOTATION)
+
+    private fun registerKitScrapeTarget() {
+        val metricsConfigMap =
+            ConfigMap().apply {
+                data = mapOf("kit-name" to "scylladb", "job-name" to "scylladb", "port" to "9180", "path" to "/metrics")
+            }
+        whenever(mockFiltered.list()).thenReturn(ConfigMapList().also { it.items = mutableListOf(metricsConfigMap) })
+    }
+
+    /** A kit start changes the scrape config, so the collector's template changes and it rolls. */
+    @Test
+    fun `syncConfigMap changes the collector hash when a kit registers a scrape target`() {
+        val before = captureApplied()
         service.syncConfigMap(controlHost)
 
-        assertThat(appliedResource).isInstanceOf(ConfigMap::class.java)
+        registerKitScrapeTarget()
+        val after = captureApplied()
+        service.syncConfigMap(controlHost)
+
+        assertThat(appliedConfigHash(after)).isNotEqualTo(appliedConfigHash(before))
+    }
+
+    private fun recordEvents(): MutableList<Event> {
+        val emitted = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return emitted
+    }
+
+    /** The rollout comes from the hash changing; a forced restart would leave the stale hash behind. */
+    @Test
+    fun `syncConfigMap does not force a rollout restart`() {
+        service.syncConfigMap(controlHost)
+
+        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any(), any())
     }
 
     @Test
-    fun `syncConfigMap restarts the OTel DaemonSet after applying the ConfigMap`() {
+    fun `syncConfigMap reports whether the collector configuration changed`() {
+        val applied = captureApplied()
+        service.syncConfigMap(controlHost)
+        val collector = WorkloadRef(WorkloadKind.DaemonSet, Constants.OtelCollector.SERVICE_NAME)
+        val runningHash = appliedConfigHash(applied)
+        // An Answer bypasses Kotlin's Result unboxing: the JVM method returns the bare map.
+        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenAnswer { mapOf(collector to runningHash) }
+        val events = recordEvents()
+
+        service.syncConfigMap(controlHost)
+        registerKitScrapeTarget()
         service.syncConfigMap(controlHost)
 
-        verify(mockK8sService).rolloutRestartDaemonSet(
-            controlHost = controlHost,
-            name = Constants.OtelCollector.SERVICE_NAME,
+        assertThat(events.filterIsInstance<Event.Grafana.WorkloadConfigCompared>()).containsExactly(
+            Event.Grafana.WorkloadConfigCompared(collector.toString(), changed = false),
+            Event.Grafana.WorkloadConfigCompared(collector.toString(), changed = true),
         )
     }
 
@@ -122,16 +196,6 @@ class OtelSyncServiceTest : BaseKoinTest() {
     fun `syncConfigMap returns failure when applyResource fails`() {
         whenever(mockK8sService.applyResource(any(), any()))
             .thenReturn(Result.failure(RuntimeException("K8s API error")))
-
-        val result = service.syncConfigMap(controlHost)
-
-        assertThat(result.isFailure).isTrue()
-    }
-
-    @Test
-    fun `syncConfigMap returns failure when DaemonSet restart fails`() {
-        whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any()))
-            .thenReturn(Result.failure(RuntimeException("rollout failed")))
 
         val result = service.syncConfigMap(controlHost)
 
@@ -158,14 +222,10 @@ class OtelSyncServiceTest : BaseKoinTest() {
                     )
             }
         whenever(mockFiltered.list()).thenReturn(ConfigMapList().also { it.items = mutableListOf(metricsConfigMap) })
-
-        var appliedConfigMap: ConfigMap? = null
-        whenever(mockK8sService.applyResource(any(), any())).thenAnswer { inv ->
-            appliedConfigMap = inv.getArgument(1) as? ConfigMap
-            Result.success(Unit)
-        }
+        val applied = captureApplied()
 
         service.syncConfigMap(controlHost)
+        val appliedConfigMap = applied.filterIsInstance<ConfigMap>().singleOrNull()
 
         val yaml =
             checkNotNull(appliedConfigMap?.data?.get("otel-collector-config.yaml")) {
@@ -189,14 +249,10 @@ class OtelSyncServiceTest : BaseKoinTest() {
                 initConfig = InitConfig(region = "us-west-2", cni = CniMode.Cilium),
             )
         whenever(getKoin().get<ClusterStateManager>().load()).thenReturn(ciliumState)
-
-        var appliedConfigMap: ConfigMap? = null
-        whenever(mockK8sService.applyResource(any(), any())).thenAnswer { inv ->
-            appliedConfigMap = inv.getArgument(1) as? ConfigMap
-            Result.success(Unit)
-        }
+        val applied = captureApplied()
 
         service.syncConfigMap(controlHost)
+        val appliedConfigMap = applied.filterIsInstance<ConfigMap>().singleOrNull()
 
         val yaml = checkNotNull(appliedConfigMap?.data?.get("otel-collector-config.yaml"))
         assertThat(yaml).contains("cilium-agent").contains("cilium-operator")

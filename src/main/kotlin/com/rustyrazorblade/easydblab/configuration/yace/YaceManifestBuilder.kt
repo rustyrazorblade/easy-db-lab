@@ -13,7 +13,7 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  *
  * Creates a Deployment on the control node that scrapes CloudWatch metrics for
  * EMR, S3, EBS, EC2, and OpenSearch namespaces. OTel Collector scrapes YACE's
- * Prometheus endpoint, forwarding metrics to VictoriaMetrics.
+ * Prometheus endpoint, forwarding metrics to Mimir.
  *
  * Uses tag-based auto-discovery (`easy_cass_lab=1`) to find AWS resources.
  *

@@ -5,28 +5,35 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.services.VictoriaLogsService
+import com.rustyrazorblade.easydblab.services.LogQl
+import com.rustyrazorblade.easydblab.services.LokiQueryService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 
 /**
- * Query logs from Victoria Logs.
+ * Query logs from Loki.
  *
  * This command provides a unified interface to query logs from all sources:
- * - Cassandra logs (/var/log/cassandra/)
+ * - Cassandra application logs (OTLP from the Java agent, `service_name="cassandra"`)
+ * - Cassandra JVM GC log (/mnt/db1/cassandra/logs/gc.log, source `cassandra-gc`)
  * - ClickHouse logs (/mnt/db1/clickhouse/logs/)
  * - systemd/journald (cassandra.service, docker.service, etc.)
  * - System logs (/var/log/)
  * - EMR/Spark logs
  *
+ * Without `--query`, the query is scoped to the current cluster, since clusters in one tenant share
+ * Loki's store.
+ *
  * Examples:
  * ```
- * # Query all logs from last hour
+ * # Query all of this cluster's logs from the last hour
  * easy-db-lab logs query
  *
  * # Filter by source
+ * # `cassandra` selects the Java agent's OTLP stream; `cassandra-gc` the JVM GC log
  * easy-db-lab logs query --source cassandra
+ * easy-db-lab logs query --source cassandra-gc
  * easy-db-lab logs query --source emr
  *
  * # Filter by host
@@ -41,8 +48,8 @@ import picocli.CommandLine.Option
  * # Time range and limit
  * easy-db-lab logs query --since 30m --limit 500
  *
- * # Raw Victoria Logs query
- * easy-db-lab logs query -q 'source:cassandra AND host:db0'
+ * # Raw LogQL query, sent unchanged
+ * easy-db-lab logs query -q '{service_name="cassandra"} |= "timed out"'
  * ```
  */
 @McpCommand
@@ -50,14 +57,14 @@ import picocli.CommandLine.Option
 @RequiresProxy
 @Command(
     name = "query",
-    description = ["Query logs from Victoria Logs"],
+    description = ["Query logs from Loki"],
 )
 class LogsQuery : PicoBaseCommand() {
-    private val victoriaLogsService: VictoriaLogsService by inject()
+    private val lokiQueryService: LokiQueryService by inject()
 
     @Option(
         names = ["--source", "-s"],
-        description = ["Log source: emr, cassandra, clickhouse, systemd, system"],
+        description = ["Log source: cassandra (application logs), cassandra-gc (JVM GC log), journald, system, tool-runner, emr"],
     )
     var source: String? = null
 
@@ -94,7 +101,7 @@ class LogsQuery : PicoBaseCommand() {
 
     @Option(
         names = ["--query", "-q"],
-        description = ["Raw Victoria Logs query (LogsQL syntax)"],
+        description = ["Raw LogQL query, sent unchanged (not scoped to this cluster)"],
     )
     var rawQuery: String? = null
 
@@ -102,13 +109,20 @@ class LogsQuery : PicoBaseCommand() {
         requireLocalTelemetryStack("logs query")
 
         // Build the query
-        val query = rawQuery ?: buildQuery()
+        val query =
+            rawQuery ?: LogQl.logsQuery(
+                cluster = clusterState.clusterLabelName(),
+                source = source,
+                host = host,
+                unit = unit,
+                grep = grep,
+            )
 
         eventBus.emit(Event.Logs.QueryInfo(query, since, limit))
 
         // Execute the query
         val logs =
-            victoriaLogsService
+            lokiQueryService
                 .query(query, since, limit)
                 .getOrElse { exception ->
                     eventBus.emit(Event.Logs.QueryFailed(exception.message ?: "Unknown error"))
@@ -116,8 +130,8 @@ class LogsQuery : PicoBaseCommand() {
                         Event.Logs.QueryTips(
                             """
                             |Tips:
-                            |  - Ensure observability stack is deployed: easy-db-lab k8 apply
-                            |  - Check if Victoria Logs is running: kubectl get pods
+                            |  - Ensure the observability stack is deployed: easy-db-lab grafana update-config
+                            |  - Check that Loki is running: kubectl get pods -l app.kubernetes.io/name=loki
                             """.trimMargin(),
                         ),
                     )
@@ -130,19 +144,5 @@ class LogsQuery : PicoBaseCommand() {
         } else {
             eventBus.emit(Event.Logs.QueryResults(logs))
         }
-    }
-
-    /**
-     * Builds a LogsQL query from the command options.
-     */
-    private fun buildQuery(): String {
-        val parts = mutableListOf<String>()
-
-        source?.let { parts.add("source:$it") }
-        host?.let { parts.add("host:$it") }
-        unit?.let { parts.add("unit:$it") }
-        grep?.let { parts.add("\"$it\"") }
-
-        return parts.joinToString(" AND ").ifEmpty { "*" }
     }
 }

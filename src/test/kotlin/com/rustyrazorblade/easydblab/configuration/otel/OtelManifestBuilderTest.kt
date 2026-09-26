@@ -1,6 +1,9 @@
 package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.YamlTestSupport.keysAt
+import com.rustyrazorblade.easydblab.YamlTestSupport.listAt
+import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
@@ -98,7 +101,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     @Test
     fun `the SDK resource drop covers the argv in both of its forms`() {
         val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
-        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resourcedetection:")
+        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resource_detection:")
 
         assertThat(dropBlock).contains("key: process.command_line", "key: process.command_args")
     }
@@ -110,7 +113,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     @Test
     fun `the SDK resource drop removes the per-restart container id`() {
         val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
-        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resourcedetection:")
+        val dropBlock = yaml.substringAfter("resource/drop_sdk_metadata:\n").substringBefore("\n  resource_detection:")
 
         assertThat(dropBlock).contains("key: container.id")
     }
@@ -224,7 +227,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         // table, a host or an id, and grouping on one would be unbounded. That restraint is the
         // whole cardinality argument for this feature, so it is asserted rather than trusted.
         val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
-        val countBlock = yaml.substringAfter("  count:").substringBefore("  signaltometrics:")
+        val countBlock = yaml.substringAfter("  count:").substringBefore("  signal_to_metrics:")
 
         assertThat(countBlock).contains("cassandra.log.records")
         assertThat(countBlock).contains("- key: logger")
@@ -259,7 +262,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         // The compaction line also carries a uuid and an sstable path. Neither is bounded, so
         // neither may become a grouping key on any of the three metrics.
-        val valueBlock = yaml.substringAfter("  signaltometrics:").substringBefore("  spanmetrics:")
+        val valueBlock = yaml.substringAfter("  signal_to_metrics:").substringBefore("  span_metrics:")
         assertThat(Regex("- key: (\\S+)").findAll(valueBlock).map { it.groupValues[1] }.toList())
             .containsOnly("gc_name", "dropped_type")
     }
@@ -347,8 +350,8 @@ class OtelManifestBuilderTest : BaseKoinTest() {
         val metricsFromLogs = pipeline("metrics/logs:")
 
         assertThat(logsPipeline).contains("count")
-        assertThat(metricsFromLogs).contains("receivers: [count, signaltometrics]")
-        assertThat(metricsFromLogs).contains("prometheusremotewrite")
+        assertThat(metricsFromLogs).contains("receivers: [count, signal_to_metrics]")
+        assertThat(metricsFromLogs).contains("prometheus_remote_write")
 
         val processors = logsPipeline.substringAfter("processors:").substringBefore("exporters:")
         assertThat(processors).contains("transform/log_metric_labels")
@@ -683,12 +686,14 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     fun `local mode ConfigMap exports to the in-cluster backend services`() {
         val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
 
-        assertThat(yaml).contains("http://victoriametrics.default.svc.cluster.local:8428/api/v1/write")
-        assertThat(yaml).contains("http://victorialogs.default.svc.cluster.local:9428/insert/opentelemetry")
+        assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "endpoint"))
+            .isEqualTo("http://mimir.default.svc.cluster.local:9009/api/v1/push")
+        assertThat(scalarAt(yaml, "exporters", "otlp_http/logs", "endpoint"))
+            .isEqualTo("http://loki.default.svc.cluster.local:3100/otlp")
         assertThat(yaml).contains("tempo.default.svc.cluster.local:4320")
         // No unresolved endpoint placeholders may survive substitution.
-        assertThat(yaml).doesNotContain("__VICTORIAMETRICS_ENDPOINT__")
-        assertThat(yaml).doesNotContain("__VICTORIALOGS_ENDPOINT__")
+        assertThat(yaml).doesNotContain("__METRICS_ENDPOINT__")
+        assertThat(yaml).doesNotContain("__LOGS_ENDPOINT__")
         assertThat(yaml).doesNotContain("__TEMPO_ENDPOINT__")
     }
 
@@ -703,14 +708,198 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = redirect))
 
-        assertThat(yaml).contains("http://10.0.0.9:8428/api/v1/write")
-        assertThat(yaml).contains("http://10.0.0.9:9428/insert/opentelemetry")
+        assertThat(yaml).contains("http://10.0.0.9:9009/api/v1/push")
+        assertThat(yaml).contains("http://10.0.0.9:3100/otlp")
         assertThat(yaml).contains("10.0.0.9:4320")
         // Redirect must displace the in-cluster services entirely, not merely add alongside them.
-        assertThat(yaml).doesNotContain("victoriametrics.default.svc.cluster.local")
-        assertThat(yaml).doesNotContain("victorialogs.default.svc.cluster.local")
+        assertThat(yaml).doesNotContain("mimir.default.svc.cluster.local")
+        assertThat(yaml).doesNotContain("loki.default.svc.cluster.local")
         assertThat(yaml).doesNotContain("tempo.default.svc.cluster.local")
         // Traces never target the query port.
         assertThat(yaml).doesNotContain("10.0.0.9:3200")
+    }
+
+    /**
+     * The collector's own telemetry is what says whether spans actually reached Tempo; without it an
+     * exporter failing every send looks exactly like a cluster with no traffic.
+     */
+    @Test
+    fun `the collector scrapes its own telemetry into the metric store`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val selfJob =
+            yaml
+                .substringAfter("- job_name: 'otel-collector'")
+                .substringBefore("- job_name:")
+
+        assertThat(yaml).contains("- job_name: 'otel-collector'")
+        assertThat(selfJob).contains("localhost:8888")
+        assertThat(selfJob).contains("replacement: '\${env:CLUSTER_NAME}'")
+    }
+
+    /**
+     * Tempo and the Pyroscope server each run as one pod on the control node, but the collector is
+     * a DaemonSet on every node. A static `localhost` target had every other node's collector report
+     * both jobs `up = 0` for the life of the cluster. Node-local pod discovery means only the
+     * collector on the node running the pod scrapes it.
+     */
+    @Test
+    fun `local mode scrapes the Mimir, Loki, Tempo and Pyroscope servers only from the node running them`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
+
+        for ((job, port) in listOf("mimir" to 9009, "loki" to 3100, "tempo" to 3200, "pyroscope" to 4040)) {
+            assertThat(jobBlock(yaml, job))
+                .describedAs(job)
+                .doesNotContain("localhost:$port")
+                .doesNotContain("static_configs")
+                .contains("role: \"pod\"")
+                .contains("- \"default\"")
+                .contains("- \"__meta_kubernetes_pod_label_app_kubernetes_io_name\"")
+                .contains("regex: \"$job\"")
+                .contains("- \"__meta_kubernetes_pod_node_name\"")
+                .contains("regex: \"\${env:HOSTNAME}\"")
+                .contains("regex: \"$port\"")
+                .contains("replacement: \"\$\$1:$port\"")
+                .contains("metrics_path: \"/metrics\"")
+                .contains("replacement: \"\${env:CLUSTER_NAME}\"")
+        }
+    }
+
+    /**
+     * A redirect cluster deploys neither Tempo nor the Pyroscope server, so scraping their ports
+     * would poll nothing on every node for the life of the cluster.
+     */
+    @Test
+    fun `redirect mode does not scrape the local Tempo and Pyroscope servers`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = TelemetryRedirect.fromBaseHost("10.0.0.9")))
+
+        assertThat(yaml).doesNotContain("job_name: \"mimir\"").doesNotContain("job_name: \"loki\"")
+        assertThat(yaml).doesNotContain("job_name: \"tempo\"").doesNotContain("job_name: 'tempo'")
+        assertThat(yaml).doesNotContain("job_name: \"pyroscope\"")
+        assertThat(yaml).doesNotContain("localhost:3200").doesNotContain("localhost:4040")
+    }
+
+    /** Since 0.x the transform processor ignores statement errors by default; this stack fails fast. */
+    @Test
+    fun `every transform processor propagates its errors`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+        val transforms = keysAt(yaml, "processors").filter { it.substringBefore("/") == "transform" }
+
+        assertThat(transforms).isNotEmpty()
+        transforms.forEach { name ->
+            assertThat(scalarAt(yaml, "processors", name, "error_mode")).describedAs(name).isEqualTo("propagate")
+        }
+    }
+
+    @Test
+    fun `the cluster collector uses no deprecated component ID`() {
+        assertThat(DeprecatedCollectorComponents.findIn(yamlFrom(builder.buildConfigMap(emptyList())))).isEmpty()
+    }
+
+    @Test
+    fun `the EMR and stress-sidecar collectors use no deprecated component ID`() {
+        for (resource in listOf(
+            "/com/rustyrazorblade/easydblab/configuration/emr/otel-collector-config.yaml",
+            "/com/rustyrazorblade/easydblab/configuration/cassandra/otel-stress-sidecar-config.yaml",
+        )) {
+            val yaml = checkNotNull(javaClass.getResource(resource)).readText()
+            assertThat(DeprecatedCollectorComponents.findIn(yaml)).describedAs(resource).isEmpty()
+        }
+    }
+
+    /** Per-core CPU is opt-in on the host CPU scraper; dashboards break down CPU time by core. */
+    @Test
+    fun `the host CPU scraper reports time per core`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(listAt(yaml, "receivers", "host_metrics", "scrapers", "cpu", "metrics", "system.cpu.time", "attributes"))
+            .contains("cpu", "state")
+    }
+
+    /**
+     * Tempo runs native multi-tenancy, so every trace write carries the cluster's tenant — on a
+     * redirected cluster too, or a multi-tenant external stack would reject the data. The tenant is
+     * read from the environment, never written into the config file.
+     */
+    @Test
+    fun `the Tempo exporter sends the tenant from the environment, locally and under redirect`() {
+        val local = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
+        val redirected = yamlFrom(builder.buildConfigMap(emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+
+        assertThat(scalarAt(local, "exporters", "otlp_grpc/tempo", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
+        assertThat(scalarAt(redirected, "exporters", "otlp_grpc/tempo", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
+    }
+
+    /** The collector's TENANT comes from the cluster-config ConfigMap, the one source of the tenant. */
+    @Test
+    fun `the collector reads its tenant from cluster-config`() {
+        val env =
+            builder
+                .buildDaemonSet()
+                .spec.template.spec.containers[0]
+                .env
+        val tenant = env.single { it.name == "TENANT" }.valueFrom.configMapKeyRef
+
+        assertThat(tenant.name).isEqualTo("cluster-config")
+        assertThat(tenant.key).isEqualTo("tenant")
+    }
+
+    /** Mimir and Loki run native multi-tenancy: every metric and log write carries the tenant. */
+    @Test
+    fun `metrics and logs exporters send the tenant from the environment, locally and under redirect`() {
+        val local = yamlFrom(builder.buildConfigMap(emptyList(), telemetryRedirect = null))
+        val redirected = yamlFrom(builder.buildConfigMap(emptyList(), TelemetryRedirect.fromBaseHost("10.0.0.9")))
+
+        for (yaml in listOf(local, redirected)) {
+            assertThat(scalarAt(yaml, "exporters", "prometheus_remote_write", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
+            assertThat(scalarAt(yaml, "exporters", "otlp_http/logs", "headers", "X-Scope-OrgID")).isEqualTo("\${env:TENANT}")
+        }
+    }
+
+    /** Every logs pipeline exports to Loki, and no VictoriaLogs-only processor remains. */
+    @Test
+    fun `every logs pipeline exports to Loki with no VictoriaLogs processor`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        for (name in listOf("logs/local", "logs/containers", "logs/otlp")) {
+            assertThat(listAt(yaml, "service", "pipelines", name, "exporters")).describedAs(name).contains("otlp_http/logs")
+            assertThat(
+                listAt(yaml, "service", "pipelines", name, "processors"),
+            ).describedAs(name).doesNotContain("transform/add_service_name")
+        }
+        assertThat(keysAt(yaml, "processors")).doesNotContain("transform/add_service_name")
+        assertThat(keysAt(yaml, "exporters")).doesNotContain("otlp_http/victorialogs")
+    }
+
+    /**
+     * Loki indexes `source` only when it is a resource attribute. The file receivers set it on the
+     * resource, and journald lines (Fluent Bit sets it on the record) have it moved there before export.
+     */
+    @Test
+    fun `the log source is a resource attribute`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        for (receiver in listOf("file_log/system", "file_log/tools", "file_log/cassandra")) {
+            assertThat(scalarAt(yaml, "receivers", receiver, "resource", "source")).describedAs(receiver).isNotBlank()
+            assertThat(keysAt(yaml, "receivers", receiver, "attributes")).describedAs(receiver).doesNotContain("source")
+        }
+        assertThat(listAt(yaml, "service", "pipelines", "logs/otlp", "processors")).contains("transform/source_to_resource")
+        assertThat(listAt(yaml, "processors", "transform/source_to_resource", "log_statements").plus(yaml))
+            .anyMatch { it.contains("set(resource.attributes[\"source\"], attributes[\"source\"])") }
+    }
+
+    /**
+     * Cassandra's application logs reach Loki once, over OTLP from the Java agent. The file
+     * receiver tails only the JVM GC log, which the JVM writes itself and the agent never sees;
+     * tailing system.log or debug.log as well stored every Cassandra line twice.
+     */
+    @Test
+    fun `the Cassandra file receiver tails only the JVM GC log, under its own source`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        assertThat(listAt(yaml, "receivers", "file_log/cassandra", "include"))
+            .containsExactly("/mnt/db1/cassandra/logs/gc.log*")
+        assertThat(listAt(yaml, "receivers", "file_log/cassandra", "exclude"))
+            .contains("/mnt/db1/cassandra/logs/gc.log*.gz")
+        assertThat(scalarAt(yaml, "receivers", "file_log/cassandra", "resource", "source")).isEqualTo("cassandra-gc")
     }
 }

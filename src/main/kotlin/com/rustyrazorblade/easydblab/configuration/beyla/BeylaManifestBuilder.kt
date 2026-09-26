@@ -26,7 +26,7 @@ class BeylaManifestBuilder(
         private const val NAMESPACE = "default"
         private const val APP_LABEL = "beyla"
         private const val CONFIGMAP_NAME = "beyla-config"
-        private const val IMAGE = "grafana/beyla:2.8.1"
+        private const val IMAGE = "grafana/beyla:3.36.0"
     }
 
     /**

@@ -14,7 +14,7 @@ import picocli.CommandLine.Command
  *
  * This command is a thin wrapper over [ObservabilityStackService], which owns the deploy
  * orchestration shared with cluster bring-up (`up`). The stack it deploys includes the OTel
- * collector, VictoriaMetrics + VictoriaLogs, Tempo, Beyla, ebpf_exporter, the Pyroscope server and
+ * collector, Mimir + Loki, Tempo, Beyla, ebpf_exporter, the Pyroscope server and
  * eBPF agent, Grafana with dashboards, the docker registry, and the S3 manager.
  *
  * A telemetry-redirect cluster has no local Grafana or backends to reconfigure — its telemetry
@@ -41,7 +41,7 @@ class GrafanaUpdateConfig : PicoBaseCommand() {
         }
         val controlNode = controlHosts.first()
 
-        observabilityStackService.deploy(controlNode, telemetryRedirect = null).getOrElse { exception ->
+        observabilityStackService.deploy(controlNode).getOrElse { exception ->
             error("Failed to deploy observability stack: ${exception.message}")
         }
     }

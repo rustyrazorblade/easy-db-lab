@@ -2,7 +2,7 @@
 
 Apache Flink exposes metrics via its built-in Prometheus reporter on `:9249` (both the
 JobManager and every TaskManager). The OTel DaemonSet scrapes both and forwards them to
-VictoriaMetrics with `job="flink"` and `cluster="<cluster-name>"` labels.
+Mimir with `job="flink"` and `cluster="<cluster-name>"` labels.
 
 All metric names below are present in `metrics-catalog.json` (exported from a live session
 cluster running the `TopSpeedWindowing` example job).

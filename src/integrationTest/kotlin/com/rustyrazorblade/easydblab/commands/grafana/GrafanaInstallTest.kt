@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.ConfigChangeReport
 import com.rustyrazorblade.easydblab.services.DefaultGrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardTreeUploader
@@ -76,6 +77,7 @@ class GrafanaInstallTest : BaseKoinTest() {
                         treeUploader = mock<GrafanaDashboardTreeUploader>(),
                         eventBus = get<EventBus>(),
                         okHttpClient = get<OkHttpClient>(),
+                        configChangeReport = ConfigChangeReport(mock<K8sService>(), get<EventBus>()),
                     )
                 }
             },

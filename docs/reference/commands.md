@@ -133,7 +133,8 @@ determined fails at `init`, before any instance is created.
 | `--open` | Unrestricted SSH access | false |
 | `--tag` | Custom tags (key=value, repeatable) | - |
 | `--vpc` | Use existing VPC ID | - |
-| `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | flannel |
+| `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
+| `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
 
@@ -173,16 +174,28 @@ easy-db-lab down [vpc-id] [options]
 |--------|-------------|
 | `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
-| `--retention-days N` | Days to retain S3 data after teardown (default: 1) |
-| `--force` | Skip the pre-teardown backup and tear down anyway |
+| `--force` | Skip the pre-teardown flush and backup, and tear down anyway |
 
-**Automatic backup before teardown.** When you tear down the current cluster, `down` first backs up the VictoriaMetrics metrics and the Grafana annotations. The metrics land in the cluster's S3 prefix; the annotations land in an account-level location that teardown does not expire. Both backups always run together, and each is retried on a transient failure. This runs before any infrastructure is removed.
+**Flush before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The flush stops Loki and Mimir, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops no backend. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. In order:
 
-**Abort on backup failure.** If the backup fails, `down` aborts and removes no infrastructure. It reports the failure, exits with a non-zero status, and leaves the cluster intact so you can fix the backup and retry. This is deliberate: the annotations and metrics are worth more than a fast teardown.
+1. Every Grafana annotation is mirrored to Loki. Loki accepts only entries from the last 8760 hours to 24 hours ahead; an annotation outside that window is skipped with a warning naming its id, and it stays in the annotations backup.
+2. Loki is flushed: its ingester is stopped, which writes every open chunk to S3, and each index file it built is checked in S3. If the shutdown wrote chunks but no index file is found on the control node, or the node cannot list its index, the flush fails rather than passing with nothing checked.
+3. Mimir is flushed: its ingester is stopped, which cuts and ships every block it holds, and each block is checked in S3.
+4. The Grafana annotations are backed up to `observability/annotations/<tenant>/` in the account bucket.
 
-**`--force` skips the backup.** Pass `--force` to skip the pre-teardown backup and tear down anyway. Use it only when the backup source is already gone, or when you do not need the data. `--force` is the sole escape from the abort-on-failure behavior.
+Every step has a timeout. A redirect cluster has no local backends, so it skips these steps.
 
-**Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the backup aborts the teardown, when the teardown completes with errors, and when you decline the confirmation prompt.
+**Stop on failure.** If a step fails or times out, `down` stops there. It removes no infrastructure, because tearing down would destroy the data that is not yet in S3. It does not start Loki or Mimir again, retry the step, or undo anything: each backend stays as the failed step left it, and its write-ahead log and local blocks stay on the control node's disk. The report names the step that failed and why, and the state of each backend: running, ingester stopped (the pod still runs but takes no new data), not ready, or scaled to 0. `down` exits with a non-zero status. If both backends are still running, fix the cause and run `down` again. If a backend is stopped, `down` cannot flush it without starting it again, which it never does, so `down --force` is the way to finish.
+
+**A re-run after a successful flush skips it.** A flush that succeeds is recorded in the cluster state, with the time it completed and what it verified. If removing the infrastructure then fails, `down` reports the failure and restores nothing: Loki and Mimir stay at 0. Run `down` again and it skips the flush, says when the earlier one completed, and goes straight to the teardown. `up` clears the record, so the next `down` flushes the new data.
+
+**A re-run after a failed flush stops early.** With no successful flush recorded, `down` checks that Loki and Mimir are both running before it touches anything. If either is scaled to 0 or not ready, `down` stops, says that its data cannot be flushed without starting it again, and points you at `down --force`.
+
+**Nothing is deleted.** `down` sets no S3 lifecycle, expiry or retention rule on any bucket and deletes no object that holds your data. With `--all`, a per-cluster data bucket is deleted only when it is already empty. A data bucket that still holds objects is left as it is, and `down` reports it as kept, with S3's reason.
+
+**`--force` skips them.** Pass `--force` to skip the flush and the backup and tear down anyway, without the logs and metrics not yet in S3. Use it only when the backends are already stopped or gone, or when you do not need the data.
+
+**Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when a flush step stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
 
 ### clean
 
@@ -610,7 +623,7 @@ easy-db-lab cassandra stress info <workload>
 
 ### exec
 
-Execute commands on remote hosts via `systemd-run`. Tool output is captured by the systemd journal and shipped to VictoriaLogs via a dedicated journald OTel collector, with accurate timestamps for cross-service log correlation.
+Execute commands on remote hosts via `systemd-run`. Tool output is captured by the systemd journal and shipped to Loki through Fluent Bit and the OTel collector, with accurate timestamps for cross-service log correlation.
 
 #### exec run
 
@@ -715,6 +728,30 @@ See [Server](../integrations/server.md) for details.
 
 ---
 
+## Logs Commands
+
+### logs query
+
+Read the cluster's logs from Loki.
+
+```bash
+easy-db-lab logs query [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--source`, `-s` | Log source: `cassandra` (application logs, selects `service_name="cassandra"`), `cassandra-gc` (JVM GC log), `journald`, `system`, `tool-runner`, `emr` | All sources |
+| `--host`, `-H` | Hostname (`db0`, `app0`, `control0`) | All hosts |
+| `--unit` | systemd unit | All units |
+| `--since` | Time range (`1h`, `30m`, `1d`) | `1h` |
+| `--limit`, `-n` | Most lines to return | 100 |
+| `--grep`, `-g` | Only lines containing this text | None |
+| `--query`, `-q` | Raw LogQL query, sent unchanged | None |
+
+Every option but `--query` is scoped to this cluster; a raw query reads every cluster in the tenant unless it names a `cluster`. A redirect cluster has no local Loki, so the command refuses there. See [Logs (Loki)](../user-guide/loki.md).
+
+Metrics and logs are no longer snapshotted: Mimir and Loki write to S3 themselves, and `down` flushes them. The `metrics backup`, `metrics import`, `metrics ls`, `logs backup`, `logs import` and `logs ls` commands are gone.
+
 ## Kubernetes Commands
 
 ### k8 apply
@@ -765,7 +802,7 @@ easy-db-lab grafana install my-dashboard.json --folder=experiments
 
 Create a Grafana annotation on the running cluster. Use it to drop an A/B config-change marker on the dashboards' timeline; for example, before and after a Cassandra setting change.
 
-A plain global marker (no `--dashboard` and no `--panel` scope) is automatically tagged `easydblab`, in addition to any `--tags` you pass, so it renders on the core dashboards through their tag-filtered annotation query. A scoped marker (`--dashboard` or `--panel`) is not auto-tagged; it renders on its target dashboard. The command reaches Grafana over the SOCKS proxy. If the Grafana API is unreachable, the command exits non-zero and names the endpoint.
+A plain global marker (no `--dashboard` and no `--panel` scope) is automatically tagged `easydblab`, in addition to any `--tags` you pass. Every annotation is also mirrored to Loki as it is created, and the core dashboards read their markers from Loki, so a global marker renders on every core dashboard and is still readable from S3 after the cluster is gone. A scoped marker (`--dashboard` or `--panel`) is not auto-tagged; it renders on its target dashboard. If Grafana creates the annotation but the mirror to Loki fails, the command reports the created annotation and its id, then exits non-zero; the next `grafana backup` or `down` mirrors it. The command reaches Grafana over the SOCKS proxy. If the Grafana API is unreachable, the command exits non-zero and names the endpoint.
 
 ```bash
 easy-db-lab grafana annotate --text "raised concurrent_writes to 128" --tags config
@@ -782,9 +819,11 @@ easy-db-lab grafana annotate --text "raised concurrent_writes to 128" --tags con
 
 ### grafana backup
 
-Back up the cluster's Grafana annotations to an account-level S3 location.
+Back up the cluster's Grafana annotations to the observability store in the account bucket.
 
-The annotations are the A/B config-change markers worth keeping after the ephemeral cluster is torn down, so the artifact lands outside the per-cluster prefix that teardown expires. The command reports the resulting S3 URI on success. If no S3 bucket is configured, it fails fast with the standard "run `up` first" message.
+The annotations are the A/B config-change markers worth keeping after the ephemeral cluster is torn down. The artifact lands at `observability/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json`, so backups from clusters that share a tenant never overwrite each other. The command reports the resulting S3 URI on success. If no S3 bucket is configured, it fails fast with the standard "run `up` first" message.
+
+Before it writes the file, the command mirrors every annotation to Loki (`source="annotation"`), so the annotations can also be read from Loki's store after the cluster is gone; see [Logs (Loki)](../user-guide/loki.md#annotations). An annotation older than 8760 hours or more than 24 hours ahead is outside the window Loki accepts: it is skipped with a warning naming its id, and it is still in the JSON backup.
 
 The backup captures up to 5000 annotations in one call. If the cluster has 5000 or more, the command fails and backs up nothing, rather than persisting the first 5000 as a complete backup. This makes a truncated backup impossible to mistake for a full one.
 
@@ -852,7 +891,7 @@ easy-db-lab spark jobs
 
 ### spark logs
 
-Download EMR logs from S3.
+Query a Spark job's logs from Loki (the most recent job, or the one `--step-id` names).
 
 ```bash
 easy-db-lab spark logs [options]

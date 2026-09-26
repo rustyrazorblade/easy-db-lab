@@ -252,6 +252,15 @@ class Init : PicoBaseCommand() {
     var cni: CniMode = CniMode.Cilium
 
     @Option(
+        names = ["--tenant"],
+        description = [
+            "Observability tenant the cluster's traces, profiles, metrics, logs and annotations " +
+                "belong to (default: default). Must match ^[a-z][a-z0-9_-]{0,62}$.",
+        ],
+    )
+    var tenant: String = Constants.Observability.DEFAULT_TENANT
+
+    @Option(
         names = ["--redirect-telemetry"],
         description = [
             "Ship all telemetry to an external observability stack at this base host instead of " +
@@ -263,13 +272,13 @@ class Init : PicoBaseCommand() {
 
     @Option(
         names = ["--redirect-metrics-endpoint"],
-        description = ["Override the derived VictoriaMetrics remote-write URL for --redirect-telemetry."],
+        description = ["Override the derived metrics remote-write URL for --redirect-telemetry."],
     )
     var redirectMetricsEndpoint: String? = null
 
     @Option(
         names = ["--redirect-logs-endpoint"],
-        description = ["Override the derived VictoriaLogs OTLP ingest URL for --redirect-telemetry."],
+        description = ["Override the derived logs OTLP ingest URL for --redirect-telemetry."],
     )
     var redirectLogsEndpoint: String? = null
 
@@ -371,6 +380,18 @@ class Init : PicoBaseCommand() {
         require(ebsIops >= 0) { "EBS IOPS cannot be negative" }
         require(ebsThroughput >= 0) { "EBS throughput cannot be negative" }
         cidr?.let { CidrBlock(it) }
+        require(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(name)) {
+            "Invalid cluster name '$name': a cluster name must match ${Constants.Observability.CLUSTER_NAME_PATTERN} " +
+                "(start with a lowercase letter; then lowercase letters, digits or '-'; at most 40 characters)."
+        }
+        require(Regex(Constants.Observability.TENANT_PATTERN).matches(tenant)) {
+            "Invalid tenant '$tenant': a tenant must match ${Constants.Observability.TENANT_PATTERN} " +
+                "(start with a lowercase letter; then lowercase letters, digits, '_' or '-'; at most 63 characters)."
+        }
+        require(tenant != Constants.Observability.RESERVED_TENANT) {
+            "Invalid tenant '$tenant': '${Constants.Observability.RESERVED_TENANT}' is reserved " +
+                "(a Loki tenant with that name would collide with Loki's index path)."
+        }
         resolvedTelemetryRedirect?.validate()?.let { offending ->
             require(offending.isEmpty()) {
                 "Telemetry redirect endpoints are missing or malformed for: " +

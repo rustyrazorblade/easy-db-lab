@@ -3,9 +3,9 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
-import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AMIService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
@@ -221,7 +221,7 @@ val awsModule =
                 get<EmrClient>(),
                 get<ObjectStore>(),
                 get<ClusterStateManager>(),
-                get<VictoriaLogsService>(),
+                get<LokiQueryService>(),
                 get<EventBus>(),
             )
         }

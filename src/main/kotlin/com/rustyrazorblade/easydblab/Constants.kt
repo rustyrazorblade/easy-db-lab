@@ -46,6 +46,9 @@ object Constants {
         const val COMMAND_RUNNER_JAR = "command-runner.jar"
         const val SPARK_SUBMIT_COMMAND = "spark-submit"
 
+        // The Java agent's service.name for a job is this prefix and the job's (and its step's) name
+        const val SERVICE_NAME_PREFIX = "spark-"
+
         // Display formatting for spark jobs table
         const val JOB_NAME_MAX_LENGTH = 30
         const val TRUNCATION_SUFFIX_LENGTH = 3 // Length of "..."
@@ -58,7 +61,7 @@ object Constants {
         // S3 prefix for EMR logs
         const val S3_LOG_PREFIX = "spark/emr-logs/"
 
-        // Log ingestion wait time (ms) - time to wait for logs to be ingested into Victoria Logs
+        // Log ingestion wait time (ms) - time to wait for logs to be ingested into Loki
         const val LOG_INGESTION_WAIT_MS = 5000L
 
         // Maximum log lines to display on job failure
@@ -129,6 +132,8 @@ object Constants {
     // HTTP Status Codes
     object HttpStatus {
         const val OK = 200
+        const val NO_CONTENT = 204
+        const val MULTIPLE_CHOICES = 300
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
@@ -172,6 +177,10 @@ object Constants {
         // AMI configuration
         const val AMI_PATTERN_TEMPLATE = "rustyrazorblade/images/easy-db-lab-cassandra-%s-*"
 
+        // EC2 error code for instance ids it does not know yet; right after RunInstances this is
+        // eventual consistency, not a missing instance.
+        const val EC2_INSTANCE_NOT_FOUND = "InvalidInstanceID.NotFound"
+
         // IAM Role Names
         object Roles {
             const val EC2_INSTANCE_ROLE = "EasyDBLabEC2Role"
@@ -196,6 +205,56 @@ object Constants {
 
         /** Maximum length for S3 metrics configuration IDs */
         const val MAX_METRICS_CONFIG_ID_LENGTH = 32
+    }
+
+    /**
+     * The observability store: the tenant every cluster belongs to, and the layout of its data in the
+     * account bucket. Mimir, Loki, Tempo and Pyroscope lay out their own tenant directories under
+     * their prefix; the annotation backups carry the tenant in the path.
+     */
+    object Observability {
+        /** Top-level prefix for all observability data in the account bucket. */
+        const val PREFIX = "observability"
+
+        /** Directory of Tempo's live backend under [PREFIX]. */
+        const val TRACES_DIR = "traces"
+
+        /** Directory of Pyroscope's live backend under [PREFIX]. */
+        const val PROFILES_DIR = "profiles"
+
+        /** Directory of Loki's backend under [PREFIX]. */
+        const val LOGS_DIR = "logs"
+
+        /** Directory of Grafana annotation backups under [PREFIX]. */
+        const val ANNOTATIONS_DIR = "annotations"
+
+        /**
+         * Mimir's storage prefix in the account bucket; Mimir makes one directory per tenant under
+         * it. It sits beside [PREFIX], not under it: Mimir accepts only letters and digits in the
+         * prefix, so `observability/metrics` is impossible.
+         */
+        const val METRICS_ROOT = "observabilitymetrics"
+
+        /** The tenant of a cluster that was initialized without `--tenant`. */
+        const val DEFAULT_TENANT = "default"
+
+        /** The rule every tenant name must match; valid as a directory in every backend. */
+        const val TENANT_PATTERN = "^[a-z][a-z0-9_-]{0,62}$"
+
+        /**
+         * A tenant name [TENANT_PATTERN] allows but no cluster may use: a Loki tenant named `index`
+         * would put its chunks under Loki's index path.
+         */
+        const val RESERVED_TENANT = "index"
+
+        /**
+         * The rule every cluster name must match. The name flows raw into configuration files, Loki
+         * index file names, S3 keys and metric labels, so it holds only characters all of them accept.
+         */
+        const val CLUSTER_NAME_PATTERN = "^[a-z][a-z0-9-]{0,39}$"
+
+        /** The header Tempo and Pyroscope read the tenant from. */
+        const val TENANT_HEADER = "X-Scope-OrgID"
     }
 
     // Byte-size units for human-readable sizes
@@ -227,12 +286,37 @@ object Constants {
         const val LOCAL_STORAGE_CLASS = "local-storage"
         const val LOCAL_STORAGE_WFC_CLASS = "local-storage-wfc"
         const val GRAFANA_PORT = 3000
-        const val VICTORIAMETRICS_PORT = 8428
-        const val VICTORIALOGS_PORT = 9428
         const val S3MANAGER_PORT = 8080
         const val REGISTRY_PORT = 5000
         const val TEMPO_PORT = 3200
         const val PYROSCOPE_PORT = 4040
+
+        /** Tempo's `app.kubernetes.io/name` label; the collector finds the Tempo pod by it. */
+        const val TEMPO_APP_LABEL = "tempo"
+
+        /** The Pyroscope server's `app.kubernetes.io/name` label; the collector finds its pod by it. */
+        const val PYROSCOPE_APP_LABEL = "pyroscope"
+
+        /** Mimir's `app.kubernetes.io/name` label and Service name; the collector finds its pod by it. */
+        const val MIMIR_APP_LABEL = "mimir"
+
+        /** Mimir's HTTP port: remote write (`/api/v1/push`), PromQL (`/prometheus`), `/ingester/shutdown`. */
+        const val MIMIR_HTTP_PORT = 9009
+
+        /** Mimir's gRPC port; not Tempo's 9096 or Pyroscope's 9095, since all share the control node's network. */
+        const val MIMIR_GRPC_PORT = 9097
+
+        /** Mimir's gossip listener, bound to loopback; Pyroscope holds the default 7946. */
+        const val MIMIR_MEMBERLIST_PORT = 7947
+
+        /** Loki's `app.kubernetes.io/name` label and Service name; the collector finds its pod by it. */
+        const val LOKI_APP_LABEL = "loki"
+
+        /** Loki's HTTP port: OTLP push (`/otlp`), LogQL (`/loki/api/v1`), `/ingester/shutdown`. */
+        const val LOKI_HTTP_PORT = 3100
+
+        /** Loki's gRPC port; clear of Pyroscope's 9095, Tempo's 9096 and Mimir's 9097 on the control node. */
+        const val LOKI_GRPC_PORT = 9098
         const val BEYLA_METRICS_PORT = 9400
         const val EBPF_EXPORTER_METRICS_PORT = 9435
         const val OTEL_GRPC_PORT = 4317
@@ -258,6 +342,9 @@ object Constants {
         // MetricsRegistryService writes both labels; deregister deletes by both.
         const val WORKLOAD_METRICS_LABEL = "easydblab.com/workload-metrics"
         const val KIT_LABEL = "easydblab.com/kit"
+
+        /** Pod-template annotation carrying a hash of the ConfigMaps a workload reads; see ConfigHashAnnotator. */
+        const val CONFIG_HASH_ANNOTATION = "easydblab.com/config-hash"
     }
 
     // OpenSearch configuration
@@ -369,9 +456,9 @@ object Constants {
         const val INSTALL_PATH = "/opt/otel/opentelemetry-javaagent.jar"
     }
 
-    // OTel Collector configuration (for EMR Spark nodes)
+    // OTel Collector version: the cluster DaemonSet, the stress-job sidecar, and the EMR binary.
     object OtelCollector {
-        const val VERSION = "0.120.0"
+        const val VERSION = "0.161.0"
         const val DOWNLOAD_URL =
             "https://github.com/open-telemetry/opentelemetry-collector-releases/releases/download/v$VERSION/otelcol-contrib_${VERSION}_linux_amd64.tar.gz"
         const val INSTALL_PATH = "/opt/otel/otelcol-contrib"
@@ -391,6 +478,39 @@ object Constants {
         const val DOWNLOAD_URL =
             "https://github.com/grafana/pyroscope-java/releases/download/v$VERSION/pyroscope.jar"
         const val EMR_INSTALL_PATH = "/opt/pyroscope/pyroscope.jar"
+    }
+
+    // Probe timings for the in-cluster Pyroscope 2.x server.
+    //
+    // Pyroscope 2.3.1 answers /ready with 503 through two fixed waits that run back to back. First the
+    // metastore's min_ready_duration, 15 s (pkg/metastore/metastore.go:50, checked at :292). Then the
+    // segment writer's, which the single binary overrides to 30 s (pkg/pyroscope/pyroscope.go:371).
+    // They add rather than overlap: the /ready handler returns at the first component that is not
+    // ready (pkg/pyroscope/pyroscope.go:893-911), and the segment writer's dskit lifecycler starts its
+    // 30 s count only on its first passing check (dskit ring/lifecycler.go:271-277). Measured from
+    // container start: 48 s on a fresh data directory, 47 s on a restart over existing data. The
+    // Pyroscope 1.x liveness probe (30 s delay, then 3 x 15 s) killed it during that window.
+    object PyroscopeProbes {
+        /** How often the startup probe polls /ready while the server comes up. */
+        const val STARTUP_PERIOD_SECONDS = 5
+
+        /**
+         * Startup probe failures allowed: 36 x 5 s = 180 s, 3.75x the measured 48 s, for a control
+         * node that is also starting the rest of the observability stack. Liveness and readiness
+         * do not run until this probe has passed, so neither needs an initial delay.
+         */
+        const val STARTUP_FAILURE_THRESHOLD = 36
+
+        /**
+         * Liveness polls /ready once startup has passed. Pyroscope 2.3.1 documents no separate
+         * liveness endpoint (its Helm chart sets only a /ready readiness probe), and past startup
+         * /ready carries no timed wait: the segment writer's readiness latches and the metastore's
+         * min-ready clock is set once.
+         */
+        const val LIVENESS_PERIOD_SECONDS = 15
+
+        /** How often readiness polls /ready once startup has passed. */
+        const val READINESS_PERIOD_SECONDS = 10
     }
 
     // Runtime async-profiler control for Cassandra nodes.
@@ -433,7 +553,7 @@ object Constants {
         /** JFR rotation interval handed to `asprof --loop`. */
         const val DEFAULT_LOOP_INTERVAL = "1m"
 
-        /** Age bound on the profile directory, in minutes. Applies to unshipped chunks too. */
+        /** Age bound on shipped chunks, in minutes. Unshipped and rejected chunks are never pruned. */
         const val DEFAULT_RETENTION_MINUTES = 60
 
         /** Byte ceiling on the profile directory. Generous: if it engages, that is itself a signal. */
@@ -483,12 +603,13 @@ object Constants {
          * A pass ships at most [SHIP_MAX_CHUNKS_PER_PASS] chunks and runs every
          * [RECONCILE_INTERVAL_SECONDS], while the profiler produces one chunk per rotation. Any
          * interval below this ratio produces more chunks per pass than a pass can drain, so the
-         * queue grows forever and every chunk aging past the retention window is deleted having
-         * never shipped. Nothing reports a fault: the per-pass truncation warning is indistinguishable
-         * from a backlog that is draining normally.
+         * queue grows forever until the directory reaches its byte bound and the node stops
+         * recording. Until then nothing reports a fault: the per-pass truncation warning is
+         * indistinguishable from a backlog that is draining normally.
          *
          * Refused at the CLI rather than on the node, for the same reason as [SHIP_GRACE_SECONDS]:
-         * the failure is silent data loss, and the CLI is the one place every route passes through.
+         * the failure is silent until profiling stops, and the CLI is the one place every route
+         * passes through.
          */
         const val MIN_LOOP_SECONDS = RECONCILE_INTERVAL_SECONDS / SHIP_MAX_CHUNKS_PER_PASS
 
@@ -552,23 +673,46 @@ object Constants {
         const val PROMETHEUS_PORT = 9500
     }
 
-    // Victoria (VictoriaMetrics + VictoriaLogs) streaming configuration
-    object Victoria {
-        const val METRICS_EXPORT_PATH = "/api/v1/export/native"
-        const val METRICS_IMPORT_PATH = "/api/v1/import/native"
-        const val METRICS_QUERY_PATH = "/api/v1/query"
-        const val LOGS_EXPORT_PATH = "/select/logsql/query"
-        const val LOGS_IMPORT_PATH = "/insert/jsonline"
-        const val DEFAULT_METRICS_MATCH = """{__name__!=""}"""
-        const val DEFAULT_LOGS_QUERY = "*"
-        const val METRICS_COLLECTION_INTERVAL_SECONDS = 5L
+    /** The flush of Loki and Mimir that `down` runs before any infrastructure is torn down. */
+    object TeardownFlush {
+        /** A backend's synchronous `/ingester/shutdown` may take this long to flush everything. */
+        const val SHUTDOWN_TIMEOUT_SECONDS = 600L
+
+        /** A backend's pod may take this long to go once scaled to 0; its grace period is 600s. */
+        const val SCALE_DOWN_TIMEOUT_SECONDS = 660L
+
+        /** How often a wait on a backend's pods looks again. */
+        const val POLL_INTERVAL_SECONDS = 5L
+    }
+
+    /** Loki, the logs backend. */
+    object Loki {
+        /** The `source` stream label of the Grafana annotations mirrored into Loki. */
+        const val ANNOTATION_SOURCE = "annotation"
 
         /**
-         * Short timeout (seconds) for the metrics-backup Job on the teardown path. A stuck backup
-         * must not delay the abort/`--force` decision at `down`, so teardown uses this instead of
-         * the longer standalone default. See design decision D4 in `openspec/changes/issue-939`.
+         * The `logs query --source` value for Cassandra's application logs. They arrive only over
+         * OTLP from the Java agent, so it selects [CASSANDRA_SERVICE_NAME], not a `source` label.
          */
-        const val TEARDOWN_METRICS_BACKUP_TIMEOUT_SECONDS = 120L
+        const val CASSANDRA_SOURCE = "cassandra"
+
+        /** The `service_name` the Cassandra JVM's Java agent logs under (`-Dotel.service.name`). */
+        const val CASSANDRA_SERVICE_NAME = "cassandra"
+
+        /** Loki refuses an entry older than this many hours (`reject_old_samples_max_age` in `loki.yaml`). */
+        const val MAX_ENTRY_AGE_HOURS = 8760L
+
+        /** Loki refuses an entry more than this many hours in the future (`creation_grace_period` in `loki.yaml`). */
+        const val MAX_ENTRY_AHEAD_HOURS = 24L
+
+        /** How far inside Loki's window an entry must fall to be pushed, so the clock between the tool and Loki cannot tip it out. */
+        const val ENTRY_WINDOW_MARGIN_MINUTES = 1L
+    }
+
+    /** The MCP server's live metrics stream. */
+    object LiveMetrics {
+        /** Seconds between two collections of the live metrics stream. */
+        const val COLLECTION_INTERVAL_SECONDS = 5L
     }
 
     // Grafana configuration
@@ -597,6 +741,17 @@ object Constants {
          * truncated capture as a complete backup. See design in `openspec/changes/issue-939`.
          */
         const val ANNOTATION_FETCH_LIMIT = 5000
+
+        /**
+         * The uids of the provisioned datasources. Dashboards, links between datasources and the
+         * annotation queries name a datasource by its uid, so these are part of every dashboard.
+         */
+        object DatasourceUid {
+            const val MIMIR = "mimir"
+            const val LOKI = "loki"
+            const val TEMPO = "tempo"
+            const val PYROSCOPE = "pyroscope"
+        }
     }
 
     // Proxy configuration

@@ -213,6 +213,40 @@ class DefaultK8sNamespaceOperations(
             eventBus.emit(Event.K8s.RolloutsComplete(workloads.size))
         }
 
+    override fun workloadConfigHashes(
+        controlHost: ClusterHost,
+        workloads: List<WorkloadRef>,
+        namespace: String,
+    ): Result<Map<WorkloadRef, String?>> =
+        runCatching {
+            clientProvider.createClient(controlHost).use { client ->
+                workloads.associateWith { ref ->
+                    val template =
+                        when (ref.kind) {
+                            WorkloadKind.Deployment ->
+                                client
+                                    .apps()
+                                    .deployments()
+                                    .inNamespace(namespace)
+                                    .withName(ref.name)
+                                    .get()
+                                    ?.spec
+                                    ?.template
+                            WorkloadKind.DaemonSet ->
+                                client
+                                    .apps()
+                                    .daemonSets()
+                                    .inNamespace(namespace)
+                                    .withName(ref.name)
+                                    .get()
+                                    ?.spec
+                                    ?.template
+                        }
+                    template?.metadata?.annotations?.get(Constants.K8s.CONFIG_HASH_ANNOTATION)
+                }
+            }
+        }
+
     /** What each unfinished workload is waiting on; empty once every rollout is complete. */
     private fun pendingRollouts(
         client: KubernetesClient,
@@ -289,7 +323,11 @@ class DefaultK8sNamespaceOperations(
             return
         }
 
-        val podNames = pods.items.mapNotNull { it.metadata?.name }
+        val (awaited, terminal) = pods.items.partition(K8sPodUtils::awaitsReadiness)
+        terminal.forEach { pod ->
+            log.info { "Skipping pod ${pod.metadata?.name}: finished in phase ${pod.status?.phase}" }
+        }
+        val podNames = awaited.mapNotNull { it.metadata?.name }
         log.info { "Waiting for ${podNames.size} pods: ${podNames.joinToString(", ")}" }
 
         for (podName in podNames) {
@@ -305,6 +343,11 @@ class DefaultK8sNamespaceOperations(
                         .get() ?: break
 
                 K8sPodUtils.checkForPodFailure(pod)
+
+                if (!K8sPodUtils.awaitsReadiness(pod)) {
+                    log.info { "Pod $podName finished in phase ${pod.status?.phase}" }
+                    break
+                }
 
                 val isReady =
                     pod.status?.conditions?.any {

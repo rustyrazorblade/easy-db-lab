@@ -385,7 +385,14 @@ class DefaultStressJobService(
                 }.orEmpty()
 
         val stressContainer =
-            buildStressContainer(config, region, controlNodeIp, clusterState.name, clusterState.initConfig?.telemetryRedirect)
+            buildStressContainer(
+                config,
+                region,
+                controlNodeIp,
+                clusterState.name,
+                clusterState.tenant(),
+                clusterState.initConfig?.telemetryRedirect,
+            )
         val otelSidecar =
             buildOtelSidecarContainer(config.jobName, config.tags, config.promPort, clusterState.clusterLabelName())
 
@@ -397,6 +404,7 @@ class DefaultStressJobService(
         region: String,
         controlNodeIp: String,
         clusterName: String,
+        tenant: String,
         telemetryRedirect: TelemetryRedirect?,
     ): Container {
         val pyroscopeServerAddress = pyroscopeIngestBaseUrl(controlNodeIp, telemetryRedirect)
@@ -416,7 +424,7 @@ class DefaultStressJobService(
         // cluster label is NOT added here: the collector's traces pipeline stamps it with
         // resource/cluster, so every span producer gets it, not just this one.
         //
-        // Logs are the one signal turned off. The pod's stdout already reaches VictoriaLogs through
+        // Logs are the one signal turned off. The pod's stdout already reaches Loki through
         // the collector's filelog receiver, so exporting them again from inside the JVM would file
         // every line twice. Metrics stay ON: the sidecar scrapes only cassandra-easy-stress's own
         // Prometheus counters, so the agent's JVM metrics are the only view of whether the load
@@ -433,6 +441,8 @@ class DefaultStressJobService(
                 "-Dpyroscope.profiler.alloc=512k",
                 "-Dpyroscope.profiler.lock=10ms",
                 "-Dpyroscope.labels=$pyroscopeLabels",
+                // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
+                "-Dpyroscope.tenant.id=$tenant",
                 "-javaagent:$OTEL_AGENT_MOUNT_PATH/opentelemetry-javaagent.jar",
                 "-Dotel.service.name=cassandra-easy-stress",
                 "-Dotel.resource.attributes=$otelResourceAttributes",
@@ -490,7 +500,7 @@ class DefaultStressJobService(
 
         return ContainerBuilder()
             .withName("otel-sidecar")
-            .withImage("otel/opentelemetry-collector-contrib:latest")
+            .withImage("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}")
             .withArgs("--config=/etc/otel/$SIDECAR_CONFIG_FILE_NAME")
             .withEnv(
                 EnvVarBuilder()

@@ -241,6 +241,70 @@ class ClusterStateTest {
     }
 
     @Test
+    fun `a state written before tenants existed reads as the default tenant`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText(
+            """
+            {
+              "name": "pre-tenant",
+              "initConfig": { "region": "us-west-2" }
+            }
+            """.trimIndent(),
+        )
+
+        assertThat(ClusterStateManager(stateFile).load().tenant()).isEqualTo("default")
+    }
+
+    @Test
+    fun `a state with no init config reads as the default tenant`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{ "name": "no-init" }""")
+
+        assertThat(ClusterStateManager(stateFile).load().tenant()).isEqualTo("default")
+    }
+
+    @Test
+    fun `a recorded tenant survives a save and load`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+        manager.save(ClusterState(name = "c", versions = mutableMapOf(), initConfig = InitConfig(tenant = "acme")))
+
+        assertThat(manager.load().tenant()).isEqualTo("acme")
+    }
+
+    /**
+     * Only `init` checks the tenant, but the value is read back from state.json and put into
+     * `-Dpyroscope.tenant.id=...` in JAVA_TOOL_OPTIONS and into S3 keys. A hand-edited tenant with a
+     * space would add tokens to the JVM options, so it is refused where it is read.
+     */
+    @Test
+    fun `a tenant in state json that breaks the tenant rule is refused, naming it`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{ "name": "edited", "initConfig": { "tenant": "acme -Dx=y" } }""")
+        val state = ClusterStateManager(stateFile).load()
+
+        assertThatThrownBy { state.tenant() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("acme -Dx=y")
+    }
+
+    @Test
+    fun `a tenant of the longest allowed length is read back`() {
+        val longest = "a" + "b".repeat(62)
+        val state = ClusterState(name = "c", versions = mutableMapOf(), initConfig = InitConfig(tenant = longest))
+
+        assertThat(state.tenant()).isEqualTo(longest)
+    }
+
+    @Test
     fun `saved InitConfig with a recorded cni keeps it`(
         @TempDir tempDir: File,
     ) {
@@ -394,6 +458,27 @@ class ClusterStateTest {
         val finalState = manager.load()
         assertThat(finalState.infrastructureStatus).isEqualTo(InfrastructureStatus.DOWN)
         assertThat(finalState.isInfrastructureUp()).isFalse()
+    }
+
+    @Test
+    fun `bringing the infrastructure up clears the recorded tail flush`() {
+        val state =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                tailFlush =
+                    TailFlushRecord(
+                        Instant.parse("2026-09-26T12:00:00Z"),
+                        lokiIndexFiles = 1,
+                        lokiChunksFlushed = 2,
+                        mimirBlocks = 3,
+                    ),
+            )
+
+        state.markInfrastructureUp()
+
+        // `up` starts Loki and Mimir again, so their new data is not in S3 and the next `down` must flush it.
+        assertThat(state.tailFlush).isNull()
     }
 
     @Test

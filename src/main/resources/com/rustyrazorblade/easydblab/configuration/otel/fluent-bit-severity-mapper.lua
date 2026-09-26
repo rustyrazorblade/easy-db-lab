@@ -14,7 +14,7 @@ local SEVERITY = {
     ["7"] = "DEBUG",
 }
 
--- Cassandra's logback lines reach VictoriaLogs twice: once from the OTel Java agent, which adds
+-- Cassandra's logback lines reach Loki twice: once from the OTel Java agent, which adds
 -- severity, logger name and the resource labels, and once from this journal scrape, which adds
 -- none of that. Only the duplicate is dropped.
 --

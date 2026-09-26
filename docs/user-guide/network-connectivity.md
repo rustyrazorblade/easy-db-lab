@@ -85,7 +85,7 @@ Tailscale starts automatically with `easy-db-lab up`. Once connected:
 ```bash
 # Direct access to private IPs
 ssh ubuntu@10.0.1.50
-curl http://10.0.1.50:9428/health
+curl http://10.0.1.50:3100/ready
 kubectl get pods
 
 # Web UIs work directly in your browser
@@ -140,7 +140,7 @@ If you don't want to set up Tailscale, the SOCKS proxy provides connectivity via
 ```bash
 source env.sh
 kubectl get pods
-curl http://control0:9428/health
+curl http://control0:3100/ready
 ```
 
 The `easy-db-lab` CLI starts the proxy: any command that needs to reach the cluster starts it, or
@@ -216,8 +216,8 @@ Configure your browser's SOCKS5 proxy:
 
 Then access cluster services:
 - **Grafana**: `http://control0:3000`
-- **Victoria Metrics**: `http://control0:8428`
-- **Victoria Logs**: `http://control0:9428`
+- **Mimir**: `http://control0:9009/prometheus` (send `X-Scope-OrgID: <tenant>`)
+- **Loki**: `http://control0:3100` (send `X-Scope-OrgID: <tenant>`)
 
 ### Proxy Management
 

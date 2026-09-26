@@ -10,14 +10,16 @@ import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
+import com.rustyrazorblade.easydblab.services.ConfigChangeReport
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
@@ -103,16 +105,20 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                 single { OtelManifestBuilder(get()) }
                 single { PyroscopeManifestBuilder(get()) }
                 single { TempoManifestBuilder(get()) }
-                single { VictoriaManifestBuilder() }
+                single { MimirManifestBuilder(get()) }
+                single { LokiManifestBuilder(get()) }
                 single { RegistryManifestBuilder() }
                 single { S3ManagerManifestBuilder(get()) }
                 single { YaceManifestBuilder(get()) }
                 single { KubeStateMetricsManifestBuilder() }
+                single { ConfigChangeReport(get<K8sService>(), get()) }
 
                 // Real service under test — the command is a thin wrapper over it. RemoteOperationsService,
                 // User, and EventBus come from BaseKoinTest's core mocks via get().
                 single<ObservabilityStackService> {
                     DefaultObservabilityStackService(
+                        get(),
+                        get(),
                         get(),
                         get(),
                         get(),
@@ -162,6 +168,8 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
         // so an unstubbed Result does not NPE inside the deploy path.
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.success(Unit))
+        // Nothing is running yet: every workload reports its configuration as changed.
+        whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
     }
 
     @Test
@@ -196,7 +204,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
@@ -206,11 +214,11 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         // Verify Fabric8 resources were applied (all builders produce multiple resources)
         verify(mockK8sService, atLeastOnce()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService).uploadDashboards(any())
+        verify(mockDashboardService).uploadDashboards(any(), any())
 
-        // Verify observability workloads were restarted
-        verify(mockK8sService, atLeastOnce()).rolloutRestartDeployment(any(), any(), any())
-        verify(mockK8sService, atLeastOnce()).rolloutRestartDaemonSet(any(), any(), any())
+        // Nothing is force-restarted: a workload rolls only when its configuration hash changes.
+        verify(mockK8sService, never()).rolloutRestartDeployment(any(), any(), any())
+        verify(mockK8sService, never()).rolloutRestartDaemonSet(any(), any(), any())
 
         // Verify success is gated on the stack reaching Ready
         verify(mockK8sService).waitForPodsReady(any(), any())
@@ -230,7 +238,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
         // The stack applied and restarted, but a pod never reached Ready (e.g. Grafana CrashLoopBackOff).
@@ -286,7 +294,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any()))
+        whenever(mockDashboardService.uploadDashboards(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
         val command = GrafanaUpdateConfig()
@@ -324,6 +332,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             .hasMessageContaining("telemetry-redirect")
 
         verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService, never()).uploadDashboards(any())
+        verify(mockDashboardService, never()).uploadDashboards(any(), any())
     }
 }

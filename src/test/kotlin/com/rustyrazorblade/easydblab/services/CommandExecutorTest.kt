@@ -555,7 +555,7 @@ class CommandExecutorTest : BaseKoinTest() {
     fun `Down carries no RequiresProxy so the executor never pre-flights a tunnel it would tear down`() {
         // Down must NOT carry @RequiresProxy. Its teardown path kills the tunnel, so an executor
         // pre-flight would only start a tunnel Down immediately destroys. Down does establish a
-        // short-lived tunnel inside its own execute() to back up metrics and annotations first
+        // short-lived tunnel inside its own execute() to flush logs and metrics first
         // (design D3), so this invariant is asserted on the annotation directly rather than on
         // ensureRunning calls, which Down's own backup path now makes.
         //

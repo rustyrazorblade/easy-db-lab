@@ -103,6 +103,7 @@ class ProfilingStart : ProfilingHostCommand() {
                 maxBytes = maxBytes,
                 pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodePrivateIp(), clusterState.initConfig?.telemetryRedirect),
                 clusterName = clusterState.clusterLabelName(),
+                tenant = clusterState.tenant(),
                 updatedAt = Instant.now().toString(),
             )
 

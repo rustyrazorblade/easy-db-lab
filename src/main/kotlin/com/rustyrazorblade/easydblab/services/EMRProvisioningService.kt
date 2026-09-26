@@ -203,6 +203,8 @@ class DefaultEMRProvisioningService(
                 "-Dpyroscope.profiler.event=cpu",
                 "-Dpyroscope.profiler.alloc=512k",
                 "-Dpyroscope.profiler.lock=10ms",
+                // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
+                "-Dpyroscope.tenant.id=${clusterState.tenant()}",
             )
         val extraJavaOptions = "$otelAgentFlag ${pyroscopeFlags.joinToString(" ")}"
 

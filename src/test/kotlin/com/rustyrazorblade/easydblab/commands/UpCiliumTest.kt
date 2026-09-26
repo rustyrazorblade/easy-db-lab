@@ -21,7 +21,6 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito.inOrder
 import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
@@ -228,7 +227,7 @@ class UpCiliumTest : UpTestFixture() {
         setupClusterInvokingServerReadyHook()
         var stackDeployed = false
         var annotationsPostedBeforeStack = false
-        whenever(mockObservabilityStackService.deploy(any(), anyOrNull())).thenAnswer {
+        whenever(mockObservabilityStackService.deploy(any())).thenAnswer {
             stackDeployed = true
             Result.success(Unit)
         }

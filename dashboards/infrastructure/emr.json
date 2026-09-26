@@ -795,7 +795,7 @@
         "y": 26
       },
       "id": 22,
-      "interval": "60s",
+      "interval": "2m",
       "options": {
         "legend": {
           "calcs": [

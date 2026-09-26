@@ -997,6 +997,7 @@
       "type": "timeseries",
       "id": 17,
       "title": "Attach Outcomes per Second by $groupby",
+      "interval": "60s",
       "description": "Failures, skips, deferrals and successful session starts as rates. A node that restarts its session constantly loses the continuity that makes a profile comparable across a run.",
       "datasource": {
         "type": "prometheus",
@@ -1242,6 +1243,7 @@
       "type": "timeseries",
       "id": 20,
       "title": "Ship Outcomes per Second by $groupby",
+      "interval": "60s",
       "description": "Failures retry; rejections do not. Separating them matters because only one of the two resolves on its own.",
       "datasource": {
         "type": "prometheus",
@@ -1561,6 +1563,7 @@
       "type": "timeseries",
       "id": 24,
       "title": "Prune Rate by Reason (chunks/s)",
+      "interval": "60s",
       "description": "Two different meanings, deliberately not summed. FOR AGE is routine retention. FOR SIZE means the local budget is smaller than the recording rate. Only shipped chunks are ever pruned; an unshipped or rejected chunk is kept, and a directory full of them stops recording instead (see \"Nodes stopped at size bound\").",
       "datasource": {
         "type": "prometheus",

@@ -795,6 +795,7 @@
         "y": 26
       },
       "id": 22,
+      "interval": "60s",
       "options": {
         "legend": {
           "calcs": [
@@ -816,7 +817,7 @@
             "type": "prometheus",
             "uid": "${datasource}"
           },
-          "expr": "rate(jvm_gc_duration_seconds_sum{node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
+          "expr": "rate(jvm_gc_duration_seconds_sum{node_role=~\"spark-.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} {{jvm_gc_name}} duration",
           "refId": "A"
         }

@@ -755,12 +755,20 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "victoriametrics-logs-datasource", "uid": "victorialogs" },
+      "datasource": { "type": "loki", "uid": "loki" },
       "description": "Log stream from TiDB pods",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 142 },
       "id": 34,
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showTime": true, "wrapLogMessage": true },
-      "targets": [{ "expr": "k8s.app.instance:tidb", "refId": "A" }],
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{cluster=~\"$cluster\"} | k8s_app_instance=~\".*tidb.*\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
       "title": "TiDB Logs",
       "type": "logs"
     },
@@ -876,7 +884,7 @@
   "templating": {
     "list": [
       {
-        "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+        "current": { "text": "Mimir", "value": "mimir" },
         "hide": 0,
         "includeAll": false,
         "label": "Datasource",
@@ -886,6 +894,25 @@
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "definition": "label_values(up, cluster)",
+        "description": "Clusters of this tenant, for the logs panels. All is .+ because Loki refuses a stream selector that matches an empty value.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": { "qryType": 1, "query": "label_values(up, cluster)", "refId": "PrometheusVariableQueryEditor-VariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       }
     ]
   },

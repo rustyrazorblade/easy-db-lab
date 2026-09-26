@@ -20,7 +20,6 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -203,7 +202,7 @@ class UpTest : UpTestFixture() {
     fun `up aborts when the observability stack deployment fails`() {
         // Bring-up drives ObservabilityStackService.deploy directly rather than nesting the
         // GrafanaUpdateConfig command, so a deploy failure must surface as an aborted `up`.
-        whenever(mockObservabilityStackService.deploy(any(), anyOrNull()))
+        whenever(mockObservabilityStackService.deploy(any()))
             .thenReturn(Result.failure(RuntimeException("dashboard upload rejected")))
 
         assertThatThrownBy { newUp().execute() }
@@ -248,7 +247,7 @@ class UpTest : UpTestFixture() {
         verify(mockK8sService, never()).ensureLocalStorageWfcClass(any())
         // Storage classes are set up before the observability stack, so aborting here means the
         // stack deploy is never reached.
-        verify(mockObservabilityStackService, never()).deploy(any(), anyOrNull())
+        verify(mockObservabilityStackService, never()).deploy(any())
     }
 
     @Test

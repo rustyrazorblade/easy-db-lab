@@ -64,7 +64,10 @@ systemctl enable edl-tailscale-masquerade.service
 # restart, not `enable --now`: a oneshot that is already active would not re-read the file.
 systemctl restart edl-tailscale-masquerade.service
 
-# Self-verify: the chain must be live with its masquerade rule.
-"$NFT_BIN" list table ip edl_tailscale | grep -q 'masquerade'
+# Self-verify: the chain must be live with its masquerade rule. Read nft's output in full first:
+# piping it into `grep -q` fails under pipefail, because grep exits on the first match and nft then
+# dies of SIGPIPE (exit 141) even though the table is live.
+TABLE="$("$NFT_BIN" list table ip edl_tailscale)"
+grep -q 'masquerade' <<<"$TABLE" || { echo "ERROR: edl_tailscale table has no masquerade rule" >&2; exit 1; }
 
 echo "✓ edl_tailscale nft table live and edl-tailscale-masquerade.service enabled"

@@ -226,7 +226,7 @@
         "options": [],
         "query": "prometheus",
         "refresh": 1,
-        "regex": "VictoriaMetrics",
+        "regex": "Mimir",
         "type": "datasource"
       },
       {

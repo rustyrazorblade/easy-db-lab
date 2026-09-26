@@ -46,7 +46,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
     private lateinit var mockEmrClient: EmrClient
     private lateinit var mockObjectStore: ObjectStore
     private lateinit var mockClusterStateManager: ClusterStateManager
-    private lateinit var mockVictoriaLogsService: VictoriaLogsService
+    private lateinit var mockLokiQueryService: LokiQueryService
     private lateinit var sparkService: SparkService
 
     private val testClusterId = "j-ABC123DEF456"
@@ -76,7 +76,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
                 single<EmrClient> { mockEmrClient }
                 single<ObjectStore> { mockObjectStore }
                 single<ClusterStateManager> { mockClusterStateManager }
-                single<VictoriaLogsService> { mockVictoriaLogsService }
+                single<LokiQueryService> { mockLokiQueryService }
                 // Zero delays so job-polling tests do not sit through the production poll interval
                 // or log-ingestion wait; only timing changes, not the behavior under test.
                 factory<SparkService> {
@@ -119,7 +119,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
         mockEmrClient = mock()
         mockObjectStore = mock()
         mockClusterStateManager = mock()
-        mockVictoriaLogsService = mock()
+        mockLokiQueryService = mock()
         whenever(mockClusterStateManager.load()).thenReturn(defaultClusterState)
         sparkService = getKoin().get()
     }
@@ -522,8 +522,8 @@ class EMRSparkServiceTest : BaseKoinTest() {
             )
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
 
-        // Mock Victoria Logs query (returns empty logs)
-        whenever(mockVictoriaLogsService.query(any(), any(), any())).thenReturn(Result.success(emptyList()))
+        // Mock the Loki query (returns empty logs)
+        whenever(mockLokiQueryService.query(any(), any(), any())).thenReturn(Result.success(emptyList()))
 
         // When
         val result = sparkService.waitForJobCompletion(testClusterId, testStepId)

@@ -3,16 +3,18 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
+import com.rustyrazorblade.easydblab.configuration.SnapshotName
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
-import java.time.Instant
+import java.time.Clock
 
 /**
  * Result of a Grafana annotations backup.
  *
- * @property s3Path The account-level S3 path where the annotations JSON was written.
+ * @property s3Path Where the annotations JSON was written, in the tenant's annotations directory.
  * @property annotationCount The number of annotations captured.
  */
 data class GrafanaAnnotationBackupResult(
@@ -21,16 +23,17 @@ data class GrafanaAnnotationBackupResult(
 )
 
 /**
- * Service that backs up the Grafana annotations of a running cluster to an account-level S3 location.
+ * Service that backs up the Grafana annotations of a running cluster to the observability store.
  *
  * The annotations are the A/B config-change markers an operator wants to keep after the ephemeral
  * cluster is gone. This service captures them over the Grafana HTTP API (`GET /api/annotations`, via
- * [GrafanaDashboardService.fetchAnnotations]) and uploads the JSON verbatim to a path OUTSIDE the
- * per-cluster prefix that teardown expires, so a backup is never lost to cluster teardown.
+ * [GrafanaDashboardService.fetchAnnotations]) and uploads the JSON verbatim to
+ * `observability/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json`, so clusters in one
+ * tenant never overwrite each other's backups.
  */
 interface GrafanaAnnotationBackupService {
     /**
-     * Captures the cluster's Grafana annotations and uploads them to the account-level S3 location.
+     * Captures the cluster's Grafana annotations and uploads them to the tenant's annotations directory.
      *
      * @param controlHost The control node running Grafana.
      * @param clusterState The cluster state carrying the account-level S3 bucket and cluster name.
@@ -48,27 +51,23 @@ interface GrafanaAnnotationBackupService {
  * @property grafanaDashboardService Reaches the Grafana HTTP API over the proxied client.
  * @property objectStore Uploads the JSON artifact to S3.
  * @property eventBus Emits backup lifecycle events.
+ * @property clock The time a backup is named by.
  */
 class DefaultGrafanaAnnotationBackupService(
     private val grafanaDashboardService: GrafanaDashboardService,
     private val objectStore: ObjectStore,
     private val eventBus: EventBus,
+    private val clock: Clock = Clock.systemUTC(),
 ) : GrafanaAnnotationBackupService {
     override fun backup(
         controlHost: ClusterHost,
         clusterState: ClusterState,
     ): Result<GrafanaAnnotationBackupResult> =
         runCatching {
-            val bucket =
-                clusterState.s3Bucket
-                    ?: error("S3 bucket not configured for cluster '${clusterState.name}'. Run 'easy-db-lab up' first.")
-
-            val artifact =
-                ClusterS3Path.grafanaAnnotationsArtifact(
-                    accountBucket = bucket,
-                    clusterName = clusterState.name,
-                    timestampMillis = Instant.now().toEpochMilli(),
-                )
+            val store = ObservabilityStore.from(clusterState)
+            // Never overwrite an earlier backup that took the same second.
+            val name = SnapshotName.firstFree(clusterState, clock.instant()) { objectStore.fileExists(store.annotationsArtifact(it)) }
+            val artifact = store.annotationsArtifact(name)
 
             eventBus.emit(Event.Backup.GrafanaAnnotationsBackupStarting(artifact.toUri()))
 

@@ -129,7 +129,10 @@ class S3ObjectStore(
         remotePath: ClusterS3Path,
         recursive: Boolean,
     ): List<ObjectStore.FileInfo> {
-        val prefix = if (recursive) remotePath.getKey() else "${remotePath.getKey()}/"
+        // remotePath is a directory: list under "<key>/", never "<key>", or a sibling whose name
+        // begins with this one (tenant `acme-dev` beside `acme`) is listed as well.
+        val key = remotePath.getKey()
+        val prefix = if (key.isEmpty()) "" else "$key/"
         val listRequest =
             ListObjectsV2Request
                 .builder()

@@ -5,17 +5,18 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.LogQl
+import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.SparkService
-import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 
 /**
- * Query EMR/Spark logs from Victoria Logs.
+ * Query EMR/Spark logs from Loki.
  *
- * Logs are stored in Victoria Logs on the control node.
- * This command queries Victoria Logs to display step logs.
+ * Logs are stored in Loki on the control node. This command queries Loki, scoped to the current
+ * cluster, to display step logs.
  *
  * Usage:
  * - `spark logs` - Query logs for most recent job
@@ -27,11 +28,11 @@ import picocli.CommandLine.Option
 @RequiresProxy
 @Command(
     name = "logs",
-    description = ["Query Spark/EMR logs from Victoria Logs"],
+    description = ["Query Spark/EMR logs from Loki"],
 )
 class SparkLogs : PicoBaseCommand() {
     private val sparkService: SparkService by inject()
-    private val victoriaLogsService: VictoriaLogsService by inject()
+    private val lokiQueryService: LokiQueryService by inject()
 
     @Option(
         names = ["--step-id"],
@@ -61,16 +62,15 @@ class SparkLogs : PicoBaseCommand() {
                     error(error.message ?: "Failed to validate EMR cluster")
                 }
 
-        // Determine step ID - use provided or get most recent
-        val targetStepId =
-            stepId ?: getMostRecentStepId(clusterInfo.clusterId)
+        // The given step, or the most recent one; its name is the job's, which names its logs
+        val (targetStepId, stepName) =
+            stepId?.let { it to getStepName(clusterInfo.clusterId, it) } ?: getMostRecentStep(clusterInfo.clusterId)
 
         eventBus.emit(Event.Emr.QueryingStepLogs(targetStepId))
 
-        // Query Victoria Logs for EMR logs matching this step ID
-        val query = "source:emr AND \"$targetStepId\""
+        val query = LogQl.sparkStep(clusterState.clusterLabelName(), stepName)
         val logs =
-            victoriaLogsService
+            lokiQueryService
                 .query(query, since, limit)
                 .getOrElse { exception ->
                     eventBus.emit(Event.Emr.StepQueryFailed(exception.message ?: "Unknown error"))
@@ -78,8 +78,8 @@ class SparkLogs : PicoBaseCommand() {
                         Event.Emr.StepQueryTips(
                             """
                         |Tips:
-                        |  - Ensure observability stack is deployed: easy-db-lab k8 apply
-                        |  - Check if Victoria Logs is running: kubectl get pods
+                        |  - Ensure the observability stack is deployed: easy-db-lab grafana update-config
+                        |  - Check that Loki is running: kubectl get pods -l app.kubernetes.io/name=loki
                         |  - Logs may take a few minutes to be ingested from S3
                             """.trimMargin(),
                         ),
@@ -96,13 +96,28 @@ class SparkLogs : PicoBaseCommand() {
     }
 
     /**
-     * Gets the step ID of the most recent job on the cluster.
+     * Gets the name of a step on the cluster.
+     *
+     * @throws IllegalStateException if the step cannot be described
+     */
+    private fun getStepName(
+        clusterId: String,
+        stepId: String,
+    ): String =
+        sparkService
+            .getStepDetails(clusterId, stepId)
+            .getOrElse { error ->
+                error(error.message ?: "Failed to describe step $stepId")
+            }.name
+
+    /**
+     * Gets the ID and name of the most recent job on the cluster.
      *
      * @param clusterId The EMR cluster ID
-     * @return The step ID of the most recent job
+     * @return The step ID and name of the most recent job
      * @throws IllegalStateException if no jobs are found
      */
-    private fun getMostRecentStepId(clusterId: String): String {
+    private fun getMostRecentStep(clusterId: String): Pair<String, String> {
         val jobs =
             sparkService
                 .listJobs(clusterId, limit = 1)
@@ -114,6 +129,6 @@ class SparkLogs : PicoBaseCommand() {
             error("No jobs found on cluster $clusterId")
         }
 
-        return jobs.first().stepId
+        return jobs.first().let { it.stepId to it.name }
     }
 }

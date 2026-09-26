@@ -2,12 +2,11 @@
 #
 # Unit tests for bin/export-workload-metrics.
 #
-# The catalog must list only series that are live now. VictoriaMetrics answers /api/v1/series
-# from its day-granular index, so a series from a pod that died hours ago (even with start=-3m)
-# comes back. The script therefore runs an instant query, last_over_time over a short window,
-# which returns only series with a sample inside that window.
+# The catalog must list only series that are live now. The script runs an instant query of the
+# workload's selector against Mimir, which returns only series with a sample inside the lookback
+# window, in the cluster's tenant.
 #
-# curl is stubbed: it records its arguments and prints a canned VictoriaMetrics response. No
+# curl is stubbed: it records its arguments and prints a canned Prometheus API response. No
 # cluster, no network.
 #
 # Run directly:  bin/export-workload-metrics.test.sh
@@ -33,6 +32,7 @@ setup() {
   WORK="$(mktemp -d)"
   mkdir -p "${WORK}/stubs"
   echo 'export CONTROL_HOST_PRIVATE=10.0.0.5' > "${WORK}/env.sh"
+  echo '{"name":"lab","initConfig":{"tenant":"acme"}}' > "${WORK}/state.json"
   printf '%s' "$1" > "${WORK}/response.json"
   cat > "${WORK}/stubs/curl" <<EOF
 #!/usr/bin/env bash
@@ -57,13 +57,25 @@ test_queries_only_series_live_in_the_window() {
   setup "${LIVE_RESPONSE}"
   run_script memcached || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
 
-  grep -Fqx 'http://10.0.0.5:8428/api/v1/query' "${WORK}/curl.args" \
-    || fail "expected an instant query at /api/v1/query, got: $(cat "${WORK}/curl.args")"
-  grep -Fqx 'query=last_over_time({job="memcached"}[5m]) keep_metric_names' "${WORK}/curl.args" \
-    || fail "expected last_over_time over 5m keeping metric names, got: $(cat "${WORK}/curl.args")"
+  grep -Fqx 'http://10.0.0.5:9009/prometheus/api/v1/query' "${WORK}/curl.args" \
+    || fail "expected an instant query at Mimir's /prometheus/api/v1/query, got: $(cat "${WORK}/curl.args")"
+  grep -Fqx 'query={job="memcached"}' "${WORK}/curl.args" \
+    || fail "expected an instant query of the workload's selector, got: $(cat "${WORK}/curl.args")"
+  grep -Fqx 'X-Scope-OrgID: acme' "${WORK}/curl.args" \
+    || fail "expected the cluster's tenant header, got: $(cat "${WORK}/curl.args")"
   if grep -q '/api/v1/series' "${WORK}/curl.args"; then
-    fail "must not use /api/v1/series, which returns the whole day's series"
+    fail "must not use /api/v1/series, which returns series outside the live window"
   fi
+}
+
+test_a_state_without_a_tenant_queries_the_default_tenant() {
+  tests_run=$((tests_run + 1))
+  setup "${LIVE_RESPONSE}"
+  echo '{"name":"lab"}' > "${WORK}/state.json"
+  run_script memcached || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+
+  grep -Fqx 'X-Scope-OrgID: default' "${WORK}/curl.args" \
+    || fail "expected the default tenant header, got: $(cat "${WORK}/curl.args")"
 }
 
 test_writes_one_entry_per_metric_name_with_label_values() {
@@ -213,6 +225,7 @@ test_workload_name_is_required() {
 }
 
 test_queries_only_series_live_in_the_window
+test_a_state_without_a_tenant_queries_the_default_tenant
 test_writes_one_entry_per_metric_name_with_label_values
 test_merges_pods_into_one_entry_per_metric_name
 test_labels_on_every_series_are_listed_once_under_common_labels

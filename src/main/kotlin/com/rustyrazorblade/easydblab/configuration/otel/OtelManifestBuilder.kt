@@ -28,10 +28,11 @@ import kotlinx.serialization.builtins.ListSerializer
  * the Cilium agent/operator/Hubble scrapes when the cluster's CNI is Cilium,
  * plus dynamic per-workload scrape jobs from the metrics registry ConfigMaps,
  * file-based logs (system, Cassandra, ClickHouse), and OTLP.
- * Exports to VictoriaMetrics, VictoriaLogs, and Tempo.
+ * Exports metrics to Mimir, logs to Loki and traces to Tempo, each with the cluster's tenant.
  *
- * Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:CLUSTER_NAME}`),
- * not `__KEY__` template substitution.
+ * Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:CLUSTER_NAME}`,
+ * `${env:TENANT}`), not `__KEY__` template substitution. `CLUSTER_NAME` and `TENANT` come from the
+ * cluster-config ConfigMap.
  *
  * @property templateService Used for loading config files from classpath resources
  */
@@ -44,7 +45,7 @@ class OtelManifestBuilder(
         private const val APP_LABEL = "otel-collector"
         private const val CONFIGMAP_NAME = "otel-collector-config"
         private const val CONFIG_DATA_KEY = "otel-collector-config.yaml"
-        private const val IMAGE = "otel/opentelemetry-collector-contrib:latest"
+        private const val IMAGE = "otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}"
         private const val SERVICE_ACCOUNT_NAME = "otel-collector"
         private const val CLUSTER_ROLE_NAME = "otel-collector"
         private const val LIVENESS_INITIAL_DELAY = 10
@@ -59,20 +60,16 @@ class OtelManifestBuilder(
 
         /**
          * Where [HOST_ROOT_VOLUME] is mounted. Must match `root_path` in
-         * `otel-collector-config.yaml`, or the hostmetrics scrapers describe the container instead
+         * `otel-collector-config.yaml`, or the host_metrics scrapers describe the container instead
          * of the node.
          */
         const val HOST_ROOT_MOUNT_PATH = "/hostfs"
 
-        /**
-         * In-cluster export endpoints used in local mode. These must stay byte-for-byte identical
-         * to the literals the config template shipped before the redirect placeholders were
-         * introduced (AC4): the local-mode ConfigMap is asserted equal to the pre-redirect output.
-         */
-        private val LOCAL_VICTORIAMETRICS_ENDPOINT =
-            "http://victoriametrics.default.svc.cluster.local:${Constants.K8s.VICTORIAMETRICS_PORT}/api/v1/write"
-        private val LOCAL_VICTORIALOGS_ENDPOINT =
-            "http://victorialogs.default.svc.cluster.local:${Constants.K8s.VICTORIALOGS_PORT}/insert/opentelemetry"
+        /** In-cluster export endpoints used in local mode: Mimir's remote write and Loki's OTLP base. */
+        private val LOCAL_METRICS_ENDPOINT =
+            "http://${Constants.K8s.MIMIR_APP_LABEL}.default.svc.cluster.local:${Constants.K8s.MIMIR_HTTP_PORT}/api/v1/push"
+        private val LOCAL_LOGS_ENDPOINT =
+            "http://${Constants.K8s.LOKI_APP_LABEL}.default.svc.cluster.local:${Constants.K8s.LOKI_HTTP_PORT}/otlp"
         private val LOCAL_TEMPO_ENDPOINT =
             "tempo.default.svc.cluster.local:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}"
     }
@@ -137,7 +134,7 @@ class OtelManifestBuilder(
 
     /**
      * Builds the ServiceAccount for OTel Collector pods.
-     * Required by k8sattributes processor for K8s API access.
+     * Required by the k8s_attributes processor for K8s API access.
      */
     fun buildServiceAccount() =
         ServiceAccountBuilder()
@@ -150,7 +147,7 @@ class OtelManifestBuilder(
 
     /**
      * Builds the ClusterRole granting read access to pods and nodes.
-     * Required by k8sattributes processor to extract node labels as resource attributes.
+     * Required by the k8s_attributes processor to extract node labels as resource attributes.
      */
     fun buildClusterRole() =
         ClusterRoleBuilder()
@@ -214,9 +211,10 @@ class OtelManifestBuilder(
                 ).substitute(
                     mapOf(
                         "KIT_SCRAPE_JOBS" to renderScrapeJobs(buildDynamicScrapeJobs(scrapeConfigs)),
-                        "INFRA_SCRAPE_JOBS" to renderScrapeJobs(buildInfraScrapeJobs(cni)),
-                        "VICTORIAMETRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_VICTORIAMETRICS_ENDPOINT),
-                        "VICTORIALOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_VICTORIALOGS_ENDPOINT),
+                        "INFRA_SCRAPE_JOBS" to
+                            renderScrapeJobs(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(cni)),
+                        "METRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_METRICS_ENDPOINT),
+                        "LOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_LOGS_ENDPOINT),
                         "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
                     ),
                 ),
@@ -233,6 +231,40 @@ class OtelManifestBuilder(
      * kube-state-metrics on every cluster, plus the CNI jobs from [buildCniScrapeJobs].
      */
     fun buildInfraScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> = listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni)
+
+    /**
+     * The scrape jobs for the local telemetry backends' own metrics: Mimir, Loki, Tempo and the
+     * Pyroscope server, so rejected writes, dropped samples and failed flushes are queryable.
+     * Each is one pod on the control node, while the collector runs on every node, so a static
+     * `localhost` target would leave every other node's collector reporting the job down for the
+     * life of the cluster. Like kube-state-metrics, each is found by node-local pod discovery
+     * (label `app.kubernetes.io/name`, its metrics port), so only the collector on the pod's node
+     * scrapes it; `instance` is the pod name. A redirect cluster deploys neither, so it renders none
+     * of them.
+     */
+    fun buildLocalBackendScrapeJobs(telemetryRedirect: TelemetryRedirect?): List<PrometheusScrapeJob> =
+        when (telemetryRedirect) {
+            null ->
+                listOf(
+                    buildLocalBackendScrapeJob(Constants.K8s.MIMIR_APP_LABEL, Constants.K8s.MIMIR_HTTP_PORT),
+                    buildLocalBackendScrapeJob(Constants.K8s.LOKI_APP_LABEL, Constants.K8s.LOKI_HTTP_PORT),
+                    buildLocalBackendScrapeJob(Constants.K8s.TEMPO_APP_LABEL, Constants.K8s.TEMPO_PORT),
+                    buildLocalBackendScrapeJob(Constants.K8s.PYROSCOPE_APP_LABEL, Constants.K8s.PYROSCOPE_PORT),
+                )
+            else -> emptyList()
+        }
+
+    /** A local backend whose job name is also its pod's `app.kubernetes.io/name` label value. */
+    private fun buildLocalBackendScrapeJob(
+        name: String,
+        port: Int,
+    ) = buildNodeLocalPodScrapeJob(
+        jobName = name,
+        namespace = NAMESPACE,
+        podLabel = "app.kubernetes.io/name",
+        podLabelValue = name,
+        port = port,
+    )
 
     /**
      * kube-state-metrics runs as ONE pod on the control node, in the pod network. Every collector
@@ -538,6 +570,15 @@ class OtelManifestBuilder(
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()
+            .addNewEnv()
+            .withName("TENANT")
+            .withNewValueFrom()
+            .withNewConfigMapKeyRef()
+            .withName("cluster-config")
+            .withKey("tenant")
+            .endConfigMapKeyRef()
+            .endValueFrom()
+            .endEnv()
             .addToVolumeMounts(
                 VolumeMountBuilder()
                     .withName("config")
@@ -560,7 +601,7 @@ class OtelManifestBuilder(
                     .withMountPath("/mnt/db1/cassandra/logs")
                     .withReadOnly(true)
                     .build(),
-                // The host root, for the hostmetrics receiver's root_path. Without it the
+                // The host root, for the host_metrics receiver's root_path. Without it the
                 // filesystem scraper enumerates the container's own mounts and finds nothing worth
                 // reporting, which is why every filesystem panel was empty. Read-only: nothing here
                 // writes to the node.

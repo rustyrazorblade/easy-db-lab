@@ -146,7 +146,7 @@ MCP tool names are derived from the command's package location:
 
 ## Live Metrics Streaming
 
-When Redis is configured via the `EASY_DB_LAB_REDIS_URL` environment variable, the server publishes live cluster metrics to the Redis pub/sub channel every 5 seconds. Metrics are queried from VictoriaMetrics using the same PromQL expressions as the Grafana dashboards.
+When Redis is configured via the `EASY_DB_LAB_REDIS_URL` environment variable, the server publishes live cluster metrics to the Redis pub/sub channel every 5 seconds. Metrics are queried from Mimir using the same PromQL expressions as the Grafana dashboards.
 
 ### Enabling
 

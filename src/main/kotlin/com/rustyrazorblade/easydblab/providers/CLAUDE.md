@@ -53,7 +53,7 @@ Always use factory methods instead of creating manual retry configurations.
 | Method | Attempts | Backoff | Use Case |
 |--------|----------|---------|----------|
 | `createIAMRetryConfig()` | 5 | Exponential 1s→16s | IAM operations, handles 404 eventual consistency |
-| `createEC2InstanceRetryConfig<T>()` | 5 | Exponential 1s→16s | EC2 instance ops, handles "does not exist" |
+| `createEC2InstanceRetryConfig<T>()` | 5 | Exponential 1s→16s | EC2 instance ops, retries `InvalidInstanceID.NotFound` (matched on the error code, since the message varies with the number of ids) |
 | `createAwsRetryConfig<T>()` | 3 | Exponential 1s→4s | S3, EC2, EMR (standard AWS) |
 | `createDockerRetryConfig<T>()` | 3 | Exponential 1s→4s | Container start/stop/remove |
 | `createNetworkRetryConfig<T>()` | 3 | Exponential 1s→4s | Generic network ops |

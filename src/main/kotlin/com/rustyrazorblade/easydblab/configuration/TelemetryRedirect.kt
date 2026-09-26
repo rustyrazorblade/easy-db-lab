@@ -7,8 +7,8 @@ import java.net.URI
  * Life-of-cluster telemetry redirect target.
  *
  * When present on [InitConfig], the cluster ships all four telemetry signals to an external
- * observability stack instead of standing up its own local backends (VictoriaMetrics,
- * VictoriaLogs, Tempo, the Pyroscope server, Grafana). A `null` value on [InitConfig] means
+ * observability stack instead of standing up its own local backends (Mimir, Loki, Tempo, the
+ * Pyroscope server, Grafana). A `null` value on [InitConfig] means
  * local mode — the unchanged default. Nullability of the whole value is what makes "all four
  * signals move together" and "redirect-only for life" structural rather than convention.
  *
@@ -20,8 +20,8 @@ import java.net.URI
  * This is a plain data class (not `@Serializable`) because it is persisted inside `state.json`
  * via the Jackson [ClusterStateManager], like the rest of [InitConfig].
  *
- * @property metrics VictoriaMetrics Prometheus remote-write URL (`http://<host>:8428/api/v1/write`).
- * @property logs VictoriaLogs OTLP ingest URL (`http://<host>:9428/insert/opentelemetry`).
+ * @property metrics Mimir Prometheus remote-write URL (`http://<host>:9009/api/v1/push`).
+ * @property logs Loki OTLP base URL (`http://<host>:3100/otlp`); the exporter appends `/v1/logs`.
  * @property traces Tempo OTLP gRPC endpoint (`<host>:4320`) — the OTLP receiver port, NOT 3200,
  *   Tempo's query port. No scheme: the OTLP exporter takes a bare host:port.
  * @property profiles Pyroscope ingest base URL (`http://<host>:4040`).
@@ -75,8 +75,8 @@ data class TelemetryRedirect(
             profilesOverride: String? = null,
         ): TelemetryRedirect =
             TelemetryRedirect(
-                metrics = metricsOverride ?: "http://$baseHost:${Constants.K8s.VICTORIAMETRICS_PORT}/api/v1/write",
-                logs = logsOverride ?: "http://$baseHost:${Constants.K8s.VICTORIALOGS_PORT}/insert/opentelemetry",
+                metrics = metricsOverride ?: "http://$baseHost:${Constants.K8s.MIMIR_HTTP_PORT}/api/v1/push",
+                logs = logsOverride ?: "http://$baseHost:${Constants.K8s.LOKI_HTTP_PORT}/otlp",
                 traces = tracesOverride ?: "$baseHost:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}",
                 profiles = profilesOverride ?: "http://$baseHost:${Constants.K8s.PYROSCOPE_PORT}",
             )

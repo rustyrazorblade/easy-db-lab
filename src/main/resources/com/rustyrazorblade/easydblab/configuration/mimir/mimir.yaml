@@ -1,0 +1,112 @@
+# Mimir on the control node: write-only S3, local reads (issue 967, decision D1).
+#
+# The ingester ships every block to S3 about a minute after cutting it, and every query is answered
+# from this ingester alone: its in-memory head and its local blocks, which are kept for the
+# cluster's life. No compactor and no store-gateway run, so nothing in this process can compact,
+# expire, clean up or delete a block, a bucket index, or a tenant — and the querier never reads the
+# S3 block store, so it needs no bucket index. Reading other or past clusters' metrics is not part
+# of a running cluster.
+#
+# Dollar-brace values are read from the environment (-config.expand-env=true); the Deployment sets
+# them from the cluster-config ConfigMap. Never write a dollar-brace in a comment here: the expansion
+# reads comments too, and a malformed one stops the process from starting.
+target: distributor,ingester,querier,query-frontend,query-scheduler
+
+# Native multi-tenancy: every write and query carries the tenant in X-Scope-OrgID. Tenant federation
+# lets one query name several tenants as `a|b`; each series then carries __tenant_id__.
+multitenancy_enabled: true
+tenant_federation:
+  enabled: true
+
+server:
+  http_listen_port: 9009
+  grpc_listen_port: 9097
+  log_level: info
+
+# Mimir writes a small activity log for crash diagnosis; keep it on the data volume rather than
+# the image's working directory.
+activity_tracker:
+  filepath: /data/metrics-activity.log
+
+blocks_storage:
+  backend: s3
+  # Mimir accepts only letters and digits here, so the metrics root sits beside observability/,
+  # not under it. Mimir makes one directory per tenant under it.
+  storage_prefix: ${METRICS_S3_PREFIX}
+  s3:
+    bucket_name: ${S3_BUCKET}
+    endpoint: s3.${AWS_REGION}.amazonaws.com
+    region: ${AWS_REGION}
+  tsdb:
+    # The head, its WAL and every local block live on the control node's disk (a hostPath), so a
+    # pod restart replays the WAL and keeps the blocks.
+    dir: /data/tsdb
+    block_ranges_period: [2h]
+    ship_interval: 1m
+    # Local blocks stay for the cluster's life: the querier reads them, never the store. Mimir
+    # requires this to exceed querier.query_store_after.
+    retention_period: 87601h
+    # A graceful stop compacts the head into a block and ships it.
+    flush_blocks_on_shutdown: true
+
+# Every ring is in this one process: in memory, one replica.
+querier:
+  # Never send a query to the store: under D1 there is no store-gateway to answer it.
+  query_store_after: 87600h
+  ring:
+    kvstore:
+      store: inmemory
+    instance_addr: 127.0.0.1
+
+ingester:
+  ring:
+    kvstore:
+      store: inmemory
+    replication_factor: 1
+    instance_addr: 127.0.0.1
+    final_sleep: 0s
+    min_ready_duration: 0s
+
+distributor:
+  ring:
+    kvstore:
+      store: inmemory
+    instance_addr: 127.0.0.1
+  ha_tracker:
+    kvstore:
+      store: inmemory
+
+# Mimir starts its gossip listener even though no ring uses it. The pod shares the control node's
+# network, where Pyroscope already holds the default 7946, so it listens on loopback on its own port.
+memberlist:
+  bind_addr: [127.0.0.1]
+  bind_port: 7947
+
+frontend:
+  # The query-scheduler runs in this process.
+  scheduler_address: 127.0.0.1:9097
+
+frontend_worker:
+  scheduler_address: 127.0.0.1:9097
+
+limits:
+  # 0 = every query goes to the ingester, however far back.
+  query_ingesters_within: 0
+  # The defaults are sized for shared SaaS tenants. Past them Mimir answers the collector's remote
+  # write with a 4xx and the batch is dropped, not retried, so they are set far above what a test
+  # cluster sends.
+  ingestion_rate: 10000000
+  ingestion_burst_size: 20000000
+  max_global_series_per_user: 0
+  max_global_series_per_metric: 0
+  max_global_metadata_per_user: 0
+  max_global_metadata_per_metric: 0
+  max_global_exemplars_per_user: 100000
+  max_label_names_per_series: 100
+  max_label_name_length: 1024
+  max_label_value_length: 16384
+  max_fetched_chunks_per_query: 0
+  max_fetched_series_per_query: 0
+  max_fetched_chunk_bytes_per_query: 0
+  # Scrapes and OTLP pushes from several nodes arrive slightly out of order.
+  out_of_order_time_window: 10m

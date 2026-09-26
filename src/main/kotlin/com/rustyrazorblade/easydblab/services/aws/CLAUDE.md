@@ -7,7 +7,7 @@ This package contains AWS service classes that implement business logic on top o
 ```
 services/aws/
 ├── CLAUDE.md                  # This file
-├── AwsS3BucketService.kt     # S3 bucket administration (lifecycle, metrics, policies)
+├── AwsS3BucketService.kt     # S3 bucket administration (creation, request metrics, policies, tags)
 ├── AWSResourceSetupService.kt # IAM resource setup (roles, instance profiles)
 ├── AwsInfrastructureService.kt # VPC infrastructure creation and teardown orchestration
 ├── EC2VpcService.kt           # VPC resource management (implements VpcService)
@@ -86,3 +86,8 @@ Integration tests live in the slow tier under `src/integrationTest/kotlin/.../se
 - Test the full behavior end-to-end: upload data, call the service method, assert on results
 
 Services that call S3 indirectly (via `ObjectStore`) also need integration tests — see `ClusterBackupServiceS3IntegrationTest` as an example of testing a higher-level service against LocalStack.
+
+## S3 data handling
+
+- **Nothing sets a lifecycle, expiry or retention rule.** `down` only disables the data bucket's request metrics (`teardownDataBucket`); with `--all` it deletes a data bucket only when it is empty (`deleteEmptyBucket`, a `Result` carrying S3's error), and emits `Event.S3.DataBucketKept(bucket, reason)` for one it leaves in place. The IAM policy grants no lifecycle actions.
+- **Observability data lives in the account bucket** under `observability/` (see `configuration/ObservabilityStore`). The per-cluster data bucket holds database data (ClickHouse S3 storage, Cassandra artifacts, Spark); the observability stack writes nothing to it.

@@ -29208,8 +29208,8 @@
       {
         "current": {
           "selected": true,
-          "text": "VictoriaMetrics",
-          "value": "VictoriaMetrics"
+          "text": "Mimir",
+          "value": "mimir"
         },
         "hide": 0,
         "includeAll": false,
@@ -29277,8 +29277,8 @@
       {
         "current": {
           "selected": true,
-          "text": "VictoriaMetrics",
-          "value": "VictoriaMetrics"
+          "text": "Mimir",
+          "value": "mimir"
         },
         "hide": 0,
         "includeAll": false,
@@ -29346,7 +29346,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

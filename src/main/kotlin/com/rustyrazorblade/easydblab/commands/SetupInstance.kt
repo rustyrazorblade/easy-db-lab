@@ -94,6 +94,7 @@ class SetupInstance : PicoBaseCommand() {
                     maxBytes = Constants.Profiling.DEFAULT_MAX_BYTES,
                     pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodeIp, clusterState.initConfig?.telemetryRedirect),
                     clusterName = clusterName,
+                    tenant = clusterState.tenant(),
                     updatedAt = Instant.now().toString(),
                 ),
             )

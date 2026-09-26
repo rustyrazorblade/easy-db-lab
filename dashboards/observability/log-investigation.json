@@ -11,8 +11,8 @@
   "panels": [
     {
       "datasource": {
-        "type": "victoriametrics-logs-datasource",
-        "uid": "victorialogs"
+        "type": "loki",
+        "uid": "loki"
       },
       "gridPos": {
         "h": 24,
@@ -34,10 +34,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "victoriametrics-logs-datasource",
-            "uid": "victorialogs"
+            "type": "loki",
+            "uid": "loki"
           },
-          "expr": "service:~\"${service}\" source:~\"${source}\" severity:~\"${severity}\" ${search}",
+          "editorMode": "code",
+          "expr": "{cluster=~\"$cluster\", source=~\"$source\", service_name=~\"$service\"} | detected_level=~\"$severity\" |~ \"(?i)$search\"",
+          "queryType": "range",
           "refId": "A"
         }
       ],
@@ -65,8 +67,8 @@
       {
         "current": {
           "selected": true,
-          "text": "VictoriaMetrics",
-          "value": "VictoriaMetrics"
+          "text": "Mimir",
+          "value": "mimir"
         },
         "hide": 0,
         "includeAll": false,
@@ -90,7 +92,8 @@
         "definition": "label_values(up, cluster)",
         "hide": 0,
         "includeAll": true,
-        "allValue": ".*",
+        "allValue": ".+",
+        "description": "Clusters of this tenant. All is .+ because Loki refuses a stream selector that matches an empty value.",
         "label": "Cluster",
         "multi": true,
         "name": "cluster",
@@ -111,13 +114,15 @@
         "label": "Service",
         "type": "query",
         "datasource": {
-          "type": "victoriametrics-logs-datasource",
-          "uid": "victorialogs"
+          "type": "loki",
+          "uid": "loki"
         },
+        "definition": "label_values({cluster=~\"$cluster\"}, service_name)",
         "query": {
-          "query": "*",
-          "field": "service",
-          "type": "fieldValue"
+          "label": "service_name",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "{cluster=~\"$cluster\"}",
+          "type": 1
         },
         "hide": 0,
         "refresh": 2,
@@ -133,13 +138,15 @@
         "label": "Source",
         "type": "query",
         "datasource": {
-          "type": "victoriametrics-logs-datasource",
-          "uid": "victorialogs"
+          "type": "loki",
+          "uid": "loki"
         },
+        "definition": "label_values({cluster=~\"$cluster\"}, source)",
         "query": {
-          "query": "*",
-          "field": "source",
-          "type": "fieldValue"
+          "label": "source",
+          "refId": "LokiVariableQueryEditor-VariableQuery",
+          "stream": "{cluster=~\"$cluster\"}",
+          "type": 1
         },
         "hide": 0,
         "refresh": 2,
@@ -153,28 +160,24 @@
       {
         "name": "severity",
         "label": "Severity",
-        "type": "query",
-        "datasource": {
-          "type": "victoriametrics-logs-datasource",
-          "uid": "victorialogs"
-        },
-        "query": {
-          "query": "*",
-          "field": "severity",
-          "type": "fieldValue"
-        },
+        "description": "The level Loki detects on every line (detected_level).",
+        "type": "custom",
+        "query": "error,warn,info,debug,trace,unknown",
         "hide": 0,
-        "refresh": 2,
         "multi": false,
         "includeAll": true,
         "allValue": ".*",
-        "sort": 1,
         "options": [],
-        "current": {}
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        }
       },
       {
         "name": "search",
         "label": "Search",
+        "description": "Case-insensitive regular expression every line must match.",
         "type": "textbox",
         "hide": 0,
         "options": [
@@ -193,8 +196,8 @@
       },
       {
         "datasource": {
-          "type": "victoriametrics-logs-datasource",
-          "uid": "victorialogs"
+          "type": "loki",
+          "uid": "loki"
         },
         "filters": [],
         "hide": 0,

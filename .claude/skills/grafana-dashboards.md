@@ -35,8 +35,8 @@ Run `find dashboards -name '*.json' | sort` for the current list. The Grafana fo
 
 | Name | `type` value | `uid` value | Port |
 |------|-------------|-------------|------|
-| VictoriaMetrics | `prometheus` | `VictoriaMetrics` | 8428 |
-| VictoriaLogs | `victoriametrics-logs-datasource` | `victorialogs` | 9428 |
+| Mimir | `prometheus` | `mimir` | 9009 (PromQL under `/prometheus`) |
+| Loki | `loki` | `loki` | 3100 (LogQL) |
 | ClickHouse | `grafana-clickhouse-datasource` | (auto) | 9000 |
 | Tempo | `tempo` | `tempo` | 3200 |
 | Pyroscope | `grafana-pyroscope-datasource` | `pyroscope` | 4040 |
@@ -80,7 +80,7 @@ The file is discovered at runtime and copied to the control node with the rest o
 
 `GrafanaUpdateConfig.execute()` does:
 1. Creates the cluster-config ConfigMap (control node IP, region, S3 bucket, etc.)
-2. Applies all Fabric8-built observability resources (OTel, Victoria, Tempo, Vector, Beyla, ebpf_exporter, Registry, S3 Manager, Pyroscope)
+2. Applies all Fabric8-built observability resources (OTel, Mimir, Loki, Tempo, Vector, Beyla, ebpf_exporter, Registry, S3 Manager, Pyroscope)
 3. Prepares `/mnt/db1/grafana` on the control node (mkdir, chown 472)
 4. Calls `GrafanaDashboardService.uploadDashboards()` which:
    - Creates the datasource ConfigMap
@@ -145,7 +145,7 @@ Reference the variable in panel expressions as `$quantile` or `${quantile}`.
 { "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 }, "id": 100, "title": "Section Name", "type": "row" }
 ```
 
-**VictoriaMetrics (Prometheus) timeseries panel:**
+**Mimir (Prometheus) timeseries panel:**
 ```json
 {
   "type": "timeseries",
@@ -254,54 +254,49 @@ Metrics written before the agent replaced MAAC use `org_apache_cassandra_metrics
 
 ---
 
-## Querying VictoriaMetrics Directly
+## Querying Mimir Directly
 
 Always verify metric names and label values against the live cluster before adding or modifying panels. Get the control node IP from `easy-db-lab status` or the cluster state file.
 
-**Base URL:** `http://<control-ip>:8428`
+**Base URL:** `http://<control-ip>:9009/prometheus`. Mimir is multi-tenant: every request sends the cluster's tenant (`default` unless the cluster was initialized with `--tenant`) in `X-Scope-OrgID`, or Mimir refuses it.
 
 ### Discover available metrics
 
 ```bash
-curl -s "http://<control-ip>:8428/api/v1/label/__name__/values" | python3 -c "
-import json, sys
-names = json.load(sys.stdin)['data']
-for n in sorted(n for n in names if 'keyword' in n.lower()):
-    print(n)
-"
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:9009/prometheus/api/v1/label/__name__/values" \
+  | jq -r '.data[] | select(test("keyword"; "i"))'
 ```
 
 ### Check labels on a metric
 
 ```bash
-curl -s "http://<control-ip>:8428/api/v1/query?query=my_metric_name" | python3 -c "
-import json, sys
-results = json.load(sys.stdin)['data']['result']
-print(f'Series: {len(results)}')
-if results:
-    print(json.dumps(results[0]['metric'], indent=2))
-"
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:9009/prometheus/api/v1/query" \
+  --data-urlencode 'query=my_metric_name' \
+  | jq '"Series: \(.data.result | length)", .data.result[0].metric'
 ```
 
 ### Check unique values for a label
 
 ```bash
-curl -s "http://<control-ip>:8428/api/v1/label/host_name/values" | python3 -c "
-import json, sys; print(json.load(sys.stdin)['data'])
-"
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:9009/prometheus/api/v1/label/host_name/values" | jq '.data'
 ```
 
 ### Spot-check a PromQL expression
 
 ```bash
-curl -s "http://<control-ip>:8428/api/v1/query?query=rate(my_metric%7Bjob%3D%22cassandra%22%7D%5B1m%5D)" | python3 -c "
-import json, sys
-r = json.load(sys.stdin)
-results = r['data']['result']
-print(f'{len(results)} series')
-for s in results[:3]:
-    print(s['metric'].get('host_name'), s['value'])
-"
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:9009/prometheus/api/v1/query" \
+  --data-urlencode 'query=rate(my_metric{job="cassandra"}[1m])' \
+  | jq -r '"\(.data.result | length) series", (.data.result[:3][] | "\(.metric.host_name) \(.value)")'
+```
+
+### Spot-check a LogQL query
+
+Loki takes the same tenant header. Every stream selector is scoped by cluster, and at least one matcher must be unable to match an empty value:
+
+```bash
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={cluster="<cluster>", service_name="cassandra"}' --data-urlencode 'limit=5' \
+  | jq -r '.data.result[].values[][1]'
 ```
 
 ### JSON manipulation
@@ -338,7 +333,7 @@ d['panels'].sort(key=lambda p: (p['gridPos']['y'], p['gridPos']['x']))
 ### Dashboard appears but shows no data
 
 1. **Check datasource** — Verify the `"uid"` in panel datasource matches an available datasource (see table above).
-2. **Check metric names** — Query VictoriaMetrics API: `curl http://<control-ip>:8428/api/v1/label/__name__/values`
+2. **Check metric names** — Query Mimir: `curl -H "X-Scope-OrgID: <tenant>" http://<control-ip>:9009/prometheus/api/v1/label/__name__/values`
 3. **Check job label** — Verify `{job="..."}` matches what OTel is scraping. Check the OTel collector config for the `job_name`.
 4. **Check scrape interval** — If a job runs shorter than the scrape interval, metrics may never be collected.
 

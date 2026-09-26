@@ -34,8 +34,9 @@ single
   byte-ceiling bound exists because that is one volume.
 - 1 app node, `m6id.xlarge`, running `cassandra-easy-stress` on k3s.
 - Cassandra 5.0, which selects **Java 11** on these AMIs.
-- Observability: Pyroscope (4040), VictoriaMetrics (8428), VictoriaLogs (9428), Grafana (3000) on the
-  control node.
+- Observability: Pyroscope (4040), Mimir (9009), Loki (3100), Grafana (3000) on the control node.
+  Mimir and Loki need the cluster's tenant in `X-Scope-OrgID` on every query (`default` unless
+  `init --tenant` named another).
 - `AWS_PROFILE=sandbox-admin`.
 - **Both AMIs must be rebuilt from this branch.** Base adds `jq` to its package list; the Cassandra
   image carries the reconciler script, its systemd units, and the modified `cassandra.in.sh`. Base
@@ -59,7 +60,10 @@ Capture what later steps need. `$EDB` is the workspace wrapper, so its directory
 CLUSTER_DIR=$(dirname "$EDB")
 CONTROL_IP=$($EDB ip --private control0)
 SSH="ssh -F $CLUSTER_DIR/sshConfig"
-VM="http://$CONTROL_IP:8428/api/v1/query"
+TENANT=${TENANT:-default}
+MIMIR="http://$CONTROL_IP:9009/prometheus/api/v1"
+MIMIR_TENANT="X-Scope-OrgID: $TENANT"
+VM="$MIMIR/query"
 echo "control=$CONTROL_IP"
 ```
 
@@ -187,7 +191,7 @@ MutationStage, ReadStage); all three hostnames present. A 1-minute window on 4 v
 ### 8. Confirm the reconciler is converging, not thrashing
 
 ```bash
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_session_starts_total' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_session_starts_total' | jq .
 ```
 
 **Expect exactly 1 per node.** Use the absolute counter, not a rate: the cluster-up attach is one
@@ -327,15 +331,15 @@ Expect a side effect: `restart` bounces the sidecar DaemonSet on all three nodes
 ```bash
 $EDB cassandra profile start --retention 5 --max-bytes 4294967296 -- -e cpu --alloc 512k --lock 10ms
 # wait ~8 minutes
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_pruned_for_age_total' | jq .
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_pruned_unshipped_total' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_pruned_for_age_total' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_recording_stopped_at_bound' | jq .
 $EDB cassandra profile status --hosts db0
 $SSH db0 "ls -la /mnt/db1/cassandra/profiles/"
 ```
 
-**Check:** `pruned_for_age_total` rises. **`pruned_unshipped_total` must stay 0** — everything older
-than five minutes has long since shipped, so a non-zero value means the pruner is destroying data
-that was still shippable. `status` shows the new `pruned:` line with a non-zero age count.
+**Check:** `pruned_for_age_total` rises. **`recording_stopped_at_bound` must stay 0** — everything
+older than five minutes has long since shipped, so the pruner always has a shipped chunk to remove
+and never has to stop recording. Only shipped chunks are pruned; an unshipped chunk is never deleted. `status` shows the new `pruned:` line with a non-zero age count.
 
 **Not a restart.** Only the bounds moved; the argument fingerprint is unchanged from step 14, so
 `age:` keeps growing and `session_starts` does **not** move. A converged node here is correct.
@@ -351,7 +355,7 @@ $EDB cassandra profile start --retention 600 --max-bytes 4294967296 -- -e cpu --
 
 ```bash
 $SSH db0 "command -v yq && yq --version && command -v jq && jq --version"
-curl -s "http://$CONTROL_IP:8428/api/v1/label/__name__/values" | tr ',' '\n' | grep edl_jfr
+curl -s -H "$MIMIR_TENANT" "$MIMIR/label/__name__/values" | tr ',' '\n' | grep edl_jfr
 $SSH db0 "journalctl -u edl-profiling-reconcile.service --no-pager -n 50 | grep -i jfr_metrics_export_failed || echo 'no metrics export failures'"
 ```
 
@@ -394,11 +398,11 @@ $SSH db0 "sudo systemctl stop cassandra"
 Wait two reconcile intervals, then:
 
 ```bash
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_attach_skipped_total' | jq .
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_attach_deferred_total' | jq .
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_profiling_desired' | jq .
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_session_attached' | jq .
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_profiling_desired == 1 and edl_jfr_session_attached == 0' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_attach_skipped_total' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_attach_deferred_total' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_profiling_desired' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_session_attached' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_profiling_desired == 1 and edl_jfr_session_attached == 0' | jq .
 $SSH db0 "journalctl -u edl-profiling-reconcile.service --no-pager -n 20 | grep jfr_attach_skipped"
 $EDB cassandra profile status --hosts db0
 ```
@@ -452,14 +456,14 @@ Unmask, then watch the first pass drain the backlog:
 ```bash
 $SSH db0 "sudo systemctl unmask edl-profiling-reconcile.timer && sudo systemctl start edl-profiling-reconcile.timer"
 $SSH db0 "journalctl -u edl-profiling-reconcile.service --no-pager -n 30 | grep jfr_ship_truncated"
-curl -sG "$VM" --data-urlencode 'query=max_over_time(edl_jfr_ship_truncated[15m])' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=max_over_time(edl_jfr_ship_truncated[15m])' | jq .
 ```
 
 **Expect:** the first pass uploads exactly **6** chunks (`SHIP_MAX_CHUNKS_PER_PASS`) and logs
 `<4>level=warn event=jfr_ship_truncated uploaded=6 budget=6 remaining=N hint=pyroscope_slow_or_backlog`;
 `max_over_time(edl_jfr_ship_truncated[15m])` is 1; later passes drain the remainder. The unit is
 **not** killed at `TimeoutStartSec=300`, which is what the budget exists to prevent. With retention
-at 600, `pruned_unshipped_total` stays 0.
+at 600, `recording_stopped_at_bound` stays 0.
 
 ### 20. Verify an unreadable config is reported as its own condition
 
@@ -471,8 +475,8 @@ $SSH db0 "sudo sh -c 'printf \"{\" > /etc/easy-db-lab/profiling.json'"
 # wait two reconcile intervals
 $EDB cassandra profile status --hosts db0
 $SSH db0 "cat /mnt/db1/cassandra/profiles/effective-state.json"
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_config_unreadable' | jq .
-curl -sG "$VM" --data-urlencode 'query=edl_jfr_profiling_desired' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_config_unreadable' | jq .
+curl -sG -H "$MIMIR_TENANT" "$VM" --data-urlencode 'query=edl_jfr_profiling_desired' | jq .
 ```
 
 **Expect — every one of these was broken before the fix round:**

@@ -35,7 +35,7 @@
   "templating": {
     "list": [
       {
-        "current": { "text": "VictoriaMetrics", "value": "VictoriaMetrics" },
+        "current": { "text": "Mimir", "value": "mimir" },
         "hide": 0,
         "includeAll": false,
         "label": "Datasource",

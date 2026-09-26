@@ -100,15 +100,6 @@ class AwsS3BucketService(
     ) = aws.disableBucketRequestMetrics(bucketName, configId)
 
     /**
-     * Sets an S3 lifecycle expiration rule on a prefix within a bucket.
-     */
-    fun setLifecycleExpirationRule(
-        bucketName: String,
-        prefix: String,
-        days: Int,
-    ) = aws.setLifecycleExpirationRule(bucketName, prefix, days)
-
-    /**
      * Finds an S3 bucket by a specific tag key-value pair.
      */
     fun findBucketByTag(
@@ -127,17 +118,10 @@ class AwsS3BucketService(
     fun findDataBuckets(): List<String> = aws.findDataBuckets()
 
     /**
-     * Deletes an S3 bucket. Returns true if deleted, false if non-empty or error.
+     * Deletes an S3 bucket if it is empty. Fails, carrying S3's error, if the bucket still holds
+     * objects or S3 refuses the delete; the bucket and its objects are then left in place.
      */
-    fun deleteEmptyBucket(bucketName: String): Boolean = aws.deleteS3Bucket(bucketName)
-
-    /**
-     * Sets a lifecycle expiration rule on an entire bucket (no prefix filter).
-     */
-    fun setFullBucketLifecycleExpiration(
-        bucketName: String,
-        days: Int,
-    ) = aws.setFullBucketLifecycleExpiration(bucketName, days)
+    fun deleteEmptyBucket(bucketName: String): Result<Unit> = aws.deleteS3Bucket(bucketName)
 
     /**
      * Creates and fully configures a per-cluster data bucket.
@@ -171,15 +155,13 @@ class AwsS3BucketService(
     }
 
     /**
-     * Tears down a per-cluster data bucket by disabling metrics and setting lifecycle expiration.
+     * Tears down a per-cluster data bucket by disabling its request metrics. The bucket's objects
+     * are the owner's data, so no expiry is set and nothing is deleted.
      */
     fun teardownDataBucket(
         bucketName: String,
         metricsConfigId: String,
-        retentionDays: Int,
     ) {
         disableBucketRequestMetrics(bucketName, metricsConfigId)
-        setFullBucketLifecycleExpiration(bucketName, retentionDays)
-        eventBus.emit(Event.S3.DataBucketExpiring(bucketName, retentionDays))
     }
 }

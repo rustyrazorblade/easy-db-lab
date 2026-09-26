@@ -102,8 +102,11 @@ data class S3Paths(
     val clickhouse: String,
     val spark: String,
     val emrLogs: String,
-    val tempo: String,
-    val pyroscope: String,
+    val traces: String,
+    val profiles: String,
+    val metrics: String,
+    val logs: String,
+    val annotations: String,
 )
 
 @Serializable
@@ -151,8 +154,8 @@ data class AccessInfo(
 @Serializable
 data class ObservabilityAccess(
     val grafana: String,
-    val victoriaMetrics: String,
-    val victoriaLogs: String,
+    val mimir: String,
+    val loki: String,
     val tempo: String,
     val pyroscope: String,
 )

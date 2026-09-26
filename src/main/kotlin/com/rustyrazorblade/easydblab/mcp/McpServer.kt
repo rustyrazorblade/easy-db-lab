@@ -10,7 +10,7 @@ import com.rustyrazorblade.easydblab.output.CompositeOutputHandler
 import com.rustyrazorblade.easydblab.output.FilteringChannelOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputEvent
 import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.services.VictoriaMetricsQueryService
+import com.rustyrazorblade.easydblab.services.MimirQueryService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -78,7 +78,7 @@ class McpServer(
     private val context: Context by inject()
     private val outputHandler: OutputHandler by inject()
     private val eventBus: EventBus by inject()
-    private val victoriaMetricsQueryService: VictoriaMetricsQueryService by inject()
+    private val mimirQueryService: MimirQueryService by inject()
     private val clusterStateManager: ClusterStateManager by inject()
 
     private val toolRegistry = McpToolRegistry()
@@ -324,7 +324,7 @@ class McpServer(
         val redisUrl = System.getenv(Constants.EventBus.REDIS_URL_ENV_VAR)
         if (!redisUrl.isNullOrBlank()) {
             metricsCollector =
-                MetricsCollector(victoriaMetricsQueryService, clusterStateManager, eventBus)
+                MetricsCollector(mimirQueryService, clusterStateManager, eventBus)
                     .also { it.start() }
             log.info { "MetricsCollector started (Redis configured)" }
         } else {

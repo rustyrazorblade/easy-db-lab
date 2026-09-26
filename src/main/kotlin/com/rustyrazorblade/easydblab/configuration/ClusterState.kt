@@ -88,6 +88,25 @@ data class InfrastructureState(
 )
 
 /**
+ * A pre-teardown flush that completed: every step succeeded and Loki and Mimir were left at 0.
+ *
+ * `down` records it so a re-run after a failed teardown skips the flush instead of stopping at the
+ * backends it already stopped. `up` clears it, since the backends it starts take data the record
+ * does not cover.
+ *
+ * @property completedAt when the flush finished.
+ * @property lokiIndexFiles the Loki index files verified in S3.
+ * @property lokiChunksFlushed the chunks Loki's shutdown wrote to S3.
+ * @property mimirBlocks the Mimir blocks verified in S3.
+ */
+data class TailFlushRecord(
+    val completedAt: Instant,
+    val lokiIndexFiles: Int,
+    val lokiChunksFlushed: Long,
+    val mimirBlocks: Int,
+)
+
+/**
  * Configuration from Init command to preserve cluster setup parameters
  * All fields have defaults to ensure backward compatibility with older state files
  */
@@ -128,6 +147,9 @@ data class InitConfig(
     // the cluster stands up its own observability backends. Non-null means all four signals ship
     // to the external stack these endpoints describe and no local backends are stood up.
     val telemetryRedirect: TelemetryRedirect? = null,
+    // The observability tenant the cluster's data belongs to. Fixed at init; a state file written
+    // before tenants existed has no field and reads as the default tenant.
+    val tenant: String = Constants.Observability.DEFAULT_TENANT,
 ) {
     companion object {
         /**
@@ -185,6 +207,7 @@ data class InitConfig(
                 cidr = init.cidr,
                 cni = init.cni,
                 telemetryRedirect = init.resolvedTelemetryRedirect,
+                tenant = init.tenant,
             )
     }
 }
@@ -238,6 +261,8 @@ data class ClusterState(
     var tailscaleActive: Boolean = false,
     // Names of kits that are currently started (K8s kits + EC2 services like cassandra)
     var runningKits: Set<String> = emptySet(),
+    // The pre-teardown flush that completed, so a re-run of `down` skips it; cleared by `up`
+    var tailFlush: TailFlushRecord? = null,
 ) {
     /**
      * Returns true when the db nodes are provisioned with Cassandra hosts.
@@ -292,10 +317,12 @@ data class ClusterState(
     }
 
     /**
-     * Mark infrastructure as UP
+     * Mark infrastructure as UP. The backends `up` starts take data a recorded tail flush does not
+     * cover, so the record is cleared and the next `down` flushes again.
      */
     fun markInfrastructureUp() {
         this.infrastructureStatus = InfrastructureStatus.UP
+        this.tailFlush = null
         this.lastAccessedAt = Instant.now()
     }
 
@@ -309,6 +336,26 @@ data class ClusterState(
 
     /** Returns the cluster prefix path for S3: "clusters/{name}-{clusterId}". No trailing slash. */
     fun clusterPrefix(): String = "${Constants.S3.CLUSTERS_PREFIX}/$name-$clusterId"
+
+    /**
+     * The observability tenant this cluster's data belongs to. A state with no init configuration,
+     * or one written before tenants existed, belongs to the default tenant.
+     *
+     * @throws IllegalStateException if state.json holds a tenant that breaks
+     *   [Constants.Observability.TENANT_PATTERN] or is [Constants.Observability.RESERVED_TENANT].
+     *   `init` checks it, but the value goes into JVM options
+     *   and S3 keys, so a hand-edited one is refused here too.
+     */
+    fun tenant(): String {
+        val tenant = initConfig?.tenant ?: Constants.Observability.DEFAULT_TENANT
+        check(Regex(Constants.Observability.TENANT_PATTERN).matches(tenant)) {
+            "Invalid tenant '$tenant' in state.json: a tenant must match ${Constants.Observability.TENANT_PATTERN}"
+        }
+        check(tenant != Constants.Observability.RESERVED_TENANT) {
+            "Invalid tenant '$tenant' in state.json: '${Constants.Observability.RESERVED_TENANT}' is reserved"
+        }
+        return tenant
+    }
 
     /** Returns the S3 metrics config ID: "edl-{name}-{clusterId}", truncated to API limit. */
     fun metricsConfigId(): String = "edl-$name-$clusterId".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)

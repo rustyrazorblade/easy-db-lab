@@ -56,7 +56,7 @@ class CiliumServiceTest : BaseKoinTest() {
                 }
                 single<RemoteOperationsService> { mock<RemoteOperationsService>().also { mockRemoteOps = it } }
                 single { mock<GrafanaDashboardService>() }
-                single { CiliumInstallAnnotator(get()) }
+                single { CiliumInstallAnnotator(get(), RecordingAnnotationMirror()) }
             },
         )
 
@@ -385,6 +385,25 @@ class CiliumServiceTest : BaseKoinTest() {
         assertThat(script).contains("WantedBy=multi-user.target")
         assertThat(script).contains("RemainAfterExit=yes")
         assertThat(script).contains("set -euo pipefail")
+    }
+
+    /**
+     * Under `set -o pipefail`, `nft list ... | grep -q` fails at random: `grep -q` exits on the
+     * first match, `nft` takes SIGPIPE writing the rest, and the pipeline exits 141 even though the
+     * table is live. That failed `up` on a real cluster. The self-check must read nft's output in
+     * full before matching it.
+     */
+    @Test
+    fun `tailscale masquerade self-check cannot fail on SIGPIPE`() {
+        val scriptPath = "/com/rustyrazorblade/easydblab/services/install-tailscale-masquerade.sh"
+        val script =
+            javaClass.getResourceAsStream(scriptPath)?.bufferedReader()?.readText()
+                ?: error("install-tailscale-masquerade.sh not found on classpath at $scriptPath")
+        val earlyExitingPipe = Regex("""\|\s*grep\s+(-\w*[qm]\w*\s|--quiet|--silent|--max-count)""")
+
+        assertThat(script.lines().filterNot { it.trimStart().startsWith("#") })
+            .noneMatch { earlyExitingPipe.containsMatchIn(it) }
+        assertThat(script).contains("list table ip edl_tailscale")
     }
 
     @Test

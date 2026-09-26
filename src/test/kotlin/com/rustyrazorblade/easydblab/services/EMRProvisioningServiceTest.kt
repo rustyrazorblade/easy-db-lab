@@ -185,9 +185,11 @@ internal class EMRProvisioningServiceTest {
             .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
             .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
             .contains("-Dpyroscope.server.address=http://10.0.1.5:4040")
+            .contains("-Dpyroscope.tenant.id=default")
         assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"])
             .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
             .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
+            .contains("-Dpyroscope.tenant.id=default")
         assertThat(sparkDefaults.properties["spark.driverEnv.OTEL_SERVICE_NAME"]).isEqualTo("spark")
         assertThat(sparkDefaults.properties["spark.executorEnv.OTEL_LOGS_EXPORTER"]).isEqualTo("otlp")
         assertThat(sparkDefaults.properties["spark.yarn.appMasterEnv.OTEL_TRACES_EXPORTER"]).isEqualTo("otlp")
@@ -208,7 +210,7 @@ internal class EMRProvisioningServiceTest {
         val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
         val clusterState =
             createTestClusterState(clusterId = "test-id")
-                .copy(initConfig = InitConfig(telemetryRedirect = redirect))
+                .copy(initConfig = InitConfig(telemetryRedirect = redirect, tenant = "acme"))
 
         val configCaptor = argumentCaptor<EMRClusterConfig>()
         setupEmrMocks("j-REDIRECT", "myenv-spark", configCaptor)
@@ -235,6 +237,8 @@ internal class EMRProvisioningServiceTest {
         assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"])
             .contains("-Dpyroscope.server.address=${redirect.profiles}")
             .doesNotContain("http://10.0.1.5:4040")
+        assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"]).contains("-Dpyroscope.tenant.id=acme")
+        assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"]).contains("-Dpyroscope.tenant.id=acme")
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -402,6 +403,7 @@ class Status :
         }
 
         val dataPath = ClusterS3Path(clusterState.dataBucket)
+        val store = ObservabilityStore.from(clusterState)
         println(
             """
                 |
@@ -412,6 +414,13 @@ class Status :
                 |  ClickHouse: ${dataPath.clickhouse()}
                 |  Spark: ${dataPath.spark()}
                 |  EMR Logs: ${dataPath.emrLogs()}
+                |Observability:
+                |  Tenant:    ${store.tenant}
+                |  Traces:    s3://${store.bucket}/${store.tracesPrefix()}
+                |  Profiles:  s3://${store.bucket}/${store.profilesPrefix()}
+                |  Metrics:   s3://${store.bucket}/${store.metricsPrefix()}/${store.tenant}
+                |  Logs:      s3://${store.bucket}/${store.logsPrefix()}
+                |  Annotations: ${store.annotationsRoot()}
             """.trimMargin(),
         )
     }
@@ -500,8 +509,8 @@ class Status :
 
 Observability:
   Grafana:         http://$ip:${Constants.K8s.GRAFANA_PORT}
-  VictoriaMetrics: http://$ip:${Constants.K8s.VICTORIAMETRICS_PORT}/vmui
-  VictoriaLogs:    http://$ip:${Constants.K8s.VICTORIALOGS_PORT}/select/vmui
+  Mimir:           http://$ip:${Constants.K8s.MIMIR_HTTP_PORT}/prometheus
+  Loki:            http://$ip:${Constants.K8s.LOKI_HTTP_PORT}
   Tempo:           http://$ip:${Constants.K8s.TEMPO_PORT}
   Pyroscope:       http://$ip:${Constants.K8s.PYROSCOPE_PORT}
 """,

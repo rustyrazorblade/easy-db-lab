@@ -53,6 +53,10 @@ class ProfilingStop : ProfilingHostCommand() {
             is DesiredProfilingState.Configured ->
                 current.config.copy(
                     enabled = false,
+                    // The cluster's tenant, not whatever the node's document carried: a document
+                    // written before tenants existed would otherwise ship its last chunk to the
+                    // default tenant.
+                    tenant = clusterState.tenant(),
                     updatedAt = Instant.now().toString(),
                 )
 
@@ -80,6 +84,7 @@ class ProfilingStop : ProfilingHostCommand() {
             maxBytes = Constants.Profiling.DEFAULT_MAX_BYTES,
             pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodePrivateIp(), clusterState.initConfig?.telemetryRedirect),
             clusterName = clusterState.clusterLabelName(),
+            tenant = clusterState.tenant(),
             updatedAt = Instant.now().toString(),
         )
 }

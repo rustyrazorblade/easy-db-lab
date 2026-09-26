@@ -136,6 +136,22 @@ class ProfilingCommandsTest : BaseKoinTest() {
         )
     }
 
+    /**
+     * Reloads state as a cluster in tenant `acme`. The default tenant is also [ProfilingConfig]'s
+     * fallback, so only a non-default tenant shows that the command wrote the cluster's tenant.
+     */
+    private fun useTenantState() {
+        whenever(clusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                clusterId = "abc123",
+                versions = mutableMapOf(),
+                hosts = hosts,
+                initConfig = InitConfig(tenant = "acme"),
+            ),
+        )
+    }
+
     private fun capturedConfigs(): List<ProfilingConfig> {
         val captor = argumentCaptor<ProfilingConfig>()
         verify(profilingService, org.mockito.kotlin.atLeastOnce()).writeDesiredState(any(), captor.capture())
@@ -322,6 +338,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
 
     @Test
     fun `start records the desired state built from the options and the cluster`() {
+        useTenantState()
         val command = ProfilingStart()
         command.asprofArgs = listOf("-e", "wall", "-i", "10ms")
         command.loopInterval = "30s"
@@ -338,6 +355,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
         assertThat(config.maxBytes).isEqualTo(8L * 1024 * 1024)
         assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
+        assertThat(config.tenant).isEqualTo("acme")
         assertThat(config.updatedAt).isNotEmpty()
     }
 
@@ -410,6 +428,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
     fun `stop preserves the retention the operator started with`() {
         // Resetting retention to the default on stop would make the reconciler's next pass prune
         // away exactly the profiles the operator stopped in order to collect.
+        useTenantState()
         whenever(profilingService.readDesiredState(any())).thenReturn(
             DesiredProfilingState.Configured(
                 ProfilingConfig(
@@ -421,6 +440,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
                     pyroscopeUrl = "http://10.0.1.5:4040",
                     clusterName = "test-cluster-abc123",
                     updatedAt = "2026-08-24T10:15:30Z",
+                    tenant = "someone-else",
                 ),
             ),
         )
@@ -433,10 +453,12 @@ class ProfilingCommandsTest : BaseKoinTest() {
         assertThat(config.maxBytes).isEqualTo(42_000_000_000)
         assertThat(config.loopInterval).isEqualTo("30s")
         assertThat(config.updatedAt).isNotEqualTo("2026-08-24T10:15:30Z")
+        assertThat(config.tenant).describedAs("the cluster's tenant wins over the node document's").isEqualTo("acme")
     }
 
     @Test
     fun `stop falls back to defaults on a node that was never configured`() {
+        useTenantState()
         whenever(profilingService.readDesiredState(any())).thenReturn(DesiredProfilingState.Unconfigured)
 
         ProfilingStop().execute()
@@ -446,6 +468,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
         assertThat(config.retentionMinutes).isEqualTo(Constants.Profiling.DEFAULT_RETENTION_MINUTES)
         assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
+        assertThat(config.tenant).isEqualTo("acme")
 
         // Nothing was lost, so nothing to report.
         assertThat(emitted.filterIsInstance<Event.Profiling.DesiredStateUnreadable>()).isEmpty()
@@ -847,31 +870,6 @@ class ProfilingCommandsTest : BaseKoinTest() {
     }
 
     @Test
-    fun `status reports chunks destroyed before they ever shipped`() {
-        // The one pruning number that means irreversible loss. It lived only in journald and the
-        // metrics push, so the command an operator runs to ask "why did my profiles never show up?"
-        // could not answer.
-        whenever(profilingService.readEffectiveState(any()))
-            .thenReturn(
-                ProfilingEffectiveState(
-                    running = true,
-                    desiredEnabled = true,
-                    pid = 4242,
-                    prunedForAge = 40,
-                    prunedForSize = 2,
-                    prunedUnshipped = 17,
-                    updatedAt = Instant.now().epochSecond,
-                ),
-            )
-
-        ProfilingStatus().execute()
-
-        val lost = emitted.filterIsInstance<Event.Profiling.ChunksLost>()
-        assertThat(lost.map { it.host }).containsExactly("db0", "db1")
-        assertThat(lost.first().lost).isEqualTo(17)
-    }
-
-    @Test
     fun `status renders what pruning took and why`() {
         val report =
             ProfilingStatus().render(
@@ -882,34 +880,63 @@ class ProfilingCommandsTest : BaseKoinTest() {
                     pid = 4242,
                     prunedForAge = 40,
                     prunedForSize = 2,
-                    prunedUnshipped = 17,
                     updatedAt = Instant.now().epochSecond,
                 ),
             )
 
         assertThat(report).contains("40 for age")
         assertThat(report).contains("2 for size")
-        assertThat(report).contains("17 never shipped")
+        assertThat(report).doesNotContain("never shipped")
+    }
+
+    /**
+     * The directory is at its byte bound and holds only chunks that may not be deleted, so the node
+     * stopped recording. That is neither a failed attach nor a deliberate stop, and it must not read
+     * as either.
+     */
+    @Test
+    fun `status renders a node that stopped recording at its size bound`() {
+        val report =
+            ProfilingStatus().render(
+                db0,
+                ProfilingEffectiveState(
+                    running = false,
+                    desiredEnabled = true,
+                    pid = 4242,
+                    recordingStopped = "size_bound",
+                    bytesOnDisk = 3_000,
+                    maxBytes = 2_000,
+                    updatedAt = Instant.now().epochSecond,
+                ),
+            )
+
+        assertThat(report).contains("STOPPED:")
+        assertThat(report).contains("attached: no (stopped at the size bound)")
+        assertThat(report).contains("3000 of 2000 bytes")
     }
 
     @Test
-    fun `status stays quiet about lost chunks when nothing has been lost`() {
+    fun `status emits a typed event for a node stopped at its size bound, and not an attach failure`() {
         whenever(profilingService.readEffectiveState(any()))
             .thenReturn(
                 ProfilingEffectiveState(
-                    running = true,
+                    running = false,
                     desiredEnabled = true,
                     pid = 4242,
-                    prunedForAge = 40,
+                    recordingStopped = "size_bound",
+                    bytesOnDisk = 3_000,
+                    maxBytes = 2_000,
                     updatedAt = Instant.now().epochSecond,
                 ),
             )
 
         ProfilingStatus().execute()
 
-        assertThat(emitted.filterIsInstance<Event.Profiling.ChunksLost>())
-            .describedAs("routine age pruning of already-shipped chunks is not data loss")
-            .isEmpty()
+        val stopped = emitted.filterIsInstance<Event.Profiling.RecordingStoppedAtBound>()
+        assertThat(stopped.map { it.host }).containsExactly("db0", "db1")
+        assertThat(stopped.first().bytesOnDisk).isEqualTo(3_000)
+        assertThat(stopped.first().maxBytes).isEqualTo(2_000)
+        assertThat(emitted.filterIsInstance<Event.Profiling.AttachFailed>()).isEmpty()
     }
 
     // --- fetch ---------------------------------------------------------------

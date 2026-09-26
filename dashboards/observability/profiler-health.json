@@ -28,7 +28,7 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "# Profiler Pipeline Health\n\n**Is JFR profiling actually working?** Eighteen `edl_jfr_*` families are collected and\nnothing read them until this page, so a profiler that had silently stopped attaching,\nor was shipping nothing, looked exactly like a healthy one.\n\nRead the top row first. It answers, in order: do we want to profile this node, did we\nmanage to attach to the JVM, and did the last recording reach the server. Everything\nbelow the top row explains a red light in it.\n\n**Two counters that look alike and are not.** Pruning **for age** is routine\nhousekeeping. Pruning **unshipped** chunks is data loss: a recording was deleted before\nit ever left the node. Pruning **for size** sits between the two and means the local\nbudget is too small for the recording rate.\n\n**`edl_jfr_ship_last_success_timestamp_seconds` is 0 on a node that has never shipped.**\n`time() - 0` is the whole Unix epoch, so every staleness panel filters with `> 0` and a\nnode that has never shipped is absent rather than wrong by fifty years. Check the\ndesired-versus-attached panel to tell \"never shipped\" from \"not profiled\".\n\nThe only label on these families is `host_name`, so **Group by** offers nothing else\nuseful; each panel names the dimension it honours.\n"
+        "content": "# Profiler Pipeline Health\n\n**Is JFR profiling actually working?** Seventeen `edl_jfr_*` families are collected and\nnothing read them until this page, so a profiler that had silently stopped attaching,\nor was shipping nothing, looked exactly like a healthy one.\n\nRead the top row first. It answers, in order: do we want to profile this node, did we\nmanage to attach to the JVM, and did the last recording reach the server. Everything\nbelow the top row explains a red light in it.\n\n**Two counters that look alike and are not.** Pruning **for age** is routine\nhousekeeping. Pruning **for size** means the local budget is too small for the recording\nrate. Only shipped chunks are ever pruned. When the directory is full of unshipped or\nrejected chunks the node **stops recording** instead of deleting them; that is its own\nstat, not an attach failure.\n\n**`edl_jfr_ship_last_success_timestamp_seconds` is 0 on a node that has never shipped.**\n`time() - 0` is the whole Unix epoch, so every staleness panel filters with `> 0` and a\nnode that has never shipped is absent rather than wrong by fifty years. Check the\ndesired-versus-attached panel to tell \"never shipped\" from \"not profiled\".\n\nThe only labels on these families are `host_name` and `cluster`, so **Group by** offers\nonly those two; each panel names the dimension it honours.\n"
       },
       "transparent": false,
       "gridPos": {
@@ -58,7 +58,7 @@
       "description": "How many selected nodes are configured to be profiled. Zero here means the profiler is off by configuration, not broken.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -98,7 +98,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(edl_jfr_profiling_desired{host_name=~\"$host\"})",
@@ -122,7 +122,7 @@
       "description": "How many selected nodes currently hold a live JFR session on the target JVM.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -162,7 +162,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(edl_jfr_session_attached{host_name=~\"$host\"})",
@@ -183,10 +183,10 @@
       "type": "stat",
       "id": 5,
       "title": "Desired but NOT attached",
-      "description": "The gap between intent and reality. Anything above zero means at least one node is meant to be profiled and is not. This is the single most important number on the page.",
+      "description": "The gap between intent and reality. Anything above zero means at least one node is meant to be profiled and is not. This is the single most important number on the page. Nodes that stopped recording at the size bound are not counted here; they have their own stat, \"Nodes stopped at size bound\".",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -230,10 +230,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "(sum(edl_jfr_profiling_desired{host_name=~\"$host\"}) - sum(edl_jfr_session_attached{host_name=~\"$host\"})) or vector(0)",
+          "expr": "(sum(edl_jfr_profiling_desired{host_name=~\"$host\"}) - sum(edl_jfr_session_attached{host_name=~\"$host\"}) - (sum(edl_jfr_recording_stopped_at_bound{host_name=~\"$host\"}) or vector(0))) or vector(0)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -251,10 +251,10 @@
       "type": "stat",
       "id": 6,
       "title": "Nodes with unreadable config",
-      "description": "edl_jfr_config_unreadable. The reconciler could not read its own profiling config on these nodes, so it cannot know what is wanted. Expected to be set on nodes that are not database nodes and were never given a config.",
+      "description": "edl_jfr_config_unreadable. The reconciler could not read its own profiling config on these nodes, so it cannot know what is wanted. Only a config file that is present and unusable counts: a node never given one (every app and control node) reports 0, so any non-zero value here is a real finding. Rewrite it with cassandra profile start.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -298,7 +298,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(edl_jfr_config_unreadable{host_name=~\"$host\"})",
@@ -322,7 +322,7 @@
       "description": "The best single staleness signal on the page. Computed as time() - edl_jfr_ship_last_success_timestamp_seconds, filtered with > 0 so nodes that never shipped do not report the age of the Unix epoch. Green under 5 minutes, amber under 15, red beyond.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -371,7 +371,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(time() - (edl_jfr_ship_last_success_timestamp_seconds{host_name=~\"$host\"} > 0))",
@@ -395,7 +395,7 @@
       "description": "Recordings written locally and not yet shipped. A steady small number is normal; a number that only grows means shipping is slower than recording.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -443,7 +443,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "max(edl_jfr_chunks_pending{host_name=~\"$host\"})",
@@ -467,7 +467,7 @@
       "description": "Local spool size across the selected nodes. Read it beside the prune-for-size counter: growth that stops abruptly usually means the size cap started deleting recordings.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -507,7 +507,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(edl_jfr_bytes_on_disk{host_name=~\"$host\"})",
@@ -527,11 +527,11 @@
     {
       "type": "stat",
       "id": 10,
-      "title": "Unshipped chunks pruned in this window",
-      "description": "DATA LOSS. Recordings deleted before they were ever shipped. Any value above zero means profiles that were captured no longer exist anywhere. Window follows the dashboard time range.",
+      "title": "Nodes stopped at size bound",
+      "description": "edl_jfr_recording_stopped_at_bound. Profiling is wanted on these nodes but recording is stopped, because the profile directory is at its byte bound and holds only unshipped or rejected chunks, which are never deleted. No recorded chunk is lost, but nothing new is recorded until shipping catches up or chunks are removed by hand. Recording resumes by itself once the directory is back under the bound.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -576,10 +576,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
-          "expr": "sum(increase(edl_jfr_pruned_unshipped_total{host_name=~\"$host\"}[$__range])) or vector(0)",
+          "expr": "sum(edl_jfr_recording_stopped_at_bound{host_name=~\"$host\"}) or vector(0)",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -600,7 +600,7 @@
       "description": "edl_jfr_attach_failures_total. The reconciler tried to attach and the attach raised an error. Window follows the dashboard time range.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -645,7 +645,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(increase(edl_jfr_attach_failures_total{host_name=~\"$host\"}[$__range])) or vector(0)",
@@ -669,7 +669,7 @@
       "description": "edl_jfr_attach_skipped_total. The reconciler declined to attach, for example because no target JVM was running yet. Skips are not errors, but a node that only ever skips is never profiled.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -714,7 +714,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(increase(edl_jfr_attach_skipped_total{host_name=~\"$host\"}[$__range])) or vector(0)",
@@ -738,7 +738,7 @@
       "description": "edl_jfr_ship_failures_total. The upload was attempted and failed. Retried, so a few are survivable; a rising count with rising chunks pending is not.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -783,7 +783,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(increase(edl_jfr_ship_failures_total{host_name=~\"$host\"}[$__range])) or vector(0)",
@@ -804,10 +804,10 @@
       "type": "stat",
       "id": 14,
       "title": "Ship rejections in this window",
-      "description": "edl_jfr_ship_rejected_total. The server received the recording and refused it. Unlike a failure this will not succeed on retry, so the recording is lost unless something changes on the receiving side.",
+      "description": "edl_jfr_ship_rejected_total. The server received the recording and refused it. Unlike a failure this will not succeed on retry: the chunk is renamed *.jfr.rejected and kept on the node, never deleted, so it does not reach Pyroscope unless someone reships it by hand after fixing the receiving side.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -852,7 +852,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum(increase(edl_jfr_ship_rejected_total{host_name=~\"$host\"}[$__range])) or vector(0)",
@@ -889,7 +889,7 @@
       "description": "Two gauges that should sit on top of each other. Where the desired line is above the attached line, that node is meant to be profiled and is not. Honoured dimension: host_name.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -964,7 +964,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "edl_jfr_profiling_desired{host_name=~\"$host\"}",
@@ -976,7 +976,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "edl_jfr_session_attached{host_name=~\"$host\"}",
@@ -1000,7 +1000,7 @@
       "description": "Failures, skips, deferrals and successful session starts as rates. A node that restarts its session constantly loses the continuity that makes a profile comparable across a run.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1074,7 +1074,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(edl_jfr_attach_failures_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1086,7 +1086,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(edl_jfr_attach_skipped_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1098,7 +1098,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(edl_jfr_attach_deferred_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1110,7 +1110,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(edl_jfr_session_starts_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1147,7 +1147,7 @@
       "description": "A sawtooth is healthy: it climbs between ships and drops to zero on each success. A line that only climbs is a node that has stopped shipping. Nodes that have never shipped are filtered out by > 0 and are simply absent.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1221,7 +1221,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "time() - (edl_jfr_ship_last_success_timestamp_seconds{host_name=~\"$host\"} > 0)",
@@ -1245,7 +1245,7 @@
       "description": "Failures retry; rejections do not. Separating them matters because only one of the two resolves on its own.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1319,7 +1319,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(edl_jfr_ship_failures_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1331,7 +1331,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(edl_jfr_ship_rejected_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1355,7 +1355,7 @@
       "description": "The shipping backlog. Flat near zero is healthy. A ramp means the node is producing recordings faster than it can upload them, and the prune counters below will start moving next.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1429,7 +1429,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "edl_jfr_chunks_pending{host_name=~\"$host\"}",
@@ -1453,7 +1453,7 @@
       "description": "Local spool size. Compare its shape with the chunks-pending panel: bytes rising while chunks stay flat means the recordings themselves are getting bigger, which is a profiler-settings question, not a shipping one.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1527,7 +1527,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "edl_jfr_bytes_on_disk{host_name=~\"$host\"}",
@@ -1561,10 +1561,10 @@
       "type": "timeseries",
       "id": 24,
       "title": "Prune Rate by Reason (chunks/s)",
-      "description": "Three different meanings, deliberately not summed. FOR AGE is routine retention. FOR SIZE means the local budget is smaller than the recording rate. UNSHIPPED is data loss: the recording was deleted before it ever left the node. Only the last one is an incident.",
+      "description": "Two different meanings, deliberately not summed. FOR AGE is routine retention. FOR SIZE means the local budget is smaller than the recording rate. Only shipped chunks are ever pruned; an unshipped or rejected chunk is kept, and a directory full of them stops recording instead (see \"Nodes stopped at size bound\").",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1620,25 +1620,6 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": ".*DATA LOSS.*"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
-                }
-              },
-              {
-                "id": "custom.lineWidth",
-                "value": 3
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
               "options": ".*for age.*"
             },
             "properties": [
@@ -1688,7 +1669,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(edl_jfr_pruned_for_age_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1700,7 +1681,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "sum by ($groupby) (rate(edl_jfr_pruned_for_size_total{host_name=~\"$host\"}[$__rate_interval]))",
@@ -1708,18 +1689,6 @@
           "range": true,
           "instant": false,
           "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "VictoriaMetrics"
-          },
-          "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(edl_jfr_pruned_unshipped_total{host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "{{$groupby}} unshipped (DATA LOSS)",
-          "range": true,
-          "instant": false,
-          "refId": "C"
         }
       ],
       "gridPos": {
@@ -1733,10 +1702,10 @@
       "type": "timeseries",
       "id": 25,
       "title": "Current State Flags per Node",
-      "description": "The gauge-valued flags, plotted so a transition is visible in time rather than only as a number. Attach deferred means the reconciler is waiting for something before it attaches; ship truncated means the last upload was cut short; config unreadable means it does not know what is wanted.",
+      "description": "The gauge-valued flags, plotted so a transition is visible in time rather than only as a number. Attach deferred means the reconciler is waiting for something before it attaches; ship truncated means the last upload was cut short; config unreadable means it does not know what is wanted; stopped at size bound means recording is paused because the directory is full of chunks that may not be deleted.",
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1811,7 +1780,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "edl_jfr_attach_deferred{host_name=~\"$host\"}",
@@ -1823,7 +1792,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "edl_jfr_ship_truncated{host_name=~\"$host\"}",
@@ -1835,7 +1804,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "editorMode": "code",
           "expr": "edl_jfr_config_unreadable{host_name=~\"$host\"}",
@@ -1843,6 +1812,18 @@
           "range": true,
           "instant": false,
           "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "mimir"
+          },
+          "editorMode": "code",
+          "expr": "edl_jfr_recording_stopped_at_bound{host_name=~\"$host\"}",
+          "legendFormat": "{{host_name}} stopped at size bound",
+          "range": true,
+          "instant": false,
+          "refId": "D"
         }
       ],
       "gridPos": {
@@ -1875,7 +1856,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(edl_jfr_profiling_desired, host_name)",
         "description": "Every node the profiling reconciler reports on, not only database nodes: a control or application node with an unreadable config is a real finding. All expands to the explicit list; allValue is deliberately unset.",
@@ -1928,7 +1909,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

@@ -36,8 +36,8 @@
     "list": [
       {
         "current": {
-          "text": "VictoriaMetrics",
-          "value": "VictoriaMetrics"
+          "text": "Mimir",
+          "value": "mimir"
         },
         "hide": 0,
         "includeAll": false,

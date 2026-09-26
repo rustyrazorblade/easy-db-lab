@@ -12,10 +12,13 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.services.AnnotationMirror
+import com.rustyrazorblade.easydblab.services.ConfigChangeReport
 import com.rustyrazorblade.easydblab.services.DefaultGrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
 import com.rustyrazorblade.easydblab.services.GrafanaDashboardTreeUploader
 import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.RecordingAnnotationMirror
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -46,6 +49,7 @@ class GrafanaAnnotateTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockWebServer: MockWebServer
     private val capturedEvents = mutableListOf<EventEnvelope>()
+    private val mirror = RecordingAnnotationMirror()
 
     private val controlHost =
         ClusterHost(
@@ -68,6 +72,7 @@ class GrafanaAnnotateTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                single<AnnotationMirror> { mirror }
                 single {
                     val interceptor =
                         Interceptor { chain ->
@@ -89,6 +94,7 @@ class GrafanaAnnotateTest : BaseKoinTest() {
                         treeUploader = mock<GrafanaDashboardTreeUploader>(),
                         eventBus = get<EventBus>(),
                         okHttpClient = get<OkHttpClient>(),
+                        configChangeReport = ConfigChangeReport(mock<K8sService>(), get<EventBus>()),
                     )
                 }
             },
@@ -142,6 +148,43 @@ class GrafanaAnnotateTest : BaseKoinTest() {
         val created = capturedEvents.map { it.event }.filterIsInstance<Event.Grafana.AnnotationCreated>()
         assertThat(created).singleElement()
         assertThat(created.first().id).isEqualTo(42L)
+    }
+
+    @Test
+    fun `an annotation Grafana accepts is mirrored to Loki under the id Grafana gave it`() {
+        mockWebServer.enqueue(MockResponse(code = 200, body = """{"id":42,"message":"Annotation added"}"""))
+
+        val command = GrafanaAnnotate()
+        command.text = "concurrent_reads 64->128"
+        command.time = 1767225600000L
+        command.timeEnd = 1767229200000L
+        command.dashboardUid = "cassandra-overview"
+        command.execute()
+
+        val mirrored = mirror.pushed.single()
+        assertThat(mirrored.id).isEqualTo(42L)
+        assertThat(mirrored.text).isEqualTo("concurrent_reads 64->128")
+        assertThat(mirrored.time).isEqualTo(1767225600000L)
+        assertThat(mirrored.timeEnd).isEqualTo(1767229200000L)
+        assertThat(mirrored.dashboardUid).isEqualTo("cassandra-overview")
+    }
+
+    @Test
+    fun `annotate reports the annotation Grafana created and fails when it cannot be mirrored to Loki`() {
+        mockWebServer.enqueue(MockResponse(code = 200, body = """{"id":42,"message":"Annotation added"}"""))
+        mirror.failure = IllegalStateException("Loki refused the push with status 503: not ready")
+
+        val command = GrafanaAnnotate()
+        command.text = "marker"
+        command.time = 1767225600000L
+
+        assertThatThrownBy { command.execute() }
+            .hasMessageContaining("503")
+            .hasMessageContaining("#42")
+            .hasMessageContaining("grafana backup")
+            .hasMessageContaining("down")
+        val created = capturedEvents.map { it.event }.filterIsInstance<Event.Grafana.AnnotationCreated>()
+        assertThat(created.single().id).isEqualTo(42L)
     }
 
     @Test

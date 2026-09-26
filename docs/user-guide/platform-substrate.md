@@ -121,6 +121,8 @@ All templates receive these standard variables from cluster state:
 | `__EASY_DB_LAB_EXEC__` | Path to the easy-db-lab executable |
 | `__RUNNING_KITS__` | Names of currently running kits |
 | `__OPENSEARCH_ENDPOINT__` | OpenSearch domain endpoint, if provisioned |
+| `__PYROSCOPE_URL__` | Where a kit's Pyroscope agent ships profiles: the control node's Pyroscope, or the external stack on a telemetry-redirect cluster |
+| `__TENANT__` | The cluster's observability tenant; send it as `-Dpyroscope.tenant.id` (it becomes `X-Scope-OrgID`) |
 
 Unresolved `__VAR__` placeholders emit a warning but do not fail the render.
 

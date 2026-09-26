@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -7,6 +8,7 @@ import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.SecurityContextBuilder
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
@@ -31,22 +33,24 @@ class PyroscopeManifestBuilder(
         private const val NAMESPACE = "default"
 
         // Pyroscope server constants
-        private const val SERVER_APP_LABEL = "pyroscope"
+        private const val SERVER_APP_LABEL = Constants.K8s.PYROSCOPE_APP_LABEL
         private const val SERVER_CONFIGMAP_NAME = "pyroscope-config"
-        private const val SERVER_IMAGE = "grafana/pyroscope:1.18.0"
+        const val SERVER_IMAGE = "grafana/pyroscope:2.3.1"
         const val SERVER_PORT = 4040
+
+        /** The server's data directory on the control node: the v2 metastore index and Raft state. */
+        const val DATA_HOST_PATH = "/mnt/db1/pyroscope"
+
+        /** Where [DATA_HOST_PATH] is mounted in the server container; config.yaml names paths under it. */
+        private const val DATA_MOUNT_PATH = "/data"
 
         @Suppress("MagicNumber")
         const val PYROSCOPE_UID = 10001L
-        private const val SERVER_LIVENESS_INITIAL_DELAY = 30
-        private const val SERVER_LIVENESS_PERIOD = 15
-        private const val SERVER_READINESS_INITIAL_DELAY = 5
-        private const val SERVER_READINESS_PERIOD = 10
 
         // eBPF agent constants
         private const val EBPF_APP_LABEL = "pyroscope-ebpf"
         private const val EBPF_CONFIGMAP_NAME = "pyroscope-ebpf-config"
-        private const val ALLOY_IMAGE = "grafana/alloy:v1.13.1"
+        private const val ALLOY_IMAGE = "grafana/alloy:v1.20.0"
         private const val ALLOY_PORT = 12345
 
         // RBAC constants — the Alloy `discovery.kubernetes` component lists pods on the
@@ -196,8 +200,12 @@ class PyroscopeManifestBuilder(
     /**
      * Builds the Pyroscope server Deployment.
      *
-     * Runs on the control plane node with hostNetwork enabled.
-     * Data is stored in S3 (configured at build time via TemplateService).
+     * Runs on the control plane node with hostNetwork enabled. Profiles are stored in S3 under
+     * `observability/profiles` in the account bucket (configured at build time via TemplateService);
+     * the v2 metastore index lives on the node at [DATA_HOST_PATH], so a pod restart keeps it.
+     *
+     * A startup probe holds liveness off until `/ready` first passes, because Pyroscope 2 spends
+     * about 45 s of every start in fixed readiness waits; see [Constants.PyroscopeProbes].
      */
     fun buildServerDeployment() =
         DeploymentBuilder()
@@ -236,6 +244,14 @@ class PyroscopeManifestBuilder(
                     .withName(SERVER_CONFIGMAP_NAME)
                     .build(),
             ).endVolume()
+            .addNewVolume()
+            .withName("data")
+            .withHostPath(
+                HostPathVolumeSourceBuilder()
+                    .withPath(DATA_HOST_PATH)
+                    .withType("DirectoryOrCreate")
+                    .build(),
+            ).endVolume()
             .endSpec()
             .endTemplate()
             .endSpec()
@@ -255,21 +271,31 @@ class PyroscopeManifestBuilder(
             .withName("config")
             .withMountPath("/etc/pyroscope")
             .endVolumeMount()
+            .addNewVolumeMount()
+            .withName("data")
+            .withMountPath(DATA_MOUNT_PATH)
+            .endVolumeMount()
+            .withNewStartupProbe()
+            .withNewHttpGet()
+            .withPath("/ready")
+            .withNewPort(SERVER_PORT)
+            .endHttpGet()
+            .withPeriodSeconds(Constants.PyroscopeProbes.STARTUP_PERIOD_SECONDS)
+            .withFailureThreshold(Constants.PyroscopeProbes.STARTUP_FAILURE_THRESHOLD)
+            .endStartupProbe()
             .withNewLivenessProbe()
             .withNewHttpGet()
             .withPath("/ready")
             .withNewPort(SERVER_PORT)
             .endHttpGet()
-            .withInitialDelaySeconds(SERVER_LIVENESS_INITIAL_DELAY)
-            .withPeriodSeconds(SERVER_LIVENESS_PERIOD)
+            .withPeriodSeconds(Constants.PyroscopeProbes.LIVENESS_PERIOD_SECONDS)
             .endLivenessProbe()
             .withNewReadinessProbe()
             .withNewHttpGet()
             .withPath("/ready")
             .withNewPort(SERVER_PORT)
             .endHttpGet()
-            .withInitialDelaySeconds(SERVER_READINESS_INITIAL_DELAY)
-            .withPeriodSeconds(SERVER_READINESS_PERIOD)
+            .withPeriodSeconds(Constants.PyroscopeProbes.READINESS_PERIOD_SECONDS)
             .endReadinessProbe()
             .build()
 
@@ -332,8 +358,9 @@ class PyroscopeManifestBuilder(
      * [EBPF_SERVICE_ACCOUNT_NAME] ServiceAccount so the `discovery.kubernetes`
      * component can list pods and attribute samples to pod/container/service_name.
      *
-     * The `CLUSTER_NAME` and `PYROSCOPE_WRITE_URL` env vars feed the matching `sys.env(...)` reads
-     * in config.alloy. Under redirect the write URL points at the external Pyroscope.
+     * The `CLUSTER_NAME`, `PYROSCOPE_WRITE_URL` and `TENANT` env vars feed the matching
+     * `sys.env(...)` reads in config.alloy. Under redirect the write URL points at the external
+     * Pyroscope; the tenant, read from the cluster-config ConfigMap, is sent either way.
      *
      * @param telemetryRedirect when non-null, profiles are written to [TelemetryRedirect.profiles].
      */
@@ -383,6 +410,15 @@ class PyroscopeManifestBuilder(
             .addNewEnv()
             .withName("PYROSCOPE_WRITE_URL")
             .withValue(resolvePyroscopeWriteUrl(telemetryRedirect))
+            .endEnv()
+            .addNewEnv()
+            .withName("TENANT")
+            .withNewValueFrom()
+            .withNewConfigMapKeyRef()
+            .withName("cluster-config")
+            .withKey("tenant")
+            .endConfigMapKeyRef()
+            .endValueFrom()
             .endEnv()
             .withSecurityContext(
                 SecurityContextBuilder()

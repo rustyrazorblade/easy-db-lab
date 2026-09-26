@@ -12,7 +12,7 @@ User=cassandra
 Group=cassandra
 ExecStart=/usr/local/bin/edl-profiling-reconcile
 # The reconciler prefixes every line with a syslog priority (<3>, <4>, <6>). Stated explicitly
-# rather than left to the default, because severity in VictoriaLogs is derived from the journal's
+# rather than left to the default, because severity in Loki is derived from the journal's
 # PRIORITY and nothing else — turn this off and every attach failure arrives as severity=INFO.
 SyslogLevelPrefix=yes
 # One pass is a directory walk plus at most a few uploads; anything longer is wedged.

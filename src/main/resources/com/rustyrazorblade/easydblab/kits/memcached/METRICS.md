@@ -12,7 +12,7 @@ This list matches the live cluster's `metrics-catalog.json` (`bin/export-workloa
 The exporter's own Go runtime and process metrics (`go_*`, `process_*`, `promhttp_*`) are also
 in the catalog but are not listed here.
 
-Names are as stored in VictoriaMetrics, which is not always what the exporter documents: some
+Names are as stored in Mimir, which is not always what the exporter documents: some
 carry a `_total` suffix the exporter does not. `memcached_slab_mem_requested_bytes_total` is a
 gauge despite the suffix; read it directly, not with `rate()`.
 

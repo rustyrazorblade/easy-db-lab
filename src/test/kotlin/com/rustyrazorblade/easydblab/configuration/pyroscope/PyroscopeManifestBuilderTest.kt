@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -43,6 +45,9 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 hosts = mutableMapOf(),
+                s3Bucket = "acct-bucket",
+                dataBucket = "easy-db-lab-data-abc",
+                initConfig = InitConfig(tenant = "acme"),
             ),
         )
         templateService = getKoin().get()
@@ -54,6 +59,25 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         val deployment = builder.buildServerDeployment()
 
         assertThat(deployment.spec.template.spec.initContainers).isNullOrEmpty()
+    }
+
+    @Test
+    fun `the server's startup budget outlasts Pyroscope 2's fixed readiness waits`() {
+        val container =
+            builder
+                .buildServerDeployment()
+                .spec.template.spec.containers
+                .single()
+        val startup = container.startupProbe
+
+        assertThat(startup).isNotNull
+        assertThat(startup.httpGet.path).isEqualTo("/ready")
+        assertThat(startup.httpGet.port.intVal).isEqualTo(PyroscopeManifestBuilder.SERVER_PORT)
+        // Pyroscope 2.3.1 answers /ready with 503 for the metastore's 15 s min-ready wait and then
+        // the segment writer's 30 s one, back to back: 48 s measured on an idle machine. The
+        // kubelet must not kill it inside that window, and a busy control node is slower.
+        val budgetSeconds = (startup.initialDelaySeconds ?: 0) + startup.periodSeconds * startup.failureThreshold
+        assertThat(budgetSeconds).isGreaterThanOrEqualTo(3 * 48)
     }
 
     @Test
@@ -90,5 +114,65 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
                 rule.resources.contains("pods")
             }
         assertThat(podRule.verbs).contains("get", "list", "watch")
+    }
+
+    private fun serverConfig(): String = builder.buildServerConfigMap().data.getValue("config.yaml")
+
+    @Test
+    fun `the server runs native multi-tenancy on pure v2 storage`() {
+        val config = serverConfig()
+
+        assertThat(scalarAt(config, "multitenancy_enabled")).isEqualTo("true")
+        assertThat(scalarAt(config, "architecture_storage")).isEqualTo("v2")
+    }
+
+    @Test
+    fun `nothing is ever deleted by age`() {
+        val config = serverConfig()
+
+        assertThat(scalarAt(config, "metastore", "index", "cleanup_interval")).isEqualTo("0s")
+        assertThat(scalarAt(config, "limits", "retention_period")).isEqualTo("0s")
+    }
+
+    @Test
+    fun `profiles are stored under the observability profiles prefix of the account bucket, not the data bucket`() {
+        val config = serverConfig()
+
+        assertThat(scalarAt(config, "storage", "backend")).isEqualTo("s3")
+        assertThat(scalarAt(config, "storage", "s3", "bucket_name")).isEqualTo("acct-bucket")
+        assertThat(scalarAt(config, "storage", "prefix")).isEqualTo("observability/profiles")
+        assertThat(config).doesNotContain("easy-db-lab-data-abc")
+    }
+
+    @Test
+    fun `the metastore index lives on the control node's disk`() {
+        val config = serverConfig()
+        val pod =
+            builder
+                .buildServerDeployment()
+                .spec.template.spec
+        val volume = pod.volumes.single { it.name == "data" }
+        val mount = pod.containers[0].volumeMounts.single { it.name == "data" }
+
+        assertThat(volume.hostPath.path).isEqualTo(PyroscopeManifestBuilder.DATA_HOST_PATH)
+        assertThat(scalarAt(config, "metastore", "data_dir")).startsWith(mount.mountPath + "/")
+        assertThat(scalarAt(config, "metastore", "raft", "dir")).startsWith(mount.mountPath + "/")
+        assertThat(scalarAt(config, "metastore", "raft", "snapshots_dir")).startsWith(mount.mountPath + "/")
+    }
+
+    @Test
+    fun `the eBPF agent sends the cluster's tenant on every write`() {
+        val alloy = builder.buildEbpfConfigMap().data.getValue("config.alloy")
+        val env =
+            builder
+                .buildEbpfDaemonSet()
+                .spec.template.spec.containers[0]
+                .env
+
+        assertThat(alloy).contains("headers = {")
+        assertThat(alloy).contains("\"X-Scope-OrgID\" = sys.env(\"TENANT\")")
+        val tenant = env.single { it.name == "TENANT" }.valueFrom.configMapKeyRef
+        assertThat(tenant.name).isEqualTo("cluster-config")
+        assertThat(tenant.key).isEqualTo("tenant")
     }
 }

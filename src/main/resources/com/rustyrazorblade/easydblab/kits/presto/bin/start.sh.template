@@ -10,7 +10,7 @@ helm repo add prestodb https://prestodb.github.io/presto-helm-charts 2>/dev/null
 # Install and configure catalogs in one step (update-catalogs.sh owns the helm install)
 "${SCRIPT_DIR}/update-catalogs.sh"
 
-PYROSCOPE_OPTS="-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=presto -Dpyroscope.server.address=http://${CONTROL_HOST_PRIVATE}:4040 -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms"
+PYROSCOPE_OPTS="-javaagent:/usr/local/pyroscope/pyroscope.jar -Dpyroscope.application.name=presto -Dpyroscope.server.address=${PYROSCOPE_URL} -Dpyroscope.tenant.id=${TENANT} -Dpyroscope.format=jfr -Dpyroscope.profiler.event=cpu -Dpyroscope.profiler.alloc=512k -Dpyroscope.profiler.lock=10ms"
 
 echo "Patching coordinator: hostPorts + Pyroscope profiling agent..."
 PORTS_RAW=$(kubectl get deployment presto-coordinator -n default \

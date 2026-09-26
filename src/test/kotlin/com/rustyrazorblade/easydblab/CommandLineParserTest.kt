@@ -10,11 +10,13 @@ import com.rustyrazorblade.easydblab.services.KitCommandScanner
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import picocli.CommandLine
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
@@ -137,5 +139,22 @@ class CommandLineParserTest : BaseKoinTest() {
             assertThat(footer).isNotEmpty
             assertThat(footer.joinToString(" ")).contains("help $name")
         }
+    }
+
+    /** Metrics and logs are stored by Mimir and Loki; the snapshot commands went with VictoriaMetrics and VictoriaLogs. */
+    @Test
+    fun `the metrics and logs snapshot commands are unknown, and logs query remains`() {
+        val commandLine = CommandLineParser().commandLine
+
+        for (args in listOf("metrics backup", "metrics import", "metrics ls", "logs backup", "logs import", "logs ls")) {
+            assertThatThrownBy { commandLine.parseArgs(*args.split(" ").toTypedArray()) }
+                .describedAs(args)
+                .isInstanceOf(CommandLine.UnmatchedArgumentException::class.java)
+        }
+        assertThat(
+            commandLine.subcommands
+                .getValue("logs")
+                .subcommands.keys,
+        ).containsExactly("query")
     }
 }

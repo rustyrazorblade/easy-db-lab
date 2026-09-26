@@ -14,6 +14,8 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
@@ -315,6 +317,120 @@ class InitTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class Tenant {
+        @Test
+        fun `the tenant defaults to default`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { tenant() == "default" })
+        }
+
+        @Test
+        fun `--tenant is persisted in the init configuration`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", "acme")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.tenant == "acme" })
+        }
+
+        /** Names at the edges of `^[a-z][a-z0-9_-]{0,62}$` are accepted, not just rejected past them. */
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                // 63 characters: the longest allowed.
+                "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc",
+                "a_b-c9",
+                "z",
+            ],
+        )
+        fun `a valid tenant at the edge of the rule is saved`(name: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", name)
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { tenant() == name })
+        }
+
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                "Acme",
+                "1acme",
+                "",
+                // 64 characters: one past the limit.
+                "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd",
+            ],
+        )
+        fun `an invalid tenant fails before anything is saved, naming the rule`(tenant: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", tenant)
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("^[a-z][a-z0-9_-]{0,62}$")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+
+        /** A Loki tenant named `index` would put its chunks under Loki's index path. */
+        @Test
+        fun `the reserved tenant index fails before anything is saved, naming it`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", "index")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("'index' is reserved")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+    }
+
+    @Nested
+    inner class ClusterName {
+        /** 40 characters is the longest name the rule allows. */
+        @ParameterizedTest
+        @ValueSource(strings = ["abcdefghijabcdefghijabcdefghijabcdefghij", "lab-1", "z"])
+        fun `a valid cluster name at the edge of the rule is saved`(name: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(name)
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { this.name == name })
+        }
+
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                "My/Cluster",
+                "db:1",
+                "Lab",
+                "1lab",
+                "lab_1",
+                // 41 characters: one past the limit.
+                "abcdefghijabcdefghijabcdefghijabcdefghijk",
+            ],
+        )
+        fun `an invalid cluster name fails before anything is saved, naming the rule`(name: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(name)
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+    }
+
+    @Nested
     inner class ExistingVpc {
         @Test
         fun `execute sets existing VPC ID when provided`() {
@@ -350,7 +466,7 @@ class InitTest : BaseKoinTest() {
 
             val redirect = command.resolvedTelemetryRedirect!!
             assertThat(redirect.logs).isEqualTo("http://logs.example.com:1234/insert/opentelemetry")
-            assertThat(redirect.metrics).isEqualTo("http://10.0.0.9:8428/api/v1/write")
+            assertThat(redirect.metrics).isEqualTo("http://10.0.0.9:9009/api/v1/push")
             assertThat(redirect.traces).isEqualTo("10.0.0.9:4320")
             assertThat(redirect.profiles).isEqualTo("http://10.0.0.9:4040")
         }

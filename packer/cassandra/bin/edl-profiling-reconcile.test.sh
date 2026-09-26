@@ -227,6 +227,7 @@ teardown() {
 
 write_config() {
   local enabled="$1" args_json="$2" loop="${3:-1m}" retention="${4:-60}" max_bytes="${5:-2147483648}"
+  local tenant="${6:-acme}"
   cat >"$CONFIG" <<EOF
 {
   "enabled": $enabled,
@@ -236,6 +237,7 @@ write_config() {
   "maxBytes": $max_bytes,
   "pyroscopeUrl": "http://10.0.1.5:4040",
   "clusterName": "test-cluster",
+  "tenant": "$tenant",
   "updatedAt": "2026-08-24T10:15:30Z"
 }
 EOF
@@ -249,11 +251,12 @@ write_effective_state() {
   cat >"$PROFILE_DIR/effective-state.json" <<EOF
 {"running": true, "desiredEnabled": true, "pid": $pid, "args": $args_json,
  "loopInterval": "1m", "retentionMinutes": $retention, "maxBytes": 2147483648,
- "pyroscopeUrl": "http://10.0.1.5:4040", "clusterName": "test-cluster", "startedAt": 1755999000,
+ "pyroscopeUrl": "http://10.0.1.5:4040", "clusterName": "test-cluster", "tenant": "acme",
+ "startedAt": 1755999000,
  "chunksPending": 0, "chunksShipped": 0, "chunksRejected": 0, "shipFailures": 0,
- "prunedForAge": 0, "prunedForSize": 0, "prunedUnshipped": 0,
+ "prunedForAge": 0, "prunedForSize": 0,
  "bytesOnDisk": 0, "lastError": "", "attachFailures": 0, "lastAttachError": "",
- "attachDeferred": false, "configError": "", "updatedAt": 1755999000}
+ "attachDeferred": false, "recordingStopped": "", "configError": "", "updatedAt": 1755999000}
 EOF
 }
 
@@ -575,10 +578,14 @@ test_missing_config_is_idle() {
     "$(cat "$OUTPUT")" "event=profiling_idle reason=no_desired_state"
   assert_not_contains "a missing config starts nothing" "$(stub_log)" "asprof start"
 
-  # Reporting continues: an unconfigured node must still be visible in VictoriaMetrics, or "nobody
+  # Reporting continues: an unconfigured node must still be visible in Mimir, or "nobody
   # configured this node" and "the reconciler is dead" look identical there.
   assert_file "a missing config still writes metrics" "$SANDBOX/metrics.prom"
   assert_eq "and names the reason in effective state" "no_desired_state" "$(state_field '.configError')"
+  # App and control nodes are never given a config. Counting them as unreadable put a healthy
+  # cluster's "Nodes with unreadable config" at 2, indistinguishable from real corruption.
+  assert_contains "a missing config is not reported as an unreadable one" \
+    "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_config_unreadable 0"
   teardown
 }
 
@@ -1111,7 +1118,9 @@ test_age_pruning() {
   teardown
 }
 
-test_unshipped_chunks_are_age_pruned() {
+# An unshipped chunk is data the operator cannot get back. Its age says only that Pyroscope has been
+# unreachable for a long time, which is the case where keeping it matters most.
+test_unshipped_chunks_are_never_age_pruned() {
   setup
   write_config true '["-e", "cpu"]' "1m" "60"
   # Pyroscope has been refusing connections; nothing has shipped.
@@ -1119,7 +1128,9 @@ test_unshipped_chunks_are_age_pruned() {
   make_chunk "cassandra-1-200.jfr" 100
   run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=000 >/dev/null
 
-  assert_no_file "an unshipped chunk past the window is pruned too" "$PROFILE_DIR/cassandra-1-100.jfr"
+  assert_file "an unshipped chunk past the window is kept" "$PROFILE_DIR/cassandra-1-100.jfr"
+  assert_contains "and nothing is counted as pruned" \
+    "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_pruned_for_age_total 0"
   teardown
 }
 
@@ -1129,7 +1140,7 @@ test_unshipped_chunks_are_age_pruned() {
 test_age_pruning_is_logged_and_counted() {
   setup
   write_config true '["-e", "cpu"]' "1m" "60"
-  # Pyroscope has been refusing connections, so this one dies unshipped: real data loss.
+  # Pyroscope has been refusing connections, so this one never shipped and must survive.
   make_chunk "cassandra-1-050.jfr" 7300
   make_chunk "cassandra-1-100-shipped.jfr" 7200
   make_chunk "cassandra-1-200.jfr" 100
@@ -1139,32 +1150,44 @@ test_age_pruning_is_logged_and_counted() {
   output="$(cat "$OUTPUT")"
   metrics="$(cat "$SANDBOX/metrics.prom")"
 
-  assert_contains "discarding a chunk that never shipped is a warning, because it is data loss" \
-    "$output" "<4>level=warn event=jfr_pruned_for_age chunk=cassandra-1-050.jfr class=pending"
   assert_contains "discarding an already-shipped chunk is routine, and says so" \
     "$output" "<6>level=info event=jfr_pruned_for_age chunk=cassandra-1-100-shipped.jfr class=shipped"
-  assert_contains "the age of what was discarded is on the line" "$output" "age_seconds=7300"
-  assert_contains "age pruning is counted" "$metrics" "edl_jfr_pruned_for_age_total 2"
-  assert_contains "data loss is counted apart from routine pruning" "$metrics" "edl_jfr_pruned_unshipped_total 1"
+  assert_contains "the age of what was discarded is on the line" "$output" "age_seconds=7200"
+  assert_not_contains "a chunk that never shipped is not pruned" "$output" "event=jfr_pruned_for_age chunk=cassandra-1-050.jfr"
+  assert_file "and is still on disk" "$PROFILE_DIR/cassandra-1-050.jfr"
+  assert_contains "age pruning is counted" "$metrics" "edl_jfr_pruned_for_age_total 1"
+  assert_not_contains "no data-loss counter exists any more" "$metrics" "edl_jfr_pruned_unshipped_total"
   teardown
 }
 
-test_pruning_a_rejected_chunk_is_not_counted_as_lost_data() {
+# A chunk Pyroscope refused can never ship, but it is still the only copy of that interval's profile
+# and it remains retrievable and convertible to a flame graph. Neither bound deletes it.
+test_rejected_chunks_are_never_pruned() {
   setup
-  # A chunk Pyroscope refused can never ship, and is already counted by the rejection counter.
-  # Counting its deletion as lost data too would fire the "profiles are being destroyed before they
-  # reach Pyroscope" signal every time an unclean shutdown produced a truncated chunk.
-  write_config true '["-e", "cpu"]' "1m" "60"
-  make_chunk "cassandra-1-050.jfr.rejected" 7300
+  write_config true '["-e", "cpu"]' "1m" "60" "1000"
+  make_chunk "cassandra-1-050.jfr.rejected" 7300 2000
   run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
 
   local metrics
   metrics="$(cat "$SANDBOX/metrics.prom")"
-  assert_no_file "a rejected chunk is still age-pruned" "$PROFILE_DIR/cassandra-1-050.jfr.rejected"
-  assert_contains "and counted as pruned" "$metrics" "edl_jfr_pruned_for_age_total 1"
-  assert_contains "but not as unshipped data loss" "$metrics" "edl_jfr_pruned_unshipped_total 0"
-  assert_contains "its class is named on the line" "$(cat "$OUTPUT")" \
-    "event=jfr_pruned_for_age chunk=cassandra-1-050.jfr.rejected class=rejected"
+  assert_file "a rejected chunk past both bounds is kept" "$PROFILE_DIR/cassandra-1-050.jfr.rejected"
+  assert_contains "nothing is counted as pruned for age" "$metrics" "edl_jfr_pruned_for_age_total 0"
+  assert_contains "nor for size" "$metrics" "edl_jfr_pruned_for_size_total 0"
+  teardown
+}
+
+# The two classes the spec forbids deleting, together, past both bounds at once: nothing goes.
+test_unshipped_and_rejected_chunks_survive_past_both_bounds() {
+  setup
+  write_config true '["-e", "cpu"]' "1m" "60" "3000"
+  make_chunk "cassandra-1-050.jfr.rejected" 7300 2000
+  make_chunk "cassandra-1-060.jfr" 7200 2000
+  make_chunk "cassandra-1-070.jfr" 5 2000
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=000 >/dev/null
+
+  assert_file "the rejected chunk survives" "$PROFILE_DIR/cassandra-1-050.jfr.rejected"
+  assert_file "the old unshipped chunk survives" "$PROFILE_DIR/cassandra-1-060.jfr"
+  assert_file "the open chunk survives" "$PROFILE_DIR/cassandra-1-070.jfr"
   teardown
 }
 
@@ -1179,10 +1202,9 @@ test_byte_ceiling_prunes_oldest_first() {
 
   assert_no_file "the byte ceiling prunes the oldest chunk" "$PROFILE_DIR/cassandra-1-100-shipped.jfr"
   assert_file "the byte ceiling spares the newest chunk" "$PROFILE_DIR/cassandra-1-300.jfr"
+  assert_no_file "and the next oldest shipped chunk" "$PROFILE_DIR/cassandra-1-200-shipped.jfr"
   assert_contains "size pruning is counted too" \
     "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_pruned_for_size_total 2"
-  assert_contains "giving up shipped bytes first costs no unshipped data" \
-    "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_pruned_unshipped_total 0"
   teardown
 }
 
@@ -1247,23 +1269,175 @@ test_a_wedged_jvm_cannot_block_the_persistence_path() {
     "$(cat "$SANDBOX/metrics.prom")" "asprof_sample_count"
   teardown
 }
+# --- the size bound ------------------------------------------------------------
 
-# prunedUnshipped is the only counter that means irreversible loss rather than reclaimed disk, and
-# the user guide calls it the answer to "my profiles never showed up". It lived only in journald and
-# the metrics push, so `profile status` — where an operator actually asks that question — could
-# not render it and no typed event could carry it.
-test_lost_chunks_are_recorded_where_the_operator_looks() {
+# Only unshipped and rejected chunks remain and they fill the directory: nothing may be deleted, so
+# the node stops producing more. The stop and its reason reach state, the journal and the metrics.
+test_recording_stops_at_the_size_bound() {
   setup
-  write_config true '["-e", "cpu"]' "1m" "60"
-  make_chunk "cassandra-1-050.jfr" 7300
-  make_chunk "cassandra-1-100-shipped.jfr" 7200
-  make_chunk "cassandra-1-200.jfr" 100
+  write_config true '["-e", "cpu"]' "1m" "60" "3000"
+  make_chunk "cassandra-1-050.jfr.rejected" 900 2000
+  make_chunk "cassandra-1-060.jfr" 800 2000
+  make_chunk "cassandra-1-070.jfr" 5 2000
   run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=000 >/dev/null
 
-  assert_eq "chunks destroyed before they ever shipped reach effective state" "1" \
-    "$(state_field '.prunedUnshipped')"
-  assert_eq "as do routine age prunes" "2" "$(state_field '.prunedForAge')"
-  assert_eq "and size prunes" "0" "$(state_field '.prunedForSize')"
+  assert_contains "the session is stopped" "$(stub_log)" "asprof stop"
+  assert_not_contains "and not restarted in the same pass" "$(stub_log)" "asprof start"
+  assert_file "no chunk is deleted" "$PROFILE_DIR/cassandra-1-060.jfr"
+  assert_file "not even the rejected one" "$PROFILE_DIR/cassandra-1-050.jfr.rejected"
+  assert_eq "effective state records why recording stopped" "size_bound" "$(state_field '.recordingStopped')"
+  assert_eq "and that nothing is attached" "false" "$(state_field '.running')"
+  assert_contains "the stop is logged with its reason" "$(cat "$OUTPUT")" \
+    "<4>level=warn event=jfr_recording_stopped reason=size_bound"
+  assert_contains "and exported as a metric" "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_recording_stopped_at_bound 1"
+  teardown
+}
+
+# An unreadable document stops this pass from making attach/detach decisions, except at the bound.
+# The byte bound protects the database's disk, and it survives the bad document because it is
+# recovered from the last good pass. If the config-error branch came first, a node with a corrupt
+# profiling.json would keep recording while unprunable chunks grew past maxBytes onto /mnt/db1.
+test_recording_stops_at_the_size_bound_even_when_the_config_is_unreadable() {
+  setup
+  # A good pass records the operator's 3000-byte bound.
+  write_config true '["-e", "cpu"]' "1m" "60" "3000"
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+  assert_eq "precondition: the bound is recorded" "3000" "$(state_field '.maxBytes')"
+
+  # The document goes unreadable while unshipped and rejected chunks fill the directory past it.
+  printf '%s' '{"enabled": true, "asprofArgs": [' >"$CONFIG"
+  make_chunk "cassandra-1-050.jfr.rejected" 900 2000
+  make_chunk "cassandra-1-060.jfr" 800 2000
+  make_chunk "cassandra-1-070.jfr" 5 2000
+  : >"$STUB_LOG"
+  run_pass STUB_CASSANDRA_PID=4242 STUB_HTTP_STATUS=000 >/dev/null
+
+  assert_contains "precondition: the config is unreadable" "$(cat "$OUTPUT")" "event=config_unreadable"
+  assert_contains "the size bound still stops the session" "$(stub_log)" "asprof stop"
+  assert_not_contains "and nothing is started" "$(stub_log)" "asprof start"
+  assert_file "the rejected chunk survives" "$PROFILE_DIR/cassandra-1-050.jfr.rejected"
+  assert_file "the unshipped chunk survives" "$PROFILE_DIR/cassandra-1-060.jfr"
+  assert_file "the open chunk survives" "$PROFILE_DIR/cassandra-1-070.jfr"
+  assert_eq "the stop reason is the bound" "size_bound" "$(state_field '.recordingStopped')"
+  assert_eq "and the config error is still reported" "config_unreadable" "$(state_field '.configError')"
+  teardown
+}
+
+# An operator who disables profiling while the directory is at its bound asked for a stop. That is
+# what the pass reports: a plain stop, not the size-bound warning, which says "profiling is wanted and
+# the disk forbids it" and would send the operator off to fix shipping they never asked about.
+test_disabling_at_the_bound_is_a_plain_stop() {
+  setup
+  write_config false '["-e", "cpu"]' "1m" "60" "3000"
+  write_effective_state 4242 '["-e", "cpu"]'
+  make_chunk "cassandra-1-050.jfr.rejected" 900 2000
+  make_chunk "cassandra-1-060.jfr" 800 2000
+  make_chunk "cassandra-1-070.jfr" 5 2000
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true STUB_HTTP_STATUS=000 >/dev/null
+
+  assert_contains "the session is stopped" "$(stub_log)" "asprof stop"
+  assert_not_contains "and not restarted" "$(stub_log)" "asprof start"
+  assert_not_contains "no size-bound warning is logged" "$(cat "$OUTPUT")" "event=jfr_recording_stopped"
+  assert_eq "no size-bound stop reason is recorded" "" "$(state_field '.recordingStopped')"
+  assert_contains "and the gauge stays down" "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_recording_stopped_at_bound 0"
+  teardown
+}
+
+# Once stopped at the bound, a pass must not re-attach just because profiling is desired and nothing
+# is running — that would restart the session every pass and stop it again, forever.
+test_recording_stays_stopped_while_at_the_bound() {
+  setup
+  write_config true '["-e", "cpu"]' "1m" "60" "3000"
+  make_chunk "cassandra-1-060.jfr" 800 2000
+  make_chunk "cassandra-1-070.jfr" 700 2000
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=false STUB_HTTP_STATUS=000 >/dev/null
+
+  assert_not_contains "no session is started at the bound" "$(stub_log)" "asprof start"
+  assert_eq "the reason is still reported" "size_bound" "$(state_field '.recordingStopped')"
+  assert_contains "and the gauge stays up" "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_recording_stopped_at_bound 1"
+  teardown
+}
+
+# Chunks shipped and were pruned, or the operator removed some: the directory is back within its
+# bound, and the node records again with the desired arguments.
+test_recording_resumes_once_back_under_the_bound() {
+  setup
+  write_config true '["-e", "cpu"]' "1m" "60" "3000"
+  make_chunk "cassandra-1-060.jfr" 800 2000
+  make_chunk "cassandra-1-070.jfr" 700 2000
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=false STUB_HTTP_STATUS=000 >/dev/null
+  assert_eq "precondition: stopped at the bound" "size_bound" "$(state_field '.recordingStopped')"
+
+  # Pyroscope is back: both chunks ship this pass and are pruned by size on the next.
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=false >/dev/null
+  run_pass STUB_CASSANDRA_PID=4242 >/dev/null
+
+  local argv
+  argv="$(tr '\0' ' ' <"$ASPROF_ARGV")"
+  assert_contains "recording starts again with the desired arguments" "$argv" "start -e cpu"
+  assert_eq "the stop reason is cleared" "" "$(state_field '.recordingStopped')"
+  assert_contains "the resume is logged" "$(cat "$OUTPUT")" "event=jfr_recording_resumed"
+  assert_contains "and the gauge drops" "$(cat "$SANDBOX/metrics.prom")" "edl_jfr_recording_stopped_at_bound 0"
+  teardown
+}
+
+# --- tenant ------------------------------------------------------------------
+
+# Pyroscope runs native multi-tenancy; a chunk uploaded without the tenant lands in no tenant at all.
+test_uploads_carry_the_tenant() {
+  setup
+  write_config true '["-e", "cpu"]' "1m" "60" "2147483648" "acme"
+  make_chunk "cassandra-1-100.jfr" 600
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  assert_contains "the upload carries the tenant header" "$(curl_log)" "X-Scope-OrgID: acme"
+  assert_eq "and the tenant is recorded for a pass whose config goes unreadable" "acme" "$(state_field '.tenant')"
+  teardown
+}
+
+# A desired-state document written before tenants existed has no tenant: it is the default tenant.
+test_a_config_without_a_tenant_uploads_to_the_default_tenant() {
+  setup
+  write_config true '["-e", "cpu"]'
+  yq -i -p=json -o=json 'del(.tenant)' "$CONFIG"
+  make_chunk "cassandra-1-100.jfr" 600
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  assert_contains "the upload names the default tenant" "$(curl_log)" "X-Scope-OrgID: default"
+  assert_eq "and the config is not treated as unreadable" "" "$(state_field '.configError')"
+  teardown
+}
+
+# A tenant that is not a valid name cannot be trusted to reach the right place, so the document is
+# unreadable — and the pass falls back to the last tenant it shipped under.
+test_a_malformed_tenant_makes_the_config_unreadable() {
+  setup
+  write_config true '["-e", "cpu"]'
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+  write_config true '["-e", "cpu"]' "1m" "60" "2147483648" 'Bad Tenant'
+  make_chunk "cassandra-1-100.jfr" 600
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  assert_eq "a malformed tenant is a config error" "config_unreadable" "$(state_field '.configError')"
+  assert_contains "the pass ships under the last good tenant" "$(curl_log)" "X-Scope-OrgID: acme"
+  teardown
+}
+
+# `index` is reserved: a Loki tenant with that name would put its chunks under Loki's index path.
+test_the_reserved_tenant_makes_the_config_unreadable() {
+  setup
+  write_config true '["-e", "cpu"]'
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+  write_config true '["-e", "cpu"]' "1m" "60" "2147483648" 'index'
+  make_chunk "cassandra-1-100.jfr" 600
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  assert_eq "the reserved tenant is a config error" "config_unreadable" "$(state_field '.configError')"
+  assert_contains "the pass ships under the last good tenant" "$(curl_log)" "X-Scope-OrgID: acme"
   teardown
 }
 
@@ -1292,7 +1466,7 @@ test_metrics_and_effective_state_are_written() {
 }
 
 # A textfile nothing collects is not observability. Nothing on the node runs node_exporter or a
-# textfile collector, so these counters reach VictoriaMetrics only by being pushed to the node-local
+# textfile collector, so these counters reach Mimir only by being pushed to the node-local
 # OTel collector, whose metrics/otlp pipeline stamps cluster and host.name and remote-writes them.
 test_counters_are_exported_to_the_node_otel_collector() {
   setup
@@ -1316,7 +1490,8 @@ test_counters_are_exported_to_the_node_otel_collector() {
   assert_contains "rejections are exported" "$names" "edl_jfr_ship_rejected_total"
   assert_contains "attach failures are exported" "$names" "edl_jfr_attach_failures_total"
   assert_contains "session starts are exported" "$names" "edl_jfr_session_starts_total"
-  assert_contains "unshipped chunks lost to pruning are exported" "$names" "edl_jfr_pruned_unshipped_total"
+  assert_contains "a recording stopped at the byte bound is exported" "$names" "edl_jfr_recording_stopped_at_bound"
+  assert_not_contains "no chunk is ever counted as lost to pruning" "$names" "edl_jfr_pruned_unshipped_total"
   assert_contains "pending chunks are exported" "$names" "edl_jfr_chunks_pending"
   assert_contains "bytes on disk are exported" "$names" "edl_jfr_bytes_on_disk"
   assert_contains "last ship success is exported" "$names" "edl_jfr_ship_last_success_timestamp_seconds"
@@ -1334,7 +1509,7 @@ test_counters_are_exported_to_the_node_otel_collector() {
 # Attaching a profiler to a live database JVM is the most consequential thing this script does, and
 # a node stuck in a restart loop re-attaches every 60s forever. Neither was visible anywhere: the
 # lifecycle was logged only on failure and counted only on a failed attach, so a flapping node
-# looked identical to a healthy one in both VictoriaLogs and VictoriaMetrics.
+# looked identical to a healthy one in both Loki and Mimir.
 test_session_lifecycle_is_logged_and_counted() {
   setup
   write_config true '["-e", "cpu"]'
@@ -1369,8 +1544,8 @@ test_session_lifecycle_is_logged_and_counted() {
 }
 
 # "Profiling is enabled and nothing is attached" was the one outcome a pass left no trace of: no
-# line, no counter, indistinguishable from a healthy converged pass in both VictoriaLogs and
-# VictoriaMetrics. A node whose database died hours ago looked exactly like one profiling normally.
+# line, no counter, indistinguishable from a healthy converged pass in both Loki and
+# Mimir. A node whose database died hours ago looked exactly like one profiling normally.
 test_wanting_to_profile_with_no_database_process_is_reported() {
   setup
   write_config true '["-e", "cpu"]'
@@ -1619,7 +1794,7 @@ test_desired_and_attached_state_are_exported_as_metrics() {
   teardown
 }
 
-# Severity in VictoriaLogs comes from journald's PRIORITY and nothing else — Fluent Bit's mapper
+# Severity in Loki comes from journald's PRIORITY and nothing else — Fluent Bit's mapper
 # reads PRIORITY and ships the line itself as an opaque body. Without a syslog level prefix systemd
 # stamps every line PRIORITY=6, so a failed attach arrives as severity=INFO and no Grafana filter or
 # alert on severity can ever see it.
@@ -1645,7 +1820,7 @@ test_log_lines_carry_a_syslog_priority_for_journald() {
   teardown
 }
 
-# The OTLP document is the only path these counters have to VictoriaMetrics, and both of its label
+# The OTLP document is the only path these counters have to Mimir, and both of its label
 # values are strings the operator chose: the node's hostname and the cluster name. Concatenating them
 # into JSON would let a quote in either one produce a body the collector rejects, which surfaces only
 # as jfr_metrics_export_failed once a minute forever.
@@ -1723,7 +1898,7 @@ test_the_effective_state_key_set_is_the_contract() {
   run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
 
   assert_eq "the document carries exactly the keys the Kotlin reader models" \
-    "running,desiredEnabled,pid,args,loopInterval,retentionMinutes,maxBytes,pyroscopeUrl,clusterName,startedAt,chunksPending,chunksShipped,chunksRejected,shipFailures,prunedForAge,prunedForSize,prunedUnshipped,bytesOnDisk,lastError,attachFailures,lastAttachError,attachDeferred,configError,updatedAt" \
+    "running,desiredEnabled,pid,args,loopInterval,retentionMinutes,maxBytes,pyroscopeUrl,clusterName,tenant,startedAt,chunksPending,chunksShipped,chunksRejected,shipFailures,prunedForAge,prunedForSize,bytesOnDisk,lastError,attachFailures,lastAttachError,attachDeferred,recordingStopped,configError,updatedAt" \
     "$(jq -r 'keys_unsorted | join(",")' <"$PROFILE_DIR/effective-state.json")"
   teardown
 }
@@ -1880,14 +2055,23 @@ test_a_chunk_exactly_on_the_grace_boundary_ships
 test_a_chunk_one_second_inside_the_grace_boundary_does_not_ship
 test_a_backlog_is_shipped_a_bounded_number_of_chunks_per_pass
 test_age_pruning
-test_unshipped_chunks_are_age_pruned
+test_unshipped_chunks_are_never_age_pruned
 test_age_pruning_is_logged_and_counted
-test_pruning_a_rejected_chunk_is_not_counted_as_lost_data
+test_rejected_chunks_are_never_pruned
+test_unshipped_and_rejected_chunks_survive_past_both_bounds
 test_byte_ceiling_prunes_oldest_first
 test_a_chunk_exactly_on_the_age_cutoff_is_kept
 test_a_directory_exactly_at_the_byte_ceiling_is_left_alone
 test_a_wedged_jvm_cannot_block_the_persistence_path
-test_lost_chunks_are_recorded_where_the_operator_looks
+test_recording_stops_at_the_size_bound
+test_recording_stops_at_the_size_bound_even_when_the_config_is_unreadable
+test_disabling_at_the_bound_is_a_plain_stop
+test_recording_stays_stopped_while_at_the_bound
+test_recording_resumes_once_back_under_the_bound
+test_uploads_carry_the_tenant
+test_a_config_without_a_tenant_uploads_to_the_default_tenant
+test_a_malformed_tenant_makes_the_config_unreadable
+test_the_reserved_tenant_makes_the_config_unreadable
 test_metrics_and_effective_state_are_written
 test_counters_are_exported_to_the_node_otel_collector
 test_hostile_labels_cannot_corrupt_the_otlp_payload

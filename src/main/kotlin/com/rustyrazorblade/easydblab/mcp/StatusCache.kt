@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -368,6 +369,7 @@ class StatusCache(
     private fun buildS3Info(state: ClusterState): S3Info? {
         if (state.s3Bucket.isNullOrBlank()) return null
         val s3Path = state.s3Path()
+        val store = ObservabilityStore.from(state)
         return S3Info(
             bucket = requireNotNull(state.s3Bucket) { "s3Bucket is null after isNullOrBlank check" },
             fullpath = "${state.s3Bucket}/${state.clusterPrefix()}",
@@ -377,8 +379,11 @@ class StatusCache(
                     clickhouse = s3Path.clickhouse().toString(),
                     spark = s3Path.spark().toString(),
                     emrLogs = s3Path.emrLogs().toString(),
-                    tempo = s3Path.tempo().toString(),
-                    pyroscope = s3Path.pyroscope().toString(),
+                    traces = "s3://${store.bucket}/${store.tracesPrefix()}",
+                    profiles = "s3://${store.bucket}/${store.profilesPrefix()}",
+                    metrics = "s3://${store.bucket}/${store.metricsPrefix()}/${store.tenant}",
+                    logs = "s3://${store.bucket}/${store.logsPrefix()}",
+                    annotations = store.annotationsRoot().toString(),
                 ),
         )
     }
@@ -469,8 +474,8 @@ class StatusCache(
         val observability =
             ObservabilityAccess(
                 grafana = "http://$controlIp:${Constants.K8s.GRAFANA_PORT}",
-                victoriaMetrics = "http://$controlIp:${Constants.K8s.VICTORIAMETRICS_PORT}",
-                victoriaLogs = "http://$controlIp:${Constants.K8s.VICTORIALOGS_PORT}",
+                mimir = "http://$controlIp:${Constants.K8s.MIMIR_HTTP_PORT}",
+                loki = "http://$controlIp:${Constants.K8s.LOKI_HTTP_PORT}",
                 tempo = "http://$controlIp:${Constants.K8s.TEMPO_PORT}",
                 pyroscope = "http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
             )

@@ -24,7 +24,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -146,7 +146,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_cluster_status_green_maximum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "ClusterStatus.green",
@@ -155,7 +155,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_cluster_status_yellow_maximum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "ClusterStatus.yellow",
@@ -164,7 +164,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_cluster_status_red_maximum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "ClusterStatus.red",
@@ -177,7 +177,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -254,7 +254,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_free_storage_space_minimum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "FreeStorageSpace",
@@ -279,7 +279,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -356,7 +356,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_cpuutilization_average{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "CPUUtilization",
@@ -369,7 +369,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -446,7 +446,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_jvmmemory_pressure_maximum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "JVMMemoryPressure",
@@ -471,7 +471,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -548,7 +548,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_search_latency_p99{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "SearchLatency p99",
@@ -561,7 +561,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -638,7 +638,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_search_rate_sum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "SearchRate",
@@ -663,7 +663,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -740,7 +740,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_indexing_latency_p99{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "IndexingLatency p99",
@@ -753,7 +753,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -830,7 +830,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_indexing_rate_sum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "IndexingRate",
@@ -855,7 +855,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -978,7 +978,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_2xx_sum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "2xx",
@@ -987,7 +987,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_3xx_sum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "3xx",
@@ -996,7 +996,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_4xx_sum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "4xx",
@@ -1005,7 +1005,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_5xx_sum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "5xx",
@@ -1030,7 +1030,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "VictoriaMetrics"
+        "uid": "mimir"
       },
       "fieldConfig": {
         "defaults": {
@@ -1107,7 +1107,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "VictoriaMetrics"
+            "uid": "mimir"
           },
           "expr": "aws_es_cluster_used_space_maximum{dimension_DomainName=\"$domain\", cluster=~\"$cluster\"}",
           "legendFormat": "ClusterUsedSpace",
@@ -1157,7 +1157,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "definition": "label_values(aws_es_cluster_status_green_maximum, dimension_DomainName)",
         "hide": 0,
@@ -1176,7 +1176,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "VictoriaMetrics"
+          "uid": "mimir"
         },
         "filters": [],
         "hide": 0,

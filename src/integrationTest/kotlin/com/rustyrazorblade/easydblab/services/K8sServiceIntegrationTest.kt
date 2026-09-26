@@ -13,13 +13,14 @@ import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -116,7 +117,7 @@ class K8sServiceIntegrationTest {
                 .addToData("control_node_ip", "10.0.0.1")
                 .addToData("aws_region", "us-west-2")
                 .addToData("s3_bucket", "test-bucket")
-                .addToData("cluster_s3_prefix", "clusters/test-test123")
+                .addToData("traces_s3_prefix", "observability/traces")
                 .addToData("cluster_name", "test")
                 .build()
         client.resource(clusterConfig).forceConflicts().serverSideApply()
@@ -226,14 +227,16 @@ class K8sServiceIntegrationTest {
 
     @Test
     @Order(12)
-    fun `should apply VictoriaMetrics and VictoriaLogs resources`() {
-        val resources = VictoriaManifestBuilder().buildAllResources()
-        applyAndVerify(resources)
+    fun `should apply Mimir and Loki resources`() {
+        applyAndVerify(MimirManifestBuilder(templateService).buildAllResources())
+        applyAndVerify(LokiManifestBuilder(templateService).buildAllResources())
 
-        assertServiceExists("victoriametrics")
-        assertDeploymentExists("victoriametrics")
-        assertServiceExists("victorialogs")
-        assertDeploymentExists("victorialogs")
+        assertConfigMapExists("mimir-config", MimirManifestBuilder.CONFIG_FILE)
+        assertServiceExists("mimir")
+        assertDeploymentExists("mimir")
+        assertConfigMapExists("loki-config", LokiManifestBuilder.CONFIG_FILE)
+        assertServiceExists("loki")
+        assertDeploymentExists("loki")
     }
 
     @Test
@@ -786,7 +789,8 @@ class K8sServiceIntegrationTest {
         JournaldOtelManifestBuilder(templateService).buildAllResources() +
             OtelManifestBuilder(templateService).buildAllResources() +
             EbpfExporterManifestBuilder().buildAllResources() +
-            VictoriaManifestBuilder().buildAllResources() +
+            MimirManifestBuilder(templateService).buildAllResources() +
+            LokiManifestBuilder(templateService).buildAllResources() +
             TempoManifestBuilder(templateService).buildAllResources() +
             RegistryManifestBuilder().buildAllResources() +
             S3ManagerManifestBuilder(templateService).buildAllResources() +

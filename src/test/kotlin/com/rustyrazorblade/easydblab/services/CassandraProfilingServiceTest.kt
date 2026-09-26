@@ -153,6 +153,7 @@ class CassandraProfilingServiceTest : BaseKoinTest() {
                 "maxBytes",
                 "pyroscopeUrl",
                 "clusterName",
+                "tenant",
                 "updatedAt",
             )
     }

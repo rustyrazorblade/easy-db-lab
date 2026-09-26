@@ -52,6 +52,22 @@ object SharedLocalStack {
     }
 
     /**
+     * The port LocalStack is published on, on the Docker host. Another container reaches it at
+     * `host.testcontainers.internal:<port>` once the port is exposed with
+     * `Testcontainers.exposeHostPorts`.
+     */
+    fun hostPort(): Int = container.endpoint.port
+
+    /** The access key LocalStack accepts, for clients configured outside the AWS SDK. */
+    fun accessKey(): String = container.accessKey
+
+    /** The secret key LocalStack accepts, for clients configured outside the AWS SDK. */
+    fun secretKey(): String = container.secretKey
+
+    /** The region LocalStack serves. */
+    fun region(): String = container.region
+
+    /**
      * Credentials provider backed by the shared container's access/secret keys.
      */
     fun credentialsProvider(): StaticCredentialsProvider =

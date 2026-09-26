@@ -32,28 +32,50 @@ Dashboards that belong to a kit go in the kit's own `dashboards/` directory unde
 
 ## Datasource UIDs
 
-| Datasource        | UID              | Type                                    |
-|-------------------|------------------|-----------------------------------------|
-| VictoriaMetrics   | `VictoriaMetrics`| `prometheus`                            |
-| VictoriaLogs      | `victorialogs`   | `victoriametrics-logs-datasource`       |
-| Tempo             | `tempo`          | `tempo`                                 |
-| Pyroscope         | `pyroscope`      | `grafana-pyroscope-datasource`          |
+| Datasource | UID         | Type                           |
+|------------|-------------|--------------------------------|
+| Mimir      | `mimir`     | `prometheus`                   |
+| Loki       | `loki`      | `loki`                         |
+| Tempo      | `tempo`     | `tempo`                        |
+| Pyroscope  | `pyroscope` | `grafana-pyroscope-datasource` |
+
+The uids are constants (`Constants.Grafana.DatasourceUid`), and `DashboardDatasourceTest` fails when
+a dashboard names any other datasource. Every datasource sends the cluster's tenant in
+`X-Scope-OrgID`.
 
 ## Label Name Conventions
 
-Labels differ between VictoriaMetrics (Prometheus-style, underscores) and VictoriaLogs (OTel-style, dots):
+Mimir and Loki both turn OTel attribute names into underscore names:
 
-| Concept      | VictoriaMetrics label | VictoriaLogs field  |
-|--------------|-----------------------|---------------------|
-| Service name | `service_name`        | `service.name`      |
-| Host name    | `host_name`           | `host.name`         |
-| Namespace    | `k8s.namespace.name`  | `k8s.namespace.name`|
-| Pod name     | `k8s.pod.name`        | `k8s.pod.name`      |
-| Trace ID     | n/a                   | `trace_id`          |
+| Concept      | Mimir label          | Loki label or field                          |
+|--------------|----------------------|----------------------------------------------|
+| Cluster      | `cluster`            | `cluster` (stream label)                     |
+| Host name    | `host_name`          | `host_name` (stream label)                   |
+| Node role    | `node_role`          | `node_role` (stream label)                   |
+| Log source   | n/a                  | `source` (stream label)                      |
+| Service name | `service_name`       | `service_name` (stream label, Loki derives it) |
+| Pod name     | `k8s_pod_name`       | `k8s_pod_name`                               |
+| Logger       | n/a                  | `scope_name` (structured metadata)           |
+| Severity     | n/a                  | `severity_text`, and Loki's `detected_level` |
+| Trace ID     | n/a                  | `trace_id` (structured metadata)             |
 
-**Spanmetrics connector** (from OTel) produces VictoriaMetrics labels: `service_name`, `span_name`, `status_code`, `db_system`. Dashboard panel queries must use these underscore-style names.
+**Spanmetrics connector** (from OTel) produces Mimir labels: `service_name`, `span_name`, `status_code`, `db_system`. Dashboard panel queries must use these underscore-style names.
 
-The `transform/add_service_name` OTel processor copies `service.name` → `service_name` on all log pipelines so Grafana's auto-generated label filters work against VictoriaLogs too.
+### Writing LogQL
+
+- Every log query is scoped by the dashboard's cluster: `{cluster=~"$cluster", ...}`. Clusters of one tenant share Loki's store.
+- Loki refuses a stream selector whose every matcher can match an empty value, so a `cluster` variable used in a stream selector has `allValue: ".+"`, not `".*"`.
+- Only `cluster`, `host_name`, `node_role`, `source`, `service_name` and Loki's default Kubernetes labels (`k8s_container_name`, `k8s_pod_name`, ...) are stream labels. Everything else is structured metadata: filter it after the selector (`| scope_name="..."`), which works for both.
+- A `Label values` variable lists stream labels only; a structured-metadata value (the logger) is a textbox regex instead.
+- The collector already parses Cassandra's GC, compaction and dropped-message figures into attributes (`gc_event_ms`, `compaction_ms`, `compaction_ratio_pct`, `dropped_*`); `unwrap` those rather than re-parsing the line.
+- `LogQlCompatibilityIntegrationTest` runs every dashboard LogQL query against the pinned Loki, and `PromQlCompatibilityIntegrationTest` runs every PromQL expression (variables substituted) against the pinned Mimir. A query either backend refuses fails the build.
+
+### Annotations
+
+Every Grafana annotation is mirrored to Loki as its own stream (`source="annotation"`, `cluster`, `annotation_id`; the text is the log line, and the tags, dashboard uid, panel id and end time are structured metadata), so it survives the cluster. Core dashboards read their markers from Loki, not from Grafana's tag query:
+
+- Query: `{source="annotation", cluster=~"${cluster:regex}"} | dashboard_uid=""` — global markers only. A dashboard with no `cluster` variable uses `cluster=~".+"`.
+- `CoreDashboardAnnotationsTest` fails when a core dashboard lacks this annotation query.
 
 ## Trace Links in Log Panels — Two Distinct Mechanisms
 
@@ -61,14 +83,14 @@ The `transform/add_service_name` OTel processor copies `service.name` → `servi
 
 ### Mechanism 1 — Per-row "View Trace in Tempo" button (datasource-level, global)
 
-Configured on the `victorialogs` datasource in `GrafanaDatasourceConfig.kt` via `derivedFields`:
+Configured on the `loki` datasource in `GrafanaDatasourceConfig.kt` via `derivedFields`:
 
 ```kotlin
 GrafanaDerivedField(
     name = "trace_id",
-    field = "trace_id",
-    matcherRegex = "([a-f0-9]{32})",  // only matches valid 128-bit hex trace IDs
-    url = "",
+    matcherType = "label",      // reads the trace_id structured-metadata field
+    matcherRegex = "trace_id",
+    url = "\$\${__value.raw}",   // `$$` survives Grafana's provisioning env expansion
     datasourceUid = "tempo",
     urlDisplayLabel = "View Trace in Tempo",
 )
@@ -76,7 +98,7 @@ GrafanaDerivedField(
 
 - Appears as a button in the **log detail drawer** when a log row has a `trace_id` field matching the regex
 - Navigates to Tempo Explore with that specific trace ID pre-filled
-- **This is global** — it applies to every VictoriaLogs panel on every dashboard
+- **This is global** — it applies to every Loki panel on every dashboard
 - **Nothing in the dashboard JSON controls this** — do NOT try to configure it per-panel
 - If a service has no traces (e.g. TiDB before OTel was wired up), the button simply does not appear because `trace_id` is absent or doesn't match the regex
 
@@ -107,7 +129,7 @@ The panes JSON contains `queryType: "traceql"` with a query like `{ resource.hos
 
 ## Spanmetrics Metric Names
 
-The OTel spanmetrics connector with `namespace: traces.spanmetrics` emits:
+The OTel span_metrics connector with `namespace: traces.spanmetrics` emits:
 
 - `traces_spanmetrics_calls_total` — request count
 - `traces_spanmetrics_duration_milliseconds_bucket` — latency histogram (**milliseconds**)
@@ -172,24 +194,26 @@ Common TraceQL patterns:
 - By service + operation: `{ resource.service.name = "${__field.labels.service_name}" && name = "${__field.labels.span_name}" }`
 - ClickHouse spans: `{ span.db.system = "clickhouse" }`
 
-### VictoriaLogs Explore Link
+### Loki Explore Link
 
 ```python
 def logs_explore(expr, title):
-    panes = {"a": {"datasource": "victorialogs",
+    panes = {"a": {"datasource": "loki",
                    "queries": [{"refId": "A",
-                                "datasource": {"uid": "victorialogs",
-                                               "type": "victoriametrics-logs-datasource"},
-                                "expr": expr}],
+                                "datasource": {"uid": "loki", "type": "loki"},
+                                "editorMode": "code",
+                                "expr": expr,
+                                "queryType": "range"}],
                    "range": {"from": "${__from}", "to": "${__to}"}}}
     return {"title": title,
             "url": "/explore?schemaVersion=1&orgId=1&panes=" + encode_panes(panes),
             "targetBlank": True}
 ```
 
-Common VictoriaLogs LogsQL patterns:
-- By service: `service_name:="${__field.labels.service_name}"`
-- By host: `host.name:="${__field.labels.host_name}"`
+Common LogQL patterns (a series aggregated away from `cluster` has no `${__field.labels.cluster}`,
+so scope by the dashboard variable):
+- By service: `{cluster=~"${cluster:regex}", service_name="${__field.labels.service_name}"}`
+- By host: `{cluster=~"${cluster:regex}", host_name="${__field.labels.host_name}"}`
 
 ### Pyroscope Explore Link
 
@@ -231,17 +255,17 @@ Logs panels (`type: "logs"`) do not support `fieldConfig.defaults.links` for per
 
 Configured on the Tempo datasource in `GrafanaDatasourceConfig.kt`.
 
-**tracesToLogsV2**: Use `customQuery: true` with an explicit LogsQL query to bypass Grafana's default label generation which converts `service.name` → `service_name` (Loki-style), incompatible with VictoriaLogs field naming:
+**tracesToLogsV2**: `customQuery: true` with a LogQL trace-id lookup across the selected clusters (`LogQl.traceToLogs`):
 
 ```kotlin
 GrafanaTracesToLogsConfig(
-    datasourceUid = "victorialogs",
+    datasourceUid = "loki",
     spanStartTimeShift = "-1m",
     spanEndTimeShift = "1m",
     filterByTraceID = true,
     filterBySpanID = false,
     customQuery = true,
-    query = "trace_id:\"\${__trace.traceId}\"",
+    query = LogQl.traceToLogs("\$\${__trace.traceId}"),   // {cluster=~".+"} | trace_id="$${__trace.traceId}"
 )
 ```
 
@@ -261,7 +285,7 @@ Things to know before editing them:
 
 - The ICMP panel on Hubble Flows is expected to sit near zero. The security group has no ICMP rule, so only Cilium's own node health checks and IPv6 router solicitations reach the datapath. The panel description says so; keep it.
 - `hubble_dns_*` and `hubble_http_*` do not exist on this stack. Those Hubble metrics are not enabled, so there are no DNS or HTTP panels. Do not add them without first enabling the metric and confirming the name in `/api/v1/label/__name__/values`.
-- VictoriaMetrics returns **no series** from `histogram_quantile(..., rate(..._bucket[...]))` when every bucket rate is zero in the window. For histograms that only move on rare events (conntrack GC runs, IP allocations) the panels use the cumulative mean `_sum / _count` instead, which always returns a series. Steady histograms (endpoint regeneration, k8s client latency, EC2 API duration) keep the p95.
+- `histogram_quantile(..., rate(..._bucket[...]))` gives nothing useful when every bucket rate is zero in the window. For histograms that only move on rare events (conntrack GC runs, IP allocations) the panels use the cumulative mean `_sum / _count` instead, which always returns a series. Steady histograms (endpoint regeneration, k8s client latency, EC2 API duration) keep the p95.
 - `cilium_operator_ipam_ips{type="needed"}` above 0 is the one number that matters on the IPAM dashboard; it has its own red-threshold stat and a red series override. Keep that visible when rearranging.
 
 ## Kit Dashboard Metric Queries
@@ -278,9 +302,9 @@ empty when the pod lands elsewhere. Select a pod with `instance` when a panel ne
 A static `localhost:<port>` job on a NodePort would be scraped by every collector, one series per
 node, which is why no built-in kit declares one (`NodePortKitScrapeTest`).
 
-### VictoriaMetrics Counter Naming
+### Counter Naming
 
-The local Prometheus exporter may expose counters without a `_total` suffix, but VictoriaMetrics stores them **with** `_total` following the OpenMetrics convention. Dashboard queries must always use the `_total` form (e.g. `cnpg_pg_stat_database_blks_hit_total`, not `cnpg_pg_stat_database_blks_hit`). Use the `/api/v1/label/__name__/values` endpoint on VictoriaMetrics to confirm the exact stored name before writing a query.
+The local Prometheus exporter may expose counters without a `_total` suffix, but the collector's remote write stores them **with** `_total` following the OpenMetrics convention. Dashboard queries must always use the `_total` form (e.g. `cnpg_pg_stat_database_blks_hit_total`, not `cnpg_pg_stat_database_blks_hit`). Confirm the exact stored name with Mimir's `/prometheus/api/v1/label/__name__/values` (send `X-Scope-OrgID: <tenant>`) before writing a query.
 
 ## Modifying Dashboards
 
@@ -318,7 +342,7 @@ DS=$(curl -s "$G/api/datasources" | jq -r '.[] | select(.type=="prometheus") | .
 curl -s -G "$G/api/datasources/proxy/uid/$DS/api/v1/query" --data-urlencode 'query=<expr>'
 ```
 
-Testing PromQL against VictoriaMetrics directly proves the query is right. It does not prove
+Testing PromQL against Mimir directly proves the query is right. It does not prove
 Grafana is serving that query. Only the second failure is the one a user sees.
 
 ### Never edit dashboard JSON with `jq`
@@ -344,19 +368,22 @@ Check `fieldConfig.defaults.unit` and `max` before adding or removing a `* 100`:
 
 `cluster-comparison.json`'s "CPU Usage by Cluster" is `percentunit` with `max: 1`.
 
-### `system_cpu_time_seconds_total` has no per-core label
+### `system_cpu_time_seconds_total`: never depend on the per-core `cpu` label
 
-The OTel hostmetrics `cpuscraper` emits **one series per host**, summed across every core. There
-is no `cpu` label, so `avg by(host_name)` averages a single series and is a no-op.
+The per-core `cpu` attribute is opt-in on the host_metrics `cpu` scraper. The collector config
+requests it (`attributes: [cpu, state]` in `otel-collector-config.yaml`), so today there is one
+series per core per state. Without that setting the scraper emits **one series per host**, summed
+across every core, and `avg by(host_name)` averages a single series.
 
-This idiom is wrong here and shipped in four dashboards, rendering about -190% under load:
+This idiom shipped in four dashboards while the label was absent, rendering about -190% under load:
 
 ```promql
-100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state="idle"}[1m])) * 100)   # WRONG
+100 - (avg by(host_name) (rate(system_cpu_time_seconds_total{state="idle"}[1m])) * 100)   # FRAGILE
 ```
 
-On a 4-core node the idle rate is ~4.0, giving `100 - 400 = -300%`. Use idle as a fraction of
-total across all states — core-count independent, cannot leave 0..100:
+Without the `cpu` label, a 4-core node's idle rate is ~4.0, giving `100 - 400 = -300%`. Use idle as
+a fraction of total across all states — correct with or without the label, core-count independent,
+cannot leave 0..100:
 
 ```promql
 100 * (1 - sum by(host_name) (rate(system_cpu_time_seconds_total{state="idle", ...}[1m]))

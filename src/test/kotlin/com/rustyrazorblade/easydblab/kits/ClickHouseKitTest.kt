@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * replicas one at a time, so waiting for the pods that exist to be Ready returned after the first
  * replica while the ClickHouseInstallation was still InProgress (1/3 pods). The step now waits for
  * the installation to report Completed, then for every replica pod to be Ready. The step's script
- * runs here against a stub `kubectl` that records each call.
+ * runs here against a stub `kubectl` function that records each call.
  */
 class ClickHouseKitTest : BaseKoinTest() {
     private val kit by lazy {
@@ -32,30 +32,36 @@ class ClickHouseKitTest : BaseKoinTest() {
         return start.drop(applied + 1).filterIsInstance<InstallStep.Shell>().first()
     }
 
-    /** A `kubectl` that records its arguments and fails the calls whose arguments contain [failOn]. */
+    /**
+     * Runs the step with `kubectl` as a shell function that records its arguments and fails the
+     * calls whose arguments contain [failOn].
+     *
+     * The stub is a function, not an executable written to disk and found on `PATH`: macOS
+     * assesses the first exec of every new executable file through one system-wide queue
+     * (~150ms each, measured with no CPU in use), so under `check` — where the script-test tasks
+     * create stubs of their own — a fresh `kubectl` file waited out the timeout before it ran.
+     */
     private fun runAgainstStub(failOn: String = "<never>"): Int {
-        File(stubDir, "kubectl").apply {
-            writeText(
-                """
-                #!/bin/bash
-                echo "$*" >> "${calls.absolutePath}"
-                case "$*" in *"$failOn"*) exit 1 ;; esac
-                exit 0
-                """.trimIndent() + "\n",
-            )
-            setExecutable(true)
-        }
+        val stub =
+            """
+            kubectl() {
+              echo "$*" >> "${calls.absolutePath}"
+              case "$*" in *"$failOn"*) return 1 ;; esac
+              return 0
+            }
+            """.trimIndent()
+        val output = File(stubDir, "script.out")
         val process =
-            ProcessBuilder("bash", "-c", installationWaitStep().script)
+            ProcessBuilder("bash", "-c", stub + "\n" + installationWaitStep().script)
                 .directory(stubDir)
                 .redirectErrorStream(true)
-                .redirectOutput(File(stubDir, "script.out"))
-                .also { it.environment()["PATH"] = "${stubDir.absolutePath}:${System.getenv("PATH")}" }
+                .redirectOutput(output)
                 .start()
         // A step that polls for pods to appear never sees any from the stub; fail instead of hanging.
         check(process.waitFor(SCRIPT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             process.destroyForcibly()
-            "the step did not finish within ${SCRIPT_TIMEOUT_SECONDS}s; calls: ${calls.readLines()}"
+            val recorded = if (calls.exists()) calls.readLines() else emptyList()
+            "the step did not finish within ${SCRIPT_TIMEOUT_SECONDS}s; calls: $recorded; output: ${output.readText()}"
         }
         return process.exitValue()
     }

@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
@@ -70,6 +71,9 @@ class SetupInstanceTest : BaseKoinTest() {
                                 clusterId = "abc123",
                                 versions = mutableMapOf(),
                                 hosts = hosts,
+                                // Not the default tenant, which is also ProfilingConfig's
+                                // fallback: only a non-default tenant shows it was written.
+                                initConfig = InitConfig(tenant = "acme"),
                             ),
                         )
                         whenever(it.exists()).thenReturn(true)
@@ -99,5 +103,6 @@ class SetupInstanceTest : BaseKoinTest() {
         assertThat(config.asprofArgs).isEqualTo(Constants.Profiling.DEFAULT_ASPROF_ARGS)
         assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
+        assertThat(config.tenant).isEqualTo("acme")
     }
 }

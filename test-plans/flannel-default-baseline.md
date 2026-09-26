@@ -50,13 +50,14 @@ Pass: 3 nodes Ready; cilium pod count `0`; traefik type `LoadBalancer`; 0 non-ru
 ### 4. kube-state-metrics and scrapes
 
 ```bash
-vmq() { curl -s --max-time 10 "http://$CTL_IP:8428/api/v1/query" --data-urlencode "query=$1" | jq -r '.data.result[] | "\(.metric.instance // .metric.daemonset // "-") \(.value[1])"'; }
+TENANT=${TENANT:-default}
+vmq() { curl -s --max-time 10 -H "X-Scope-OrgID: $TENANT" "http://$CTL_IP:9009/prometheus/api/v1/query" --data-urlencode "query=$1" | jq -r '.data.result[] | "\(.metric.instance // .metric.daemonset // "-") \(.value[1])"'; }
 vmq 'up{job="kube-state-metrics"}'
 vmq 'kube_daemonset_status_number_ready{daemonset="otel-collector"}'
 vmq 'up{job="cilium-agent"}'
 ```
 
-Pass: kube-state-metrics `1`; otel-collector DaemonSet ready `3`; `up{job="cilium-agent"}` returns no series.
+Pass: kube-state-metrics `1`; otel-collector DaemonSet ready `3`; `up{job="cilium-agent"}` returns no series.  `TENANT` is the cluster's observability tenant (`init --tenant`, `default` if none was given); Mimir and Loki return nothing to a query without it.
 
 ### 5. Tailscale route to db nodes from this machine
 

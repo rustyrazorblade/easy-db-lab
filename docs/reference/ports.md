@@ -17,8 +17,11 @@ This page documents the ports used by easy-db-lab and the services it provisions
 |------|---------|
 | 3000 | Grafana |
 | 4040 | Pyroscope (continuous profiling) |
-| 8428 | VictoriaMetrics (metrics storage) |
-| 9428 | VictoriaLogs (log storage) |
+| 9009 | Mimir HTTP (metrics storage; Prometheus API under `/prometheus`) |
+| 9097 | Mimir gRPC |
+| 7947 | Mimir memberlist (loopback only) |
+| 3100 | Loki HTTP (log storage) |
+| 9098 | Loki gRPC |
 | 3200 | Tempo (trace storage) |
 | 5001 | YACE CloudWatch exporter (Prometheus) |
 | 8080 | kube-state-metrics (Prometheus; ClusterIP Service, pod network) |

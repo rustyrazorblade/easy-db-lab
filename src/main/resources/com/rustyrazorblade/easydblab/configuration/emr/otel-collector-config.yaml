@@ -5,7 +5,7 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-  hostmetrics:
+  host_metrics:
     collection_interval: 10s
     scrapers:
       cpu:
@@ -20,7 +20,7 @@ processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
-  resourcedetection:
+  resource_detection:
     detectors: [system]
     system:
       hostname_sources: ["os"]
@@ -35,9 +35,15 @@ processors:
         # spark-worker so master and worker telemetry can be filtered independently.
         value: __NODE_ROLE__
         action: upsert
+  # Loki indexes `source`, so `logs query --source emr` finds every EMR node's lines.
+  resource/source:
+    attributes:
+      - key: source
+        value: emr
+        action: upsert
 
 exporters:
-  otlp/control:
+  otlp_grpc/control:
     endpoint: __CONTROL_NODE_IP__:4317
     tls:
       insecure: true
@@ -50,14 +56,14 @@ service:
   extensions: [health_check]
   pipelines:
     metrics:
-      receivers: [otlp, hostmetrics]
-      processors: [resourcedetection, resource/role, batch]
-      exporters: [otlp/control]
+      receivers: [otlp, host_metrics]
+      processors: [resource_detection, resource/role, batch]
+      exporters: [otlp_grpc/control]
     logs:
       receivers: [otlp]
-      processors: [resourcedetection, resource/role, batch]
-      exporters: [otlp/control]
+      processors: [resource_detection, resource/role, resource/source, batch]
+      exporters: [otlp_grpc/control]
     traces:
       receivers: [otlp]
-      processors: [resourcedetection, resource/role, batch]
-      exporters: [otlp/control]
+      processors: [resource_detection, resource/role, batch]
+      exporters: [otlp_grpc/control]

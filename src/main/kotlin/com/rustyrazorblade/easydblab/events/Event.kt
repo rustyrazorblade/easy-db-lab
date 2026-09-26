@@ -21,9 +21,9 @@ import kotlinx.serialization.Serializable
  *
  * The type discriminator for serialization is derived from the class name.
  */
-private const val BACKUP_TABLE_SEPARATOR_LENGTH = 59
-private const val BACKUP_TABLE_HEADER_FORMAT = "%-30s  %10s  %15s"
-private const val BACKUP_TABLE_ROW_FORMAT = "%-30s  %10d  %15s"
+private const val BACKUP_TABLE_SEPARATOR_LENGTH = 104
+private const val BACKUP_TABLE_HEADER_FORMAT = "%-17s  %-55s  %10s  %15s"
+private const val BACKUP_TABLE_ROW_FORMAT = "%-17s  %-55s  %10d  %15s"
 
 @Serializable
 sealed interface Event {
@@ -690,22 +690,27 @@ sealed interface Event {
         }
 
         /**
-         * A node destroyed profile chunks that had never reached Pyroscope.
+         * A node stopped recording because its profile directory reached its byte bound holding
+         * only chunks that are never deleted — chunks that have not shipped, or that Pyroscope
+         * rejected.
          *
-         * The only pruning number that means irreversible loss rather than reclaimed disk. It is
-         * how "my profiles never showed up" stops being unanswerable after the fact: the chunks are
-         * gone, but the count of them is not, so an operator can tell a shipping outage apart from
-         * a profiler that never attached.
+         * Profiling pauses instead of losing data. It resumes on its own once the directory is back
+         * under the bound: when shipping recovers and shipped chunks are pruned, or when the
+         * operator removes chunks. Emitted rather than folded into [AttachFailed] because nothing is
+         * wrong with the JVM or the attach.
          */
         @Serializable
-        @SerialName("Profiling.ChunksLost")
-        data class ChunksLost(
+        @SerialName("Profiling.RecordingStoppedAtBound")
+        data class RecordingStoppedAtBound(
             val host: String,
-            val lost: Long,
+            val bytesOnDisk: Long,
+            val maxBytes: Long,
         ) : Profiling {
             override fun toDisplayString(): String =
-                "$lost profile chunk(s) on $host were pruned before they ever reached Pyroscope and " +
-                    "cannot be recovered; raise --retention or --max-bytes, or fix shipping."
+                "Profiling on $host stopped recording: its profile directory holds $bytesOnDisk of " +
+                    "$maxBytes bytes in chunks that have not shipped or were rejected, which are never " +
+                    "deleted. It resumes once the directory is back under the bound; fix shipping, " +
+                    "raise --max-bytes, or fetch and remove chunks."
 
             override fun isError(): Boolean = true
         }
@@ -976,7 +981,7 @@ sealed interface Event {
         data class RolloutsWaiting(
             val workloads: List<String>,
         ) : K8s {
-            override fun toDisplayString(): String = "Waiting for ${workloads.size} restarted workloads to finish rolling out..."
+            override fun toDisplayString(): String = "Waiting for ${workloads.size} workloads to finish rolling out..."
         }
 
         @Serializable
@@ -984,7 +989,7 @@ sealed interface Event {
         data class RolloutsComplete(
             val count: Int,
         ) : K8s {
-            override fun toDisplayString(): String = "All $count restarted workloads have rolled out"
+            override fun toDisplayString(): String = "All $count workloads have rolled out"
         }
 
         @Serializable
@@ -2301,15 +2306,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("S3.LifecycleRuleSet")
-        data class LifecycleRuleSet(
-            val prefix: String,
-            val retentionDays: Int,
-        ) : S3 {
-            override fun toDisplayString(): String = "S3 lifecycle rule set: data under $prefix will expire in $retentionDays day(s)"
-        }
-
-        @Serializable
         @SerialName("S3.RequestMetricsDisabled")
         data class RequestMetricsDisabled(
             val clusterName: String,
@@ -2342,15 +2338,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("S3.DataBucketExpiring")
-        data class DataBucketExpiring(
-            val bucket: String,
-            val days: Int,
-        ) : S3 {
-            override fun toDisplayString(): String = "Data bucket $bucket marked for expiration in $days day(s)"
-        }
-
-        @Serializable
         @SerialName("S3.DataBucketDeleting")
         data class DataBucketDeleting(
             val bucket: String,
@@ -2364,6 +2351,19 @@ sealed interface Event {
             val bucket: String,
         ) : S3 {
             override fun toDisplayString(): String = "Data bucket deleted: $bucket"
+        }
+
+        /**
+         * `down --all` left [bucket] in place instead of deleting it: it still holds objects, which
+         * are never deleted automatically, or S3 refused the delete. [reason] is S3's answer.
+         */
+        @Serializable
+        @SerialName("S3.DataBucketKept")
+        data class DataBucketKept(
+            val bucket: String,
+            val reason: String,
+        ) : S3 {
+            override fun toDisplayString(): String = "Data bucket kept: $bucket ($reason)"
         }
     }
 
@@ -2418,10 +2418,69 @@ sealed interface Event {
             override fun toDisplayString(): String = "$label resources applied successfully"
         }
 
+        /**
+         * Whether [workload]'s configuration hash differs from the one running on the cluster. A
+         * changed workload (or one not yet deployed) is rolled by the apply; an unchanged one is left
+         * running.
+         */
+        @Serializable
+        @SerialName("Grafana.WorkloadConfigCompared")
+        data class WorkloadConfigCompared(
+            val workload: String,
+            val changed: Boolean,
+        ) : Grafana {
+            override fun toDisplayString(): String =
+                if (changed) "$workload: configuration changed, rolling" else "$workload: configuration unchanged, left running"
+        }
+
         @Serializable
         @SerialName("Grafana.PyroscopeDirectoryPreparing")
         data object PyroscopeDirectoryPreparing : Grafana {
             override fun toDisplayString(): String = "Preparing Pyroscope data directory..."
+        }
+
+        @Serializable
+        @SerialName("Grafana.TempoDirectoryPreparing")
+        data object TempoDirectoryPreparing : Grafana {
+            override fun toDisplayString(): String = "Preparing Tempo data directory..."
+        }
+
+        /** Every Grafana annotation was copied into Loki, where it outlives the cluster. */
+        @Serializable
+        @SerialName("Grafana.AnnotationsMirrored")
+        data class AnnotationsMirrored(
+            val count: Int,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Mirrored $count Grafana annotations to Loki"
+        }
+
+        /**
+         * Grafana holds annotations Loki would refuse, so they were not mirrored: each is older than
+         * [maxAgeHours] or more than [maxAheadHours] in the future. They stay in Grafana and in the
+         * annotation backup; the rest were mirrored.
+         */
+        @Serializable
+        @SerialName("Grafana.AnnotationsOutsideLokiWindow")
+        data class AnnotationsOutsideLokiWindow(
+            val ids: List<Long>,
+            val maxAgeHours: Long,
+            val maxAheadHours: Long,
+        ) : Grafana {
+            override fun toDisplayString(): String =
+                "Warning: ${ids.size} Grafana annotation(s) not mirrored to Loki, which accepts only entries from the last " +
+                    "${maxAgeHours}h to ${maxAheadHours}h ahead (ids: ${ids.joinToString()}). They remain in Grafana's annotation backup."
+        }
+
+        @Serializable
+        @SerialName("Grafana.MimirDirectoryPreparing")
+        data object MimirDirectoryPreparing : Grafana {
+            override fun toDisplayString(): String = "Preparing Mimir data directory..."
+        }
+
+        @Serializable
+        @SerialName("Grafana.LokiDirectoryPreparing")
+        data object LokiDirectoryPreparing : Grafana {
+            override fun toDisplayString(): String = "Preparing Loki data directory..."
         }
 
         @Serializable
@@ -2454,21 +2513,6 @@ sealed interface Event {
             val title: String,
         ) : Grafana {
             override fun toDisplayString(): String = "Installed Grafana dashboard: $title"
-        }
-
-        @Serializable
-        @SerialName("Grafana.WorkloadsRestarting")
-        data object WorkloadsRestarting : Grafana {
-            override fun toDisplayString(): String = "Restarting observability workloads to pick up new configs..."
-        }
-
-        @Serializable
-        @SerialName("Grafana.WorkloadRestarted")
-        data class WorkloadRestarted(
-            val kind: String,
-            val name: String,
-        ) : Grafana {
-            override fun toDisplayString(): String = "Restarted $kind/$name"
         }
 
         @Serializable
@@ -2506,60 +2550,6 @@ sealed interface Event {
 
     @Serializable
     sealed interface Backup : Event {
-        @Serializable
-        @SerialName("Backup.VictoriaMetricsStarting")
-        data class VictoriaMetricsStarting(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Creating VictoriaMetrics backup to $s3Path..."
-        }
-
-        @Serializable
-        @SerialName("Backup.VictoriaMetricsJobStarted")
-        data class VictoriaMetricsJobStarted(
-            val jobName: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Backup job started: $jobName"
-        }
-
-        @Serializable
-        @SerialName("Backup.VictoriaMetricsComplete")
-        data class VictoriaMetricsComplete(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "VictoriaMetrics backup completed: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.VictoriaLogsStarting")
-        data class VictoriaLogsStarting(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Creating VictoriaLogs backup to $s3Path..."
-        }
-
-        @Serializable
-        @SerialName("Backup.VictoriaLogsJobStarted")
-        data class VictoriaLogsJobStarted(
-            val jobName: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "Backup job started: $jobName"
-        }
-
-        @Serializable
-        @SerialName("Backup.VictoriaLogsComplete")
-        data class VictoriaLogsComplete(
-            val s3Path: String,
-        ) : Backup {
-            override fun toDisplayString(): String = "VictoriaLogs backup completed: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Backup.Waiting")
-        data object Waiting : Backup {
-            override fun toDisplayString(): String = "Waiting for backup to complete..."
-        }
-
         @Serializable
         @SerialName("Backup.ConfigBackedUp")
         data class ConfigBackedUp(
@@ -4085,19 +4075,91 @@ sealed interface Event {
         @Serializable
         @SerialName("Teardown.BackupStarting")
         data object BackupStarting : Teardown {
-            override fun toDisplayString(): String = "Backing up metrics and annotations before teardown (pass --force to skip)..."
+            override fun toDisplayString(): String = "Saving annotations, logs and metrics to S3 before teardown (pass --force to skip)..."
         }
 
+        /**
+         * The pre-teardown flush stopped at [step], so `down` removed nothing and started nothing again.
+         *
+         * @property step the step that failed, as the operator reads it.
+         * @property reason why it failed.
+         * @property backends each backend's state as the failure left it (name to description); empty
+         *   when no backend had been touched.
+         * @property stoppedBackends the backends that are not running. A re-run of `down` cannot flush
+         *   them without starting them again, so `--force` is the only way down.
+         */
         @Serializable
         @SerialName("Teardown.BackupFailedAbort")
         data class BackupFailedAbort(
+            val step: String,
             val reason: String,
+            val backends: Map<String, String> = emptyMap(),
+            val stoppedBackends: List<String> = emptyList(),
         ) : Teardown {
             override fun toDisplayString(): String =
-                "Pre-teardown backup failed, so no infrastructure was removed: $reason\n" +
-                    "Fix the backup and retry, or pass --force to tear down without backing up."
+                buildString {
+                    appendLine("Pre-teardown flush stopped at '$step': $reason")
+                    appendLine("down stopped: no infrastructure was removed, and no backend was started again.")
+                    if (backends.isNotEmpty()) {
+                        appendLine("Backends: " + backends.entries.joinToString("; ") { (name, state) -> "$name: $state" })
+                    }
+                    if (stoppedBackends.isEmpty()) {
+                        append(
+                            "Fix the cause and run 'easy-db-lab down' again, or run 'easy-db-lab down --force' to tear " +
+                                "down without the logs and metrics not yet in S3.",
+                        )
+                    } else {
+                        append(
+                            "The tail of ${stoppedBackends.joinToString(" and ")} cannot be flushed without starting it " +
+                                "again, which down never does. Run 'easy-db-lab down --force' to tear down without the " +
+                                "logs and metrics not yet in S3.",
+                        )
+                    }
+                }
 
             override fun isError(): Boolean = true
+        }
+
+        /**
+         * An earlier `down` completed the pre-teardown flush and left Loki and Mimir at 0, so this one
+         * skips it and goes on to the teardown.
+         *
+         * @property completedAt when the flush completed (ISO-8601).
+         */
+        @Serializable
+        @SerialName("Teardown.TailAlreadyFlushed")
+        data class TailAlreadyFlushed(
+            val completedAt: String,
+            val lokiIndexFiles: Int,
+            val lokiChunksFlushed: Long,
+            val mimirBlocks: Int,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "Skipping the pre-teardown flush: it already completed at $completedAt (Loki: $lokiChunksFlushed chunks, " +
+                    "$lokiIndexFiles index files; Mimir: $mimirBlocks blocks). Loki and Mimir stay stopped."
+        }
+
+        /**
+         * Loki's chunks and its index are in S3: its shutdown wrote [chunksFlushed] chunks, and [indexFiles]
+         * locally built index files were found there.
+         */
+        @Serializable
+        @SerialName("Teardown.LokiFlushed")
+        data class LokiFlushed(
+            val indexFiles: Int,
+            val chunksFlushed: Long,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "Loki flushed: $chunksFlushed chunks written at shutdown, and all $indexFiles index files are in S3"
+        }
+
+        /** Mimir's head is in blocks and [blocks] shippable blocks were found in S3. */
+        @Serializable
+        @SerialName("Teardown.MimirFlushed")
+        data class MimirFlushed(
+            val blocks: Int,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Mimir flushed: the head is in blocks and all $blocks blocks are in S3"
         }
 
         @Serializable
@@ -4105,7 +4167,7 @@ sealed interface Event {
         data class BackupSkipped(
             val reason: String,
         ) : Teardown {
-            override fun toDisplayString(): String = "Skipping the pre-teardown metrics + annotations backup: $reason"
+            override fun toDisplayString(): String = "Skipping the pre-teardown flush: $reason"
         }
     }
 
@@ -4514,89 +4576,6 @@ sealed interface Event {
         ) : Logs {
             override fun toDisplayString(): String = logs.joinToString("\n") + "\n\nFound ${logs.size} log entries."
         }
-
-        @Serializable
-        @SerialName("Logs.NoControlNode")
-        data object NoControlNode : Logs {
-            override fun toDisplayString(): String = "No control node found. Please ensure the cluster is running."
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Logs.BackupComplete")
-        data class BackupComplete(
-            val s3Path: String,
-        ) : Logs {
-            override fun toDisplayString(): String = "VictoriaLogs backup completed successfully\nBackup location: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Logs.BackupFailed")
-        data class BackupFailed(
-            val error: String,
-        ) : Logs {
-            override fun toDisplayString(): String = "VictoriaLogs backup failed: $error"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Logs.ImportStarting")
-        data class ImportStarting(
-            val target: String,
-        ) : Logs {
-            override fun toDisplayString(): String = "Streaming logs from cluster to $target..."
-        }
-
-        @Serializable
-        @SerialName("Logs.ImportComplete")
-        data class ImportComplete(
-            val bytesTransferred: Long,
-        ) : Logs {
-            override fun toDisplayString(): String = "Logs import completed successfully.\nBytes transferred: $bytesTransferred"
-        }
-
-        @Serializable
-        @SerialName("Logs.ImportFailed")
-        data class ImportFailed(
-            val error: String,
-        ) : Logs {
-            override fun toDisplayString(): String = "Logs import failed: $error"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Logs.BackupListEmpty")
-        data object BackupListEmpty : Logs {
-            override fun toDisplayString(): String = "No VictoriaLogs backups found."
-        }
-
-        @Serializable
-        @SerialName("Logs.BackupEntry")
-        data class BackupEntry(
-            val timestamp: String,
-            val fileCount: Int,
-            val totalSize: String,
-        )
-
-        @Serializable
-        @SerialName("Logs.BackupList")
-        data class BackupList(
-            val entries: List<BackupEntry>,
-        ) : Logs {
-            override fun toDisplayString(): String =
-                buildString {
-                    appendLine("VictoriaLogs backups:")
-                    appendLine("")
-                    appendLine(BACKUP_TABLE_HEADER_FORMAT.format("Timestamp", "Files", "Total Size"))
-                    appendLine("-".repeat(BACKUP_TABLE_SEPARATOR_LENGTH))
-                    entries.forEach { entry ->
-                        appendLine(BACKUP_TABLE_ROW_FORMAT.format(entry.timestamp, entry.fileCount, entry.totalSize))
-                    }
-                }.trimEnd()
-        }
     }
 
     // =========================================================================
@@ -4605,89 +4584,6 @@ sealed interface Event {
 
     @Serializable
     sealed interface Metrics : Event {
-        @Serializable
-        @SerialName("Metrics.NoControlNode")
-        data object NoControlNode : Metrics {
-            override fun toDisplayString(): String = "No control node found. Please ensure the cluster is running."
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Metrics.BackupComplete")
-        data class BackupComplete(
-            val s3Path: String,
-        ) : Metrics {
-            override fun toDisplayString(): String = "VictoriaMetrics backup completed successfully\nBackup location: $s3Path"
-        }
-
-        @Serializable
-        @SerialName("Metrics.BackupFailed")
-        data class BackupFailed(
-            val error: String,
-        ) : Metrics {
-            override fun toDisplayString(): String = "VictoriaMetrics backup failed: $error"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Metrics.ImportStarting")
-        data class ImportStarting(
-            val target: String,
-        ) : Metrics {
-            override fun toDisplayString(): String = "Streaming metrics from cluster to $target..."
-        }
-
-        @Serializable
-        @SerialName("Metrics.ImportComplete")
-        data class ImportComplete(
-            val bytesTransferred: Long,
-        ) : Metrics {
-            override fun toDisplayString(): String = "Metrics import completed successfully.\nBytes transferred: $bytesTransferred"
-        }
-
-        @Serializable
-        @SerialName("Metrics.ImportFailed")
-        data class ImportFailed(
-            val error: String,
-        ) : Metrics {
-            override fun toDisplayString(): String = "Metrics import failed: $error"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Metrics.BackupListEmpty")
-        data object BackupListEmpty : Metrics {
-            override fun toDisplayString(): String = "No VictoriaMetrics backups found."
-        }
-
-        @Serializable
-        @SerialName("Metrics.BackupEntry")
-        data class BackupEntry(
-            val timestamp: String,
-            val fileCount: Int,
-            val totalSize: String,
-        )
-
-        @Serializable
-        @SerialName("Metrics.BackupList")
-        data class BackupList(
-            val entries: List<BackupEntry>,
-        ) : Metrics {
-            override fun toDisplayString(): String =
-                buildString {
-                    appendLine("VictoriaMetrics backups:")
-                    appendLine("")
-                    appendLine(BACKUP_TABLE_HEADER_FORMAT.format("Timestamp", "Files", "Total Size"))
-                    appendLine("-".repeat(BACKUP_TABLE_SEPARATOR_LENGTH))
-                    entries.forEach { entry ->
-                        appendLine(BACKUP_TABLE_ROW_FORMAT.format(entry.timestamp, entry.fileCount, entry.totalSize))
-                    }
-                }.trimEnd()
-        }
-
         @Serializable
         @SerialName("Metrics.Node")
         data class Node(

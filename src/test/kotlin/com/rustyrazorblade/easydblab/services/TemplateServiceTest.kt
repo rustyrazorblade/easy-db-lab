@@ -62,6 +62,7 @@ class TemplateServiceTest : BaseKoinTest() {
         clusterName: String = "test-cluster",
         controlHost: ClusterHost? = testControlHost,
         dataBucket: String = "",
+        tenant: String = "default",
     ) {
         val state =
             ClusterState(
@@ -76,7 +77,7 @@ class TemplateServiceTest : BaseKoinTest() {
                     },
                 s3Bucket = bucketName,
                 dataBucket = dataBucket,
-                initConfig = InitConfig(region = region, name = clusterName),
+                initConfig = InitConfig(region = region, name = clusterName, tenant = tenant),
             )
         whenever(mockClusterStateManager.load()).thenReturn(state)
     }
@@ -88,7 +89,7 @@ class TemplateServiceTest : BaseKoinTest() {
         val service = createService()
         val variables = service.buildContextVariables()
 
-        assertThat(variables).containsEntry("BUCKET_NAME", "my-test-bucket")
+        assertThat(variables).containsEntry("ACCOUNT_BUCKET", "my-test-bucket")
         assertThat(variables).containsEntry("AWS_REGION", "us-east-1")
         assertThat(variables).containsEntry("CLUSTER_NAME", "test-cluster-test-id")
         assertThat(variables).containsEntry("CONTROL_NODE_IP", "10.0.1.100")
@@ -101,27 +102,29 @@ class TemplateServiceTest : BaseKoinTest() {
         val service = createService()
         val variables = service.buildContextVariables()
 
-        assertThat(variables).containsEntry("BUCKET_NAME", "")
+        assertThat(variables).containsEntry("ACCOUNT_BUCKET", "")
     }
 
     @Test
-    fun `buildContextVariables uses dataBucket for BUCKET_NAME when set`() {
-        setupClusterState(dataBucket = "easy-db-lab-data-test-id")
+    fun `the observability stack writes to the account bucket even when a data bucket exists`() {
+        setupClusterState(bucketName = "my-account-bucket", dataBucket = "easy-db-lab-data-test-id")
 
-        val service = createService()
-        val variables = service.buildContextVariables()
+        val variables = createService().buildContextVariables()
 
-        assertThat(variables).containsEntry("BUCKET_NAME", "easy-db-lab-data-test-id")
+        assertThat(variables).containsEntry("ACCOUNT_BUCKET", "my-account-bucket")
+        assertThat(variables).doesNotContainKey("BUCKET_NAME")
+        assertThat(variables.values).doesNotContain("easy-db-lab-data-test-id")
     }
 
     @Test
-    fun `buildContextVariables falls back to s3Bucket when dataBucket is blank`() {
-        setupClusterState(bucketName = "my-account-bucket", dataBucket = "")
+    fun `buildContextVariables carries the tenant and the profiles prefix`() {
+        setupClusterState(tenant = "acme")
 
-        val service = createService()
-        val variables = service.buildContextVariables()
+        val variables = createService().buildContextVariables()
 
-        assertThat(variables).containsEntry("BUCKET_NAME", "my-account-bucket")
+        assertThat(variables).containsEntry("TENANT", "acme")
+        assertThat(variables).containsEntry("PROFILES_S3_PREFIX", "observability/profiles")
+        assertThat(variables).doesNotContainKey("PYROSCOPE_STORAGE_PREFIX")
     }
 
     @Test
@@ -201,7 +204,7 @@ class TemplateServiceTest : BaseKoinTest() {
         setupClusterState()
 
         val service = createService()
-        val template = service.fromString("bucket: __BUCKET_NAME__")
+        val template = service.fromString("bucket: __ACCOUNT_BUCKET__")
 
         assertThat(template.substitute()).isEqualTo("bucket: my-test-bucket")
     }

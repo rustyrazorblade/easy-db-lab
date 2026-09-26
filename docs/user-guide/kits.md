@@ -142,7 +142,7 @@ printf 'set greeting 0 0 5\r\nhello\r\nget greeting\r\nquit\r\n' | nc <db node p
 ```
 
 A `memcached-exporter` sidecar serves Prometheus metrics on port 9150. The collector finds the
-pod by label and scrapes it, so the series land in VictoriaMetrics under `job="memcached"`. The
+pod by label and scrapes it, so the series land in Mimir under `job="memcached"`. The
 kit's `METRICS.md` lists them.
 
 ### memcached extstore

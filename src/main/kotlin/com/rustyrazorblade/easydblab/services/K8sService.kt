@@ -158,7 +158,7 @@ interface K8sNamespaceOperations {
 
     /**
      * Waits until every one of [workloads] in [namespace] has finished rolling out, with
-     * `kubectl rollout status` semantics (see [RolloutStatus]). Call it after a rollout-restart:
+     * `kubectl rollout status` semantics (see [RolloutStatus]). Call it after applying a workload:
      * pod readiness alone passes while the old pods are still serving.
      *
      * @return failure naming each unfinished workload and what it is waiting on if they have not
@@ -170,6 +170,16 @@ interface K8sNamespaceOperations {
         namespace: String,
         timeoutSeconds: Int,
     ): Result<Unit>
+
+    /**
+     * The [Constants.K8s.CONFIG_HASH_ANNOTATION] on the pod template of each of [workloads] as it runs
+     * in [namespace] now; null for a workload that does not exist or carries no hash.
+     */
+    fun workloadConfigHashes(
+        controlHost: ClusterHost,
+        workloads: List<WorkloadRef>,
+        namespace: String,
+    ): Result<Map<WorkloadRef, String?>>
 }
 
 /**

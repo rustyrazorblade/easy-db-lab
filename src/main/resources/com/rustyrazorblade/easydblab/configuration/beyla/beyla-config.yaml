@@ -23,6 +23,14 @@ ebpf:
   track_request_headers: false
   http_request_timeout: 30s
 
+# Java agent injection: off. Beyla defaults this to true, and then writes
+# obi-java-agent.jar into every JVM it instruments and dynamically attaches it,
+# which puts a foreign agent inside the database under test. Nothing in the
+# stack consumes the agent's output (Java TLS capture, context propagation,
+# JVM runtime metrics); the eBPF request and network metrics do not need it.
+javaagent:
+  enabled: false
+
 # Network metrics configuration
 network:
   enable: true

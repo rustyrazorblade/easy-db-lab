@@ -58,7 +58,7 @@ If explicit flags were provided, use those. Otherwise:
 - `**/configuration/**`, `**/kubernetes/**`, `**/providers/**`
 - `**/commands/Init*`, `packer/base/**`, `**/mcp/**`
 - `**/services/ClusterBackupService*`, `**/ClusterS3Path*`
-- Observability: `**/victoriametrics/**`, `**/grafana/**`, `**/victorialogs/**`
+- Observability: `**/mimir/**`, `**/loki/**`, `**/grafana/**`, `**/services/TeardownFlush*`, `**/services/LokiTailFlush*`
 
 **Documentation only** (`docs/**`, `*.md`): No e2e tests needed — tell the user and stop.
 
@@ -121,8 +121,8 @@ Example:
 - Server / `/status` endpoint → only if `server` startup, REST endpoints, or `ClusterS3Path` changed
 - S3 backup file check → only if `ClusterBackupService`, `ClusterS3Path`, or S3 config changed
 - Restore from VPC → only if restore/backup logic changed
-- Observability (VictoriaMetrics, VictoriaLogs, Grafana) → only if observability stack changed
-- Metrics/logs backup → only if `ClusterBackupService` or metrics/logs backup commands changed
+- Observability (Mimir, Loki, Grafana) → only if observability stack changed
+- Metrics/logs in S3 → only if the Mimir or Loki storage, or the `down` flush, changed
 
 **Cassandra steps** (if --cassandra):
 16. easy-db-lab cassandra use 5.0
@@ -265,8 +265,8 @@ easy-db-lab exec run -t cassandra --hosts db0,db1 -- date
 
 ```bash
 # Health checks via SSH (use -F sshConfig — env.sh aliases don't persist across shell invocations)
-ssh -F sshConfig control0 "curl -s http://localhost:8428/health"
-ssh -F sshConfig control0 "curl -s http://localhost:9428/health"
+ssh -F sshConfig control0 "curl -s http://localhost:9009/ready"
+ssh -F sshConfig control0 "curl -s http://localhost:3100/ready"
 ssh -F sshConfig control0 "curl -s http://localhost:3000/api/health | jq -r .database"
 
 # Verify datasources
@@ -276,15 +276,14 @@ ssh -F sshConfig control0 "curl -s http://localhost:3000/api/datasources | jq -r
 ssh -F sshConfig control0 "curl -s 'http://localhost:3000/api/search?type=dash-db' | jq length"
 ```
 
-### Metrics and Logs Backup
+### Metrics and Logs in S3
+
+Mimir and Loki write to the account bucket as they run; there is no backup command. Metrics sit under `observabilitymetrics/<tenant>/`, logs under `observability/logs/`. `down` flushes both before teardown.
 
 ```bash
-easy-db-lab metrics backup
-easy-db-lab logs backup
-
-S3_FULLPATH=$(cat .s3-fullpath)
-aws s3 ls "s3://${S3_FULLPATH}/victoriametrics/" | wc -l
-aws s3 ls "s3://${S3_FULLPATH}/victorialogs/" | wc -l
+BUCKET=$(jq -r .s3Bucket state.json)
+aws s3 ls "s3://${BUCKET}/observabilitymetrics/" --recursive | wc -l
+aws s3 ls "s3://${BUCKET}/observability/logs/" --recursive | wc -l
 ```
 
 > **Note**: All `ssh` commands must use `ssh -F sshConfig <host>` — the aliases set by `source env.sh` (e.g. `ssh db0`) only exist in the shell where env.sh was sourced and do not persist across Bash tool invocations.
@@ -454,8 +453,8 @@ ssh -F sshConfig db0 "journalctl -u cassandra --no-pager -n 50"
 
 # 8. For observability failures
 ssh -F sshConfig control0 "kubectl get pods -A"
-ssh -F sshConfig control0 "curl -s http://localhost:8428/health"
-ssh -F sshConfig control0 "curl -s http://localhost:9428/health"
+ssh -F sshConfig control0 "curl -s http://localhost:9009/ready"
+ssh -F sshConfig control0 "curl -s http://localhost:3100/ready"
 
 # 9. Disk space
 kubectl exec -n kube-system -it <any-pod> -- df -h 2>/dev/null || true
@@ -498,7 +497,7 @@ Steps Run:
   ✅ Restore from VPC verified
   ✅ Exec command
   ✅ Observability stack
-  ✅ Metrics/logs backup
+  ✅ Metrics/logs in S3
   [Cassandra steps if applicable]
   ❌ <step> — <error>
 

@@ -18,7 +18,7 @@ import java.io.File
  * Carries [RequiresProxy]: [McpServer] unconditionally constructs a `StatusCache` whose
  * background refresh loop calls `K3sService`/`K8sService` (Fabric8, via `K8sClientProvider`)
  * on every refresh cycle, and conditionally a `MetricsCollector` that queries
- * `VictoriaMetricsQueryService` (`HttpClientFactory`) when Redis is configured. Both run inside
+ * `MimirQueryService` (`ObservabilityHttp`) when Redis is configured. Both run inside
  * this command's own execution, not as separate `PicoCommand`s, so the tunnel must be
  * established before [execute] starts the server.
  */

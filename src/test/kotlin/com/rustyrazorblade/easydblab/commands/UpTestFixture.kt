@@ -34,6 +34,7 @@ import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
+import com.rustyrazorblade.easydblab.services.RecordingAnnotationMirror
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
@@ -48,7 +49,6 @@ import org.junit.jupiter.api.BeforeEach
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
-import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.whenever
@@ -130,7 +130,7 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected fun ciliumAnnotationModule(): Module =
         module {
             single { mock<GrafanaDashboardService>().also { mockGrafanaDashboardService = it } }
-            single { CiliumInstallAnnotator(get()) }
+            single { CiliumInstallAnnotator(get(), RecordingAnnotationMirror()) }
         }
 
     override fun additionalTestModules(): List<Module> =
@@ -320,7 +320,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.success(Unit))
 
-        whenever(mockObservabilityStackService.deploy(any(), anyOrNull())).thenReturn(Result.success(Unit))
+        whenever(mockObservabilityStackService.deploy(any())).thenReturn(Result.success(Unit))
 
         whenever(mockCommandExecutor.execute<PicoCommand>(any())).thenAnswer { invocation ->
             @Suppress("UNCHECKED_CAST")

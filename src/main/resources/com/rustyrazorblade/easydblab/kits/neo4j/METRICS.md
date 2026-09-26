@@ -61,7 +61,7 @@ HTTP API has served a request.
 
 `http_route` is templated, e.g. `/db/{databaseName}/query/v2` and `/db/{databaseName}/tx/commit`.
 
-The collector's spanmetrics connector derives the same requests from the agent's server spans:
+The collector's span_metrics connector derives the same requests from the agent's server spans:
 
 | Metric | Labels | Description |
 |--------|--------|-------------|

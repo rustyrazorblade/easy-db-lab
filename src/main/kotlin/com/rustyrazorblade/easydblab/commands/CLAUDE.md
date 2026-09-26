@@ -69,8 +69,7 @@ commands/
 │   ├── KitList.kt         # kit list — lists discoverable templates
 │   ├── KitSqlCommand.kt   # <kit> sql — runs SQL over the kit's JDBC endpoint; SOCKS-bridged when tunnel-only (#740)
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
-├── logs/                  # Log import/listing commands
-├── metrics/               # Metrics import/listing commands
+├── logs/                  # logs query — reads the cluster's logs from Loki
 ├── opensearch/            # OpenSearch commands
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
 ├── profile/               # Profile inspection and setup (profile show, profile setup)
@@ -226,12 +225,14 @@ Commands should delegate to these services:
 | `ClusterProvisioningService` | EC2 instance provisioning |
 | `ClusterConfigurationService` | Cluster configuration management |
 | `AWSResourceSetupService` | IAM roles, security groups, VPC setup (`services.aws`) |
-| `AwsS3BucketService` | S3 bucket admin: lifecycle, metrics, policies (`services.aws`) |
+| `AwsS3BucketService` | S3 bucket admin: creation, request metrics, policies (`services.aws`); never sets lifecycle rules |
 | `OpenSearchService` | OpenSearch domain management (`services.aws`) |
 | `GrafanaDashboardService` | Grafana dashboard deployment |
-| `VictoriaStreamService` | Stream metrics/logs to external Victoria instances |
-| `VictoriaBackupService` | Backup/restore VictoriaMetrics and VictoriaLogs |
-| `VictoriaLogsService` | VictoriaLogs query and ingestion |
+| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki on the control node (SOCKS unless Tailscale) |
+| `MimirQueryService` | PromQL instant queries against Mimir |
+| `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
+| `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |
+| `TeardownBackupService` | The pre-teardown flush `down` runs once, never retried (`TeardownFlushService`); records a success in `ClusterState.tailFlush` |
 | `TailscaleService` | Tailscale VPN setup on cluster nodes |
 | `RegistryService` | Container registry management |
 | `ClickHouseConfigService` | ClickHouse configuration |

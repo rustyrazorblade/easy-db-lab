@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-# Debug the Victoria Logs pipeline
-# Checks: OTel Collector pods, Victoria Logs
+# Debug the log pipeline
+# Checks: OTel Collector pods, Loki
 #
 # Don't exit on error - we want to see all diagnostic output
 set +e
@@ -22,8 +22,10 @@ if [ ! -f "$PROJECT_ROOT/state.json" ]; then
     exit 1
 fi
 
-# Get cluster info
+# Get cluster info. Loki runs native multi-tenancy: every query carries the cluster's tenant.
 CONTROL_IP=$(jq -r '.controlHost.publicIp // .hosts.Control[0].publicIp' "$PROJECT_ROOT/state.json")
+TENANT=$(jq -r '.initConfig.tenant // "default"' "$PROJECT_ROOT/state.json")
+CLUSTER_LABEL=$(jq -r '.name + "-" + .clusterId' "$PROJECT_ROOT/state.json")
 
 echo "=== Log Pipeline Debug ==="
 echo "Control IP: $CONTROL_IP"
@@ -39,16 +41,20 @@ echo "=== Step 2: OTel Collector Logs (last 30 lines) ==="
 kubectl logs -l app.kubernetes.io/name=otel-collector --tail=30 2>&1 || echo "Error getting OTel Collector logs"
 echo ""
 
-# Step 3: Victoria Logs pod
-echo "=== Step 3: Victoria Logs Pod Status ==="
-kubectl get pods -l app=victorialogs -o wide 2>&1 || echo "Error checking Victoria Logs pod"
+# Step 3: Loki pod
+echo "=== Step 3: Loki Pod Status ==="
+kubectl get pods -l app.kubernetes.io/name=loki -o wide 2>&1 || echo "Error checking Loki pod"
 echo ""
 
-# Step 4: Victoria Logs recent entries
-echo "=== Step 4: Victoria Logs - Recent Logs ==="
+# Step 4: Loki recent entries
+echo "=== Step 4: Loki - Recent Logs (tenant $TENANT, cluster $CLUSTER_LABEL) ==="
 if [ -n "$CONTROL_IP" ] && [ "$CONTROL_IP" != "null" ]; then
-    echo "Querying all logs (last 1h)..."
-    curl -s "http://$CONTROL_IP:9428/select/logsql/query?query=*&limit=10" 2>/dev/null | head -20 || echo "Error querying Victoria Logs"
+    echo "Querying this cluster's logs (last 1h)..."
+    curl -s -G "http://$CONTROL_IP:3100/loki/api/v1/query_range" \
+        -H "X-Scope-OrgID: $TENANT" \
+        --data-urlencode "query={cluster=\"$CLUSTER_LABEL\"}" \
+        --data-urlencode "since=1h" \
+        --data-urlencode "limit=10" 2>/dev/null | jq -r '.data.result[].values[][1]' | head -20 || echo "Error querying Loki"
 else
     echo "Control IP not available"
 fi

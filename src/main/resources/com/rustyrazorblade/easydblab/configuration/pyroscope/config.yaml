@@ -1,15 +1,39 @@
+# Native multi-tenancy: every write and query carries the cluster's tenant in X-Scope-OrgID.
+multitenancy_enabled: true
+
+# Pure v2 storage. The default, v1-v2-dual, writes every profile twice.
+architecture_storage: v2
+
+# The account bucket, under observability/profiles. Pyroscope v2 lays out its own directories
+# (segments, blocks) under this prefix. Nothing is written to the cluster's data bucket.
 storage:
   backend: s3
-  prefix: __PYROSCOPE_STORAGE_PREFIX__
+  prefix: __PROFILES_S3_PREFIX__
   s3:
-    bucket_name: __BUCKET_NAME__
+    bucket_name: __ACCOUNT_BUCKET__
     endpoint: s3.__AWS_REGION__.amazonaws.com
     region: __AWS_REGION__
+
+# The metastore holds the only index of the blocks this cluster wrote; v2 cannot rebuild it from
+# S3. Its data and Raft state live on the control node's disk (/data is a hostPath), so a pod
+# restart keeps every profile queryable.
+#
+# NEVER delete a profile by age: the index cleanup that drives v2 retention is off. v2 compaction
+# stays on: it merges this cluster's segments into blocks and keeps their data.
+metastore:
+  data_dir: /data/metastore/data
+  raft:
+    dir: /data/metastore/raft
+    snapshots_dir: /data/metastore/raft
+  index:
+    cleanup_interval: 0s
 
 self_profiling:
   disable_push: true
 
 limits:
+  # 0 means data is never deleted (the v2.2+ default is 31 days).
+  retention_period: 0s
   max_label_names_per_series: 30
   ingestion_rate_mb: 16
   ingestion_burst_size_mb: 32

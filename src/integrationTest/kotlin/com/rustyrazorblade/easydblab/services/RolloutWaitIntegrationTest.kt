@@ -1,28 +1,22 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
-import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
+import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.PodSpec
 import io.fabric8.kubernetes.api.model.PodSpecBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
-import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
-import io.fabric8.kubernetes.client.KubernetesClientBuilder
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.k3s.K3sContainer
-import org.testcontainers.utility.DockerImageName
 import java.time.Duration
 
 /**
@@ -37,27 +31,14 @@ import java.time.Duration
  * The pod image is preloaded into K3s and never pulled, so a registry stall cannot eat the wait's
  * budget; a timeout here is the rollout's, and its message carries the cluster's pod and event state.
  */
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class RolloutWaitIntegrationTest {
     companion object {
-        private const val NAMESPACE = "default"
-        private const val IMAGE = "busybox:1.36"
+        private const val NAMESPACE = "rollout-wait"
+        private const val IMAGE = SharedK3s.BUSYBOX_IMAGE
         private const val READY_DELAY_SECONDS = 5
         private const val TIMEOUT_SECONDS = 180
         private const val SHORT_TIMEOUT_SECONDS = 8
-
-        @Container
-        @JvmStatic
-        val k3s: K3sContainer =
-            K3sContainer(DockerImageName.parse("rancher/k3s:v1.30.6-k3s1"))
-                .withPrivilegedMode(true)
-                .withCreateContainerCmdModifier { cmd ->
-                    cmd.hostConfig!!
-                        .withCgroupnsMode("host")
-                        .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
-                }.withEnv("K3S_SNAPSHOTTER", "native")
-                .let { (it as K3sContainer).withPreloadedImages(IMAGE) }
     }
 
     private val controlHost =
@@ -74,14 +55,17 @@ class RolloutWaitIntegrationTest {
 
     @BeforeAll
     fun setup() {
-        val config = Config.fromKubeconfig(k3s.kubeConfigYaml)
-        client = KubernetesClientBuilder().withConfig(config).build()
+        SharedK3s.createNamespace(NAMESPACE)
+        client = SharedK3s.client()
         val clientProvider = mock<K8sClientProvider>()
         // Each operation closes the client it is handed, so every call gets a fresh one.
-        whenever(clientProvider.createClient(any())).thenAnswer {
-            KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
-        }
+        whenever(clientProvider.createClient(any())).thenAnswer { SharedK3s.client() }
         ops = DefaultK8sNamespaceOperations(clientProvider, EventBus(), podPollInterval = Duration.ofMillis(500))
+    }
+
+    @AfterAll
+    fun tearDown() {
+        client.close()
     }
 
     private fun podSpec(readinessCommand: String): PodSpec =

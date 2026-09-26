@@ -31,6 +31,21 @@ class ProfilingConfigTest {
     }
 
     @Test
+    fun `carries the cluster's tenant to the node`() {
+        val withTenant = config.copy(tenant = "acme")
+
+        assertThat(withTenant.toJson()).contains("\"tenant\": \"acme\"")
+        assertThat(parseProfilingConfig(withTenant.toJson())?.tenant).isEqualTo("acme")
+    }
+
+    @Test
+    fun `a document written before tenants existed reads as the default tenant`() {
+        val legacy = """{"enabled": true, "asprofArgs": ["-e", "cpu"]}"""
+
+        assertThat(parseProfilingConfig(legacy)?.tenant).isEqualTo("default")
+    }
+
+    @Test
     fun `encodes arguments as a JSON array so the node never re-splits them`() {
         assertThat(config.toJson()).contains("\"asprofArgs\"")
         // A single string would force the node to re-split; an array does not.

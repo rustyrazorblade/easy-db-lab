@@ -1,12 +1,17 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import io.fabric8.kubernetes.api.model.ConfigMapBuilder
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
+import io.fabric8.kubernetes.api.model.apps.Deployment
 import okhttp3.OkHttpClient
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -14,6 +19,7 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.inOrder
@@ -26,12 +32,12 @@ import org.mockito.kotlin.whenever
 /**
  * Test suite for GrafanaDashboardService.
  *
- * Tests datasource ConfigMap creation and the upload workflow using
- * GrafanaManifestBuilder (mocked), the tree uploader (mocked) and K8sService (mocked).
+ * Tests datasource ConfigMap creation and the upload workflow using the real
+ * GrafanaManifestBuilder, the tree uploader (mocked) and K8sService (mocked).
  */
 class GrafanaDashboardServiceTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockManifestBuilder: GrafanaManifestBuilder
+    private lateinit var manifestBuilder: GrafanaManifestBuilder
     private lateinit var mockTreeUploader: GrafanaDashboardTreeUploader
 
     private val testControlHost =
@@ -53,12 +59,6 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
                 }
 
                 single {
-                    mock<GrafanaManifestBuilder>().also {
-                        mockManifestBuilder = it
-                    }
-                }
-
-                single {
                     mock<GrafanaDashboardTreeUploader>().also {
                         mockTreeUploader = it
                     }
@@ -69,39 +69,31 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setupMocks() {
         mockK8sService = getKoin().get()
-        mockManifestBuilder = getKoin().get()
         mockTreeUploader = getKoin().get()
-        whenever(mockManifestBuilder.buildAllResources()).thenReturn(buildTestResources())
+        val stateManager = mock<ClusterStateManager>()
+        whenever(stateManager.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+        manifestBuilder = GrafanaManifestBuilder(TemplateService(stateManager, getKoin().get()))
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.workloadConfigHashes(any(), any(), any()))
+            .thenReturn(Result.success(mapOf(WorkloadRef(WorkloadKind.Deployment, "grafana") to "running-hash")))
     }
+
+    private val eventBus = EventBus()
 
     private fun service() =
         DefaultGrafanaDashboardService(
             mockK8sService,
-            mockManifestBuilder,
+            manifestBuilder,
             mockTreeUploader,
-            EventBus(),
+            eventBus,
             mock<OkHttpClient>(),
-        )
-
-    private fun buildTestResources(): List<HasMetadata> =
-        listOf(
-            ConfigMapBuilder()
-                .withNewMetadata()
-                .withName("grafana-dashboards-config")
-                .endMetadata()
-                .build(),
-            DeploymentBuilder()
-                .withNewMetadata()
-                .withName("grafana")
-                .endMetadata()
-                .build(),
+            ConfigChangeReport(mockK8sService, eventBus),
         )
 
     @Test
     fun `createDatasourcesConfigMap calls k8sService with correct params`() {
-        val result = service().createDatasourcesConfigMap(testControlHost)
+        val result = service().createDatasourcesConfigMap(testControlHost, "acme")
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(
@@ -115,7 +107,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
     @Test
     fun `uploadDashboards builds and applies all resources`() {
-        val result = service().uploadDashboards(testControlHost)
+        val result = service().uploadDashboards(testControlHost, "acme")
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(any(), any(), eq("grafana-datasources"), any(), any())
@@ -123,7 +115,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
     @Test
     fun `uploadDashboards puts the tree on the control node before the Grafana resources are applied`() {
-        service().uploadDashboards(testControlHost)
+        service().uploadDashboards(testControlHost, "acme")
 
         val order = inOrder(mockTreeUploader, mockK8sService)
         order.verify(mockTreeUploader).upload(testControlHost)
@@ -135,7 +127,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("ConfigMap creation failed")))
 
-        val result = service().uploadDashboards(testControlHost)
+        val result = service().uploadDashboards(testControlHost, "acme")
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to create Grafana datasources ConfigMap")
@@ -145,7 +137,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
     fun `uploadDashboards fails without touching K8s resources when the tree upload fails`() {
         whenever(mockTreeUploader.upload(any())).doThrow(IllegalStateException("sftp failed"))
 
-        val result = service().uploadDashboards(testControlHost)
+        val result = service().uploadDashboards(testControlHost, "acme")
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to upload Grafana dashboards").contains("sftp failed")
@@ -157,9 +149,52 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Apply failed")))
 
-        val result = service().uploadDashboards(testControlHost)
+        val result = service().uploadDashboards(testControlHost, "acme")
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to apply")
+    }
+
+    /**
+     * Grafana reads its datasources from `grafana-datasources` at start. A datasource change — such as
+     * the tenant header the Tempo and Pyroscope datasources send — must roll Grafana, or it keeps
+     * querying with the old provisioning while `up` reports success.
+     */
+    @Test
+    fun `a datasource change rolls Grafana through its config hash`() {
+        val service = service()
+
+        service.uploadDashboards(testControlHost, "acme").getOrThrow()
+        service.uploadDashboards(testControlHost, "acme").getOrThrow()
+        service.uploadDashboards(testControlHost, "other").getOrThrow()
+
+        val deployments = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, times(6)).applyResource(any(), deployments.capture())
+        val hashes =
+            deployments.allValues.filterIsInstance<Deployment>().map {
+                it.spec.template.metadata.annotations[Constants.K8s.CONFIG_HASH_ANNOTATION]
+            }
+        assertThat(hashes).hasSize(3).doesNotContainNull()
+        assertThat(hashes[1]).describedAs("same datasources, same hash").isEqualTo(hashes[0])
+        assertThat(hashes[2]).describedAs("a new tenant changes the datasources").isNotEqualTo(hashes[1])
+    }
+
+    @Test
+    fun `uploadDashboards reports that Grafana rolls when its configuration differs from the running one`() {
+        val emitted = mutableListOf<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        service().uploadDashboards(testControlHost, "acme").getOrThrow()
+
+        assertThat(emitted.filterIsInstance<Event.Grafana.WorkloadConfigCompared>())
+            .containsExactly(Event.Grafana.WorkloadConfigCompared("Deployment/grafana", changed = true))
     }
 }

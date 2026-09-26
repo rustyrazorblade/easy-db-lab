@@ -2,7 +2,7 @@
 
 ## Objective
 
-Deploy a 3-node Kafka cluster in KRaft mode, generate realistic producer/consumer load to activate all JMX metrics, scrape VictoriaMetrics to populate the metrics catalog, write METRICS.md, and build a Grafana dashboard — all while the cluster is live for iterative verification.
+Deploy a 3-node Kafka cluster in KRaft mode, generate realistic producer/consumer load to activate all JMX metrics, query Mimir to populate the metrics catalog, write METRICS.md, and build a Grafana dashboard — all while the cluster is live for iterative verification.
 
 ## Cluster Name
 
@@ -20,7 +20,7 @@ single
 
 ### 1. Provision the cluster
 
-Spin up 3 db nodes. The observability stack (OTel, VictoriaMetrics, Grafana) comes up automatically.
+Spin up 3 db nodes. The observability stack (OTel, Mimir, Loki, Grafana) comes up automatically.
 
 ```bash
 $EDB init kafka-metrics --db 3 --instance i4i.xlarge --up
@@ -75,23 +75,26 @@ Defaults: 1 MM messages, topic `perf-test`, group `bench-consumer`, reads from e
 
 ### 7. Verify OTel is scraping Kafka metrics
 
-Wait ~2 minutes after `kafka start` for the OTel collector to scrape and forward metrics to VictoriaMetrics. Verify with a quick count.
+Wait ~2 minutes after `kafka start` for the OTel collector to scrape and forward metrics to Mimir. Verify with a quick count. `TENANT` is the cluster's observability tenant (`init --tenant`, `default` if none was given); Mimir and Loki return nothing to a query without it.
 
 ```bash
 CONTROL_IP=$($EDB ip --private control0)
-curl -s "http://${CONTROL_IP}:8428/api/v1/label/__name__/values" | \
+TENANT=${TENANT:-default}
+curl -s -H "X-Scope-OrgID: ${TENANT}" "http://${CONTROL_IP}:9009/prometheus/api/v1/label/__name__/values" | \
   jq '[.data[] | select(startswith("kafka_"))] | length'
 ```
 
 Expected: at least 25 metric names. If 0, wait another minute and retry.
 
-### 8. Dump the full metrics catalog from VictoriaMetrics
+### 8. Dump the full metrics catalog from Mimir
 
-Query VictoriaMetrics for every series from both kafka scrape jobs and write to the catalog file.
+Query Mimir for every series from both kafka scrape jobs and write to the catalog file.
 
 ```bash
 CONTROL_IP=$($EDB ip --private control0)
-curl -s "http://${CONTROL_IP}:8428/api/v1/series?match[]={job=~\"kafka.*\"}" | \
+TENANT=${TENANT:-default}
+curl -sG -H "X-Scope-OrgID: ${TENANT}" "http://${CONTROL_IP}:9009/prometheus/api/v1/series" \
+  --data-urlencode 'match[]={job=~"kafka.*"}' | \
   jq '{
     workload: "kafka",
     exported_at: (now | todate),
@@ -133,7 +136,7 @@ $EDB down --auto-approve
 ## Notes
 
 - **Two OTel scrape jobs**: `kafka-exporter` (NodePort 32309) provides consumer lag and topic health; `kafka-jmx` (NodePort 32404) provides per-broker throughput and request latency. Both are registered automatically by `kafka start`.
-- **Metrics lag**: OTel scrapes on a 15s interval. After `kafka start`, wait at least 2 minutes before checking VictoriaMetrics to ensure both scrape jobs are live.
+- **Metrics lag**: OTel scrapes on a 15s interval. After `kafka start`, wait at least 2 minutes before checking Mimir to ensure both scrape jobs are live.
 - **JMX metrics are approximate**: The JMX NodePort (32404) load-balances across 3 broker pods. Each OTel instance hits a random broker, so per-broker metrics use `avg` in the dashboard rather than exact per-pod attribution.
 - **Kafka version**: Strimzi 1.0.0 supports Kafka 4.1.0, 4.1.1, 4.1.2, 4.2.0. The default is 4.2.0. Override with `kit install kafka --version 4.1.2`.
 - **Keep load running during dashboard work**: The producer/consumer perf tests finish quickly. For steps 11-13, re-run them periodically so Grafana panels have live data to display.

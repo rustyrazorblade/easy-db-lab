@@ -52,8 +52,8 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Ami.*` — AMI pruning, listing, validation
 - `Event.Docker.*` — Container lifecycle operations
 - `Event.Mcp.*` — MCP tool execution
-- `Event.Logs.*` — Log query and backup operations
-- `Event.Metrics.*` — Metrics backup and import
+- `Event.Logs.*` — Log queries (`logs query`)
+- `Event.Metrics.*` — The MCP live metrics stream (`Node`, `System`, `Cassandra`)
 - `Event.Setup.*` — Profile setup and initialization
 - `Event.Ssh.*` — SSH remote command execution
 - `Event.Platform.*` — Platform substrate operations (StorageClass, PVs, info)

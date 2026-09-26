@@ -4,7 +4,7 @@ The `sysbench` kit runs [sysbench](https://github.com/akopytov/sysbench) OLTP be
 against a running database kit. It is a bench kit: it does not deploy a database itself,
 but targets one you've already started, connecting over the MySQL or PostgreSQL wire
 protocol. Benchmark pods run inside the Kubernetes cluster, and per-interval results are
-pushed to VictoriaMetrics so you can watch throughput and latency live in Grafana.
+pushed to Mimir so you can watch throughput and latency live in Grafana.
 
 ## Prerequisites
 
@@ -76,7 +76,7 @@ easy-db-lab sysbench-tidb start
 
 Runs the benchmark for `--duration` seconds, streaming sysbench's interval output to
 your terminal. Each 10-second interval report (TPS, QPS, p99 latency, errors/s) is also
-pushed to VictoriaMetrics.
+pushed to Mimir.
 
 When the run finishes, the final sysbench summary (SQL statistics, throughput, latency
 percentiles, and errors) is written to `last-run.txt` in the kit's workspace directory
@@ -160,7 +160,7 @@ sysbench requires a custom Lua workload with ClickHouse-compatible schemas.
 ## Metrics & Dashboard
 
 The kit ships a **Sysbench Benchmark** Grafana dashboard, installed automatically. During
-a run, these metrics are pushed to VictoriaMetrics, labelled by instance (`kit`):
+a run, these metrics are pushed through the OTel collector to Mimir, labelled by instance (`kit`):
 
 | Metric | Description |
 |--------|-------------|

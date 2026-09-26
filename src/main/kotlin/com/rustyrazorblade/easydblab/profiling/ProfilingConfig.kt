@@ -17,10 +17,14 @@ import kotlinx.serialization.Serializable
  * @property enabled Stopping is an explicit `false`, never a deleted file, so "profiling is off"
  *   and "nobody has configured this node" stay distinguishable.
  * @property loopInterval JFR rotation interval handed to `asprof --loop`.
- * @property retentionMinutes Age bound on the profile directory; applies to unshipped chunks too.
- * @property maxBytes Byte ceiling on the profile directory, pruned oldest-first.
+ * @property retentionMinutes Age bound on shipped chunks. Unshipped and rejected chunks are never
+ *   pruned.
+ * @property maxBytes Byte ceiling on the profile directory. Shipped chunks are pruned oldest-first;
+ *   when only unshipped or rejected chunks remain at the ceiling, the node stops recording instead.
  * @property pyroscopeUrl Ingest base URL; the reconciler POSTs to `$pyroscopeUrl/ingest`.
  * @property clusterName Shipped as a Pyroscope series label alongside the node's hostname.
+ * @property tenant The cluster's observability tenant, sent in `X-Scope-OrgID` on every upload. A
+ *   document written before tenants existed reads as the default tenant.
  * @property updatedAt When the CLI last wrote this document, for operator forensics.
  */
 @Serializable
@@ -32,6 +36,7 @@ data class ProfilingConfig(
     val maxBytes: Long = Constants.Profiling.DEFAULT_MAX_BYTES,
     val pyroscopeUrl: String = "",
     val clusterName: String = "",
+    val tenant: String = Constants.Observability.DEFAULT_TENANT,
     val updatedAt: String = "",
 )
 

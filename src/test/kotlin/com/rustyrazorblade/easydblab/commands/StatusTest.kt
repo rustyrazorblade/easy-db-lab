@@ -306,6 +306,20 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
+    fun `execute shows the observability store of the cluster's tenant`() {
+        setupBasicClusterStateWithS3Bucket("test-bucket-123")
+        Status().execute()
+        val output = capturedOutput()
+        assertThat(output).contains("Tenant:    default")
+        assertThat(output).contains("s3://test-bucket-123/observability/traces")
+        assertThat(output).contains("s3://test-bucket-123/observability/profiles")
+        assertThat(output).contains("s3://test-bucket-123/observabilitymetrics/default")
+        assertThat(output).contains("s3://test-bucket-123/observability/logs")
+        assertThat(output).doesNotContain("observability/metrics/").doesNotContain("observability/logs/default")
+        assertThat(output).contains("s3://test-bucket-123/observability/annotations/default")
+    }
+
+    @Test
     fun `execute handles missing S3 bucket gracefully`() {
         setupBasicClusterState()
         Status().execute()

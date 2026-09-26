@@ -152,7 +152,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val sidecar =
             job.spec.template.spec.initContainers
                 .first { it.name == "otel-sidecar" }
-        assertThat(sidecar.image).isEqualTo("otel/opentelemetry-collector-contrib:latest")
+        assertThat(sidecar.image).isEqualTo("otel/opentelemetry-collector-contrib:0.161.0")
         assertThat(sidecar.args).containsExactly("--config=/etc/otel/otel-stress-sidecar-config.yaml")
 
         // Check env vars
@@ -308,7 +308,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `sidecar otel config resource should include resourcedetection processor`() {
+    fun `sidecar otel config resource should include the resource_detection processor`() {
         val templateService: TemplateService = getKoin().get()
         val config =
             templateService
@@ -316,9 +316,9 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                     DefaultStressJobService::class.java,
                     "/com/rustyrazorblade/easydblab/configuration/cassandra/otel-stress-sidecar-config.yaml",
                 ).substitute()
-        assertThat(config).contains("resourcedetection")
+        assertThat(config).contains("resource_detection")
         assertThat(config).contains("detectors: [env]")
-        assertThat(config).contains("processors: [resourcedetection, batch]")
+        assertThat(config).contains("processors: [resource_detection, batch]")
     }
 
     @Test
@@ -440,6 +440,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.alloc=512k")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.lock=10ms")
         assertThat(javaToolOptions).contains("-Dpyroscope.labels=cluster=test-cluster,job_name=stress-test-123")
+        assertThat(javaToolOptions).contains("-Dpyroscope.tenant.id=default")
     }
 
     /**
@@ -545,13 +546,14 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                                 ),
                             ),
                     ),
-                initConfig = InitConfig(telemetryRedirect = redirect),
+                initConfig = InitConfig(telemetryRedirect = redirect, tenant = "acme"),
             ),
         )
 
         val javaToolOptions = javaToolOptionsOf(stressJobConfig())
 
         assertThat(javaToolOptions).contains("-Dpyroscope.server.address=${redirect.profiles}")
+        assertThat(javaToolOptions).contains("-Dpyroscope.tenant.id=acme")
         assertThat(javaToolOptions)
             .describedAs("a redirect cluster must not point the stress agent at the control node")
             .doesNotContain("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")

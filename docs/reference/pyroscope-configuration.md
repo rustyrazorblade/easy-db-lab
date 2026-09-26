@@ -6,7 +6,7 @@ Reference for Pyroscope server configuration. Source: [Grafana Pyroscope docs](h
 
 Pyroscope is configured via a YAML file (`-config.file` flag) or CLI flags. CLI flags take precedence over YAML values. Environment variables can be used with `-config.expand-env=true` using `${VAR}` or `${VAR:-default}` syntax.
 
-View current config at the `/config` HTTP API endpoint.
+View the effective config at the `/api/v1/status/config` HTTP API endpoint (Pyroscope 2.3.1; `/config` returns 404).
 
 ## Key Configuration Sections
 
@@ -80,8 +80,7 @@ storage:
     [insecure: <boolean> | default = false]
     [signature_version: <string> | default = "v4"]
     [bucket_lookup_type: <string> | default = "auto"]
-    # NOTE: native_aws_auth_enabled exists on main but NOT in v1.18.0.
-    # In v1.18.0, leave access_key_id/secret_access_key empty to use
+    # Our deployment leaves access_key_id/secret_access_key empty to use
     # the default AWS SDK credential chain (env vars, IMDS).
     sse:
       [type: <string> | default = ""]           # SSE-KMS or SSE-S3
@@ -232,10 +231,12 @@ embedded_grafana:
 
 ## Relevant to Our Deployment
 
-Our Pyroscope deployment (`configuration/pyroscope/PyroscopeManifestBuilder.kt`) uses:
-- **S3 backend** — IAM role auth via IMDS (no explicit credentials; v1.18.0 lacks `native_aws_auth_enabled`, SDK defaults to credential chain)
-- **Single-binary mode** (`target: all`)
-- **Port 4040** for HTTP API
-- **Flat storage prefix** — `pyroscope.{name}-{id}` (Pyroscope rejects `/` in `storage.prefix`)
-- Config values substituted at build time via TemplateService (`__KEY__` placeholders)
-- Profiles received from: Java agent (Cassandra, Spark), eBPF agent (all nodes), stress jobs
+Our Pyroscope deployment (`configuration/pyroscope/PyroscopeManifestBuilder.kt`, image `grafana/pyroscope:2.3.1`) uses:
+- **Pure v2 storage** — `architecture_storage: v2`. The default, `v1-v2-dual`, writes every profile twice.
+- **Native multi-tenancy** — `multitenancy_enabled: true`. Every writer sends the cluster's tenant in `X-Scope-OrgID`; the Grafana datasource sends it on every query.
+- **Account bucket, `observability/profiles` prefix** — v2 lays out its own `segments/` and blocks under it. Nothing is written to the per-cluster data bucket. S3 auth uses IAM role credentials via IMDS (no explicit keys).
+- **No deletion by age** — `metastore.index.cleanup_interval: 0s` turns off the index cleanup that drives v2 retention, and `limits.retention_period: 0s` means data is never deleted (the v2.2+ default is 31 days). v2 compaction stays on; it merges this cluster's segments into blocks and keeps their data.
+- **Metastore on the node** — `metastore.data_dir`, `metastore.raft.dir` and `metastore.raft.snapshots_dir` live under `/data`, a hostPath at `/mnt/db1/pyroscope`. v2 finds blocks only through this index and cannot rebuild it from S3, so it must survive pod restarts.
+- **Single-binary mode** (`target: all`), **port 4040** for the HTTP API and the UI. With multi-tenancy on, the UI asks for a tenant on first visit (**Enter a Tenant ID**); enter the cluster's tenant (`init --tenant`, default `default`). It is kept per browser in localStorage (`pyroscope:tenantID`) and sent as `X-Scope-OrgID`; a link cannot preselect it. See [Profiling](../user-guide/profiling.md#pyroscope-ui).
+- Config values substituted at build time via TemplateService (`__ACCOUNT_BUCKET__`, `__AWS_REGION__`, `__PROFILES_S3_PREFIX__`).
+- Profiles received from: the Cassandra JFR shipper (`/ingest?format=jfr`), the Java agent (stress jobs, sidecar, Spark, Trino, Presto), and the Alloy eBPF agent (all nodes).

@@ -709,9 +709,11 @@ object Constants {
         const val ENTRY_WINDOW_MARGIN_MINUTES = 1L
 
         /**
-         * Loki's querier asks its ingester only for about the last `ingester.max_chunk_age` (Loki's
-         * default, 2h, left unset in `loki.yaml`); an older entry is answered from the store alone,
-         * so it is invisible until its chunk is flushed.
+         * Age beyond which a pushed entry may be outside the window Loki's querier asks its ingester
+         * about (`query_ingesters_within`, Loki's default 3h, left unset in `loki.yaml`). An entry
+         * outside that window is answered from the store alone, so it is invisible until its chunk is
+         * flushed. 2h is deliberately earlier than the 3h cutoff, so a flush happens whenever an
+         * entry might be outside the ingester window.
          */
         const val INGESTER_QUERY_WINDOW_HOURS = 2L
 

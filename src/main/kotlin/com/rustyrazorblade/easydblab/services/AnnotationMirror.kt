@@ -93,10 +93,11 @@ data class QueryableWait(
 /**
  * [AnnotationMirror] over Loki's push API.
  *
- * Loki's querier asks its ingester only for about the last `max_chunk_age`; an older entry is
- * answered from the store alone, so a backdated annotation would stay invisible until its chunk
- * went idle and was flushed (`chunk_idle_period`, 30m). When a push holds an annotation older than
- * that window, the mirror flushes the ingester, which writes the chunk to S3 and its series to the
+ * Loki's querier asks its ingester only for entries within `query_ingesters_within` (3h by
+ * default); an older entry is answered from the store alone, so a backdated annotation would stay
+ * invisible until its chunk went idle and was flushed (`chunk_idle_period`, 30m). When a push holds
+ * an annotation older than [Constants.Loki.INGESTER_QUERY_WINDOW_HOURS] (2h, deliberately earlier
+ * than that cutoff), the mirror flushes the ingester, which writes the chunk to S3 and its series to the
  * index the querier reads, and then waits until Loki answers each such annotation. Chunks keep
  * their age-based flushing; nothing about Loki's durability changes.
  *

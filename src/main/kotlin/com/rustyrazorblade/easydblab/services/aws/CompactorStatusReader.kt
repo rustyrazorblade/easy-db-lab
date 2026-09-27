@@ -37,6 +37,7 @@ data class CompactorContainerState(
  * @property exists whether the service exists (and is not inactive).
  * @property desiredCount the tasks the service asks for.
  * @property runningCount the tasks that run.
+ * @property pendingCount the tasks that ECS starts but that do not run yet.
  * @property taskId the current task, or the last stopped one; empty when there is none.
  * @property taskStatus that task's last status.
  * @property stoppedReason why that task stopped, when it did.
@@ -50,6 +51,7 @@ data class CompactorStatus(
     val exists: Boolean,
     val desiredCount: Int = 0,
     val runningCount: Int = 0,
+    val pendingCount: Int = 0,
     val taskId: String = "",
     val taskStatus: String = "",
     val stoppedReason: String = "",
@@ -59,9 +61,9 @@ data class CompactorStatus(
     val logLines: List<String> = emptyList(),
 ) {
     /**
-     * The state as the operator reads it, from the desired and running counts. A service that asks
-     * for a task but runs none is `failing` when its latest task stopped and `starting` otherwise, so
-     * a task that crashes in a loop never reads as running.
+     * The state as the operator reads it, from the desired, running and pending counts. A service
+     * that asks for a task but runs none is `starting` while a task is pending and `failing` when none
+     * is, so a task that crashes in a loop never reads as running.
      */
     val state: String
         get() =
@@ -70,13 +72,9 @@ data class CompactorStatus(
                 desiredCount == 0 && runningCount > 0 -> "stopping"
                 desiredCount == 0 -> "stopped"
                 runningCount > 0 -> "running"
-                taskStatus == STOPPED -> "failing"
-                else -> "starting"
+                pendingCount > 0 -> "starting"
+                else -> "failing"
             }
-
-    private companion object {
-        const val STOPPED = "STOPPED"
-    }
 }
 
 /** The compactor service, or null when it does not exist or is inactive. */
@@ -112,6 +110,7 @@ class CompactorStatusReader(
                 exists = true,
                 desiredCount = service.desiredCount(),
                 runningCount = service.runningCount(),
+                pendingCount = service.pendingCount(),
                 taskId = taskId,
                 taskStatus = task?.lastStatus().orEmpty(),
                 stoppedReason = task?.stoppedReason().orEmpty(),

@@ -62,7 +62,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Cleanup.*` — Per-node kit cleanup progress and completion
 - `Event.Server.*` — Server lifecycle (shutdown when the cluster's VPC no longer exists)
 - `Event.Sql.*` — Shared SQL query results, used by every SQL kit command
-- `Event.Compactor.*` — The account compactor service: `Started` (created, or scaled from 0 to 1 task), `AlreadyRunning` (left as it is), `Stopped` (desired count set to 0; emitted only after the update), `NotCreated` (a stop found no service and changed nothing), `KeptRunning` (`down` found other clusters that use the account bucket)
+- `Event.Compactor.*` — The account compactor service: `Started` (created, or scaled from 0 to 1 task), `AlreadyRunning` (left as it is), `Starting` (no task runs yet, but one is pending; left as it is), `NoTaskRunning` (an error: a task is asked for, but none runs or is pending; left as it is), `Stopped` (desired count set to 0; emitted only after the update), `NotCreated` (a stop found no service and changed nothing), `KeptRunning` (`down` found other clusters that use the account bucket)
 - `Event.Message` / `Event.Error` — Generic types (kept for tests only, zero production usage)
 
 ## Adding New Events

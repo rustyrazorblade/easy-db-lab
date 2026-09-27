@@ -75,7 +75,7 @@ class CompactorStatus : CompactorCommand() {
         println(
             """
             |Account compactor: ${status.state} (region ${status.region})
-            |Tasks: ${status.runningCount} running, ${status.desiredCount} desired
+            |Tasks: ${status.runningCount} running, ${status.pendingCount} pending, ${status.desiredCount} desired
             |Task: $task
             |Stopped: $stopped
             |Containers:

@@ -107,12 +107,14 @@ class CompactorServiceTest {
         desired: Int,
         status: String = "ACTIVE",
         running: Int = 0,
+        pending: Int = 0,
     ) = Service
         .builder()
         .serviceName(Constants.Compactor.SERVICE)
         .status(status)
         .desiredCount(desired)
         .runningCount(running)
+        .pendingCount(pending)
         .build()
 
     @Test
@@ -244,6 +246,20 @@ class CompactorServiceTest {
         assertThat(Event.Compactor.NoTaskRunning("eu-west-1", 1).toDisplayString())
             .contains("eu-west-1")
             .contains("observability compactor status")
+    }
+
+    /** Fargate takes a minute or two to start a task: a pending task is starting, not an error. */
+    @Test
+    fun `a started service whose task is still pending is reported as starting, not as an error, and left as it is`() {
+        serviceIs(service(desired = 1, running = 0, pending = 1))
+
+        service.ensureRunning(bucket)
+
+        verify(ecs, never()).updateService(any<UpdateServiceRequest>())
+        verify(ecs, never()).createService(any<CreateServiceRequest>())
+        assertThat(events).contains(Event.Compactor.Starting("eu-west-1", 1))
+        assertThat(events).noneMatch { it is Event.Compactor.NoTaskRunning || it is Event.Compactor.AlreadyRunning }
+        assertThat(Event.Compactor.Starting("eu-west-1", 1).isError()).isFalse()
     }
 
     @Test

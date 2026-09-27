@@ -94,8 +94,9 @@ class DefaultCompactorService(
                     eventBus.emit(Event.Compactor.Started(region, arn))
                 }
                 // A started service is left as it is: a new configuration takes effect on the next start.
-                service.runningCount() == 0 -> eventBus.emit(Event.Compactor.NoTaskRunning(region, service.desiredCount()))
-                else -> eventBus.emit(Event.Compactor.AlreadyRunning(region, service.runningCount()))
+                service.runningCount() > 0 -> eventBus.emit(Event.Compactor.AlreadyRunning(region, service.runningCount()))
+                service.pendingCount() > 0 -> eventBus.emit(Event.Compactor.Starting(region, service.pendingCount()))
+                else -> eventBus.emit(Event.Compactor.NoTaskRunning(region, service.desiredCount()))
             }
         }
     }

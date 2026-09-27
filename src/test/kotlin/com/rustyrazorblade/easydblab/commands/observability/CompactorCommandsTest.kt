@@ -89,7 +89,7 @@ class CompactorCommandsTest : BaseKoinTest() {
 
         assertThat(output)
             .contains("Account compactor: running (region eu-west-1)")
-            .contains("1 running, 1 desired")
+            .contains("1 running, 0 pending, 1 desired")
             .contains("abc123 (RUNNING)")
             .contains("[mimir-compactor] compaction done")
         verifyNoInteractions(clusterStateManager)

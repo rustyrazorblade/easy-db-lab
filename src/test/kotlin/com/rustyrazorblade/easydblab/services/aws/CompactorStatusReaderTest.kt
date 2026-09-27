@@ -97,6 +97,7 @@ class CompactorStatusReaderTest {
     private fun service(
         desired: Int,
         running: Int,
+        pending: Int = 0,
         status: String = "ACTIVE",
         events: List<ServiceEvent> = emptyList(),
     ) = Service
@@ -105,6 +106,7 @@ class CompactorStatusReaderTest {
         .status(status)
         .desiredCount(desired)
         .runningCount(running)
+        .pendingCount(pending)
         .events(events)
         .build()
 
@@ -245,11 +247,28 @@ class CompactorStatusReaderTest {
     }
 
     @Test
-    fun `a service that asks for a task and runs none reads as starting until a task stops`() {
-        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, runningCount = 0, taskStatus = "PROVISIONING").state)
+    fun `the service's pending task count is reported`() {
+        tasks[DesiredStatus.RUNNING] = listOf(task("t1", createdAt = 100, lastStatus = "PROVISIONING"))
+        serviceIs(service(desired = 1, running = 0, pending = 1))
+
+        val status = reader.read(region)
+
+        assertThat(status.pendingCount).isEqualTo(1)
+        assertThat(status.state).isEqualTo("starting")
+    }
+
+    @Test
+    fun `a service that asks for a task reads as starting while one is pending, and failing when none runs or is pending`() {
+        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, pendingCount = 1, taskStatus = "PROVISIONING").state)
             .isEqualTo("starting")
-        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, runningCount = 0, taskStatus = "STOPPED").state)
+        // A pending replacement after a crash is still starting.
+        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, pendingCount = 1, taskStatus = "STOPPED").state)
+            .isEqualTo("starting")
+        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, pendingCount = 0, taskStatus = "STOPPED").state)
             .isEqualTo("failing")
+        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, pendingCount = 0).state).isEqualTo("failing")
+        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, runningCount = 1, pendingCount = 1).state)
+            .isEqualTo("running")
         assertThat(CompactorStatus(region, exists = true, desiredCount = 0, runningCount = 1).state).isEqualTo("stopping")
         assertThat(CompactorStatus(region, exists = true, desiredCount = 0, runningCount = 0).state).isEqualTo("stopped")
         assertThat(CompactorStatus(region, exists = false).state).isEqualTo("not created")

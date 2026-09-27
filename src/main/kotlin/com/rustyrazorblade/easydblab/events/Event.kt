@@ -5679,8 +5679,21 @@ sealed interface Event {
         }
 
         /**
-         * The compactor service in [region] asks for [desiredCount] task(s) but runs none, for example
-         * because its task fails and restarts. It is left as it is.
+         * The compactor service in [region] runs no task yet but has [pendingCount] task(s) starting, as
+         * Fargate does for a minute or two after a start. It is left as it is.
+         */
+        @Serializable
+        @SerialName("Compactor.Starting")
+        data class Starting(
+            val region: String,
+            val pendingCount: Int,
+        ) : Compactor {
+            override fun toDisplayString(): String = "Account compactor starting in $region ($pendingCount task(s) pending)"
+        }
+
+        /**
+         * The compactor service in [region] asks for [desiredCount] task(s) but runs none and has none
+         * pending, for example because its task fails and restarts. It is left as it is.
          */
         @Serializable
         @SerialName("Compactor.NoTaskRunning")

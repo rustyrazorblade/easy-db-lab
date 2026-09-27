@@ -808,7 +808,7 @@ easy-db-lab observability compactor stop
 
 Print the compactor's state, its desired and running task counts, and its current or last task with its state. It changes nothing.
 
-The state is one of `not created`, `stopped`, `stopping`, `starting`, `running` or `failing`. A compactor that asks for a task but runs none is `failing` when its latest task stopped, so a task that crashes in a loop never reads as running.
+The state is one of `not created`, `stopped`, `stopping`, `starting`, `running` or `failing`. A compactor that asks for a task but runs none is `starting` while a task is pending and `failing` when none is, so a task that crashes in a loop never reads as running.
 
 For that task it prints why the task stopped (ECS's stop code and reason) and each container's status, exit code and reason. It also prints the service's 5 newest events and the last 20 log lines of the task's containers.
 

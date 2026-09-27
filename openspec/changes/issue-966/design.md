@@ -41,7 +41,7 @@ data class TailFlushRecord(val signals: Map<TailSignal, SavedSignal> = emptyMap(
 data class SavedSignal(val completedAt: Instant, val verifiedObjects: Long)
 enum class TailSignal { LOGS, METRICS, TRACES, PROFILES, ANNOTATIONS }
 ```
-Only `LOGS` and `METRICS` ever appear in the record.  `markInfrastructureUp()` clears it.
+Only `LOGS` and `METRICS` appear as signals in the record.  A fully successful save also sets `saveCompletedAt` before the infrastructure teardown starts; a later `down` that finds it skips the whole save and opens no tunnel, because the control node may already be gone after a part-way teardown (owner decision after review round 2).  `markInfrastructureUp()` clears it.
 
 ### Tempo drain
 Tempo 3.0.3 has no flush endpoint; `/live-store/prepare-downscale` moves no data; a graceful stop cuts to the WAL and cancels the upload; a restart deletes a never-completed WAL block older than `complete_block_timeout` (20m).  So Tempo is never stopped or restarted.  The drain:

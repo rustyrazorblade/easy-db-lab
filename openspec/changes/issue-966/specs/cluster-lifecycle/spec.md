@@ -20,11 +20,11 @@ Before any infrastructure is torn down, the system MUST save everything the clus
 
 Rules for both phases:
 - Every step MUST have a timeout.  The Tempo drain's timeout is 5 minutes.
-- The logs signal and the metrics signal MUST each be recorded in the cluster state at the moment its flush succeeds, with the time it completed and what it verified.  One writer MUST make every state write, and each write MUST replace the state file atomically.  A `down` MUST skip a recorded signal.  The annotations backup, the collector stop, the Tempo drain and the profiles report MUST run on every `down`.  `up` MUST clear the record.
+- The logs signal and the metrics signal MUST each be recorded in the cluster state at the moment its flush succeeds, with the time it completed and what it verified.  One writer MUST make every state write, and each write MUST replace the state file atomically.  A `down` MUST skip a recorded signal.  The annotations backup, the collector stop, the Tempo drain and the profiles report MUST run on every `down` until a save succeeds for every signal.  When every Phase B step succeeds, the record MUST also note that the save is complete, before the infrastructure teardown starts; a later `down` that finds this note MUST skip both phases, open no tunnel, report every signal as already saved, and go straight to the teardown.  `up` MUST clear the record.
 - IF any step fails or times out, `down` MUST stop after every Phase B step has finished: it MUST NOT tear down any infrastructure, MUST NOT start, scale up or restart any backend or the collector, and MUST leave each backend as its step left it.  It MUST report every failed signal with its step and cause, the state of each backend (running, ingester stopped, or scaled to 0), and that `down --force` tears down without the data not yet saved, and it MUST exit non-zero.  The write-ahead data and local blocks stay on the control node's disk.
 - `down` MUST NOT retry a step within one run.
 - `down` MUST NEVER scale Loki or Mimir up or recreate a backend pod.  A teardown that fails after a successful save MUST restore nothing and MUST report the teardown failure.
-- The `--force` flag MUST skip both phases.  It MUST list the signals that will not be saved with the teardown preview, before the confirmation prompt.  The list is every signal not yet recorded among logs and metrics, plus traces and annotations; profiles are never listed.
+- The `--force` flag MUST skip both phases.  It MUST list the signals that will not be saved with the teardown preview, before the confirmation prompt.  The list is every signal not yet recorded among logs and metrics, plus traces and annotations, and it is empty once a complete save is recorded; profiles are never listed.
 - A cluster that redirects its telemetry MUST skip both phases.
 - Teardown is final.  Once `down` has saved the tail and started the infrastructure teardown, the cluster is done: no operation is supported on it afterwards (no `up`, no `grafana update-config`, no start, scale-up or restart of any backend).  Re-running `down` is the only supported step.  Behavior of any other operation on such a cluster is out of scope.
 
@@ -132,6 +132,13 @@ Rules for both phases:
 - **WHEN** the process is interrupted before the Tempo drain ends
 - **THEN** the cluster state already records the logs and metrics signals
 - **AND** the next `down` skips them
+
+#### Scenario: A re-run after a complete save goes straight to teardown
+
+- **GIVEN** a cluster whose state records a complete save, and whose infrastructure teardown then failed part-way, with the control node already gone
+- **WHEN** the user runs `down` again and confirms
+- **THEN** no save step runs and no tunnel to the control node is opened
+- **AND** every signal is reported as already saved, and the teardown goes ahead
 
 #### Scenario: A re-run after a stopped Loki reports the real cause
 

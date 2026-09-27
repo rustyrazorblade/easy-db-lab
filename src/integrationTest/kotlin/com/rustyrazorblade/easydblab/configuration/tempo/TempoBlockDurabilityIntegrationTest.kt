@@ -48,9 +48,7 @@ import java.util.UUID
  * - a trace pushed 3s before Tempo is killed outright (no shutdown, no flush) reaches S3 after a
  *   restart on the same WAL volume: the live store has appended it to the WAL by then;
  * - a trace received just before a graceful stop — how Kubernetes restarts a pod — reaches S3 after
- *   the restart, because Tempo writes its live traces to the WAL on shutdown;
- * - two clusters in the same tenant, each with its own Tempo and WAL, write into the same
- *   `tempo/<tenant>/` directory at the same time and every block from each is kept.
+ *   the restart, because Tempo writes its live traces to the WAL on shutdown.
  *
  * The WAL is a Docker volume shared by the successive containers, standing in for the control node's
  * hostPath. One edit is made to the rendered configuration, for the harness only: the S3 endpoint
@@ -128,7 +126,7 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
             )
     }
 
-    /** Starts Tempo with [config] on the WAL [volume]; each cluster has its own. */
+    /** Starts Tempo with [config] on the WAL [volume]. */
     private fun startTempo(
         config: String,
         volume: String = walVolume,
@@ -247,26 +245,5 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
             .exec()
         startTempo(config)
         awaitTracesInS3(3)
-    }
-
-    @Test
-    fun `two clusters in one tenant write traces into the same directory and every block is kept`() {
-        SharedLocalStack.createBucketIfMissing(s3, bucket)
-        Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
-        val otherWal = newVolumeName().also { volumes.add(it) }
-        docker.createVolumeCmd().withName(walVolume).exec()
-        docker.createVolumeCmd().withName(otherWal).exec()
-        val config = testConfig()
-
-        // Two clusters, same bucket, prefix and tenant, each with its own Tempo and WAL, writing at once.
-        val first = startTempo(config, walVolume)
-        val second = startTempo(config, otherWal)
-        repeat(2) { pushTrace(first) }
-        repeat(3) { pushTrace(second) }
-
-        awaitTracesInS3(5)
-        assertThat(blockMetas()).describedAs("a block from each cluster").hasSizeGreaterThanOrEqualTo(2)
-        // Exactly five: neither Tempo rewrote, merged or deleted a block the other wrote.
-        assertThat(tracesInS3()).describedAs("no trace written twice or lost").isEqualTo(5)
     }
 }

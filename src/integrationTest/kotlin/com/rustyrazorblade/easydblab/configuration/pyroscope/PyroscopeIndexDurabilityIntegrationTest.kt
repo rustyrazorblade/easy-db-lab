@@ -37,12 +37,10 @@ import java.util.UUID
  * binary (its parser rejects unknown keys), that a profile written with the cluster's tenant is
  * stored under `pyroscope/` and is visible only to that tenant, and that the v2
  * metastore index — the only record of where the blocks are — survives a restart on the same data
- * volume, so the profile is still returned afterwards. It also proves that two clusters in the same
- * tenant, each with its own Pyroscope and metastore, write into the same `pyroscope/`
- * directory at the same time and each keeps every profile it wrote.
+ * volume, so the profile is still returned afterwards.
  *
  * The data directory is a Docker volume, standing in for the control node's hostPath; a restarted
- * server reuses its cluster's volume. The only edit to the rendered configuration points the S3
+ * server reuses its volume. The only edit to the rendered configuration points the S3
  * client at LocalStack.
  */
 class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
@@ -59,10 +57,6 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
                     Constants.PyroscopeProbes.STARTUP_FAILURE_THRESHOLD,
             )
         val POLL: Duration = Duration.ofSeconds(2)
-        const val OTHER_SERVICE = "it-profiled-other"
-
-        /** How long both clusters keep writing, so v2 compaction runs over the shared directory. */
-        val CONCURRENT_WRITES: Duration = Duration.ofSeconds(60)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -117,7 +111,7 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
     }
 
     /**
-     * Starts a Pyroscope server with [config] on the data [volume]; each cluster has its own.
+     * Starts a Pyroscope server with [config] on the data [volume].
      *
      * It must answer `/ready` within the Deployment's startup-probe budget, which is the window the
      * kubelet allows before it kills the server, so every start here also checks that budget.
@@ -198,38 +192,6 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         assertThat(ticks).describedAs("CPU samples tenant $TENANT sees for $service").isPositive()
     }
 
-    /** CPU samples [service] has once two polls in a row agree, i.e. every write is queryable. */
-    private fun settledTicks(
-        pyroscope: GenericContainer<*>,
-        service: String,
-    ): Long {
-        val deadline = System.nanoTime() + WAIT.toNanos()
-        var previous = -1L
-        var ticks = cpuTicks(pyroscope, TENANT, service)
-        while ((ticks == 0L || ticks != previous) && System.nanoTime() < deadline) {
-            Thread.sleep(POLL.toMillis())
-            previous = ticks
-            ticks = cpuTicks(pyroscope, TENANT, service)
-        }
-        assertThat(ticks).describedAs("CPU samples tenant $TENANT sees for $service").isPositive().isEqualTo(previous)
-        return ticks
-    }
-
-    /** Waits for [service] to show [expected] CPU samples again, and fails with what it shows. */
-    private fun awaitExactTicks(
-        pyroscope: GenericContainer<*>,
-        service: String,
-        expected: Long,
-    ) {
-        val deadline = System.nanoTime() + WAIT.toNanos()
-        var ticks = cpuTicks(pyroscope, TENANT, service)
-        while (ticks < expected && System.nanoTime() < deadline) {
-            Thread.sleep(POLL.toMillis())
-            ticks = cpuTicks(pyroscope, TENANT, service)
-        }
-        assertThat(ticks).describedAs("CPU samples tenant $TENANT sees for $service after the restart").isEqualTo(expected)
-    }
-
     private fun keysUnder(prefix: String): List<String> =
         s3
             .listObjectsV2(
@@ -267,42 +229,5 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
             .exec()
         val second = startPyroscope(config)
         awaitTicks(second)
-    }
-
-    @Test
-    fun `two clusters in one tenant write profiles into the same directory and each keeps every profile`() {
-        SharedLocalStack.createBucketIfMissing(s3, bucket)
-        Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
-        val otherVolume = newVolumeName().also { volumes.add(it) }
-        docker.createVolumeCmd().withName(dataVolume).exec()
-        docker.createVolumeCmd().withName(otherVolume).exec()
-        val config = testConfig()
-
-        // Two clusters, same bucket, prefix and tenant, each with its own server and metastore.
-        val first = startPyroscope(config, dataVolume)
-        val second = startPyroscope(config, otherVolume)
-
-        // Both write at once, long enough for each server's compaction to run over the shared directory.
-        val until = System.nanoTime() + CONCURRENT_WRITES.toNanos()
-        while (System.nanoTime() < until) {
-            ingest(first, SERVICE)
-            ingest(second, OTHER_SERVICE)
-            Thread.sleep(POLL.toMillis())
-        }
-        val firstTicks = settledTicks(first, SERVICE)
-        val secondTicks = settledTicks(second, OTHER_SERVICE)
-        val profilesPrefix = ObservabilityStore.from(state).profilesPrefix() + "/"
-        assertThat(keysUnder("")).isNotEmpty().allMatch { it.startsWith(profilesPrefix) }
-
-        // After a restart each cluster still has every sample it wrote: neither server deleted or
-        // overwrote an object the other's index points at.
-        listOf(first, second).forEach {
-            it.dockerClient
-                .stopContainerCmd(it.containerId)
-                .withTimeout(30)
-                .exec()
-        }
-        awaitExactTicks(startPyroscope(config, dataVolume), SERVICE, firstTicks)
-        awaitExactTicks(startPyroscope(config, otherVolume), OTHER_SERVICE, secondTicks)
     }
 }

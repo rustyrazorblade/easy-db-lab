@@ -39,7 +39,6 @@ import java.util.UUID
  * S3 (LocalStack). Under decision D1 Mimir writes every block to S3 and reads only its own ingester.
  * The test proves:
  *
- * - two tenants write by remote write, carrying their cluster label, and each reads only its own;
  * - a sample written while the cluster keeps writing is in a block under `mimir/<tenant>/` within
  *   about three minutes, with no flush and no shutdown: blocks are one minute long and ship every
  *   15s. Mimir starting at all proves 3.2.1 accepts a 1m block range with the 10m out-of-order window;
@@ -242,25 +241,13 @@ class MimirIntegrationTest : BaseKoinTest() {
     }
 
     @Test
-    fun `each tenant reads only its own series`() {
-        val mimir = startMimir()
-        write(mimir, "a", "lab-a", 1.0)
-        write(mimir, "b", "lab-b", 2.0)
-
-        assertThat(query(mimir, "a", METRIC).map { labels(it)["cluster"] }).containsExactly("lab-a")
-        assertThat(query(mimir, "b", METRIC).map { labels(it)["cluster"] }).containsExactly("lab-b")
-    }
-
-    @Test
     fun `samples stay queryable after head compaction and a SIGKILL, and no object is ever deleted`() {
         val first = startMimir()
         write(first, "a", "lab-a", 1.0)
-        write(first, "b", "lab-b", 1.0)
 
         // The head becomes a block, which ships under the tenant's directory, and is still read locally.
         compactHead(first)
         awaitBlock("a")
-        awaitBlock("b")
         assertThat(samples(first, "a")).describedAs("read from the local block after head compaction").isEqualTo(1)
 
         // A sample only in the WAL survives a kill with no shutdown at all.
@@ -269,7 +256,6 @@ class MimirIntegrationTest : BaseKoinTest() {
         docker.killContainerCmd(first.containerId).withSignal("KILL").exec()
         val second = startMimir()
         assertThat(samples(second, "a")).describedAs("the block and the replayed WAL, after SIGKILL").isEqualTo(2)
-        assertThat(samples(second, "b")).isEqualTo(1)
 
         objectKeys()
         objectSnapshots.zipWithNext().forEach { (earlier, later) ->

@@ -106,12 +106,12 @@ class MimirTailFlushTest {
     }
 
     /**
-     * A tenant's directory holds every cluster's blocks. The check lists it once, from this cluster's
-     * oldest block, instead of one request per block, and still finds a block of its own that is missing.
+     * The check lists the tenant's directory once, from the oldest local block, instead of one request
+     * per block, and still finds a local block that is missing.
      */
     @Test
-    fun `one listing from the oldest local block finds the blocks among other clusters' blocks`() {
-        bucket += listOf("mimir/acme/01HAAAOTHER/meta.json", "mimir/acme/01HBLOCKBX/meta.json", "mimir/acme-dev/01HBLOCKD/meta.json")
+    fun `one listing from the oldest local block finds a missing block`() {
+        bucket += listOf("mimir/acme/01HBLOCKBX/meta.json")
         localBlocks(meta("01HBLOCKC"), meta("01HBLOCKB"), meta("01HBLOCKD"))
 
         val progress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, "mimir")

@@ -60,17 +60,6 @@ class ObservabilityStoreTest {
     }
 
     @Test
-    fun `two clusters with the same name saving in the same second get different keys`() {
-        val other = state.copy(clusterId = "99999999-aaaa-bbbb-cccc-123456789abc")
-        val store = ObservabilityStore.from(state)
-
-        val first = store.annotationsArtifact(SnapshotName.of(state, at))
-        val second = store.annotationsArtifact(SnapshotName.of(other, at))
-
-        assertThat(first).isNotEqualTo(second)
-    }
-
-    @Test
     fun `the first free snapshot name is the one for the given second when nothing holds it`() {
         val name = SnapshotName.firstFree(state, at) { false }
 

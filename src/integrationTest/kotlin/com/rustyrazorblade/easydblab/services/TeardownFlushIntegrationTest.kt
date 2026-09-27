@@ -54,8 +54,9 @@ import java.util.concurrent.atomic.AtomicInteger
  * `/ready` for its Kubernetes readiness. Nothing is started again (owner decision, 2026-09-26). It proves:
  *
  * - a save puts Loki's chunks and index (a backdated table too), Mimir's head as blocks, and the
- *   spans pushed just before it in S3 (a second Tempo with no local data finds each by trace ID); the Tempo drain passes only once those live
- *   traces are cut and uploaded, never stopping Tempo;
+ *   spans pushed just before the Tempo drain starts in S3: the writer Tempo is paused the moment the
+ *   drain returns, and a second Tempo with no local data finds each by trace ID. The drain passes
+ *   only once those live traces are cut and uploaded, never stopping Tempo;
  * - logs and metrics are recorded in the state file while the Tempo drain still runs;
  * - a re-run skips the recorded signals and runs the Tempo drain and the annotations backup again;
  * - a Loki killed before it builds its index fails the write-ahead check and stays at 0, its
@@ -74,6 +75,8 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
         val RECORD_WAIT: Duration = Duration.ofMinutes(5)
         val POLL: Duration = Duration.ofSeconds(1)
         val READER_WAIT: Duration = Duration.ofMinutes(2)
+        val UNDRAINED_WAIT: Duration = Duration.ofSeconds(30)
+        val UNDRAINED_POLL: Duration = Duration.ofMillis(200)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -145,6 +148,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
 
     @AfterEach
     fun cleanUp() {
+        runCatching { resumeWriterTempo() }
         containers.forEach { runCatching { it.stop() } }
         (listOf(lokiVolume, mimirVolume, tempoVolume) + volumes).forEach { runCatching { docker.removeVolumeCmd(it).exec() } }
     }
@@ -411,11 +415,17 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     /**
      * The Tempo drain, but it first waits for logs and metrics to be recorded in [stateFile]: the
      * drain is still running when they are, as a `down` interrupted during the drain would find them.
+     *
+     * Then it pushes [lateTraces] and waits until Tempo shows them not yet in an uploaded block, so
+     * the real drain starts with traces to wait for. The moment the drain returns, the writer Tempo
+     * is paused: from then on nothing more reaches S3, and a reader finds only what the drain waited for.
      */
     private inner class DrainAfterRecords(
         private val stateFile: ClusterStateManager,
     ) : SignalFlush {
         var recordedBeforeDrainEnded = false
+        var lateTraces: List<String> = emptyList()
+        var undrainedAtDrainStart = false
 
         override fun flush(
             controlHost: ClusterHost,
@@ -427,8 +437,63 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
                 Thread.sleep(POLL.toMillis())
             }
             recordedBeforeDrainEnded = recorded(stateFile).containsAll(TailSignal.RECORDED)
-            return tempoDrain().flush(controlHost, clusterState, progress)
+            lateTraces = listOf(pushSpan(), pushSpan())
+            undrainedAtDrainStart = awaitUndrainedTempo()
+            val report = tempoDrain().flush(controlHost, clusterState, progress)
+            pauseWriterTempo()
+            return report
         }
+    }
+
+    /**
+     * Waits until Tempo holds a live trace or a WAL block not yet complete: traces the drain must
+     * wait for. Returns whether it saw one.
+     */
+    private fun awaitUndrainedTempo(): Boolean {
+        val tempo = running.getValue(Constants.K8s.TEMPO_APP_LABEL)
+        val deadline = Instant.now().plus(UNDRAINED_WAIT)
+        while (Instant.now().isBefore(deadline)) {
+            val metrics =
+                ObservabilityBackends
+                    .get(
+                        "${ObservabilityBackends.baseUrl(tempo, Constants.K8s.TEMPO_PORT)}/metrics",
+                        TENANT,
+                    ).body()
+            val live = TempoTailFlush.series(metrics, TempoTailFlush.LIVE_TRACES).values.sum()
+            val wal =
+                helper
+                    .execInContainer(
+                        "find",
+                        TempoTailFlush.WAL_DIR,
+                        "-mindepth",
+                        "2",
+                        "-maxdepth",
+                        "2",
+                        "-name",
+                        "meta.json",
+                        "-printf",
+                        "%P\\n",
+                    ).stdout
+                    .lines()
+                    .filter { it.isNotBlank() }
+            if (live > 0 || TempoTailFlush.pendingWalBlocks(wal).isNotEmpty()) return true
+            Thread.sleep(UNDRAINED_POLL.toMillis())
+        }
+        return false
+    }
+
+    private val paused = mutableListOf<String>()
+
+    /** Freezes the writer Tempo: it neither cuts nor uploads another block until [resumeWriterTempo]. */
+    private fun pauseWriterTempo() {
+        val id = running.getValue(Constants.K8s.TEMPO_APP_LABEL).containerId
+        docker.pauseContainerCmd(id).exec()
+        paused.add(id)
+    }
+
+    private fun resumeWriterTempo() {
+        paused.toList().forEach { docker.unpauseContainerCmd(it).exec() }
+        paused.clear()
     }
 
     private fun recorded(stateFile: ClusterStateManager): Set<TailSignal> =
@@ -466,16 +531,24 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
         assertThat(index).anyMatch { it.startsWith("$LOGS_PREFIX/index/index_${day(backdated)}/") }
         assertThat(keys("$LOGS_PREFIX/$TENANT/")).isNotEmpty()
         assertThat(keys("${Constants.Observability.METRICS_ROOT}/$TENANT/")).anyMatch { it.endsWith("/meta.json") }
+        assertThat(drain.undrainedAtDrainStart)
+            .describedAs("the drain started while Tempo held traces not yet in an uploaded block")
+            .isTrue()
+        // The writer Tempo is paused since the drain returned, so it uploads nothing more: every
+        // trace the reader finds was in S3 when the drain returned.
+        val allTraces = traces + drain.lateTraces
         assertThat(
-            traceIdsInS3(traces),
-        ).describedAs("trace IDs a Tempo with no local data finds in S3").containsExactlyInAnyOrderElementsOf(traces)
+            traceIdsInS3(allTraces),
+        ).describedAs("trace IDs a Tempo with no local data finds in S3").containsExactlyInAnyOrderElementsOf(allTraces)
         assertThat(drain.recordedBeforeDrainEnded).describedAs("logs and metrics recorded while the Tempo drain ran").isTrue()
         assertThat(stateFile.load().tailFlush?.signals).containsOnlyKeys(TailSignal.LOGS, TailSignal.METRICS)
+        assertThat(stateFile.load().tailFlush?.saveCompletedAt).describedAs("the save recorded as complete").isNotNull()
         // Tempo is never stopped or restarted; Loki and Mimir are left at 0.
         assertThat(containerIds()).containsExactly(entry(Constants.K8s.TEMPO_APP_LABEL, tempo))
+        resumeWriterTempo()
 
-        // A re-run finds logs and metrics recorded: Loki and Mimir (gone) are never called, and the
-        // collector stop, the Tempo drain and the annotations backup run again.
+        // A re-run of the save finds logs and metrics recorded: Loki and Mimir (gone) are never
+        // called, and the collector stop, the Tempo drain and the annotations backup run again.
         val rerun = DefaultTeardownBackupService(flushService(), stateFile).backupBeforeTeardown(control, stateFile.load()).getOrThrow()
 
         assertThat(rerun.saved.keys).containsExactlyInAnyOrder(TailSignal.TRACES, TailSignal.PROFILES, TailSignal.ANNOTATIONS)

@@ -8,12 +8,15 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import io.fabric8.kubernetes.client.KubernetesClientException
+import kotlinx.serialization.SerializationException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.io.IOException
+import java.io.UncheckedIOException
 import java.time.Duration
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -189,19 +192,62 @@ class TeardownFlushServiceTest {
         assertThat(outcome.failed.getValue(TailSignal.METRICS).backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
     }
 
-    /** An HTTP error and a Kubernetes API error fail their signal; they do not escape the save. */
+    /** An HTTP error, a Kubernetes API error and a failed remote command fail their signal; they do not escape the save. */
     @Test
     fun `an HTTP or Kubernetes error fails only its signal`() {
         val outcome =
             service(
                 loki = FakeFlush("loki", SignalReport.Logs, "loki") { throw IOException("connection reset") },
                 mimir = FakeFlush("mimir", SignalReport.Metrics, "mimir") { throw KubernetesClientException("forbidden") },
+                tempo =
+                    FakeFlush("tempo", SignalReport.Traces, "tempo") {
+                        throw RemoteCommandFailedException("curl tempo", "", "connection refused", "Tempo's readiness check failed")
+                    },
             ).saveTail(control, state, all)
 
-        assertThat(outcome.failed.keys).containsExactlyInAnyOrder(TailSignal.LOGS, TailSignal.METRICS)
+        assertThat(outcome.failed.keys).containsExactlyInAnyOrder(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES)
         assertThat(outcome.failed.getValue(TailSignal.LOGS)).hasMessageContaining("connection reset")
         assertThat(outcome.failed.getValue(TailSignal.METRICS)).hasMessageContaining("forbidden")
-        assertThat(outcome.saved.keys).contains(TailSignal.TRACES, TailSignal.ANNOTATIONS)
+        assertThat(outcome.failed.getValue(TailSignal.TRACES)).hasMessageContaining("Tempo's readiness check failed")
+        assertThat(outcome.saved.keys).containsExactlyInAnyOrder(TailSignal.PROFILES, TailSignal.ANNOTATIONS)
+    }
+
+    /** A failure of any other type still fails only its signal: it never escapes and loses the others. */
+    @Test
+    fun `an unexpected exception fails only its signal`() {
+        val outcome =
+            service(
+                mimir = FakeFlush("mimir", SignalReport.Metrics, "mimir") { throw UnsupportedOperationException("unexpected") },
+            ).saveTail(control, state, all)
+
+        assertThat(outcome.failed.keys).containsExactly(TailSignal.METRICS)
+        assertThat(outcome.failed.getValue(TailSignal.METRICS).step).isEqualTo(FlushStep.MIMIR_SHUTDOWN)
+        assertThat(outcome.failed.getValue(TailSignal.METRICS)).hasMessageContaining("unexpected")
+        assertThat(outcome.failed.getValue(TailSignal.METRICS).backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
+        assertThat(outcome.saved.keys).contains(TailSignal.LOGS, TailSignal.TRACES, TailSignal.ANNOTATIONS)
+    }
+
+    @Test
+    fun `a record that fails with an unexpected exception fails only its signal`() {
+        val outcome =
+            service().saveTail(control, state, all) { signal, _ ->
+                if (signal == TailSignal.METRICS) throw SerializationException("state.json could not be encoded")
+            }
+
+        assertThat(outcome.failed.keys).containsExactly(TailSignal.METRICS)
+        assertThat(outcome.failed.getValue(TailSignal.METRICS).step).isEqualTo(FlushStep.RECORD_METRICS)
+        assertThat(outcome.saved.keys).contains(TailSignal.LOGS, TailSignal.TRACES, TailSignal.ANNOTATIONS)
+    }
+
+    @Test
+    fun `an unexpected exception from the collector stop fails only traces`() {
+        sendersFailure = UncheckedIOException(IOException("socket closed"))
+
+        val outcome = service().saveTail(control, state, all)
+
+        assertThat(outcome.failed.keys).containsExactly(TailSignal.TRACES)
+        assertThat(outcome.failed.getValue(TailSignal.TRACES).step).isEqualTo(FlushStep.SENDERS_STOP)
+        assertThat(outcome.saved.keys).contains(TailSignal.LOGS, TailSignal.METRICS, TailSignal.ANNOTATIONS)
     }
 
     @Test

@@ -5,13 +5,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
-import io.fabric8.kubernetes.client.KubernetesClientException
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.io.IOException
 import java.time.Duration
 import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
+import java.util.concurrent.FutureTask
 
 /**
  * How long each step of the pre-teardown save may take. Every step has a timeout, and a timeout
@@ -405,25 +404,21 @@ class DefaultTeardownFlushService private constructor(
     }
 
     /**
-     * Runs [block], turning a step's failure into a [FlushStepFailed] at [progress]'s step. A step
-     * fails with a failed check or timeout ([IllegalStateException]), an HTTP or file error
-     * ([IOException]), a Kubernetes API error, or a failed SSH or remote command.
+     * Runs [block] on the calling thread, turning any exception it throws into a [FlushStepFailed] at
+     * [progress]'s step, so one step's failure, of whatever type, never loses another signal's outcome.
+     * An [Error] is not a step's failure and is thrown on.
      */
     private fun <T> attempt(
         progress: FlushProgress,
         block: () -> T,
     ): Result<T> {
-        fun failed(failure: Exception) = Result.failure<T>(FlushStepFailed(progress.step, progress.backends, failure))
+        val step = FutureTask(block).apply { run() }
         return try {
-            Result.success(block())
-        } catch (failure: IllegalStateException) {
-            failed(failure)
-        } catch (failure: IOException) {
-            failed(failure)
-        } catch (failure: KubernetesClientException) {
-            failed(failure)
-        } catch (failure: EasyDBLabException) {
-            failed(failure)
+            Result.success(step.get())
+        } catch (failure: ExecutionException) {
+            val cause = failure.cause ?: failure
+            if (cause is Error) throw cause
+            Result.failure(FlushStepFailed(progress.step, progress.backends, cause))
         }
     }
 }

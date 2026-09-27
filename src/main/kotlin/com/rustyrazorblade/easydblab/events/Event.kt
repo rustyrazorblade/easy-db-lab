@@ -5668,13 +5668,31 @@ sealed interface Event {
             override fun toDisplayString(): String = "Account compactor started in $region ($taskDefinition)"
         }
 
-        /** The compactor service already runs in [region]; it is left as it is. */
+        /** The compactor service already runs [runningCount] task(s) in [region]; it is left as it is. */
         @Serializable
         @SerialName("Compactor.AlreadyRunning")
         data class AlreadyRunning(
             val region: String,
+            val runningCount: Int,
         ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor already running in $region"
+            override fun toDisplayString(): String = "Account compactor already running in $region ($runningCount task(s))"
+        }
+
+        /**
+         * The compactor service in [region] asks for [desiredCount] task(s) but runs none, for example
+         * because its task fails and restarts. It is left as it is.
+         */
+        @Serializable
+        @SerialName("Compactor.NoTaskRunning")
+        data class NoTaskRunning(
+            val region: String,
+            val desiredCount: Int,
+        ) : Compactor {
+            override fun toDisplayString(): String =
+                "Account compactor in $region asks for $desiredCount task(s) but runs none; " +
+                    "run `observability compactor status` to see why"
+
+            override fun isError(): Boolean = true
         }
 
         /** The compactor service's desired count was set to 0 in [region]. */

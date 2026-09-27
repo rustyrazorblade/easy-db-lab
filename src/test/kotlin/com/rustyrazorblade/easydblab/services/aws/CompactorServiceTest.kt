@@ -106,11 +106,13 @@ class CompactorServiceTest {
     private fun service(
         desired: Int,
         status: String = "ACTIVE",
+        running: Int = 0,
     ) = Service
         .builder()
         .serviceName(Constants.Compactor.SERVICE)
         .status(status)
         .desiredCount(desired)
+        .runningCount(running)
         .build()
 
     @Test
@@ -217,14 +219,31 @@ class CompactorServiceTest {
 
     @Test
     fun `a running service is left as it is`() {
-        serviceIs(service(desired = 1))
+        serviceIs(service(desired = 1, running = 1))
 
         service.ensureRunning(bucket)
 
         verify(ecs, never()).updateService(any<UpdateServiceRequest>())
         verify(ecs, never()).createService(any<CreateServiceRequest>())
         verify(ecs, never()).registerTaskDefinition(any<RegisterTaskDefinitionRequest>())
-        assertThat(events).contains(Event.Compactor.AlreadyRunning("eu-west-1"))
+        assertThat(events).contains(Event.Compactor.AlreadyRunning("eu-west-1", 1))
+        assertThat(events).noneMatch { it is Event.Compactor.NoTaskRunning }
+    }
+
+    /** A service that asks for a task but runs none, such as one whose task crash-loops, is not reported as running. */
+    @Test
+    fun `a started service with no running task is reported as not running, and left as it is`() {
+        serviceIs(service(desired = 1, running = 0))
+
+        service.ensureRunning(bucket)
+
+        verify(ecs, never()).updateService(any<UpdateServiceRequest>())
+        verify(ecs, never()).createService(any<CreateServiceRequest>())
+        assertThat(events).contains(Event.Compactor.NoTaskRunning("eu-west-1", 1))
+        assertThat(events).noneMatch { it is Event.Compactor.AlreadyRunning }
+        assertThat(Event.Compactor.NoTaskRunning("eu-west-1", 1).toDisplayString())
+            .contains("eu-west-1")
+            .contains("observability compactor status")
     }
 
     @Test

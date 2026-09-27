@@ -93,8 +93,9 @@ class DefaultCompactorService(
                     ecs.updateService(update().taskDefinition(arn).desiredCount(1).build())
                     eventBus.emit(Event.Compactor.Started(region, arn))
                 }
-                // A running service is left as it is: a new configuration takes effect on the next start.
-                else -> eventBus.emit(Event.Compactor.AlreadyRunning(region))
+                // A started service is left as it is: a new configuration takes effect on the next start.
+                service.runningCount() == 0 -> eventBus.emit(Event.Compactor.NoTaskRunning(region, service.desiredCount()))
+                else -> eventBus.emit(Event.Compactor.AlreadyRunning(region, service.runningCount()))
             }
         }
     }

@@ -802,6 +802,23 @@ class AwsInfrastructureServiceTest {
     }
 
     @Nested
+    inner class EnsureReusableInfrastructure {
+        @Test
+        fun `an existing compactor VPC gets its subnet in the requested availability zone`() {
+            val vpcId = "vpc-compactor"
+            whenever(vpcService.findVpcByName(Constants.Vpc.COMPACTOR_VPC_NAME)).thenReturn(vpcId)
+            whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn("sg-1")
+
+            val infrastructure = service.ensureReusableInfrastructure(InfrastructureConfig.forCompactor("us-east-1b"))
+
+            verify(vpcService).findOrCreateSubnet(eq(vpcId), any(), any(), any(), eq("us-east-1b"))
+            assertThat(infrastructure.subnetIds).containsExactly("subnet-1")
+        }
+    }
+
+    @Nested
     inner class SetupVpcNetworking {
         private val securityGroupId = "sg-cluster"
         private val vpcCidr = "10.42.0.0/16"

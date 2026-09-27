@@ -88,7 +88,7 @@ interface TelemetrySenders { fun stop(controlHost: ClusterHost, timeout: Duratio
 ### Upload settings
 - `mimir.yaml` `blocks_storage.tsdb`: `block_ranges_period: [1m]` (experimental and hidden in 3.2.1, no validation), `head_compaction_interval: 15s`, `ship_interval: 15s`, `head_compaction_idle_timeout: 2m`.
 - `tempo.yaml`: `live_store.max_block_duration: 1m`.
-- `loki.yaml`: `ingester.max_chunk_age: 5m` (sets the per-stream out-of-order window to 2.5 minutes; `reject_old_samples_max_age` stays); `storage_config.tsdb_shipper.resync_interval: 1m` (read side).
+- `loki.yaml`: `ingester.max_chunk_age: 15m` (sets the per-stream out-of-order window to 7.5 minutes; `reject_old_samples_max_age` stays); `storage_config.tsdb_shipper.resync_interval: 1m` (read side).
 
 ### Folded-in fixes
 - `DefaultSSHConnectionProvider`: `ConcurrentHashMap` with `compute`, replacing the unguarded check-then-`getOrPut`.
@@ -109,7 +109,7 @@ A platform-thread `ExecutorService` sized to the task count, with `use {}` and `
 - **D6, the former prefixes.** Chosen (owner override): remove every reference; deny only the new roots.  Rejected: the architect's recommendation to keep denying deletes under the former prefixes.
 - **D7, Mimir block size.** Chosen: 1-minute blocks, with the local-retention cut moved to #970.  Rejected: 5-minute blocks (about 7–8 minutes cross-cluster); measure first.
 - **D8, concurrency.** Chosen: platform-thread pool.  Rejected: `runBlocking(Dispatchers.IO)` with `awaitAll` (no service uses coroutines); `CompletableFuture.supplyAsync` on the common pool (may serialize on a small machine).
-- **Loki speed.** Chosen: `max_chunk_age: 5m`, `resync_interval: 1m` (about 12–15 minutes cross-cluster).  Rejected: `1m` (30-second out-of-order window); a patched Loki image; leaving the chunk settings.
+- **Loki speed.** Chosen: `max_chunk_age: 15m` (owner change after Seam 1: a 7.5-minute out-of-order window so a slow Loki restart drops no logs), `resync_interval: 1m`.  Rejected: `5m` (2.5-minute window, the Seam 1 choice); `1m` (30-second window); a patched Loki image; leaving the chunk settings.
 - **Tempo speed.** Chosen: `max_block_duration: 1m`.  Rejected: keeping 5 minutes; no Tempo step.
 - **Debt.** The architect's separate-issue item, an atomic `state.json` write, was folded in by D3.
 
@@ -124,7 +124,7 @@ From upstream source research of the pinned versions (research agent):
 ## Risks / Trade-offs
 
 - Mimir 1-minute blocks: about 1,440 local blocks per day per tenant, each with its own index, kept for the cluster's life until #970 cuts local retention; about 2,880 blocks for a 48-hour cluster.  S3 holds 1-minute blocks until #970's compactor merges them.
-- Loki's out-of-order window is 2.5 minutes: a line more than 2.5 minutes older than its stream's newest line is rejected (owner accepted).
+- Loki's out-of-order window is 7.5 minutes: a line more than 7.5 minutes older than its stream's newest line is rejected (owner accepted).
 - A telemetry-redirect target's Tempo keeps receiving spans from the source DC, so its drain times out while a source DC is up (owner: no handling).
 - After a failed `down`, the collector stays deleted (owner: no restore).
 - Thread safety: the SSH cache is fixed; the SOCKS proxy is lock-guarded; `EventBus` is synchronized; `ObservabilityHttp` and Fabric8 clients are per call.

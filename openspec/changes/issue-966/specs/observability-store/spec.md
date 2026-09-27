@@ -70,7 +70,7 @@ Each backend SHALL upload its data to S3 within minutes while the cluster runs, 
 
 - Mimir SHALL cut a block every minute and ship it within seconds: 1-minute blocks, a head compaction check every 15 seconds, a ship check every 15 seconds, and an idle head compacted after 2 minutes without writes.
 - Tempo SHALL cut a block at most every minute and upload it.
-- Loki SHALL flush a chunk when it is 5 minutes old, upload its index on its own fixed rotation, and re-list the index in S3 every minute.
+- Loki SHALL flush a chunk when it is 15 minutes old, upload its index on its own fixed rotation, and re-list the index in S3 every minute.
 
 The write-ahead data of Mimir, Loki and Tempo, and the Pyroscope metastore state, SHALL live on the control node's disk, so a restart of a backend pod does not lose data it acknowledged.
 
@@ -84,7 +84,7 @@ The write-ahead data of Mimir, Loki and Tempo, and the Pyroscope metastore state
 
 #### Scenario: Log chunks reach S3 within minutes
 - **WHEN** a cluster writes a log line to a stream that keeps writing
-- **THEN** a Loki chunk that holds it exists under `loki/<tenant>/` within about 5 minutes, while the cluster is still up
+- **THEN** a Loki chunk that holds it exists under `loki/<tenant>/` within about 15 minutes, while the cluster is still up
 - **AND** its index file reaches `loki/index/` at Loki's next index rotation
 
 #### Scenario: Restart loses no acknowledged data

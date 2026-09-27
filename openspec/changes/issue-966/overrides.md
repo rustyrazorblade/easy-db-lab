@@ -10,7 +10,7 @@
 
 ### observability-store: Data reaches S3 while the cluster is up and survives a restart
 **Currently:** Mimir ships 2-hour blocks within about a minute of cutting them; Loki flushes chunks by their age; Tempo cuts a block at most every 5 minutes.  Includes the scenario "Cause of the missing Tempo blocks is recorded" (issue 967).
-**This change:** Mimir cuts 1-minute blocks with 15-second compaction and ship checks and a 2-minute idle compaction; Tempo cuts a block at most every minute; Loki flushes a chunk at 5 minutes and re-lists its index every minute.  Scenarios assert upload within about 3 minutes (metrics), 2 minutes (traces) and 5 minutes (log chunks).  The issue-967 diagnosis scenario is dropped: that work is done and recorded on issue 967.
+**This change:** Mimir cuts 1-minute blocks with 15-second compaction and ship checks and a 2-minute idle compaction; Tempo cuts a block at most every minute; Loki flushes a chunk at 15 minutes and re-lists its index every minute.  Scenarios assert upload within about 3 minutes (metrics), 2 minutes (traces) and 15 minutes (log chunks).  The issue-967 diagnosis scenario is dropped: that work is done and recorded on issue 967.
 
 ### cluster-lifecycle: Cluster Teardown
 **Currently:** a sequential save: mirror, Loki flush, Mimir flush, annotations backup; the first failure stops `down` there; one all-or-nothing flush record, and a `down` that finds it skips the whole flush; if Loki or Mimir is stopped with no record, `down` stops before the flush; `--force` skips the steps; Tempo's tail is not saved.

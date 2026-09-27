@@ -26,16 +26,23 @@ import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse
 import software.amazon.awssdk.services.ecs.model.DescribeTaskDefinitionRequest
 import software.amazon.awssdk.services.ecs.model.DescribeTaskDefinitionResponse
+import software.amazon.awssdk.services.ecs.model.DescribeTasksRequest
+import software.amazon.awssdk.services.ecs.model.DescribeTasksResponse
+import software.amazon.awssdk.services.ecs.model.DesiredStatus
 import software.amazon.awssdk.services.ecs.model.InvalidParameterException
+import software.amazon.awssdk.services.ecs.model.ListTasksRequest
+import software.amazon.awssdk.services.ecs.model.ListTasksResponse
 import software.amazon.awssdk.services.ecs.model.RegisterTaskDefinitionRequest
 import software.amazon.awssdk.services.ecs.model.RegisterTaskDefinitionResponse
 import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.Tag
+import software.amazon.awssdk.services.ecs.model.Task
 import software.amazon.awssdk.services.ecs.model.TaskDefinition
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 import software.amazon.awssdk.services.s3.model.GetBucketLocationResponse
+import java.time.Instant
 
 /**
  * What `up`, `down` and the compactor commands do to the ECS service in each state it can be in:
@@ -101,6 +108,20 @@ class CompactorServiceTest {
     private fun serviceIs(vararg services: Service) {
         whenever(ecs.describeServices(any<DescribeServicesRequest>()))
             .thenReturn(DescribeServicesResponse.builder().services(*services).build())
+    }
+
+    /** The service has no task that should run, and [stopped] are its stopped tasks. */
+    private fun stoppedTasksAre(vararg stopped: Task) {
+        whenever(ecs.listTasks(any<ListTasksRequest>())).thenAnswer { invocation ->
+            val arns =
+                when (invocation.getArgument<ListTasksRequest>(0).desiredStatus()) {
+                    DesiredStatus.STOPPED -> stopped.map { it.taskArn() }
+                    else -> emptyList()
+                }
+            ListTasksResponse.builder().taskArns(arns).build()
+        }
+        whenever(ecs.describeTasks(any<DescribeTasksRequest>()))
+            .thenReturn(DescribeTasksResponse.builder().tasks(*stopped).build())
     }
 
     private fun service(
@@ -234,8 +255,16 @@ class CompactorServiceTest {
 
     /** A service that asks for a task but runs none, such as one whose task crash-loops, is not reported as running. */
     @Test
-    fun `a started service with no running task is reported as not running, and left as it is`() {
+    fun `a started service whose latest task stopped, with none pending, is reported as not running, and left as it is`() {
         serviceIs(service(desired = 1, running = 0))
+        stoppedTasksAre(
+            Task
+                .builder()
+                .taskArn("arn:aws:ecs:eu-west-1:1:task/easy-db-lab/t1")
+                .createdAt(Instant.ofEpochSecond(100))
+                .lastStatus("STOPPED")
+                .build(),
+        )
 
         service.ensureRunning(bucket)
 
@@ -246,6 +275,20 @@ class CompactorServiceTest {
         assertThat(Event.Compactor.NoTaskRunning("eu-west-1", 1).toDisplayString())
             .contains("eu-west-1")
             .contains("observability compactor status")
+    }
+
+    /** Before ECS places the first task, nothing runs, is pending, or has stopped: the service is starting. */
+    @Test
+    fun `a started service with no task placed yet is reported as starting, not as an error`() {
+        serviceIs(service(desired = 1, running = 0, pending = 0))
+        stoppedTasksAre()
+
+        service.ensureRunning(bucket)
+
+        verify(ecs, never()).updateService(any<UpdateServiceRequest>())
+        verify(ecs, never()).createService(any<CreateServiceRequest>())
+        assertThat(events).contains(Event.Compactor.Starting("eu-west-1", 0))
+        assertThat(events).noneMatch { it is Event.Compactor.NoTaskRunning || it is Event.Compactor.AlreadyRunning }
     }
 
     /** Fargate takes a minute or two to start a task: a pending task is starting, not an error. */

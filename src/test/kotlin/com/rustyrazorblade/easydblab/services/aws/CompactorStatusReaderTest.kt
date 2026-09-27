@@ -258,7 +258,17 @@ class CompactorStatusReaderTest {
     }
 
     @Test
-    fun `a service that asks for a task reads as starting while one is pending, and failing when none runs or is pending`() {
+    fun `a service with no task placed yet reads as starting`() {
+        serviceIs(service(desired = 1, running = 0))
+
+        val status = reader.read(region)
+
+        assertThat(status.taskId).isEmpty()
+        assertThat(status.state).isEqualTo("starting")
+    }
+
+    @Test
+    fun `a service that asks for a task reads as starting until a task stops with none pending, then failing`() {
         assertThat(CompactorStatus(region, exists = true, desiredCount = 1, pendingCount = 1, taskStatus = "PROVISIONING").state)
             .isEqualTo("starting")
         // A pending replacement after a crash is still starting.
@@ -266,7 +276,9 @@ class CompactorStatusReaderTest {
             .isEqualTo("starting")
         assertThat(CompactorStatus(region, exists = true, desiredCount = 1, pendingCount = 0, taskStatus = "STOPPED").state)
             .isEqualTo("failing")
-        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, pendingCount = 0).state).isEqualTo("failing")
+        // No task has stopped yet: ECS has not placed the first one.
+        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, pendingCount = 0).state).isEqualTo("starting")
+        assertThat(CompactorStatus(region, exists = true, desiredCount = 1, taskStatus = "PROVISIONING").state).isEqualTo("starting")
         assertThat(CompactorStatus(region, exists = true, desiredCount = 1, runningCount = 1, pendingCount = 1).state)
             .isEqualTo("running")
         assertThat(CompactorStatus(region, exists = true, desiredCount = 0, runningCount = 1).state).isEqualTo("stopping")

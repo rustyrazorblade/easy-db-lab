@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.providers.aws.withEcsRoleRetry
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest
 import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceAlreadyExistsException
+import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.ecs.model.AssignPublicIp
 import software.amazon.awssdk.services.ecs.model.AwsVpcConfiguration
 import software.amazon.awssdk.services.ecs.model.CreateClusterRequest
@@ -17,6 +18,7 @@ import software.amazon.awssdk.services.ecs.model.CreateServiceRequest
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration
 import software.amazon.awssdk.services.ecs.model.LaunchType
 import software.amazon.awssdk.services.ecs.model.NetworkConfiguration
+import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
@@ -94,11 +96,28 @@ class DefaultCompactorService(
                     eventBus.emit(Event.Compactor.Started(region, arn))
                 }
                 // A started service is left as it is: a new configuration takes effect on the next start.
-                service.runningCount() > 0 -> eventBus.emit(Event.Compactor.AlreadyRunning(region, service.runningCount()))
-                service.pendingCount() > 0 -> eventBus.emit(Event.Compactor.Starting(region, service.pendingCount()))
-                else -> eventBus.emit(Event.Compactor.NoTaskRunning(region, service.desiredCount()))
+                else -> reportStarted(ecs, region, service)
             }
         }
+    }
+
+    /** Reports a service that asks for a task as running, starting, or failing, as `status` reads it. */
+    private fun reportStarted(
+        ecs: EcsClient,
+        region: String,
+        service: Service,
+    ) {
+        val state =
+            StartedState.of(service.runningCount(), service.pendingCount()) {
+                ecs.latestCompactorTask()?.lastStatus().orEmpty()
+            }
+        val event =
+            when (state) {
+                StartedState.RUNNING -> Event.Compactor.AlreadyRunning(region, service.runningCount())
+                StartedState.STARTING -> Event.Compactor.Starting(region, service.pendingCount())
+                StartedState.FAILING -> Event.Compactor.NoTaskRunning(region, service.desiredCount())
+            }
+        eventBus.emit(event)
     }
 
     override fun stop(bucket: String) {

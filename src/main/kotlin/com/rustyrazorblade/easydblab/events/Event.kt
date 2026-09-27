@@ -5679,8 +5679,8 @@ sealed interface Event {
         }
 
         /**
-         * The compactor service in [region] runs no task yet but has [pendingCount] task(s) starting, as
-         * Fargate does for a minute or two after a start. It is left as it is.
+         * The compactor service in [region] runs no task yet: [pendingCount] task(s) are pending, or ECS
+         * has not placed the first one, as happens for a minute or two after a start. It is left as it is.
          */
         @Serializable
         @SerialName("Compactor.Starting")
@@ -5692,8 +5692,9 @@ sealed interface Event {
         }
 
         /**
-         * The compactor service in [region] asks for [desiredCount] task(s) but runs none and has none
-         * pending, for example because its task fails and restarts. It is left as it is.
+         * The compactor service in [region] asks for [desiredCount] task(s) but runs none, has none
+         * pending, and its latest task stopped, for example because the task fails and restarts. It is
+         * left as it is.
          */
         @Serializable
         @SerialName("Compactor.NoTaskRunning")

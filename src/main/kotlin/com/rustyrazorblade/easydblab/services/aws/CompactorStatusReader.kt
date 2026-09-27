@@ -61,9 +61,8 @@ data class CompactorStatus(
     val logLines: List<String> = emptyList(),
 ) {
     /**
-     * The state as the operator reads it, from the desired, running and pending counts. A service
-     * that asks for a task but runs none is `starting` while a task is pending and `failing` when none
-     * is, so a task that crashes in a loop never reads as running.
+     * The state as the operator reads it, from the desired count and, for a service that asks for a
+     * task, [StartedState]: a task that crashes in a loop never reads as running.
      */
     val state: String
         get() =
@@ -71,10 +70,46 @@ data class CompactorStatus(
                 !exists -> "not created"
                 desiredCount == 0 && runningCount > 0 -> "stopping"
                 desiredCount == 0 -> "stopped"
-                runningCount > 0 -> "running"
-                pendingCount > 0 -> "starting"
-                else -> "failing"
+                else -> StartedState.of(runningCount, pendingCount) { taskStatus }.label
             }
+}
+
+/**
+ * The state of a compactor service that asks for a task. `status` shows its [label], and `up`
+ * reports it, so both read a service the same way.
+ */
+internal enum class StartedState(
+    val label: String,
+) {
+    RUNNING("running"),
+
+    /** No task runs yet, but one is pending, or ECS has not placed the first task: no task has stopped. */
+    STARTING("starting"),
+
+    /** No task runs or is pending, and the latest task stopped. */
+    FAILING("failing"),
+    ;
+
+    companion object {
+        private const val STOPPED = "STOPPED"
+
+        /**
+         * The state from the [running] and [pending] task counts. [latestTaskStatus] gives the
+         * latest task's last status, empty when there is no task; it is read only when no task
+         * runs or is pending.
+         */
+        fun of(
+            running: Int,
+            pending: Int,
+            latestTaskStatus: () -> String,
+        ): StartedState =
+            when {
+                running > 0 -> RUNNING
+                pending > 0 -> STARTING
+                latestTaskStatus() == STOPPED -> FAILING
+                else -> STARTING
+            }
+    }
 }
 
 /** The compactor service, or null when it does not exist or is inactive. */
@@ -92,6 +127,32 @@ internal fun EcsClient.describeCompactorService(): Service? =
         null
     }
 
+/** The compactor's running task, or its most recently created stopped one; null when it has none. */
+internal fun EcsClient.latestCompactorTask(): Task? =
+    listOf(DesiredStatus.RUNNING, DesiredStatus.STOPPED).firstNotNullOfOrNull { status ->
+        val arns =
+            listTasks(
+                ListTasksRequest
+                    .builder()
+                    .cluster(Constants.Compactor.ECS_CLUSTER)
+                    .serviceName(Constants.Compactor.SERVICE)
+                    .desiredStatus(status)
+                    .build(),
+            ).taskArns()
+        if (arns.isEmpty()) {
+            null
+        } else {
+            describeTasks(
+                DescribeTasksRequest
+                    .builder()
+                    .cluster(Constants.Compactor.ECS_CLUSTER)
+                    .tasks(arns)
+                    .build(),
+            ).tasks()
+                .maxByOrNull { it.createdAt() }
+        }
+    }
+
 /**
  * Reads the account compactor's state: the service's counts and newest events, its current or last
  * task and why that task stopped, and the task's newest log lines. It changes nothing.
@@ -103,7 +164,7 @@ class CompactorStatusReader(
     fun read(region: String): CompactorStatus =
         regionalClients.ecs(region).use { ecs ->
             val service = ecs.describeCompactorService() ?: return@use CompactorStatus(region, exists = false)
-            val task = latestTask(ecs)
+            val task = ecs.latestCompactorTask()
             val taskId = task?.taskArn()?.substringAfterLast('/').orEmpty()
             CompactorStatus(
                 region = region,
@@ -128,34 +189,6 @@ class CompactorStatusReader(
                         .map { "${it.createdAt()} ${it.message()}" },
                 logLines = if (taskId.isEmpty()) emptyList() else regionalClients.logs(region).use { recentLogLines(it, taskId) },
             )
-        }
-
-    /** The running task, or the most recently created stopped one. */
-    private fun latestTask(ecs: EcsClient): Task? =
-        listOf(DesiredStatus.RUNNING, DesiredStatus.STOPPED).firstNotNullOfOrNull { status ->
-            val arns =
-                ecs
-                    .listTasks(
-                        ListTasksRequest
-                            .builder()
-                            .cluster(Constants.Compactor.ECS_CLUSTER)
-                            .serviceName(Constants.Compactor.SERVICE)
-                            .desiredStatus(status)
-                            .build(),
-                    ).taskArns()
-            if (arns.isEmpty()) {
-                null
-            } else {
-                ecs
-                    .describeTasks(
-                        DescribeTasksRequest
-                            .builder()
-                            .cluster(Constants.Compactor.ECS_CLUSTER)
-                            .tasks(arns)
-                            .build(),
-                    ).tasks()
-                    .maxByOrNull { it.createdAt() }
-            }
         }
 
     /** The newest log lines of every container of [taskId], merged by time, oldest first. */

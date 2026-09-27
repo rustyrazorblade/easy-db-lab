@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -23,6 +24,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.time.Duration
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Proves [K8sTelemetrySenders] — how the pre-teardown save stops the OTel collector — against a real
@@ -30,7 +32,9 @@ import java.util.concurrent.TimeUnit
  *
  * The DaemonSet is applied to its own namespace with its ServiceAccount, so its pod is created. The
  * collector image is not preloaded: its pod never starts, which does not matter to the stop, whose
- * contract is only that no collector pod is left.
+ * contract is only that no collector pod is left. A pod that never started would be gone at once, so
+ * the test holds it in Terminating with a finalizer it removes only after a delay: the stop must
+ * still be waiting then.
  */
 class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
     private companion object {
@@ -38,7 +42,9 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
         const val NAME_LABEL = "app.kubernetes.io/name"
         const val POD_WAIT_SECONDS = 120L
         const val POLL_MILLIS = 250L
+        const val FINALIZER = "easydblab.com/test-hold"
         val TIMEOUT: Duration = Duration.ofSeconds(90)
+        val HOLD: Duration = Duration.ofSeconds(5)
     }
 
     private val controlHost = ClusterHost("1.2.3.4", "10.0.0.1", "control0", "us-west-2a", instanceId = "i-test")
@@ -71,8 +77,40 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
 
     @AfterEach
     fun tearDown() {
+        releaseCollectorPods()
         client.close()
     }
+
+    /** Holds every collector pod: deleted, it stays Terminating until [releaseCollectorPods]. */
+    private fun holdCollectorPods() =
+        collectorPods().forEach { pod ->
+            client
+                .pods()
+                .inNamespace(NAMESPACE)
+                .withName(pod.metadata.name)
+                .edit {
+                    PodBuilder(it)
+                        .editMetadata()
+                        .addToFinalizers(FINALIZER)
+                        .endMetadata()
+                        .build()
+                }
+        }
+
+    private fun releaseCollectorPods() =
+        collectorPods().forEach { pod ->
+            client
+                .pods()
+                .inNamespace(NAMESPACE)
+                .withName(pod.metadata.name)
+                .edit {
+                    PodBuilder(it)
+                        .editMetadata()
+                        .removeFromFinalizers(FINALIZER)
+                        .endMetadata()
+                        .build()
+                }
+        }
 
     private fun collectorPods() =
         client
@@ -106,9 +144,22 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
     @Test
     fun `stopping deletes the collector DaemonSet and returns once its pods are gone, and succeeds again once it is gone`() {
         deployCollector()
+        holdCollectorPods()
+        val releasedAt = AtomicLong()
+        val releaser =
+            Thread {
+                Thread.sleep(HOLD.toMillis())
+                releasedAt.set(System.nanoTime())
+                releaseCollectorPods()
+            }.apply { start() }
 
         senders.stop(controlHost, TIMEOUT)
+        val stoppedAt = System.nanoTime()
+        releaser.join()
 
+        // The pod stayed Terminating until the release, and the stop was still waiting for it.
+        assertThat(releasedAt.get()).describedAs("the pod was released while the stop waited").isNotZero()
+        assertThat(stoppedAt).describedAs("the stop returned after the pod was released").isGreaterThan(releasedAt.get())
         assertThat(collectorPods()).isEmpty()
         assertThat(
             client

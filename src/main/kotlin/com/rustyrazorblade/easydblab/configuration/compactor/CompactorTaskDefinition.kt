@@ -66,6 +66,10 @@ data class CompactorTaskDefinition(
         const val TEMPO_BACKEND_FILE = "tempo-backend.yaml"
         private const val CONFIG_DIR = "/config"
         private const val CONFIG_VOLUME = "config"
+
+        /** The Mimir compactor's working volume, on the task's ephemeral storage. */
+        private const val MIMIR_DATA_VOLUME = "mimir-data"
+        private const val MIMIR_DATA_DIR = "/data"
         private const val ROOT_USER = "0"
 
         /** The Tempo worker's ports; the scheduler keeps the ones in `tempo-backend.yaml`. */
@@ -179,12 +183,16 @@ data class CompactorTaskDefinition(
                 ),
             ).build()
 
-    /** A compactor container: reads the configuration volume, starts once the config container has exited cleanly. */
+    /**
+     * A compactor container: reads the configuration volume, starts once the config container has
+     * exited cleanly. [mounts] are its writable task volumes.
+     */
     private fun compactor(
         name: String,
         image: String,
         args: List<String>,
         user: String? = null,
+        mounts: List<MountPoint> = emptyList(),
     ): ContainerDefinition =
         ContainerDefinition
             .builder()
@@ -195,12 +203,14 @@ data class CompactorTaskDefinition(
             .user(user)
             .environment(storageEnv())
             .mountPoints(
-                MountPoint
-                    .builder()
-                    .sourceVolume(CONFIG_VOLUME)
-                    .containerPath(CONFIG_DIR)
-                    .readOnly(true)
-                    .build(),
+                listOf(
+                    MountPoint
+                        .builder()
+                        .sourceVolume(CONFIG_VOLUME)
+                        .containerPath(CONFIG_DIR)
+                        .readOnly(true)
+                        .build(),
+                ) + mounts,
             ).dependsOn(
                 ContainerDependency
                     .builder()
@@ -251,6 +261,15 @@ data class CompactorTaskDefinition(
                 MIMIR_CONTAINER,
                 MimirManifestBuilder.IMAGE,
                 listOf("-config.file=$CONFIG_DIR/${MimirManifestBuilder.CONFIG_FILE}", "-config.expand-env=true") + MIMIR_COMPACTOR_ARGS,
+                // mimir.yaml writes its activity file and TSDB under /data, a hostPath on a cluster.
+                mounts =
+                    listOf(
+                        MountPoint
+                            .builder()
+                            .sourceVolume(MIMIR_DATA_VOLUME)
+                            .containerPath(MIMIR_DATA_DIR)
+                            .build(),
+                    ),
             ),
             compactor(
                 LOKI_CONTAINER,
@@ -319,7 +338,7 @@ data class CompactorTaskDefinition(
             .ephemeralStorage(EphemeralStorage.builder().sizeInGiB(Constants.Compactor.EPHEMERAL_STORAGE_GIB).build())
             .taskRoleArn(taskRoleArn)
             .executionRoleArn(executionRoleArn)
-            .volumes(Volume.builder().name(CONFIG_VOLUME).build())
+            .volumes(Volume.builder().name(CONFIG_VOLUME).build(), Volume.builder().name(MIMIR_DATA_VOLUME).build())
             .containerDefinitions(containers())
             .build()
 }

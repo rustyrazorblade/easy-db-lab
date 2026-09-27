@@ -58,6 +58,21 @@ object SharedLocalStack {
      */
     fun hostPort(): Int = container.endpoint.port
 
+    /**
+     * LocalStack's `host:port` on its Docker network, for a container that cannot use
+     * `host.testcontainers.internal`: one that joins another container's network namespace
+     * takes no extra hosts and no networks of its own.
+     */
+    fun networkAddress(): String {
+        val ip =
+            container.containerInfo.networkSettings.networks.values
+                .first()
+                .ipAddress
+        return "$ip:$LOCALSTACK_PORT"
+    }
+
+    private const val LOCALSTACK_PORT = 4566
+
     /** The access key LocalStack accepts, for clients configured outside the AWS SDK. */
     fun accessKey(): String = container.accessKey
 

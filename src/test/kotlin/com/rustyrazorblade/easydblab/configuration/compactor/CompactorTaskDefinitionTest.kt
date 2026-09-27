@@ -123,6 +123,20 @@ class CompactorTaskDefinitionTest {
         assertThat(otherBucket.configHash()).isNotEqualTo(definition.configHash())
     }
 
+    /**
+     * `mimir.yaml` writes its activity file and TSDB under `/data`, which is a hostPath on a
+     * cluster. Without a volume there the compactor exits at start with "no such file or directory".
+     */
+    @Test
+    fun `the Mimir compactor has a writable task volume at the data directory mimir yaml names`() {
+        val mimir = containers.getValue(CompactorTaskDefinition.MIMIR_CONTAINER)
+        val data = mimir.mountPoints().single { it.containerPath() == "/data" }
+
+        assertThat(data.readOnly() == true).describedAs("read-only").isFalse()
+        assertThat(request.volumes().map { it.name() }).contains(data.sourceVolume())
+        assertThat(CompactorTaskDefinition.configFiles().getValue("mimir.yaml")).contains("filepath: /data/")
+    }
+
     /** A stopped service reuses the latest revision only when nothing the task runs with changed. */
     @Test
     fun `the config hash covers every field of the task definition, and only the tag is left out`() {

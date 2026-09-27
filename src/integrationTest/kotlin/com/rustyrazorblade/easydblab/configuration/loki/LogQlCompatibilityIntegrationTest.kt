@@ -7,7 +7,9 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceConfig
+import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
+import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.services.LogQl
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
@@ -56,9 +58,10 @@ class LogQlCompatibilityIntegrationTest : BaseKoinTest() {
     /** The trace-to-logs query as Grafana runs it: its provisioning env expansion turns `$$` into `$`. */
     private fun traceToLogs(): String {
         val query =
-            GrafanaDatasourceConfig
-                .create("acme")
+            GrafanaDatasourceSet
+                .build(TenantSet.of("acme"), BackendUrls.CONTROL_NODE)
                 .datasources
+                .filter { it.uid == Constants.Grafana.DatasourceUid.TEMPO }
                 .firstNotNullOf { it.jsonData?.tracesToLogsV2?.query }
         return DashboardQueries.substitute(query.replace("$$", "$"))
     }

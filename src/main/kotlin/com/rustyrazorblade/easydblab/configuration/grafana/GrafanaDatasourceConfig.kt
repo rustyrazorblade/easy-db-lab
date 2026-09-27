@@ -2,8 +2,6 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
-import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.services.LogQl
 import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
@@ -11,7 +9,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 
 /**
- * Grafana datasource provisioning configuration.
+ * Grafana datasource provisioning configuration, built by [GrafanaDatasourceSet].
  * Serialized to YAML and applied as a ConfigMap for Grafana's provisioning system.
  */
 @Serializable
@@ -33,118 +31,6 @@ data class GrafanaDatasourceConfig(
                     ),
             )
         return yaml.encodeToString(this)
-    }
-
-    companion object {
-        /** The custom header slot Grafana sends the tenant in (`httpHeaderName1`/`httpHeaderValue1`). */
-        private const val TENANT_HEADER_VALUE_KEY = "httpHeaderValue1"
-
-        private typealias Uid = Constants.Grafana.DatasourceUid
-
-        /**
-         * Creates the full Grafana datasource configuration with all datasources: Mimir (metrics),
-         * Loki (logs), Tempo (traces) and Pyroscope (profiles).
-         *
-         * Every backend runs native multi-tenancy, so each datasource sends [tenant] in
-         * `X-Scope-OrgID` on every query; without it they would read no data.
-         *
-         * @param tenant The cluster's observability tenant.
-         * @return Complete datasource config ready for serialization
-         */
-        fun create(tenant: String): GrafanaDatasourceConfig {
-            // Every backend runs native multi-tenancy: each datasource sends the tenant on every query.
-            val tenantHeader = GrafanaDatasourceJsonData(httpHeaderName1 = Constants.Observability.TENANT_HEADER)
-            val tenantValue = mapOf(TENANT_HEADER_VALUE_KEY to tenant)
-            return GrafanaDatasourceConfig(
-                datasources =
-                    listOf(
-                        GrafanaDatasource(
-                            name = "Mimir",
-                            type = "prometheus",
-                            uid = Uid.MIMIR,
-                            url = "http://localhost:${Constants.K8s.MIMIR_HTTP_PORT}/prometheus",
-                            isDefault = true,
-                            jsonData = tenantHeader.copy(httpMethod = "POST"),
-                            secureJsonData = tenantValue,
-                        ),
-                        GrafanaDatasource(
-                            name = "Loki",
-                            type = "loki",
-                            uid = Uid.LOKI,
-                            url = "http://localhost:${Constants.K8s.LOKI_HTTP_PORT}",
-                            secureJsonData = tenantValue,
-                            // Loki marks each line's level itself (detected_level), so no level rules.
-                            jsonData =
-                                tenantHeader.copy(
-                                    derivedFields =
-                                        listOf(
-                                            GrafanaDerivedField(
-                                                name = "trace_id",
-                                                // The collector keeps trace_id as structured metadata.
-                                                matcherType = "label",
-                                                matcherRegex = "trace_id",
-                                                // `$$` escapes Grafana's provisioning-time env expansion.
-                                                url = "\$\${__value.raw}",
-                                                datasourceUid = Uid.TEMPO,
-                                                urlDisplayLabel = "View Trace in Tempo",
-                                            ),
-                                        ),
-                                ),
-                        ),
-                        GrafanaDatasource(
-                            name = "Tempo",
-                            type = "tempo",
-                            uid = Uid.TEMPO,
-                            url = "http://localhost:${Constants.K8s.TEMPO_PORT}",
-                            secureJsonData = tenantValue,
-                            jsonData =
-                                tenantHeader.copy(
-                                    serviceMap = GrafanaServiceMapConfig(datasourceUid = Uid.MIMIR),
-                                    nodeGraph = GrafanaNodeGraphConfig(enabled = true),
-                                    tracesToLogsV2 =
-                                        GrafanaTracesToLogsConfig(
-                                            datasourceUid = Uid.LOKI,
-                                            spanStartTimeShift = "-1m",
-                                            spanEndTimeShift = "1m",
-                                            filterByTraceID = true,
-                                            filterBySpanID = false,
-                                            customQuery = true,
-                                            // `$$` escapes Grafana's provisioning-time env expansion,
-                                            // which would otherwise turn the macro into an empty string.
-                                            query = LogQl.traceToLogs("\$\${__trace.traceId}"),
-                                        ),
-                                    tracesToMetrics =
-                                        GrafanaTracesToMetricsConfig(
-                                            datasourceUid = Uid.MIMIR,
-                                            spanStartTimeShift = "-1m",
-                                            spanEndTimeShift = "1m",
-                                            queries =
-                                                listOf(
-                                                    GrafanaTraceMetricQuery(
-                                                        name = "Request rate",
-                                                        query = "rate(traces_spanmetrics_calls_total{\$\$__tags}[5m])",
-                                                    ),
-                                                    GrafanaTraceMetricQuery(
-                                                        name = "p99 latency",
-                                                        query =
-                                                            "histogram_quantile(0.99, sum(rate(" +
-                                                                "traces_spanmetrics_duration_milliseconds_bucket{\$\$__tags}[5m])) by (le))",
-                                                    ),
-                                                ),
-                                        ),
-                                ),
-                        ),
-                        GrafanaDatasource(
-                            name = "Pyroscope",
-                            type = "grafana-pyroscope-datasource",
-                            uid = Uid.PYROSCOPE,
-                            url = "http://localhost:${Constants.K8s.PYROSCOPE_PORT}",
-                            jsonData = tenantHeader,
-                            secureJsonData = tenantValue,
-                        ),
-                    ),
-            )
-        }
     }
 }
 

@@ -18,8 +18,8 @@ import java.io.File
  */
 class DashboardDatasourceTest {
     private val provisioned =
-        GrafanaDatasourceConfig
-            .create("t")
+        GrafanaDatasourceSet
+            .build(TenantSet.of("t"), BackendUrls.CONTROL_NODE)
             .datasources
             .mapNotNull { it.uid }
             .toSet()
@@ -56,8 +56,8 @@ class DashboardDatasourceTest {
         }
 
     @Test
-    fun `the provisioned datasources are the four backends`() {
-        assertThat(provisioned).containsExactlyInAnyOrder(
+    fun `the stable datasources of the four backends are provisioned`() {
+        assertThat(provisioned).contains(
             Constants.Grafana.DatasourceUid.MIMIR,
             Constants.Grafana.DatasourceUid.LOKI,
             Constants.Grafana.DatasourceUid.TEMPO,

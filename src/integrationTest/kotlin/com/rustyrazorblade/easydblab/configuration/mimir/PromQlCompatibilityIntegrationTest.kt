@@ -7,7 +7,9 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceConfig
+import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
+import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.mcp.MetricsQueries
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
@@ -56,9 +58,10 @@ class PromQlCompatibilityIntegrationTest : BaseKoinTest() {
 
     /** The trace-to-metrics queries as Grafana runs them, with the span's tags filled in. */
     private fun traceToMetrics(): List<String> =
-        GrafanaDatasourceConfig
-            .create("acme")
+        GrafanaDatasourceSet
+            .build(TenantSet.of("acme"), BackendUrls.CONTROL_NODE)
             .datasources
+            .filter { it.uid == Constants.Grafana.DatasourceUid.TEMPO }
             .mapNotNull { it.jsonData?.tracesToMetrics }
             .flatMap { it.queries }
             .map { it.query.replace("$$", "$").replace("\$__tags", "service_name=\"x\"") }

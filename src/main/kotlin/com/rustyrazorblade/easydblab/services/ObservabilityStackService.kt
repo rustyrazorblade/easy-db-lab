@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
@@ -87,6 +88,7 @@ class DefaultObservabilityStackService(
     private val yaceManifestBuilder: YaceManifestBuilder,
     private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
     private val configChangeReport: ConfigChangeReport,
+    private val tenantDirectory: TenantDirectory,
 ) : ObservabilityStackService {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
@@ -172,7 +174,9 @@ class DefaultObservabilityStackService(
 
             if (telemetryRedirect == null) {
                 prepareGrafanaDirectory(controlNode)
-                dashboardService.uploadDashboards(controlNode, clusterState.tenant()).getOrElse { exception ->
+                // Every tenant in the shared store gets datasources, so each deploy picks up new ones.
+                val tenants = tenantDirectory.list(ObservabilityStore.from(clusterState).bucket, clusterState.tenant())
+                dashboardService.uploadDashboards(controlNode, tenants).getOrElse { exception ->
                     error("Failed to upload dashboards: ${exception.message}")
                 }
             }

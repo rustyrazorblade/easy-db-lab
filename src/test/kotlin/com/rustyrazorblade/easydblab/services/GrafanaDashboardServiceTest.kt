@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -93,7 +94,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
     @Test
     fun `createDatasourcesConfigMap calls k8sService with correct params`() {
-        val result = service().createDatasourcesConfigMap(testControlHost, "acme")
+        val result = service().createDatasourcesConfigMap(testControlHost, TenantSet.of("acme"))
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(
@@ -107,7 +108,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
     @Test
     fun `uploadDashboards builds and applies all resources`() {
-        val result = service().uploadDashboards(testControlHost, "acme")
+        val result = service().uploadDashboards(testControlHost, TenantSet.of("acme"))
 
         assertThat(result.isSuccess).isTrue()
         verify(mockK8sService).createConfigMap(any(), any(), eq("grafana-datasources"), any(), any())
@@ -115,7 +116,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
 
     @Test
     fun `uploadDashboards puts the tree on the control node before the Grafana resources are applied`() {
-        service().uploadDashboards(testControlHost, "acme")
+        service().uploadDashboards(testControlHost, TenantSet.of("acme"))
 
         val order = inOrder(mockTreeUploader, mockK8sService)
         order.verify(mockTreeUploader).upload(testControlHost)
@@ -127,7 +128,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("ConfigMap creation failed")))
 
-        val result = service().uploadDashboards(testControlHost, "acme")
+        val result = service().uploadDashboards(testControlHost, TenantSet.of("acme"))
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to create Grafana datasources ConfigMap")
@@ -137,7 +138,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
     fun `uploadDashboards fails without touching K8s resources when the tree upload fails`() {
         whenever(mockTreeUploader.upload(any())).doThrow(IllegalStateException("sftp failed"))
 
-        val result = service().uploadDashboards(testControlHost, "acme")
+        val result = service().uploadDashboards(testControlHost, TenantSet.of("acme"))
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to upload Grafana dashboards").contains("sftp failed")
@@ -149,7 +150,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
         whenever(mockK8sService.applyResource(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Apply failed")))
 
-        val result = service().uploadDashboards(testControlHost, "acme")
+        val result = service().uploadDashboards(testControlHost, TenantSet.of("acme"))
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Failed to apply")
@@ -164,9 +165,9 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
     fun `a datasource change rolls Grafana through its config hash`() {
         val service = service()
 
-        service.uploadDashboards(testControlHost, "acme").getOrThrow()
-        service.uploadDashboards(testControlHost, "acme").getOrThrow()
-        service.uploadDashboards(testControlHost, "other").getOrThrow()
+        service.uploadDashboards(testControlHost, TenantSet.of("acme")).getOrThrow()
+        service.uploadDashboards(testControlHost, TenantSet.of("acme")).getOrThrow()
+        service.uploadDashboards(testControlHost, TenantSet.of("other")).getOrThrow()
 
         val deployments = argumentCaptor<HasMetadata>()
         verify(mockK8sService, times(6)).applyResource(any(), deployments.capture())
@@ -192,7 +193,7 @@ class GrafanaDashboardServiceTest : BaseKoinTest() {
             },
         )
 
-        service().uploadDashboards(testControlHost, "acme").getOrThrow()
+        service().uploadDashboards(testControlHost, TenantSet.of("acme")).getOrThrow()
 
         assertThat(emitted.filterIsInstance<Event.Grafana.WorkloadConfigCompared>())
             .containsExactly(Event.Grafana.WorkloadConfigCompared("Deployment/grafana", changed = true))

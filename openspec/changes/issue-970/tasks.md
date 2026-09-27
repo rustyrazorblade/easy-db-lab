@@ -15,10 +15,10 @@
 
 ## 3. Tenant datasources
 
-- [ ] 3.1 `TenantDirectory.list(bucket, home)`: non-recursive listing of `mimir/`, keep names matching the tenant rule, add the home tenant, sort; returns `TenantSet(home, all)`.
-- [ ] 3.2 `GrafanaDatasourceSet.build(tenants, urls)` in `configuration/grafana/`, replacing `GrafanaDatasourceConfig.create(tenant)`: stable `mimir`/`loki`/`tempo`/`pyroscope` on the home tenant; `<signal>-<tenant>` and `<signal>--all` for metrics, logs and traces; 40-character UID rule; cross links within one tenant view; one profiles datasource.  Add `BackendUrls` with the control-node URLs.
-- [ ] 3.3 `ObservabilityStackService.deploy()` lists the tenants and builds the datasources, so `up` and `grafana update-config` both refresh them.
-- [ ] 3.4 Unit tests: `TenantDirectory` parsing (drops `__mimir_cluster`, adds home, sorts); `GrafanaDatasourceSet` (tenants `default` and `acme` give per-tenant and all-tenants datasources with `acme|default`; exactly one profiles datasource; same tenants with different URLs differ only in URLs; long tenant UID fits 40 characters; stable UIDs send the home tenant; cross links stay in their view).
+- [x] 3.1 `TenantDirectory.list(bucket, home)`: non-recursive listing of `mimir/`, keep names matching the tenant rule, add the home tenant, sort; returns `TenantSet(home, all)`.
+- [x] 3.2 `GrafanaDatasourceSet.build(tenants, urls)` in `configuration/grafana/`, replacing `GrafanaDatasourceConfig.create(tenant)`: stable `mimir`/`loki`/`tempo`/`pyroscope` on the home tenant; `<signal>-<tenant>` and `<signal>--all` for metrics, logs and traces; 40-character UID rule; cross links within one tenant view; one profiles datasource.  Add `BackendUrls` with the control-node URLs.
+- [x] 3.3 `ObservabilityStackService.deploy()` lists the tenants and builds the datasources, so `up` and `grafana update-config` both refresh them.
+- [x] 3.4 Unit tests: `TenantDirectory` parsing (drops `__mimir_cluster`, adds home, sorts); `GrafanaDatasourceSet` (tenants `default` and `acme` give per-tenant and all-tenants datasources with `acme|default`; exactly one profiles datasource; same tenants with different URLs differ only in URLs; long tenant UID fits 40 characters; stable UIDs send the home tenant; cross links stay in their view).
 
 ## 4. Account compactor
 

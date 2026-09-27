@@ -3,8 +3,10 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceConfig
+import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import kotlinx.serialization.json.Json
@@ -35,12 +37,12 @@ interface GrafanaDashboardService : GrafanaAnnotationSource {
      * Creates the grafana-datasources ConfigMap.
      *
      * @param controlHost The control node running K3s
-     * @param tenant The cluster's observability tenant; the Tempo and Pyroscope datasources query it
+     * @param tenants Every tenant in the shared store and the cluster's own; see [GrafanaDatasourceSet]
      * @return Result indicating success or failure
      */
     fun createDatasourcesConfigMap(
         controlHost: ClusterHost,
-        tenant: String,
+        tenants: TenantSet,
     ): Result<Unit>
 
     /**
@@ -48,12 +50,12 @@ interface GrafanaDashboardService : GrafanaAnnotationSource {
      * resources (datasources, provisioning, deployment).
      *
      * @param controlHost The control node running K3s
-     * @param tenant The cluster's observability tenant, passed to [createDatasourcesConfigMap]
+     * @param tenants The tenants passed to [createDatasourcesConfigMap]
      * @return Result indicating success or failure
      */
     fun uploadDashboards(
         controlHost: ClusterHost,
-        tenant: String,
+        tenants: TenantSet,
     ): Result<Unit>
 
     /**
@@ -152,26 +154,26 @@ class DefaultGrafanaDashboardService(
 
     override fun createDatasourcesConfigMap(
         controlHost: ClusterHost,
-        tenant: String,
+        tenants: TenantSet,
     ): Result<Unit> =
         k8sService.createConfigMap(
             controlHost = controlHost,
             namespace = DEFAULT_NAMESPACE,
             name = DATASOURCES_CONFIGMAP_NAME,
-            data = datasourcesData(tenant),
+            data = datasourcesData(tenants),
             labels = mapOf("app.kubernetes.io/name" to "grafana"),
         )
 
-    /** The contents of the `grafana-datasources` ConfigMap for [tenant]. */
-    private fun datasourcesData(tenant: String): Map<String, String> =
-        mapOf("datasources.yaml" to GrafanaDatasourceConfig.create(tenant).toYaml())
+    /** The contents of the `grafana-datasources` ConfigMap for [tenants]. */
+    private fun datasourcesData(tenants: TenantSet): Map<String, String> =
+        mapOf("datasources.yaml" to GrafanaDatasourceSet.build(tenants, BackendUrls.CONTROL_NODE).toYaml())
 
     override fun uploadDashboards(
         controlHost: ClusterHost,
-        tenant: String,
+        tenants: TenantSet,
     ): Result<Unit> {
         eventBus.emit(Event.Grafana.DatasourcesCreating)
-        createDatasourcesConfigMap(controlHost, tenant).getOrElse { exception ->
+        createDatasourcesConfigMap(controlHost, tenants).getOrElse { exception ->
             return Result.failure(
                 IllegalStateException("Failed to create Grafana datasources ConfigMap: ${exception.message}", exception),
             )
@@ -188,7 +190,7 @@ class DefaultGrafanaDashboardService(
         val resources =
             ConfigHashAnnotator.annotate(
                 manifestBuilder.buildAllResources(),
-                mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(tenant)),
+                mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(tenants)),
             )
         runCatching { configChangeReport.report(controlHost, resources, DEFAULT_NAMESPACE) }
             .getOrElse { exception -> return Result.failure(exception) }

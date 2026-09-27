@@ -766,6 +766,9 @@ object Constants {
          */
         const val ANNOTATION_FETCH_LIMIT = 5000
 
+        /** Grafana refuses a datasource UID longer than this. */
+        const val MAX_UID_LENGTH = 40
+
         /**
          * The uids of the provisioned datasources. Dashboards, links between datasources and the
          * annotation queries name a datasource by its uid, so these are part of every dashboard.

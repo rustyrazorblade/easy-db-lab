@@ -18,12 +18,13 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 /**
  * Builds Mimir's K8s resources as typed Fabric8 objects: the metrics backend on the control node.
  *
- * Mimir runs monolithic (distributor, ingester, querier, query-frontend, query-scheduler) with no
- * compactor and no store-gateway. It ships every block to `mimir/<tenant>/` in the
- * account bucket and answers every query from its own ingester, so nothing in a cluster can compact
- * or delete metrics and no query reads the S3 block store. The TSDB (head, WAL and local blocks)
- * lives on the hostPath [DATA_HOST_PATH], so a pod restart replays the WAL and keeps every block;
- * the long grace period gives a graceful stop time to compact and ship the head.
+ * Mimir runs monolithic (distributor, ingester, querier, query-frontend, query-scheduler,
+ * store-gateway) with no compactor. It ships every block to `mimir/<tenant>/` in the account bucket
+ * and answers queries from its ingester and, through the store-gateway, from every tenant's blocks
+ * in S3; nothing in a cluster can compact or delete metrics. The TSDB (head, WAL and the last 2
+ * hours of local blocks) and the store-gateway's sync directory live on the hostPath
+ * [DATA_HOST_PATH], so a pod restart replays the WAL; the long grace period gives a graceful stop
+ * time to compact and ship the head.
  *
  * `mimir.yaml` is a classpath resource read with `-config.expand-env=true`: the bucket, region and
  * storage prefix come from the cluster-config ConfigMap ([ClusterConfigData]) as env vars.
@@ -46,7 +47,7 @@ class MimirManifestBuilder(
         /** The Mimir image the cluster deploys; tests run the same one. */
         const val IMAGE = "grafana/mimir:3.2.1"
 
-        /** Mimir's data directory on the control node: the TSDB, its WAL and every local block. */
+        /** Mimir's data directory on the control node: the TSDB, its WAL, local blocks and the store-gateway's sync directory. */
         const val DATA_HOST_PATH = "/mnt/db1/mimir"
 
         /**

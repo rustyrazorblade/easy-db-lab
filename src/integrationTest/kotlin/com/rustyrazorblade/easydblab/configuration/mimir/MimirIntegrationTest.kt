@@ -36,7 +36,8 @@ import java.util.UUID
 
 /**
  * Runs Mimir at the image the cluster deploys, with the configuration the cluster renders, against
- * S3 (LocalStack). Under decision D1 Mimir writes every block to S3 and reads only its own ingester.
+ * S3 (LocalStack). Mimir writes every block to S3 and reads its ingester and, through the
+ * store-gateway, the store.
  * The test proves:
  *
  * - a sample written while the cluster keeps writing is in a block under `mimir/<tenant>/` within

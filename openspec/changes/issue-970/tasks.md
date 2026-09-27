@@ -9,9 +9,9 @@
 
 ## 2. Mimir read path
 
-- [ ] 2.1 `mimir.yaml`: add `store-gateway` to `target`; in-memory store-gateway ring with replication factor 1; `bucket_store` `sync_dir: /data/tsdb-sync`, `sync_interval: 1m`, `ignore_blocks_within: 0`, `bucket_index.max_stale_period: 87600h`; `query_store_after: 0`; `tsdb.retention_period: 2h`; rewrite the header comment.
-- [ ] 2.2 `MimirManifestBuilder`: mount the sync directory on the control node's data path.
-- [ ] 2.3 Unit test on the rendered Mimir config: targets include `store-gateway` and exclude `compactor`, retention 2h, `query_store_after` 0, stale period 87600h.
+- [x] 2.1 `mimir.yaml`: add `store-gateway` to `target`; in-memory store-gateway ring with replication factor 1; `bucket_store` `sync_dir: /data/tsdb-sync`, `sync_interval: 1m`, `ignore_blocks_within: 0`, `bucket_index.max_stale_period: 87600h`; `query_store_after: 0`; `tsdb.retention_period: 2h`; rewrite the header comment.
+- [x] 2.2 `MimirManifestBuilder`: mount the sync directory on the control node's data path.
+- [x] 2.3 Unit test on the rendered Mimir config: targets include `store-gateway` and exclude `compactor`, retention 2h, `query_store_after` 0, stale period 87600h.
 
 ## 3. Tenant datasources
 

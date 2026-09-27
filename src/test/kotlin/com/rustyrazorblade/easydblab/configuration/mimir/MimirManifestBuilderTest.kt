@@ -18,9 +18,8 @@ import org.mockito.kotlin.whenever
 /**
  * Tests Mimir's configuration and Deployment as rendered by the real [TemplateService].
  *
- * Mimir writes every block to S3 and answers queries only from its own ingester (decision D1): no
- * compactor and no store-gateway run, so nothing in the cluster can compact or delete metrics, and
- * the querier never reads the S3 block store.
+ * Mimir writes every block to S3 and reads the whole shared store through its store-gateway. No
+ * compactor runs, so nothing in the cluster can compact or delete metrics.
  */
 class MimirManifestBuilderTest : BaseKoinTest() {
     private lateinit var builder: MimirManifestBuilder
@@ -50,7 +49,7 @@ class MimirManifestBuilderTest : BaseKoinTest() {
             .spec.template.spec
 
     @Test
-    fun `no compactor and no store-gateway run, so nothing compacts or deletes blocks`() {
+    fun `the store-gateway runs and no compactor does, so nothing in the cluster compacts or deletes blocks`() {
         val modules = scalarAt(config(), "target").orEmpty().split(",").map { it.trim() }
 
         assertThat(modules).containsExactlyInAnyOrder(
@@ -59,18 +58,22 @@ class MimirManifestBuilderTest : BaseKoinTest() {
             "querier",
             "query-frontend",
             "query-scheduler",
+            "store-gateway",
         )
-        assertThat(modules).doesNotContain("compactor", "store-gateway", "all")
+        assertThat(modules).doesNotContain("compactor", "all")
     }
 
     @Test
-    fun `queries are answered from the ingester only, over the cluster's whole life`() {
+    fun `queries read the ingester and the whole store, and local blocks are kept for 2 hours`() {
         val yaml = config()
 
         assertThat(scalarAt(yaml, "limits", "query_ingesters_within")).isEqualTo("0")
-        assertThat(scalarAt(yaml, "querier", "query_store_after")).isEqualTo("87600h")
-        // Local blocks are kept longer than the querier would ever send a query to the store.
-        assertThat(scalarAt(yaml, "blocks_storage", "tsdb", "retention_period")).isEqualTo("87601h")
+        assertThat(scalarAt(yaml, "querier", "query_store_after")).isEqualTo("0")
+        assertThat(scalarAt(yaml, "blocks_storage", "tsdb", "retention_period")).isEqualTo("2h")
+        assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "sync_interval")).isEqualTo("1m")
+        assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "ignore_blocks_within")).isEqualTo("0")
+        // A stopped compactor leaves the bucket index stale; that must never fail a query.
+        assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "bucket_index", "max_stale_period")).isEqualTo("87600h")
     }
 
     @Test
@@ -125,10 +128,12 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(yaml, "ingester", "ring", "kvstore", "store")).isEqualTo("inmemory")
         assertThat(scalarAt(yaml, "ingester", "ring", "replication_factor")).isEqualTo("1")
         assertThat(scalarAt(yaml, "distributor", "ring", "kvstore", "store")).isEqualTo("inmemory")
+        assertThat(scalarAt(yaml, "store_gateway", "sharding_ring", "kvstore", "store")).isEqualTo("inmemory")
+        assertThat(scalarAt(yaml, "store_gateway", "sharding_ring", "replication_factor")).isEqualTo("1")
     }
 
     @Test
-    fun `the TSDB and WAL live on the control node's disk`() {
+    fun `the TSDB, its WAL and the store-gateway's sync directory live on the control node's disk`() {
         val pod = pod()
         val volume = pod.volumes.single { it.name == "data" }
         val mount = pod.containers[0].volumeMounts.single { it.name == "data" }
@@ -136,6 +141,7 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         assertThat(volume.hostPath.path).isEqualTo(MimirManifestBuilder.DATA_HOST_PATH)
         assertThat(MimirManifestBuilder.DATA_HOST_PATH).isEqualTo("/mnt/db1/mimir")
         assertThat(scalarAt(config(), "blocks_storage", "tsdb", "dir")).isEqualTo(mount.mountPath + "/tsdb")
+        assertThat(scalarAt(config(), "blocks_storage", "bucket_store", "sync_dir")).isEqualTo(mount.mountPath + "/tsdb-sync")
     }
 
     @Test

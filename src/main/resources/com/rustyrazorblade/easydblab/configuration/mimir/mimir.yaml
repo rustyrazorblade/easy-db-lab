@@ -1,16 +1,15 @@
-# Mimir on the control node: write-only S3, local reads (issue 967, decision D1).
+# Mimir on the control node: it writes to the shared store and reads the whole of it (issue 970).
 #
-# The ingester ships every block to S3 about a minute after cutting it, and every query is answered
-# from this ingester alone: its in-memory head and its local blocks, which are kept for the
-# cluster's life. No compactor and no store-gateway run, so nothing in this process can compact,
-# expire, clean up or delete a block, a bucket index, or a tenant — and the querier never reads the
-# S3 block store, so it needs no bucket index. Reading other or past clusters' metrics is not part
-# of a running cluster.
+# The ingester ships every block to S3 about a minute after cutting it and keeps local blocks for 2
+# hours. The store-gateway answers every query from S3 as well, for every tenant in the account
+# bucket, so other clusters' and past runs' metrics are readable here. It finds blocks through each
+# tenant's bucket index, which only the account compactor writes. No compactor runs in this process,
+# so nothing here can compact, expire, clean up or delete a block, a bucket index, or a tenant.
 #
 # Dollar-brace values are read from the environment (-config.expand-env=true); the Deployment sets
 # them from the cluster-config ConfigMap. Never write a dollar-brace in a comment here: the expansion
 # reads comments too, and a malformed one stops the process from starting.
-target: distributor,ingester,querier,query-frontend,query-scheduler
+target: distributor,ingester,querier,query-frontend,query-scheduler,store-gateway
 
 # Native multi-tenancy: every write and query carries the tenant in X-Scope-OrgID. Tenant federation
 # lets one query name several tenants as `a|b`; each series then carries __tenant_id__.
@@ -50,16 +49,26 @@ blocks_storage:
     ship_interval: 15s
     # A head with no writes for 2 minutes is compacted, so the last partial block still ships.
     head_compaction_idle_timeout: 2m
-    # Local blocks stay for the cluster's life: the querier reads them, never the store. Mimir
+    # Local blocks stay for 2 hours; older ones are read from S3 through the store-gateway. Mimir
     # requires this to exceed querier.query_store_after.
-    retention_period: 87601h
+    retention_period: 2h
     # A graceful stop compacts the head into a block and ships it.
     flush_blocks_on_shutdown: true
+  bucket_store:
+    # The store-gateway's index headers, on the control node's disk.
+    sync_dir: /data/tsdb-sync
+    # New blocks and tenants appear in queries within a minute of the compactor's index update.
+    sync_interval: 1m
+    ignore_blocks_within: 0
+    bucket_index:
+      # About 10 years: a stopped compactor leaves the index stale, and that must never fail a query.
+      # A tenant with no bucket index returns no stored data rather than an error.
+      max_stale_period: 87600h
 
 # Every ring is in this one process: in memory, one replica.
 querier:
-  # Never send a query to the store: under D1 there is no store-gateway to answer it.
-  query_store_after: 87600h
+  # Every query reads the store as well as the ingester, however recent.
+  query_store_after: 0
   ring:
     kvstore:
       store: inmemory
@@ -73,6 +82,13 @@ ingester:
     instance_addr: 127.0.0.1
     final_sleep: 0s
     min_ready_duration: 0s
+
+store_gateway:
+  sharding_ring:
+    kvstore:
+      store: inmemory
+    replication_factor: 1
+    instance_addr: 127.0.0.1
 
 distributor:
   ring:

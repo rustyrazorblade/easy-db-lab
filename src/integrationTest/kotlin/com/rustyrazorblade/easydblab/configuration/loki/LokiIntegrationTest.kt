@@ -55,12 +55,6 @@ class LokiIntegrationTest : BaseKoinTest() {
          */
         val CHUNK_UPLOAD_WITHIN: Duration = Duration.ofMinutes(6)
         val PUSH_INTERVAL: Duration = Duration.ofSeconds(5)
-
-        /**
-         * How long a query waits for its lines: one index resync (`tsdb_shipper.resync_interval: 1m`),
-         * after which another cluster's index files in S3 are readable, plus a margin for a busy host.
-         */
-        val LINES_WAIT: Duration = Duration.ofSeconds(90)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -161,8 +155,7 @@ class LokiIntegrationTest : BaseKoinTest() {
 
     /**
      * The streams of [query] once they hold at least [expected] lines (a busy Loki may take a moment
-     * to answer a just-pushed line, and another cluster's lines only after an index resync), or after
-     * [LINES_WAIT].
+     * to answer a just-pushed line), or after 30s.
      */
     private fun awaitStreams(
         loki: GenericContainer<*>,
@@ -170,7 +163,7 @@ class LokiIntegrationTest : BaseKoinTest() {
         query: String,
         expected: Int,
     ): List<JsonObject> {
-        val deadline = System.nanoTime() + LINES_WAIT.toNanos()
+        val deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos()
         var found = streams(loki, tenant, query)
         while (lines(found).size < expected && System.nanoTime() < deadline) {
             Thread.sleep(Duration.ofSeconds(1).toMillis())

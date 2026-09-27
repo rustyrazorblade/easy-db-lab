@@ -56,13 +56,32 @@ class CompactorStatus : CompactorCommand() {
             println("Account compactor: not created (region ${status.region})")
             return
         }
-        val state = if (status.desiredCount > 0) "running" else "stopped"
         val task = if (status.taskId.isEmpty()) "none" else "${status.taskId} (${status.taskStatus})"
+        val stopped =
+            listOf(status.stopCode, status.stoppedReason)
+                .filter { it.isNotEmpty() }
+                .joinToString(": ")
+                .ifEmpty { "-" }
+        val containers =
+            status.containers.joinToString("\n") { container ->
+                val exit = container.exitCode?.let { " exit $it" }.orEmpty()
+                val reason =
+                    container.reason
+                        .takeIf { it.isNotEmpty() }
+                        ?.let { " ($it)" }
+                        .orEmpty()
+                "  ${container.name}: ${container.lastStatus}$exit$reason"
+            }
         println(
             """
-            |Account compactor: $state (region ${status.region})
+            |Account compactor: ${status.state} (region ${status.region})
             |Tasks: ${status.runningCount} running, ${status.desiredCount} desired
             |Task: $task
+            |Stopped: $stopped
+            |Containers:
+            |${containers.ifEmpty { "  (none)" }}
+            |Service events:
+            |${status.serviceEvents.joinToString("\n").ifEmpty { "(none)" }}
             |Recent log lines:
             |${status.logLines.joinToString("\n").ifEmpty { "(none)" }}
             """.trimMargin(),

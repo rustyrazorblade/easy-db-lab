@@ -5686,6 +5686,15 @@ sealed interface Event {
             override fun toDisplayString(): String = "Account compactor stopped in $region"
         }
 
+        /** A stop found no compactor service in [region], so there was nothing to stop. */
+        @Serializable
+        @SerialName("Compactor.NotCreated")
+        data class NotCreated(
+            val region: String,
+        ) : Compactor {
+            override fun toDisplayString(): String = "No account compactor to stop in $region"
+        }
+
         /** `down` left the compactor running: [clusterVpcs] other cluster VPCs still name the account bucket. */
         @Serializable
         @SerialName("Compactor.KeptRunning")

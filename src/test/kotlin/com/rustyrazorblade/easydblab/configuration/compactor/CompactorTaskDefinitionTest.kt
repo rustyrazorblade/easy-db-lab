@@ -6,8 +6,12 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import software.amazon.awssdk.services.ecs.model.CPUArchitecture
+import software.amazon.awssdk.services.ecs.model.ContainerDefinition
 import software.amazon.awssdk.services.ecs.model.LogDriver
 import software.amazon.awssdk.services.ecs.model.NetworkMode
+import software.amazon.awssdk.services.ecs.model.RegisterTaskDefinitionRequest
+import software.amazon.awssdk.services.ecs.model.RuntimePlatform
+import software.amazon.awssdk.services.ecs.model.Volume
 import java.util.Base64
 
 /**
@@ -117,5 +121,41 @@ class CompactorTaskDefinitionTest {
 
         assertThat(same.configHash()).isEqualTo(definition.configHash())
         assertThat(otherBucket.configHash()).isNotEqualTo(definition.configHash())
+    }
+
+    /** A stopped service reuses the latest revision only when nothing the task runs with changed. */
+    @Test
+    fun `the config hash covers every field of the task definition, and only the tag is left out`() {
+        val untagged = definition.untaggedRequest()
+        val hash = CompactorTaskDefinition.hashOf(untagged)
+
+        fun changedContainer(change: (ContainerDefinition.Builder) -> Unit): RegisterTaskDefinitionRequest {
+            val mimir = untagged.containerDefinitions().single { it.name() == CompactorTaskDefinition.MIMIR_CONTAINER }
+            val changed = mimir.toBuilder().also(change).build()
+            return untagged
+                .toBuilder()
+                .containerDefinitions(untagged.containerDefinitions().map { if (it == mimir) changed else it })
+                .build()
+        }
+        val variants =
+            mapOf(
+                "essential" to changedContainer { it.essential(false) },
+                "dependsOn" to changedContainer { it.dependsOn(emptyList()) },
+                "mountPoints" to changedContainer { it.mountPoints(emptyList()) },
+                "stopTimeout" to changedContainer { it.stopTimeout(1) },
+                "volumes" to untagged.toBuilder().volumes(Volume.builder().name("other").build()).build(),
+                "networkMode" to untagged.toBuilder().networkMode(NetworkMode.BRIDGE).build(),
+                "runtimePlatform" to
+                    untagged
+                        .toBuilder()
+                        .runtimePlatform(RuntimePlatform.builder().cpuArchitecture(CPUArchitecture.X86_64).build())
+                        .build(),
+            )
+
+        assertThat(variants).allSatisfy { field, changed ->
+            assertThat(CompactorTaskDefinition.hashOf(changed)).describedAs(field).isNotEqualTo(hash)
+        }
+        assertThat(definition.configHash()).isEqualTo(hash)
+        assertThat(CompactorTaskDefinition.hashOf(request)).isNotEqualTo(hash)
     }
 }

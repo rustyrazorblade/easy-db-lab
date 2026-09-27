@@ -73,3 +73,19 @@ fun <T> withS3BucketPolicyRetry(
     val retry = Retry.of(operationName, retryConfig)
     return Retry.decorateSupplier(retry, operation).get()
 }
+
+/**
+ * Executes an ECS call that passes a role IAM has just created, retrying while ECS cannot yet
+ * assume it (see [RetryUtil.createEcsRoleRetryConfig]).
+ *
+ * @param operationName Name of the operation for logging and metrics
+ * @param operation The operation to execute with retry logic
+ * @return The result of the operation
+ */
+fun <T> withEcsRoleRetry(
+    operationName: String,
+    operation: () -> T,
+): T {
+    val retry = Retry.of(operationName, RetryUtil.createEcsRoleRetryConfig())
+    return Retry.decorateSupplier(retry, operation).get()
+}

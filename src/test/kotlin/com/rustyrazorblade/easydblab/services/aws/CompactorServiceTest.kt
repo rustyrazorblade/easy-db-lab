@@ -15,15 +15,18 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.ecs.model.CreateServiceRequest
+import software.amazon.awssdk.services.ecs.model.CreateServiceResponse
 import software.amazon.awssdk.services.ecs.model.DescribeServicesRequest
 import software.amazon.awssdk.services.ecs.model.DescribeServicesResponse
 import software.amazon.awssdk.services.ecs.model.DescribeTaskDefinitionRequest
 import software.amazon.awssdk.services.ecs.model.DescribeTaskDefinitionResponse
+import software.amazon.awssdk.services.ecs.model.InvalidParameterException
 import software.amazon.awssdk.services.ecs.model.RegisterTaskDefinitionRequest
 import software.amazon.awssdk.services.ecs.model.RegisterTaskDefinitionResponse
 import software.amazon.awssdk.services.ecs.model.Service
@@ -42,28 +45,26 @@ import software.amazon.awssdk.services.s3.model.GetBucketLocationResponse
 class CompactorServiceTest {
     private val bucket = "easy-db-lab-acct"
     private val ecs = mock<EcsClient>()
+    private val s3 = mock<S3Client>()
     private val census = mock<ClusterCensus>()
     private val events = mutableListOf<Event>()
     private val registered = "arn:aws:ecs:eu-west-1:1:task-definition/easy-db-lab-compactor:7"
+    private var ecsRegion = "eu-west-1"
 
     private val service =
         DefaultCompactorService(
-            s3 =
-                mock<S3Client>().also {
-                    whenever(it.getBucketLocation(any<GetBucketLocationRequest>()))
-                        .thenReturn(GetBucketLocationResponse.builder().locationConstraint("eu-west-1").build())
-                },
+            s3 = s3,
             iam = mock<CompactorIam>().also { whenever(it.ensure()).thenReturn(CompactorRoles("arn:task", "arn:exec")) },
             network =
                 mock<CompactorNetwork>().also {
-                    whenever(it.ensure("eu-west-1")).thenReturn(VpcInfrastructure("vpc-c", listOf("subnet-c"), "sg-c", "igw-c"))
+                    whenever(it.ensure(any())).thenReturn(VpcInfrastructure("vpc-c", listOf("subnet-c"), "sg-c", "igw-c"))
                 },
             census = census,
             regionalClients =
                 object : RegionalClients {
                     override fun ec2(region: String) = error("not used")
 
-                    override fun ecs(region: String) = ecs.also { assertThat(region).isEqualTo("eu-west-1") }
+                    override fun ecs(region: String) = ecs.also { assertThat(region).isEqualTo(ecsRegion) }
 
                     override fun logs(region: String) = mock<CloudWatchLogsClient>()
                 },
@@ -83,12 +84,18 @@ class CompactorServiceTest {
 
     @BeforeEach
     fun registration() {
+        bucketIn("eu-west-1")
         whenever(ecs.registerTaskDefinition(any<RegisterTaskDefinitionRequest>())).thenReturn(
             RegisterTaskDefinitionResponse
                 .builder()
                 .taskDefinition(TaskDefinition.builder().taskDefinitionArn(registered).build())
                 .build(),
         )
+    }
+
+    private fun bucketIn(locationConstraint: String) {
+        whenever(s3.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenReturn(GetBucketLocationResponse.builder().locationConstraint(locationConstraint).build())
     }
 
     private fun serviceIs(vararg services: Service) {
@@ -122,6 +129,31 @@ class CompactorServiceTest {
             assertThat(networkConfiguration().awsvpcConfiguration().subnets()).containsExactly("subnet-c")
         }
         assertThat(events).contains(Event.Compactor.Started("eu-west-1", registered))
+    }
+
+    /** In a fresh account ECS cannot assume the roles IAM has just created for a few seconds. */
+    @Test
+    fun `a service create that ECS refuses while the new roles propagate is retried`() {
+        serviceIs()
+        whenever(ecs.createService(any<CreateServiceRequest>()))
+            .thenThrow(InvalidParameterException.builder().message("Unable to assume the service linked role.").build())
+            .thenReturn(CreateServiceResponse.builder().build())
+
+        service.ensureRunning(bucket)
+
+        verify(ecs, times(2)).createService(any<CreateServiceRequest>())
+        assertThat(events).contains(Event.Compactor.Started("eu-west-1", registered))
+    }
+
+    @Test
+    fun `a bucket in the original region, reported as an empty location, runs the compactor in us-east-1`() {
+        bucketIn("")
+        ecsRegion = "us-east-1"
+        serviceIs()
+
+        service.ensureRunning(bucket)
+
+        assertThat(events).contains(Event.Compactor.Started("us-east-1", registered))
     }
 
     @Test
@@ -196,7 +228,7 @@ class CompactorServiceTest {
     }
 
     @Test
-    fun `the last cluster's down sets the desired count to 0, and another cluster keeps it running`() {
+    fun `the last cluster's down sets the desired count to 0 and reports the stop`() {
         serviceIs(service(desired = 1))
         whenever(census.clusterVpcs(bucket)).thenReturn(listOf(ClusterVpc("us-west-2", "vpc-this")))
 
@@ -205,11 +237,39 @@ class CompactorServiceTest {
         val updated = argumentCaptor<UpdateServiceRequest>()
         verify(ecs).updateService(updated.capture())
         assertThat(updated.firstValue.desiredCount()).isEqualTo(0)
+        assertThat(events).containsExactly(Event.Compactor.Stopped("eu-west-1"))
+    }
 
+    @Test
+    fun `another cluster that uses the bucket keeps the compactor running`() {
+        serviceIs(service(desired = 1))
         whenever(census.clusterVpcs(bucket)).thenReturn(listOf(ClusterVpc("us-west-2", "vpc-this"), ClusterVpc("eu-west-1", "vpc-b")))
+
         service.stopIfLastCluster(bucket, tornDown = setOf("vpc-this"))
 
-        assertThat(events).contains(Event.Compactor.KeptRunning(listOf("eu-west-1/vpc-b")))
+        verify(ecs, never()).updateService(any<UpdateServiceRequest>())
+        assertThat(events).containsExactly(Event.Compactor.KeptRunning(listOf("eu-west-1/vpc-b")))
+    }
+
+    @Test
+    fun `a stop with no service updates nothing and does not report a stop`() {
+        serviceIs()
+
+        service.stop(bucket)
+
+        verify(ecs, never()).updateService(any<UpdateServiceRequest>())
+        assertThat(events).containsExactly(Event.Compactor.NotCreated("eu-west-1"))
+    }
+
+    @Test
+    fun `the last cluster's down with no service updates nothing and does not report a stop`() {
+        serviceIs(service(desired = 0, status = "INACTIVE"))
+        whenever(census.clusterVpcs(bucket)).thenReturn(emptyList())
+
+        service.stopIfLastCluster(bucket, tornDown = setOf("vpc-this"))
+
+        verify(ecs, never()).updateService(any<UpdateServiceRequest>())
+        assertThat(events).containsExactly(Event.Compactor.NotCreated("eu-west-1"))
     }
 
     /** The request `ensureRunning` would register for this bucket and these roles. */

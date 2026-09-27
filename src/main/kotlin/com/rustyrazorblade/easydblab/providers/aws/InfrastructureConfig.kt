@@ -100,8 +100,10 @@ data class InfrastructureConfig(
          * Creates configuration for the account compactor's VPC: one public subnet, an internet
          * gateway and a security group with no ingress. It is tagged like every easy-db-lab VPC
          * but carries no `bucket` tag, so `down` never counts it as a cluster.
+         *
+         * @param availabilityZone the zone of the subnet; Fargate must run there.
          */
-        fun forCompactor(): InfrastructureConfig =
+        fun forCompactor(availabilityZone: String): InfrastructureConfig =
             InfrastructureConfig(
                 vpcName = Constants.Vpc.COMPACTOR_VPC_NAME,
                 vpcCidr = Constants.Vpc.DEFAULT_CIDR,
@@ -110,6 +112,7 @@ data class InfrastructureConfig(
                         SubnetConfig(
                             name = "${Constants.Vpc.COMPACTOR_VPC_NAME}-subnet",
                             cidr = Constants.Vpc.subnetCidr(0),
+                            availabilityZone = availabilityZone,
                         ),
                     ),
                 securityGroupName = "${Constants.Vpc.COMPACTOR_VPC_NAME}-sg",

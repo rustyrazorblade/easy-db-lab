@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.commands.observability
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.services.aws.CompactorContainerState
 import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -92,6 +93,38 @@ class CompactorCommandsTest : BaseKoinTest() {
             .contains("abc123 (RUNNING)")
             .contains("[mimir-compactor] compaction done")
         verifyNoInteractions(clusterStateManager)
+    }
+
+    /** A task that crashes in a loop reads as failing, with why it stopped, never as running. */
+    @Test
+    fun `status shows a crash-looping service as failing, with the stop reason, each container's exit and the service events`() {
+        whenever(compactor.status("easy-db-lab-acct")).thenReturn(
+            Status(
+                region = "eu-west-1",
+                exists = true,
+                desiredCount = 1,
+                runningCount = 0,
+                taskId = "def456",
+                taskStatus = "STOPPED",
+                stoppedReason = "Essential container in task exited",
+                stopCode = "EssentialContainerExited",
+                containers =
+                    listOf(
+                        CompactorContainerState("config", "STOPPED", 0, ""),
+                        CompactorContainerState("loki-compactor", "STOPPED", 1, "CannotPullContainerError"),
+                    ),
+                serviceEvents = listOf("2026-09-27T10:00:00Z (service easy-db-lab-compactor) has started 1 tasks"),
+            ),
+        )
+
+        val output = stdout { CompactorStatus().execute() }
+
+        assertThat(output)
+            .contains("Account compactor: failing (region eu-west-1)")
+            .contains("Stopped: EssentialContainerExited: Essential container in task exited")
+            .contains("loki-compactor: STOPPED exit 1 (CannotPullContainerError)")
+            .contains("config: STOPPED exit 0")
+            .contains("has started 1 tasks")
     }
 
     @Test

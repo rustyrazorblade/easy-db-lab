@@ -8,6 +8,8 @@ import org.apache.sshd.common.SshException
 import software.amazon.awssdk.awscore.exception.AwsServiceException
 import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
+import software.amazon.awssdk.services.ecs.model.ClientException
+import software.amazon.awssdk.services.ecs.model.InvalidParameterException
 import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.s3.model.S3Exception
@@ -75,6 +77,24 @@ object RetryUtil {
                         log.warn { "IAM error: ${throwable.message} - will retry" }
                         true
                     }
+                }
+            }.build()
+
+    /**
+     * Creates retry configuration for an ECS call that passes a role IAM has just created: with the
+     * attempts and backoff of [createIAMRetryConfig], it retries ECS's `InvalidParameterException`
+     * and `ClientException`, the codes ECS answers while it cannot yet assume a new task role or its
+     * new service-linked role.
+     */
+    fun createEcsRoleRetryConfig(): RetryConfig =
+        RetryConfig
+            .custom<Any>()
+            .maxAttempts(Constants.Retry.MAX_INSTANCE_PROFILE_RETRIES)
+            .intervalFunction { attemptCount ->
+                Constants.Retry.EXPONENTIAL_BACKOFF_BASE_MS * (1L shl (attemptCount - 1))
+            }.retryOnException { throwable ->
+                (throwable is InvalidParameterException || throwable is ClientException).also { retry ->
+                    if (retry) log.warn { "ECS cannot use a new role yet (${throwable.message}) - will retry" }
                 }
             }.build()
 

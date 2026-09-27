@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
@@ -328,6 +329,52 @@ class DownCommandTest : BaseKoinTest() {
             Down().apply { autoApprove = true }.execute()
             Down().apply { dryRun = true }.execute()
 
+            verify(compactor, never()).stopIfLastCluster(any(), any())
+        }
+
+        @Test
+        fun `down --all leaves every VPC it tore down out of the census, with the profile's bucket`() {
+            getKoin().get<User>().s3Bucket = "profile-bucket"
+            val resources = listOf(DiscoveredResources(vpcId = "vpc-1"), DiscoveredResources(vpcId = "vpc-2"))
+            whenever(mockTeardownService.teardownAllTagged(any(), any())).thenReturn(TeardownResult.success(resources))
+
+            Down()
+                .apply {
+                    teardownAll = true
+                    autoApprove = true
+                }.execute()
+
+            verify(compactor).stopIfLastCluster("profile-bucket", setOf("vpc-1", "vpc-2"))
+        }
+
+        @Test
+        fun `a packer teardown never touches the compactor`() {
+            getKoin().get<User>().s3Bucket = "profile-bucket"
+            val packer = DiscoveredResources(vpcId = "vpc-packer", vpcName = "packer")
+            whenever(mockTeardownService.teardownPackerInfrastructure(any())).thenReturn(TeardownResult.success(packer))
+
+            Down()
+                .apply {
+                    teardownPacker = true
+                    autoApprove = true
+                }.execute()
+
+            verify(compactor, never()).stopIfLastCluster(any(), any())
+        }
+
+        @Test
+        fun `a teardown by VPC id with no account bucket in the profile has no compactor to stop`() {
+            getKoin().get<User>().s3Bucket = ""
+            val specific = DiscoveredResources(vpcId = "vpc-specific")
+            whenever(mockTeardownService.teardownVpc(eq("vpc-specific"), any())).thenReturn(TeardownResult.success(specific))
+
+            Down()
+                .apply {
+                    vpcId = "vpc-specific"
+                    autoApprove = true
+                }.execute()
+
+            verify(mockTeardownService).teardownVpc("vpc-specific", false)
             verify(compactor, never()).stopIfLastCluster(any(), any())
         }
     }

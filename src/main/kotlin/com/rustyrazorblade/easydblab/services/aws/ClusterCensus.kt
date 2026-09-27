@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.providers.aws.RegionalClients
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DescribeVpcsRequest
 import software.amazon.awssdk.services.ec2.model.Filter
+import java.util.concurrent.CompletableFuture
 
 /**
  * One cluster VPC that names the account bucket.
@@ -26,29 +27,38 @@ class ClusterCensus(
     private val ec2: Ec2Client,
     private val regionalClients: RegionalClients,
 ) {
-    /** Every cluster VPC in any enabled region whose `bucket` tag is [bucket]. */
+    /** Every cluster VPC in any enabled region whose `bucket` tag is [bucket]; the regions are asked at once. */
     fun clusterVpcs(bucket: String): List<ClusterVpc> =
-        ec2.describeRegions().regions().map { it.regionName() }.flatMap { region ->
-            regionalClients.ec2(region).use { client ->
-                client
-                    .describeVpcsPaginator(
-                        DescribeVpcsRequest
-                            .builder()
-                            .filters(
-                                Filter
-                                    .builder()
-                                    .name("tag:${Constants.Vpc.TAG_KEY}")
-                                    .values(Constants.Vpc.TAG_VALUE)
-                                    .build(),
-                                Filter
-                                    .builder()
-                                    .name("tag:${Constants.Vpc.BUCKET_TAG_KEY}")
-                                    .values(bucket)
-                                    .build(),
-                            ).build(),
-                    ).vpcs()
-                    .map { ClusterVpc(region, it.vpcId()) }
-            }
+        ec2
+            .describeRegions()
+            .regions()
+            .map { region -> CompletableFuture.supplyAsync { clusterVpcsIn(region.regionName(), bucket) } }
+            // Every region's call has started before the first join waits.
+            .flatMap { it.join() }
+
+    private fun clusterVpcsIn(
+        region: String,
+        bucket: String,
+    ): List<ClusterVpc> =
+        regionalClients.ec2(region).use { client ->
+            client
+                .describeVpcsPaginator(
+                    DescribeVpcsRequest
+                        .builder()
+                        .filters(
+                            Filter
+                                .builder()
+                                .name("tag:${Constants.Vpc.TAG_KEY}")
+                                .values(Constants.Vpc.TAG_VALUE)
+                                .build(),
+                            Filter
+                                .builder()
+                                .name("tag:${Constants.Vpc.BUCKET_TAG_KEY}")
+                                .values(bucket)
+                                .build(),
+                        ).build(),
+                ).vpcs()
+                .map { ClusterVpc(region, it.vpcId()) }
         }
 }
 

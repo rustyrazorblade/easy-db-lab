@@ -160,6 +160,7 @@ class AwsInfrastructureService(
                     subnetConfig.name,
                     subnetConfig.cidr,
                     config.tags,
+                    subnetConfig.availabilityZone,
                 )
             vpcService.ensureRouteTable(existingVpcId, subnetId, igwId, config.tags)
             val sgId =

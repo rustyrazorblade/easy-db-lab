@@ -4,7 +4,7 @@ Every cluster writes its metrics, logs and traces to one shared store in the acc
 
 ## What it runs
 
-The compactor is one ECS Fargate service per AWS account, `easy-db-lab-compactor` in the ECS cluster `easy-db-lab`. It runs in the account bucket's region, in its own small VPC, `easy-db-lab-compactor`: one public subnet, an internet gateway, and a security group with no ingress.
+The compactor is one ECS Fargate service per AWS account, `easy-db-lab-compactor` in the ECS cluster `easy-db-lab`. It runs in the account bucket's region, in its own small VPC, `easy-db-lab-compactor`: one public subnet, an internet gateway, and a security group with no ingress. The subnet is in the first availability zone, by name, where Fargate runs; `up` never places it in a zone without Fargate, such as `use1-az3`.
 
 The service runs exactly 1 task (ARM64, 2 vCPU, 8 GiB, 100 GiB of disk). ECS never runs a second one: a new task starts only after the old one stopped. The task runs:
 
@@ -43,7 +43,7 @@ Metrics queries keep working while the compactor is stopped. Blocks shipped afte
 ```bash
 easy-db-lab observability compactor start    # start it as up does
 easy-db-lab observability compactor stop     # set its desired count to 0
-easy-db-lab observability compactor status   # state, task and the last 20 log lines
+easy-db-lab observability compactor status   # state, why the task stopped, service events, the last 20 log lines
 ```
 
 They work outside a cluster workspace. See [Observability Commands](../reference/commands.md#observability-commands).

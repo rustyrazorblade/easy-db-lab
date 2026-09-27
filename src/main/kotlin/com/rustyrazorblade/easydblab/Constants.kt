@@ -213,6 +213,12 @@ object Constants {
         /** How many of the newest log lines `observability compactor status` prints. */
         const val STATUS_LOG_LINES = 20
 
+        /** How many of the service's newest events `observability compactor status` prints. */
+        const val STATUS_SERVICE_EVENTS = 5
+
+        /** Availability zone IDs where Fargate does not run; the compactor's subnet is never placed in one. */
+        val NON_FARGATE_ZONE_IDS = setOf("use1-az3")
+
         /** The busybox image of the init container that writes the configuration files. */
         const val CONFIG_IMAGE = "busybox:1.37.0"
     }

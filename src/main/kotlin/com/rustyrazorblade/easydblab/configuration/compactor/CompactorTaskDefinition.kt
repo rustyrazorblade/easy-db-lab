@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
+import software.amazon.awssdk.core.SdkPojo
 import software.amazon.awssdk.services.ecs.model.CPUArchitecture
 import software.amazon.awssdk.services.ecs.model.Compatibility
 import software.amazon.awssdk.services.ecs.model.ContainerCondition
@@ -103,6 +104,41 @@ data class CompactorTaskDefinition(
                 .bufferedReader()
                 .use { it.readText() }
 
+        /** The `awslogs-stream-prefix` of [container]; awslogs names its stream `<prefix>/<container>/<task id>`. */
+        fun logStreamPrefix(container: String): String = container
+
+        /** The CloudWatch Logs stream of [container] in task [taskId]. */
+        fun logStream(
+            container: String,
+            taskId: String,
+        ): String = "${logStreamPrefix(container)}/$container/$taskId"
+
+        /** A SHA-256 over every field of [request], nested ones included, in the SDK's field order. */
+        fun hashOf(request: RegisterTaskDefinitionRequest): String =
+            MessageDigest
+                .getInstance("SHA-256")
+                .digest(canonical(request).toByteArray())
+                .joinToString("") { "%02x".format(it) }
+
+        /** Spells out every field: the SDK's `toString` redacts some. Map keys are sorted. */
+        private fun canonical(value: Any?): String =
+            when (value) {
+                is SdkPojo ->
+                    value.sdkFields().joinToString(
+                        ",",
+                        "{",
+                        "}",
+                    ) { "${it.memberName()}=${canonical(it.getValueOrDefault(value))}" }
+                is Map<*, *> ->
+                    value.entries.sortedBy { it.key.toString() }.joinToString(
+                        ",",
+                        "{",
+                        "}",
+                    ) { "${it.key}=${canonical(it.value)}" }
+                is Collection<*> -> value.joinToString(",", "[", "]") { canonical(it) }
+                else -> value.toString()
+            }
+
         /** Every configuration file the task writes, by file name. */
         fun configFiles(): Map<String, String> =
             mapOf(
@@ -131,7 +167,7 @@ data class CompactorTaskDefinition(
                 .build()
         }
 
-    private fun logs(stream: String): LogConfiguration =
+    private fun logs(container: String): LogConfiguration =
         LogConfiguration
             .builder()
             .logDriver(LogDriver.AWSLOGS)
@@ -139,7 +175,7 @@ data class CompactorTaskDefinition(
                 mapOf(
                     "awslogs-group" to logGroup,
                     "awslogs-region" to region,
-                    "awslogs-stream-prefix" to stream,
+                    "awslogs-stream-prefix" to logStreamPrefix(container),
                 ),
             ).build()
 
@@ -175,40 +211,42 @@ data class CompactorTaskDefinition(
             .logConfiguration(logs(name))
             .build()
 
-    /** The containers, the config writer first. */
-    fun containers(): List<ContainerDefinition> {
-        val files = configFiles()
-        val encoded = files.mapValues { Base64.getEncoder().encodeToString(it.value.toByteArray()) }
+    /** The busybox container that writes every configuration file, carried base64-encoded in its environment. */
+    private fun configWriter(): ContainerDefinition {
+        val encoded = configFiles().mapValues { Base64.getEncoder().encodeToString(it.value.toByteArray()) }
         val script =
             encoded.keys.withIndex().joinToString(" && ") { (index, file) ->
                 "echo \"\$CONFIG_$index\" | base64 -d > $CONFIG_DIR/$file"
             }
-        val config =
-            ContainerDefinition
-                .builder()
-                .name(CONFIG_CONTAINER)
-                .image(Constants.Compactor.CONFIG_IMAGE)
-                .essential(false)
-                .command("sh", "-c", script)
-                .environment(
-                    encoded.values.withIndex().map { (index, value) ->
-                        KeyValuePair
-                            .builder()
-                            .name("CONFIG_$index")
-                            .value(value)
-                            .build()
-                    },
-                ).mountPoints(
-                    MountPoint
+        return ContainerDefinition
+            .builder()
+            .name(CONFIG_CONTAINER)
+            .image(Constants.Compactor.CONFIG_IMAGE)
+            .essential(false)
+            .command("sh", "-c", script)
+            .environment(
+                encoded.values.withIndex().map { (index, value) ->
+                    KeyValuePair
                         .builder()
-                        .sourceVolume(CONFIG_VOLUME)
-                        .containerPath(CONFIG_DIR)
-                        .build(),
-                ).logConfiguration(logs(CONFIG_CONTAINER))
-                .build()
+                        .name("CONFIG_$index")
+                        .value(value)
+                        .build()
+                },
+            ).mountPoints(
+                MountPoint
+                    .builder()
+                    .sourceVolume(CONFIG_VOLUME)
+                    .containerPath(CONFIG_DIR)
+                    .build(),
+            ).logConfiguration(logs(CONFIG_CONTAINER))
+            .build()
+    }
+
+    /** The containers, the config writer first. */
+    fun containers(): List<ContainerDefinition> {
         val tempoConfig = "-config.file=$CONFIG_DIR/$TEMPO_BACKEND_FILE"
         return listOf(
-            config,
+            configWriter(),
             compactor(
                 MIMIR_CONTAINER,
                 MimirManifestBuilder.IMAGE,
@@ -243,37 +281,28 @@ data class CompactorTaskDefinition(
     }
 
     /**
-     * A hash of everything the task runs: the containers, their images, arguments and configuration.
-     * A service started at desired count 0 registers a new revision only when this differs from the
-     * latest revision's [Constants.Compactor.CONFIG_HASH_TAG].
+     * A hash of every field of the `RegisterTaskDefinition` request except its tags. A service
+     * started at desired count 0 registers a new revision only when this differs from the latest
+     * revision's [Constants.Compactor.CONFIG_HASH_TAG].
      */
-    fun configHash(): String =
-        MessageDigest
-            .getInstance("SHA-256")
-            .digest((containers().joinToString("\n") { describe(it) } + taskSize()).toByteArray())
-            .joinToString("") { "%02x".format(it) }
-
-    /** Every field of [container] the task runs with, spelled out: the SDK's `toString` hides some. */
-    private fun describe(container: ContainerDefinition): String =
-        listOf(
-            container.name(),
-            container.image(),
-            container.user().orEmpty(),
-            container.command().joinToString(" "),
-            container.environment().joinToString(",") { "${it.name()}=${it.value()}" },
-            container
-                .logConfiguration()
-                .options()
-                .toSortedMap()
-                .toString(),
-        ).joinToString("|")
-
-    private fun taskSize() =
-        "${Constants.Compactor.CPU_UNITS}/${Constants.Compactor.MEMORY_MIB}/${Constants.Compactor.EPHEMERAL_STORAGE_GIB}/" +
-            "$taskRoleArn/$executionRoleArn"
+    fun configHash(): String = hashOf(untaggedRequest())
 
     /** The `RegisterTaskDefinition` request, tagged with [configHash]. */
-    fun request(): RegisterTaskDefinitionRequest =
+    fun request(): RegisterTaskDefinitionRequest {
+        val untagged = untaggedRequest()
+        return untagged
+            .toBuilder()
+            .tags(
+                Tag
+                    .builder()
+                    .key(Constants.Compactor.CONFIG_HASH_TAG)
+                    .value(hashOf(untagged))
+                    .build(),
+            ).build()
+    }
+
+    /** The request without tags: everything the task runs with. */
+    fun untaggedRequest(): RegisterTaskDefinitionRequest =
         RegisterTaskDefinitionRequest
             .builder()
             .family(Constants.Compactor.TASK_FAMILY)
@@ -292,11 +321,5 @@ data class CompactorTaskDefinition(
             .executionRoleArn(executionRoleArn)
             .volumes(Volume.builder().name(CONFIG_VOLUME).build())
             .containerDefinitions(containers())
-            .tags(
-                Tag
-                    .builder()
-                    .key(Constants.Compactor.CONFIG_HASH_TAG)
-                    .value(configHash())
-                    .build(),
-            ).build()
+            .build()
 }

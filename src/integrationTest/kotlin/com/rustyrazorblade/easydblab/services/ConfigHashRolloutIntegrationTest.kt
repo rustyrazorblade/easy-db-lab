@@ -189,7 +189,12 @@ class ConfigHashRolloutIntegrationTest {
         assertThat(replicaSets("pyroscope")).isEqualTo(pyroscopeSets)
 
         // Tempo's configuration changes.
-        deploy(stack { it.replace("max_block_duration: 5m", "max_block_duration: 6m") })
+        deploy(
+            stack {
+                check(it.contains("max_block_duration: 1m")) { "rendered tempo.yaml no longer cuts at 1m" }
+                it.replace("max_block_duration: 1m", "max_block_duration: 2m")
+            },
+        )
 
         assertThat(generation("tempo")).isGreaterThan(tempoGeneration)
         assertThat(awaitReplicaSets("tempo", tempoSets.size + 1)).hasSize(tempoSets.size + 1)

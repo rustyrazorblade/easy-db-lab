@@ -61,4 +61,4 @@
 - [x] 8.2 Root `CLAUDE.md`: update "Storage backends" (the two-phase parallel save, Tempo drain, per-signal record) and "Observability store and tenant" (the tool-named roots, the IAM split).
 - [x] 8.3 `configuration/CLAUDE.md` (tailFlush, `cluster-config` keys, Pyroscope path, store layout), `commands/CLAUDE.md` (the `TeardownBackupService` row), `services/aws/CLAUDE.md` (paths).
 - [x] 8.4 User docs: `docs/user-guide/monitoring.md`, `loki.md` (the 2.5-minute out-of-order window), `mimir.md`, `profiling.md`; `docs/reference/commands.md` (`down`: what it saves, the phases, `--force` listing); `log-infrastructure.md`, `opentelemetry.md`, `pyroscope-configuration.md`.
-- [ ] 8.5 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21), `./gradlew test`, and `./gradlew integrationTest`; all pass.
+- [x] 8.5 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21), `./gradlew test`, and `./gradlew integrationTest`; all pass.

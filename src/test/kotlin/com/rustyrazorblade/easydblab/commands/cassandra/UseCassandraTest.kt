@@ -75,7 +75,7 @@ class UseCassandraTest : BaseKoinTest() {
         whenever(mockClusterStateManager.exists()).thenReturn(true)
 
         // Some tests chain to UpdateConfig — create a patch file for them.
-        File("cassandra.patch.yaml").writeText(
+        File(context.workingDirectory, "cassandra.patch.yaml").writeText(
             """
             cluster_name: test-cluster
             num_tokens: 4
@@ -85,7 +85,7 @@ class UseCassandraTest : BaseKoinTest() {
 
     @AfterEach
     fun cleanup() {
-        File("cassandra.patch.yaml").delete()
+        File(context.workingDirectory, "cassandra.patch.yaml").delete()
     }
 
     @Test

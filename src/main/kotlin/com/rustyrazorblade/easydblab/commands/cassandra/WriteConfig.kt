@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.events.Event
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
-import java.io.File
 
 /**
  * Write a new cassandra configuration patch file.
@@ -64,6 +63,12 @@ class WriteConfig : PicoBaseCommand() {
                 val endpoint_snitch = "Ec2Snitch"
             }
 
-        context.yaml.writeValue(File("cassandra.patch.yaml"), data)
+        context.yaml.writeValue(
+            context.workingDirectory
+                .toPath()
+                .resolve(file)
+                .toFile(),
+            data,
+        )
     }
 }

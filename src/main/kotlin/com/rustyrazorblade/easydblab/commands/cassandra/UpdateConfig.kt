@@ -16,7 +16,6 @@ import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.inputStream
 
@@ -53,7 +52,13 @@ class UpdateConfig : PicoBaseCommand() {
             val it = host.toHost()
             eventBus.emit(Event.Cassandra.ConfigFileUploading(file, "$it"))
 
-            val yaml = context.yaml.readTree(Path.of(file).inputStream())
+            val yaml =
+                context.yaml.readTree(
+                    context.workingDirectory
+                        .toPath()
+                        .resolve(file)
+                        .inputStream(),
+                )
             (yaml as ObjectNode)
                 .put("listen_address", it.private)
                 .put("rpc_address", it.private)

@@ -78,7 +78,7 @@ class UpdateConfigTest : BaseKoinTest() {
             .doReturn(Version("/usr/local/cassandra/5.0"))
 
         // Create required patch file
-        File("cassandra.patch.yaml").writeText(
+        File(context.workingDirectory, "cassandra.patch.yaml").writeText(
             """
             cluster_name: test-cluster
             num_tokens: 4
@@ -88,7 +88,7 @@ class UpdateConfigTest : BaseKoinTest() {
 
     @AfterEach
     fun cleanup() {
-        File("cassandra.patch.yaml").delete()
+        File(context.workingDirectory, "cassandra.patch.yaml").delete()
     }
 
     @Test

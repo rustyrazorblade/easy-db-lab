@@ -22,7 +22,7 @@ import org.mockito.kotlin.whenever
  * Tests the Tempo configuration and Deployment as rendered by the real [TemplateService].
  *
  * Tempo keeps every block: compaction, which is also what runs retention in Tempo 3, is off for
- * every tenant, and no retention is configured. Blocks are cut every five minutes, and both
+ * every tenant, and no retention is configured. Blocks are cut every minute, and both
  * write-ahead logs live on the control node's disk so a pod restart does not lose received spans.
  */
 class TempoManifestBuilderTest : BaseKoinTest() {
@@ -68,12 +68,12 @@ class TempoManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `blocks are cut every five minutes`() {
-        assertThat(scalarAt(config(), "live_store", "max_block_duration")).isEqualTo("5m")
+    fun `blocks are cut every minute`() {
+        assertThat(scalarAt(config(), "live_store", "max_block_duration")).isEqualTo("1m")
     }
 
     @Test
-    fun `traces are stored under the observability traces prefix of the account bucket`() {
+    fun `traces are stored under the traces root of the account bucket`() {
         val yaml = config()
 
         assertThat(scalarAt(yaml, "storage", "trace", "s3", "bucket")).isEqualTo("\${S3_BUCKET}")

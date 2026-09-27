@@ -43,7 +43,8 @@ import java.util.UUID
  * the shared-tenant layout. It does not establish the cause of the missing blocks on a real cluster,
  * which only a diagnosis on a running cluster can (task group 1 of the change). It proves:
  *
- * - blocks reach S3 while Tempo runs, under `tempo/<tenant>/`;
+ * - blocks reach S3 while Tempo runs, under `tempo/<tenant>/`, and a span is in a block there
+ *   within about two minutes of its push, with no shutdown;
  * - a trace pushed 3s before Tempo is killed outright (no shutdown, no flush) reaches S3 after a
  *   restart on the same WAL volume: the live store has appended it to the WAL by then;
  * - a trace received just before a graceful stop — how Kubernetes restarts a pod — reaches S3 after
@@ -52,17 +53,18 @@ import java.util.UUID
  *   `tempo/<tenant>/` directory at the same time and every block from each is kept.
  *
  * The WAL is a Docker volume shared by the successive containers, standing in for the control node's
- * hostPath. Two edits are made to the rendered configuration, for the harness only: the S3 endpoint
- * and credentials point at LocalStack, and the block cut is shortened from 5m to [TEST_BLOCK_CUT] so
- * the test does not wait five minutes per block. The production cut is asserted in the unit test.
+ * hostPath. One edit is made to the rendered configuration, for the harness only: the S3 endpoint
+ * and credentials point at LocalStack. The block cut is the cluster's own one minute.
  */
 class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
     private companion object {
         const val TENANT = "acme"
-        const val TEST_BLOCK_CUT = "45s"
         const val OTLP_HTTP_PORT = 4321
         const val WAL_MOUNT = "/var/tempo"
         val BLOCK_WAIT: Duration = Duration.ofMinutes(3)
+
+        /** How soon a span must be in S3 while Tempo runs: the spec's "about 2 minutes". */
+        val UPLOAD_WITHIN: Duration = Duration.ofMinutes(2).plusSeconds(30)
         val POLL: Duration = Duration.ofSeconds(2)
 
         /**
@@ -108,14 +110,12 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
 
     private fun newVolumeName() = "tempo-wal-${UUID.randomUUID().toString().take(8)}"
 
-    /** The cluster's rendered tempo.yaml, pointed at LocalStack with a shorter block cut. */
+    /** The cluster's rendered tempo.yaml, pointed at LocalStack. */
     private fun testConfig(): String {
         val rendered = TempoManifestBuilder(getKoin().get()).buildConfigMap().data.getValue("tempo.yaml")
-        check(rendered.contains("max_block_duration: 5m")) { "rendered config no longer cuts at 5m" }
         val endpointLine = "      endpoint: s3.\${AWS_REGION}.amazonaws.com"
         check(rendered.contains(endpointLine)) { "rendered config no longer names the regional S3 endpoint" }
         return rendered
-            .replace("max_block_duration: 5m", "max_block_duration: $TEST_BLOCK_CUT")
             .replace(
                 endpointLine,
                 """
@@ -205,9 +205,12 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
                     .int
             }
 
-    /** Waits up to [BLOCK_WAIT] for S3 to hold [expected] traces, and fails with what it holds. */
-    private fun awaitTracesInS3(expected: Int) {
-        val deadline = System.nanoTime() + BLOCK_WAIT.toNanos()
+    /** Waits up to [wait] for S3 to hold [expected] traces, and fails with what it holds. */
+    private fun awaitTracesInS3(
+        expected: Int,
+        wait: Duration = BLOCK_WAIT,
+    ) {
+        val deadline = System.nanoTime() + wait.toNanos()
         var found = tracesInS3()
         while (found < expected && System.nanoTime() < deadline) {
             Thread.sleep(POLL.toMillis())
@@ -223,10 +226,10 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
         docker.createVolumeCmd().withName(walVolume).exec()
         val config = testConfig()
 
-        // Blocks reach S3 while Tempo runs.
+        // Blocks reach S3 while Tempo runs, within about two minutes of the push.
         val first = startTempo(config)
         pushTrace(first)
-        awaitTracesInS3(1)
+        awaitTracesInS3(1, UPLOAD_WITHIN)
 
         // A trace in the WAL but not in a block survives a kill with no shutdown at all.
         pushTrace(first)

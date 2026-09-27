@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -24,6 +25,8 @@ import org.mockito.kotlin.whenever
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.GenericContainer
+import software.amazon.awssdk.core.sync.ResponseTransformer
+import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import java.net.URI
 import java.net.URLEncoder
@@ -38,6 +41,9 @@ import java.util.UUID
  *
  * - two tenants write by remote write, carrying their cluster label, and each reads only its own;
  * - one query naming `a|b` returns both tenants' series, each marked with `__tenant_id__`;
+ * - a sample written while the cluster keeps writing is in a block under `mimir/<tenant>/` within
+ *   about three minutes, with no flush and no shutdown: blocks are one minute long and ship every
+ *   15s. Mimir starting at all proves 3.2.1 accepts a 1m block range with the 10m out-of-order window;
  * - after the head is compacted into a block, the block lands under `mimir/<tenant>/`
  *   and the samples are still answered, now from the local block;
  * - after a SIGKILL and a restart on the same data volume, every sample written before the kill is
@@ -48,6 +54,9 @@ class MimirIntegrationTest : BaseKoinTest() {
     private companion object {
         const val METRIC = "edl_it_probe"
         val BLOCK_WAIT: Duration = Duration.ofMinutes(3)
+
+        /** How soon a sample must be in S3 while the cluster keeps writing: the spec's "about 3 minutes". */
+        val UPLOAD_WITHIN: Duration = Duration.ofMinutes(3).plusSeconds(30)
         val POLL: Duration = Duration.ofSeconds(2)
     }
 
@@ -97,6 +106,7 @@ class MimirIntegrationTest : BaseKoinTest() {
         tenant: String,
         cluster: String,
         value: Double,
+        timestampMillis: Long = System.currentTimeMillis(),
     ) {
         val body =
             PrometheusRemoteWrite.body(
@@ -104,7 +114,7 @@ class MimirIntegrationTest : BaseKoinTest() {
                     PrometheusRemoteWrite.Series(
                         labels = mapOf("__name__" to METRIC, "cluster" to cluster),
                         value = value,
-                        timestampMillis = System.currentTimeMillis(),
+                        timestampMillis = timestampMillis,
                     ),
                 ),
             )
@@ -178,7 +188,7 @@ class MimirIntegrationTest : BaseKoinTest() {
         assertThat(blockMetas(tenant)).describedAs("blocks under ${Constants.Observability.METRICS_ROOT}/$tenant/").isNotEmpty()
     }
 
-    /** Compacts every tenant's head into a block and ships it, the way a cut does after two hours. */
+    /** Compacts every tenant's head into a block and ships it, without waiting for the next cut. */
     private fun compactHead(mimir: GenericContainer<*>) {
         val response =
             ObservabilityBackends.send(
@@ -188,6 +198,48 @@ class MimirIntegrationTest : BaseKoinTest() {
                     .build(),
             )
         assertThat(response.statusCode()).describedAs(response.body()).isIn(200, 204)
+    }
+
+    /** The `minTime` and `maxTime` (exclusive) of the block whose `meta.json` is at [key]. */
+    private fun blockRange(key: String): LongRange {
+        val meta =
+            Json
+                .parseToJsonElement(
+                    s3
+                        .getObject(
+                            GetObjectRequest
+                                .builder()
+                                .bucket(bucket)
+                                .key(key)
+                                .build(),
+                            ResponseTransformer.toBytes(),
+                        ).asUtf8String(),
+                ).jsonObject
+        return meta.getValue("minTime").jsonPrimitive.long until meta.getValue("maxTime").jsonPrimitive.long
+    }
+
+    /**
+     * A cluster writes all the time, so the test keeps writing too, and never flushes or stops Mimir:
+     * the block must come from the 1-minute range cut and the 15-second ship alone.
+     */
+    @Test
+    fun `a sample reaches a block in S3 within about three minutes while the cluster keeps writing`() {
+        val mimir = startMimir()
+        val firstSample = System.currentTimeMillis()
+        write(mimir, "acme", "lab-a", 0.0, firstSample)
+
+        val deadline = System.nanoTime() + UPLOAD_WITHIN.toNanos()
+        var holding = emptyList<String>()
+        var value = 1.0
+        while (holding.isEmpty() && System.nanoTime() < deadline) {
+            Thread.sleep(POLL.toMillis())
+            write(mimir, "acme", "lab-a", value++)
+            holding = blockMetas("acme").filter { firstSample in blockRange(it) }
+        }
+
+        assertThat(holding)
+            .describedAs("a block under ${Constants.Observability.METRICS_ROOT}/acme/ holding the first sample, within $UPLOAD_WITHIN")
+            .isNotEmpty()
     }
 
     @Test

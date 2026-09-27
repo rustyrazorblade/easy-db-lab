@@ -41,8 +41,15 @@ blocks_storage:
     # The head, its WAL and every local block live on the control node's disk (a hostPath), so a
     # pod restart replays the WAL and keeps the blocks.
     dir: /data/tsdb
-    block_ranges_period: [2h]
-    ship_interval: 1m
+    # One-minute blocks, so a sample reaches S3 in about 2 minutes and other clusters can read it.
+    # The ingester cuts a range once a sample later than 1.5 ranges past its start arrives, checked
+    # every head_compaction_interval, and the shipper uploads every ship_interval. A 1m range is
+    # experimental and hidden in Mimir 3.2.1, which does not validate it.
+    block_ranges_period: [1m]
+    head_compaction_interval: 15s
+    ship_interval: 15s
+    # A head with no writes for 2 minutes is compacted, so the last partial block still ships.
+    head_compaction_idle_timeout: 2m
     # Local blocks stay for the cluster's life: the querier reads them, never the store. Mimir
     # requires this to exceed querier.query_store_after.
     retention_period: 87601h

@@ -74,11 +74,14 @@ class MimirManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `blocks are two hours, shipped within a minute, and flushed on shutdown`() {
+    fun `blocks are one minute, cut and shipped every 15 seconds, and flushed on shutdown`() {
         val yaml = config()
 
-        assertThat(scalarAt(yaml, "blocks_storage", "tsdb", "ship_interval")).isEqualTo("1m")
-        assertThat(listAt(yaml, "blocks_storage", "tsdb", "block_ranges_period")).containsExactly("2h")
+        assertThat(listAt(yaml, "blocks_storage", "tsdb", "block_ranges_period")).containsExactly("1m")
+        assertThat(scalarAt(yaml, "blocks_storage", "tsdb", "head_compaction_interval")).isEqualTo("15s")
+        assertThat(scalarAt(yaml, "blocks_storage", "tsdb", "ship_interval")).isEqualTo("15s")
+        // An idle head is compacted, so a stopped cluster's last partial block still ships.
+        assertThat(scalarAt(yaml, "blocks_storage", "tsdb", "head_compaction_idle_timeout")).isEqualTo("2m")
         assertThat(scalarAt(yaml, "blocks_storage", "tsdb", "flush_blocks_on_shutdown")).isEqualTo("true")
     }
 

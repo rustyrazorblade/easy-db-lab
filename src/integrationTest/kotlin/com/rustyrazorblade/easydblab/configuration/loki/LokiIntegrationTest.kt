@@ -39,6 +39,8 @@ import java.util.UUID
  *   its index file, named for `<tenant>.<cluster>`, is under `loki/index/`;
  * - another cluster's Loki on the same bucket answers an `a|b` query with both clusters' lines, each
  *   marked with its tenant;
+ * - a chunk of a stream that keeps writing reaches `loki/<tenant>/` within about five minutes,
+ *   while Loki runs;
  * - a line only in the WAL survives a SIGKILL and a restart on the same data volume;
  * - the compactor never compacts, and a delete request is refused with the lines kept.
  */
@@ -46,6 +48,13 @@ class LokiIntegrationTest : BaseKoinTest() {
     private companion object {
         const val PREFIX = "loki"
         const val STOP_TIMEOUT_SECONDS = 120
+
+        /**
+         * How soon a chunk of a stream that keeps writing must be in S3: the spec's "about 5 minutes",
+         * plus Loki's 30-second flush check and the upload.
+         */
+        val CHUNK_UPLOAD_WITHIN: Duration = Duration.ofMinutes(6)
+        val PUSH_INTERVAL: Duration = Duration.ofSeconds(5)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -210,7 +219,7 @@ class LokiIntegrationTest : BaseKoinTest() {
 
         // Cluster a, on the same bucket, reads its own lines from its ingester and b's from S3. (A
         // Loki that is already running sees another cluster's new index files at its next index
-        // resync, within five minutes.)
+        // resync, within a minute.)
         val lokiA = startLoki(newVolume(), "a", "lab-a")
         push(lokiA, "a", "lab-a", "line from a")
 
@@ -221,6 +230,26 @@ class LokiIntegrationTest : BaseKoinTest() {
         assertThat(lines(federated)).containsExactlyInAnyOrder("line from a", "line from b")
         assertThat(federated.map { streamLabels(it)["__tenant_id__"] to streamLabels(it)["cluster"] })
             .containsExactlyInAnyOrder("a" to "lab-a", "b" to "lab-b")
+    }
+
+    /**
+     * A cluster's streams keep writing, so the test keeps writing too and never stops Loki: the chunk
+     * must be flushed by its 5-minute age alone. A stream that keeps writing is never idle, so
+     * `chunk_idle_period` cannot flush it first.
+     */
+    @Test
+    fun `a chunk of a stream that keeps writing reaches S3 within about five minutes`() {
+        val loki = startLoki(newVolume(), "acme", "lab-c")
+        val deadline = System.nanoTime() + CHUNK_UPLOAD_WITHIN.toNanos()
+        var line = 0
+        var chunks = emptyList<String>()
+        while (chunks.isEmpty() && System.nanoTime() < deadline) {
+            push(loki, "acme", "lab-c", "line ${line++}")
+            Thread.sleep(PUSH_INTERVAL.toMillis())
+            chunks = objectKeys().filter { it.startsWith("$PREFIX/acme/") }
+        }
+
+        assertThat(chunks).describedAs("a chunk under $PREFIX/acme/ within $CHUNK_UPLOAD_WITHIN, with Loki running").isNotEmpty()
     }
 
     @Test

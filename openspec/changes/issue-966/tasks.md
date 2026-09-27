@@ -10,18 +10,18 @@
 
 ## 2. Upload speed
 
-- [ ] 2.1 `mimir.yaml` `blocks_storage.tsdb`: `block_ranges_period: [1m]` (comment: experimental and hidden in 3.2.1), `head_compaction_interval: 15s`, `ship_interval: 15s`, `head_compaction_idle_timeout: 2m`.
-- [ ] 2.2 `tempo.yaml`: `live_store.max_block_duration: 1m`; update its comment.
-- [ ] 2.3 `loki.yaml`: `ingester.max_chunk_age: 5m` (comment: sets the out-of-order window to 2.5 minutes; `reject_old_samples_max_age` stays); `storage_config.tsdb_shipper.resync_interval: 1m` (comment: read side; the index uploads on Loki's fixed 15-minute rotation).
-- [ ] 2.4 Unit tests on the rendered configs (`*ManifestBuilderTest`, real `TemplateService`): the new values; replace the "blocks are two hours" and "blocks are cut every five minutes" tests.
-- [ ] 2.5 Integration test (real Mimir image + LocalStack, no shutdown): a sample appears in a block under `mimir/<tenant>/` within about 3 minutes.  Mimir starting proves 3.2.1 accepts `[1m]` with `out_of_order_time_window: 10m`.
-- [ ] 2.6 Integration test (real Tempo image + LocalStack, no shutdown): a span's block reaches `tempo/<tenant>/` within about 2 minutes.  Remove the "shorter block cut" override from `TempoBlockDurabilityIntegrationTest` so the real config is tested.
-- [ ] 2.7 Integration test (real Loki image + LocalStack, no shutdown): a chunk from a continuously written stream appears under `loki/<tenant>/` within about 5 minutes.
+- [x] 2.1 `mimir.yaml` `blocks_storage.tsdb`: `block_ranges_period: [1m]` (comment: experimental and hidden in 3.2.1), `head_compaction_interval: 15s`, `ship_interval: 15s`, `head_compaction_idle_timeout: 2m`.
+- [x] 2.2 `tempo.yaml`: `live_store.max_block_duration: 1m`; update its comment.
+- [x] 2.3 `loki.yaml`: `ingester.max_chunk_age: 5m` (comment: sets the out-of-order window to 2.5 minutes; `reject_old_samples_max_age` stays); `storage_config.tsdb_shipper.resync_interval: 1m` (comment: read side; the index uploads on Loki's fixed 15-minute rotation).
+- [x] 2.4 Unit tests on the rendered configs (`*ManifestBuilderTest`, real `TemplateService`): the new values; replace the "blocks are two hours" and "blocks are cut every five minutes" tests.
+- [x] 2.5 Integration test (real Mimir image + LocalStack, no shutdown): a sample appears in a block under `mimir/<tenant>/` within about 3 minutes.  Mimir starting proves 3.2.1 accepts `[1m]` with `out_of_order_time_window: 10m`.
+- [x] 2.6 Integration test (real Tempo image + LocalStack, no shutdown): a span's block reaches `tempo/<tenant>/` within about 2 minutes.  Remove the "shorter block cut" override from `TempoBlockDurabilityIntegrationTest` so the real config is tested.
+- [x] 2.7 Integration test (real Loki image + LocalStack, no shutdown): a chunk from a continuously written stream appears under `loki/<tenant>/` within about 5 minutes.
 
 ## 3. Thread-safe foundations (folded-in debt)
 
-- [ ] 3.1 `DefaultSSHConnectionProvider`: replace the plain map and check-then-`getOrPut` with a `ConcurrentHashMap` and `compute`.  Test: concurrent `getConnection` calls for one host create one connection.
-- [ ] 3.2 `ClusterStateManager.save`: write a temp file in the same directory, then rename it atomically over `state.json`.  Test: a concurrent `load()` during repeated saves never fails to parse.
+- [x] 3.1 `DefaultSSHConnectionProvider`: replace the plain map and check-then-`getOrPut` with a `ConcurrentHashMap` and `compute`.  Test: concurrent `getConnection` calls for one host create one connection.
+- [x] 3.2 `ClusterStateManager.save`: write a temp file in the same directory, then rename it atomically over `state.json`.  Test: a concurrent `load()` during repeated saves never fails to parse.
 
 ## 4. Flush model and recording
 

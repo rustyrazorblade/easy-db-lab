@@ -82,6 +82,19 @@ class LokiManifestBuilderTest : BaseKoinTest() {
         assertThat(pod().containers[0].args).contains("-config.expand-env=true")
     }
 
+    /**
+     * A chunk is flushed once it spans 5 minutes, so a stream that keeps writing reaches S3 within
+     * minutes; this also sets the per-stream out-of-order window to 2.5 minutes. The index is re-listed
+     * in S3 every minute, so other clusters' uploads become readable soon after they land.
+     */
+    @Test
+    fun `chunks flush after five minutes and the index is re-listed every minute`() {
+        val yaml = config()
+
+        assertThat(scalarAt(yaml, "ingester", "max_chunk_age")).isEqualTo("5m")
+        assertThat(scalarAt(yaml, "storage_config", "tsdb_shipper", "resync_interval")).isEqualTo("1m")
+    }
+
     /** The schema is a permanent contract of the shared store: every cluster must read it the same. */
     @Test
     fun `the schema is fixed tsdb v13 with daily index tables`() {

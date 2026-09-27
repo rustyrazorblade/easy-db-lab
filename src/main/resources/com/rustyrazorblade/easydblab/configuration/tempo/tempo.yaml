@@ -30,11 +30,11 @@ distributor:
           endpoint: 0.0.0.0:4321
 
 # Tempo 3 has no ingester: the live store holds recent traces and cuts them into blocks. A block is
-# cut at most every five minutes, so traces reach S3 while the cluster is up (Tempo 3's default is
-# 30s). Its WAL lives on the control node's disk (/var/tempo is a hostPath), so a pod restart does
+# cut at most every minute, so a span reaches S3 within about 2 minutes while the cluster is up and
+# other clusters can read it (Tempo 3's default is 30s). Its WAL lives on the control node's disk (/var/tempo is a hostPath), so a pod restart does
 # not lose spans that were received but not yet in a block.
 live_store:
-  max_block_duration: 5m
+  max_block_duration: 1m
   # 0 turns off the live-trace size backpressure. Past this size Tempo 3.0.3 stalls each push a
   # second at a time, and a push whose context ends while stalled is dropped with no error and no
   # counter. A test cluster's live traces fit in the control node's memory: each is held only until

@@ -39,6 +39,9 @@ storage_config:
   tsdb_shipper:
     active_index_directory: /loki/tsdb-index
     cache_location: /loki/tsdb-cache
+    # Read side: re-list the index in S3 every minute, so other clusters' uploads become readable
+    # soon after they land. The index itself uploads on Loki's fixed 15-minute rotation.
+    resync_interval: 1m
 
 # A permanent contract of the shared store: every cluster, past and future, must read the same
 # periods. New periods may only be appended, never edited or removed.
@@ -58,6 +61,11 @@ ingester:
     dir: /loki/wal
     # A graceful stop flushes every chunk in memory to S3.
     flush_on_shutdown: true
+  # Flush a chunk once it spans 5 minutes, so a stream that keeps writing reaches S3 within minutes.
+  # This also sets the per-stream out-of-order window to 2.5 minutes (half this age): a line more
+  # than 2.5 minutes older than its stream's newest line is rejected. The annotation
+  # mirror is not affected: each annotation is a stream of its own.
+  max_chunk_age: 5m
   lifecycler:
     # The ingester's name is part of every index file it uploads, so each file names its tenant and
     # cluster, and two clusters in one tenant never write the same file.

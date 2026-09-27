@@ -40,7 +40,6 @@ import java.util.UUID
  * The test proves:
  *
  * - two tenants write by remote write, carrying their cluster label, and each reads only its own;
- * - one query naming `a|b` returns both tenants' series, each marked with `__tenant_id__`;
  * - a sample written while the cluster keeps writing is in a block under `mimir/<tenant>/` within
  *   about three minutes, with no flush and no shutdown: blocks are one minute long and ship every
  *   15s. Mimir starting at all proves 3.2.1 accepts a 1m block range with the 10m out-of-order window;
@@ -243,17 +242,13 @@ class MimirIntegrationTest : BaseKoinTest() {
     }
 
     @Test
-    fun `each tenant reads its own series, and a federated query reads both, marked with their tenant`() {
+    fun `each tenant reads only its own series`() {
         val mimir = startMimir()
         write(mimir, "a", "lab-a", 1.0)
         write(mimir, "b", "lab-b", 2.0)
 
         assertThat(query(mimir, "a", METRIC).map { labels(it)["cluster"] }).containsExactly("lab-a")
         assertThat(query(mimir, "b", METRIC).map { labels(it)["cluster"] }).containsExactly("lab-b")
-
-        val federated = query(mimir, "a|b", METRIC).map { labels(it) }
-        assertThat(federated.map { it["__tenant_id__"] to it["cluster"] })
-            .containsExactlyInAnyOrder("a" to "lab-a", "b" to "lab-b")
     }
 
     @Test

@@ -37,17 +37,15 @@ import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterConfig
 import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K8sService
-import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
-import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.OptionalServicesConfig
 import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
+import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
-import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
-import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -94,7 +92,7 @@ class Up(
     private val random: Random = Random.Default,
 ) : PicoBaseCommand() {
     private val userConfig: User by inject()
-    private val s3BucketService: AwsS3BucketService by inject()
+    private val accountBucketSetup: AccountBucketSetup by inject()
     private val openSearchService: OpenSearchService by inject()
     private val vpcService: VpcService by inject()
     private val awsInfrastructureService: AwsInfrastructureService by inject()
@@ -110,12 +108,11 @@ class Up(
     private val ciliumNodeImageCheck: CiliumNodeImageCheck by inject()
     private val k8sService: K8sService by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
-    private val compactorService: CompactorService by inject()
     private val registryService: RegistryService by inject()
     private val socksProxyService: SocksProxyService by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val externalIpService: ExternalIpService by inject()
-    private val localTailscaleClient: LocalTailscaleClient by inject()
+    private val provisioningPreflight: ProvisioningPreflight by inject()
     private val tcpReachabilityProbe: TcpReachabilityProbe by inject()
 
     // Working copy loaded during execute() - modified and saved
@@ -142,107 +139,15 @@ class Up(
             workingState.initConfig
                 ?: error("No init config found. Please run 'easy-db-lab init' first.")
 
-        validateControlNodeConfigured(initConfig)
-        validateTelemetryRedirect(initConfig)
-        validateLocalTailscaleConnected()
+        provisioningPreflight.verify(workingState, initConfig)
 
-        configureAccountS3Bucket()
-        validateS3BucketConfigured()
-        reapplyS3Policy()
-        compactorService.ensureRunning(requireNotNull(workingState.s3Bucket))
+        accountBucketSetup.prepare(workingState)
         provisionInfrastructure(initConfig)
         writeConfigurationFiles()
         runNestedCommand { WriteConfig() }
         waitForSshReady()
         downloadCassandraVersions()
         setupInstancesIfNeeded()
-    }
-
-    /**
-     * Validates that the configuration will produce a control node, before any AWS resource is
-     * provisioned. Every downstream step — K3s, node labeling, StorageClasses, observability —
-     * depends on a control node existing. Discovering that it doesn't mid-provisioning, after
-     * EC2 instances are already running, is the exact failure this check exists to prevent.
-     */
-    private fun validateControlNodeConfigured(initConfig: InitConfig) {
-        if (initConfig.controlInstances < 1) {
-            eventBus.emit(Event.Provision.ControlNodeRequired(initConfig.controlInstances))
-            error(
-                "A control node is required to provision a cluster " +
-                    "(configured control instances: ${initConfig.controlInstances}).",
-            )
-        }
-    }
-
-    /**
-     * Re-validates the telemetry redirect endpoints before any AWS resource is provisioned.
-     *
-     * [Init] already validates at init time, but state.json can be hand-edited between init and up.
-     * Re-checking here defends that path: a redirect cluster must fail fast, naming the offending
-     * signal, and stand up nothing — never a partial or mixed local/external stack. Well-formedness
-     * only; unreachable-but-well-formed endpoints surface later as collector send failures.
-     */
-    private fun validateTelemetryRedirect(initConfig: InitConfig) {
-        val offending = initConfig.telemetryRedirect?.validate().orEmpty()
-        if (offending.isNotEmpty()) {
-            eventBus.emit(Event.Provision.TelemetryRedirectInvalid(offending))
-            error(
-                "Telemetry redirect endpoints are missing or malformed for: " +
-                    "${offending.joinToString(", ")}.",
-            )
-        }
-    }
-
-    /**
-     * Validates that the Tailscale client on THIS machine can carry traffic, before any AWS
-     * resource is provisioned.
-     *
-     * A Tailscale cluster routes every connection over the tailnet and starts no SOCKS tunnel
-     * (see [startProxyIfNeeded]), so an operator whose own machine is logged out has no route to
-     * the cluster at all. Without this check that fault surfaces only after four instances and a
-     * K3s install, as a 30-second Fabric8 connect timeout naming a private IP — a symptom that
-     * says nothing about Tailscale. The check costs one local process invocation.
-     */
-    private fun validateLocalTailscaleConnected() {
-        if (!workingState.isTailscaleEnabled()) return
-
-        when (val state = localTailscaleClient.state()) {
-            is LocalTailscaleState.Connected -> return
-            is LocalTailscaleState.NotInstalled -> {
-                eventBus.emit(Event.Tailscale.LocalClientNotInstalled)
-                error(
-                    "Tailscale is enabled for this cluster, but the 'tailscale' command was not found on this machine. " +
-                        "Every connection to the cluster is routed over the tailnet, so provisioning cannot reach it. " +
-                        "Install Tailscale from https://tailscale.com/download and run 'tailscale up', " +
-                        "then run 'easy-db-lab up' again. " +
-                        "If you installed the macOS App Store build, its CLI is not on the PATH: " +
-                        "see https://tailscale.com/kb/1080/cli.",
-                )
-            }
-            is LocalTailscaleState.Disconnected -> {
-                eventBus.emit(Event.Tailscale.LocalClientDisconnected(state.backendState))
-                error(
-                    "Tailscale is enabled for this cluster, but the local Tailscale client is not connected " +
-                        "(state: ${state.backendState}). " +
-                        "Every connection to the cluster is routed over the tailnet, so provisioning has no route to it. " +
-                        "Run 'tailscale up' on this machine, confirm 'tailscale status' reports it connected, " +
-                        "then run 'easy-db-lab up' again.",
-                )
-            }
-        }
-    }
-
-    /**
-     * Validates that an S3 bucket is actually configured after [configureAccountS3Bucket] runs.
-     * That method is responsible for ensuring one exists; this is the assertion that it did, so
-     * a bug there fails loudly here rather than silently skipping registry TLS configuration and
-     * kubeconfig backup later.
-     */
-    private fun validateS3BucketConfigured() {
-        if (workingState.s3Bucket.isNullOrBlank()) {
-            eventBus.emit(Event.Provision.S3BucketRequired(workingState.name))
-            error("An S3 bucket is required to provision a cluster.")
-        }
     }
 
     /**
@@ -261,51 +166,6 @@ class Up(
         if (exitCode != 0) {
             error("$commandName failed during provisioning (exit code $exitCode).")
         }
-    }
-
-    /**
-     * Re-applies the S3Access inline policy and the account bucket policy, so existing roles and
-     * the bucket carry the latest permissions and delete denies. Both are idempotent: PutRolePolicy
-     * and PutBucketPolicy overwrite what is there.
-     */
-    private fun reapplyS3Policy() {
-        eventBus.emit(Event.Provision.IamUpdating)
-        s3BucketService.attachS3Policy(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
-        s3BucketService.putBucketPolicy(requireNotNull(workingState.s3Bucket))
-        log.debug { "S3 policy re-applied successfully" }
-    }
-
-    /**
-     * Configures the account-level S3 bucket and per-cluster data bucket.
-     * Uses the bucket name from the user profile (set during profile setup).
-     * Applies bucket policy for IAM role access.
-     * Creates a per-cluster data bucket for ClickHouse data and CloudWatch metrics.
-     */
-    private fun configureAccountS3Bucket() {
-        if (!workingState.s3Bucket.isNullOrBlank() && workingState.dataBucket.isNotBlank()) {
-            log.info { "S3 buckets already configured: account=${workingState.s3Bucket}, data=${workingState.dataBucket}" }
-            return
-        }
-
-        // Ensure-or-create the account bucket (migrates profiles that never had one saved)
-        val accountBucket = s3BucketService.ensureAccountBucket(userConfig)
-
-        // Configure account-level bucket
-        eventBus.emit(Event.S3.BucketUsing(accountBucket))
-        s3BucketService.putBucketPolicy(accountBucket)
-        workingState.s3Bucket = accountBucket
-        eventBus.emit(Event.S3.BucketConfigured(accountBucket, workingState.clusterPrefix()))
-
-        // Configure per-cluster data bucket
-        s3BucketService.configureDataBucket(
-            bucketName = workingState.dataBucketName(),
-            clusterId = workingState.clusterId,
-            clusterName = workingState.name,
-            metricsConfigId = workingState.metricsConfigId(),
-        )
-
-        workingState.dataBucket = workingState.dataBucketName()
-        clusterStateManager.save(workingState)
     }
 
     /**

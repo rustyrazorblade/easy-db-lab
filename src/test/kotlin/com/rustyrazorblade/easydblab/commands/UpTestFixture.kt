@@ -33,10 +33,12 @@ import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
+import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RecordingAnnotationMirror
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
@@ -151,6 +153,8 @@ abstract class UpTestFixture : BaseKoinTest() {
                 single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
                 single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
                 single { CiliumNodeImageCheck(get()) }
+                single { ProvisioningPreflight(get(), get()) }
+                single { AccountBucketSetup(get(), get(), get(), get(), get()) }
                 single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
                 single<RegistryService> { mock<RegistryService>() }
                 single<SocksProxyService> { mock<SocksProxyService>() }

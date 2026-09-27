@@ -122,6 +122,13 @@ class TeardownFlushServiceTest {
         message: String,
     ) = FakeFlush(name, SignalReport.Profiles, workload) { error(message) }
 
+    /** A flush of [report] from [name] that throws [exception]. */
+    private fun throwing(
+        name: String,
+        report: SignalReport,
+        exception: Exception,
+    ) = FakeFlush(name, report, name) { throw exception }
+
     @Test
     fun `every signal is saved, and each backend is left as its step left it`() {
         val outcome = service().saveTail(control, state, all)
@@ -197,12 +204,14 @@ class TeardownFlushServiceTest {
     fun `an HTTP or Kubernetes error fails only its signal`() {
         val outcome =
             service(
-                loki = FakeFlush("loki", SignalReport.Logs, "loki") { throw IOException("connection reset") },
-                mimir = FakeFlush("mimir", SignalReport.Metrics, "mimir") { throw KubernetesClientException("forbidden") },
+                loki = throwing("loki", SignalReport.Logs, IOException("connection reset")),
+                mimir = throwing("mimir", SignalReport.Metrics, KubernetesClientException("forbidden")),
                 tempo =
-                    FakeFlush("tempo", SignalReport.Traces, "tempo") {
-                        throw RemoteCommandFailedException("curl tempo", "", "connection refused", "Tempo's readiness check failed")
-                    },
+                    throwing(
+                        "tempo",
+                        SignalReport.Traces,
+                        RemoteCommandFailedException("curl tempo", "", "connection refused", "Tempo's readiness check failed"),
+                    ),
             ).saveTail(control, state, all)
 
         assertThat(outcome.failed.keys).containsExactlyInAnyOrder(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES)

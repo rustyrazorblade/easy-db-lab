@@ -389,20 +389,13 @@ class AwsInfrastructureService(
 
         for (vpcId in vpcIds) {
             val resources = discoverResources(vpcId)
-
-            // Skip packer VPC unless explicitly included
-            if (resources.isPackerVpc() && !includePackerVpc) {
-                eventBus.emit(Event.Infra.PackerVpcSkipping(vpcId))
-                continue
+            when {
+                // Skip packer VPC unless explicitly included
+                resources.isPackerVpc() && !includePackerVpc -> eventBus.emit(Event.Infra.PackerVpcSkipping(vpcId))
+                // The account compactor's VPC outlives every cluster
+                resources.isCompactorVpc() -> eventBus.emit(Event.Infra.CompactorVpcSkipping(vpcId))
+                else -> allResources.add(resources)
             }
-
-            // The account compactor's VPC outlives every cluster
-            if (resources.isCompactorVpc()) {
-                eventBus.emit(Event.Infra.CompactorVpcSkipping(vpcId))
-                continue
-            }
-
-            allResources.add(resources)
         }
 
         if (dryRun) {

@@ -74,6 +74,7 @@ val servicesModule =
         // Reads the Tailscale client on the developer's own machine. Explicit factory so the
         // constructor defaults (the real CLI runner, the status timeout) apply.
         factory<LocalTailscaleClient> { DefaultLocalTailscaleClient() }
+        factory { ProvisioningPreflight(get(), get()) }
 
         // Proves this machine has a route to the cluster's private network before `up` relies
         // on one. Short timeout: this is a fail-fast check, not a wait-for-ready loop.

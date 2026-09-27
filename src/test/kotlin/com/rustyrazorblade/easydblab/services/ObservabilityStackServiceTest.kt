@@ -146,15 +146,6 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
         whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
 
-        // The shared store holds another cluster's tenant and Mimir's own cluster directory.
-        val objectStore = mock<ObjectStore>()
-        whenever(objectStore.listFiles(any(), eq(false), any())).thenReturn(
-            listOf(
-                "mimir/acme/",
-                "mimir/__mimir_cluster/",
-            ).map { ObjectStore.FileInfo(ClusterS3Path.fromKey("easy-db-lab-test", it), 0, "") },
-        )
-
         service =
             DefaultObservabilityStackService(
                 mockK8sService,
@@ -177,8 +168,20 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
-                TenantDirectory(objectStore),
+                sharedStoreTenants(),
             )
+    }
+
+    /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */
+    private fun sharedStoreTenants(): TenantDirectory {
+        val objectStore = mock<ObjectStore>()
+        whenever(objectStore.listFiles(any(), eq(false), any())).thenReturn(
+            listOf(
+                "mimir/acme/",
+                "mimir/__mimir_cluster/",
+            ).map { ObjectStore.FileInfo(ClusterS3Path.fromKey("easy-db-lab-test", it), 0, "") },
+        )
+        return TenantDirectory(objectStore)
     }
 
     private fun stateWithCni(cni: CniMode) =

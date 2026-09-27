@@ -85,7 +85,7 @@ class CompactorTaskIntegrationTest {
         val STARTUP: Duration = Duration.ofMinutes(3)
         val COMPACTION: Duration = Duration.ofMinutes(8)
         val POLL: Duration = Duration.ofSeconds(3)
-        val FIRST_LEVEL_WAIT_OFF = "-compactor.first-level-compaction-wait-period=0"
+        const val FIRST_LEVEL_WAIT_OFF = "-compactor.first-level-compaction-wait-period=0"
         val HTTP_PORT_FLAG = Regex("""-server\.http-listen-port=(\d+)""")
     }
 

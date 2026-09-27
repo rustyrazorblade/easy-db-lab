@@ -73,29 +73,10 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single {
-                    mock<GrafanaDashboardService>().also {
-                        mockDashboardService = it
-                    }
-                }
-
-                single {
-                    mock<ClusterStateManager>().also {
-                        mockClusterStateManager = it
-                    }
-                }
-
-                single {
-                    mock<K8sService>().also {
-                        mockK8sService = it
-                    }
-                }
-
-                single {
-                    mock<K8sClientProvider>().also {
-                        mockK8sClientProvider = it
-                    }
-                }
+                single { mock<GrafanaDashboardService>().also { mockDashboardService = it } }
+                single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
+                single { mock<K8sService>().also { mockK8sService = it } }
+                single { mock<K8sClientProvider>().also { mockK8sClientProvider = it } }
 
                 // Real TemplateService — never mock configuration classes
                 single { TemplateService(get(), get()) }

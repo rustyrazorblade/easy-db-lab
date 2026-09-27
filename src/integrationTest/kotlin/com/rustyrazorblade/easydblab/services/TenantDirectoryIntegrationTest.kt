@@ -34,7 +34,14 @@ class TenantDirectoryIntegrationTest {
             "mimir/__mimir_cluster/mimir_cluster_seed.json",
             "loki/other/chunk",
         ).forEach { key ->
-            s3.putObject(PutObjectRequest.builder().bucket(BUCKET).key(key).build(), RequestBody.fromString("x"))
+            s3.putObject(
+                PutObjectRequest
+                    .builder()
+                    .bucket(BUCKET)
+                    .key(key)
+                    .build(),
+                RequestBody.fromString("x"),
+            )
         }
     }
 

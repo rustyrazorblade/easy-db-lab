@@ -6,7 +6,7 @@ set -e  # Exit on any error
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Script to create managed IAM policies and attach to AWS users, groups, or roles
-# Always applies all four policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch
+# Always applies all five policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch, EasyDBLabCompactor
 # Useful for debugging setup issues with other developers
 
 # Initialize variables from environment or defaults
@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Create managed IAM policies and attach to AWS users, groups, or roles."
-      echo "Always applies all four policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch"
+      echo "Always applies all five policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch, EasyDBLabCompactor"
       echo ""
       echo "Uses managed policies (not inline) to avoid size limits and enable reusability."
       echo ""
@@ -102,8 +102,8 @@ else
   ATTACH_COMMAND="attach-role-policy --role-name"
 fi
 
-# Always apply all four policies
-POLICY_LIST=("ec2" "iam" "emr" "opensearch")
+# Always apply all five policies
+POLICY_LIST=("ec2" "iam" "emr" "opensearch" "compactor")
 
 # Build AWS CLI profile argument if specified
 PROFILE_ARG=""
@@ -115,7 +115,7 @@ fi
 echo "=== Configuration ==="
 echo "Target type: $TARGET_TYPE"
 echo "Target name: $TARGET_NAME"
-echo "Policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch (all)"
+echo "Policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch, EasyDBLabCompactor (all)"
 [[ -n "$PROFILE" ]] && echo "AWS profile: $PROFILE"
 echo "Policy type: Managed (reusable, no size limits)"
 echo "Dry run: $DRY_RUN"
@@ -142,6 +142,9 @@ for policy in "${POLICY_LIST[@]}"; do
       ;;
     opensearch)
       POLICY_NAME="EasyDBLabOpenSearch"
+      ;;
+    compactor)
+      POLICY_NAME="EasyDBLabCompactor"
       ;;
   esac
 

@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import com.rustyrazorblade.easydblab.Constants
+
 /**
  * Represents all AWS resources discovered within a VPC that may need to be deleted.
  *
@@ -22,6 +24,11 @@ data class DiscoveredResources(
      * Returns true if this VPC is the packer infrastructure VPC.
      */
     fun isPackerVpc(): Boolean = vpcName == InfrastructureConfig.PACKER_VPC_NAME
+
+    /**
+     * Returns true if this is the account compactor's VPC, which outlives every cluster.
+     */
+    fun isCompactorVpc(): Boolean = vpcName == Constants.Vpc.COMPACTOR_VPC_NAME
 
     /**
      * Returns true if there are any resources to delete.

@@ -22,17 +22,17 @@
 
 ## 4. Account compactor
 
-- [ ] 4.1 Add the `ecs` and `cloudwatchlogs` AWS SDK modules to `gradle/libs.versions.toml` and the build; build ECS, CloudWatch Logs and EC2 clients for a given region.
-- [ ] 4.2 Constants for the ECS cluster, service, task family, log group, VPC name, role names, CPU, memory, ephemeral storage, status log line count, and the Tempo retention value.
-- [ ] 4.3 Config resources: `tempo-backend.yaml` (`block_retention: 876000h`, long retention interval, `max_bytes_per_trace: 0`, `empty_tenant_deletion_enabled: false`, no per-tenant overrides); reuse the cluster `mimir.yaml` and `loki.yaml`.
-- [ ] 4.4 `CompactorTaskDefinition` (pure): the busybox init container and the Mimir, Loki, Tempo scheduler and Tempo worker containers with the flags in design.md, `awslogs`, ARM64, 2 vCPU / 8 GiB / 100 GiB, plus its config hash.
-- [ ] 4.5 Unit tests on the task definition and configs: Mimir `-compactor.blocks-retention-period=0`, `-compactor.partial-block-deletion-delay=0`, `-compactor.cleanup-interval=1m`; Loki retention disabled and deletion mode `disabled`; Tempo retention `876000h`, `max_bytes_per_trace` 0, `empty_tenant_deletion_enabled` false, no per-tenant override; no Pyroscope container.
-- [ ] 4.6 `CompactorIam`: task role and execution role as in design.md, and the ECS service-linked role.
-- [ ] 4.7 `CompactorNetwork`: find or create the `easy-db-lab-compactor` VPC in the bucket's region, tagged `easy_cass_lab=1` with no `bucket` tag; `teardownAllTagged` skips it as it skips the packer VPC.
-- [ ] 4.8 `CompactorService` / `DefaultCompactorService`: `ensureRunning` (create when missing, start when at 0, leave when running), `stop`, `stopIfLastCluster`, `status`; register in Koin.
-- [ ] 4.9 `ClusterCensus` (tagged VPCs naming the bucket in every enabled region) and the pure `CompactorShutdownPolicy`, with a unit test of the decision (only this cluster's VPCs → stop; another VPC in another region → keep).
-- [ ] 4.10 `AWSPolicy`: bucket-policy Deny of `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/`, `loki/`, `tempo/` for the EC2, EMR service and EMR EC2 roles; new user policy `iam-policy-compactor.json` in `AWSPolicy.UserIAM.loadAll` and `bin/set-policies`.
-- [ ] 4.11 `Event.Compactor.*` events (started, already running, stopped, kept running) in `events/Event.kt`.
+- [x] 4.1 Add the `ecs` and `cloudwatchlogs` AWS SDK modules to `gradle/libs.versions.toml` and the build; build ECS, CloudWatch Logs and EC2 clients for a given region.
+- [x] 4.2 Constants for the ECS cluster, service, task family, log group, VPC name, role names, CPU, memory, ephemeral storage, status log line count, and the Tempo retention value.
+- [x] 4.3 Config resources: `tempo-backend.yaml` (`block_retention: 876000h`, long retention interval, `max_bytes_per_trace: 0`, `empty_tenant_deletion_enabled: false`, no per-tenant overrides); reuse the cluster `mimir.yaml` and `loki.yaml`.
+- [x] 4.4 `CompactorTaskDefinition` (pure): the busybox init container and the Mimir, Loki, Tempo scheduler and Tempo worker containers with the flags in design.md, `awslogs`, ARM64, 2 vCPU / 8 GiB / 100 GiB, plus its config hash.
+- [x] 4.5 Unit tests on the task definition and configs: Mimir `-compactor.blocks-retention-period=0`, `-compactor.partial-block-deletion-delay=0`, `-compactor.cleanup-interval=1m`; Loki retention disabled and deletion mode `disabled`; Tempo retention `876000h`, `max_bytes_per_trace` 0, `empty_tenant_deletion_enabled` false, no per-tenant override; no Pyroscope container.
+- [x] 4.6 `CompactorIam`: task role and execution role as in design.md, and the ECS service-linked role.
+- [x] 4.7 `CompactorNetwork`: find or create the `easy-db-lab-compactor` VPC in the bucket's region, tagged `easy_cass_lab=1` with no `bucket` tag; `teardownAllTagged` skips it as it skips the packer VPC.
+- [x] 4.8 `CompactorService` / `DefaultCompactorService`: `ensureRunning` (create when missing, start when at 0, leave when running), `stop`, `stopIfLastCluster`, `status`; register in Koin.
+- [x] 4.9 `ClusterCensus` (tagged VPCs naming the bucket in every enabled region) and the pure `CompactorShutdownPolicy`, with a unit test of the decision (only this cluster's VPCs → stop; another VPC in another region → keep).
+- [x] 4.10 `AWSPolicy`: bucket-policy Deny of `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/`, `loki/`, `tempo/` for the EC2, EMR service and EMR EC2 roles; new user policy `iam-policy-compactor.json` in `AWSPolicy.UserIAM.loadAll` and `bin/set-policies`.
+- [x] 4.11 `Event.Compactor.*` events (started, already running, stopped, kept running) in `events/Event.kt`.
 
 ## 5. Lifecycle and commands
 

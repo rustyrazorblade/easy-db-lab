@@ -136,13 +136,19 @@ class AwsInfrastructureService(
     fun ensurePackerInfrastructure(
         sshPort: Int,
         sshCidr: String,
-    ): VpcInfrastructure {
-        val config = InfrastructureConfig.forPacker(sshPort, sshCidr)
+    ): VpcInfrastructure = ensureReusableInfrastructure(InfrastructureConfig.forPacker(sshPort, sshCidr))
 
-        // Check for existing packer VPC first
+    /**
+     * Ensures the single-subnet infrastructure [config] names exists, reusing its VPC when one
+     * with that name exists. The packer VPC and the account compactor's VPC are both kept this way.
+     *
+     * @return VpcInfrastructure containing the IDs of all created/found resources
+     */
+    fun ensureReusableInfrastructure(config: InfrastructureConfig): VpcInfrastructure {
+        // Check for an existing VPC first
         val existingVpcId = vpcService.findVpcByName(config.vpcName)
         if (existingVpcId != null) {
-            log.info { "Reusing existing packer VPC: ${config.vpcName} ($existingVpcId)" }
+            log.info { "Reusing existing VPC: ${config.vpcName} ($existingVpcId)" }
             eventBus.emit(Event.Infra.VpcUsing(config.vpcName))
 
             // Find or create remaining resources in existing VPC
@@ -386,6 +392,12 @@ class AwsInfrastructureService(
             // Skip packer VPC unless explicitly included
             if (resources.isPackerVpc() && !includePackerVpc) {
                 eventBus.emit(Event.Infra.PackerVpcSkipping(vpcId))
+                continue
+            }
+
+            // The account compactor's VPC outlives every cluster
+            if (resources.isCompactorVpc()) {
+                eventBus.emit(Event.Infra.CompactorVpcSkipping(vpcId))
                 continue
             }
 

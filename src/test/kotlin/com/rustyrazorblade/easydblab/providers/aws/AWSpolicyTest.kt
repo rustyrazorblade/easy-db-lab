@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -110,7 +111,66 @@ class AWSpolicyTest {
             assertThat(json).contains(""""arn:aws:s3:::test-bucket"""")
             assertThat(json).contains(""""arn:aws:s3:::test-bucket/*"""")
         }
+
+        /** Every cluster-side principal the bucket policy grants is denied deletes under the compacted roots. */
+        @Test
+        fun `S3BucketPolicy denies the cluster roles every delete under the compacted roots`() {
+            val deny = statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket").toJson()).single { it.effect() == "Deny" }
+
+            assertThat(deny.values("Action")).containsExactlyInAnyOrder("s3:DeleteObject", "s3:DeleteObjectVersion")
+            assertThat(deny.values("Resource")).containsExactlyInAnyOrder(
+                "arn:aws:s3:::test-bucket/mimir/*",
+                "arn:aws:s3:::test-bucket/loki/*",
+                "arn:aws:s3:::test-bucket/tempo/*",
+            )
+            assertThat(deny.getValue("Principal").jsonObject.values("AWS")).containsExactlyInAnyOrder(
+                "arn:aws:iam::123456789012:role/EasyDBLabEC2Role",
+                "arn:aws:iam::123456789012:role/EasyDBLabEMRServiceRole",
+                "arn:aws:iam::123456789012:role/EasyDBLabEMREC2Role",
+            )
+        }
+
+        /** Only the compacted roots: the compactor's task role has no access to grafana/ or pyroscope/. */
+        @Test
+        fun `the compactor task role deletes only under mimir, loki and tempo`() {
+            val statements = statements(AWSPolicy.Inline.CompactorTaskAccess.toJson())
+            val objects = statements.single { "s3:DeleteObject" in it.values("Action") }
+
+            assertThat(objects.values("Resource")).containsExactlyInAnyOrder(
+                "arn:aws:s3:::easy-db-lab-*/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/tempo/*",
+            )
+            assertThat(statements.flatMap { it.values("Resource") }).noneMatch { it.contains("grafana") || it.contains("pyroscope") }
+            assertThat(statements).allMatch { it.effect() == "Allow" }
+        }
     }
+
+    @Test
+    fun `the user policies include the compactor policy`() {
+        val compactor = AWSPolicy.UserIAM.loadAll("123456789012").single { it.name == "EasyDBLabCompactor" }
+
+        assertThat(compactor.body)
+            .contains("arn:aws:iam::123456789012:role/EasyDBLabCompactorTaskRole")
+            .contains("arn:aws:iam::123456789012:role/EasyDBLabCompactorExecutionRole")
+            .doesNotContain("ACCOUNT_ID")
+    }
+
+    private fun statements(json: String): List<JsonObject> =
+        Json
+            .parseToJsonElement(json)
+            .jsonObject
+            .getValue("Statement")
+            .jsonArray
+            .map { it.jsonObject }
+
+    private fun JsonObject.effect(): String = getValue("Effect").jsonPrimitive.content
+
+    private fun JsonObject.values(key: String): List<String> =
+        when (val element = getValue(key)) {
+            is JsonArray -> element.map { it.jsonPrimitive.content }
+            else -> listOf(element.jsonPrimitive.content)
+        }
 
     @Nested
     inner class IamPolicyDocumentSerialization {

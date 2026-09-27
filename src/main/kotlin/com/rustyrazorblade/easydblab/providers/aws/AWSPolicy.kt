@@ -81,6 +81,24 @@ sealed class AWSPolicy {
     }
 
     /**
+     * Trust policy allowing ECS tasks to assume the role.
+     * Used by: EasyDBLabCompactorTaskRole, EasyDBLabCompactorExecutionRole
+     */
+    data object ECSTasksTrust : AWSPolicy() {
+        override fun toJson() =
+            IamPolicyDocument(
+                statement =
+                    listOf(
+                        IamPolicyStatement(
+                            effect = "Allow",
+                            principal = IamPolicyPrincipal.service("ecs-tasks.amazonaws.com"),
+                            action = IamPolicyAction.single("sts:AssumeRole"),
+                        ),
+                    ),
+            ).toJson()
+    }
+
+    /**
      * User IAM policies that users must attach to their AWS account to use easy-db-lab.
      * These policies are loaded from JSON resource files with account ID substitution.
      *
@@ -109,6 +127,7 @@ sealed class AWSPolicy {
                         "iam-policy-iam-s3.json" to "EasyDBLabIAM",
                         "iam-policy-emr.json" to "EasyDBLabEMR",
                         "iam-policy-opensearch.json" to "EasyDBLabOpenSearch",
+                        "iam-policy-compactor.json" to "EasyDBLabCompactor",
                     )
 
                 return policyData.map { (fileName, policyName) ->
@@ -213,8 +232,35 @@ sealed class AWSPolicy {
         }
 
         /**
+         * The account compactor's task role policy: list the easy-db-lab buckets, and get, put and
+         * delete objects under the roots it compacts. It has no access to `grafana/` or
+         * `pyroscope/`. The compactor removes a source object only after it wrote a merged copy.
+         */
+        data object CompactorTaskAccess : Inline() {
+            override fun toJson() =
+                IamPolicyDocument(
+                    statement =
+                        listOf(
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                action = IamPolicyAction.multiple(listOf("s3:ListBucket", "s3:GetBucketLocation")),
+                                resource = IamPolicyResource.single("arn:aws:s3:::easy-db-lab-*"),
+                            ),
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                action = IamPolicyAction.multiple(listOf("s3:GetObject", "s3:PutObject", "s3:DeleteObject")),
+                                resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::easy-db-lab-*/$it/*" }),
+                            ),
+                        ),
+                ).toJson()
+        }
+
+        /**
          * S3 bucket policy granting access to all three easy-db-lab IAM roles.
          * Applied to the S3 bucket to allow all roles (EC2, EMR Service, EMR EC2) to access it.
+         * It denies those roles every delete under the roots the account compactor compacts, so only
+         * the compactor's task role deletes there. It names the cluster principals rather than
+         * "everyone but the compactor", so the owner's own deletes from a workstation still work.
          *
          * @param accountId The AWS account ID for constructing role ARNs
          * @param bucketName The S3 bucket name to apply the policy to
@@ -229,14 +275,7 @@ sealed class AWSPolicy {
                         listOf(
                             IamPolicyStatement(
                                 effect = "Allow",
-                                principal =
-                                    IamPolicyPrincipal.aws(
-                                        listOf(
-                                            "arn:aws:iam::$accountId:role/${Constants.AWS.Roles.EC2_INSTANCE_ROLE}",
-                                            "arn:aws:iam::$accountId:role/${Constants.AWS.Roles.EMR_SERVICE_ROLE}",
-                                            "arn:aws:iam::$accountId:role/${Constants.AWS.Roles.EMR_EC2_ROLE}",
-                                        ),
-                                    ),
+                                principal = IamPolicyPrincipal.aws(clusterRoles()),
                                 action = IamPolicyAction.single("s3:*"),
                                 resource =
                                     IamPolicyResource.multiple(
@@ -246,8 +285,31 @@ sealed class AWSPolicy {
                                         ),
                                     ),
                             ),
+                            IamPolicyStatement(
+                                effect = "Deny",
+                                principal = IamPolicyPrincipal.aws(clusterRoles()),
+                                action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
+                                resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::$bucketName/$it/*" }),
+                            ),
                         ),
                 ).toJson()
+
+            private fun clusterRoles() =
+                listOf(
+                    Constants.AWS.Roles.EC2_INSTANCE_ROLE,
+                    Constants.AWS.Roles.EMR_SERVICE_ROLE,
+                    Constants.AWS.Roles.EMR_EC2_ROLE,
+                ).map { "arn:aws:iam::$accountId:role/$it" }
+        }
+
+        companion object {
+            /** The observability roots the account compactor compacts, and only it may delete under. */
+            val COMPACTED_ROOTS =
+                listOf(
+                    Constants.Observability.METRICS_ROOT,
+                    Constants.Observability.LOGS_ROOT,
+                    Constants.Observability.TRACES_ROOT,
+                )
         }
     }
 
@@ -271,6 +333,10 @@ sealed class AWSPolicy {
          */
         data object EMRForEC2 :
             Managed("arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceforEC2Role")
+
+        /** AWS managed policy the account compactor's execution role uses to pull images and ship logs. */
+        data object ECSTaskExecution :
+            Managed("arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy")
 
         override fun toJson(): String =
             throw UnsupportedOperationException(

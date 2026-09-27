@@ -97,6 +97,29 @@ data class InfrastructureConfig(
         val PACKER_VPC_NAME = Constants.Vpc.PACKER_VPC_NAME
 
         /**
+         * Creates configuration for the account compactor's VPC: one public subnet, an internet
+         * gateway and a security group with no ingress. It is tagged like every easy-db-lab VPC
+         * but carries no `bucket` tag, so `down` never counts it as a cluster.
+         */
+        fun forCompactor(): InfrastructureConfig =
+            InfrastructureConfig(
+                vpcName = Constants.Vpc.COMPACTOR_VPC_NAME,
+                vpcCidr = Constants.Vpc.DEFAULT_CIDR,
+                subnets =
+                    listOf(
+                        SubnetConfig(
+                            name = "${Constants.Vpc.COMPACTOR_VPC_NAME}-subnet",
+                            cidr = Constants.Vpc.subnetCidr(0),
+                        ),
+                    ),
+                securityGroupName = "${Constants.Vpc.COMPACTOR_VPC_NAME}-sg",
+                securityGroupDescription = "Account compactor: no ingress",
+                securityGroupRules = emptyList(),
+                internetGatewayName = "${Constants.Vpc.COMPACTOR_VPC_NAME}-igw",
+                tags = mapOf(Constants.Vpc.TAG_KEY to Constants.Vpc.TAG_VALUE),
+            )
+
+        /**
          * Creates configuration for Packer AMI build infrastructure.
          *
          * Packer needs:

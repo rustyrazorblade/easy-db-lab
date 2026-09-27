@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
@@ -718,6 +719,22 @@ class AwsInfrastructureServiceTest {
 
             assertThat(result.success).isTrue()
             verify(vpcService).deleteVpc("vpc-packer")
+        }
+
+        /** The account compactor outlives every cluster, so even `down --all --packer` keeps its VPC. */
+        @Test
+        fun `should always keep the account compactor's VPC`() {
+            whenever(vpcService.findVpcsByTag(any(), any())).thenReturn(listOf("vpc-compactor", "vpc-cluster"))
+            whenever(vpcService.getVpcName("vpc-compactor")).thenReturn(Constants.Vpc.COMPACTOR_VPC_NAME)
+            setupEmptyResourcesFor("vpc-compactor")
+            whenever(vpcService.getVpcName("vpc-cluster")).thenReturn("test-cluster")
+            setupEmptyResourcesFor("vpc-cluster")
+
+            val result = service.teardownAllTagged(dryRun = false, includePackerVpc = true)
+
+            assertThat(result.resourcesDeleted.map { it.vpcId }).containsExactly("vpc-cluster")
+            verify(vpcService, never()).deleteVpc("vpc-compactor")
+            verify(vpcService).deleteVpc("vpc-cluster")
         }
     }
 

@@ -189,6 +189,41 @@ object Constants {
         }
     }
 
+    /**
+     * The account compactor: one ECS Fargate service per AWS account, in the account bucket's
+     * region, that compacts the shared observability store.
+     */
+    object Compactor {
+        const val ECS_CLUSTER = "easy-db-lab"
+        const val SERVICE = "easy-db-lab-compactor"
+        const val TASK_FAMILY = "easy-db-lab-compactor"
+        const val LOG_GROUP = "/easy-db-lab/compactor"
+        const val TASK_ROLE = "EasyDBLabCompactorTaskRole"
+        const val EXECUTION_ROLE = "EasyDBLabCompactorExecutionRole"
+
+        /** The ECS task-definition tag holding the hash of the configuration it was built from. */
+        const val CONFIG_HASH_TAG = "easydblab.com/config-hash"
+
+        /** Fargate task size: 2 vCPU, 8 GiB, 100 GiB of ephemeral storage. */
+        const val CPU_UNITS = "2048"
+        const val MEMORY_MIB = "8192"
+        const val EPHEMERAL_STORAGE_GIB = 100
+        const val STOP_TIMEOUT_SECONDS = 120
+
+        /** How many of the newest log lines `observability compactor status` prints. */
+        const val STATUS_LOG_LINES = 20
+
+        /**
+         * Tempo's block retention on the compactor: 100 years. Tempo has no "retention off" once
+         * compaction runs, and a zero retention makes every block eligible for deletion, so an
+         * unreachable age is the off switch.
+         */
+        const val TEMPO_BLOCK_RETENTION = "876000h"
+
+        /** The busybox image of the init container that writes the configuration files. */
+        const val CONFIG_IMAGE = "busybox:1.37.0"
+    }
+
     // S3 configuration
     object S3 {
         /** Prefix for all easy-db-lab S3 buckets */
@@ -896,6 +931,9 @@ object Constants {
 
         /** VPC name for packer infrastructure */
         const val PACKER_VPC_NAME = "easy-db-lab-packer"
+
+        /** VPC name of the account compactor; tagged [TAG_KEY] but never [BUCKET_TAG_KEY]. */
+        const val COMPACTOR_VPC_NAME = "easy-db-lab-compactor"
 
         /** VPC tag key for the S3 bucket name */
         const val BUCKET_TAG_KEY = "bucket"

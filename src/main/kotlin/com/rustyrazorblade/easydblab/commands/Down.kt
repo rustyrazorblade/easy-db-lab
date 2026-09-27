@@ -20,6 +20,7 @@ import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.Json
 import org.koin.core.component.inject
@@ -94,6 +95,7 @@ class Down : PicoBaseCommand() {
     private val user: User by inject()
     private val teardownBackupService: TeardownBackupService by inject()
     private val socksProxyService: SocksProxyService by inject()
+    private val compactorService: CompactorService by inject()
     private val log = KotlinLogging.logger {}
 
     private companion object {
@@ -144,6 +146,10 @@ class Down : PicoBaseCommand() {
 
         // Kill the proxy process and remove its state file after AWS operations complete.
         cleanupSocks5Proxy()
+
+        if (result.success && !dryRun && mode != TeardownMode.PackerInfrastructure) {
+            stopCompactorIfLastCluster(mode, result)
+        }
 
         // Only clear cluster state on successful teardown to preserve VPC ID for retries
         if (result.success && (mode == TeardownMode.CurrentCluster || mode is TeardownMode.SpecificVpc)) {
@@ -293,6 +299,24 @@ class Down : PicoBaseCommand() {
                 )
             },
     )
+
+    /**
+     * Stops the account compactor once the infrastructure teardown succeeded, when no other cluster
+     * VPC in any region still names the account bucket. The VPCs this `down` tore down are left
+     * out of the count. With no account bucket there is no compactor.
+     */
+    private fun stopCompactorIfLastCluster(
+        mode: TeardownMode,
+        result: TeardownResult,
+    ) {
+        val bucket =
+            when (mode) {
+                TeardownMode.CurrentCluster -> clusterStateManager.load().s3Bucket
+                else -> user.s3Bucket
+            }
+        if (bucket.isNullOrBlank()) return
+        compactorService.stopIfLastCluster(bucket, result.resourcesDeleted.map { it.vpcId }.toSet())
+    }
 
     /**
      * Determines the teardown mode based on command line options.

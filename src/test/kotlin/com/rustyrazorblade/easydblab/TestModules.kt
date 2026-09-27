@@ -23,6 +23,7 @@ import com.rustyrazorblade.easydblab.services.EcrPullSecretService
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -179,6 +180,10 @@ object TestModules {
 
             // Mock AMIValidator to prevent AMI validation during tests
             single { mock<AMIValidator>() }
+
+            // The account compactor creates ECS, IAM and VPC resources in AWS; tests that care
+            // about what up and down do to it override this mock.
+            single { mock<CompactorService>() }
 
             // AwsS3BucketService using mocked AWS
             single { AwsS3BucketService(get<AWS>()) }

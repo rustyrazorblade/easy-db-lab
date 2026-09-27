@@ -36,9 +36,9 @@
 
 ## 5. Lifecycle and commands
 
-- [ ] 5.1 `Up`: call `CompactorService.ensureRunning` once, after the account bucket and its policy are configured.
-- [ ] 5.2 `Down`: call `CompactorService.stopIfLastCluster` once, after the infrastructure teardown succeeds, with the torn-down VPC IDs.
-- [ ] 5.3 New `observability` command group with `compactor start`, `compactor stop` and `compactor status` (status read-only, `println`); works outside a cluster workspace.
+- [x] 5.1 `Up`: call `CompactorService.ensureRunning` once, after the account bucket and its policy are configured.
+- [x] 5.2 `Down`: call `CompactorService.stopIfLastCluster` once, after the infrastructure teardown succeeds, with the torn-down VPC IDs.
+- [x] 5.3 New `observability` command group with `compactor start`, `compactor stop` and `compactor status` (status read-only, `println`); works outside a cluster workspace.
 
 ## 6. Docs
 

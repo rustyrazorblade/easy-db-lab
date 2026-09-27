@@ -47,6 +47,7 @@ import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -109,6 +110,7 @@ class Up(
     private val ciliumNodeImageCheck: CiliumNodeImageCheck by inject()
     private val k8sService: K8sService by inject()
     private val observabilityStackService: ObservabilityStackService by inject()
+    private val compactorService: CompactorService by inject()
     private val registryService: RegistryService by inject()
     private val socksProxyService: SocksProxyService by inject()
     private val commandExecutor: CommandExecutor by inject()
@@ -147,6 +149,7 @@ class Up(
         configureAccountS3Bucket()
         validateS3BucketConfigured()
         reapplyS3Policy()
+        compactorService.ensureRunning(requireNotNull(workingState.s3Bucket))
         provisionInfrastructure(initConfig)
         writeConfigurationFiles()
         runNestedCommand { WriteConfig() }
@@ -261,13 +264,14 @@ class Up(
     }
 
     /**
-     * Re-applies the S3Access inline policy to ensure existing roles have the latest permissions.
-     * This is idempotent - PutRolePolicy overwrites existing policies with the same name.
-     * Uses a wildcard policy that grants access to all easy-db-lab-* buckets.
+     * Re-applies the S3Access inline policy and the account bucket policy, so existing roles and
+     * the bucket carry the latest permissions and delete denies. Both are idempotent: PutRolePolicy
+     * and PutBucketPolicy overwrite what is there.
      */
     private fun reapplyS3Policy() {
         eventBus.emit(Event.Provision.IamUpdating)
         s3BucketService.attachS3Policy(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
+        s3BucketService.putBucketPolicy(requireNotNull(workingState.s3Bucket))
         log.debug { "S3 policy re-applied successfully" }
     }
 

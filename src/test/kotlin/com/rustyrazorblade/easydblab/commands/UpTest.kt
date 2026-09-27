@@ -14,13 +14,16 @@ import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleAuthKey
 import com.rustyrazorblade.easydblab.services.TailscaleService
+import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
@@ -51,6 +54,19 @@ class UpTest : UpTestFixture() {
         verify(mockK8sService).labelNode(eq(testControlHost), eq("app0"), any())
         verify(mockK8sService).ensureLocalStorageClass(eq(testControlHost))
         verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
+    }
+
+    /** Every `up` re-applies the bucket policy's delete deny, then makes sure the compactor runs, once. */
+    @Test
+    fun `up re-applies the bucket policy and then ensures the account compactor once`() {
+        val compactor = getKoin().get<CompactorService>()
+
+        newUp().execute()
+
+        val order = inOrder(mockS3BucketService, compactor)
+        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
+        order.verify(compactor).ensureRunning("easy-db-lab-test-bucket")
+        verify(compactor).ensureRunning(any())
     }
 
     // =========================================================================

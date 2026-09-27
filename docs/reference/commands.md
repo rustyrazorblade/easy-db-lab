@@ -174,28 +174,37 @@ easy-db-lab down [vpc-id] [options]
 |--------|-------------|
 | `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
-| `--force` | Skip the pre-teardown flush and backup, and tear down anyway |
+| `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
 
-**Flush before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The flush stops Loki and Mimir, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops no backend. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. In order:
+**Save before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The save stops Loki, Mimir and the OTel collector, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops nothing. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. The save has two phases.
 
-1. Every Grafana annotation is mirrored to Loki. Loki accepts only entries from the last 8760 hours to 24 hours ahead; an annotation outside that window is skipped with a warning naming its id, and it stays in the annotations backup.
-2. Loki is flushed: its ingester is stopped, which writes every open chunk to S3, and each index file it built is checked in S3. If the shutdown wrote chunks but no index file is found on the control node, or the node cannot list its index, the flush fails rather than passing with nothing checked.
-3. Mimir is flushed: its ingester is stopped, which cuts and ships every block it holds, and each block is checked in S3.
-4. The Grafana annotations are backed up to `grafana/annotations/<tenant>/` in the account bucket.
+Phase A runs in order:
 
-Every step has a timeout. A redirect cluster has no local backends, so it skips these steps.
+1. `down` checks that Loki runs. If Loki is scaled to 0 or not ready, the logs fail with the cause "Loki was stopped by an earlier `down`", and steps 2 and the Loki flush do not run.
+2. Every Grafana annotation is mirrored to Loki. Loki accepts only entries from the last 8760 hours to 24 hours ahead; an annotation outside that window is skipped with a warning naming its id, and it stays in the annotations backup.
+3. The OTel collector is stopped: its DaemonSet is deleted and `down` waits until its pods are gone. The collector is the only sender to Tempo, and its shutdown sends its last batches to Loki, Mimir and Tempo while they still accept writes. If the collector is already gone, this step succeeds.
 
-**Stop on failure.** If a step fails or times out, `down` stops there. It removes no infrastructure, because tearing down would destroy the data that is not yet in S3. It does not start Loki or Mimir again, retry the step, or undo anything: each backend stays as the failed step left it, and its write-ahead log and local blocks stay on the control node's disk. The report names the step that failed and why, and the state of each backend: running, ingester stopped (the pod still runs but takes no new data), not ready, or scaled to 0. `down` exits with a non-zero status. If both backends are still running, fix the cause and run `down` again. If a backend is stopped, `down` cannot flush it without starting it again, which it never does, so `down --force` is the way to finish.
+Phase B runs every step at the same time, so the save takes about as long as its slowest step:
 
-**A re-run after a successful flush skips it.** A flush that succeeds is recorded in the cluster state, with the time it completed and what it verified. If removing the infrastructure then fails, `down` reports the failure and restores nothing: Loki and Mimir stay at 0. Run `down` again and it skips the flush, says when the earlier one completed, and goes straight to the teardown. `up` clears the record, so the next `down` flushes the new data.
+- **Logs.** Loki's ingester is stopped, which writes every open chunk to S3, and each index file it built is checked in S3. If the shutdown wrote chunks but no index file is found on the control node, or the node cannot list its index, the flush fails rather than passing with nothing checked. If the mirror failed, the Loki flush does not run and Loki keeps running.
+- **Metrics.** Mimir's ingester is stopped, which cuts and ships every block it holds, and each block is checked in S3 with one listing of the tenant's blocks.
+- **Traces.** `down` waits until Tempo holds no live trace and its count of created traces stops changing, then until every block on the control node's disk carries its `flushed` marker, which Tempo writes only once the block is in S3. Tempo is never stopped or restarted. This step times out after 5 minutes.
+- **Profiles.** Nothing to do: Pyroscope writes each batch to S3 before it accepts it. `down` reports this.
+- **Annotations.** The Grafana annotations are backed up to `grafana/annotations/<tenant>/` in the account bucket.
 
-**A re-run after a failed flush stops early.** With no successful flush recorded, `down` checks that Loki and Mimir are both running before it touches anything. If either is scaled to 0 or not ready, `down` stops, says that its data cannot be flushed without starting it again, and points you at `down --force`.
+Every step has a timeout. A redirect cluster has no local backends, so it skips both phases.
+
+**Stop on failure.** Every Phase B step runs to completion, and a failed step never stops another. If any step failed or timed out, `down` then stops. It removes no infrastructure, because tearing down would destroy the data that is not yet in S3. It does not start Loki, Mimir or the collector again, retry a step, or undo anything: each backend stays as its step left it, and its write-ahead log and local blocks stay on the control node's disk. The report names every failed signal with its step and cause, the state of each workload (running, ingester stopped, not ready, scaled to 0, or deleted), and `down --force`. `down` exits with a non-zero status.
+
+**Logs and metrics are recorded as they finish.** The Loki and Mimir flushes stop their backends and cannot run twice, so each is recorded in the cluster state the moment it succeeds, with the time and what it verified. A `down` that fails or is interrupted keeps these records. Run `down` again and it reports them as already saved, skips them, and runs the collector stop, the Tempo drain, the profiles report and the annotations backup again. `up` clears the record, so the next `down` saves the new data.
+
+**A teardown that fails after the save restores nothing.** If removing the infrastructure fails, `down` reports the failure: Loki and Mimir stay at 0 and the collector stays deleted. Run `down` again to finish.
 
 **Nothing is deleted.** `down` sets no S3 lifecycle, expiry or retention rule on any bucket and deletes no object that holds your data. With `--all`, a per-cluster data bucket is deleted only when it is already empty. A data bucket that still holds objects is left as it is, and `down` reports it as kept, with S3's reason.
 
-**`--force` skips them.** Pass `--force` to skip the flush and the backup and tear down anyway, without the logs and metrics not yet in S3. Use it only when the backends are already stopped or gone, or when you do not need the data.
+**`--force` skips the save.** Pass `--force` to skip both phases and tear down anyway. With the teardown preview, before the confirmation prompt, `down --force` lists the signals it will not save: logs and metrics unless an earlier `down` saved them, then traces and annotations. Profiles are never listed. Use it only when the backends are already stopped or gone, or when you do not need the data.
 
-**Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when a flush step stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
+**Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the save stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
 
 ### clean
 

@@ -42,7 +42,9 @@ Loki 3.7.8 runs as one process (`target: all`) on the control node:
 - **Object storage**: `s3://<account-bucket>/loki/`; chunks sit under the tenant, the TSDB index under `index/`
 - **Tenancy**: native multi-tenancy; the tenant is the cluster's observability tenant
 
-Loki uploads its index to S3 as it rotates it, and reads the other clusters' index from S3 every 5 minutes. A line from another cluster in the tenant can therefore take up to 5 minutes to become readable here.
+Loki flushes a chunk to S3 once it spans 5 minutes, so a stream that keeps writing reaches S3 within about 5 minutes. Its index uploads on Loki's own 15-minute rotation, and Loki re-reads the other clusters' index from S3 every minute. A line from another cluster in the tenant becomes readable here once its index file is in S3.
+
+**Out-of-order window.** Loki rejects a line that is more than 2.5 minutes older than the newest line of its stream (half of the 5-minute chunk age). A replayed or backdated line on a stream that is still writing is refused. The annotation mirror is not affected: each annotation is a stream of its own.
 
 **Nothing is deleted.** Loki's compactor is idle, retention is off, and the delete API is not served. Every chunk and index file stays in S3 until you delete it yourself.
 
@@ -127,7 +129,7 @@ Every Grafana annotation is also written to Loki as its own stream (`source="ann
 
 ## Teardown
 
-`down` flushes Loki before it removes anything: it stops the ingester, which writes every open chunk to S3, then checks that each index file Loki built is in S3. If any step fails, `down` stops there with the cluster intact and Loki left as that step left it: it is never started again, and the report names the step, each backend's state, and `down --force`. See [`down`](../reference/commands.md#down).
+`down` flushes Loki before it removes anything, at the same time as it saves the other signals: it stops the ingester, which writes every open chunk to S3, then checks that each index file Loki built is in S3. The logs are recorded as saved the moment this succeeds, so a later `down` skips them. If a step fails, `down` removes nothing and Loki stays as that step left it: it is never started again, and the report names the step, each backend's state, and `down --force`. See [`down`](../reference/commands.md#down).
 
 ## Troubleshooting
 

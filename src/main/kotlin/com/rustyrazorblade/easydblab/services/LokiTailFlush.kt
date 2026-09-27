@@ -9,17 +9,6 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 
 /**
- * What a Loki flush proved.
- *
- * @property chunksFlushed the chunks the shutdown wrote to S3.
- * @property indexFiles the index files Loki built locally, each found in S3.
- */
-data class LokiFlushResult(
-    val chunksFlushed: Long,
-    val indexFiles: Int,
-)
-
-/**
  * Flushes Loki before teardown and proves its chunks and index are in S3.
  *
  * 1. `POST /ingester/shutdown?flush=true&terminate=false`: the handler returns 204 only once every
@@ -46,7 +35,7 @@ class LokiTailFlush(
     private val remoteOps: RemoteOperationsService,
     private val objectStore: ObjectStore,
     private val timeouts: FlushTimeouts = FlushTimeouts(),
-) {
+) : SignalFlush {
     companion object {
         /** Loki's TSDB index directory on the control node (`active_index_directory`). */
         const val INDEX_DIR = "${LokiManifestBuilder.DATA_HOST_PATH}/tsdb-index"
@@ -66,11 +55,11 @@ class LokiTailFlush(
      * @return the chunks the shutdown wrote and the index files verified in S3.
      * @throws IllegalStateException naming what is not in S3, or the step that failed.
      */
-    fun flush(
+    override fun flush(
         controlHost: ClusterHost,
         clusterState: ClusterState,
         progress: FlushProgress,
-    ): LokiFlushResult {
+    ): SignalReport.Logs {
         progress.begin(FlushStep.LOKI_SHUTDOWN)
         val chunksBefore = chunksFlushed()
 
@@ -106,7 +95,7 @@ class LokiTailFlush(
                 objectStore.fileExists(ClusterS3Path.root(store.bucket).resolve("${store.logsPrefix()}/index/$it.gz"))
             }
         check(missing.isEmpty()) { "Loki index files are not in S3: ${missing.joinToString()}" }
-        return LokiFlushResult(chunksFlushed = flushedAtShutdown, indexFiles = indexFiles.size)
+        return SignalReport.Logs(indexFiles = indexFiles.size, chunksFlushed = flushedAtShutdown)
     }
 
     /** Loki's flushed-chunk counter, summed over its reasons; absent until the first flush. */

@@ -42,7 +42,7 @@ class OtelManifestBuilder(
     companion object {
         private val log = KotlinLogging.logger {}
         private val NAMESPACE = Constants.K8s.NAMESPACE
-        private const val APP_LABEL = "otel-collector"
+        private const val APP_LABEL = Constants.K8s.OTEL_COLLECTOR_APP_LABEL
         private const val CONFIGMAP_NAME = "otel-collector-config"
         private const val CONFIG_DATA_KEY = "otel-collector-config.yaml"
         private const val IMAGE = "otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}"

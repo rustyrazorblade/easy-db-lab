@@ -232,7 +232,7 @@ Commands should delegate to these services:
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |
-| `TeardownBackupService` | The pre-teardown flush `down` runs once, never retried (`TeardownFlushService`); records a success in `ClusterState.tailFlush` |
+| `TeardownBackupService` | The pre-teardown save `down` runs once, never retried (`TeardownFlushService`: Phase A mirror and collector stop, Phase B flushes, Tempo drain, profiles report and annotations backup in parallel); records logs and metrics in `ClusterState.tailFlush` the moment each succeeds, through one writer; `unsavedSignals(state)` is what `down --force` lists before the prompt |
 | `TailscaleService` | Tailscale VPN setup on cluster nodes |
 | `RegistryService` | Container registry management |
 | `ClickHouseConfigService` | ClickHouse configuration |

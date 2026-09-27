@@ -291,6 +291,9 @@ object Constants {
         /** Tempo's `app.kubernetes.io/name` label; the collector finds the Tempo pod by it. */
         const val TEMPO_APP_LABEL = "tempo"
 
+        /** The OTel collector's DaemonSet name and `app.kubernetes.io/name` label. */
+        const val OTEL_COLLECTOR_APP_LABEL = "otel-collector"
+
         /** The Pyroscope server's `app.kubernetes.io/name` label; the collector finds its pod by it. */
         const val PYROSCOPE_APP_LABEL = "pyroscope"
 
@@ -680,6 +683,15 @@ object Constants {
 
         /** How often a wait on a backend's pods looks again. */
         const val POLL_INTERVAL_SECONDS = 5L
+
+        /** The OTel collector's pods may take this long to go once its DaemonSet is deleted. */
+        const val SENDERS_STOP_TIMEOUT_SECONDS = 120L
+
+        /** Tempo may take this long to hold no live trace and to upload every local block. */
+        const val TEMPO_DRAIN_TIMEOUT_SECONDS = 300L
+
+        /** The least time between the two readings of Tempo's created-traces counter that must agree. */
+        const val TEMPO_STABLE_READING_GAP_SECONDS = 2L
     }
 
     /** Loki, the logs backend. */

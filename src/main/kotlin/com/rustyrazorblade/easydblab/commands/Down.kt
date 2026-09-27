@@ -12,7 +12,7 @@ import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.Socks5ProxyStateFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.BackendState
-import com.rustyrazorblade.easydblab.services.FlushStepFailed
+import com.rustyrazorblade.easydblab.services.TailFlushFailed
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
@@ -79,7 +79,10 @@ class Down : PicoBaseCommand() {
 
     @CommandLine.Option(
         names = ["--force"],
-        description = ["Skip the pre-teardown annotation mirror, Loki and Mimir flushes and annotations backup, and tear down anyway"],
+        description = [
+            "Skip the pre-teardown save of logs, metrics, traces and annotations, and tear down anyway. " +
+                "The signals not yet in S3 are listed before the confirmation prompt.",
+        ],
     )
     var force = false
 
@@ -143,56 +146,30 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * Saves the cluster's tail (annotation mirror, Loki and Mimir flushes, annotations backup) once
-     * the current-cluster teardown is certain to go ahead: its preview found resources and the
-     * operator confirmed. The flush leaves Loki and Mimir stopped, so it must not run for a teardown
-     * that is then declined. See issue 967, decision D2.
+     * Saves the cluster's tail once the current-cluster teardown is certain to go ahead: its preview
+     * found resources and the operator confirmed. The save leaves Loki and Mimir stopped and the OTel
+     * collector deleted, so it must not run for a teardown that is then declined.
      *
      * Only the current-cluster teardown of a running cluster saves its tail: the other modes
      * (`--all`, `--packer`, a specific VPC id) do not map to a single reachable control node, and
-     * `--force` skips it outright. A flush an earlier `down` completed is not run again: Loki and
-     * Mimir are already at 0 and hold nothing new. When the flush fails it stops where it is —
-     * nothing is undone and no backend is started again (owner decision, 2026-09-26) — and the
-     * teardown does not run.
+     * `--force` skips it outright. Logs and metrics an earlier `down` saved are skipped: Loki and
+     * Mimir are already at 0 and hold nothing new. The collector stop, the Tempo drain, the profiles
+     * report and the annotations backup run on every `down`. When any signal fails, every other step
+     * still finishes, nothing is undone and nothing is started again (owner decision, 2026-09-26),
+     * and the teardown does not run.
      *
      * @return whether the teardown may go ahead.
      */
     private fun saveTailBeforeTeardown(): Boolean {
-        if (force || !clusterStateManager.exists()) {
-            return true
-        }
+        val state = stateToSave() ?: return true
 
-        val state = clusterStateManager.load()
-        if (!state.isInfrastructureUp()) {
-            eventBus.emit(Event.Teardown.BackupSkipped("cluster infrastructure is not up"))
-            return true
-        }
-
-        // A redirect cluster runs no local Mimir, Loki or Grafana, so there is nothing to flush or
-        // back up here; the data already lives on the external stack.
-        val redirect = state.initConfig?.telemetryRedirect
-        if (redirect != null) {
+        val saved = state.tailFlush?.signals.orEmpty()
+        if (saved.isNotEmpty()) {
             eventBus.emit(
-                Event.Teardown.BackupSkipped(
-                    "telemetry is redirected to ${redirect.metrics}; there is no local stack to flush",
+                Event.Teardown.TailAlreadySaved(
+                    saved.entries.associate { (signal, record) -> signal.description to record.completedAt.toString() },
                 ),
             )
-            return true
-        }
-
-        // Checked before the tunnel: after a teardown that failed part-way the control node may
-        // already be gone, and the backends it ran hold nothing the recorded flush missed.
-        val flushed = state.tailFlush
-        if (flushed != null) {
-            eventBus.emit(
-                Event.Teardown.TailAlreadyFlushed(
-                    completedAt = flushed.completedAt.toString(),
-                    lokiIndexFiles = flushed.lokiIndexFiles,
-                    lokiChunksFlushed = flushed.lokiChunksFlushed,
-                    mimirBlocks = flushed.mimirBlocks,
-                ),
-            )
-            return true
         }
 
         val controlHost = state.getControlHost()
@@ -202,8 +179,8 @@ class Down : PicoBaseCommand() {
         }
 
         eventBus.emit(Event.Teardown.BackupStarting)
-        // The tunnel setup and the backup are one failure boundary: a tunnel failure is a backup
-        // failure. Both are inside the runCatching so either stops `down` with the standard
+        // The tunnel setup and the save are one failure boundary: a tunnel failure fails every
+        // signal. Both are inside the runCatching so either stops `down` with the standard
         // "no infrastructure removed / --force" guidance rather than a raw stack trace. The
         // tunnel is established here, before clearProxySystemProperties()/cleanupSocks5Proxy() tear
         // it down.
@@ -213,24 +190,69 @@ class Down : PicoBaseCommand() {
         }.fold(
             onSuccess = { true },
             onFailure = { failure ->
-                eventBus.emit(abortEvent(failure))
+                eventBus.emit(abortEvent(failure, state))
                 false
             },
         )
     }
 
     /**
-     * The report of a flush that stopped. A [FlushStepFailed] names its step and the backends as it
-     * left them; any other failure is the tunnel's, which touched no backend.
+     * The cluster state whose tail the current-cluster teardown saves, or null when there is nothing
+     * to save: no state, infrastructure not up, or telemetry redirected to an external stack. Each
+     * skip says why.
      */
-    private fun abortEvent(failure: Throwable): Event.Teardown.BackupFailedAbort =
+    private fun stateToSave(): ClusterState? {
+        if (!clusterStateManager.exists()) return null
+        val state = clusterStateManager.load()
+        if (!state.isInfrastructureUp()) {
+            eventBus.emit(Event.Teardown.BackupSkipped("cluster infrastructure is not up"))
+            return null
+        }
+        // A redirect cluster runs no local Mimir, Loki or Grafana, so there is nothing to flush or
+        // back up here; the data already lives on the external stack.
+        val redirect = state.initConfig?.telemetryRedirect
+        if (redirect != null) {
+            eventBus.emit(
+                Event.Teardown.BackupSkipped(
+                    "telemetry is redirected to ${redirect.metrics}; there is no local stack to flush",
+                ),
+            )
+            return null
+        }
+        return state
+    }
+
+    /**
+     * Lists what `--force` will not save, with the teardown preview and before the confirmation
+     * prompt, so the operator decides with it in view.
+     */
+    private fun reportForceSkipsTail() {
+        val state = stateToSave() ?: return
+        eventBus.emit(Event.Teardown.ForceSkipsTail(teardownBackupService.unsavedSignals(state).map { it.description }))
+    }
+
+    /**
+     * The report of a save that failed. A [TailFlushFailed] names each failed signal, its step, and
+     * the workloads as the save left them; any other failure is the tunnel's, which touched nothing
+     * and failed every signal the save would have saved.
+     */
+    private fun abortEvent(
+        failure: Throwable,
+        state: ClusterState,
+    ): Event.Teardown.BackupFailedAbort =
         when (failure) {
-            is FlushStepFailed ->
+            is TailFlushFailed ->
                 Event.Teardown.BackupFailedAbort(
-                    step = failure.step.description,
-                    reason = failure.cause?.message ?: failure.message.orEmpty(),
+                    failures =
+                        failure.failures.values.map {
+                            Event.Teardown.BackupFailedAbort.SignalFailure(
+                                signal = it.signal.description,
+                                step = it.step.description,
+                                reason = it.cause?.message ?: it.message.orEmpty(),
+                            )
+                        },
                     backends = failure.backends.mapValues { it.value.description },
-                    stoppedBackends =
+                    stoppedWorkloads =
                         failure.backends
                             .filterValues { it != BackendState.RUNNING }
                             .keys
@@ -238,8 +260,14 @@ class Down : PicoBaseCommand() {
                 )
             else ->
                 Event.Teardown.BackupFailedAbort(
-                    step = "SOCKS tunnel to the control node",
-                    reason = failure.message ?: failure.toString(),
+                    failures =
+                        teardownBackupService.unsavedSignals(state).map {
+                            Event.Teardown.BackupFailedAbort.SignalFailure(
+                                signal = it.description,
+                                step = "SOCKS tunnel to the control node",
+                                reason = failure.message ?: failure.toString(),
+                            )
+                        },
                 )
         }
 
@@ -324,6 +352,7 @@ class Down : PicoBaseCommand() {
         }
 
         val summary = previewResult.resourcesDeleted.first().summary()
+        if (saveTail && force) reportForceSkipsTail()
 
         if (dryRun) {
             eventBus.emit(Event.Teardown.DryRunPreview(summary))
@@ -336,7 +365,7 @@ class Down : PicoBaseCommand() {
             return TeardownOutcome.Finished(TeardownResult.Companion.failure("Teardown cancelled by user"))
         }
 
-        if (saveTail && !saveTailBeforeTeardown()) return TeardownOutcome.FlushAborted
+        if (saveTail && !force && !saveTailBeforeTeardown()) return TeardownOutcome.FlushAborted
 
         beforeRemovingInfrastructure()
         return TeardownOutcome.Finished(teardownService.teardownVpc(targetVpcId, dryRun = false))

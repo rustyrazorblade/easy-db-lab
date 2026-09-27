@@ -1,44 +1,34 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
-import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.entry
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockito.kotlin.any
-import org.mockito.kotlin.argThat
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.mockingDetails
-import org.mockito.kotlin.whenever
+import org.junit.jupiter.api.Timeout
 import java.time.Duration
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
- * The order of the pre-teardown steps, what each check refuses, and how a failure stops the flush:
- * it names the step and each backend's state, and leaves the backends as the step left them. The
- * control node's HTTP services, its filesystem (over SSH), Kubernetes and S3 are faked at their
- * boundaries.
+ * How the pre-teardown save orders and runs its steps: Phase A in order, Phase B at once, every
+ * step to completion, and one failure per signal. Each backend flush, Kubernetes, the collector,
+ * the mirror and the backup are hand-written fakes that record what ran, in order.
  */
 class TeardownFlushServiceTest {
     private val control = ClusterHost("54.0.0.1", "10.0.1.5", "control0", "us-west-2a")
-    private val state =
-        ClusterState(name = "lab", clusterId = "c1", versions = mutableMapOf(), s3Bucket = "acct", initConfig = InitConfig(tenant = "acme"))
-    private val steps = mutableListOf<String>()
-    private val remoteOps = mock<RemoteOperationsService>()
-    private val s3Keys = mutableSetOf<String>()
-    private val objectStore = mock<ObjectStore>()
-    private val mirror = RecordingAnnotationMirror()
-    private val events = mutableListOf<Event>()
+    private val state = ClusterState(name = "lab", versions = mutableMapOf(), s3Bucket = "acct")
+    private val all = TailSignal.entries.toSet()
+
+    /** Every step that ran, in the order it started or finished. */
+    private val order: MutableList<String> = Collections.synchronizedList(mutableListOf())
+    private val events: MutableList<Event> = Collections.synchronizedList(mutableListOf())
     private val eventBus =
         EventBus().also {
             it.addListener(
@@ -51,12 +41,27 @@ class TeardownFlushServiceTest {
                 },
             )
         }
-    private val timeouts = FlushTimeouts(shutdown = Duration.ofSeconds(3), scaleDown = Duration.ofSeconds(4))
 
-    /**
-     * Kubernetes as the flush sees it. Every scale-down is recorded in [steps]; the interface offers
-     * no way to scale a backend up or replace its pod, so the flush cannot start one again.
-     */
+    /** A backend flush that records its start and end, and runs [body] in between. */
+    private inner class FakeFlush(
+        private val name: String,
+        private val report: SignalReport,
+        private val workload: String,
+        private val body: () -> Unit = {},
+    ) : SignalFlush {
+        override fun flush(
+            controlHost: ClusterHost,
+            clusterState: ClusterState,
+            progress: FlushProgress,
+        ): SignalReport {
+            order += "$name start"
+            progress.mark(workload, BackendState.SCALED_TO_ZERO)
+            body()
+            order += "$name end"
+            return report
+        }
+    }
+
     private inner class FakeWorkloads(
         private val states: Map<String, BackendState> = emptyMap(),
     ) : BackendWorkloads {
@@ -64,10 +69,7 @@ class TeardownFlushServiceTest {
             controlHost: ClusterHost,
             workload: String,
             timeout: Duration,
-        ) {
-            steps.add("scaleDown $workload")
-            order.add("scaleDown $workload")
-        }
+        ) = error("the orchestrator never scales a backend itself")
 
         override fun state(
             controlHost: ClusterHost,
@@ -75,11 +77,27 @@ class TeardownFlushServiceTest {
         ): BackendState = states[workload] ?: BackendState.RUNNING
     }
 
-    /** Every step that touches a backend or S3, the mirror included, in the order it ran. */
-    private val order = mutableListOf<String>()
+    private var mirrorFailure: Throwable? = null
+    private var sendersFailure: Throwable? = null
 
-    /** When set, the annotations backup fails with it. */
-    private var backupFailure: Throwable? = null
+    private val mirror =
+        object : AnnotationMirror by RecordingAnnotationMirror() {
+            override fun syncAll(controlHost: ClusterHost): Result<Int> {
+                order += "mirror"
+                return mirrorFailure?.let { Result.failure(it) } ?: Result.success(3)
+            }
+        }
+
+    private val senders =
+        object : TelemetrySenders {
+            override fun stop(
+                controlHost: ClusterHost,
+                timeout: Duration,
+            ) {
+                order += "senders stop"
+                sendersFailure?.let { throw it }
+            }
+        }
 
     private val backups =
         object : GrafanaAnnotationBackupService {
@@ -87,348 +105,148 @@ class TeardownFlushServiceTest {
                 controlHost: ClusterHost,
                 clusterState: ClusterState,
             ): Result<GrafanaAnnotationBackupResult> {
-                steps.add("annotations backup")
-                order.add("annotations backup")
-                return backupFailure?.let { Result.failure(it) }
-                    ?: Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root("acct").resolve("a.json"), 2))
+                order += "annotations backup"
+                return Result.success(GrafanaAnnotationBackupResult(ClusterS3Path.root("acct").resolve("grafana/annotations/x.json"), 2))
             }
         }
-
-    /** The mirror, recording in [order] when it is asked to mirror. */
-    private val orderedMirror =
-        object : AnnotationMirror by mirror {
-            override fun syncAll(controlHost: ClusterHost): Result<Int> {
-                order.add("mirror")
-                return mirror.syncAll(controlHost)
-            }
-        }
-
-    /** [http], recording each backend's ingester shutdown (its flush) in [order]. */
-    private inner class OrderedHttp(
-        private val http: RecordingObservabilityHttp,
-    ) : ObservabilityHttp by http {
-        override fun post(
-            port: Int,
-            path: String,
-            body: String,
-            contentType: String,
-            timeout: Duration,
-        ): ObservabilityResponse {
-            if (path.startsWith("/ingester/shutdown")) order.add(if (port == Constants.K8s.LOKI_HTTP_PORT) "loki flush" else "mimir flush")
-            return http.post(port, path, body, contentType, timeout)
-        }
-    }
-
-    /** Answers in order: Loki metrics, Loki shutdown, Loki metrics, Mimir metrics, Mimir shutdown, Mimir metrics. */
-    private fun http(
-        lokiShutdown: ObservabilityResponse = ObservabilityResponse(204, ""),
-        chunksFlushedAtShutdown: Int = 2,
-        failedCompactionsAfter: Int = 0,
-    ) = RecordingObservabilityHttp(
-        lokiMetrics(chunksFlushed = 5),
-        lokiShutdown,
-        lokiMetrics(chunksFlushed = 5 + chunksFlushedAtShutdown),
-        metrics(failedCompactions = 0),
-        ObservabilityResponse(204, ""),
-        metrics(failedCompactions = failedCompactionsAfter),
-    )
-
-    /** Loki's flushed-chunk counter, split over two reasons so the flush must sum them. */
-    private fun lokiMetrics(chunksFlushed: Int) =
-        ObservabilityResponse(
-            200,
-            """
-            # TYPE loki_ingester_chunks_flushed_total counter
-            loki_ingester_chunks_flushed_total{reason="idle"} 1
-            loki_ingester_chunks_flushed_total{reason="forced"} ${chunksFlushed - 1}
-            """.trimIndent(),
-        )
-
-    private fun metrics(failedCompactions: Int) =
-        ObservabilityResponse(
-            200,
-            """
-            # HELP cortex_ingester_tsdb_compactions_failed_total Total number of TSDB compactions that failed.
-            cortex_ingester_tsdb_compactions_failed_total $failedCompactions
-            cortex_ingester_tsdb_head_max_timestamp_seconds 1.7900000005e+09
-            """.trimIndent(),
-        )
 
     private fun service(
-        http: RecordingObservabilityHttp,
+        loki: SignalFlush = FakeFlush("loki", SignalReport.Logs(1, 2), "loki"),
+        mimir: SignalFlush = FakeFlush("mimir", SignalReport.Metrics(3), "mimir"),
+        tempo: SignalFlush = FakeFlush("tempo", SignalReport.Traces(4), "tempo"),
         workloads: BackendWorkloads = FakeWorkloads(),
-    ) = DefaultTeardownFlushService(
-        LokiTailFlush(OrderedHttp(http), workloads, remoteOps, objectStore, timeouts),
-        MimirTailFlush(OrderedHttp(http), workloads, remoteOps, objectStore, timeouts),
-        workloads,
-        orderedMirror,
-        backups,
-        eventBus,
-    )
+    ) = DefaultTeardownFlushService(loki, mimir, tempo, workloads, senders, mirror, backups, eventBus)
 
-    private fun remote(
-        marker: String,
-        output: String,
-    ) {
-        whenever(remoteOps.executeRemotely(any(), argThat { contains(marker) }, any(), any())).thenReturn(Response(output))
-    }
-
-    private fun failure(result: Result<FlushReport>): FlushStepFailed = result.exceptionOrNull() as FlushStepFailed
-
-    private val block =
-        """
-        === /mnt/db1/mimir/tsdb/acme/01HBLOCKA/meta.json
-        {"ulid":"01HBLOCKA","minTime":1789990000000,"maxTime":1790000000501,"stats":{"numSamples":100},"compaction":{"level":1}}
-        """.trimIndent()
-
-    @BeforeEach
-    fun setUp() {
-        whenever(objectStore.fileExists(any())).thenAnswer { invocation ->
-            invocation.getArgument<ClusterS3Path>(0).getKey() in s3Keys
-        }
-        remote("tsdb-index/wal", "")
-        remote("tsdb-index/multitenant", "index_20722/1790000000-acme.lab-c1-17.tsdb\n")
-        remote("/mnt/db1/mimir/tsdb", block)
-        s3Keys += "loki/index/index_20722/1790000000-acme.lab-c1-17.tsdb.gz"
-        s3Keys += "mimir/acme/01HBLOCKA/meta.json"
-    }
+    private fun failing(
+        name: String,
+        workload: String,
+        message: String,
+    ) = FakeFlush(name, SignalReport.Profiles, workload) { error(message) }
 
     @Test
-    fun `annotations are mirrored, then Loki and Mimir flushed and verified, then the annotations backed up`() {
-        val http = http()
+    fun `every signal is saved, and each backend is left as its step left it`() {
+        val outcome = service().saveTail(control, state, all)
 
-        val report = service(http).saveTail(control, state).getOrThrow()
-
-        assertThat(steps).containsExactly("scaleDown loki", "scaleDown mimir", "annotations backup")
-        assertThat(mirror.synced).containsExactly(control)
-        assertThat(http.calls.map { "${it.method} ${it.port} ${it.path}" }).containsExactly(
-            "GET 3100 /metrics",
-            "POST 3100 /ingester/shutdown?flush=true&terminate=false&delete_ring_tokens=false",
-            "GET 3100 /metrics",
-            "GET 9009 /metrics",
-            "POST 9009 /ingester/shutdown",
-            "GET 9009 /metrics",
+        assertThat(outcome.failed).isEmpty()
+        assertThat(outcome.saved).containsOnly(
+            entry(TailSignal.LOGS, SignalReport.Logs(1, 2)),
+            entry(TailSignal.METRICS, SignalReport.Metrics(3)),
+            entry(TailSignal.TRACES, SignalReport.Traces(4)),
+            entry(TailSignal.PROFILES, SignalReport.Profiles),
+            entry(TailSignal.ANNOTATIONS, SignalReport.Annotations("grafana/annotations/x.json")),
         )
-        assertThat(http.calls.filter { it.method == "POST" }.map { it.timeout }).allMatch { it == Duration.ofSeconds(3) }
-        assertThat(report).isEqualTo(FlushReport(lokiIndexFiles = 1, lokiChunksFlushed = 2, mimirBlocks = 1))
-        assertThat(events.filterIsInstance<Event.Teardown.LokiFlushed>().single())
-            .isEqualTo(Event.Teardown.LokiFlushed(indexFiles = 1, chunksFlushed = 2))
+        assertThat(outcome.backends)
+            .containsEntry("loki", BackendState.SCALED_TO_ZERO)
+            .containsEntry("mimir", BackendState.SCALED_TO_ZERO)
+            .containsEntry("otel-collector", BackendState.DELETED)
+        assertThat(
+            events,
+        ).contains(Event.Teardown.TelemetrySendersStopped, Event.Teardown.ProfilesNeedNoFlush, Event.Teardown.TempoFlushed(4))
     }
 
     @Test
-    fun `the annotations are mirrored before Loki flushes, Loki before Mimir, and the backup runs last`() {
-        service(http()).saveTail(control, state).getOrThrow()
+    fun `the mirror and the collector stop finish before any flush starts`() {
+        service().saveTail(control, state, all)
 
-        assertThat(order).containsExactly(
-            "mirror",
-            "loki flush",
-            "scaleDown loki",
-            "mimir flush",
-            "scaleDown mimir",
-            "annotations backup",
-        )
+        assertThat(order.take(2)).containsExactly("mirror", "senders stop")
+        assertThat(order.drop(2)).contains("loki start", "mimir start", "tempo start", "annotations backup")
     }
 
+    /** Each fake waits on a latch only the other releases: run one after the other, both would time out. */
     @Test
-    fun `a failed mirror stops the flush before any backend is touched, naming the step`() {
-        mirror.failure = IllegalStateException("Loki refused the push with status 500")
-        val http = http()
-
-        val failure = failure(service(http).saveTail(control, state))
-
-        assertThat(failure.step).isEqualTo(FlushStep.ANNOTATION_MIRROR)
-        assertThat(failure)
-            .hasMessageContaining(FlushStep.ANNOTATION_MIRROR.description)
-            .hasMessageContaining("Loki refused the push")
-        assertThat(failure.backends).containsExactly(
-            entry("loki", BackendState.RUNNING),
-            entry("mimir", BackendState.RUNNING),
-        )
-        assertThat(http.calls).isEmpty()
-        assertThat(steps).isEmpty()
-    }
-
-    @Test
-    fun `a failed annotations backup after both flushes names the step and both backends at 0, and scales nothing else`() {
-        backupFailure = IllegalStateException("S3 refused the annotations backup")
-
-        val failure = failure(service(http()).saveTail(control, state))
-
-        assertThat(failure.step).isEqualTo(FlushStep.ANNOTATIONS_BACKUP)
-        assertThat(failure)
-            .hasMessageContaining(FlushStep.ANNOTATIONS_BACKUP.description)
-            .hasMessageContaining("S3 refused the annotations backup")
-        assertThat(failure.backends).containsExactly(
-            entry("loki", BackendState.SCALED_TO_ZERO),
-            entry("mimir", BackendState.SCALED_TO_ZERO),
-        )
-        assertThat(steps).containsExactly("scaleDown loki", "scaleDown mimir", "annotations backup")
-    }
-
-    @Test
-    fun `a Loki shutdown that does not finish stops the flush there, with Loki's ingester stopped and Mimir untouched`() {
-        val http = http(lokiShutdown = ObservabilityResponse(500, "flush failed"))
-
-        val failure = failure(service(http).saveTail(control, state))
-
-        assertThat(failure.step).isEqualTo(FlushStep.LOKI_SHUTDOWN)
-        assertThat(failure).hasMessageContaining("flush failed").hasMessageContaining(FlushStep.LOKI_SHUTDOWN.description)
-        assertThat(failure.backends).containsExactly(
-            entry("loki", BackendState.INGESTER_STOPPED),
-            entry("mimir", BackendState.RUNNING),
-        )
-        assertThat(steps).isEmpty()
-        assertThat(http.calls.map { it.port }).doesNotContain(9009)
-    }
-
-    @Test
-    fun `an index write-ahead segment left after the stop fails the write-ahead check, and Loki stays at 0`() {
-        remote("tsdb-index/wal", "/mnt/db1/loki/tsdb-index/wal/20722/00000001\n")
-
-        val failure = failure(service(http()).saveTail(control, state))
-
-        assertThat(failure.step).isEqualTo(FlushStep.LOKI_WAL_CHECK)
-        assertThat(failure).hasMessageContaining("write-ahead")
-        assertThat(failure.backends).containsExactly(
-            entry("loki", BackendState.SCALED_TO_ZERO),
-            entry("mimir", BackendState.RUNNING),
-        )
-        assertThat(steps).containsExactly("scaleDown loki")
-    }
-
-    @Test
-    fun `an index file that is not in S3 fails the S3 check, and Loki stays at 0`() {
-        s3Keys.clear()
-
-        val failure = failure(service(http()).saveTail(control, state))
-
-        assertThat(failure.step).isEqualTo(FlushStep.LOKI_S3_CHECK)
-        assertThat(failure).hasMessageContaining("index_20722/1790000000-acme.lab-c1-17.tsdb")
-        assertThat(failure.backends).containsEntry("loki", BackendState.SCALED_TO_ZERO)
-        assertThat(steps).containsExactly("scaleDown loki")
-    }
-
-    @Test
-    fun `chunks flushed at shutdown with no index file on the node fail the S3 check`() {
-        remote("tsdb-index/multitenant", "")
-
-        val failure = failure(service(http(chunksFlushedAtShutdown = 3)).saveTail(control, state))
-
-        // The flushed chunks' series are in the index head, so Loki must have built an index file;
-        // finding none means the check looked in the wrong place, not that there is nothing to save.
-        assertThat(failure.step).isEqualTo(FlushStep.LOKI_S3_CHECK)
-        assertThat(failure).hasMessageContaining("3 chunks").hasMessageContaining("no index file")
-        assertThat(steps).containsExactly("scaleDown loki")
-    }
-
-    @Test
-    fun `a Loki that flushed nothing at shutdown needs no index file`() {
-        remote("tsdb-index/multitenant", "")
-
-        val report = service(http(chunksFlushedAtShutdown = 0)).saveTail(control, state).getOrThrow()
-
-        assertThat(report.lokiIndexFiles).isZero()
-        assertThat(report.lokiChunksFlushed).isZero()
-    }
-
-    @Test
-    fun `an index listing that fails on the node fails the flush with the node's error`() {
-        whenever(remoteOps.executeRemotely(any(), argThat { contains("tsdb-index/multitenant") }, any(), any()))
-            .thenAnswer {
-                throw RemoteCommandFailedException(
-                    command = "sudo sh -c ...",
-                    stdout = "",
-                    stderr = "sudo: a password is required",
-                    summary = "10.0.1.5: Remote command failed (1)",
-                )
+    @Timeout(value = 10, unit = TimeUnit.SECONDS)
+    fun `the flushes run at the same time`() {
+        val lokiStarted = CountDownLatch(1)
+        val mimirStarted = CountDownLatch(1)
+        val loki =
+            FakeFlush("loki", SignalReport.Logs(1, 2), "loki") {
+                lokiStarted.countDown()
+                check(mimirStarted.await(5, TimeUnit.SECONDS)) { "Mimir's flush never started while Loki's ran" }
+            }
+        val mimir =
+            FakeFlush("mimir", SignalReport.Metrics(3), "mimir") {
+                mimirStarted.countDown()
+                check(lokiStarted.await(5, TimeUnit.SECONDS)) { "Loki's flush never started while Mimir's ran" }
             }
 
-        val failure = failure(service(http()).saveTail(control, state))
+        val outcome = service(loki = loki, mimir = mimir).saveTail(control, state, all)
 
-        assertThat(failure).hasMessageContaining("sudo: a password is required")
-        assertThat(failure.step).isEqualTo(FlushStep.LOKI_S3_CHECK)
-        assertThat(steps).containsExactly("scaleDown loki")
+        assertThat(outcome.failed).isEmpty()
     }
 
     @Test
-    fun `the node listings treat only a missing directory as empty, and let every other failure through`() {
-        service(http()).saveTail(control, state).getOrThrow()
+    fun `one failing signal leaves every other signal saved, and every failure is reported`() {
+        val outcome =
+            service(
+                mimir = failing("mimir", "mimir", "Mimir blocks are not in S3: acme/01HB"),
+                tempo = failing("tempo", "tempo", "Tempo still receives or holds traces"),
+            ).saveTail(control, state, all)
 
-        // `|| true` or a discarded stderr would turn a failed listing into an empty one, which the
-        // write-ahead check reads as "nothing left" and the index check as "nothing to prove".
-        val commands = mockingDetails(remoteOps).invocations.map { it.getArgument<String>(1) }
-        val listings = commands.filter { it.contains("tsdb-index") }
-        assertThat(listings).hasSize(2).allSatisfy { command ->
-            assertThat(command).contains("if [ -d ").doesNotContain("|| true").doesNotContain("2>/dev/null")
-        }
+        assertThat(outcome.saved.keys).containsExactlyInAnyOrder(TailSignal.LOGS, TailSignal.PROFILES, TailSignal.ANNOTATIONS)
+        assertThat(outcome.failed.keys).containsExactlyInAnyOrder(TailSignal.METRICS, TailSignal.TRACES)
+        assertThat(outcome.failed.getValue(TailSignal.METRICS)).hasMessageContaining("acme/01HB")
+        assertThat(outcome.failed.getValue(TailSignal.TRACES)).hasMessageContaining("Tempo still receives")
+        assertThat(outcome.failed.getValue(TailSignal.METRICS).backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
     }
 
     @Test
-    fun `a failed head compaction fails the compaction check, with Loki at 0 and Mimir's ingester stopped`() {
-        val failure = failure(service(http(failedCompactionsAfter = 1)).saveTail(control, state))
+    fun `a failed mirror fails only logs, skips the Loki flush, and leaves Loki running`() {
+        mirrorFailure = IllegalStateException("Loki refused the push with status 500")
 
-        assertThat(failure.step).isEqualTo(FlushStep.MIMIR_COMPACTION_CHECK)
-        assertThat(failure).hasMessageContaining("compaction")
-        assertThat(failure.backends).containsExactly(
-            entry("loki", BackendState.SCALED_TO_ZERO),
-            entry("mimir", BackendState.INGESTER_STOPPED),
-        )
-        assertThat(steps).containsExactly("scaleDown loki")
+        val outcome = service().saveTail(control, state, all)
+
+        val logs = outcome.failed.getValue(TailSignal.LOGS)
+        assertThat(logs.step).isEqualTo(FlushStep.ANNOTATION_MIRROR)
+        assertThat(logs).hasMessageContaining("Loki refused the push").hasMessageContaining("the Loki flush was not run")
+        assertThat(order).doesNotContain("loki start").contains("mimir start", "tempo start", "annotations backup")
+        assertThat(outcome.backends).containsEntry("loki", BackendState.RUNNING)
+        assertThat(outcome.saved.keys).contains(TailSignal.METRICS, TailSignal.TRACES, TailSignal.ANNOTATIONS)
     }
 
     @Test
-    fun `a head that no local block covers fails the compaction check`() {
-        remote("/mnt/db1/mimir/tsdb", block.replace("1790000000501", "1789999000000"))
+    fun `a Loki an earlier down stopped fails logs with that cause, and the mirror does not run`() {
+        val outcome = service(workloads = FakeWorkloads(mapOf("loki" to BackendState.SCALED_TO_ZERO))).saveTail(control, state, all)
 
-        val failure = failure(service(http()).saveTail(control, state))
-
-        assertThat(failure.step).isEqualTo(FlushStep.MIMIR_COMPACTION_CHECK)
-        assertThat(failure).hasMessageContaining("head")
+        val logs = outcome.failed.getValue(TailSignal.LOGS)
+        assertThat(logs.step).isEqualTo(FlushStep.LOKI_RUNNING)
+        assertThat(logs).hasMessageContaining("Loki was stopped by an earlier `down`")
+        assertThat(order).doesNotContain("mirror", "loki start")
+        assertThat(outcome.saved.keys).contains(TailSignal.METRICS, TailSignal.TRACES)
     }
 
     @Test
-    fun `a block that is not in S3 fails the S3 check, and an empty block is not expected there`() {
-        s3Keys.remove("mimir/acme/01HBLOCKA/meta.json")
-        remote(
-            "/mnt/db1/mimir/tsdb",
-            block + "\n=== /mnt/db1/mimir/tsdb/acme/01HEMPTY/meta.json\n" +
-                """{"ulid":"01HEMPTY","minTime":1,"maxTime":2,"stats":{"numSamples":0},"compaction":{"level":1}}""",
-        )
+    fun `a failed collector stop fails traces and skips the drain, and the other flushes still run`() {
+        sendersFailure = IllegalStateException("otel-collector still has 1 pod(s)")
 
-        val failure = failure(service(http()).saveTail(control, state))
+        val outcome = service().saveTail(control, state, all)
 
-        assertThat(failure.step).isEqualTo(FlushStep.MIMIR_S3_CHECK)
-        assertThat(failure.message).contains("01HBLOCKA").doesNotContain("01HEMPTY")
-        assertThat(failure.backends).containsEntry("mimir", BackendState.INGESTER_STOPPED)
-        assertThat(steps).containsExactly("scaleDown loki")
+        assertThat(outcome.failed.getValue(TailSignal.TRACES).step).isEqualTo(FlushStep.SENDERS_STOP)
+        assertThat(order).doesNotContain("tempo start").contains("loki start", "mimir start")
     }
 
     @Test
-    fun `a backend a previous down left at 0 stops the flush before anything is touched`() {
-        val http = http()
-        val workloads = FakeWorkloads(states = mapOf("loki" to BackendState.SCALED_TO_ZERO))
+    fun `signals already recorded are never run, and a newly saved one is handed over to be recorded`() {
+        val recorded = Collections.synchronizedList(mutableListOf<TailSignal>())
 
-        val failure = failure(service(http, workloads).saveTail(control, state))
+        val outcome =
+            service().saveTail(control, state, all - TailSignal.LOGS) { signal, _ ->
+                recorded += signal
+                order += "record $signal"
+            }
 
-        assertThat(failure.step).isEqualTo(FlushStep.BACKENDS_RUNNING)
-        assertThat(failure).hasMessageContaining("loki").hasMessageContaining("cannot be flushed without starting it again")
-        assertThat(failure.backends).containsExactly(
-            entry("loki", BackendState.SCALED_TO_ZERO),
-            entry("mimir", BackendState.RUNNING),
-        )
-        assertThat(mirror.synced).isEmpty()
-        assertThat(http.calls).isEmpty()
-        assertThat(steps).isEmpty()
+        assertThat(order).doesNotContain("mirror", "loki start")
+        assertThat(outcome.saved.keys).doesNotContain(TailSignal.LOGS)
+        assertThat(recorded).containsExactly(TailSignal.METRICS)
+        assertThat(order.indexOf("record METRICS")).isGreaterThan(order.indexOf("mimir end"))
     }
 
     @Test
-    fun `a backend whose ingester a previous down stopped is not ready, and stops the flush`() {
-        val workloads = FakeWorkloads(states = mapOf("mimir" to BackendState.NOT_READY))
+    fun `a record that cannot be written fails its signal at the record step`() {
+        val outcome = service().saveTail(control, state, all) { _, _ -> error("disk full") }
 
-        val failure = failure(service(http(), workloads).saveTail(control, state))
-
-        assertThat(failure.step).isEqualTo(FlushStep.BACKENDS_RUNNING)
-        assertThat(failure).hasMessageContaining("mimir (not ready)").hasMessageNotContaining("loki (")
-        assertThat(steps).isEmpty()
+        assertThat(outcome.failed.keys).containsExactlyInAnyOrder(TailSignal.LOGS, TailSignal.METRICS)
+        assertThat(outcome.failed.getValue(TailSignal.LOGS).step).isEqualTo(FlushStep.RECORD_LOGS)
+        assertThat(outcome.failed.getValue(TailSignal.METRICS).step).isEqualTo(FlushStep.RECORD_METRICS)
+        assertThat(outcome.saved.keys).contains(TailSignal.TRACES, TailSignal.ANNOTATIONS)
     }
 }

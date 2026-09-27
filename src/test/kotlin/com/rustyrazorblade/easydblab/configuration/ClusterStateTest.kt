@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.services.TailSignal
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -468,10 +469,10 @@ class ClusterStateTest {
                 versions = mutableMapOf(),
                 tailFlush =
                     TailFlushRecord(
-                        Instant.parse("2026-09-26T12:00:00Z"),
-                        lokiIndexFiles = 1,
-                        lokiChunksFlushed = 2,
-                        mimirBlocks = 3,
+                        mapOf(
+                            TailSignal.LOGS to SavedSignal(Instant.parse("2026-09-26T12:00:00Z"), verifiedObjects = 1),
+                            TailSignal.METRICS to SavedSignal(Instant.parse("2026-09-26T12:00:01Z"), verifiedObjects = 3),
+                        ),
                     ),
             )
 

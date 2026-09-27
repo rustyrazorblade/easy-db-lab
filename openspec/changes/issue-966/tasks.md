@@ -25,40 +25,40 @@
 
 ## 4. Flush model and recording
 
-- [ ] 4.1 Add `TailSignal` (LOGS, METRICS, TRACES, PROFILES, ANNOTATIONS), each with a description.
-- [ ] 4.2 `FlushStep` gains `signal`; add the Loki running check, the collector stop, and the Tempo steps; split the shared running check into a per-backend check.
-- [ ] 4.3 `FlushProgress`: one instance per task, constructed with the single workload it owns; merge backend states after the join.
-- [ ] 4.4 `ClusterState.tailFlush` becomes `TailFlushRecord(signals: Map<TailSignal, SavedSignal>)`; only LOGS and METRICS are ever written.  `markInfrastructureUp()` clears it.
-- [ ] 4.5 `DefaultTeardownBackupService`: a single-thread writer records LOGS or METRICS the moment its flush succeeds; `unsavedSignals(state)` returns the unrecorded ones among LOGS and METRICS plus TRACES and ANNOTATIONS, never PROFILES; returns `TailFlushFailed` naming every failed signal.
-- [ ] 4.6 `MimirTailFlush`: replace the per-block `fileExists` with one paginated listing of `mimir/<tenant>/` starting at this cluster's oldest local block ID, then a set difference.  Test with a listing that holds other clusters' blocks.
-- [ ] 4.7 Tests (`TeardownBackupServiceTest`): a LOGS success is recorded while METRICS is still running; a re-run's pending set excludes recorded signals; `unsavedSignals` for none, logs-only, and both recorded.
+- [x] 4.1 Add `TailSignal` (LOGS, METRICS, TRACES, PROFILES, ANNOTATIONS), each with a description.
+- [x] 4.2 `FlushStep` gains `signal`; add the Loki running check, the collector stop, and the Tempo steps; split the shared running check into a per-backend check.
+- [x] 4.3 `FlushProgress`: one instance per task, constructed with the single workload it owns; merge backend states after the join.
+- [x] 4.4 `ClusterState.tailFlush` becomes `TailFlushRecord(signals: Map<TailSignal, SavedSignal>)`; only LOGS and METRICS are ever written.  `markInfrastructureUp()` clears it.
+- [x] 4.5 `DefaultTeardownBackupService`: a single-thread writer records LOGS or METRICS the moment its flush succeeds; `unsavedSignals(state)` returns the unrecorded ones among LOGS and METRICS plus TRACES and ANNOTATIONS, never PROFILES; returns `TailFlushFailed` naming every failed signal.
+- [x] 4.6 `MimirTailFlush`: replace the per-block `fileExists` with one paginated listing of `mimir/<tenant>/` starting at this cluster's oldest local block ID, then a set difference.  Test with a listing that holds other clusters' blocks.
+- [x] 4.7 Tests (`TeardownBackupServiceTest`): a LOGS success is recorded while METRICS is still running; a re-run's pending set excludes recorded signals; `unsavedSignals` for none, logs-only, and both recorded.
 
 ## 5. Collector stop and Tempo drain
 
-- [ ] 5.1 `TelemetrySenders` + `K8sTelemetrySenders.stop(controlHost, timeout)`: delete the `otel-collector` DaemonSet, wait until its pods are gone (`RetryUtil.createPollUntilRetryConfig`); succeed when it is already absent.
-- [ ] 5.2 `TempoTailFlush`: check Tempo runs; poll `/metrics` until `tempo_live_store_live_traces` is 0 for every tenant and `tempo_live_store_traces_created_total` is unchanged across two readings at least 2 seconds apart; then poll the node listing of `/mnt/db1/tempo/live-store/wal/` until no top-level WAL block directory holds `meta.json` and every `blocks/<tenant>/<id>/` holding `meta.json` holds `flushed`; timeout 5 minutes; on timeout report live traces and the failed-flush and failed-completion counters.  Never stop or restart Tempo.
-- [ ] 5.3 `Constants.TeardownFlush`: `SENDERS_STOP_TIMEOUT_SECONDS = 120`, `TEMPO_DRAIN_TIMEOUT_SECONDS = 300`; `FlushTimeouts` gains `sendersStop` and `tempoDrain`.
-- [ ] 5.4 Unit tests (`TempoTailFlush`, faked `RemoteOperationsService` for the node listing): metric parsing; a changing created-traces count keeps the wait going; the drained predicate (empty head with no `meta.json` → drained; head with `meta.json` → not drained; `meta.deleted.json` → drained; block with `meta.json` and no `flushed` → not drained).
-- [ ] 5.5 K3s TestContainers test: apply the real `OtelManifestBuilder` DaemonSet, run `K8sTelemetrySenders.stop`, assert the pods are gone; run it again with the DaemonSet absent and assert success.
+- [x] 5.1 `TelemetrySenders` + `K8sTelemetrySenders.stop(controlHost, timeout)`: delete the `otel-collector` DaemonSet, wait until its pods are gone (`RetryUtil.createPollUntilRetryConfig`); succeed when it is already absent.
+- [x] 5.2 `TempoTailFlush`: check Tempo runs; poll `/metrics` until `tempo_live_store_live_traces` is 0 for every tenant and `tempo_live_store_traces_created_total` is unchanged across two readings at least 2 seconds apart; then poll the node listing of `/mnt/db1/tempo/live-store/wal/` until no top-level WAL block directory holds `meta.json` and every `blocks/<tenant>/<id>/` holding `meta.json` holds `flushed`; timeout 5 minutes; on timeout report live traces and the failed-flush and failed-completion counters.  Never stop or restart Tempo.
+- [x] 5.3 `Constants.TeardownFlush`: `SENDERS_STOP_TIMEOUT_SECONDS = 120`, `TEMPO_DRAIN_TIMEOUT_SECONDS = 300`; `FlushTimeouts` gains `sendersStop` and `tempoDrain`.
+- [x] 5.4 Unit tests (`TempoTailFlush`, faked `RemoteOperationsService` for the node listing): metric parsing; a changing created-traces count keeps the wait going; the drained predicate (empty head with no `meta.json` → drained; head with `meta.json` → not drained; `meta.deleted.json` → drained; block with `meta.json` and no `flushed` → not drained).
+- [x] 5.5 K3s TestContainers test: apply the real `OtelManifestBuilder` DaemonSet, run `K8sTelemetrySenders.stop`, assert the pods are gone; run it again with the DaemonSet absent and assert success.
 
 ## 6. Parallel orchestration
 
-- [ ] 6.1 `DefaultTeardownFlushService.saveTail(controlHost, state, pending)`: Phase A (Loki running check and mirror only if LOGS pending; then the collector stop), then Phase B on a platform-thread pool with `invokeAll`, each task in `runCatching`: Loki flush (skipped if the check or mirror failed), Mimir flush, Tempo drain, profiles report, annotations backup.  Return `FlushOutcome`.
-- [ ] 6.2 Koin (`ServicesModule`): register `TempoTailFlush` and `TelemetrySenders`; widen the `DefaultTeardownFlushService` constructor.
-- [ ] 6.3 Events (`Teardown` domain): `BackupStarting` names traces; `BackupFailedAbort` carries `List<SignalFailure(signal, step, reason)>`, backend states and stopped workloads (including `otel-collector`); `TailAlreadyFlushed` → `TailAlreadySaved(saved)`; new `TelemetrySendersStopped`, `TempoFlushed(blocks)`, `ProfilesNeedNoFlush`, `ForceSkipsTail(unsaved)`.
-- [ ] 6.4 Unit tests (`TeardownFlushServiceTest`, hand-written fakes): one failing signal leaves every other signal saved and the outcome names all failures; the tasks run concurrently (two fakes each wait on a latch only the other releases, under a timeout); the mirror finishes before the Loki task starts; a failed mirror skips only the Loki flush; a stopped Loki fails LOGS with the "earlier down" cause and skips the mirror; recorded signals are never invoked.
-- [ ] 6.5 Integration test (`TeardownFlushIntegrationTest`, real images + LocalStack, add `grafana/tempo:3.0.3` on a volume at `/mnt/db1/tempo`): spans pushed just before the save are in `tempo/<tenant>/` (assert specific trace IDs); the drain passes only after the live-trace wait; logs and metrics are recorded while the Tempo drain still runs; a re-run skips the recorded signals and runs the Tempo drain and the annotations backup again.
+- [x] 6.1 `DefaultTeardownFlushService.saveTail(controlHost, state, pending)`: Phase A (Loki running check and mirror only if LOGS pending; then the collector stop), then Phase B on a platform-thread pool with `invokeAll`, each task in `runCatching`: Loki flush (skipped if the check or mirror failed), Mimir flush, Tempo drain, profiles report, annotations backup.  Return `FlushOutcome`.
+- [x] 6.2 Koin (`ServicesModule`): register `TempoTailFlush` and `TelemetrySenders`; widen the `DefaultTeardownFlushService` constructor.
+- [x] 6.3 Events (`Teardown` domain): `BackupStarting` names traces; `BackupFailedAbort` carries `List<SignalFailure(signal, step, reason)>`, backend states and stopped workloads (including `otel-collector`); `TailAlreadyFlushed` → `TailAlreadySaved(saved)`; new `TelemetrySendersStopped`, `TempoFlushed(blocks)`, `ProfilesNeedNoFlush`, `ForceSkipsTail(unsaved)`.
+- [x] 6.4 Unit tests (`TeardownFlushServiceTest`, hand-written fakes): one failing signal leaves every other signal saved and the outcome names all failures; the tasks run concurrently (two fakes each wait on a latch only the other releases, under a timeout); the mirror finishes before the Loki task starts; a failed mirror skips only the Loki flush; a stopped Loki fails LOGS with the "earlier down" cause and skips the mirror; recorded signals are never invoked.
+- [x] 6.5 Integration test (`TeardownFlushIntegrationTest`, real images + LocalStack, add `grafana/tempo:3.0.3` on a volume at `/mnt/db1/tempo`): spans pushed just before the save are in `tempo/<tenant>/` (assert specific trace IDs); the drain passes only after the live-trace wait; logs and metrics are recorded while the Tempo drain still runs; a re-run skips the recorded signals and runs the Tempo drain and the annotations backup again.
 
 ## 7. `down`
 
-- [ ] 7.1 `Down.saveTailBeforeTeardown()`: call `saveTail` with the pending signals; a failure aborts with every failed signal and exit code ERROR; the redirect and infrastructure-not-up skips stay.
-- [ ] 7.2 `down --force`: emit `ForceSkipsTail(unsavedSignals(state))` with the teardown preview, before the confirmation prompt; then skip both phases.  Update the `--force` option description.
-- [ ] 7.3 Tests (`DownBackupTest`): `--force` emits the unsaved list before the confirmation prompt and before any teardown call; a failure aborts with ERROR and removes nothing; declining the prompt runs no save step.
+- [x] 7.1 `Down.saveTailBeforeTeardown()`: call `saveTail` with the pending signals; a failure aborts with every failed signal and exit code ERROR; the redirect and infrastructure-not-up skips stay.
+- [x] 7.2 `down --force`: emit `ForceSkipsTail(unsavedSignals(state))` with the teardown preview, before the confirmation prompt; then skip both phases.  Update the `--force` option description.
+- [x] 7.3 Tests (`DownBackupTest`): `--force` emits the unsaved list before the confirmation prompt and before any teardown call; a failure aborts with ERROR and removes nothing; declining the prompt runs no save step.
 
 ## 8. Rules, docs and specs
 
-- [ ] 8.1 Root `CLAUDE.md`: append to the ABSOLUTE RULE on deleting data, verbatim: "Compaction is not deletion. A compactor that writes a merged object holding all of its sources' data, and then removes those sources, loses nothing and is allowed. Retention, expiry, and any removal that is not replaced by a merged copy stay forbidden. Every compactor runs with retention off."
-- [ ] 8.2 Root `CLAUDE.md`: update "Storage backends" (the two-phase parallel save, Tempo drain, per-signal record) and "Observability store and tenant" (the tool-named roots, the IAM split).
-- [ ] 8.3 `configuration/CLAUDE.md` (tailFlush, `cluster-config` keys, Pyroscope path, store layout), `commands/CLAUDE.md` (the `TeardownBackupService` row), `services/aws/CLAUDE.md` (paths).
-- [ ] 8.4 User docs: `docs/user-guide/monitoring.md`, `loki.md` (the 2.5-minute out-of-order window), `mimir.md`, `profiling.md`; `docs/reference/commands.md` (`down`: what it saves, the phases, `--force` listing); `log-infrastructure.md`, `opentelemetry.md`, `pyroscope-configuration.md`.
+- [x] 8.1 Root `CLAUDE.md`: append to the ABSOLUTE RULE on deleting data, verbatim: "Compaction is not deletion. A compactor that writes a merged object holding all of its sources' data, and then removes those sources, loses nothing and is allowed. Retention, expiry, and any removal that is not replaced by a merged copy stay forbidden. Every compactor runs with retention off."
+- [x] 8.2 Root `CLAUDE.md`: update "Storage backends" (the two-phase parallel save, Tempo drain, per-signal record) and "Observability store and tenant" (the tool-named roots, the IAM split).
+- [x] 8.3 `configuration/CLAUDE.md` (tailFlush, `cluster-config` keys, Pyroscope path, store layout), `commands/CLAUDE.md` (the `TeardownBackupService` row), `services/aws/CLAUDE.md` (paths).
+- [x] 8.4 User docs: `docs/user-guide/monitoring.md`, `loki.md` (the 2.5-minute out-of-order window), `mimir.md`, `profiling.md`; `docs/reference/commands.md` (`down`: what it saves, the phases, `--force` listing); `log-infrastructure.md`, `opentelemetry.md`, `pyroscope-configuration.md`.
 - [ ] 8.5 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21), `./gradlew test`, and `./gradlew integrationTest`; all pass.

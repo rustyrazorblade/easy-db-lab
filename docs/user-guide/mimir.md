@@ -17,7 +17,7 @@ Mimir 3.2.1 runs as one process on the control node:
 - **Object storage**: `s3://<account-bucket>/mimir/<tenant>/`
 - **Tenancy**: native multi-tenancy; the tenant is the cluster's observability tenant
 
-Mimir cuts a two-hour block and ships it to S3 within a minute. Queries for recent data are served from the ingester; older data is read from S3.
+Mimir cuts a one-minute block and ships it within seconds, so a sample is in S3 about 2 minutes after it is written, while the cluster runs. A head with no writes for 2 minutes is compacted, so the last partial block ships too. Queries are served from the ingester's local blocks.
 
 **Nothing is deleted.** Mimir runs no compactor and no retention. Every block it ships stays in S3 until you delete it yourself.
 
@@ -47,7 +47,7 @@ with-proxy curl -H 'X-Scope-OrgID: <tenant>' \
 
 ## Teardown
 
-`down` flushes Mimir before it removes anything: it stops the ingester, which cuts and ships every block it holds, then checks that each local block is in S3. If any step fails, `down` stops there with the cluster intact and Mimir left as that step left it: it is never started again, and the report names the step, each backend's state, and `down --force`. See [`down`](../reference/commands.md#down).
+`down` flushes Mimir before it removes anything, at the same time as it saves the other signals: it stops the ingester, which cuts and ships every block it holds, then checks with one listing of the tenant's blocks that each local block is in S3. The metrics are recorded as saved the moment this succeeds, so a later `down` skips them. If a step fails, `down` removes nothing and Mimir stays as that step left it: it is never started again, and the report names the step, each backend's state, and `down --force`. See [`down`](../reference/commands.md#down).
 
 ## Troubleshooting
 

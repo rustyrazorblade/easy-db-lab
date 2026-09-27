@@ -4,6 +4,7 @@ import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
 import org.testcontainers.containers.GenericContainer
@@ -16,7 +17,7 @@ import java.net.http.HttpResponse
 import java.time.Duration
 
 /**
- * Runs Mimir and Loki at the images the cluster deploys, with the configuration the cluster renders,
+ * Runs Mimir, Loki and Tempo at the images the cluster deploys, with the configuration the cluster renders,
  * against the shared LocalStack.
  *
  * The one edit to a rendered config is the harness's: the S3 endpoint and credentials point at
@@ -28,6 +29,10 @@ import java.time.Duration
 object ObservabilityBackends {
     private const val MIMIR_DATA = "/data"
     private const val LOKI_DATA = "/loki"
+    private const val TEMPO_DATA = "/var/tempo"
+
+    /** Tempo's OTLP HTTP receiver port. */
+    const val TEMPO_OTLP_HTTP_PORT = 4321
     private val STARTUP: Duration = Duration.ofMinutes(3)
     private val http: HttpClient = HttpClient.newHttpClient()
 
@@ -62,6 +67,47 @@ object ObservabilityBackends {
             """.trimMargin(),
         )
     }
+
+    /** Tempo's rendered config, pointed at LocalStack. */
+    fun tempoConfig(rendered: String): String {
+        val endpointLine = "      endpoint: s3.\${AWS_REGION}.amazonaws.com"
+        check(rendered.contains(endpointLine)) { "rendered tempo.yaml no longer names the regional S3 endpoint" }
+        return rendered.replace(
+            endpointLine,
+            """
+            |      endpoint: host.testcontainers.internal:${SharedLocalStack.hostPort()}
+            |      insecure: true
+            |      forcepathstyle: true
+            |      access_key: ${SharedLocalStack.accessKey()}
+            |      secret_key: ${SharedLocalStack.secretKey()}
+            """.trimMargin(),
+        )
+    }
+
+    /**
+     * Starts Tempo with [config] on the Docker volume [volume] (its WAL, the control node's
+     * `/mnt/db1/tempo`), writing to [bucket]. Runs as root so a fresh volume needs no chown.
+     */
+    fun startTempo(
+        config: String,
+        volume: String,
+        bucket: String,
+        tracesPrefix: String,
+        clusterName: String,
+    ): GenericContainer<*> =
+        GenericContainer(TempoManifestBuilder.IMAGE)
+            .withCreateContainerCmdModifier { cmd ->
+                cmd.withUser("root")
+                cmd.hostConfig?.withBinds(Bind(volume, Volume(TEMPO_DATA)))
+            }.withCopyToContainer(Transferable.of(config), "/etc/tempo/tempo.yaml")
+            .withEnv("S3_BUCKET", bucket)
+            .withEnv("AWS_REGION", SharedLocalStack.region())
+            .withEnv("TRACES_S3_PREFIX", tracesPrefix)
+            .withEnv("CLUSTER_NAME", clusterName)
+            .withCommand("-config.file=/etc/tempo/tempo.yaml", "-config.expand-env=true")
+            .withExposedPorts(Constants.K8s.TEMPO_PORT, TEMPO_OTLP_HTTP_PORT)
+            .waitingFor(Wait.forHttp("/ready").forPort(Constants.K8s.TEMPO_PORT).withStartupTimeout(STARTUP))
+            .apply { start() }
 
     /** Starts Mimir with [config] on the Docker volume [volume], writing to [bucket]. */
     fun startMimir(

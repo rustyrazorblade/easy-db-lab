@@ -124,12 +124,26 @@ val servicesModule =
         factory<GrafanaAnnotationBackupService> {
             DefaultGrafanaAnnotationBackupService(get(), get(), get())
         }
-        // The pre-teardown flush `down` runs: annotation mirror, Loki and Mimir flushes, annotations
-        // backup, in whole attempts that roll back on failure.
+        // The pre-teardown save `down` runs: Loki check, annotation mirror and collector stop, then
+        // the Loki and Mimir flushes, the Tempo drain, the profiles report and the annotations backup
+        // in parallel.
         factory<BackendWorkloads> { K8sBackendWorkloads(get()) }
+        factory<TelemetrySenders> { K8sTelemetrySenders(get()) }
         factory { LokiTailFlush(get(), get(), get(), get()) }
         factory { MimirTailFlush(get(), get(), get(), get()) }
-        factory<TeardownFlushService> { DefaultTeardownFlushService(get(), get(), get(), get(), get(), get()) }
+        factory { TempoTailFlush(get(), get()) }
+        factory<TeardownFlushService> {
+            DefaultTeardownFlushService(
+                lokiFlush = get<LokiTailFlush>(),
+                mimirFlush = get<MimirTailFlush>(),
+                tempoDrain = get<TempoTailFlush>(),
+                workloads = get(),
+                telemetrySenders = get(),
+                annotationMirror = get(),
+                annotationBackupService = get(),
+                eventBus = get(),
+            )
+        }
         factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
         singleOf(::DefaultObservabilityHttp) bind ObservabilityHttp::class
         singleOf(::DefaultMimirQueryService) bind MimirQueryService::class

@@ -321,7 +321,7 @@ The eBPF profiler runs as a privileged Grafana Alloy DaemonSet (`pyroscope-ebpf`
 
 ### Pyroscope server
 
-The Pyroscope server (2.3.1) runs on the control node with pure v2 storage in the account bucket under `s3://<account-bucket>/pyroscope/`, and native multi-tenancy. Nothing is deleted by age: the metastore's retention cleanup is off and there is no retention period. Its metastore index lives on the control node at `/mnt/db1/pyroscope`, so profiles stay queryable across a Pyroscope restart. After `down` the profiles stay in S3, but v2 cannot find them without the cluster's index (see [Where observability data is stored](monitoring.md#where-observability-data-is-stored)). Configuration is in the `pyroscope-config` ConfigMap.
+The Pyroscope server (2.3.1) runs on the control node with pure v2 storage in the account bucket under `s3://<account-bucket>/pyroscope/`, and native multi-tenancy. Nothing is deleted by age: the metastore's retention cleanup is off and there is no retention period. Its metastore index lives on the control node at `/mnt/db1/pyroscope`, so profiles stay queryable across a Pyroscope restart. Pyroscope accepts a push only after its segment is in S3, so `down` needs no flush for profiles and reports that. After `down` the profiles stay in S3, but v2 cannot find them without the cluster's index (see [Where observability data is stored](monitoring.md#where-observability-data-is-stored)). Configuration is in the `pyroscope-config` ConfigMap.
 
 ## Data flow
 

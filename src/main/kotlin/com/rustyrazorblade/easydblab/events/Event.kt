@@ -4075,68 +4075,116 @@ sealed interface Event {
         @Serializable
         @SerialName("Teardown.BackupStarting")
         data object BackupStarting : Teardown {
-            override fun toDisplayString(): String = "Saving annotations, logs and metrics to S3 before teardown (pass --force to skip)..."
+            override fun toDisplayString(): String =
+                "Saving annotations, logs, metrics and traces to S3 before teardown (pass --force to skip)..."
         }
 
         /**
-         * The pre-teardown flush stopped at [step], so `down` removed nothing and started nothing again.
+         * The pre-teardown save left [failures] unsaved, so `down` removed nothing and started nothing again.
          *
-         * @property step the step that failed, as the operator reads it.
-         * @property reason why it failed.
-         * @property backends each backend's state as the failure left it (name to description); empty
-         *   when no backend had been touched.
-         * @property stoppedBackends the backends that are not running. A re-run of `down` cannot flush
-         *   them without starting them again, so `--force` is the only way down.
+         * @property failures each signal that is not saved, with the step it stopped in and why.
+         * @property backends each workload's state once every step finished (name to description);
+         *   empty when no workload had been touched.
+         * @property stoppedWorkloads the workloads the save stopped or deleted (Loki, Mimir, the OTel
+         *   collector). `down` never starts them again.
          */
         @Serializable
         @SerialName("Teardown.BackupFailedAbort")
         data class BackupFailedAbort(
-            val step: String,
-            val reason: String,
+            val failures: List<SignalFailure>,
             val backends: Map<String, String> = emptyMap(),
-            val stoppedBackends: List<String> = emptyList(),
+            val stoppedWorkloads: List<String> = emptyList(),
         ) : Teardown {
+            /**
+             * One signal that is not saved.
+             *
+             * @property signal the signal, as the operator reads it.
+             * @property step the step it stopped in.
+             * @property reason why it stopped.
+             */
+            @Serializable
+            data class SignalFailure(
+                val signal: String,
+                val step: String,
+                val reason: String,
+            )
+
             override fun toDisplayString(): String =
                 buildString {
-                    appendLine("Pre-teardown flush stopped at '$step': $reason")
-                    appendLine("down stopped: no infrastructure was removed, and no backend was started again.")
+                    appendLine("The pre-teardown save failed for ${failures.size} signal(s):")
+                    failures.forEach { appendLine("  ${it.signal}: '${it.step}' failed: ${it.reason}") }
+                    appendLine("down stopped: no infrastructure was removed, and nothing was started again.")
                     if (backends.isNotEmpty()) {
-                        appendLine("Backends: " + backends.entries.joinToString("; ") { (name, state) -> "$name: $state" })
+                        appendLine("Workloads: " + backends.entries.joinToString("; ") { (name, state) -> "$name: $state" })
                     }
-                    if (stoppedBackends.isEmpty()) {
-                        append(
-                            "Fix the cause and run 'easy-db-lab down' again, or run 'easy-db-lab down --force' to tear " +
-                                "down without the logs and metrics not yet in S3.",
-                        )
-                    } else {
-                        append(
-                            "The tail of ${stoppedBackends.joinToString(" and ")} cannot be flushed without starting it " +
-                                "again, which down never does. Run 'easy-db-lab down --force' to tear down without the " +
-                                "logs and metrics not yet in S3.",
-                        )
+                    if (stoppedWorkloads.isNotEmpty()) {
+                        appendLine("Stopped by the save and left stopped: ${stoppedWorkloads.joinToString(", ")}.")
                     }
+                    append(
+                        "Fix the cause and run 'easy-db-lab down' again to save what is left, or run " +
+                            "'easy-db-lab down --force' to tear down without the data not yet in S3.",
+                    )
                 }
 
             override fun isError(): Boolean = true
         }
 
         /**
-         * An earlier `down` completed the pre-teardown flush and left Loki and Mimir at 0, so this one
-         * skips it and goes on to the teardown.
+         * An earlier `down` already saved [saved], so this one skips them and saves the rest.
          *
-         * @property completedAt when the flush completed (ISO-8601).
+         * @property saved each saved signal and when its flush completed (ISO-8601).
          */
         @Serializable
-        @SerialName("Teardown.TailAlreadyFlushed")
-        data class TailAlreadyFlushed(
-            val completedAt: String,
-            val lokiIndexFiles: Int,
-            val lokiChunksFlushed: Long,
-            val mimirBlocks: Int,
+        @SerialName("Teardown.TailAlreadySaved")
+        data class TailAlreadySaved(
+            val saved: Map<String, String>,
         ) : Teardown {
             override fun toDisplayString(): String =
-                "Skipping the pre-teardown flush: it already completed at $completedAt (Loki: $lokiChunksFlushed chunks, " +
-                    "$lokiIndexFiles index files; Mimir: $mimirBlocks blocks). Loki and Mimir stay stopped."
+                "Already saved by an earlier down, skipped: " +
+                    saved.entries.joinToString("; ") { (signal, completedAt) -> "$signal at $completedAt" } +
+                    ". Their backends stay stopped."
+        }
+
+        /** The OTel collector is gone, so its last batches are in the backends and Tempo gets no new span. */
+        @Serializable
+        @SerialName("Teardown.TelemetrySendersStopped")
+        data object TelemetrySendersStopped : Teardown {
+            override fun toDisplayString(): String = "OTel collector stopped: its last batches reached Loki, Mimir and Tempo"
+        }
+
+        /** Tempo holds no live trace and all [blocks] of its local blocks are in S3. */
+        @Serializable
+        @SerialName("Teardown.TempoFlushed")
+        data class TempoFlushed(
+            val blocks: Int,
+        ) : Teardown {
+            override fun toDisplayString(): String = "Tempo drained: no live traces, and all $blocks local blocks are in S3"
+        }
+
+        /** Profiles need no flush: Pyroscope writes each batch to S3 before it accepts it. */
+        @Serializable
+        @SerialName("Teardown.ProfilesNeedNoFlush")
+        data object ProfilesNeedNoFlush : Teardown {
+            override fun toDisplayString(): String = "Profiles need no flush: Pyroscope writes each batch to S3 before it accepts it"
+        }
+
+        /**
+         * `down --force` will tear down without saving [unsaved]; shown with the teardown preview,
+         * before the confirmation prompt.
+         *
+         * @property unsaved the signals not yet in S3 that the teardown will lose.
+         */
+        @Serializable
+        @SerialName("Teardown.ForceSkipsTail")
+        data class ForceSkipsTail(
+            val unsaved: List<String>,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                if (unsaved.isEmpty()) {
+                    "--force: every signal is already saved"
+                } else {
+                    "--force: the pre-teardown save is skipped, so these are not saved to S3: ${unsaved.joinToString(", ")}"
+                }
         }
 
         /**

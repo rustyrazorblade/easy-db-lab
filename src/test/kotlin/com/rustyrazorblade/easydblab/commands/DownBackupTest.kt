@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.SavedSignal
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -16,8 +17,11 @@ import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.BackendState
+import com.rustyrazorblade.easydblab.services.FlushOutcome
 import com.rustyrazorblade.easydblab.services.FlushStep
 import com.rustyrazorblade.easydblab.services.FlushStepFailed
+import com.rustyrazorblade.easydblab.services.TailFlushFailed
+import com.rustyrazorblade.easydblab.services.TailSignal
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
@@ -120,7 +124,19 @@ class DownBackupTest : BaseKoinTest() {
 
         whenever(socksProxyService.ensureRunning(any()))
             .thenReturn(SocksProxyState(1080, controlHost, Instant.now()))
+        whenever(teardownBackupService.unsavedSignals(any()))
+            .thenReturn(listOf(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES, TailSignal.ANNOTATIONS))
     }
+
+    private val saved = Result.success(FlushOutcome(saved = emptyMap(), failed = emptyMap(), backends = emptyMap()))
+
+    /** A save that failed [signal] at [step] with [reason], leaving [backends] as they are. */
+    private fun failedSave(
+        step: FlushStep,
+        reason: String,
+        backends: Map<String, BackendState> = emptyMap(),
+    ): Result<FlushOutcome> =
+        Result.failure(TailFlushFailed(mapOf(step.signal to FlushStepFailed(step, backends, IllegalStateException(reason))), backends))
 
     private val resources = DiscoveredResources(vpcId = "vpc-123", vpcName = "perf-test", instanceIds = listOf("i-control"))
 
@@ -152,7 +168,7 @@ class DownBackupTest : BaseKoinTest() {
         whenever(clusterStateManager.load()).thenReturn(upClusterState())
         previewFindsResources()
         whenever(teardownBackupService.backupBeforeTeardown(any(), any()))
-            .thenReturn(Result.failure(IllegalStateException("grafana unreachable")))
+            .thenReturn(failedSave(FlushStep.ANNOTATIONS_BACKUP, "grafana unreachable"))
 
         Down().apply { autoApprove = true }.execute()
 
@@ -162,75 +178,103 @@ class DownBackupTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a failed flush step stops down and names the step, its cause, each backend's state and --force`() {
+    fun `every failed signal is reported with its step, its cause, each workload's state and --force`() {
         whenever(clusterStateManager.exists()).thenReturn(true)
         whenever(clusterStateManager.load()).thenReturn(upClusterState())
         previewFindsResources()
-        val failure =
-            FlushStepFailed(
-                FlushStep.MIMIR_S3_CHECK,
-                mapOf("loki" to BackendState.SCALED_TO_ZERO, "mimir" to BackendState.INGESTER_STOPPED),
-                IllegalStateException("Mimir blocks are not in S3: acme/01HBLOCKA"),
+        val backends =
+            mapOf(
+                "loki" to BackendState.SCALED_TO_ZERO,
+                "mimir" to BackendState.INGESTER_STOPPED,
+                "otel-collector" to BackendState.DELETED,
+                "tempo" to BackendState.RUNNING,
             )
-        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.failure(failure))
+        val failures =
+            mapOf(
+                TailSignal.METRICS to
+                    FlushStepFailed(
+                        FlushStep.MIMIR_S3_CHECK,
+                        backends,
+                        IllegalStateException("Mimir blocks are not in S3: acme/01HBLOCKA"),
+                    ),
+                TailSignal.TRACES to
+                    FlushStepFailed(
+                        FlushStep.TEMPO_BLOCKS_FLUSHED,
+                        backends,
+                        IllegalStateException("local blocks not yet in S3 [blocks/acme/01HT]"),
+                    ),
+            )
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.failure(TailFlushFailed(failures, backends)))
 
         val exitCode = Down().apply { autoApprove = true }.call()
 
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
         verify(teardownService, never()).teardownVpc(any(), eq(false))
         assertThat(errorOutput())
+            .contains(TailSignal.METRICS.description)
             .contains(FlushStep.MIMIR_S3_CHECK.description)
             .contains("Mimir blocks are not in S3: acme/01HBLOCKA")
+            .contains(TailSignal.TRACES.description)
+            .contains(FlushStep.TEMPO_BLOCKS_FLUSHED.description)
+            .contains("blocks/acme/01HT")
             .contains("no infrastructure was removed")
             .contains("loki: ${BackendState.SCALED_TO_ZERO.description}")
             .contains("mimir: ${BackendState.INGESTER_STOPPED.description}")
+            .contains("left stopped: loki, mimir, otel-collector")
             .contains("down --force")
     }
 
     @Test
-    fun `a re-run after a failed flush with a stopped backend stops and points at --force`() {
+    fun `a re-run after a stopped Loki reports the real cause and points at --force`() {
         whenever(clusterStateManager.exists()).thenReturn(true)
         whenever(clusterStateManager.load()).thenReturn(upClusterState())
         previewFindsResources()
-        val failure =
-            FlushStepFailed(
-                FlushStep.BACKENDS_RUNNING,
-                mapOf("loki" to BackendState.SCALED_TO_ZERO, "mimir" to BackendState.RUNNING),
-                IllegalStateException("loki (scaled to 0) cannot be flushed without starting it again"),
-            )
-        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.failure(failure))
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(
+            failedSave(
+                FlushStep.LOKI_RUNNING,
+                "Loki was stopped by an earlier `down` (scaled to 0); down never starts a backend again",
+                mapOf("loki" to BackendState.SCALED_TO_ZERO),
+            ),
+        )
 
         val exitCode = Down().apply { autoApprove = true }.call()
 
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
         verify(teardownService, never()).teardownVpc(any(), eq(false))
         assertThat(errorOutput())
-            .contains("cannot be flushed without starting it again")
+            .contains("Loki was stopped by an earlier `down`")
+            .contains(FlushStep.LOKI_RUNNING.description)
             .contains("easy-db-lab down --force")
-            .doesNotContain("run 'easy-db-lab down' again")
     }
 
     @Test
-    fun `a re-run after a successful flush skips it and tears down`() {
+    fun `a re-run reports the recorded signals as already saved and saves the rest`() {
         whenever(clusterStateManager.exists()).thenReturn(true)
         val flushed =
             upClusterState().apply {
                 tailFlush =
-                    TailFlushRecord(Instant.parse("2026-09-26T12:00:00Z"), lokiIndexFiles = 4, lokiChunksFlushed = 9, mimirBlocks = 2)
+                    TailFlushRecord(
+                        mapOf(
+                            TailSignal.LOGS to SavedSignal(Instant.parse("2026-09-26T12:00:00Z"), 4),
+                            TailSignal.METRICS to SavedSignal(Instant.parse("2026-09-26T12:00:05Z"), 2),
+                        ),
+                    )
             }
         whenever(clusterStateManager.load()).thenReturn(flushed)
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(saved)
         previewFindsResources()
         whenever(teardownService.teardownVpc(eq("vpc-123"), eq(false))).thenReturn(TeardownResult.success(resources))
 
         val exitCode = Down().apply { autoApprove = true }.call()
 
-        // Loki and Mimir are at 0 after the earlier flush; nothing may touch them, and the control
-        // node the tunnel would reach may already be gone.
+        // The collector stop, the Tempo drain and the annotations backup run on every down.
         assertThat(exitCode).isEqualTo(0)
-        verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
-        verify(socksProxyService, never()).ensureRunning(any())
+        verify(teardownBackupService).backupBeforeTeardown(eq(controlHost), eq(flushed))
         verify(teardownService).teardownVpc(eq("vpc-123"), eq(false))
-        assertThat(messageOutput()).contains("already completed at 2026-09-26T12:00:00Z")
+        assertThat(messageOutput())
+            .contains("Already saved by an earlier down")
+            .contains("${TailSignal.LOGS.description} at 2026-09-26T12:00:00Z")
+            .contains("${TailSignal.METRICS.description} at 2026-09-26T12:00:05Z")
     }
 
     @Test
@@ -239,7 +283,7 @@ class DownBackupTest : BaseKoinTest() {
         whenever(clusterStateManager.load()).thenReturn(upClusterState())
         previewFindsResources()
         whenever(teardownBackupService.backupBeforeTeardown(any(), any()))
-            .thenReturn(Result.failure(IllegalStateException("grafana unreachable")))
+            .thenReturn(failedSave(FlushStep.ANNOTATIONS_BACKUP, "grafana unreachable"))
 
         val exitCode = Down().apply { autoApprove = true }.call()
 
@@ -266,7 +310,7 @@ class DownBackupTest : BaseKoinTest() {
     fun `a successful backup and teardown exits zero`() {
         whenever(clusterStateManager.exists()).thenReturn(true)
         whenever(clusterStateManager.load()).thenReturn(upClusterState())
-        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.success(Unit))
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(saved)
         previewFindsResources()
         whenever(teardownService.teardownVpc(eq("vpc-123"), eq(false))).thenReturn(TeardownResult.success(resources))
 
@@ -279,7 +323,7 @@ class DownBackupTest : BaseKoinTest() {
     fun `the backup runs after the preview and before the teardown`() {
         whenever(clusterStateManager.exists()).thenReturn(true)
         whenever(clusterStateManager.load()).thenReturn(upClusterState())
-        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.success(Unit))
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(saved)
         previewFindsResources()
         whenever(teardownService.teardownVpc(eq("vpc-123"), eq(false))).thenReturn(TeardownResult.success(resources))
 
@@ -311,7 +355,7 @@ class DownBackupTest : BaseKoinTest() {
     fun `confirming the prompt runs the backup and then the teardown`() {
         whenever(clusterStateManager.exists()).thenReturn(true)
         whenever(clusterStateManager.load()).thenReturn(upClusterState())
-        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.success(Unit))
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(saved)
         previewFindsResources()
         whenever(teardownService.teardownVpc(eq("vpc-123"), eq(false))).thenReturn(TeardownResult.success(resources))
 
@@ -338,7 +382,7 @@ class DownBackupTest : BaseKoinTest() {
     fun `a teardown that fails after the flush restores nothing and reports the teardown failure`() {
         whenever(clusterStateManager.exists()).thenReturn(true)
         whenever(clusterStateManager.load()).thenReturn(upClusterState())
-        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(Result.success(Unit))
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(saved)
         previewFindsResources()
         whenever(teardownService.teardownVpc(eq("vpc-123"), eq(false)))
             .thenReturn(TeardownResult.failure(listOf("DependencyViolation on sg-1")))
@@ -370,6 +414,32 @@ class DownBackupTest : BaseKoinTest() {
         verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
         verify(socksProxyService, never()).ensureRunning(any())
         verify(teardownService, times(1)).teardownVpc(eq("vpc-123"), eq(false))
+    }
+
+    @Test
+    fun `--force lists the unsaved signals before the confirmation prompt and before any teardown`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        whenever(
+            teardownBackupService.unsavedSignals(any()),
+        ).thenReturn(listOf(TailSignal.METRICS, TailSignal.TRACES, TailSignal.ANNOTATIONS))
+        previewFindsResources()
+        whenever(teardownService.teardownVpc(eq("vpc-123"), eq(false))).thenAnswer {
+            // By the time anything is torn down, the list is already out.
+            assertThat(messageOutput()).contains("not saved to S3")
+            TeardownResult.success(resources)
+        }
+
+        val exitCode = answerPrompt("y") { Down().apply { force = true }.call() }
+
+        assertThat(exitCode).isEqualTo(0)
+        val output = messageOutput()
+        val listed = output.indexOf("not saved to S3: metrics (Mimir), traces (Tempo), annotations (Grafana)")
+        assertThat(listed).isNotNegative()
+        assertThat(listed).isLessThan(output.indexOf("Are you sure you want to delete these resources?"))
+        assertThat(output).doesNotContain("profiles")
+        verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
+        verify(teardownService).teardownVpc(eq("vpc-123"), eq(false))
     }
 
     @Test

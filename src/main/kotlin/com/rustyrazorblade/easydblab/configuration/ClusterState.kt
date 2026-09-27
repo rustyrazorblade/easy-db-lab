@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.Init
+import com.rustyrazorblade.easydblab.services.TailSignal
 import java.time.Instant
 import java.util.UUID
 
@@ -88,22 +89,28 @@ data class InfrastructureState(
 )
 
 /**
- * A pre-teardown flush that completed: every step succeeded and Loki and Mimir were left at 0.
+ * The signals a pre-teardown save has already put in S3 and that must not be saved again.
  *
- * `down` records it so a re-run after a failed teardown skips the flush instead of stopping at the
- * backends it already stopped. `up` clears it, since the backends it starts take data the record
- * does not cover.
+ * Only [TailSignal.LOGS] and [TailSignal.METRICS] are ever recorded, each the moment its flush
+ * succeeds: those flushes leave Loki and Mimir stopped and cannot run twice. A `down` re-run after
+ * an interrupted or failed save skips them and saves the rest again. `up` clears the record, since
+ * the backends it starts take data the record does not cover.
  *
- * @property completedAt when the flush finished.
- * @property lokiIndexFiles the Loki index files verified in S3.
- * @property lokiChunksFlushed the chunks Loki's shutdown wrote to S3.
- * @property mimirBlocks the Mimir blocks verified in S3.
+ * @property signals each recorded signal and what its save proved.
  */
 data class TailFlushRecord(
+    val signals: Map<TailSignal, SavedSignal> = emptyMap(),
+)
+
+/**
+ * One signal a pre-teardown save put in S3.
+ *
+ * @property completedAt when its flush finished.
+ * @property verifiedObjects the objects its flush verified in S3 (Loki index files, Mimir blocks).
+ */
+data class SavedSignal(
     val completedAt: Instant,
-    val lokiIndexFiles: Int,
-    val lokiChunksFlushed: Long,
-    val mimirBlocks: Int,
+    val verifiedObjects: Long,
 )
 
 /**
@@ -261,7 +268,7 @@ data class ClusterState(
     var tailscaleActive: Boolean = false,
     // Names of kits that are currently started (K8s kits + EC2 services like cassandra)
     var runningKits: Set<String> = emptySet(),
-    // The pre-teardown flush that completed, so a re-run of `down` skips it; cleared by `up`
+    // The signals a pre-teardown save already put in S3, so a re-run of `down` skips them; cleared by `up`
     var tailFlush: TailFlushRecord? = null,
 ) {
     /**
@@ -317,8 +324,8 @@ data class ClusterState(
     }
 
     /**
-     * Mark infrastructure as UP. The backends `up` starts take data a recorded tail flush does not
-     * cover, so the record is cleared and the next `down` flushes again.
+     * Mark infrastructure as UP. The backends `up` starts take data a recorded tail save does not
+     * cover, so the record is cleared and the next `down` saves every signal again.
      */
     fun markInfrastructureUp() {
         this.infrastructureStatus = InfrastructureStatus.UP

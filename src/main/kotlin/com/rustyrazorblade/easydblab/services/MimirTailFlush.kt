@@ -19,7 +19,9 @@ import kotlinx.serialization.json.Json
  * 3. The failed-compaction counter did not move, and some local block's `maxTime` covers the head's
  *    newest sample (a head with no samples needs no block).
  * 4. Every block the shipper uploads (samples, compaction level 1) has its `meta.json` in S3 under
- *    `mimir/<tenant>/<block>/` — the shipper writes it last.
+ *    `mimir/<tenant>/<block>/` — the shipper writes it last. Each tenant is listed once, starting at
+ *    this cluster's oldest local block: block IDs sort by time, so the listing skips the older blocks
+ *    every other cluster in the tenant wrote, and the blocks found are compared as a set.
  * 5. Scale Mimir to 0.
  *
  * Each step is recorded in the [FlushProgress] before it runs, and so is each change to Mimir's
@@ -31,7 +33,7 @@ class MimirTailFlush(
     private val remoteOps: RemoteOperationsService,
     private val objectStore: ObjectStore,
     private val timeouts: FlushTimeouts = FlushTimeouts(),
-) {
+) : SignalFlush {
     companion object {
         /** Mimir's TSDB directory on the control node: `<tenant>/<block>/meta.json` under it. */
         const val TSDB_DIR = "${MimirManifestBuilder.DATA_HOST_PATH}/tsdb"
@@ -48,11 +50,11 @@ class MimirTailFlush(
      * @return the number of blocks verified in S3.
      * @throws IllegalStateException naming what is not proven, or the step that failed.
      */
-    fun flush(
+    override fun flush(
         controlHost: ClusterHost,
         clusterState: ClusterState,
         progress: FlushProgress,
-    ): Int {
+    ): SignalReport.Metrics {
         progress.begin(FlushStep.MIMIR_SHUTDOWN)
         val before = scrape()
 
@@ -83,17 +85,34 @@ class MimirTailFlush(
         val store = ObservabilityStore.from(clusterState)
         val shippable = blocks.filter { it.meta.stats.numSamples > 0 && it.meta.compaction.level == 1 }
         val missing =
-            shippable.filterNot {
-                objectStore.fileExists(
-                    ClusterS3Path.root(store.bucket).resolve("${store.metricsPrefix()}/${it.tenant}/${it.meta.ulid}/meta.json"),
-                )
+            shippable.groupBy { it.tenant }.flatMap { (tenant, blocks) ->
+                val shipped = shippedBlocks(store, tenant, oldest = blocks.minOf { it.meta.ulid })
+                blocks.filterNot { it.meta.ulid in shipped }
             }
         check(missing.isEmpty()) { "Mimir blocks are not in S3: ${missing.joinToString { "${it.tenant}/${it.meta.ulid}" }}" }
 
         progress.begin(FlushStep.MIMIR_SCALE_DOWN)
         progress.mark(Constants.K8s.MIMIR_APP_LABEL, BackendState.SCALED_TO_ZERO)
         workloads.scaleDown(controlHost, Constants.K8s.MIMIR_APP_LABEL, timeouts.scaleDown)
-        return shippable.size
+        return SignalReport.Metrics(shippable.size)
+    }
+
+    /**
+     * The IDs of the blocks with a `meta.json` under `mimir/<tenant>/`, from one paginated listing
+     * that starts at [oldest], this cluster's oldest local block.
+     */
+    private fun shippedBlocks(
+        store: ObservabilityStore,
+        tenant: String,
+        oldest: String,
+    ): Set<String> {
+        val tenantDir = "${store.metricsPrefix()}/$tenant"
+        return objectStore
+            .listFiles(ClusterS3Path.root(store.bucket).resolve(tenantDir), startAfter = "$tenantDir/$oldest")
+            .map { it.path.getKey() }
+            .filter { it.endsWith("/meta.json") }
+            .map { it.removePrefix("$tenantDir/").substringBefore('/') }
+            .toSet()
     }
 
     /** The two metrics the flush compares, summed over their series, from Mimir's `/metrics`. */

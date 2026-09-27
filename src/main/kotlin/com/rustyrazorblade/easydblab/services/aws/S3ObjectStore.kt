@@ -128,6 +128,7 @@ class S3ObjectStore(
     override fun listFiles(
         remotePath: ClusterS3Path,
         recursive: Boolean,
+        startAfter: String,
     ): List<ObjectStore.FileInfo> {
         // remotePath is a directory: list under "<key>/", never "<key>", or a sibling whose name
         // begins with this one (tenant `acme-dev` beside `acme`) is listed as well.
@@ -141,6 +142,9 @@ class S3ObjectStore(
                 .apply {
                     if (!recursive) {
                         delimiter("/")
+                    }
+                    if (startAfter.isNotEmpty()) {
+                        startAfter(startAfter)
                     }
                 }.build()
 

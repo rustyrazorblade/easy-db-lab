@@ -52,7 +52,7 @@ class TeardownBackupServiceTest {
             val saved = pending - failing
             saved.filter { it in TailSignal.RECORDED }.forEach { signal ->
                 beforeReport(signal, onSaved)
-                onSaved(signal, if (signal == TailSignal.LOGS) SignalReport.Logs(2, 9) else SignalReport.Metrics(5))
+                onSaved(signal, if (signal == TailSignal.LOGS) SignalReport.Logs else SignalReport.Metrics)
             }
             return FlushOutcome(
                 saved = saved.associateWith { SignalReport.Profiles },
@@ -77,8 +77,8 @@ class TeardownBackupServiceTest {
 
         val expected =
             mapOf(
-                TailSignal.LOGS to SavedSignal(now, verifiedObjects = 2),
-                TailSignal.METRICS to SavedSignal(now, verifiedObjects = 5),
+                TailSignal.LOGS to SavedSignal(now),
+                TailSignal.METRICS to SavedSignal(now),
             )
         assertThat(state.tailFlush?.signals).isEqualTo(expected)
         assertThat(manager.load().tailFlush?.signals).isEqualTo(expected)
@@ -110,7 +110,7 @@ class TeardownBackupServiceTest {
 
     @Test
     fun `a re-run's pending set leaves out the recorded signals`() {
-        state.tailFlush = TailFlushRecord(mapOf(TailSignal.LOGS to SavedSignal(now, 1)))
+        state.tailFlush = TailFlushRecord(mapOf(TailSignal.LOGS to SavedSignal(now)))
         val save = FakeSave()
 
         DefaultTeardownBackupService(save, manager(), clock).backupBeforeTeardown(control, state).getOrThrow()
@@ -158,7 +158,7 @@ class TeardownBackupServiceTest {
 
     @Test
     fun `a completed save leaves nothing unsaved`() {
-        state.tailFlush = TailFlushRecord(mapOf(TailSignal.LOGS to SavedSignal(now, 1)), saveCompletedAt = now)
+        state.tailFlush = TailFlushRecord(mapOf(TailSignal.LOGS to SavedSignal(now)), saveCompletedAt = now)
 
         assertThat(DefaultTeardownBackupService(FakeSave(), manager(), clock).unsavedSignals(state)).isEmpty()
     }
@@ -173,7 +173,7 @@ class TeardownBackupServiceTest {
 
     @Test
     fun `recorded logs leave metrics, traces and annotations unsaved`() {
-        state.tailFlush = TailFlushRecord(mapOf(TailSignal.LOGS to SavedSignal(now, 1)))
+        state.tailFlush = TailFlushRecord(mapOf(TailSignal.LOGS to SavedSignal(now)))
 
         assertThat(DefaultTeardownBackupService(FakeSave(), manager(), clock).unsavedSignals(state))
             .containsExactly(TailSignal.METRICS, TailSignal.TRACES, TailSignal.ANNOTATIONS)
@@ -181,7 +181,7 @@ class TeardownBackupServiceTest {
 
     @Test
     fun `recorded logs and metrics leave traces and annotations unsaved`() {
-        state.tailFlush = TailFlushRecord(mapOf(TailSignal.LOGS to SavedSignal(now, 1), TailSignal.METRICS to SavedSignal(now, 2)))
+        state.tailFlush = TailFlushRecord(mapOf(TailSignal.LOGS to SavedSignal(now), TailSignal.METRICS to SavedSignal(now)))
 
         assertThat(DefaultTeardownBackupService(FakeSave(), manager(), clock).unsavedSignals(state))
             .containsExactly(TailSignal.TRACES, TailSignal.ANNOTATIONS)

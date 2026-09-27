@@ -10,8 +10,8 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * The Kubernetes view the pre-teardown flush has of the single-replica backends (Mimir, Loki). A
- * backend is named by its Deployment, which is also its pods' `app.kubernetes.io/name`.
+ * How the pre-teardown flush stops the single-replica backends (Mimir, Loki). A backend is named by
+ * its Deployment, which is also its pods' `app.kubernetes.io/name`.
  *
  * There is deliberately no way to scale a backend up or replace its pod: `down` never starts a
  * backend again (owner decision, 2026-09-26).
@@ -23,18 +23,6 @@ interface BackendWorkloads {
         workload: String,
         timeout: Duration,
     )
-
-    /**
-     * Whether [workload] runs: [BackendState.SCALED_TO_ZERO] when its Deployment asks for no
-     * replica, [BackendState.RUNNING] when a pod is ready, and [BackendState.NOT_READY] otherwise —
-     * which is what a backend whose ingester was shut down reports, since its `/ready` fails.
-     *
-     * @throws IllegalStateException if [workload] has no Deployment.
-     */
-    fun state(
-        controlHost: ClusterHost,
-        workload: String,
-    ): BackendState
 }
 
 /**
@@ -61,19 +49,6 @@ class K8sBackendWorkloads(
         awaitPods(client, workload, timeout, "gone") { it.isEmpty() }
     }
 
-    override fun state(
-        controlHost: ClusterHost,
-        workload: String,
-    ): BackendState =
-        clientProvider.createClient(controlHost).use { client ->
-            val deployment = checkNotNull(deployment(client, workload).get()) { "$workload has no Deployment in $namespace" }
-            when {
-                (deployment.spec?.replicas ?: 0) == 0 -> BackendState.SCALED_TO_ZERO
-                pods(client, workload).any { isReady(it) } -> BackendState.RUNNING
-                else -> BackendState.NOT_READY
-            }
-        }
-
     private fun deployment(
         client: KubernetesClient,
         workload: String,
@@ -93,13 +68,6 @@ class K8sBackendWorkloads(
             .withLabel(NAME_LABEL, workload)
             .list()
             .items
-
-    private fun isReady(pod: Pod): Boolean =
-        pod.metadata.deletionTimestamp == null &&
-            pod.status
-                ?.conditions
-                .orEmpty()
-                .any { it.type == "Ready" && it.status == "True" }
 
     private fun awaitPods(
         client: KubernetesClient,

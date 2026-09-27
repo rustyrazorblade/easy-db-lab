@@ -4166,13 +4166,11 @@ sealed interface Event {
             override fun toDisplayString(): String = "OTel collector stopped: its last batches reached Loki, Mimir and Tempo"
         }
 
-        /** Tempo holds no live trace and all [blocks] of its local blocks are in S3. */
+        /** Tempo holds no live trace and every local block is in S3. */
         @Serializable
         @SerialName("Teardown.TempoFlushed")
-        data class TempoFlushed(
-            val blocks: Int,
-        ) : Teardown {
-            override fun toDisplayString(): String = "Tempo drained: no live traces, and all $blocks local blocks are in S3"
+        data object TempoFlushed : Teardown {
+            override fun toDisplayString(): String = "Tempo drained: no live traces, and every local block is in S3"
         }
 
         /** Profiles need no flush: Pyroscope writes each batch to S3 before it accepts it. */
@@ -4201,27 +4199,18 @@ sealed interface Event {
                 }
         }
 
-        /**
-         * Loki's chunks and its index are in S3: its shutdown wrote [chunksFlushed] chunks, and [indexFiles]
-         * locally built index files were found there.
-         */
+        /** Loki's ingester flushed every chunk to S3, and Loki stopped, uploading its index. */
         @Serializable
         @SerialName("Teardown.LokiFlushed")
-        data class LokiFlushed(
-            val indexFiles: Int,
-            val chunksFlushed: Long,
-        ) : Teardown {
-            override fun toDisplayString(): String =
-                "Loki flushed: $chunksFlushed chunks written at shutdown, and all $indexFiles index files are in S3"
+        data object LokiFlushed : Teardown {
+            override fun toDisplayString(): String = "Loki flushed: every chunk is in S3, and Loki stopped and uploaded its index"
         }
 
-        /** Mimir's head is in blocks and [blocks] shippable blocks were found in S3. */
+        /** Mimir's ingester compacted its head and shipped its blocks, and Mimir stopped. */
         @Serializable
         @SerialName("Teardown.MimirFlushed")
-        data class MimirFlushed(
-            val blocks: Int,
-        ) : Teardown {
-            override fun toDisplayString(): String = "Mimir flushed: the head is in blocks and all $blocks blocks are in S3"
+        data object MimirFlushed : Teardown {
+            override fun toDisplayString(): String = "Mimir flushed: its head was shipped to S3, and Mimir stopped"
         }
 
         @Serializable

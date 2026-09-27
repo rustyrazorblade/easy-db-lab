@@ -37,21 +37,14 @@ enum class FlushStep(
     val signal: TailSignal,
     val description: String,
 ) {
-    LOKI_RUNNING(TailSignal.LOGS, "check that Loki is running"),
     ANNOTATION_MIRROR(TailSignal.LOGS, "mirror the Grafana annotations to Loki"),
     LOKI_SHUTDOWN(TailSignal.LOGS, "Loki ingester shutdown (flush every chunk to S3)"),
     LOKI_SCALE_DOWN(TailSignal.LOGS, "scale Loki to 0 (build and upload its index)"),
-    LOKI_WAL_CHECK(TailSignal.LOGS, "Loki index write-ahead log check"),
-    LOKI_S3_CHECK(TailSignal.LOGS, "Loki index check in S3"),
     RECORD_LOGS(TailSignal.LOGS, "record the saved logs in the cluster state"),
-    MIMIR_RUNNING(TailSignal.METRICS, "check that Mimir is running"),
     MIMIR_SHUTDOWN(TailSignal.METRICS, "Mimir ingester shutdown (compact the head and ship its blocks)"),
-    MIMIR_COMPACTION_CHECK(TailSignal.METRICS, "Mimir head compaction check"),
-    MIMIR_S3_CHECK(TailSignal.METRICS, "Mimir block check in S3"),
     MIMIR_SCALE_DOWN(TailSignal.METRICS, "scale Mimir to 0"),
     RECORD_METRICS(TailSignal.METRICS, "record the saved metrics in the cluster state"),
     SENDERS_STOP(TailSignal.TRACES, "stop the OTel collector (delete its DaemonSet and wait for its pods to go)"),
-    TEMPO_RUNNING(TailSignal.TRACES, "check that Tempo is running"),
     TEMPO_LIVE_TRACES(TailSignal.TRACES, "wait until Tempo holds no live trace"),
     TEMPO_BLOCKS_FLUSHED(TailSignal.TRACES, "wait until Tempo has uploaded every block on the control node"),
     PROFILES_NO_FLUSH(TailSignal.PROFILES, "report that profiles need no flush"),
@@ -78,7 +71,6 @@ enum class BackendState(
     val description: String,
 ) {
     RUNNING("running"),
-    NOT_READY("not ready"),
     INGESTER_STOPPED("ingester stopped (the pod still runs and takes no new data)"),
     SCALED_TO_ZERO("scaled to 0"),
     DELETED("deleted"),
@@ -123,45 +115,25 @@ class FlushProgress(
 }
 
 /**
- * What one signal's save proved is in S3.
+ * What one signal's save did. A flush reports only that it finished; it verifies nothing further.
  */
 sealed interface SignalReport {
-    /** The objects the save verified in S3; what a recorded signal keeps. */
-    val verifiedObjects: Long
+    /** Loki's ingester flushed every chunk to S3 and Loki stopped, uploading its index. */
+    data object Logs : SignalReport
 
-    /** Loki's shutdown wrote [chunksFlushed] chunks, and [indexFiles] index files were found in S3. */
-    data class Logs(
-        val indexFiles: Int,
-        val chunksFlushed: Long,
-    ) : SignalReport {
-        override val verifiedObjects: Long get() = indexFiles.toLong()
-    }
+    /** Mimir's ingester compacted its head and shipped its blocks, and Mimir stopped. */
+    data object Metrics : SignalReport
 
-    /** [blocks] shippable Mimir blocks were found in S3. */
-    data class Metrics(
-        val blocks: Int,
-    ) : SignalReport {
-        override val verifiedObjects: Long get() = blocks.toLong()
-    }
-
-    /** Tempo held no live trace and had uploaded all [blocks] of its local blocks. */
-    data class Traces(
-        val blocks: Int,
-    ) : SignalReport {
-        override val verifiedObjects: Long get() = blocks.toLong()
-    }
+    /** Tempo held no live trace and had uploaded every local block. */
+    data object Traces : SignalReport
 
     /** Profiles need no flush: Pyroscope writes each batch to S3 before it accepts it. */
-    data object Profiles : SignalReport {
-        override val verifiedObjects: Long get() = 0
-    }
+    data object Profiles : SignalReport
 
     /** The annotations backup is at [key]. */
     data class Annotations(
         val key: String,
-    ) : SignalReport {
-        override val verifiedObjects: Long get() = 1
-    }
+    ) : SignalReport
 }
 
 /**
@@ -182,7 +154,7 @@ class FlushStepFailed(
 /**
  * What a save did: the signals it saved, the ones that failed, and each workload's state after it.
  *
- * @property saved each saved signal and what its save proved.
+ * @property saved each saved signal and what its save did.
  * @property failed each signal that is not saved, with the step it stopped in.
  * @property backends each workload's state once every step finished (Loki, Mimir, the OTel collector, Tempo).
  */
@@ -193,14 +165,14 @@ data class FlushOutcome(
 )
 
 /**
- * One backend's part of the save: flushes its signal and proves it is in S3, advancing the
- * [FlushProgress] before each step.
+ * One backend's part of the save: flushes its signal and waits for the flush to finish, advancing
+ * the [FlushProgress] before each step.
  */
 fun interface SignalFlush {
     /**
      * Runs the flush once.
      *
-     * @throws IllegalStateException naming what is not in S3, or the step that failed.
+     * @throws IllegalStateException naming the step that failed or timed out.
      */
     fun flush(
         controlHost: ClusterHost,
@@ -212,12 +184,13 @@ fun interface SignalFlush {
 /**
  * Saves everything the cluster holds that is not yet in S3, before any infrastructure is torn down.
  *
- * Phase A runs in order: check that Loki runs and mirror the Grafana annotations to Loki (only while
- * logs are pending), then stop the telemetry senders so their last batches reach the backends while
- * those still accept writes. Phase B runs every remaining step at once: the Loki flush, the Mimir
+ * Phase A runs in order: mirror the Grafana annotations to Loki (only while logs are pending), then
+ * stop the telemetry senders so their last batches reach the backends while those still accept
+ * writes. Phase B runs every remaining step at once: the Loki flush, the Mimir
  * flush, the Tempo drain, the profiles report and the annotations backup. Every step runs to
  * completion and a failed step never stops another. Nothing is undone and no backend is started
- * again: the owner wants a cluster being taken down to go down (owner decision, 2026-09-26).
+ * again: the owner wants a cluster being taken down to go down (owner decision, 2026-09-26). No step
+ * checks anything beyond its own flush and wait.
  */
 interface TeardownFlushService {
     /**
@@ -237,15 +210,12 @@ interface TeardownFlushService {
 
 /**
  * [TeardownFlushService] over the backend flushes, run on a platform-thread pool.
- *
- * @property workloads reports whether each backend runs before its flush touches it.
  */
 @Suppress("LongParameterList")
 class DefaultTeardownFlushService(
     private val lokiFlush: SignalFlush,
     private val mimirFlush: SignalFlush,
     private val tempoDrain: SignalFlush,
-    private val workloads: BackendWorkloads,
     private val telemetrySenders: TelemetrySenders,
     private val annotationMirror: AnnotationMirror,
     private val annotationBackupService: GrafanaAnnotationBackupService,
@@ -273,8 +243,8 @@ class DefaultTeardownFlushService(
 
         // Phase A, in order. The mirror writes to Loki, so it must finish before Loki's flush starts.
         if (TailSignal.LOGS in pending) {
-            val progress = FlushProgress(FlushStep.LOKI_RUNNING, Constants.K8s.LOKI_APP_LABEL).also(progresses::add)
-            attempt(progress) { mirrorToRunningLoki(controlHost, progress) }
+            val progress = FlushProgress(FlushStep.ANNOTATION_MIRROR, Constants.K8s.LOKI_APP_LABEL).also(progresses::add)
+            attempt(progress) { mirrorToLoki(controlHost) }
                 .onSuccess { tasks += SaveTask(TailSignal.LOGS, progress) { lokiFlush.flush(controlHost, clusterState, progress) } }
                 .onFailure { failed[TailSignal.LOGS] = it as FlushStepFailed }
         }
@@ -282,21 +252,16 @@ class DefaultTeardownFlushService(
         val sendersStop = attempt(sendersProgress) { stopSenders(controlHost, sendersProgress) }
 
         if (TailSignal.METRICS in pending) {
-            val progress = FlushProgress(FlushStep.MIMIR_RUNNING, Constants.K8s.MIMIR_APP_LABEL).also(progresses::add)
-            tasks +=
-                SaveTask(TailSignal.METRICS, progress) {
-                    requireRunning(controlHost, Constants.K8s.MIMIR_APP_LABEL, "Mimir", progress)
-                    mimirFlush.flush(controlHost, clusterState, progress)
-                }
+            val progress = FlushProgress(FlushStep.MIMIR_SHUTDOWN, Constants.K8s.MIMIR_APP_LABEL).also(progresses::add)
+            tasks += SaveTask(TailSignal.METRICS, progress) { mimirFlush.flush(controlHost, clusterState, progress) }
         }
         if (TailSignal.TRACES in pending) {
             // The collector is Tempo's only sender: while it may still run, Tempo cannot drain.
             sendersStop.exceptionOrNull()?.let { failed[TailSignal.TRACES] = it as FlushStepFailed }
             if (sendersStop.isSuccess) {
-                val progress = FlushProgress(FlushStep.TEMPO_RUNNING, Constants.K8s.TEMPO_APP_LABEL).also(progresses::add)
+                val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, Constants.K8s.TEMPO_APP_LABEL).also(progresses::add)
                 tasks +=
                     SaveTask(TailSignal.TRACES, progress) {
-                        requireRunning(controlHost, Constants.K8s.TEMPO_APP_LABEL, "Tempo", progress)
                         eventBus.emit(Event.Teardown.TempoDrainStarting(timeouts.tempoDrain.seconds))
                         tempoDrain.flush(controlHost, clusterState, progress)
                     }
@@ -325,13 +290,8 @@ class DefaultTeardownFlushService(
         return FlushOutcome(saved = saved, failed = failed, backends = backends)
     }
 
-    /** Checks that Loki runs, then mirrors every Grafana annotation to it. */
-    private fun mirrorToRunningLoki(
-        controlHost: ClusterHost,
-        progress: FlushProgress,
-    ) {
-        requireRunning(controlHost, Constants.K8s.LOKI_APP_LABEL, "Loki", progress)
-        progress.begin(FlushStep.ANNOTATION_MIRROR)
+    /** Mirrors every Grafana annotation to Loki. */
+    private fun mirrorToLoki(controlHost: ClusterHost) {
         val mirrored =
             annotationMirror.syncAll(controlHost).getOrElse { failure ->
                 throw IllegalStateException(
@@ -351,23 +311,6 @@ class DefaultTeardownFlushService(
         progress.mark(Constants.K8s.OTEL_COLLECTOR_APP_LABEL, BackendState.DELETED)
         telemetrySenders.stop(controlHost, timeouts.sendersStop)
         eventBus.emit(Event.Teardown.TelemetrySendersStopped)
-    }
-
-    /**
-     * Fails the step unless [workload] runs. With its signal not recorded, a backend at 0 or not
-     * ready was stopped by an earlier `down`, and `down` never starts a backend again.
-     */
-    private fun requireRunning(
-        controlHost: ClusterHost,
-        workload: String,
-        name: String,
-        progress: FlushProgress,
-    ) {
-        val state = workloads.state(controlHost, workload)
-        progress.mark(workload, state)
-        check(state == BackendState.RUNNING) {
-            "$name was stopped by an earlier `down` (${state.description}); down never starts a backend again"
-        }
     }
 
     private fun reportProfiles(): SignalReport {
@@ -404,12 +347,9 @@ class DefaultTeardownFlushService(
 
     private fun emitSaved(report: SignalReport) {
         when (report) {
-            is SignalReport.Logs ->
-                eventBus.emit(
-                    Event.Teardown.LokiFlushed(indexFiles = report.indexFiles, chunksFlushed = report.chunksFlushed),
-                )
-            is SignalReport.Metrics -> eventBus.emit(Event.Teardown.MimirFlushed(report.blocks))
-            is SignalReport.Traces -> eventBus.emit(Event.Teardown.TempoFlushed(report.blocks))
+            SignalReport.Logs -> eventBus.emit(Event.Teardown.LokiFlushed)
+            SignalReport.Metrics -> eventBus.emit(Event.Teardown.MimirFlushed)
+            SignalReport.Traces -> eventBus.emit(Event.Teardown.TempoFlushed)
             SignalReport.Profiles, is SignalReport.Annotations -> Unit
         }
     }

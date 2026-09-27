@@ -195,9 +195,9 @@ class DownBackupTest : BaseKoinTest() {
             mapOf(
                 TailSignal.METRICS to
                     FlushStepFailed(
-                        FlushStep.MIMIR_S3_CHECK,
+                        FlushStep.MIMIR_SHUTDOWN,
                         backends,
-                        IllegalStateException("Mimir blocks are not in S3: acme/01HBLOCKA"),
+                        IllegalStateException("Mimir's ingester shutdown failed (status 503): ingester unavailable"),
                     ),
                 TailSignal.TRACES to
                     FlushStepFailed(
@@ -214,8 +214,8 @@ class DownBackupTest : BaseKoinTest() {
         verify(teardownService, never()).teardownVpc(any(), eq(false))
         assertThat(errorOutput())
             .contains(TailSignal.METRICS.description)
-            .contains(FlushStep.MIMIR_S3_CHECK.description)
-            .contains("Mimir blocks are not in S3: acme/01HBLOCKA")
+            .contains(FlushStep.MIMIR_SHUTDOWN.description)
+            .contains("Mimir's ingester shutdown failed (status 503)")
             .contains(TailSignal.TRACES.description)
             .contains(FlushStep.TEMPO_BLOCKS_FLUSHED.description)
             .contains("blocks/acme/01HT")
@@ -227,29 +227,6 @@ class DownBackupTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a re-run after a stopped Loki reports the real cause and points at --force`() {
-        whenever(clusterStateManager.exists()).thenReturn(true)
-        whenever(clusterStateManager.load()).thenReturn(upClusterState())
-        previewFindsResources()
-        whenever(teardownBackupService.backupBeforeTeardown(any(), any())).thenReturn(
-            failedSave(
-                FlushStep.LOKI_RUNNING,
-                "Loki was stopped by an earlier `down` (scaled to 0); down never starts a backend again",
-                mapOf("loki" to BackendState.SCALED_TO_ZERO),
-            ),
-        )
-
-        val exitCode = Down().apply { autoApprove = true }.call()
-
-        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
-        verify(teardownService, never()).teardownVpc(any(), eq(false))
-        assertThat(errorOutput())
-            .contains("Loki was stopped by an earlier `down`")
-            .contains(FlushStep.LOKI_RUNNING.description)
-            .contains("easy-db-lab down --force")
-    }
-
-    @Test
     fun `a re-run reports the recorded signals as already saved and saves the rest`() {
         whenever(clusterStateManager.exists()).thenReturn(true)
         val flushed =
@@ -257,8 +234,8 @@ class DownBackupTest : BaseKoinTest() {
                 tailFlush =
                     TailFlushRecord(
                         mapOf(
-                            TailSignal.LOGS to SavedSignal(Instant.parse("2026-09-26T12:00:00Z"), 4),
-                            TailSignal.METRICS to SavedSignal(Instant.parse("2026-09-26T12:00:05Z"), 2),
+                            TailSignal.LOGS to SavedSignal(Instant.parse("2026-09-26T12:00:00Z")),
+                            TailSignal.METRICS to SavedSignal(Instant.parse("2026-09-26T12:00:05Z")),
                         ),
                     )
             }
@@ -560,8 +537,8 @@ class DownBackupTest : BaseKoinTest() {
                 tailFlush =
                     TailFlushRecord(
                         mapOf(
-                            TailSignal.LOGS to SavedSignal(Instant.parse("2026-09-26T12:00:00Z"), 4),
-                            TailSignal.METRICS to SavedSignal(Instant.parse("2026-09-26T12:00:05Z"), 2),
+                            TailSignal.LOGS to SavedSignal(Instant.parse("2026-09-26T12:00:00Z")),
+                            TailSignal.METRICS to SavedSignal(Instant.parse("2026-09-26T12:00:05Z")),
                         ),
                         saveCompletedAt = Instant.parse("2026-09-26T12:01:00Z"),
                     )

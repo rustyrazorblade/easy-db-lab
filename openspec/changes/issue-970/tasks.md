@@ -1,11 +1,11 @@
 ## 1. Teardown: remove the verify checks
 
-- [ ] 1.1 Remove the `LOKI_RUNNING`, `LOKI_WAL_CHECK`, `LOKI_S3_CHECK`, `MIMIR_RUNNING`, `MIMIR_COMPACTION_CHECK`, `MIMIR_S3_CHECK` and `TEMPO_RUNNING` steps from `FlushStep` and `TeardownFlushService` (drop `requireRunning` and its callers).
-- [ ] 1.2 `LokiTailFlush`: keep the synchronous ingester shutdown (204 required) and the scale to 0 with its wait; remove the chunk counter reads, the WAL listing and the S3 index check, and the `ObjectStore` and `RemoteOperationsService` dependencies they needed.
-- [ ] 1.3 `MimirTailFlush`: keep the ingester shutdown (2xx required) and the scale to 0; remove the metric scrapes, the local block listing and the S3 block listing.
-- [ ] 1.4 `TempoTailFlush`: keep the drain; remove the running check.
-- [ ] 1.5 Update the per-signal record to store the completion time only, and the `SignalReport` and teardown events to stop reporting verified counts.
-- [ ] 1.6 Delete the unit tests of the removed checks; keep the tests of the flush-and-wait steps and of "a failed flush stops `down`".
+- [x] 1.1 Remove the `LOKI_RUNNING`, `LOKI_WAL_CHECK`, `LOKI_S3_CHECK`, `MIMIR_RUNNING`, `MIMIR_COMPACTION_CHECK`, `MIMIR_S3_CHECK` and `TEMPO_RUNNING` steps from `FlushStep` and `TeardownFlushService` (drop `requireRunning` and its callers).
+- [x] 1.2 `LokiTailFlush`: keep the synchronous ingester shutdown (204 required) and the scale to 0 with its wait; remove the chunk counter reads, the WAL listing and the S3 index check, and the `ObjectStore` and `RemoteOperationsService` dependencies they needed.
+- [x] 1.3 `MimirTailFlush`: keep the ingester shutdown (2xx required) and the scale to 0; remove the metric scrapes, the local block listing and the S3 block listing.
+- [x] 1.4 `TempoTailFlush`: keep the drain; remove the running check.
+- [x] 1.5 Update the per-signal record to store the completion time only, and the `SignalReport` and teardown events to stop reporting verified counts.
+- [x] 1.6 Delete the unit tests of the removed checks; keep the tests of the flush-and-wait steps and of "a failed flush stops `down`".
 
 ## 2. Mimir read path
 

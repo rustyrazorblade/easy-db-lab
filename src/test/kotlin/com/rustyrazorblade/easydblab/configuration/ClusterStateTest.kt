@@ -470,8 +470,8 @@ class ClusterStateTest {
                 tailFlush =
                     TailFlushRecord(
                         mapOf(
-                            TailSignal.LOGS to SavedSignal(Instant.parse("2026-09-26T12:00:00Z"), verifiedObjects = 1),
-                            TailSignal.METRICS to SavedSignal(Instant.parse("2026-09-26T12:00:01Z"), verifiedObjects = 3),
+                            TailSignal.LOGS to SavedSignal(Instant.parse("2026-09-26T12:00:00Z")),
+                            TailSignal.METRICS to SavedSignal(Instant.parse("2026-09-26T12:00:01Z")),
                         ),
                     ),
             )

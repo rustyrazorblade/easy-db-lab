@@ -72,7 +72,7 @@ class TempoTailFlushTest {
             "blocks/acme/01HDONE/meta.json\nblocks/acme/01HDONE/flushed\nblocks/acme/01HNEW/meta.json\nblocks/acme/01HNEW/flushed",
         )
 
-        assertThat(drain(http)).isEqualTo(SignalReport.Traces(2))
+        assertThat(drain(http)).isEqualTo(SignalReport.Traces)
         assertThat(http.calls).hasSize(4)
     }
 
@@ -105,7 +105,7 @@ class TempoTailFlushTest {
     fun `a Tempo that never received a span has no live-traces series and drains at once`() {
         walListing("")
 
-        assertThat(drain(RecordingObservabilityHttp(noTenantYet, noTenantYet))).isEqualTo(SignalReport.Traces(0))
+        assertThat(drain(RecordingObservabilityHttp(noTenantYet, noTenantYet))).isEqualTo(SignalReport.Traces)
     }
 
     @Test

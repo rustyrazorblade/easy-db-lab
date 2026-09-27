@@ -72,10 +72,10 @@ class DefaultTeardownBackupService(
         val pending = TailSignal.entries.toSet() - recorded(clusterState).keys
         val outcome =
             Executors.newSingleThreadExecutor().use { writer ->
-                flushService.saveTail(controlHost, clusterState, pending) { signal, report ->
+                flushService.saveTail(controlHost, clusterState, pending) { signal, _ ->
                     // Waits for the write, so a signal counts as saved only once its record is on disk.
                     try {
-                        writer.submit { record(clusterState, signal, report) }.get()
+                        writer.submit { record(clusterState, signal) }.get()
                     } catch (failure: ExecutionException) {
                         throw failure.cause ?: failure
                     }
@@ -100,10 +100,8 @@ class DefaultTeardownBackupService(
     private fun record(
         clusterState: ClusterState,
         signal: TailSignal,
-        report: SignalReport,
     ) {
-        clusterState.tailFlush =
-            TailFlushRecord(recorded(clusterState) + (signal to SavedSignal(clock.instant(), report.verifiedObjects)))
+        clusterState.tailFlush = TailFlushRecord(recorded(clusterState) + (signal to SavedSignal(clock.instant())))
         clusterStateManager.save(clusterState)
     }
 

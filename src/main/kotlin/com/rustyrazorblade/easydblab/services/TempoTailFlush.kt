@@ -73,10 +73,6 @@ class TempoTailFlush(
             return local.filter { it[3] == META }.map { it.take(3).joinToString("/") }.filterNot { it in flushed }
         }
 
-        /** The local complete blocks that carry their `flushed` marker. */
-        fun flushedBlocks(paths: List<String>): Int =
-            paths.map { it.split('/') }.count { it.size == LOCAL_BLOCK_DEPTH && it[0] == BLOCKS_DIR && it[3] == FLUSHED }
-
         /** Each series of [metric] in a Prometheus text exposition, by its label set. */
         fun series(
             exposition: String,
@@ -124,7 +120,7 @@ class TempoTailFlush(
                 "${pendingWalBlocks(listing.first)}, local blocks not yet in S3 ${unflushedBlocks(listing.first)}; " +
                 runCatching { describe(read()) }.getOrElse { it.message.orEmpty() }
         }
-        return SignalReport.Traces(flushedBlocks(listing.first))
+        return SignalReport.Traces
     }
 
     /** Looks with [look] every [pollInterval] until it reports done or [deadline] passes; returns the last look. */

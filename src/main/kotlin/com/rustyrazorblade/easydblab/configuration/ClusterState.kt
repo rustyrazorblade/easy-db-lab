@@ -101,7 +101,7 @@ data class InfrastructureState(
  * record cannot go stale: a `down` re-run after a teardown that failed part-way skips the whole save,
  * without the SOCKS tunnel to a control node that may be gone, and goes straight to the teardown.
  *
- * @property signals each recorded signal and what its save proved.
+ * @property signals each recorded signal and when its save finished.
  * @property saveCompletedAt when a save of every signal succeeded, or null while any signal is unsaved.
  */
 data class TailFlushRecord(
@@ -113,11 +113,9 @@ data class TailFlushRecord(
  * One signal a pre-teardown save put in S3.
  *
  * @property completedAt when its flush finished.
- * @property verifiedObjects the objects its flush verified in S3 (Loki index files, Mimir blocks).
  */
 data class SavedSignal(
     val completedAt: Instant,
-    val verifiedObjects: Long,
 )
 
 /**

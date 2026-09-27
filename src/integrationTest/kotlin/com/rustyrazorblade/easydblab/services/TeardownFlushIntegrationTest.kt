@@ -19,7 +19,6 @@ import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.entry
@@ -34,10 +33,7 @@ import org.mockito.kotlin.whenever
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.GenericContainer
-import software.amazon.awssdk.services.s3.model.Delete
-import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
-import software.amazon.awssdk.services.s3.model.ObjectIdentifier
 import java.io.File
 import java.net.URI
 import java.net.http.HttpRequest
@@ -50,20 +46,15 @@ import java.util.concurrent.atomic.AtomicInteger
  * Runs the pre-teardown save against the Loki, Mimir and Tempo images the cluster deploys, with
  * their rendered configuration, on S3 (LocalStack). Docker volumes stand in for the control node's
  * hostPaths; a helper container mounts them at the node's paths and runs the save's node commands
- * (SSH on a cluster); stopping and killing containers stands in for scaling to 0, and a backend's
- * `/ready` for its Kubernetes readiness. Nothing is started again (owner decision, 2026-09-26). It proves:
+ * (SSH on a cluster); stopping a container stands in for scaling to 0. Nothing is started again
+ * (owner decision, 2026-09-26). It proves:
  *
  * - a save puts Loki's chunks and index (a backdated table too), Mimir's head as blocks, and the
  *   spans pushed just before the Tempo drain starts in S3: the writer Tempo is paused the moment the
  *   drain returns, and a second Tempo with no local data finds each by trace ID. The drain passes
  *   only once those live traces are cut and uploaded, never stopping Tempo;
  * - logs and metrics are recorded in the state file while the Tempo drain still runs;
- * - a re-run skips the recorded signals and runs the Tempo drain and the annotations backup again;
- * - a Loki killed before it builds its index fails the write-ahead check and stays at 0, its
- *   write-ahead data still on the node;
- * - an index file missing from S3 fails the S3 check;
- * - a local index the check cannot find, after the shutdown flushed chunks, fails the flush;
- * - a node listing that fails (sudo refused) fails the flush with the node's error.
+ * - a re-run skips the recorded signals and runs the Tempo drain and the annotations backup again.
  */
 class TeardownFlushIntegrationTest : BaseKoinTest() {
     private companion object {
@@ -136,12 +127,12 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
 
     /**
      * The node runs the save's commands over SSH as the admin user; here they run as root in the
-     * helper, after [prelude]. Like SSH, a non-zero exit fails the call with the command's output.
+     * helper. Like SSH, a non-zero exit fails the call with the command's output.
      */
-    private fun runNodeCommands(prelude: String = "sudo() { \"\$@\"; }") {
+    private fun runNodeCommands() {
         whenever(remoteOps.executeRemotely(any(), any(), any(), any())).thenAnswer { invocation ->
             val command = invocation.getArgument<String>(1)
-            val result = helper.execInContainer("bash", "-c", "$prelude\n$command")
+            val result = helper.execInContainer("bash", "-c", "sudo() { \"\$@\"; }\n$command")
             if (result.exitCode != 0) {
                 throw RemoteCommandFailedException(command, result.stdout, result.stderr, "Remote command failed (${result.exitCode})")
             }
@@ -205,47 +196,15 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
             else -> Constants.K8s.TEMPO_APP_LABEL
         }
 
-    private fun httpPort(workload: String) =
-        when (workload) {
-            Constants.K8s.LOKI_APP_LABEL -> Constants.K8s.LOKI_HTTP_PORT
-            Constants.K8s.MIMIR_APP_LABEL -> Constants.K8s.MIMIR_HTTP_PORT
-            else -> Constants.K8s.TEMPO_PORT
-        }
-
-    /**
-     * Scaling, on containers. Scaling to 0 stops the container gracefully (or kills it, when [kill]
-     * is set) and then runs [afterScaleDown]. A backend's state is what Kubernetes' readiness probe
-     * would report: a stopped container is at 0, and a running one is ready only while its `/ready`
-     * answers 200 — which it stops doing once its ingester is shut down.
-     */
-    private inner class ContainerWorkloads(
-        private val kill: Set<String> = emptySet(),
-        private val afterScaleDown: (String) -> Unit = {},
-    ) : BackendWorkloads {
+    /** Scaling, on containers: scaling to 0 stops the container gracefully. */
+    private inner class ContainerWorkloads : BackendWorkloads {
         override fun scaleDown(
             controlHost: ClusterHost,
             workload: String,
             timeout: Duration,
         ) {
             val container = running.remove(workload) ?: return
-            if (workload in kill) {
-                docker.killContainerCmd(container.containerId).withSignal("KILL").exec()
-            } else {
-                docker.stopContainerCmd(container.containerId).withTimeout(timeout.seconds.toInt()).exec()
-            }
-            afterScaleDown(workload)
-        }
-
-        override fun state(
-            controlHost: ClusterHost,
-            workload: String,
-        ): BackendState {
-            val container = running[workload] ?: return BackendState.SCALED_TO_ZERO
-            val ready =
-                runCatching {
-                    ObservabilityBackends.get("${ObservabilityBackends.baseUrl(container, httpPort(workload))}/ready", TENANT).statusCode()
-                }.getOrNull()
-            return if (ready == 200) BackendState.RUNNING else BackendState.NOT_READY
+            docker.stopContainerCmd(container.containerId).withTimeout(timeout.seconds.toInt()).exec()
         }
     }
 
@@ -276,29 +235,19 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
 
     private fun tempoDrain() = TempoTailFlush(http, remoteOps)
 
-    private fun flushService(
-        workloads: BackendWorkloads = ContainerWorkloads(),
-        tempoDrain: SignalFlush = tempoDrain(),
-    ): DefaultTeardownFlushService {
-        val objectStore = S3ObjectStore(s3, EventBus())
+    private fun flushService(tempoDrain: SignalFlush = tempoDrain()): DefaultTeardownFlushService {
+        val workloads = ContainerWorkloads()
         val timeouts = FlushTimeouts(shutdown = Duration.ofMinutes(2), scaleDown = Duration.ofMinutes(2))
         return DefaultTeardownFlushService(
-            lokiFlush = LokiTailFlush(http, workloads, remoteOps, objectStore, timeouts),
-            mimirFlush = MimirTailFlush(http, workloads, remoteOps, objectStore, timeouts),
+            lokiFlush = LokiTailFlush(http, workloads, timeouts),
+            mimirFlush = MimirTailFlush(http, workloads, timeouts),
             tempoDrain = tempoDrain,
-            workloads = workloads,
             telemetrySenders = senders,
             annotationMirror = RecordingAnnotationMirror(),
             annotationBackupService = backups,
             eventBus = EventBus(),
         )
     }
-
-    /** Saves only [signal], and returns its failure. */
-    private fun failureOf(
-        signal: TailSignal,
-        service: DefaultTeardownFlushService = flushService(),
-    ): FlushStepFailed = service.saveTail(control, state, setOf(signal)).failed.getValue(signal)
 
     private fun containerIds(): Map<String, String> = running.mapValues { it.value.containerId }
 
@@ -568,76 +517,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
 
         val report = tempoDrain().flush(control, state, FlushProgress(FlushStep.TEMPO_LIVE_TRACES, Constants.K8s.TEMPO_APP_LABEL))
 
-        assertThat(report).isEqualTo(SignalReport.Traces(0))
+        assertThat(report).isEqualTo(SignalReport.Traces)
         assertThat(Duration.between(started, Instant.now())).isLessThan(NO_SPAN_DRAIN_WITHIN)
-    }
-
-    @Test
-    fun `an index the check cannot find after chunks were flushed fails the flush instead of passing empty`() {
-        pushLine("line")
-        val loseLocalIndex = { workload: String ->
-            if (workload == Constants.K8s.LOKI_APP_LABEL) {
-                helper.execInContainer("rm", "-rf", "${LokiTailFlush.INDEX_DIR}/multitenant")
-            }
-        }
-
-        val failure = failureOf(TailSignal.LOGS, flushService(ContainerWorkloads(afterScaleDown = loseLocalIndex)))
-
-        assertThat(failure.step).isEqualTo(FlushStep.LOKI_S3_CHECK)
-        assertThat(failure).hasMessageContaining("no index file was found")
-        assertThat(running.keys).containsExactly(Constants.K8s.MIMIR_APP_LABEL)
-    }
-
-    @Test
-    fun `a node listing that fails stops the flush with the node's error, and Loki stays at 0`() {
-        pushLine("line")
-        val mimir = containerIds().getValue(Constants.K8s.MIMIR_APP_LABEL)
-        runNodeCommands(prelude = "sudo() { echo 'sudo: a password is required' >&2; return 1; }")
-
-        val failure = failureOf(TailSignal.LOGS)
-
-        assertThat(failure.step).isEqualTo(FlushStep.LOKI_WAL_CHECK)
-        assertThat(failure).hasMessageContaining("sudo: a password is required")
-        assertThat(failure.backends).containsEntry(Constants.K8s.LOKI_APP_LABEL, BackendState.SCALED_TO_ZERO)
-        // Nothing is started again, and Mimir, which this save did not include, is untouched.
-        assertThat(containerIds()).containsExactly(entry(Constants.K8s.MIMIR_APP_LABEL, mimir))
-    }
-
-    @Test
-    fun `a Loki killed before it builds its index fails the write-ahead check, stays at 0, and keeps its write-ahead log`() {
-        pushLine("kept")
-
-        val failure = failureOf(TailSignal.LOGS, flushService(ContainerWorkloads(kill = setOf(Constants.K8s.LOKI_APP_LABEL))))
-
-        assertThat(failure.step).isEqualTo(FlushStep.LOKI_WAL_CHECK)
-        assertThat(failure).hasMessageContaining("write-ahead")
-        assertThat(running.keys).doesNotContain(Constants.K8s.LOKI_APP_LABEL)
-        // Not restarted, so nothing replays or removes it: the index write-ahead data stays on the node.
-        val wal = helper.execInContainer("find", "${LokiTailFlush.INDEX_DIR}/wal", "-type", "f").stdout
-        assertThat(wal.lines().filter { it.isNotBlank() }).isNotEmpty()
-    }
-
-    @Test
-    fun `an index file missing from S3 fails the S3 check`() {
-        pushLine("line")
-        val loseIndex = { workload: String ->
-            if (workload == Constants.K8s.LOKI_APP_LABEL) {
-                val lost = keys("$LOGS_PREFIX/index/").map { ObjectIdentifier.builder().key(it).build() }
-                if (lost.isNotEmpty()) {
-                    s3.deleteObjects(
-                        DeleteObjectsRequest
-                            .builder()
-                            .bucket(bucket)
-                            .delete(Delete.builder().objects(lost).build())
-                            .build(),
-                    )
-                }
-            }
-        }
-
-        val failure = failureOf(TailSignal.LOGS, flushService(ContainerWorkloads(afterScaleDown = loseIndex)))
-
-        assertThat(failure.step).isEqualTo(FlushStep.LOKI_S3_CHECK)
-        assertThat(failure).hasMessageContaining("Loki index files are not in S3")
     }
 }

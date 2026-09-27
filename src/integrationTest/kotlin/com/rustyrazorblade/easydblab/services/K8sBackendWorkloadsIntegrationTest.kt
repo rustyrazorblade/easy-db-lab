@@ -21,8 +21,8 @@ import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 /**
- * Proves [K8sBackendWorkloads] — how the pre-teardown flush stops Loki and Mimir and reads whether
- * they run — against a real K3s cluster.
+ * Proves [K8sBackendWorkloads] — how the pre-teardown flush stops Loki and Mimir — against a real
+ * K3s cluster.
  *
  * Each backend is stood in for by a busybox Deployment named after it and labelled
  * `app.kubernetes.io/name=<backend>`, as the real ones are. Its pod ignores SIGTERM and has a
@@ -85,11 +85,8 @@ class K8sBackendWorkloadsIntegrationTest {
         client.close()
     }
 
-    /** A one-replica Deployment [name], ready when [readyCommand] succeeds. */
-    private fun backend(
-        name: String,
-        readyCommand: String = "true",
-    ): Deployment =
+    /** A one-replica Deployment [name], ready once its container runs. */
+    private fun backend(name: String): Deployment =
         DeploymentBuilder()
             .withNewMetadata()
             .withName(name)
@@ -115,7 +112,7 @@ class K8sBackendWorkloadsIntegrationTest {
             .withCommand("sh", "-c", "trap '' TERM; while true; do sleep 1; done")
             .withNewReadinessProbe()
             .withNewExec()
-            .withCommand("sh", "-c", readyCommand)
+            .withCommand("true")
             .endExec()
             .withPeriodSeconds(1)
             .endReadinessProbe()
@@ -154,40 +151,21 @@ class K8sBackendWorkloadsIntegrationTest {
             status?.conditions.orEmpty().any { it.type == "Ready" && it.status == "True" }
 
     @Test
-    fun `scaling down returns once the pod is gone, and the backend then reads as scaled to 0`() {
+    fun `scaling down returns once the pod is gone, and the Deployment asks for no replica`() {
         deployReady("loki")
 
         workloads.scaleDown(controlHost, "loki", TIMEOUT)
 
         assertThat(pods("loki")).isEmpty()
-        assertThat(workloads.state(controlHost, "loki")).isEqualTo(BackendState.SCALED_TO_ZERO)
-    }
-
-    @Test
-    fun `a backend with a ready pod reads as running`() {
-        deployReady("mimir")
-
-        assertThat(workloads.state(controlHost, "mimir")).isEqualTo(BackendState.RUNNING)
-    }
-
-    @Test
-    fun `a backend whose pod runs but is not ready reads as not ready`() {
-        // What a backend whose ingester an earlier down shut down looks like: its /ready fails.
-        deploy(backend("loki", readyCommand = "false"))
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(READY_TIMEOUT_SECONDS)
-        while (pods("loki").none { it.status?.phase == "Running" } && System.nanoTime() < deadline) {
-            Thread.sleep(CLEANUP_POLL_MILLIS)
-        }
-        assertThat(pods("loki")).describedAs(clusterDiagnostics(client, NAMESPACE)).anyMatch { it.status?.phase == "Running" }
-
-        assertThat(workloads.state(controlHost, "loki")).isEqualTo(BackendState.NOT_READY)
-    }
-
-    @Test
-    fun `a backend with no Deployment fails the state check, naming it`() {
-        assertThatThrownBy { workloads.state(controlHost, "mimir") }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("mimir has no Deployment")
+        assertThat(
+            client
+                .apps()
+                .deployments()
+                .inNamespace(NAMESPACE)
+                .withName("loki")
+                .get()
+                .spec.replicas,
+        ).isZero()
     }
 
     @Test

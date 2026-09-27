@@ -810,7 +810,9 @@ Print the compactor's state, its desired, running and pending task counts, and i
 
 The state is one of `not created`, `stopped`, `stopping`, `starting`, `running` or `failing`. A compactor that asks for a task but runs none is `starting` while a task is pending or before any task has stopped, and `failing` when none is pending and its latest task stopped, so a task that crashes in a loop never reads as running.
 
-For that task it prints why the task stopped (ECS's stop code and reason) and each container's status, exit code and reason. It also prints the service's 5 newest events and the last 20 log lines of the task's containers.
+For that task it prints why the task stopped (ECS's stop code and reason) and each container's status, exit code and reason. It also prints the service's 5 newest events and the last 20 log lines of the task's containers. It leaves out the Tempo worker's `no jobs found` line, which an idle worker logs on every poll.
+
+If your IAM user lacks the `EasyDBLabCompactor` policy, `observability compactor start`, `stop` and `status` fail and name the policy. Run `easy-db-lab show-iam-policies compactor` to print it, then attach it.
 
 ```bash
 easy-db-lab observability compactor status

@@ -199,6 +199,28 @@ class CompactorStatusReaderTest {
         assertThat(requestedStreams).containsExactlyInAnyOrderElementsOf(CompactorTaskDefinition.CONTAINERS.map { streamOf(it, "t1") })
     }
 
+    /** An idle Tempo worker logs that it found no job on every poll; that is its normal state, not an error. */
+    @Test
+    fun `the Tempo worker's idle no-jobs line is left out, and every other line is kept`() {
+        tasks[DesiredStatus.RUNNING] = listOf(task("t1", createdAt = 100, lastStatus = "RUNNING"))
+        val idle =
+            "level=error ts=2026-09-27T10:00:00Z caller=worker.go:1 msg=\"error calling scheduler\" " +
+                "err=\"rpc error: code = NotFound desc = no jobs found\""
+        val otherSchedulerError = "level=error msg=\"error calling scheduler\" err=\"rpc error: code = Unavailable\""
+        streams[streamOf(CompactorTaskDefinition.TEMPO_WORKER_CONTAINER, "t1")] =
+            listOf(
+                event(at = 1, message = idle),
+                event(at = 2, message = otherSchedulerError),
+                event(at = 3, message = idle),
+                event(at = 4, message = "level=info msg=\"compacted block\""),
+            )
+
+        val lines = reader.read(region).logLines
+
+        val worker = CompactorTaskDefinition.TEMPO_WORKER_CONTAINER
+        assertThat(lines).containsExactly("[$worker] $otherSchedulerError", "[$worker] level=info msg=\"compacted block\"")
+    }
+
     @Test
     fun `an inactive or missing service does not exist`() {
         serviceIs(service(desired = 0, running = 0, status = "INACTIVE"))

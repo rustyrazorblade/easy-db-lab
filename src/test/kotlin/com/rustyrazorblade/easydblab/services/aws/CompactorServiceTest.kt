@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.RegionalClients
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
@@ -18,6 +19,7 @@ import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient
 import software.amazon.awssdk.services.ecs.EcsClient
 import software.amazon.awssdk.services.ecs.model.CreateServiceRequest
@@ -29,6 +31,7 @@ import software.amazon.awssdk.services.ecs.model.DescribeTaskDefinitionResponse
 import software.amazon.awssdk.services.ecs.model.DescribeTasksRequest
 import software.amazon.awssdk.services.ecs.model.DescribeTasksResponse
 import software.amazon.awssdk.services.ecs.model.DesiredStatus
+import software.amazon.awssdk.services.ecs.model.EcsException
 import software.amazon.awssdk.services.ecs.model.InvalidParameterException
 import software.amazon.awssdk.services.ecs.model.ListTasksRequest
 import software.amazon.awssdk.services.ecs.model.ListTasksResponse
@@ -303,6 +306,50 @@ class CompactorServiceTest {
         assertThat(events).contains(Event.Compactor.Starting("eu-west-1", 1))
         assertThat(events).noneMatch { it is Event.Compactor.NoTaskRunning || it is Event.Compactor.AlreadyRunning }
         assertThat(Event.Compactor.Starting("eu-west-1", 1).isError()).isFalse()
+    }
+
+    private fun ecsError(code: String): EcsException =
+        EcsException
+            .builder()
+            .statusCode(400)
+            .awsErrorDetails(
+                AwsErrorDetails
+                    .builder()
+                    .errorCode(code)
+                    .errorMessage("User: arn:aws:iam::1:user/lab is not authorized to perform: ecs:DescribeServices")
+                    .build(),
+            ).build() as EcsException
+
+    /** An operator whose IAM lacks the compactor policy is told which policy and how to get it, not shown the SDK error. */
+    @Test
+    fun `ECS access denied fails start, stop and status with the missing policy and the fix`() {
+        whenever(ecs.describeServices(any<DescribeServicesRequest>())).thenThrow(ecsError("AccessDeniedException"))
+
+        listOf<() -> Unit>(
+            { service.ensureRunning(bucket) },
+            { service.stop(bucket) },
+            { service.status(bucket) },
+        ).forEach { call ->
+            assertThatThrownBy { call() }
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("EasyDBLabCompactor")
+                .hasMessageContaining("show-iam-policies compactor")
+                .hasCauseInstanceOf(EcsException::class.java)
+        }
+        assertThat(events.filterIsInstance<Event.Compactor.AccessDenied>()).hasSize(3).allSatisfy {
+            assertThat(it.region).isEqualTo("eu-west-1")
+            assertThat(it.isError()).isTrue()
+            assertThat(it.toDisplayString()).contains("EasyDBLabCompactor").contains("show-iam-policies compactor")
+        }
+    }
+
+    @Test
+    fun `any other ECS error is not reported as access denied`() {
+        val error = ecsError("ServerException")
+        whenever(ecs.describeServices(any<DescribeServicesRequest>())).thenThrow(error)
+
+        assertThatThrownBy { service.status(bucket) }.isSameAs(error)
+        assertThat(events).noneMatch { it is Event.Compactor.AccessDenied }
     }
 
     @Test

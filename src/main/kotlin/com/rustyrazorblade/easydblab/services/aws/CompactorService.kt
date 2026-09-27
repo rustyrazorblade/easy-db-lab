@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.ecs.model.AwsVpcConfiguration
 import software.amazon.awssdk.services.ecs.model.CreateClusterRequest
 import software.amazon.awssdk.services.ecs.model.CreateServiceRequest
 import software.amazon.awssdk.services.ecs.model.DeploymentConfiguration
+import software.amazon.awssdk.services.ecs.model.EcsException
 import software.amazon.awssdk.services.ecs.model.LaunchType
 import software.amazon.awssdk.services.ecs.model.NetworkConfiguration
 import software.amazon.awssdk.services.ecs.model.Service
@@ -80,24 +81,34 @@ class DefaultCompactorService(
         val roles = iam.ensure()
         val vpc = network.ensure(region)
         regionalClients.logs(region).use { ensureLogGroup(it) }
+        val definition = CompactorTaskDefinition(bucket, region, roles.taskRoleArn, roles.executionRoleArn)
         regionalClients.ecs(region).use { ecs ->
-            ecs.createCluster(CreateClusterRequest.builder().clusterName(Constants.Compactor.ECS_CLUSTER).build())
-            val definition = CompactorTaskDefinition(bucket, region, roles.taskRoleArn, roles.executionRoleArn)
-            val service = ecs.describeCompactorService()
-            when {
-                service == null -> {
-                    val arn = registrar.register(ecs, definition)
-                    withEcsRoleRetry("create-compactor-service") { ecs.createService(createRequest(arn, vpc)) }
-                    eventBus.emit(Event.Compactor.Started(region, arn))
-                }
-                service.desiredCount() == 0 -> {
-                    val arn = registrar.latestOrRegister(ecs, definition)
-                    ecs.updateService(update().taskDefinition(arn).desiredCount(1).build())
-                    eventBus.emit(Event.Compactor.Started(region, arn))
-                }
-                // A started service is left as it is: a new configuration takes effect on the next start.
-                else -> reportStarted(ecs, region, service)
+            withEcsAccess(region) { ensureService(ecs, region, definition, vpc) }
+        }
+    }
+
+    /** Creates the service, starts it at 1 task, or reports it as it is, on the regional [ecs] client. */
+    private fun ensureService(
+        ecs: EcsClient,
+        region: String,
+        definition: CompactorTaskDefinition,
+        vpc: VpcInfrastructure,
+    ) {
+        ecs.createCluster(CreateClusterRequest.builder().clusterName(Constants.Compactor.ECS_CLUSTER).build())
+        val service = ecs.describeCompactorService()
+        when {
+            service == null -> {
+                val arn = registrar.register(ecs, definition)
+                withEcsRoleRetry("create-compactor-service") { ecs.createService(createRequest(arn, vpc)) }
+                eventBus.emit(Event.Compactor.Started(region, arn))
             }
+            service.desiredCount() == 0 -> {
+                val arn = registrar.latestOrRegister(ecs, definition)
+                ecs.updateService(update().taskDefinition(arn).desiredCount(1).build())
+                eventBus.emit(Event.Compactor.Started(region, arn))
+            }
+            // A started service is left as it is: a new configuration takes effect on the next start.
+            else -> reportStarted(ecs, region, service)
         }
     }
 
@@ -123,11 +134,13 @@ class DefaultCompactorService(
     override fun stop(bucket: String) {
         val region = bucketRegion(bucket)
         regionalClients.ecs(region).use { ecs ->
-            if (ecs.describeCompactorService() == null) {
-                eventBus.emit(Event.Compactor.NotCreated(region))
-            } else {
-                ecs.updateService(update().desiredCount(0).build())
-                eventBus.emit(Event.Compactor.Stopped(region))
+            withEcsAccess(region) {
+                if (ecs.describeCompactorService() == null) {
+                    eventBus.emit(Event.Compactor.NotCreated(region))
+                } else {
+                    ecs.updateService(update().desiredCount(0).build())
+                    eventBus.emit(Event.Compactor.Stopped(region))
+                }
             }
         }
     }
@@ -143,7 +156,30 @@ class DefaultCompactorService(
         }
     }
 
-    override fun status(bucket: String): CompactorStatus = statusReader.read(bucketRegion(bucket))
+    override fun status(bucket: String): CompactorStatus {
+        val region = bucketRegion(bucket)
+        return withEcsAccess(region) { statusReader.read(region) }
+    }
+
+    /**
+     * Runs [block], turning ECS's access-denied error into [Event.Compactor.AccessDenied] and a
+     * failure that names the missing policy. Every other error passes through as it is.
+     */
+    private fun <T> withEcsAccess(
+        region: String,
+        block: () -> T,
+    ): T =
+        try {
+            block()
+        } catch (e: EcsException) {
+            if (e.awsErrorDetails()?.errorCode() != Constants.Compactor.ECS_ACCESS_DENIED) throw e
+            eventBus.emit(Event.Compactor.AccessDenied(region, e.awsErrorDetails().errorMessage().orEmpty()))
+            throw IllegalStateException(
+                "ECS denied the account compactor's call: the ${Constants.Compactor.OPERATOR_POLICY} policy is missing. " +
+                    "Run `easy-db-lab show-iam-policies compactor` and attach the policy.",
+                e,
+            )
+        }
 
     /** The account bucket's region, from `GetBucketLocation`. */
     private fun bucketRegion(bucket: String): String =

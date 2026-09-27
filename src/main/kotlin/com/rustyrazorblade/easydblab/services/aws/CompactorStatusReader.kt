@@ -191,7 +191,10 @@ class CompactorStatusReader(
             )
         }
 
-    /** The newest log lines of every container of [taskId], merged by time, oldest first. */
+    /**
+     * The newest log lines of every container of [taskId], merged by time, oldest first. The idle
+     * Tempo worker's no-jobs line is left out: it is logged on every poll and means nothing is wrong.
+     */
     private fun recentLogLines(
         logs: CloudWatchLogsClient,
         taskId: String,
@@ -209,6 +212,7 @@ class CompactorStatusReader(
                                 .startFromHead(false)
                                 .build(),
                         ).events()
+                        .filterNot { Constants.Compactor.TEMPO_WORKER_IDLE_LOG in it.message() }
                         .map { it.timestamp() to "[$container] ${it.message()}" }
                 } catch (_: ResourceNotFoundException) {
                     // A container that never started has no stream.

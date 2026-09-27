@@ -5709,6 +5709,24 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * ECS in [region] refused a compactor call because the operator's IAM lacks the
+         * `EasyDBLabCompactor` policy. [detail] is ECS's message, naming the refused action.
+         */
+        @Serializable
+        @SerialName("Compactor.AccessDenied")
+        data class AccessDenied(
+            val region: String,
+            val detail: String,
+        ) : Compactor {
+            override fun toDisplayString(): String =
+                "ECS in $region refused the account compactor's call: $detail\n" +
+                    "Your IAM user or group needs the ${Constants.Compactor.OPERATOR_POLICY} policy. " +
+                    "Run `easy-db-lab show-iam-policies compactor` to print it, attach it, then run the command again."
+
+            override fun isError(): Boolean = true
+        }
+
         /** The compactor service's desired count was set to 0 in [region]. */
         @Serializable
         @SerialName("Compactor.Stopped")

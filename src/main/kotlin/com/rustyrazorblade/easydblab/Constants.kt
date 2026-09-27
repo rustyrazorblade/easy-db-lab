@@ -221,6 +221,16 @@ object Constants {
 
         /** The busybox image of the init container that writes the configuration files. */
         const val CONFIG_IMAGE = "busybox:1.37.0"
+
+        /** The operator's IAM policy that grants the compactor's ECS, IAM and Logs actions. */
+        const val OPERATOR_POLICY = "EasyDBLabCompactor"
+
+        /** The error code ECS answers with when the caller's IAM does not allow the action. */
+        const val ECS_ACCESS_DENIED = "AccessDeniedException"
+
+        /** What the idle Tempo backend worker logs on every poll that finds no job: its normal state. */
+        const val TEMPO_WORKER_IDLE_LOG =
+            "msg=\"error calling scheduler\" err=\"rpc error: code = NotFound desc = no jobs found\""
     }
 
     // S3 configuration

@@ -15,7 +15,7 @@ Command/Service → eventBus.emit(Event.Domain.Type(...)) → EventBus → Event
 
 | File | Purpose |
 |------|---------|
-| `Event.kt` | Sealed interface hierarchy with ~230+ concrete event types across 34 domain interfaces |
+| `Event.kt` | Sealed interface hierarchy with ~230+ concrete event types across 35 domain interfaces |
 | `EventBus.kt` | Central dispatcher: `emit(event)` → wraps in `EventEnvelope` → dispatches to listeners |
 | `EventContext.kt` | Stack-based `ThreadLocal` for tracking current command name |
 | `EventEnvelope.kt` | Wraps `Event` + timestamp + commandName; serializable to JSON |
@@ -62,6 +62,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Cleanup.*` — Per-node kit cleanup progress and completion
 - `Event.Server.*` — Server lifecycle (shutdown when the cluster's VPC no longer exists)
 - `Event.Sql.*` — Shared SQL query results, used by every SQL kit command
+- `Event.Compactor.*` — The account compactor service: `Started` (created, or scaled from 0 to 1 task), `AlreadyRunning` (left as it is), `Stopped` (desired count set to 0), `KeptRunning` (`down` found other clusters that use the account bucket)
 - `Event.Message` / `Event.Error` — Generic types (kept for tests only, zero production usage)
 
 ## Adding New Events

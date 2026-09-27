@@ -75,7 +75,7 @@ easy-db-lab show-iam-policies [policy-name]
 
 | Argument | Description |
 |----------|-------------|
-| `policy-name` | Optional filter: `ec2`, `iam`, or `emr` |
+| `policy-name` | Optional filter: `ec2`, `iam`, `emr`, `opensearch` or `compactor` |
 
 ### build-image
 
@@ -150,7 +150,7 @@ easy-db-lab up [options]
 |--------|-------------|
 | `--no-setup`, `-n` | Skip K3s setup and AxonOps configuration |
 
-Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster.
+Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Starts the [account compactor](../user-guide/compactor.md) when it is not running, and leaves it as it is when it runs; `up` does not wait for its task.
 
 `up` fails fast. If any provisioning step fails — EC2 setup, K3s, node labeling, the
 `local-storage`/`local-storage-wfc` StorageClasses, the observability stack, Tailscale, and so
@@ -172,7 +172,7 @@ easy-db-lab down [vpc-id] [options]
 
 | Option | Description |
 |--------|-------------|
-| `--all` | Tear down all VPCs tagged with easy_cass_lab |
+| `--all` | Tear down all VPCs tagged with easy_cass_lab; the account compactor's VPC is kept |
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
 
@@ -180,29 +180,30 @@ easy-db-lab down [vpc-id] [options]
 
 Phase A runs in order:
 
-1. `down` checks that Loki runs. If Loki is scaled to 0 or not ready, the logs fail with the cause "Loki was stopped by an earlier `down`", and steps 2 and the Loki flush do not run.
-2. Every Grafana annotation is mirrored to Loki. Loki accepts only entries from the last 8760 hours to 24 hours ahead; an annotation outside that window is skipped with a warning naming its id, and it stays in the annotations backup.
-3. The OTel collector is stopped: its DaemonSet is deleted and `down` waits until its pods are gone. The collector is the only sender to Tempo, and its shutdown sends its last batches to Loki, Mimir and Tempo while they still accept writes. If the collector is already gone, this step succeeds.
+1. Every Grafana annotation is mirrored to Loki. Loki accepts only entries from the last 8760 hours to 24 hours ahead; an annotation outside that window is skipped with a warning naming its id, and it stays in the annotations backup.
+2. The OTel collector is stopped: its DaemonSet is deleted and `down` waits until its pods are gone. The collector is the only sender to Tempo, and its shutdown sends its last batches to Loki, Mimir and Tempo while they still accept writes. If the collector is already gone, this step succeeds.
 
 Phase B runs every step at the same time, so the save takes about as long as its slowest step:
 
-- **Logs.** Loki's ingester is stopped, which writes every open chunk to S3, and each index file it built is checked in S3. If the shutdown wrote chunks but no index file is found on the control node, or the node cannot list its index, the flush fails rather than passing with nothing checked. If the mirror failed, the Loki flush does not run and Loki keeps running.
-- **Metrics.** Mimir's ingester is stopped, which cuts and ships every block it holds, and each block is checked in S3 with one listing of the tenant's blocks.
+- **Logs.** Loki's ingester is stopped with a synchronous flush, which answers only once every open chunk is in S3. Then Loki is scaled to 0 and `down` waits for its pod to go, which builds and uploads its index. If the mirror failed, the Loki flush does not run and Loki keeps running.
+- **Metrics.** Mimir's ingester is stopped, which cuts and ships every block it holds before it answers, and Mimir is scaled to 0.
 - **Traces.** `down` reports that the Tempo drain has started, with its timeout. It waits until Tempo holds no live trace and its count of created traces stops changing, then until every block on the control node's disk carries its `flushed` marker, which Tempo writes only once the block is in S3. Tempo is never stopped or restarted. This step times out after 5 minutes.
 - **Profiles.** Nothing to do: Pyroscope writes each batch to S3 before it accepts it. `down` reports this.
 - **Annotations.** The Grafana annotations are backed up to `grafana/annotations/<tenant>/` in the account bucket.
 
-Every step has a timeout. A redirect cluster has no local backends, so it skips both phases.
+Every step has a timeout. `down` only flushes, waits for the flush to finish, and refuses to tear down if it did not finish; it runs no other check. A redirect cluster has no local backends, so it skips both phases.
 
-**Stop on failure.** Every Phase B step runs to completion, and a failed step never stops another. If any step failed or timed out, `down` then stops. It removes no infrastructure, because tearing down would destroy the data that is not yet in S3. It does not start Loki, Mimir or the collector again, retry a step, or undo anything: each backend stays as its step left it, and its write-ahead log and local blocks stay on the control node's disk. The report names every failed signal with its step and cause, the state of each workload (running, ingester stopped, not ready, scaled to 0, or deleted), and `down --force`. `down` exits with a non-zero status.
+**Stop on failure.** Every Phase B step runs to completion, and a failed step never stops another. If any step failed or timed out, `down` then stops. It removes no infrastructure, because tearing down would destroy the data that is not yet in S3. It does not start Loki, Mimir or the collector again, retry a step, or undo anything: each backend stays as its step left it, and its write-ahead log and local blocks stay on the control node's disk. The report names every failed signal with its step and cause, the state of each workload (running, ingester stopped, scaled to 0, or deleted), and `down --force`. `down` exits with a non-zero status.
 
-**Logs and metrics are recorded as they finish.** The Loki and Mimir flushes stop their backends and cannot run twice, so each is recorded in the cluster state the moment it succeeds, with the time and what it verified. A `down` that fails or is interrupted keeps these records. Run `down` again and it reports them as already saved, skips them, and runs the collector stop, the Tempo drain, the profiles report and the annotations backup again. `up` clears the record, so the next `down` saves the new data.
+**Logs and metrics are recorded as they finish.** The Loki and Mimir flushes stop their backends and cannot run twice, so each is recorded in the cluster state the moment it succeeds, with the time it finished. A `down` that fails or is interrupted keeps these records. Run `down` again and it reports them as already saved, skips them, and runs the collector stop, the Tempo drain, the profiles report and the annotations backup again. `up` clears the record, so the next `down` saves the new data.
 
 **A teardown that fails after the save restores nothing.** If removing the infrastructure fails, `down` reports the failure: Loki and Mimir stay at 0 and the collector stays deleted. A save of every signal is recorded in the cluster state before any infrastructure is removed. Run `down` again to finish: it reports every signal as already saved, skips the whole save without connecting to the control node, and goes straight to the teardown.
 
 **Nothing is deleted.** `down` sets no S3 lifecycle, expiry or retention rule on any bucket and deletes no object that holds your data. With `--all`, a per-cluster data bucket is deleted only when it is already empty. A data bucket that still holds objects is left as it is, and `down` reports it as kept, with S3's reason.
 
 **`--force` skips the save.** Pass `--force` to skip both phases and tear down anyway. With the teardown preview, before the confirmation prompt, `down --force` lists the signals it will not save: logs and metrics unless an earlier `down` saved them, then traces and annotations. After a save of every signal, it lists none. Profiles are never listed. Use it only when the backends are already stopped or gone, or when you do not need the data.
+
+**The account compactor.** After the infrastructure teardown succeeds, `down` counts the VPCs tagged `easy_cass_lab=1`, in every enabled region, whose `bucket` tag names the account bucket, leaving out the ones it just removed. When none is left, it stops the [account compactor](../user-guide/compactor.md); otherwise the compactor keeps running.
 
 **Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the save stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
 
@@ -782,6 +783,34 @@ easy-db-lab platform cni
 On a Cilium cluster, prints the routing mode, IPAM mode, kube-proxy replacement, masquerade interfaces, native routing CIDR, and the Hubble UI URL, then one block per node with its ENI count, subnet CIDRs, and IPs allocated, used, and available. The values are read from the `cilium-config` ConfigMap and the `CiliumNode` objects on the control node. On a Flannel cluster, prints one line that names Flannel and exits 0. See [Pod Networking (CNI)](../user-guide/networking.md).
 
 ---
+
+## Observability Commands
+
+These commands manage the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
+
+### observability compactor start
+
+Start the account compactor as `up` does: create it when it is missing, and start it at 1 task when it is stopped. A running compactor is left as it is.
+
+```bash
+easy-db-lab observability compactor start
+```
+
+### observability compactor stop
+
+Stop the account compactor by setting its desired count to 0.
+
+```bash
+easy-db-lab observability compactor stop
+```
+
+### observability compactor status
+
+Print whether the compactor runs, its desired and running task counts, its current or last task with its state, and the last 20 log lines of that task. It changes nothing.
+
+```bash
+easy-db-lab observability compactor status
+```
 
 ## Grafana Commands
 

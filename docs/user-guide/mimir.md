@@ -1,6 +1,6 @@
 # Metrics (Mimir)
 
-Grafana Mimir stores the metrics from every node in the cluster. It runs on the control node and writes its blocks to the account bucket, so a cluster's metrics outlive the cluster and can be read from any later cluster in the same tenant.
+Grafana Mimir stores the metrics from every node in the cluster. It runs on the control node and writes its blocks to the account bucket, so a cluster's metrics outlive the cluster. Every cluster's Mimir reads the whole shared store, so each cluster's Grafana shows the metrics of every tenant and of every past cluster.
 
 ## How metrics get there
 
@@ -13,19 +13,27 @@ Every series carries a `cluster` label (`<name>-<clusterId>`), so clusters that 
 Mimir 3.2.1 runs as one process on the control node:
 
 - **Ports**: 9009 (HTTP), 9097 (gRPC), 7947 (memberlist, loopback only)
-- **Local data**: `/mnt/db1/mimir` on the control node (write-ahead log and the blocks not yet shipped)
+- **Local data**: `/mnt/db1/mimir` on the control node (the write-ahead log, the last 2 hours of blocks, and the store-gateway's index headers)
 - **Object storage**: `s3://<account-bucket>/mimir/<tenant>/`
 - **Tenancy**: native multi-tenancy; the tenant is the cluster's observability tenant
 
-Mimir cuts a one-minute block and ships it within seconds, so a sample is in S3 about 2 minutes after it is written, while the cluster runs. A head with no writes for 2 minutes is compacted, so the last partial block ships too. Queries are served from the ingester's local blocks.
+Mimir cuts a one-minute block and ships it within seconds, so a sample is in S3 about 2 minutes after it is written, while the cluster runs. A head with no writes for 2 minutes is compacted, so the last partial block ships too.
 
-**Nothing is deleted.** Mimir runs no compactor and no retention. Every block it ships stays in S3 until you delete it yourself.
+## The read path
+
+Queries read the ingester and, through the store-gateway, every tenant's blocks in S3. The store-gateway finds blocks through each tenant's bucket index, which the [account compactor](compactor.md) rewrites every minute, and it syncs every minute. The ingester keeps local blocks for 2 hours; older data is read from S3.
+
+A tenant that has no bucket index yet returns no stored data rather than an error. A stale bucket index is accepted for about 10 years, so metrics queries still succeed while the compactor is stopped; blocks shipped after it stopped become readable once it runs again.
+
+**Nothing in the cluster deletes a block.** Mimir on a cluster runs no compactor and no retention. The account compactor merges blocks and removes the sources only after it wrote the merged block. Every sample stays in S3 until you delete it yourself.
 
 ## Querying metrics
 
 ### Grafana
 
-Grafana's default datasource is **Mimir** (uid `mimir`). It sends the tenant on every query, so it returns this tenant's data from every cluster in it. Dashboards narrow to one cluster with their `cluster` variable.
+Grafana's default datasource is **Mimir** (uid `mimir`). It sends the cluster's own tenant on every query, so it returns this tenant's data from every cluster in it. Dashboards narrow to one cluster with their `cluster` variable.
+
+Grafana also has one metrics datasource per tenant in the shared store, **Mimir (&lt;tenant&gt;)** (uid `mimir-<tenant>`), and one for all of them, **Mimir (all tenants)** (uid `mimir--all`), which sends every tenant joined with `|`. `up` and `grafana update-config` list the tenants under `mimir/` in the account bucket and rebuild these datasources, so run `grafana update-config` to pick up a tenant that appeared after `up`. A UID longer than 40 characters is shortened to `mimir-<prefix>-<8 hex characters>`.
 
 ### HTTP API
 
@@ -47,7 +55,7 @@ with-proxy curl -H 'X-Scope-OrgID: <tenant>' \
 
 ## Teardown
 
-`down` flushes Mimir before it removes anything, at the same time as it saves the other signals: it stops the ingester, which cuts and ships every block it holds, then checks with one listing of the tenant's blocks that each local block is in S3. The metrics are recorded as saved the moment this succeeds, so a later `down` skips them. If a step fails, `down` removes nothing and Mimir stays as that step left it: it is never started again, and the report names the step, each backend's state, and `down --force`. See [`down`](../reference/commands.md#down).
+`down` flushes Mimir before it removes anything, at the same time as it saves the other signals: it stops the ingester, which cuts and ships every block it holds before it answers, then scales Mimir to 0. It checks nothing else. The metrics are recorded as saved the moment this succeeds, so a later `down` skips them. If a step fails, `down` removes nothing and Mimir stays as that step left it: it is never started again, and the report names the step, each backend's state, and `down --force`. See [`down`](../reference/commands.md#down).
 
 ## Troubleshooting
 

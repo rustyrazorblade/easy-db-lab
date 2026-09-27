@@ -19,6 +19,10 @@ services/aws/
 ├── EMRSparkService.kt         # Spark job execution (implements SparkService)
 ├── OpenSearchService.kt       # OpenSearch domain management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
+├── CompactorService.kt        # The account compactor on ECS Fargate (ensureRunning, stop, stopIfLastCluster, status)
+├── CompactorIam.kt            # Its task and execution roles and ECS's service-linked role
+├── CompactorNetwork.kt        # Its VPC easy-db-lab-compactor, found or created like the packer VPC
+├── ClusterCensus.kt           # Tagged VPCs naming the account bucket in every region; CompactorShutdownPolicy
 └── InstanceSpecFactory.kt     # Instance spec creation
 ```
 
@@ -86,6 +90,14 @@ Integration tests live in the slow tier under `src/integrationTest/kotlin/.../se
 - Test the full behavior end-to-end: upload data, call the service method, assert on results
 
 Services that call S3 indirectly (via `ObjectStore`) also need integration tests — see `ClusterBackupServiceS3IntegrationTest` as an example of testing a higher-level service against LocalStack.
+
+## Account compactor
+
+- **Region.** Everything runs in the account bucket's region (`GetBucketLocation`), which can differ from the profile's. `providers/aws/RegionalClients` builds ECS, CloudWatch Logs and EC2 clients for a region named at call time; callers close them.
+- **Network.** `CompactorNetwork` finds or creates VPC `easy-db-lab-compactor` through `AwsInfrastructureService.ensureReusableInfrastructure` (the packer VPC's path) with a regional EC2 client: one public subnet, an internet gateway, a security group with no ingress. It is tagged `easy_cass_lab=1` with no `bucket` tag; `teardownAllTagged` always skips it (`Event.Infra.CompactorVpcSkipping`).
+- **IAM.** `CompactorIam` ensures `EasyDBLabCompactorTaskRole` (inline `AWSPolicy.Inline.CompactorTaskAccess`: list the buckets, get/put/delete only under `mimir/`, `loki/`, `tempo/`), `EasyDBLabCompactorExecutionRole` (managed `AmazonECSTaskExecutionRolePolicy`) and ECS's service-linked role. The account bucket policy (`S3BucketPolicy`) denies `s3:DeleteObject`/`s3:DeleteObjectVersion` under those roots to the EC2 instance, EMR service and EMR EC2 roles; `up` re-applies it every time. User policy `iam-policy-compactor.json` (`EasyDBLabCompactor`).
+- **Service.** `CompactorService.ensureRunning`: missing or `INACTIVE` → register and `CreateService` (`FARGATE`, desired 1, max 100%, min 0%, public IP); desired 0 → reuse the latest revision if its `easydblab.com/config-hash` tag matches, else register, then `UpdateService(desired 1)`; running → leave it. Nothing is stored in `state.json`; every resource is found by name.
+- **Census.** `ClusterCensus.clusterVpcs(bucket)` runs `DescribeRegions` then `DescribeVpcs` per region (`tag:easy_cass_lab=1`, `tag:bucket=<bucket>`); the pure `CompactorShutdownPolicy` stops the compactor when nothing is left once the VPCs `down` removed are left out.
 
 ## S3 data handling
 

@@ -42,8 +42,8 @@
 
 ## 6. Docs
 
-- [ ] 6.1 `docs/user-guide/mimir.md` and `docs/user-guide/loki.md`: the read path over the shared store, 2h local retention, tenant datasources, and the teardown without verify checks.
-- [ ] 6.2 New `docs/user-guide/compactor.md` (what it runs, lifecycle, commands, cost, no retention) and its entry in `docs/SUMMARY.md`; `docs/reference/commands.md` for the three commands; IAM docs for the new user policy.
-- [ ] 6.3 Root `CLAUDE.md` Observability paragraph: remove the Loki running check and the verify checks from the teardown description, describe the store-gateway and 2h local retention, the account compactor and its deletion scope, and the tenant datasources.
-- [ ] 6.4 `configuration/CLAUDE.md` (compactor configs, datasource set, Mimir config, tail-flush record), `commands/CLAUDE.md` (the `observability` group), `services/aws/CLAUDE.md` (ECS, census, IAM, network), `events/CLAUDE.md` (the `Compactor` domain).
-- [ ] 6.5 Run `./gradlew ktlintFormat`, `./gradlew detekt` and `./gradlew test` in a subagent; run `./gradlew installDist`.
+- [x] 6.1 `docs/user-guide/mimir.md` and `docs/user-guide/loki.md`: the read path over the shared store, 2h local retention, tenant datasources, and the teardown without verify checks.
+- [x] 6.2 New `docs/user-guide/compactor.md` (what it runs, lifecycle, commands, cost, no retention) and its entry in `docs/SUMMARY.md`; `docs/reference/commands.md` for the three commands; IAM docs for the new user policy.
+- [x] 6.3 Root `CLAUDE.md` Observability paragraph: remove the Loki running check and the verify checks from the teardown description, describe the store-gateway and 2h local retention, the account compactor and its deletion scope, and the tenant datasources.
+- [x] 6.4 `configuration/CLAUDE.md` (compactor configs, datasource set, Mimir config, tail-flush record), `commands/CLAUDE.md` (the `observability` group), `services/aws/CLAUDE.md` (ECS, census, IAM, network), `events/CLAUDE.md` (the `Compactor` domain).
+- [x] 6.5 Run `./gradlew ktlintFormat`, `./gradlew detekt` and `./gradlew test` in a subagent; run `./gradlew installDist`.

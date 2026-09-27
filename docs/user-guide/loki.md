@@ -46,7 +46,9 @@ Loki flushes a chunk to S3 once it spans an hour, so a stream that keeps writing
 
 **Out-of-order window.** Loki rejects a line that is more than 30 minutes older than the newest line of its stream (half of the 1-hour chunk age). The window is wide so that a slow Loki restart does not drop logs. A line replayed or backdated by more than 30 minutes on a stream that is still writing is refused. The annotation mirror is not affected: each annotation is a stream of its own.
 
-**Nothing is deleted.** Loki's compactor is idle, retention is off, and the delete API is not served. Every chunk and index file stays in S3 until you delete it yourself.
+**Nothing in the cluster deletes a chunk or an index file.** The cluster's Loki compactor is idle, retention is off, and the delete API is not served. The [account compactor](compactor.md) merges each day's index files into one, with retention off, and removes the sources only after the merged file is written. Every log line stays in S3 until you delete it yourself.
+
+Every cluster's Loki reads every tenant's chunks and index from the shared store; nothing about this changes with the account compactor.
 
 ## Querying logs
 
@@ -87,7 +89,7 @@ Every option but `--query` is scoped to this cluster. A raw query is sent as wri
 
 ### Grafana
 
-The **Loki** datasource (uid `loki`) sends the tenant on every query.
+The **Loki** datasource (uid `loki`) sends the cluster's own tenant on every query. Grafana also has one logs datasource per tenant in the shared store, **Loki (&lt;tenant&gt;)** (uid `loki-<tenant>`), and one for all of them, **Loki (all tenants)** (uid `loki--all`). Each links a trace ID to the Tempo datasource of the same tenant view. See [the Mimir page](mimir.md#grafana) for how the tenants are found.
 
 The **Log Investigation** dashboard (Dashboards → Log Investigation) filters by:
 
@@ -129,7 +131,7 @@ Every Grafana annotation is also written to Loki as its own stream (`source="ann
 
 ## Teardown
 
-`down` flushes Loki before it removes anything, at the same time as it saves the other signals: it stops the ingester, which writes every open chunk to S3, then checks that each index file Loki built is in S3. The logs are recorded as saved the moment this succeeds, so a later `down` skips them. If a step fails, `down` removes nothing and Loki stays as that step left it: it is never started again, and the report names the step, each backend's state, and `down --force`. See [`down`](../reference/commands.md#down).
+`down` flushes Loki before it removes anything, at the same time as it saves the other signals: it stops the ingester, which answers only once every open chunk is in S3, then scales Loki to 0 and waits for the pod to go, which builds and uploads its index. It checks nothing else. The logs are recorded as saved the moment this succeeds, so a later `down` skips them. If a step fails, `down` removes nothing and Loki stays as that step left it: it is never started again, and the report names the step, each backend's state, and `down --force`. See [`down`](../reference/commands.md#down).
 
 ## Troubleshooting
 

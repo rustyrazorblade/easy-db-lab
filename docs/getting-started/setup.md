@@ -133,13 +133,15 @@ If you need to request permissions from your AWS administrator, use the `show-ia
 easy-db-lab show-iam-policies
 ```
 
-This displays three policies:
+This displays five policies:
 
 | Policy | Purpose |
 |--------|---------|
 | EC2 | Create/manage EC2 instances, VPCs, security groups |
 | IAM | Create instance roles and profiles |
 | EMR | Create Spark clusters (optional) |
+| OpenSearch | Create OpenSearch domains (optional) |
+| Compactor | Run the [account compactor](../user-guide/compactor.md) on ECS Fargate: ECS, its log group, and passing its two roles |
 
 ### Filter by Policy Name
 
@@ -149,6 +151,7 @@ To show a specific policy:
 easy-db-lab show-iam-policies ec2    # Show EC2 policy only
 easy-db-lab show-iam-policies iam    # Show IAM policy only
 easy-db-lab show-iam-policies emr    # Show EMR policy only
+easy-db-lab show-iam-policies compactor    # Show the compactor policy only
 ```
 
 ### Recommended IAM Setup
@@ -156,12 +159,12 @@ easy-db-lab show-iam-policies emr    # Show EMR policy only
 For teams with multiple users, we recommend creating managed policies attached to an IAM group:
 
 1. **Create an IAM group** (e.g., "EasyDBLabUsers")
-2. **Create three managed policies** from the JSON output
+2. **Create the managed policies** from the JSON output
 3. **Attach all policies** to the group
 4. **Add users** to the group
 
 ```admonish warning
-Inline policies have a 5,120 byte limit which may not fit all three policies. Use managed policies instead.
+Inline policies have a 5,120 byte limit which may not fit all the policies. Use managed policies instead.
 ```
 
 ## Step 3: Build Custom AMI (Optional)

@@ -9,7 +9,7 @@
 | AC | `down --force` lists the signals it did not save before teardown starts | `cluster-lifecycle: --force lists what it will not save before the prompt` | ✅ Covered (shown before the confirmation prompt, by owner decision) |
 | AC | Mimir uploads a sample's block within about 3 minutes | `observability-store: Metric blocks reach S3 within minutes` | ✅ Covered |
 | AC | Tempo uploads a span's block within about 2 minutes | `observability-store: Trace blocks reach S3 within minutes` | ✅ Covered |
-| AC | Loki uploads a continuously written stream's chunk within about 15 minutes, index at the next rotation | `observability-store: Log chunks reach S3 within minutes` | ✅ Covered |
+| AC | Loki uploads a continuously written stream's chunk within about 1 hour, index at the next rotation | `observability-store: Log chunks reach S3 within minutes` | ✅ Covered (config test only; a 1-hour wait is not run) |
 | AC | The ABSOLUTE RULE in root `CLAUDE.md` carries the "compaction is not deletion" text | — | ⚠️ Excluded — contributor guidance, not product behavior; task 8.1 writes it verbatim |
 | Owner decision | Pyroscope needs no flush and is reported as such | `cluster-lifecycle: Profiles need no flush` | ✅ Covered |
 | Owner decision | Record logs and metrics the moment each finishes; a re-run skips them and repeats the rest | `cluster-lifecycle: A signal is recorded when its flush finishes`, `A re-run skips the recorded signals` | ✅ Covered |
@@ -20,7 +20,7 @@
 | Risk | A state write during the parallel phase is read half-written | `cluster-lifecycle: A signal is recorded when its flush finishes` | ✅ Covered (atomic write; task 3.2 test) |
 | Risk | A single live-traces reading of 0 is stale | `cluster-lifecycle: The Tempo drain waits for traces still in memory` | ✅ Covered |
 | Risk | Mimir 1-minute blocks grow local disk, memory and S3 objects | — | ⚠️ Excluded — accepted by owner (D7); local-retention cut and compaction are #970 |
-| Risk | Loki's out-of-order window shrinks to 7.5 minutes | — | ⚠️ Excluded — accepted by owner; documented in task 8.4 |
+| Risk | Loki's out-of-order window shrinks to 30 minutes | — | ⚠️ Excluded — accepted by owner; documented in task 8.4 |
 | Risk | A redirect target's Tempo cannot drain while a source DC sends | — | ⚠️ Excluded — owner: no failure-case handling |
 | Risk | The collector stays deleted after a failed `down` | — | ⚠️ Excluded — owner: no restore |
 | Risk | S3 refuses uploads during the save | — | ⚠️ Excluded — owner directive: S3 is treated as reliable |

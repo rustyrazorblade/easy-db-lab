@@ -22,7 +22,7 @@ Issue 967 put every observability root under an `observability` prefix in the ac
 **Faster uploads**
 - Mimir cuts a 1-minute block (`block_ranges_period: [1m]`, `head_compaction_interval: 15s`, `ship_interval: 15s`, `head_compaction_idle_timeout: 2m`).
 - Tempo cuts a block every minute (`live_store.max_block_duration: 1m`).
-- Loki flushes a chunk after 15 minutes (`ingester.max_chunk_age: 15m`), and re-lists the index every minute (`tsdb_shipper.resync_interval: 1m`).  Loki's index still uploads on its fixed 15-minute rotation.
+- Loki flushes a chunk after 1 hour (`ingester.max_chunk_age: 1h`), and re-lists the index every minute (`tsdb_shipper.resync_interval: 1m`).  Loki's index still uploads on its fixed 15-minute rotation.
 
 **Rules and docs**
 - The ABSOLUTE RULE on deleting data in the root `CLAUDE.md` gains the owner-approved text: compaction is not deletion.

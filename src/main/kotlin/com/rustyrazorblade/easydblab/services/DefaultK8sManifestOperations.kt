@@ -5,6 +5,9 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.ManifestApplier
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.NodeBuilder
+import io.fabric8.kubernetes.client.dsl.base.PatchContext
+import io.fabric8.kubernetes.client.dsl.base.PatchType
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
 
@@ -157,18 +160,17 @@ class DefaultK8sManifestOperations(
             log.info { "Labeling node $nodeName with labels: $labels" }
 
             clientProvider.createClient(controlHost).use { client ->
-                val node =
-                    client.nodes().withName(nodeName).get()
-                        ?: error("Node $nodeName not found")
+                checkNotNull(client.nodes().withName(nodeName).get()) { "Node $nodeName not found" }
 
-                val existingLabels = node.metadata.labels ?: mutableMapOf()
-                val updatedLabels = existingLabels.toMutableMap()
-                updatedLabels.putAll(labels)
-
-                client.nodes().withName(nodeName).edit { n ->
-                    n.metadata.labels = updatedLabels
-                    n
-                }
+                // A merge patch carries no resourceVersion. `edit()` patches the version it read, and
+                // the kubelet's status updates in between make the API server refuse it with 409 Conflict.
+                val patch =
+                    NodeBuilder()
+                        .withNewMetadata()
+                        .addToLabels(labels)
+                        .endMetadata()
+                        .build()
+                client.nodes().withName(nodeName).patch(PatchContext.of(PatchType.STRATEGIC_MERGE), patch)
 
                 log.info { "Labeled node $nodeName" }
             }

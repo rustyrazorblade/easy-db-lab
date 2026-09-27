@@ -238,15 +238,16 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     private fun flushService(tempoDrain: SignalFlush = tempoDrain()): DefaultTeardownFlushService {
         val workloads = ContainerWorkloads()
         val timeouts = FlushTimeouts(shutdown = Duration.ofMinutes(2), scaleDown = Duration.ofMinutes(2))
-        return DefaultTeardownFlushService(
-            lokiFlush = LokiTailFlush(http, workloads, timeouts),
-            mimirFlush = MimirTailFlush(http, workloads, timeouts),
-            tempoDrain = tempoDrain,
-            telemetrySenders = senders,
-            annotationMirror = RecordingAnnotationMirror(),
-            annotationBackupService = backups,
-            eventBus = EventBus(),
-        )
+        return DefaultTeardownFlushService
+            .builder()
+            .lokiFlush(LokiTailFlush(http, workloads, timeouts))
+            .mimirFlush(MimirTailFlush(http, workloads, timeouts))
+            .tempoDrain(tempoDrain)
+            .telemetrySenders(senders)
+            .annotationMirror(RecordingAnnotationMirror())
+            .annotationBackupService(backups)
+            .eventBus(EventBus())
+            .build()
     }
 
     private fun containerIds(): Map<String, String> = running.mapValues { it.value.containerId }

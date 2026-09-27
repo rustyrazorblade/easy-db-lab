@@ -134,15 +134,16 @@ val servicesModule =
         factory { MimirTailFlush(get(), get()) }
         factory { TempoTailFlush(get(), get()) }
         factory<TeardownFlushService> {
-            DefaultTeardownFlushService(
-                lokiFlush = get<LokiTailFlush>(),
-                mimirFlush = get<MimirTailFlush>(),
-                tempoDrain = get<TempoTailFlush>(),
-                telemetrySenders = get(),
-                annotationMirror = get(),
-                annotationBackupService = get(),
-                eventBus = get(),
-            )
+            DefaultTeardownFlushService
+                .builder()
+                .lokiFlush(get<LokiTailFlush>())
+                .mimirFlush(get<MimirTailFlush>())
+                .tempoDrain(get<TempoTailFlush>())
+                .telemetrySenders(get())
+                .annotationMirror(get())
+                .annotationBackupService(get())
+                .eventBus(get())
+                .build()
         }
         factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
         singleOf(::DefaultObservabilityHttp) bind ObservabilityHttp::class

@@ -10,7 +10,6 @@ import software.amazon.awssdk.services.iam.model.AttachRolePolicyRequest
 import software.amazon.awssdk.services.iam.model.CreateRoleRequest
 import software.amazon.awssdk.services.iam.model.CreateServiceLinkedRoleRequest
 import software.amazon.awssdk.services.iam.model.GetRoleRequest
-import software.amazon.awssdk.services.iam.model.InvalidInputException
 import software.amazon.awssdk.services.iam.model.NoSuchEntityException
 import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 
@@ -37,6 +36,7 @@ class CompactorIam(
         val log = KotlinLogging.logger {}
         const val TASK_POLICY_NAME = "CompactorS3Access"
         const val ECS_SERVICE = "ecs.amazonaws.com"
+        const val ECS_SERVICE_LINKED_ROLE = "AWSServiceRoleForECS"
     }
 
     /** Ensures both roles and their policies, and ECS's service-linked role. */
@@ -79,19 +79,23 @@ class CompactorIam(
                     CreateRoleRequest
                         .builder()
                         .roleName(name)
-                        .assumeRolePolicyDocument(AWSPolicy.ECSTasksTrust.toJson())
+                        .assumeRolePolicyDocument(AWSPolicy.Trust.ECSTasks.toJson())
                         .description(description)
                         .build(),
                 ).role()
                 .arn()
         }
 
+    /**
+     * Creates ECS's service-linked role only when `GetRole` answers `NoSuchEntity`. Creating one that
+     * exists fails with the generic `InvalidInput` code, which only its message tells apart.
+     */
     private fun ensureEcsServiceLinkedRole() {
         try {
+            iam.getRole(GetRoleRequest.builder().roleName(ECS_SERVICE_LINKED_ROLE).build())
+        } catch (_: NoSuchEntityException) {
+            log.info { "Creating ECS's service-linked role" }
             iam.createServiceLinkedRole(CreateServiceLinkedRoleRequest.builder().awsServiceName(ECS_SERVICE).build())
-        } catch (e: InvalidInputException) {
-            // IAM answers "has been taken" when the role already exists.
-            if (e.message?.contains("has been taken") != true) throw e
         }
     }
 

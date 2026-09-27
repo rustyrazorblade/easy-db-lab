@@ -8,10 +8,12 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import io.fabric8.kubernetes.client.KubernetesClientException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
+import java.io.IOException
 import java.time.Duration
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
@@ -100,7 +102,16 @@ class TeardownFlushServiceTest {
         loki: SignalFlush = FakeFlush("loki", SignalReport.Logs, "loki"),
         mimir: SignalFlush = FakeFlush("mimir", SignalReport.Metrics, "mimir"),
         tempo: SignalFlush = FakeFlush("tempo", SignalReport.Traces, "tempo"),
-    ) = DefaultTeardownFlushService(loki, mimir, tempo, senders, mirror, backups, eventBus)
+    ) = DefaultTeardownFlushService
+        .builder()
+        .lokiFlush(loki)
+        .mimirFlush(mimir)
+        .tempoDrain(tempo)
+        .telemetrySenders(senders)
+        .annotationMirror(mirror)
+        .annotationBackupService(backups)
+        .eventBus(eventBus)
+        .build()
 
     private fun failing(
         name: String,
@@ -176,6 +187,48 @@ class TeardownFlushServiceTest {
         assertThat(outcome.failed.getValue(TailSignal.METRICS)).hasMessageContaining("status 503")
         assertThat(outcome.failed.getValue(TailSignal.TRACES)).hasMessageContaining("Tempo still receives")
         assertThat(outcome.failed.getValue(TailSignal.METRICS).backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
+    }
+
+    /** An HTTP error and a Kubernetes API error fail their signal; they do not escape the save. */
+    @Test
+    fun `an HTTP or Kubernetes error fails only its signal`() {
+        val outcome =
+            service(
+                loki = FakeFlush("loki", SignalReport.Logs, "loki") { throw IOException("connection reset") },
+                mimir = FakeFlush("mimir", SignalReport.Metrics, "mimir") { throw KubernetesClientException("forbidden") },
+            ).saveTail(control, state, all)
+
+        assertThat(outcome.failed.keys).containsExactlyInAnyOrder(TailSignal.LOGS, TailSignal.METRICS)
+        assertThat(outcome.failed.getValue(TailSignal.LOGS)).hasMessageContaining("connection reset")
+        assertThat(outcome.failed.getValue(TailSignal.METRICS)).hasMessageContaining("forbidden")
+        assertThat(outcome.saved.keys).contains(TailSignal.TRACES, TailSignal.ANNOTATIONS)
+    }
+
+    @Test
+    fun `a failed annotations backup fails only annotations`() {
+        val failingBackups =
+            object : GrafanaAnnotationBackupService {
+                override fun backup(
+                    controlHost: ClusterHost,
+                    clusterState: ClusterState,
+                ): Result<GrafanaAnnotationBackupResult> = Result.failure(RuntimeException("S3 refused the upload"))
+            }
+
+        val outcome =
+            DefaultTeardownFlushService
+                .builder()
+                .lokiFlush(FakeFlush("loki", SignalReport.Logs, "loki"))
+                .mimirFlush(FakeFlush("mimir", SignalReport.Metrics, "mimir"))
+                .tempoDrain(FakeFlush("tempo", SignalReport.Traces, "tempo"))
+                .telemetrySenders(senders)
+                .annotationMirror(mirror)
+                .annotationBackupService(failingBackups)
+                .eventBus(eventBus)
+                .build()
+                .saveTail(control, state, all)
+
+        assertThat(outcome.failed.keys).containsExactly(TailSignal.ANNOTATIONS)
+        assertThat(outcome.failed.getValue(TailSignal.ANNOTATIONS)).hasMessageContaining("S3 refused the upload")
     }
 
     @Test

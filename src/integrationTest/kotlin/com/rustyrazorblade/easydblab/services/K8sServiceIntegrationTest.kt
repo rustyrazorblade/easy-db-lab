@@ -35,6 +35,11 @@ import io.fabric8.kubernetes.api.model.apps.StatefulSet
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.fabric8.kubernetes.client.dsl.base.PatchContext
+import io.fabric8.kubernetes.client.dsl.base.PatchType
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.MethodOrderer
@@ -160,14 +165,7 @@ class K8sServiceIntegrationTest {
                 .first()
                 .metadata
                 .name
-        client
-            .nodes()
-            .withName(nodeName)
-            .edit { node ->
-                node.metadata.labels["type"] = "db"
-                node.metadata.labels[Constants.NODE_ORDINAL_LABEL] = "0"
-                node
-            }
+        labelNode(nodeName, mapOf("type" to "db", Constants.NODE_ORDINAL_LABEL to "0"))
 
         // Registry needs /opt/registry/certs with TLS cert and key (hostPath type: Directory)
         k3s.execInContainer("mkdir", "-p", "/opt/registry/certs")
@@ -638,6 +636,46 @@ class K8sServiceIntegrationTest {
         }
     }
 
+    /**
+     * `up` labels each node with a merge patch, not a read-then-write `edit()`, so a kubelet
+     * status update between the read and the write cannot fail it with 409 Conflict.
+     */
+    @Test
+    @Order(27)
+    fun `labelling a node adds its labels and keeps the ones it had`() {
+        val nodeName =
+            client
+                .nodes()
+                .list()
+                .items
+                .single()
+                .metadata.name
+        val before =
+            client
+                .nodes()
+                .withName(nodeName)
+                .get()
+                .metadata.labels
+        val clientProvider = mock<K8sClientProvider>()
+        whenever(clientProvider.createClient(any())).thenAnswer {
+            KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
+        }
+        val key = "easydblab.test/label-merge"
+        try {
+            DefaultK8sManifestOperations(clientProvider, EventBus()).labelNode(testHost, nodeName, mapOf(key to "yes")).getOrThrow()
+
+            val after =
+                client
+                    .nodes()
+                    .withName(nodeName)
+                    .get()
+                    .metadata.labels
+            assertThat(after).containsAllEntriesOf(before).containsEntry(key, "yes")
+        } finally {
+            unlabelNode(nodeName, listOf(key))
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Phase 3: Resource limits and structural checks
     // -----------------------------------------------------------------------
@@ -850,21 +888,29 @@ class K8sServiceIntegrationTest {
     private fun labelNode(
         nodeName: String,
         labels: Map<String, String>,
-    ) {
-        client.nodes().withName(nodeName).edit { node ->
-            node.metadata.labels.putAll(labels)
-            node
-        }
-    }
+    ) = patchNodeLabels(nodeName, labels)
 
     private fun unlabelNode(
         nodeName: String,
         keys: List<String>,
+    ) = patchNodeLabels(nodeName, keys.associateWith { null })
+
+    /**
+     * Sets each label, or removes it when its value is null, with a JSON merge patch. The patch
+     * carries no resourceVersion: `edit()` reads the node and patches that version, and a kubelet
+     * status update in between made the API server refuse it with 409 Conflict.
+     */
+    private fun patchNodeLabels(
+        nodeName: String,
+        labels: Map<String, String?>,
     ) {
-        client.nodes().withName(nodeName).edit { node ->
-            keys.forEach { node.metadata.labels.remove(it) }
-            node
-        }
+        val patch =
+            buildJsonObject {
+                putJsonObject("metadata") {
+                    putJsonObject("labels") { labels.forEach { (key, value) -> put(key, value) } }
+                }
+            }
+        client.nodes().withName(nodeName).patch(PatchContext.of(PatchType.JSON_MERGE), patch.toString())
     }
 
     private fun pvcPhase(pvcName: String): String? =

@@ -213,13 +213,6 @@ object Constants {
         /** How many of the newest log lines `observability compactor status` prints. */
         const val STATUS_LOG_LINES = 20
 
-        /**
-         * Tempo's block retention on the compactor: 100 years. Tempo has no "retention off" once
-         * compaction runs, and a zero retention makes every block eligible for deletion, so an
-         * unreachable age is the off switch.
-         */
-        const val TEMPO_BLOCK_RETENTION = "876000h"
-
         /** The busybox image of the init container that writes the configuration files. */
         const val CONFIG_IMAGE = "busybox:1.37.0"
     }

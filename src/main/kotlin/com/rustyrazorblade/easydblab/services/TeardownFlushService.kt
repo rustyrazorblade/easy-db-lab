@@ -5,7 +5,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.EasyDBLabException
+import io.fabric8.kubernetes.client.KubernetesClientException
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.IOException
 import java.time.Duration
 import java.util.concurrent.Callable
 import java.util.concurrent.Executors
@@ -209,20 +212,64 @@ interface TeardownFlushService {
 }
 
 /**
- * [TeardownFlushService] over the backend flushes, run on a platform-thread pool.
+ * [TeardownFlushService] over the backend flushes, run on a platform-thread pool. Built with
+ * [builder]: every collaborator is required except the timeouts.
  */
-@Suppress("LongParameterList")
-class DefaultTeardownFlushService(
-    private val lokiFlush: SignalFlush,
-    private val mimirFlush: SignalFlush,
-    private val tempoDrain: SignalFlush,
-    private val telemetrySenders: TelemetrySenders,
-    private val annotationMirror: AnnotationMirror,
-    private val annotationBackupService: GrafanaAnnotationBackupService,
-    private val eventBus: EventBus,
-    private val timeouts: FlushTimeouts = FlushTimeouts(),
+class DefaultTeardownFlushService private constructor(
+    builder: Builder,
 ) : TeardownFlushService {
     private val log = KotlinLogging.logger {}
+    private val lokiFlush = builder.lokiFlush
+    private val mimirFlush = builder.mimirFlush
+    private val tempoDrain = builder.tempoDrain
+    private val telemetrySenders = builder.telemetrySenders
+    private val annotationMirror = builder.annotationMirror
+    private val annotationBackupService = builder.annotationBackupService
+    private val eventBus = builder.eventBus
+    private val timeouts = builder.timeouts
+
+    companion object {
+        fun builder(): Builder = Builder()
+    }
+
+    /** Collects the collaborators of a [DefaultTeardownFlushService]. */
+    class Builder internal constructor() {
+        lateinit var lokiFlush: SignalFlush
+            private set
+        lateinit var mimirFlush: SignalFlush
+            private set
+        lateinit var tempoDrain: SignalFlush
+            private set
+        lateinit var telemetrySenders: TelemetrySenders
+            private set
+        lateinit var annotationMirror: AnnotationMirror
+            private set
+        lateinit var annotationBackupService: GrafanaAnnotationBackupService
+            private set
+        lateinit var eventBus: EventBus
+            private set
+        var timeouts: FlushTimeouts = FlushTimeouts()
+            private set
+
+        fun lokiFlush(flush: SignalFlush) = apply { lokiFlush = flush }
+
+        fun mimirFlush(flush: SignalFlush) = apply { mimirFlush = flush }
+
+        fun tempoDrain(flush: SignalFlush) = apply { tempoDrain = flush }
+
+        fun telemetrySenders(senders: TelemetrySenders) = apply { telemetrySenders = senders }
+
+        fun annotationMirror(mirror: AnnotationMirror) = apply { annotationMirror = mirror }
+
+        fun annotationBackupService(service: GrafanaAnnotationBackupService) = apply { annotationBackupService = service }
+
+        fun eventBus(bus: EventBus) = apply { eventBus = bus }
+
+        fun timeouts(value: FlushTimeouts) = apply { timeouts = value }
+
+        /** @throws UninitializedPropertyAccessException when a required collaborator was not set. */
+        fun build(): DefaultTeardownFlushService = DefaultTeardownFlushService(this)
+    }
 
     /** One Phase B step: the signal it saves, its progress, and the work. */
     private class SaveTask(
@@ -273,7 +320,10 @@ class DefaultTeardownFlushService(
         if (TailSignal.ANNOTATIONS in pending) {
             tasks +=
                 SaveTask(TailSignal.ANNOTATIONS, FlushProgress(FlushStep.ANNOTATIONS_BACKUP)) {
-                    val backup = annotationBackupService.backup(controlHost, clusterState).getOrThrow()
+                    val backup =
+                        annotationBackupService.backup(controlHost, clusterState).getOrElse { failure ->
+                            throw IllegalStateException(failure.message ?: failure.toString(), failure)
+                        }
                     SignalReport.Annotations(backup.s3Path.getKey())
                 }
         }
@@ -354,15 +404,26 @@ class DefaultTeardownFlushService(
         }
     }
 
-    /** Runs [block], turning any failure into a [FlushStepFailed] at [progress]'s step. */
-    @Suppress("TooGenericExceptionCaught")
+    /**
+     * Runs [block], turning a step's failure into a [FlushStepFailed] at [progress]'s step. A step
+     * fails with a failed check or timeout ([IllegalStateException]), an HTTP or file error
+     * ([IOException]), a Kubernetes API error, or a failed SSH or remote command.
+     */
     private fun <T> attempt(
         progress: FlushProgress,
         block: () -> T,
-    ): Result<T> =
-        try {
+    ): Result<T> {
+        fun failed(failure: Exception) = Result.failure<T>(FlushStepFailed(progress.step, progress.backends, failure))
+        return try {
             Result.success(block())
-        } catch (failure: Exception) {
-            Result.failure(FlushStepFailed(progress.step, progress.backends, failure))
+        } catch (failure: IllegalStateException) {
+            failed(failure)
+        } catch (failure: IOException) {
+            failed(failure)
+        } catch (failure: KubernetesClientException) {
+            failed(failure)
+        } catch (failure: EasyDBLabException) {
+            failed(failure)
         }
+    }
 }

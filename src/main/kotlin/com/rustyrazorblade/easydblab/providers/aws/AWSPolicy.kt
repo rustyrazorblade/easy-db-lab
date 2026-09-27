@@ -78,24 +78,24 @@ sealed class AWSPolicy {
                         ),
                 ).toJson()
         }
-    }
 
-    /**
-     * Trust policy allowing ECS tasks to assume the role.
-     * Used by: EasyDBLabCompactorTaskRole, EasyDBLabCompactorExecutionRole
-     */
-    data object ECSTasksTrust : AWSPolicy() {
-        override fun toJson() =
-            IamPolicyDocument(
-                statement =
-                    listOf(
-                        IamPolicyStatement(
-                            effect = "Allow",
-                            principal = IamPolicyPrincipal.service("ecs-tasks.amazonaws.com"),
-                            action = IamPolicyAction.single("sts:AssumeRole"),
+        /**
+         * Trust policy allowing ECS tasks to assume the role.
+         * Used by: EasyDBLabCompactorTaskRole, EasyDBLabCompactorExecutionRole
+         */
+        data object ECSTasks : Trust() {
+            override fun toJson() =
+                IamPolicyDocument(
+                    statement =
+                        listOf(
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                principal = IamPolicyPrincipal.service("ecs-tasks.amazonaws.com"),
+                                action = IamPolicyAction.single("sts:AssumeRole"),
+                            ),
                         ),
-                    ),
-            ).toJson()
+                ).toJson()
+        }
     }
 
     /**

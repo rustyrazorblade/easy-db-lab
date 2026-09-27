@@ -128,6 +128,9 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - Constants and magic numbers should be stored in `com.rustyrazorblade.easydblab.Constants`.
 - When outputting multiple lines to the console via `println()`, use a multiline string block instead of multiple `println()` calls. When using events, a single event with structured fields is always preferred over multiple events.
 - When making changes, use the detekt plugin to determine if there are any code quality regressions.
+- **Fix detekt findings with code, never with `@Suppress`, a threshold change, or a baseline entry.**
+- **Prefer composition when it fits.** When a class grows too many responsibilities or functions, split it into small single-purpose classes and compose them, instead of one large class.
+- **Use the builder pattern instead of a long constructor.** When a class needs many constructor fields, give it a builder rather than a long parameter list.
 
 ### Architecture
 

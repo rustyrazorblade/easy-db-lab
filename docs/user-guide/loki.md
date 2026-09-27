@@ -42,9 +42,9 @@ Loki 3.7.8 runs as one process (`target: all`) on the control node:
 - **Object storage**: `s3://<account-bucket>/loki/`; chunks sit under the tenant, the TSDB index under `index/`
 - **Tenancy**: native multi-tenancy; the tenant is the cluster's observability tenant
 
-Loki flushes a chunk to S3 once it spans 5 minutes, so a stream that keeps writing reaches S3 within about 5 minutes. Its index uploads on Loki's own 15-minute rotation, and Loki re-reads the other clusters' index from S3 every minute. A line from another cluster in the tenant becomes readable here once its index file is in S3.
+Loki flushes a chunk to S3 once it spans an hour, so a stream that keeps writing reaches S3 within about an hour. Its index uploads on Loki's own 15-minute rotation, and Loki re-reads the other clusters' index from S3 every minute. A line from another cluster in the tenant becomes readable here once its index file is in S3.
 
-**Out-of-order window.** Loki rejects a line that is more than 2.5 minutes older than the newest line of its stream (half of the 5-minute chunk age). A replayed or backdated line on a stream that is still writing is refused. The annotation mirror is not affected: each annotation is a stream of its own.
+**Out-of-order window.** Loki rejects a line that is more than 30 minutes older than the newest line of its stream (half of the 1-hour chunk age). The window is wide so that a slow Loki restart does not drop logs. A line replayed or backdated by more than 30 minutes on a stream that is still writing is refused. The annotation mirror is not affected: each annotation is a stream of its own.
 
 **Nothing is deleted.** Loki's compactor is idle, retention is off, and the delete API is not served. Every chunk and index file stays in S3 until you delete it yourself.
 

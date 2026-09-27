@@ -83,15 +83,15 @@ class LokiManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
-     * A chunk is flushed once it spans 5 minutes, so a stream that keeps writing reaches S3 within
-     * minutes; this also sets the per-stream out-of-order window to 2.5 minutes. The index is re-listed
-     * in S3 every minute, so other clusters' uploads become readable soon after they land.
+     * A chunk is flushed once it spans an hour, which sets the per-stream out-of-order window to 30
+     * minutes, so a slow Loki restart does not drop logs. The index is re-listed in S3 every minute,
+     * so other clusters' uploads become readable soon after they land.
      */
     @Test
-    fun `chunks flush after five minutes and the index is re-listed every minute`() {
+    fun `chunks flush after an hour and the index is re-listed every minute`() {
         val yaml = config()
 
-        assertThat(scalarAt(yaml, "ingester", "max_chunk_age")).isEqualTo("5m")
+        assertThat(scalarAt(yaml, "ingester", "max_chunk_age")).isEqualTo("1h")
         assertThat(scalarAt(yaml, "storage_config", "tsdb_shipper", "resync_interval")).isEqualTo("1m")
     }
 

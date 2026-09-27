@@ -12,11 +12,11 @@
 
 - [x] 2.1 `mimir.yaml` `blocks_storage.tsdb`: `block_ranges_period: [1m]` (comment: experimental and hidden in 3.2.1), `head_compaction_interval: 15s`, `ship_interval: 15s`, `head_compaction_idle_timeout: 2m`.
 - [x] 2.2 `tempo.yaml`: `live_store.max_block_duration: 1m`; update its comment.
-- [ ] 2.3 `loki.yaml`: `ingester.max_chunk_age: 1h` (comment: sets the out-of-order window to 30 minutes; `reject_old_samples_max_age` stays); `storage_config.tsdb_shipper.resync_interval: 1m` (comment: read side; the index uploads on Loki's fixed 15-minute rotation).
+- [x] 2.3 `loki.yaml`: `ingester.max_chunk_age: 1h` (comment: sets the out-of-order window to 30 minutes; `reject_old_samples_max_age` stays); `storage_config.tsdb_shipper.resync_interval: 1m` (comment: read side; the index uploads on Loki's fixed 15-minute rotation).
 - [x] 2.4 Unit tests on the rendered configs (`*ManifestBuilderTest`, real `TemplateService`): the new values; replace the "blocks are two hours" and "blocks are cut every five minutes" tests.
 - [x] 2.5 Integration test (real Mimir image + LocalStack, no shutdown): a sample appears in a block under `mimir/<tenant>/` within about 3 minutes.  Mimir starting proves 3.2.1 accepts `[1m]` with `out_of_order_time_window: 10m`.
 - [x] 2.6 Integration test (real Tempo image + LocalStack, no shutdown): a span's block reaches `tempo/<tenant>/` within about 2 minutes.  Remove the "shorter block cut" override from `TempoBlockDurabilityIntegrationTest` so the real config is tested.
-- [ ] 2.7 Remove the Loki upload-speed integration test: a 1-hour chunk age cannot be waited out in the integration tier.  The rendered-config unit test (2.4) proves the value.
+- [x] 2.7 Remove the Loki upload-speed integration test: a 1-hour chunk age cannot be waited out in the integration tier.  The rendered-config unit test (2.4) proves the value.
 
 ## 3. Thread-safe foundations (folded-in debt)
 
@@ -60,5 +60,5 @@
 - [x] 8.1 Root `CLAUDE.md`: append to the ABSOLUTE RULE on deleting data, verbatim: "Compaction is not deletion. A compactor that writes a merged object holding all of its sources' data, and then removes those sources, loses nothing and is allowed. Retention, expiry, and any removal that is not replaced by a merged copy stay forbidden. Every compactor runs with retention off."
 - [x] 8.2 Root `CLAUDE.md`: update "Storage backends" (the two-phase parallel save, Tempo drain, per-signal record) and "Observability store and tenant" (the tool-named roots, the IAM split).
 - [x] 8.3 `configuration/CLAUDE.md` (tailFlush, `cluster-config` keys, Pyroscope path, store layout), `commands/CLAUDE.md` (the `TeardownBackupService` row), `services/aws/CLAUDE.md` (paths).
-- [ ] 8.4 User docs: `docs/user-guide/monitoring.md`, `loki.md` (the 30-minute out-of-order window), `mimir.md`, `profiling.md`; `docs/reference/commands.md` (`down`: what it saves, the phases, `--force` listing); `log-infrastructure.md`, `opentelemetry.md`, `pyroscope-configuration.md`.
+- [x] 8.4 User docs: `docs/user-guide/monitoring.md`, `loki.md` (the 30-minute out-of-order window), `mimir.md`, `profiling.md`; `docs/reference/commands.md` (`down`: what it saves, the phases, `--force` listing); `log-infrastructure.md`, `opentelemetry.md`, `pyroscope-configuration.md`.
 - [x] 8.5 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21), `./gradlew test`, and `./gradlew integrationTest`; all pass.

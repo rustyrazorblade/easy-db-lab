@@ -61,11 +61,12 @@ ingester:
     dir: /loki/wal
     # A graceful stop flushes every chunk in memory to S3.
     flush_on_shutdown: true
-  # Flush a chunk once it spans 5 minutes, so a stream that keeps writing reaches S3 within minutes.
-  # This also sets the per-stream out-of-order window to 2.5 minutes (half this age): a line more
-  # than 2.5 minutes older than its stream's newest line is rejected. The annotation
-  # mirror is not affected: each annotation is a stream of its own.
-  max_chunk_age: 5m
+  # Flush a chunk once it spans an hour, so a stream that keeps writing reaches S3 within about an hour.
+  # This also sets the per-stream out-of-order window to 30 minutes (half this age): a line more
+  # than 30 minutes older than its stream's newest line is rejected. The window is wide so that a
+  # slow Loki restart does not drop logs. The annotation mirror is not affected: each annotation is
+  # a stream of its own.
+  max_chunk_age: 1h
   lifecycler:
     # The ingester's name is part of every index file it uploads, so each file names its tenant and
     # cluster, and two clusters in one tenant never write the same file.

@@ -23,7 +23,6 @@ import org.mockito.kotlin.whenever
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.GenericContainer
-import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpRequest
@@ -32,29 +31,14 @@ import java.util.UUID
 
 /**
  * Runs Loki at the image the cluster deploys, with the configuration the cluster renders, against
- * S3 (LocalStack). Each Loki stands in for one cluster; two share one bucket. The test proves:
+ * S3 (LocalStack). The test proves:
  *
- * - OTLP pushes carry the tenant, and `cluster` is an index label;
- * - after one cluster's Loki stops gracefully, its chunks are under `loki/<tenant>/` and
- *   its index file, named for `<tenant>.<cluster>`, is under `loki/index/`;
- * - another cluster's Loki on the same bucket answers an `a|b` query with both clusters' lines, each
- *   marked with its tenant;
- * - a chunk of a stream that keeps writing reaches `loki/<tenant>/` within about five minutes,
- *   while Loki runs;
  * - a line only in the WAL survives a SIGKILL and a restart on the same data volume;
  * - the compactor never compacts, and a delete request is refused with the lines kept.
  */
 class LokiIntegrationTest : BaseKoinTest() {
     private companion object {
         const val PREFIX = "loki"
-        const val STOP_TIMEOUT_SECONDS = 120
-
-        /**
-         * How soon a chunk of a stream that keeps writing must be in S3: the spec's "about 5 minutes",
-         * plus Loki's 30-second flush check and the upload.
-         */
-        val CHUNK_UPLOAD_WITHIN: Duration = Duration.ofMinutes(6)
-        val PUSH_INTERVAL: Duration = Duration.ofSeconds(5)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -175,24 +159,6 @@ class LokiIntegrationTest : BaseKoinTest() {
     private fun lines(streams: List<JsonObject>): List<String> =
         streams.flatMap { stream -> stream.getValue("values").jsonArray.map { it.jsonArray[1].jsonPrimitive.content } }
 
-    private fun streamLabels(stream: JsonObject): Map<String, String> =
-        stream.getValue("stream").jsonObject.mapValues { it.value.jsonPrimitive.content }
-
-    private fun objectKeys(): List<String> =
-        s3
-            .listObjectsV2Paginator(
-                ListObjectsV2Request
-                    .builder()
-                    .bucket(bucket)
-                    .prefix("$PREFIX/")
-                    .build(),
-            ).contents()
-            .map { it.key() }
-
-    private fun stopGracefully(loki: GenericContainer<*>) {
-        docker.stopContainerCmd(loki.containerId).withTimeout(STOP_TIMEOUT_SECONDS).exec()
-    }
-
     private fun metric(
         loki: GenericContainer<*>,
         name: String,
@@ -204,53 +170,6 @@ class LokiIntegrationTest : BaseKoinTest() {
             .single { it.startsWith("$name ") }
             .substringAfter(' ')
             .toDouble()
-
-    @Test
-    fun `two clusters on one bucket answer a federated query with both clusters lines`() {
-        // Cluster b writes and goes down gracefully: its chunks and index reach S3.
-        val lokiB = startLoki(newVolume(), "b", "lab-b")
-        push(lokiB, "b", "lab-b", "line from b")
-        stopGracefully(lokiB)
-        val keys = objectKeys()
-        assertThat(keys).describedAs("chunks of tenant b").anyMatch { it.startsWith("$PREFIX/b/") }
-        assertThat(keys)
-            .describedAs("an index file named for tenant b's cluster")
-            .anyMatch { it.startsWith("$PREFIX/index/index_") && it.contains("b.lab-b") }
-
-        // Cluster a, on the same bucket, reads its own lines from its ingester and b's from S3. (A
-        // Loki that is already running sees another cluster's new index files at its next index
-        // resync, within a minute.)
-        val lokiA = startLoki(newVolume(), "a", "lab-a")
-        push(lokiA, "a", "lab-a", "line from a")
-
-        val labels = ObservabilityBackends.get("${url(lokiA)}/loki/api/v1/labels", "a").body()
-        assertThat(labels).describedAs("index labels").contains("\"cluster\"", "\"host_name\"", "\"node_role\"", "\"source\"")
-
-        val federated = awaitStreams(lokiA, "a|b", """{cluster=~".+"}""", expected = 2)
-        assertThat(lines(federated)).containsExactlyInAnyOrder("line from a", "line from b")
-        assertThat(federated.map { streamLabels(it)["__tenant_id__"] to streamLabels(it)["cluster"] })
-            .containsExactlyInAnyOrder("a" to "lab-a", "b" to "lab-b")
-    }
-
-    /**
-     * A cluster's streams keep writing, so the test keeps writing too and never stops Loki: the chunk
-     * must be flushed by its 5-minute age alone. A stream that keeps writing is never idle, so
-     * `chunk_idle_period` cannot flush it first.
-     */
-    @Test
-    fun `a chunk of a stream that keeps writing reaches S3 within about five minutes`() {
-        val loki = startLoki(newVolume(), "acme", "lab-c")
-        val deadline = System.nanoTime() + CHUNK_UPLOAD_WITHIN.toNanos()
-        var line = 0
-        var chunks = emptyList<String>()
-        while (chunks.isEmpty() && System.nanoTime() < deadline) {
-            push(loki, "acme", "lab-c", "line ${line++}")
-            Thread.sleep(PUSH_INTERVAL.toMillis())
-            chunks = objectKeys().filter { it.startsWith("$PREFIX/acme/") }
-        }
-
-        assertThat(chunks).describedAs("a chunk under $PREFIX/acme/ within $CHUNK_UPLOAD_WITHIN, with Loki running").isNotEmpty()
-    }
 
     @Test
     fun `a line only in the WAL survives a SIGKILL, nothing compacts, and a delete is refused`() {

@@ -5,6 +5,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class ClusterStateManagerTest {
     @Test
@@ -112,5 +114,37 @@ class ClusterStateManagerTest {
         assertThatThrownBy { ClusterStateManager(stateFile).load() }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
+    }
+
+    /**
+     * `down` records a signal while other threads read the state (`ObservabilityHttp` loads it per
+     * request). A reader must see either the old file or the new one, never a half-written one.
+     */
+    @Test
+    fun `a load during repeated saves never reads a torn file`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+        // A large state makes a non-atomic write take long enough for a reader to catch it midway.
+        val big = ClusterState(name = "test-cluster", versions = (1..2000).associate { "k$it" to "v".repeat(40) }.toMutableMap())
+        manager.save(big)
+
+        val saving = AtomicBoolean(true)
+        val failures = AtomicInteger()
+        val reader =
+            Thread {
+                while (saving.get()) {
+                    runCatching { ClusterStateManager(stateFile).load() }.onFailure { failures.incrementAndGet() }
+                }
+            }.apply { start() }
+
+        repeat(300) { i -> manager.save(big.copy(stressJobCounter = i)) }
+        saving.set(false)
+        reader.join()
+
+        assertThat(failures.get()).describedAs("loads that read a partial state.json").isZero()
+        assertThat(manager.load().stressJobCounter).isEqualTo(299)
+        assertThat(tempDir.list().orEmpty().toList()).describedAs("no temp file left behind").containsExactly("state.json")
     }
 }

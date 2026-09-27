@@ -8,6 +8,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.rustyrazorblade.easydblab.Constants
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 
 /**
@@ -59,8 +61,21 @@ class ClusterStateManager(
 
     /**
      * Save cluster state to the configured file.
+     *
+     * The state is written to a temp file in the same directory, which is then renamed over the
+     * state file in one atomic step. `down` records a signal while other threads load the state, and
+     * a reader must see the old file or the new one, never a half-written one.
      */
-    fun save(state: ClusterState) = mapper.writerWithDefaultPrettyPrinter().writeValue(stateFile, state)
+    fun save(state: ClusterState) {
+        val target = stateFile.absoluteFile.toPath()
+        val temp = Files.createTempFile(target.parent, "${target.fileName}.", ".tmp")
+        try {
+            mapper.writerWithDefaultPrettyPrinter().writeValue(temp.toFile(), state)
+            Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            Files.deleteIfExists(temp)
+        }
+    }
 
     /**
      * Check if the state file exists.

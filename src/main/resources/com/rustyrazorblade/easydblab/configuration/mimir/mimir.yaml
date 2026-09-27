@@ -30,8 +30,8 @@ activity_tracker:
 
 blocks_storage:
   backend: s3
-  # Mimir accepts only letters and digits here, so the metrics root sits beside observability/,
-  # not under it. Mimir makes one directory per tenant under it.
+  # The metrics root, mimir, at the top level of the account bucket. Mimir makes one directory per
+  # tenant under it.
   storage_prefix: ${METRICS_S3_PREFIX}
   s3:
     bucket_name: ${S3_BUCKET}

@@ -134,7 +134,7 @@ A plain global marker (no `--dashboard` and no `--panel` scope) is automatically
 
 ### Backing up annotations
 
-The cluster is ephemeral, but the annotations are worth keeping. Back them up to the tenant's annotations directory in the account bucket (`observability/annotations/<tenant>/`):
+The cluster is ephemeral, but the annotations are worth keeping. Back them up to the tenant's annotations directory in the account bucket (`grafana/annotations/<tenant>/`):
 
 ```bash
 easy-db-lab grafana backup
@@ -146,15 +146,15 @@ This backup also runs automatically before teardown. When you run `easy-db-lab d
 
 Every cluster belongs to an observability **tenant**, chosen at `init --tenant <name>` (default `default`) and fixed for the life of the cluster. Clusters that share a tenant share one store: their metrics, logs, traces, profiles and annotations sit side by side and can be read together.
 
-All of a cluster's observability data lands in the account bucket. Mimir's prefix is `observabilitymetrics`, because Mimir accepts only letters and digits in it; everything else is under `observability/`:
+All of a cluster's observability data lands in the account bucket. Each backend has its own root at the top level of the bucket, named for the tool whose file format it holds:
 
 | Location | What | Written by |
 |----------|------|------------|
-| `observability/traces/<tenant>/` | Tempo blocks | Tempo, while the cluster runs |
-| `observability/profiles/` | Pyroscope v2 segments and blocks | the Pyroscope server, while the cluster runs |
-| `observabilitymetrics/<tenant>/` | Mimir blocks | Mimir, while the cluster runs, and its flush at `down` |
-| `observability/logs/` | Loki chunks (under the tenant) and TSDB index (under `index/`) | Loki, while the cluster runs, and its flush at `down` |
-| `observability/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json` | Grafana annotations | `grafana backup`, and `down` |
+| `tempo/<tenant>/` | Tempo blocks | Tempo, while the cluster runs |
+| `pyroscope/` | Pyroscope v2 segments and blocks | the Pyroscope server, while the cluster runs |
+| `mimir/<tenant>/` | Mimir blocks | Mimir, while the cluster runs, and its flush at `down` |
+| `loki/` | Loki chunks (under the tenant) and TSDB index (under `index/`) | Loki, while the cluster runs, and its flush at `down` |
+| `grafana/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json` | Grafana annotations | `grafana backup`, and `down` |
 
 An annotations backup never overwrites another: when one of the same cluster already exists under that second's name (a `grafana backup` just before `down`, say), the new one takes the next free second.
 
@@ -166,7 +166,7 @@ Cluster configuration stays under `clusters/<name>-<id>/config/`. The observabil
 
 **Durability across restarts.** Tempo cuts a block at most every five minutes and uploads it while the cluster runs. Both of its write-ahead logs live on the control node's disk (`/mnt/db1/tempo`), so a restart of the Tempo pod does not lose spans it received but has not yet uploaded. Tempo acknowledges a push while the spans are still in memory and writes them to the WAL about 2 seconds later (10 seconds at most for a trace that is still receiving spans). A graceful restart writes every in-memory trace to the WAL first and loses nothing. A Tempo process killed outright loses only the spans from those last 2 seconds. The WAL is not fsynced, so a crash of the control node itself can also lose WAL data the operating system had not yet written to disk. Tempo keeps every span it receives: its per-tenant limits on live traces and trace size are off, and its ingestion rate limit is 1 GB/s, so a stress load is not thinned out. It also stores every attribute value in full: the distributor's `max_attribute_bytes` is 0, where Tempo's default of 2048 bytes would truncate long values such as `process.command_line`. Any span Tempo does drop is counted in `tempo_discarded_spans_total`. The Pyroscope metastore index lives on `/mnt/db1/pyroscope`, so profiles written before a Pyroscope restart are still returned after it.
 
-**Known limit: Pyroscope after teardown.** Pyroscope v2 finds blocks only through the cluster's local metastore index and cannot rebuild it from S3. After `down`, the profiles stay in `observability/profiles/` but cannot be queried until the index is saved at teardown (planned in #966).
+**Known limit: Pyroscope after teardown.** Pyroscope v2 finds blocks only through the cluster's local metastore index and cannot rebuild it from S3. After `down`, the profiles stay in `pyroscope/` but cannot be queried until the index is saved at teardown (planned in #966).
 
 **Restarts.** `up` and `grafana update-config` restart an observability workload only when its configuration changed: each workload's pod template carries a hash of the pod template itself (image, probes, environment, volumes) and of the ConfigMaps it reads. A dashboard edit no longer restarts Tempo or Pyroscope. Both commands print, for each workload, whether its configuration changed (and it is rolling) or is unchanged (and it is left running). A new image or probe counts as a change, because Kubernetes rolls the workload for it.
 

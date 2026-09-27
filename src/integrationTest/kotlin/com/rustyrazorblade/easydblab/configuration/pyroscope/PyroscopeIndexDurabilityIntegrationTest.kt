@@ -35,10 +35,10 @@ import java.util.UUID
  * Runs the Pyroscope server at the image the cluster deploys, with the configuration the cluster
  * renders, against S3 (LocalStack). It proves the rendered configuration is accepted by the real
  * binary (its parser rejects unknown keys), that a profile written with the cluster's tenant is
- * stored under `observability/profiles/` and is visible only to that tenant, and that the v2
+ * stored under `pyroscope/` and is visible only to that tenant, and that the v2
  * metastore index — the only record of where the blocks are — survives a restart on the same data
  * volume, so the profile is still returned afterwards. It also proves that two clusters in the same
- * tenant, each with its own Pyroscope and metastore, write into the same `observability/profiles/`
+ * tenant, each with its own Pyroscope and metastore, write into the same `pyroscope/`
  * directory at the same time and each keeps every profile it wrote.
  *
  * The data directory is a Docker volume, standing in for the control node's hostPath; a restarted

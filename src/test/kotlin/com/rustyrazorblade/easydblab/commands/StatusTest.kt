@@ -311,12 +311,12 @@ class StatusTest : BaseKoinTest() {
         Status().execute()
         val output = capturedOutput()
         assertThat(output).contains("Tenant:    default")
-        assertThat(output).contains("s3://test-bucket-123/observability/traces")
-        assertThat(output).contains("s3://test-bucket-123/observability/profiles")
-        assertThat(output).contains("s3://test-bucket-123/observabilitymetrics/default")
-        assertThat(output).contains("s3://test-bucket-123/observability/logs")
-        assertThat(output).doesNotContain("observability/metrics/").doesNotContain("observability/logs/default")
-        assertThat(output).contains("s3://test-bucket-123/observability/annotations/default")
+        assertThat(output).contains("s3://test-bucket-123/tempo")
+        assertThat(output).contains("s3://test-bucket-123/pyroscope")
+        assertThat(output).contains("s3://test-bucket-123/mimir/default")
+        assertThat(output).contains("s3://test-bucket-123/loki")
+        assertThat(output).doesNotContain("observability").doesNotContain("loki/default")
+        assertThat(output).contains("s3://test-bucket-123/grafana/annotations/default")
     }
 
     @Test

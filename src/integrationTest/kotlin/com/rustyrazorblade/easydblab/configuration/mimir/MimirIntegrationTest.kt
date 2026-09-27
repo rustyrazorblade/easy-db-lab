@@ -38,7 +38,7 @@ import java.util.UUID
  *
  * - two tenants write by remote write, carrying their cluster label, and each reads only its own;
  * - one query naming `a|b` returns both tenants' series, each marked with `__tenant_id__`;
- * - after the head is compacted into a block, the block lands under `observabilitymetrics/<tenant>/`
+ * - after the head is compacted into a block, the block lands under `mimir/<tenant>/`
  *   and the samples are still answered, now from the local block;
  * - after a SIGKILL and a restart on the same data volume, every sample written before the kill is
  *   still answered: the WAL replays and the local block is kept;

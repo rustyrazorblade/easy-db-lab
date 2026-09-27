@@ -14,7 +14,7 @@ Mimir 3.2.1 runs as one process on the control node:
 
 - **Ports**: 9009 (HTTP), 9097 (gRPC), 7947 (memberlist, loopback only)
 - **Local data**: `/mnt/db1/mimir` on the control node (write-ahead log and the blocks not yet shipped)
-- **Object storage**: `s3://<account-bucket>/observabilitymetrics/<tenant>/`
+- **Object storage**: `s3://<account-bucket>/mimir/<tenant>/`
 - **Tenancy**: native multi-tenancy; the tenant is the cluster's observability tenant
 
 Mimir cuts a two-hour block and ships it to S3 within a minute. Queries for recent data are served from the ingester; older data is read from S3.

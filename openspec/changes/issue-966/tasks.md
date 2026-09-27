@@ -1,12 +1,12 @@
 ## 1. Storage layout
 
-- [ ] 1.1 `Constants.Observability`: replace `PREFIX`, `TRACES_DIR`, `PROFILES_DIR`, `LOGS_DIR`, `ANNOTATIONS_DIR` and `METRICS_ROOT = "observabilitymetrics"` with `METRICS_ROOT = "mimir"`, `LOGS_ROOT = "loki"`, `TRACES_ROOT = "tempo"`, `PROFILES_ROOT = "pyroscope"`, `GRAFANA_ROOT = "grafana"`, `ANNOTATIONS_DIR = "annotations"`.  Keep the `index` tenant reservation.
-- [ ] 1.2 `ObservabilityStore`: drop `root()`; each prefix is its tool root; `annotationsRoot()` is `grafana/annotations/<tenant>`.  Update the KDoc.
-- [ ] 1.3 Update KDoc and comments that name the former prefixes: `ClusterConfigData`, `TemplateService`, `mimir.yaml`, `pyroscope/config.yaml`, the four manifest builders, `LokiTailFlush`, `MimirTailFlush`, `GrafanaAnnotationBackupService`, `GrafanaBackup`, `ClusterS3Path`, `help/observability.md`.
-- [ ] 1.4 `AWSPolicy`: deny `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/*`, `loki/*`, `tempo/*`, `grafana/*`; leave `pyroscope/*` out.  Comment cites "compaction is not deletion".
-- [ ] 1.5 `bin/end-to-end-test`: `observabilitymetrics/` → `mimir/`, `observability/logs/index/` → `loki/index/`.
-- [ ] 1.6 Tests: `ObservabilityStoreTest` (every prefix and the annotations key under the new roots); `AWSPolicyTest` (deny covers the four roots, not `pyroscope/`); `ClusterConfigDataTest` (new prefix values); update the prefix literals in `DownS3NoExpiryIntegrationTest`, `TeardownFlushIntegrationTest`, `ObservabilityBackends` and the config-path tests.
-- [ ] 1.7 Search the tree (source, resources, tests, docs, `bin/`) and confirm no `observabilitymetrics` and no `observability/` S3 prefix remains.
+- [x] 1.1 `Constants.Observability`: replace `PREFIX`, `TRACES_DIR`, `PROFILES_DIR`, `LOGS_DIR`, `ANNOTATIONS_DIR` and `METRICS_ROOT = "observabilitymetrics"` with `METRICS_ROOT = "mimir"`, `LOGS_ROOT = "loki"`, `TRACES_ROOT = "tempo"`, `PROFILES_ROOT = "pyroscope"`, `GRAFANA_ROOT = "grafana"`, `ANNOTATIONS_DIR = "annotations"`.  Keep the `index` tenant reservation.
+- [x] 1.2 `ObservabilityStore`: drop `root()`; each prefix is its tool root; `annotationsRoot()` is `grafana/annotations/<tenant>`.  Update the KDoc.
+- [x] 1.3 Update KDoc and comments that name the former prefixes: `ClusterConfigData`, `TemplateService`, `mimir.yaml`, `pyroscope/config.yaml`, the four manifest builders, `LokiTailFlush`, `MimirTailFlush`, `GrafanaAnnotationBackupService`, `GrafanaBackup`, `ClusterS3Path`, `help/observability.md`.
+- [x] 1.4 `AWSPolicy`: deny `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/*`, `loki/*`, `tempo/*`, `grafana/*`; leave `pyroscope/*` out.  Comment cites "compaction is not deletion".
+- [x] 1.5 `bin/end-to-end-test`: `observabilitymetrics/` → `mimir/`, `observability/logs/index/` → `loki/index/`.
+- [x] 1.6 Tests: `ObservabilityStoreTest` (every prefix and the annotations key under the new roots); `AWSPolicyTest` (deny covers the four roots, not `pyroscope/`); `ClusterConfigDataTest` (new prefix values); update the prefix literals in `DownS3NoExpiryIntegrationTest`, `TeardownFlushIntegrationTest`, `ObservabilityBackends` and the config-path tests.
+- [x] 1.7 Search the tree (source, resources, tests, docs, `bin/`) and confirm no `observabilitymetrics` and no `observability/` S3 prefix remains.
 
 ## 2. Upload speed
 

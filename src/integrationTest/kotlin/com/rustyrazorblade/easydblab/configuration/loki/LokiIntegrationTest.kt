@@ -35,8 +35,8 @@ import java.util.UUID
  * S3 (LocalStack). Each Loki stands in for one cluster; two share one bucket. The test proves:
  *
  * - OTLP pushes carry the tenant, and `cluster` is an index label;
- * - after one cluster's Loki stops gracefully, its chunks are under `observability/logs/<tenant>/` and
- *   its index file, named for `<tenant>.<cluster>`, is under `observability/logs/index/`;
+ * - after one cluster's Loki stops gracefully, its chunks are under `loki/<tenant>/` and
+ *   its index file, named for `<tenant>.<cluster>`, is under `loki/index/`;
  * - another cluster's Loki on the same bucket answers an `a|b` query with both clusters' lines, each
  *   marked with its tenant;
  * - a line only in the WAL survives a SIGKILL and a restart on the same data volume;
@@ -44,7 +44,7 @@ import java.util.UUID
  */
 class LokiIntegrationTest : BaseKoinTest() {
     private companion object {
-        const val PREFIX = "observability/logs"
+        const val PREFIX = "loki"
         const val STOP_TIMEOUT_SECONDS = 120
     }
 

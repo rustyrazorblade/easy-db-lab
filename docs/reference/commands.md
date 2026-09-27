@@ -181,7 +181,7 @@ easy-db-lab down [vpc-id] [options]
 1. Every Grafana annotation is mirrored to Loki. Loki accepts only entries from the last 8760 hours to 24 hours ahead; an annotation outside that window is skipped with a warning naming its id, and it stays in the annotations backup.
 2. Loki is flushed: its ingester is stopped, which writes every open chunk to S3, and each index file it built is checked in S3. If the shutdown wrote chunks but no index file is found on the control node, or the node cannot list its index, the flush fails rather than passing with nothing checked.
 3. Mimir is flushed: its ingester is stopped, which cuts and ships every block it holds, and each block is checked in S3.
-4. The Grafana annotations are backed up to `observability/annotations/<tenant>/` in the account bucket.
+4. The Grafana annotations are backed up to `grafana/annotations/<tenant>/` in the account bucket.
 
 Every step has a timeout. A redirect cluster has no local backends, so it skips these steps.
 
@@ -821,7 +821,7 @@ easy-db-lab grafana annotate --text "raised concurrent_writes to 128" --tags con
 
 Back up the cluster's Grafana annotations to the observability store in the account bucket.
 
-The annotations are the A/B config-change markers worth keeping after the ephemeral cluster is torn down. The artifact lands at `observability/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json`, so backups from clusters that share a tenant never overwrite each other. The command reports the resulting S3 URI on success. If no S3 bucket is configured, it fails fast with the standard "run `up` first" message.
+The annotations are the A/B config-change markers worth keeping after the ephemeral cluster is torn down. The artifact lands at `grafana/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json`, so backups from clusters that share a tenant never overwrite each other. The command reports the resulting S3 URI on success. If no S3 bucket is configured, it fails fast with the standard "run `up` first" message.
 
 Before it writes the file, the command mirrors every annotation to Loki (`source="annotation"`), so the annotations can also be read from Loki's store after the cluster is gone; see [Logs (Loki)](../user-guide/loki.md#annotations). An annotation older than 8760 hours or more than 24 hours ahead is outside the window Loki accepts: it is skipped with a warning naming its id, and it is still in the JSON backup.
 

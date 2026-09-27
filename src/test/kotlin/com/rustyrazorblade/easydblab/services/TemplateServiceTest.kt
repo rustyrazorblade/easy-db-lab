@@ -123,7 +123,7 @@ class TemplateServiceTest : BaseKoinTest() {
         val variables = createService().buildContextVariables()
 
         assertThat(variables).containsEntry("TENANT", "acme")
-        assertThat(variables).containsEntry("PROFILES_S3_PREFIX", "observability/profiles")
+        assertThat(variables).containsEntry("PROFILES_S3_PREFIX", "pyroscope")
         assertThat(variables).doesNotContainKey("PYROSCOPE_STORAGE_PREFIX")
     }
 

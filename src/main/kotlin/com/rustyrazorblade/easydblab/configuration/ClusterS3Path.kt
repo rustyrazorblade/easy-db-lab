@@ -8,7 +8,8 @@ package com.rustyrazorblade.easydblab.configuration
  * isolated under a cluster-specific prefix (clusters/<name>-<id>/). Within each cluster
  * prefix, paths are organized by technology subdirectories (cassandra/, clickhouse/, spark/).
  * Observability data (traces, profiles, metrics, logs, annotations) does not live here; it lives
- * under `observability/` in the same bucket, laid out by [ObservabilityStore].
+ * under the tool-named roots (`mimir/`, `loki/`, `tempo/`, `pyroscope/`, `grafana/`) in the same
+ * bucket, laid out by [ObservabilityStore].
  *
  * Example usage:
  * ```

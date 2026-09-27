@@ -14,7 +14,7 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * Builds all Tempo K8s resources as typed Fabric8 objects.
  *
  * Creates a Deployment on the control plane with S3 backend for trace storage, under
- * `observability/traces` in the account bucket. Tempo runs native multi-tenancy and never deletes a
+ * `tempo` in the account bucket. Tempo runs native multi-tenancy and never deletes a
  * block. Its write-ahead logs live on a hostPath under [DATA_HOST_PATH], so a pod restart keeps
  * received spans. Config uses Tempo runtime env expansion (`${S3_BUCKET}`, `${AWS_REGION}`,
  * `${TRACES_S3_PREFIX}`), not `__KEY__` template substitution. Env vars are injected from the

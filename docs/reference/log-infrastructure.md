@@ -53,7 +53,7 @@ The OpenTelemetry Collector runs on all nodes as a DaemonSet, collecting logs fr
 - **`logs/otlp`** — logs pushed via OTLP: Cassandra's application logs from the OpenTelemetry Java agent in the Cassandra JVM (`service_name="cassandra"`), Fluent Bit's journald lines, and remote applications (e.g. EMR Spark JVMs). This is the only path for Cassandra's `system.log` and `debug.log`; the collector does not tail those files, so each line is stored once.
 - **systemd journal** — collected via a separate Fluent Bit DaemonSet (`fluent-bit-journald`)
 
-All pipelines forward to Loki's OTLP endpoint on the control node, with the cluster's tenant in the `X-Scope-OrgID` header. Loki writes chunks and index to the account bucket under `observability/logs/`.
+All pipelines forward to Loki's OTLP endpoint on the control node, with the cluster's tenant in the `X-Scope-OrgID` header. Loki writes chunks and index to the account bucket under `loki/`.
 
 ### Spark OTel Java Agent (EMR)
 

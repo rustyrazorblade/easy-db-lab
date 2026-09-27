@@ -92,8 +92,8 @@ class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
         val second = service.backup(controlHost, clusterState).getOrThrow()
 
         assertThat(second.s3Path).isNotEqualTo(first.s3Path)
-        assertThat(first.s3Path.getKey()).isEqualTo("observability/annotations/acme/20260924-130405_lab-c0ffee.json")
-        assertThat(second.s3Path.getKey()).isEqualTo("observability/annotations/acme/20260924-130406_lab-c0ffee.json")
+        assertThat(first.s3Path.getKey()).isEqualTo("grafana/annotations/acme/20260924-130405_lab-c0ffee.json")
+        assertThat(second.s3Path.getKey()).isEqualTo("grafana/annotations/acme/20260924-130406_lab-c0ffee.json")
         assertThat(objectStore.readContent(first.s3Path)).isEqualTo(firstJson)
         assertThat(objectStore.readContent(second.s3Path)).isEqualTo(secondJson)
     }

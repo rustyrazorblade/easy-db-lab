@@ -19,7 +19,7 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * Builds Mimir's K8s resources as typed Fabric8 objects: the metrics backend on the control node.
  *
  * Mimir runs monolithic (distributor, ingester, querier, query-frontend, query-scheduler) with no
- * compactor and no store-gateway. It ships every block to `observabilitymetrics/<tenant>/` in the
+ * compactor and no store-gateway. It ships every block to `mimir/<tenant>/` in the
  * account bucket and answers every query from its own ingester, so nothing in a cluster can compact
  * or delete metrics and no query reads the S3 block store. The TSDB (head, WAL and local blocks)
  * lives on the hostPath [DATA_HOST_PATH], so a pod restart replays the WAL and keeps every block;

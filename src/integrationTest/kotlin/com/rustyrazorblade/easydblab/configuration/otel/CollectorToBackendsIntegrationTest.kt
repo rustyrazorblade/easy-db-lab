@@ -103,7 +103,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
                 ),
                 volumes[1],
                 bucket,
-                "observability/logs",
+                "loki",
                 TENANT,
                 CLUSTER,
             )

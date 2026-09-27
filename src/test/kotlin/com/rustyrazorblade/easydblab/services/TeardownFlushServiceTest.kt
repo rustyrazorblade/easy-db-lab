@@ -189,8 +189,8 @@ class TeardownFlushServiceTest {
         remote("tsdb-index/wal", "")
         remote("tsdb-index/multitenant", "index_20722/1790000000-acme.lab-c1-17.tsdb\n")
         remote("/mnt/db1/mimir/tsdb", block)
-        s3Keys += "observability/logs/index/index_20722/1790000000-acme.lab-c1-17.tsdb.gz"
-        s3Keys += "observabilitymetrics/acme/01HBLOCKA/meta.json"
+        s3Keys += "loki/index/index_20722/1790000000-acme.lab-c1-17.tsdb.gz"
+        s3Keys += "mimir/acme/01HBLOCKA/meta.json"
     }
 
     @Test
@@ -388,7 +388,7 @@ class TeardownFlushServiceTest {
 
     @Test
     fun `a block that is not in S3 fails the S3 check, and an empty block is not expected there`() {
-        s3Keys.remove("observabilitymetrics/acme/01HBLOCKA/meta.json")
+        s3Keys.remove("mimir/acme/01HBLOCKA/meta.json")
         remote(
             "/mnt/db1/mimir/tsdb",
             block + "\n=== /mnt/db1/mimir/tsdb/acme/01HEMPTY/meta.json\n" +

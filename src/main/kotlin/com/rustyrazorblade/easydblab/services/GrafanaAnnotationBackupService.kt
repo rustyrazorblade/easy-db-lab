@@ -28,7 +28,7 @@ data class GrafanaAnnotationBackupResult(
  * The annotations are the A/B config-change markers an operator wants to keep after the ephemeral
  * cluster is gone. This service captures them over the Grafana HTTP API (`GET /api/annotations`, via
  * [GrafanaDashboardService.fetchAnnotations]) and uploads the JSON verbatim to
- * `observability/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json`, so clusters in one
+ * `grafana/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json`, so clusters in one
  * tenant never overwrite each other's backups.
  */
 interface GrafanaAnnotationBackupService {

@@ -276,7 +276,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         val data = argumentCaptor<Map<String, String>>()
         verify(mockK8sService).createConfigMap(any(), any(), eq("cluster-config"), data.capture(), any())
-        assertThat(data.firstValue).containsEntry("traces_s3_prefix", "observability/traces")
+        assertThat(data.firstValue).containsEntry("traces_s3_prefix", "tempo")
         assertThat(data.firstValue).doesNotContainKey("cluster_s3_prefix")
     }
 

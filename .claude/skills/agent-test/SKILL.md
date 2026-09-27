@@ -278,12 +278,12 @@ ssh -F sshConfig control0 "curl -s 'http://localhost:3000/api/search?type=dash-d
 
 ### Metrics and Logs in S3
 
-Mimir and Loki write to the account bucket as they run; there is no backup command. Metrics sit under `observabilitymetrics/<tenant>/`, logs under `observability/logs/`. `down` flushes both before teardown.
+Mimir and Loki write to the account bucket as they run; there is no backup command. Metrics sit under `mimir/<tenant>/`, logs under `loki/`. `down` flushes both before teardown.
 
 ```bash
 BUCKET=$(jq -r .s3Bucket state.json)
-aws s3 ls "s3://${BUCKET}/observabilitymetrics/" --recursive | wc -l
-aws s3 ls "s3://${BUCKET}/observability/logs/" --recursive | wc -l
+aws s3 ls "s3://${BUCKET}/mimir/" --recursive | wc -l
+aws s3 ls "s3://${BUCKET}/loki/" --recursive | wc -l
 ```
 
 > **Note**: All `ssh` commands must use `ssh -F sshConfig <host>` — the aliases set by `source env.sh` (e.g. `ssh db0`) only exist in the shell where env.sh was sourced and do not persist across Bash tool invocations.

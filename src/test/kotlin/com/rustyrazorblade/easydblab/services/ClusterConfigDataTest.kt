@@ -37,9 +37,9 @@ class ClusterConfigDataTest {
         val data = ClusterConfigData.of(control, state, "us-west-2")
 
         assertThat(data)
-            .containsEntry("metrics_s3_prefix", "observabilitymetrics")
-            .containsEntry("logs_s3_prefix", "observability/logs")
-            .containsEntry("traces_s3_prefix", "observability/traces")
+            .containsEntry("metrics_s3_prefix", "mimir")
+            .containsEntry("logs_s3_prefix", "loki")
+            .containsEntry("traces_s3_prefix", "tempo")
             .containsEntry("cluster_name", "lab-abc123")
     }
 }

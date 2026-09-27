@@ -64,7 +64,7 @@ class AWSpolicyTest {
 
         /**
          * The cluster must not be able to delete observability data: the instance role is denied
-         * deletes on the metrics, logs, traces and annotations prefixes. Profiles are left out because
+         * deletes under mimir/, loki/, tempo/ and grafana/. pyroscope/ is left out because
          * Pyroscope v2 compaction deletes the segments it merged.
          */
         @Test
@@ -86,12 +86,12 @@ class AWSpolicyTest {
 
             assertThat(values("Action")).containsExactlyInAnyOrder("s3:DeleteObject", "s3:DeleteObjectVersion")
             assertThat(values("Resource")).containsExactlyInAnyOrder(
-                "arn:aws:s3:::easy-db-lab-*/observabilitymetrics/*",
-                "arn:aws:s3:::easy-db-lab-*/observability/logs/*",
-                "arn:aws:s3:::easy-db-lab-*/observability/traces/*",
-                "arn:aws:s3:::easy-db-lab-*/observability/annotations/*",
+                "arn:aws:s3:::easy-db-lab-*/mimir/*",
+                "arn:aws:s3:::easy-db-lab-*/loki/*",
+                "arn:aws:s3:::easy-db-lab-*/tempo/*",
+                "arn:aws:s3:::easy-db-lab-*/grafana/*",
             )
-            assertThat(values("Resource")).noneMatch { it.contains("profiles") }
+            assertThat(values("Resource")).noneMatch { it.contains("pyroscope") }
         }
 
         @Test

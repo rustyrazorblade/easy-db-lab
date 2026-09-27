@@ -20,7 +20,7 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  *
  * Loki runs as a single binary (`target: all`), the only single-process target that both writes and
  * reads the S3 index, with its compactor idle: compaction pushed ten years out, retention off and
- * deletion disabled. Chunks and index files land under `observability/logs/` in the account bucket.
+ * deletion disabled. Chunks and index files land under `loki/` in the account bucket.
  * The WAL, the TSDB index head, the uploader's name and the compactor's working directory live on
  * the hostPath [DATA_HOST_PATH], so a pod restart replays the WAL and a later upload keeps its file
  * names; the long grace period gives a graceful stop time to flush every chunk.

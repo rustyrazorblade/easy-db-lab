@@ -57,7 +57,7 @@ class ConfigHashRolloutIntegrationTest {
             "control_node_ip" to "10.0.0.1",
             "aws_region" to "us-west-2",
             "s3_bucket" to "acct-bucket",
-            "traces_s3_prefix" to "observability/traces",
+            "traces_s3_prefix" to "tempo",
             "cluster_name" to "test",
         )
 

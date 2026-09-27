@@ -201,7 +201,7 @@ class PyroscopeManifestBuilder(
      * Builds the Pyroscope server Deployment.
      *
      * Runs on the control plane node with hostNetwork enabled. Profiles are stored in S3 under
-     * `observability/profiles` in the account bucket (configured at build time via TemplateService);
+     * `pyroscope` in the account bucket (configured at build time via TemplateService);
      * the v2 metastore index lives on the node at [DATA_HOST_PATH], so a pod restart keeps it.
      *
      * A startup probe holds liveness off until `/ready` first passes, because Pyroscope 2 spends

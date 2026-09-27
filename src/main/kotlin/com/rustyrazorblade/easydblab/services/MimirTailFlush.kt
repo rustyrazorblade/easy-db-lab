@@ -19,7 +19,7 @@ import kotlinx.serialization.json.Json
  * 3. The failed-compaction counter did not move, and some local block's `maxTime` covers the head's
  *    newest sample (a head with no samples needs no block).
  * 4. Every block the shipper uploads (samples, compaction level 1) has its `meta.json` in S3 under
- *    `observabilitymetrics/<tenant>/<block>/` — the shipper writes it last.
+ *    `mimir/<tenant>/<block>/` — the shipper writes it last.
  * 5. Scale Mimir to 0.
  *
  * Each step is recorded in the [FlushProgress] before it runs, and so is each change to Mimir's

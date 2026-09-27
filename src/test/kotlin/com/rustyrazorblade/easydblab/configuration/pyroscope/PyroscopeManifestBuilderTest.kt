@@ -140,7 +140,7 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
 
         assertThat(scalarAt(config, "storage", "backend")).isEqualTo("s3")
         assertThat(scalarAt(config, "storage", "s3", "bucket_name")).isEqualTo("acct-bucket")
-        assertThat(scalarAt(config, "storage", "prefix")).isEqualTo("observability/profiles")
+        assertThat(scalarAt(config, "storage", "prefix")).isEqualTo("pyroscope")
         assertThat(config).doesNotContain("easy-db-lab-data-abc")
     }
 

@@ -4,7 +4,7 @@ multitenancy_enabled: true
 # Pure v2 storage. The default, v1-v2-dual, writes every profile twice.
 architecture_storage: v2
 
-# The account bucket, under observability/profiles. Pyroscope v2 lays out its own directories
+# The account bucket, under the pyroscope root. Pyroscope v2 lays out its own directories
 # (segments, blocks) under this prefix. Nothing is written to the cluster's data bucket.
 storage:
   backend: s3

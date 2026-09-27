@@ -67,7 +67,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
         const val TENANT = "acme"
         const val CLUSTER = "lab-f1"
         const val HELPER_IMAGE = "ubuntu:24.04"
-        const val LOGS_PREFIX = "observability/logs"
+        const val LOGS_PREFIX = "loki"
         val POLL: Duration = Duration.ofSeconds(2)
     }
 

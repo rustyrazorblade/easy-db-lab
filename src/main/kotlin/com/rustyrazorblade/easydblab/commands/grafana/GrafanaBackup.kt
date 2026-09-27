@@ -13,7 +13,7 @@ import picocli.CommandLine.Command
 
 /**
  * Backs up the cluster's Grafana annotations to the tenant's annotations directory in the account
- * bucket, `observability/annotations/<tenant>/`.
+ * bucket, `grafana/annotations/<tenant>/`.
  *
  * The annotations are the A/B config-change markers worth keeping after the ephemeral cluster is
  * torn down. Every Grafana annotation, including ones made in the UI, is first mirrored to Loki

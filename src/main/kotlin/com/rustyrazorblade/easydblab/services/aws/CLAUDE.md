@@ -90,4 +90,4 @@ Services that call S3 indirectly (via `ObjectStore`) also need integration tests
 ## S3 data handling
 
 - **Nothing sets a lifecycle, expiry or retention rule.** `down` only disables the data bucket's request metrics (`teardownDataBucket`); with `--all` it deletes a data bucket only when it is empty (`deleteEmptyBucket`, a `Result` carrying S3's error), and emits `Event.S3.DataBucketKept(bucket, reason)` for one it leaves in place. The IAM policy grants no lifecycle actions.
-- **Observability data lives in the account bucket** under `observability/` (see `configuration/ObservabilityStore`). The per-cluster data bucket holds database data (ClickHouse S3 storage, Cassandra artifacts, Spark); the observability stack writes nothing to it.
+- **Observability data lives in the account bucket** under the tool-named roots `mimir/`, `loki/`, `tempo/`, `pyroscope/` and `grafana/annotations/<tenant>/` (see `configuration/ObservabilityStore`). The per-cluster data bucket holds database data (ClickHouse S3 storage, Cassandra artifacts, Spark); the observability stack writes nothing to it.

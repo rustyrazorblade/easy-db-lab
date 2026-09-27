@@ -6,12 +6,13 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 /**
- * The layout of a cluster's observability data under `observability/` in the account bucket.
+ * The layout of a cluster's observability data in the account bucket.
  *
- * This is the one place that builds those paths. Mimir, Loki, Tempo and Pyroscope run native
+ * This is the one place that builds those paths. Each backend's root sits at the top level of the
+ * bucket, named for the tool: `mimir/`, `loki/`, `tempo/` and `pyroscope/`. Those tools run native
  * multi-tenancy and lay out their own tenant directories, so their backends get a fixed prefix with
  * no tenant in it. The annotation backups have no backend to do that, so they carry the tenant in the
- * path: `observability/annotations/<tenant>/<backup>.json`.
+ * path: `grafana/annotations/<tenant>/<backup>.json`.
  *
  * @property bucket The account-level S3 bucket.
  * @property tenant The cluster's observability tenant.
@@ -34,22 +35,25 @@ data class ObservabilityStore(
         }
     }
 
-    private fun root(): ClusterS3Path = ClusterS3Path.root(bucket).resolve(Constants.Observability.PREFIX)
-
     /** Key prefix of Tempo's live backend; Tempo makes the tenant directories under it. */
-    fun tracesPrefix(): String = root().resolve(Constants.Observability.TRACES_DIR).getKey()
+    fun tracesPrefix(): String = Constants.Observability.TRACES_ROOT
 
     /** Mimir's storage prefix; Mimir makes the tenant directories under it. */
     fun metricsPrefix(): String = Constants.Observability.METRICS_ROOT
 
     /** Key prefix of Loki's backend; Loki lays out its tenants' chunks and its index tables under it. */
-    fun logsPrefix(): String = root().resolve(Constants.Observability.LOGS_DIR).getKey()
+    fun logsPrefix(): String = Constants.Observability.LOGS_ROOT
 
     /** Key prefix of the Pyroscope server's live backend; Pyroscope makes its own layout under it. */
-    fun profilesPrefix(): String = root().resolve(Constants.Observability.PROFILES_DIR).getKey()
+    fun profilesPrefix(): String = Constants.Observability.PROFILES_ROOT
 
     /** The tenant's Grafana annotation backups. */
-    fun annotationsRoot(): ClusterS3Path = root().resolve(Constants.Observability.ANNOTATIONS_DIR).resolve(tenant)
+    fun annotationsRoot(): ClusterS3Path =
+        ClusterS3Path
+            .root(bucket)
+            .resolve(Constants.Observability.GRAFANA_ROOT)
+            .resolve(Constants.Observability.ANNOTATIONS_DIR)
+            .resolve(tenant)
 
     /** File of one Grafana annotations backup. */
     fun annotationsArtifact(name: SnapshotName): ClusterS3Path = annotationsRoot().resolve("$name.json")

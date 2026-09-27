@@ -6,7 +6,7 @@ description: Access metrics, logs, traces, and profiles
 
 Full stack on control node: Grafana, Mimir (metrics), Loki (logs), Tempo (traces), Pyroscope (profiles). Run from workspace dir after `up`.
 
-Every backend writes to S3 while the cluster runs, under the cluster's tenant: `observabilitymetrics/<tenant>/`, `observability/logs/`, `observability/traces/`, `observability/profiles/`. `down` flushes Loki and Mimir and checks the rest is in S3 before it removes anything.
+Every backend writes to S3 while the cluster runs, under the cluster's tenant: `mimir/<tenant>/`, `loki/`, `tempo/`, `pyroscope/`. `down` flushes Loki and Mimir and checks the rest is in S3 before it removes anything.
 
 Access:
 1. `easy-db-lab status` — prints Grafana URL and the Mimir/Loki/Tempo/Pyroscope endpoints. URLs work from your browser; cluster uses Tailscale VPN or SOCKS tunnel.

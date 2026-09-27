@@ -432,12 +432,12 @@ class StatusCacheTest : BaseKoinTest() {
                 .jsonObject["paths"]!!
                 .jsonObject
 
-        assertThat(paths["traces"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/observability/traces")
-        assertThat(paths["profiles"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/observability/profiles")
-        assertThat(paths["metrics"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/observabilitymetrics/default")
-        assertThat(paths["logs"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/observability/logs")
+        assertThat(paths["traces"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/tempo")
+        assertThat(paths["profiles"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/pyroscope")
+        assertThat(paths["metrics"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/mimir/default")
+        assertThat(paths["logs"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/loki")
         assertThat(paths["annotations"]?.jsonPrimitive?.content)
-            .isEqualTo("s3://test-bucket-abc/observability/annotations/default")
+            .isEqualTo("s3://test-bucket-abc/grafana/annotations/default")
     }
 
     @Test

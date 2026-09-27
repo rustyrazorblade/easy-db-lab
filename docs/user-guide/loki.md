@@ -39,7 +39,7 @@ Loki 3.7.8 runs as one process (`target: all`) on the control node:
 
 - **Ports**: 3100 (HTTP), 9098 (gRPC)
 - **Local data**: `/mnt/db1/loki` on the control node (write-ahead log, open chunks and the index not yet shipped)
-- **Object storage**: `s3://<account-bucket>/observability/logs/`; chunks sit under the tenant, the TSDB index under `index/`
+- **Object storage**: `s3://<account-bucket>/loki/`; chunks sit under the tenant, the TSDB index under `index/`
 - **Tenancy**: native multi-tenancy; the tenant is the cluster's observability tenant
 
 Loki uploads its index to S3 as it rotates it, and reads the other clusters' index from S3 every 5 minutes. A line from another cluster in the tenant can therefore take up to 5 minutes to become readable here.

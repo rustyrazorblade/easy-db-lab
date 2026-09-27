@@ -74,7 +74,7 @@ compactor:
   retention_enabled: false
 
 limits_config:
-  # Retention and deletion are off. The IAM deny on observability/logs/ backs this up.
+  # Retention and deletion are off. The IAM deny on loki/ backs this up.
   retention_period: 0s
   deletion_mode: disabled
   # Accept a year-old line (a backdated annotation, a replayed log) and a day into the future.

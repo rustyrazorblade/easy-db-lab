@@ -103,9 +103,9 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
         assertThat(contentCaptor.firstValue).isEqualTo(annotationsJson)
         // The tenant's annotations directory, named by time and cluster.
         assertThat(pathCaptor.firstValue.getKey())
-            .matches("observability/annotations/acme/\\d{8}-\\d{6}_perf-test-c0ffee\\.json")
+            .matches("grafana/annotations/acme/\\d{8}-\\d{6}_perf-test-c0ffee\\.json")
         assertThat(result.annotationCount).isEqualTo(2)
-        assertThat(result.s3Path.toUri()).startsWith("s3://acct-bucket/observability/annotations/acme/")
+        assertThat(result.s3Path.toUri()).startsWith("s3://acct-bucket/grafana/annotations/acme/")
 
         val request = mockWebServer.takeRequest()
         assertThat(request.url.encodedPath).isEqualTo("/api/annotations")

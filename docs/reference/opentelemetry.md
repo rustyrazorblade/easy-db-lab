@@ -297,7 +297,7 @@ The collector scrapes its own telemetry into Mimir (job `otel-collector`, `:8888
 sum by (cluster, exporter) (rate(otelcol_exporter_send_failed_spans_total[5m]))
 ```
 
-Tempo cuts a block at most every five minutes, so a trace is in S3 under `observability/traces/<tenant>/` within five minutes of arriving; before that Tempo serves it from its live store.
+Tempo cuts a block at most every five minutes, so a trace is in S3 under `tempo/<tenant>/` within five minutes of arriving; before that Tempo serves it from its live store.
 
 ### High Latency
 

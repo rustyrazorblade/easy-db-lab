@@ -191,10 +191,10 @@ sealed class AWSPolicy {
                                     ),
                                 resource = IamPolicyResource.single("arn:aws:ecr:*:$accountId:repository/*"),
                             ),
-                            // No code path on a cluster may delete observability data (issue 967, D3). An
-                            // explicit deny beats the s3:* above; the owner's own deletes from a
-                            // workstation are not affected. Profiles are left out: Pyroscope v2
-                            // compaction deletes the segments it merged into a block.
+                            // No code path on a cluster may delete observability data. An explicit deny
+                            // beats the s3:* above; the owner's own deletes from a workstation are not
+                            // affected. pyroscope/ is left out: Pyroscope v2 compaction writes a merged
+                            // block and then removes the segments it merged. Compaction is not deletion.
                             IamPolicyStatement(
                                 effect = "Deny",
                                 action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
@@ -202,9 +202,9 @@ sealed class AWSPolicy {
                                     IamPolicyResource.multiple(
                                         listOf(
                                             "${Constants.Observability.METRICS_ROOT}/*",
-                                            "${Constants.Observability.PREFIX}/${Constants.Observability.LOGS_DIR}/*",
-                                            "${Constants.Observability.PREFIX}/${Constants.Observability.TRACES_DIR}/*",
-                                            "${Constants.Observability.PREFIX}/${Constants.Observability.ANNOTATIONS_DIR}/*",
+                                            "${Constants.Observability.LOGS_ROOT}/*",
+                                            "${Constants.Observability.TRACES_ROOT}/*",
+                                            "${Constants.Observability.GRAFANA_ROOT}/*",
                                         ).map { "arn:aws:s3:::easy-db-lab-*/$it" },
                                     ),
                             ),

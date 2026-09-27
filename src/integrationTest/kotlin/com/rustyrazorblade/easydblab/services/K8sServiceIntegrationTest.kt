@@ -117,7 +117,7 @@ class K8sServiceIntegrationTest {
                 .addToData("control_node_ip", "10.0.0.1")
                 .addToData("aws_region", "us-west-2")
                 .addToData("s3_bucket", "test-bucket")
-                .addToData("traces_s3_prefix", "observability/traces")
+                .addToData("traces_s3_prefix", "tempo")
                 .addToData("cluster_name", "test")
                 .build()
         client.resource(clusterConfig).forceConflicts().serverSideApply()

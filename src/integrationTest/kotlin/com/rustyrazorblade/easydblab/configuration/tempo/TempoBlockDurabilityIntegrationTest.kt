@@ -43,13 +43,13 @@ import java.util.UUID
  * the shared-tenant layout. It does not establish the cause of the missing blocks on a real cluster,
  * which only a diagnosis on a running cluster can (task group 1 of the change). It proves:
  *
- * - blocks reach S3 while Tempo runs, under `observability/traces/<tenant>/`;
+ * - blocks reach S3 while Tempo runs, under `tempo/<tenant>/`;
  * - a trace pushed 3s before Tempo is killed outright (no shutdown, no flush) reaches S3 after a
  *   restart on the same WAL volume: the live store has appended it to the WAL by then;
  * - a trace received just before a graceful stop — how Kubernetes restarts a pod — reaches S3 after
  *   the restart, because Tempo writes its live traces to the WAL on shutdown;
  * - two clusters in the same tenant, each with its own Tempo and WAL, write into the same
- *   `observability/traces/<tenant>/` directory at the same time and every block from each is kept.
+ *   `tempo/<tenant>/` directory at the same time and every block from each is kept.
  *
  * The WAL is a Docker volume shared by the successive containers, standing in for the control node's
  * hostPath. Two edits are made to the rendered configuration, for the harness only: the S3 endpoint

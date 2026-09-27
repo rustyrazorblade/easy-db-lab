@@ -1453,7 +1453,7 @@ step_teardown() {
     bucket="$(jq -r '.s3Bucket' state.json)"
     tenant="$(cluster_tenant)"
     label="$(cluster_label)"
-    blocks_before=$(aws s3 ls --recursive "s3://${bucket}/observabilitymetrics/${tenant}/" 2>/dev/null | grep -c '/meta.json$' || true)
+    blocks_before=$(aws s3 ls --recursive "s3://${bucket}/mimir/${tenant}/" 2>/dev/null | grep -c '/meta.json$' || true)
 
     echo "=== Tearing down cluster ==="
     easy-db-lab down --yes
@@ -1461,9 +1461,9 @@ step_teardown() {
 
     echo "=== Checking the teardown flush reached S3 ==="
     local blocks_after index_files
-    blocks_after=$(aws s3 ls --recursive "s3://${bucket}/observabilitymetrics/${tenant}/" 2>/dev/null | grep -c '/meta.json$' || true)
-    index_files=$(aws s3 ls --recursive "s3://${bucket}/observability/logs/index/" 2>/dev/null | grep -c "${tenant}\.${label}" || true)
-    echo "Mimir blocks under observabilitymetrics/${tenant}/: ${blocks_before} before down, ${blocks_after} after"
+    blocks_after=$(aws s3 ls --recursive "s3://${bucket}/mimir/${tenant}/" 2>/dev/null | grep -c '/meta.json$' || true)
+    index_files=$(aws s3 ls --recursive "s3://${bucket}/loki/index/" 2>/dev/null | grep -c "${tenant}\.${label}" || true)
+    echo "Mimir blocks under mimir/${tenant}/: ${blocks_before} before down, ${blocks_after} after"
     echo "Loki index files named for ${tenant}.${label}: ${index_files}"
     if [ "${blocks_after}" -le "${blocks_before}" ] || [ "${index_files}" -lt 1 ]; then
         echo "ERROR: the teardown flush did not put Mimir's head and Loki's index in S3"

@@ -91,7 +91,7 @@ class LogQlCompatibilityIntegrationTest : BaseKoinTest() {
                 ObservabilityBackends.lokiConfig(rendered),
                 volume,
                 bucket,
-                "observability/logs",
+                "loki",
                 "acme",
                 "logql-x",
             )

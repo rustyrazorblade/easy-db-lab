@@ -94,7 +94,7 @@ class DownS3NoExpiryIntegrationTest : BaseKoinTest() {
     fun `down sets no lifecycle rule and keeps every object`() {
         createBucket(accountBucket)
         createDataBucket(dataBucket)
-        val accountKeys = listOf("${state.clusterPrefix()}/victoriametrics/a.bin", "observability/metrics/default/x/b.bin")
+        val accountKeys = listOf("${state.clusterPrefix()}/victoriametrics/a.bin", "mimir/default/x/b.bin")
         accountKeys.forEach { put(accountBucket, it) }
         put(dataBucket, "pyroscope/block.bin")
 

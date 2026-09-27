@@ -29,7 +29,7 @@ data class LokiFlushResult(
  *    index files and the shipper uploads them.
  * 3. On the control node, with Loki stopped: no index write-ahead segment may remain (each is
  *    removed once its head is built), and every locally built index file must exist in S3 as
- *    `observability/logs/index/<table>/<file>.gz`. Backdated tables are covered, since every local
+ *    `loki/index/<table>/<file>.gz`. Backdated tables are covered, since every local
  *    file is checked.
  *
  * The node listings treat only a missing directory as empty; any other failure, sudo's included,

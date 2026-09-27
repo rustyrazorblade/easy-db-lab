@@ -3,9 +3,7 @@
 ## Purpose
 
 Manages TiDB deployment on K3s using the TiDB Operator, with component placement, MySQL-compatible SQL access, and Prometheus metrics integration.
-
 ## Requirements
-
 ### Requirement: TiDB Kit Deploys via TiDB Operator
 
 The TiDB kit SHALL deploy a `TidbCluster` custom resource managed by the TiDB Operator Helm chart. The operator SHALL be installed in the `tidb-admin` namespace. The cluster SHALL include PD, TiDB, TiKV, and TiFlash components.
@@ -88,12 +86,12 @@ The TiDB kit SHALL expose a NodePort service for the MySQL-compatible protocol o
 
 ### Requirement: TiDB Kit Exposes Prometheus Metrics
 
-The TiDB kit SHALL configure metrics scraping from the TiDB SQL layer Prometheus endpoint via NodePort `31080` (container port `10080`), with path `/metrics`.
+The TiDB kit SHALL configure metrics scraping by pod discovery: the TiDB SQL layer on container port `10080`, PD on `2379`, and TiFlash on `8234`, each selected by `app.kubernetes.io/component=<component>,app.kubernetes.io/instance=tidb`, with path `/metrics`. Only the collector on the node running each pod SHALL scrape it. The metrics NodePorts MAY remain for manual access but SHALL NOT be scrape targets.
 
 #### Scenario: Metrics scrape job registered
 
 - **WHEN** the TiDB kit is started
-- **THEN** a metrics scrape job is registered targeting NodePort `31080` (TiDB SQL layer) with path `/metrics`.
+- **THEN** a pod-discovery scrape job is registered for the TiDB SQL layer on container port `10080` with path `/metrics`, AND `up` has exactly one series per TiDB SQL pod
 
 ### Requirement: TiDB Kit SQL Capability
 
@@ -108,3 +106,4 @@ The TiDB kit SHALL declare a `sql` capability using `com.mysql.cj.jdbc.Driver` a
 
 - **WHEN** the user runs `easy-db-lab tidb sql "SELECT /*+ read_from_storage(tiflash[t]) */ count(*) FROM t"`
 - **THEN** the query is routed to TiFlash and results are returned.
+

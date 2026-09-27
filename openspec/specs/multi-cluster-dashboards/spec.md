@@ -3,28 +3,26 @@
 ## Purpose
 
 Ensures every Grafana dashboard can scope its data to one or more clusters through a shared `cluster` multi-select variable, cluster-scoped panel queries, and an ad hoc filters variable, all backed by the VictoriaMetrics datasource.
-
 ## Requirements
-
 ### Requirement: All dashboards have a cluster multi-select variable
 
-Every Grafana dashboard SHALL include a `cluster` template variable (lowercase) that queries all available cluster values from VictoriaMetrics. The variable SHALL support multi-select and SHALL include an "All" option that defaults to all clusters.
+Every Grafana dashboard SHALL include a `cluster` template variable (lowercase) that queries all available cluster values from Mimir. The variable SHALL support multi-select and SHALL include an "All" option that defaults to all clusters.
 
 #### Scenario: Cluster variable present on all dashboards
 
 - **WHEN** any dashboard is opened in Grafana
 - **THEN** a `cluster` variable SHALL appear in the dashboard header
-- **AND** the variable SHALL be populated by querying `label_values(up, cluster)` against the VictoriaMetrics datasource
+- **AND** the variable SHALL be populated by querying `label_values(up, cluster)` against the Mimir datasource
 
 #### Scenario: Single-cluster deployment shows one option
 
-- **WHEN** VictoriaMetrics contains metrics from exactly one cluster
+- **WHEN** Mimir contains metrics from exactly one cluster
 - **THEN** the `cluster` dropdown SHALL show exactly one value
 - **AND** the dashboard SHALL display data for that cluster without requiring manual selection
 
 #### Scenario: Multi-cluster deployment shows all clusters
 
-- **WHEN** VictoriaMetrics contains metrics from multiple clusters
+- **WHEN** Mimir contains metrics from multiple clusters
 - **THEN** the `cluster` dropdown SHALL show all distinct cluster values
 - **AND** selecting "All" SHALL aggregate metrics across all clusters
 
@@ -36,7 +34,7 @@ Every Grafana dashboard SHALL include a `cluster` template variable (lowercase) 
 
 ### Requirement: All metric panel queries are scoped by cluster
 
-Every PromQL query in a VictoriaMetrics-backed panel SHALL include `{cluster=~"$cluster"}` (or equivalent label selector) to scope results to the selected cluster(s).
+Every PromQL query in a Mimir-backed panel SHALL include `{cluster=~"$cluster"}` (or equivalent label selector) to scope results to the selected cluster(s).
 
 #### Scenario: Panel query respects cluster selection
 
@@ -52,7 +50,7 @@ Every PromQL query in a VictoriaMetrics-backed panel SHALL include `{cluster=~"$
 
 ### Requirement: Metric dashboards include an ad hoc filters variable
 
-All VictoriaMetrics-backed dashboards SHALL include a Grafana `adhocfilters` variable pointing to the VictoriaMetrics datasource. This variable SHALL enable runtime filtering by any label present in VictoriaMetrics without requiring those label names to be hardcoded in the dashboard JSON.
+All Mimir-backed dashboards SHALL include a Grafana `adhocfilters` variable pointing to the Mimir datasource. This variable SHALL enable runtime filtering by any label present in Mimir without requiring those label names to be hardcoded in the dashboard JSON.
 
 #### Scenario: Ad hoc filter variable is present
 
@@ -73,10 +71,11 @@ All VictoriaMetrics-backed dashboards SHALL include a Grafana `adhocfilters` var
 
 ### Requirement: No native ClickHouse datasource is provisioned
 
-All dashboard panels use the VictoriaMetrics (prometheus) datasource. No native ClickHouse datasource SHALL be provisioned in Grafana.
+All metric dashboard panels use the Mimir (prometheus) datasource. No native ClickHouse datasource SHALL be provisioned in Grafana.
 
 #### Scenario: ClickHouse native datasource is not provisioned
 
 - **WHEN** Grafana starts and loads its datasource provisioning
 - **THEN** no datasource of type `grafana-clickhouse-datasource` SHALL be present
-- **AND** all ClickHouse metric panels SHALL continue to function via the VictoriaMetrics datasource
+- **AND** all ClickHouse metric panels SHALL continue to function via the Mimir datasource
+

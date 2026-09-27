@@ -22,7 +22,7 @@ The system MUST provide pre-configured Grafana dashboards for all supported data
 
 Core dashboards SHALL be delivered as a file tree, not as Kubernetes objects: `grafana update-config` SHALL copy every `dashboards/<folder>/<file>.json` on the classpath onto the control node's Grafana data hostPath (`/mnt/db1/grafana/dashboards`, `/var/lib/grafana/dashboards` inside the pod), and Grafana SHALL be provisioned with exactly one file provider whose `foldersFromFilesStructure` is true and which names no folder, so each directory becomes a Grafana folder of the same title. No code SHALL enumerate dashboards by hand; the set is discovered from the classpath.
 
-All dashboards SHALL include a `cluster` multi-select variable and an ad hoc filters variable. All VictoriaMetrics-backed panel queries SHALL be scoped by `{cluster=~"$cluster"}`. No native ClickHouse datasource SHALL be provisioned.
+All dashboards SHALL include a `cluster` multi-select variable and an ad hoc filters variable. All metric panel queries SHALL be scoped by `{cluster=~"$cluster"}`. No native ClickHouse datasource SHALL be provisioned.
 
 #### Scenario: Dashboard JSON is not processed by TemplateService
 
@@ -39,7 +39,7 @@ All dashboards SHALL include a `cluster` multi-select variable and an ad hoc fil
 #### Scenario: Renderer container runs alongside Grafana
 
 - **WHEN** the Grafana deployment is applied to the cluster
-- **THEN** the pod SHALL contain a `grafana-image-renderer` container using the `grafana/grafana-image-renderer:latest` image
+- **THEN** the pod SHALL contain a `grafana-image-renderer` container using the `grafana/grafana-image-renderer` image pinned to release v5.12.4, never `latest`
 - **AND** the renderer SHALL listen on port 8081
 
 #### Scenario: Grafana is configured to use the renderer
@@ -52,11 +52,11 @@ All dashboards SHALL include a `cluster` multi-select variable and an ad hoc fil
 
 - **WHEN** any dashboard is deployed via `grafana update-config`
 - **THEN** the dashboard JSON SHALL contain a `cluster` template variable with `multi: true` and `includeAll: true`
-- **AND** the variable SHALL query `label_values(up, cluster)` against the VictoriaMetrics datasource
+- **AND** the variable SHALL query `label_values(up, cluster)` against the Mimir datasource (uid `mimir`)
 
 #### Scenario: All metric panels are cluster-scoped
 
-- **WHEN** a VictoriaMetrics-backed panel renders its query
+- **WHEN** a metric panel renders its query
 - **THEN** the PromQL expression SHALL include a `cluster=~"$cluster"` label selector
 
 #### Scenario: No native ClickHouse datasource is provisioned
@@ -132,7 +132,7 @@ The K3s cluster SHALL use Cilium as its CNI plugin with `kube-proxy` replacement
 #### Scenario: Hubble metrics reachable by OTel collector
 - **WHEN** the cluster is provisioned
 - **THEN** Hubble exposes Prometheus metrics that the OTel collector can scrape
-- **AND** those metrics flow into VictoriaMetrics via the existing remote-write pipeline
+- **AND** those metrics flow into Mimir via the existing remote-write pipeline
 
 ### Requirement: K8s workloads use hostPort for external port access
 K8s workloads installed via `config.yaml` SHALL use standard pod networking (not `hostNetwork`). Client ports and metrics ports SHALL be exposed via `hostPort` mappings in the pod spec, making them accessible on the EC2 instance's network interface. Port remapping SHALL be used when a workload's native port conflicts with a host process.
@@ -173,25 +173,32 @@ A Kubernetes ClusterIP Service named `otel-collector` SHALL be deployed in the `
 - **AND** the OTel collector SHALL continue to scrape host-networked Prometheus targets via `localhost:<port>`
 
 ### Requirement: OTel Collector collects logs from multiple sources including K8s pods
-The OTel Collector SHALL collect logs from the following sources, each in a dedicated pipeline:
-- **`logs/local`**: Host file-based logs — system (`/var/log/**`), tools (`/var/log/easydblab/tools/`), Cassandra (`/mnt/db1/cassandra/logs/`), ClickHouse server and keeper logs.
+The OTel Collector SHALL collect logs from the following sources, each in a dedicated pipeline, and SHALL export them to Loki:
+- **`logs/local`**: Host file-based logs — system (`/var/log/**`), tools (`/var/log/easydblab/tools/`), and the Cassandra JVM GC log (`/mnt/db1/cassandra/logs/gc.log*`, with `source: cassandra-gc`).
 - **`logs/containers`**: K8s pod stdout/stderr via `/var/log/containers/*.log`, enriched with Kubernetes metadata.
-- **`logs/otlp`**: OTLP-pushed logs from remote sources (e.g. Spark nodes).
+- **`logs/otlp`**: OTLP-pushed logs — Cassandra's application logs from the OpenTelemetry Java agent (`service_name="cassandra"`), Fluent Bit's journald lines, and remote sources (e.g. Spark nodes).
 
-The `filelog/system` receiver in `logs/local` SHALL explicitly exclude `/var/log/containers/**` and `/var/log/pods/**` to prevent duplication with `logs/containers`.
+The `file_log/system` receiver in `logs/local` SHALL explicitly exclude `/var/log/containers/**` and `/var/log/pods/**` to prevent duplication with `logs/containers`.
 
-#### Scenario: Host file logs reach VictoriaLogs
-- **WHEN** a Cassandra or ClickHouse process writes to its log file on the host filesystem
-- **THEN** that log entry SHALL appear in VictoriaLogs via the `logs/local` pipeline
+Cassandra's application logs (`system.log`, `debug.log`) SHALL reach Loki only over OTLP. The `file_log/cassandra` receiver SHALL tail only the JVM GC log, which the JVM writes directly and the Java agent never sees.
 
-#### Scenario: K8s pod logs reach VictoriaLogs with metadata
+#### Scenario: Host file logs reach Loki
+- **WHEN** the Cassandra JVM writes to its GC log on the host filesystem
+- **THEN** that log entry SHALL appear in Loki via the `logs/local` pipeline with `source="cassandra-gc"`
+
+#### Scenario: Cassandra application logs are stored once
+- **WHEN** Cassandra logs a line to `system.log`
+- **THEN** that line SHALL appear in Loki once, via the `logs/otlp` pipeline with `service_name="cassandra"`
+- **AND** it SHALL NOT also appear as a file entry from `file_log/cassandra`
+
+#### Scenario: K8s pod logs reach Loki with metadata
 - **WHEN** a K8s-native kit pod writes to stdout or stderr
-- **THEN** that log entry SHALL appear in VictoriaLogs via the `logs/containers` pipeline
+- **THEN** that log entry SHALL appear in Loki via the `logs/containers` pipeline
 - **AND** the entry SHALL include `k8s.pod.name`, `k8s.namespace.name`, and `app.kubernetes.io/instance` attributes
 
 #### Scenario: Container logs are not duplicated in system logs
 - **WHEN** any K8s pod emits a log line
-- **THEN** that log line SHALL NOT appear in VictoriaLogs as a raw system log entry from `filelog/system`
+- **THEN** that log line SHALL NOT appear in Loki as a raw system log entry from `file_log/system`
 
 ### Requirement: kube-state-metrics reports Kubernetes object state
 The system SHALL deploy kube-state-metrics with the core observability stack on every cluster regardless of CNI and telemetry mode, as a single-replica Deployment on the control node in the pod network, with a ServiceAccount, a read-only ClusterRole (every rule grants only `list` and `watch`), a ClusterRoleBinding, and a ClusterIP Service on port 8080. The image tag SHALL be pinned in `Constants.KubeStateMetrics.IMAGE`. The OTel collector SHALL scrape it through Kubernetes pod discovery filtered to the collector's own node, so exactly one collector scrapes it and `instance` is the pod name.
@@ -201,10 +208,10 @@ The system SHALL deploy kube-state-metrics with the core observability stack on 
 - **THEN** the `kube-state-metrics` ServiceAccount, ClusterRole, ClusterRoleBinding, Service, and Deployment exist in the `default` namespace
 - **AND** the Deployment's pod is scheduled on the control node
 
-#### Scenario: Pod state metrics reach VictoriaMetrics
+#### Scenario: Pod state metrics reach Mimir
 - **GIVEN** a cluster that is up
 - **WHEN** a pod is running
-- **THEN** `kube_pod_status_phase` for that pod is queryable in VictoriaMetrics with the cluster label
+- **THEN** `kube_pod_status_phase` for that pod is queryable in Mimir with the cluster label
 
 #### Scenario: RBAC is read-only
 - **WHEN** the `kube-state-metrics` ClusterRole is applied

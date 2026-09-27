@@ -3,9 +3,7 @@
 ## Purpose
 
 Spark job submission, monitoring, and cancellation on AWS EMR clusters with full observability integration, including OTel and Pyroscope agent installation via bootstrap actions.
-
 ## Requirements
-
 ### Requirement: Spark Job Submission
 
 The system MUST support submitting and monitoring Spark jobs on EMR with full observability instrumentation.
@@ -33,7 +31,7 @@ The system MUST support submitting and monitoring Spark jobs on EMR with full ob
 #### Scenario: Spark logs available via OTel and S3
 
 - **WHEN** a Spark job completes or fails
-- **THEN** logs are available both via OTel (VictoriaLogs, queryable by `service.name`) and via S3 log download (existing fallback mechanism)
+- **THEN** logs are available both via OTel (Loki, queryable by `service_name` and scoped to the cluster) and via S3 log download (existing fallback mechanism)
 
 #### Scenario: Bootstrap actions include control node IP
 
@@ -179,3 +177,4 @@ The system SHALL inject Pyroscope Java agent flags into Spark submit arguments s
 
 - **WHEN** a Spark job is running with the Pyroscope agent
 - **THEN** profiles are labeled with `application.name=spark-<jobName>`, `hostname`, and `cluster` for identification in Pyroscope UI
+

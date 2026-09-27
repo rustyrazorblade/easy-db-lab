@@ -3,9 +3,7 @@
 ## Purpose
 
 Remote command execution framework with systemd integration and journald-based log collection.
-
 ## Requirements
-
 ### Requirement: Foreground command execution with logging
 
 The `exec run` command SHALL execute commands on remote hosts via `systemd-run --wait`, routing stdout and stderr to the systemd journal. After the command completes, its output SHALL be displayed to the user.
@@ -104,8 +102,11 @@ The system SHALL deploy a dedicated OTel collector DaemonSet that reads systemd 
 
 ### Requirement: Journal entries have proper timestamps
 
-Journal entries collected from exec-run tools SHALL have timestamps assigned by systemd at the time each line was written, enabling accurate correlation with other log sources in VictoriaLogs.
+Journal entries collected from exec-run tools SHALL have timestamps assigned by systemd at the time each line was written, enabling accurate correlation with other log sources in Loki.
 
 #### Scenario: Timestamps enable cross-source correlation
 
-- **GIVEN** an `inotifywait` event occurs at the same time as a Cassandra log entry, **WHEN** both are queried in VictoriaLogs, **THEN** both entries SHALL have timestamps within the same second, not offset by ingestion delay.
+- **GIVEN** an `inotifywait` event occurs at the same time as a Cassandra log entry
+- **WHEN** both are queried in Loki
+- **THEN** both entries SHALL have timestamps within the same second, not offset by ingestion delay.
+

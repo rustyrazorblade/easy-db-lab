@@ -3,9 +3,7 @@
 ## Purpose
 
 A bash test runner provisions real AWS infrastructure, deploys services, runs validation steps for optional service domains (Cassandra, Spark, ClickHouse, OpenSearch, observability), and tears down the environment, with resilient step execution, breakpoints, resume, and interactive failure recovery.
-
 ## Requirements
-
 ### Requirement: End-to-end test runner
 
 The system SHALL provide a bash test runner (`bin/end-to-end-test`) that provisions real AWS infrastructure, deploys services, runs validation steps, and tears down the environment. All steps run regardless of earlier failures; diagnostics are captured for each failure.
@@ -147,22 +145,22 @@ The test runner SHALL validate the observability stack including metrics, logs, 
 #### Scenario: Observability health checks
 
 - **WHEN** the observability test step runs
-- **THEN** VictoriaMetrics and VictoriaLogs health endpoints are verified, Grafana datasources are validated, and metric ingestion is confirmed
+- **THEN** Mimir and Loki health endpoints are verified, Grafana datasources are validated, and metric ingestion is confirmed
 
 #### Scenario: Dashboard validation
 
 - **WHEN** the dashboard test step runs
 - **THEN** all Grafana dashboards load successfully
 
-#### Scenario: Metrics and logs backup
+#### Scenario: Teardown flush
 
-- **WHEN** the backup test steps run
-- **THEN** VictoriaMetrics backup and VictoriaLogs backup complete successfully
+- **WHEN** the teardown test step runs `down`
+- **THEN** the pre-teardown flush completes, and Mimir blocks and Loki index files for the cluster exist in S3
 
 #### Scenario: Logs query
 
 - **WHEN** the logs query step runs
-- **THEN** the `logs query` command returns results from VictoriaLogs
+- **THEN** the `logs query` command returns results from Loki
 
 ### Requirement: Error handling with interactive recovery
 
@@ -181,3 +179,4 @@ The test runner SHALL support listing all steps without executing them.
 
 - **WHEN** `--list-steps` or `-l` is passed
 - **THEN** all steps are printed with their numbers and names, and the script exits without running any steps
+

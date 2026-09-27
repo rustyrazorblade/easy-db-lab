@@ -3,9 +3,7 @@
 ## Purpose
 
 Grafana dashboard for interactive log investigation with filtering by node role, host, source, level, and free-text search.
-
 ## Requirements
-
 ### Requirement: Dashboard registration
 
 The system SHALL ship a "Log Investigation" dashboard at `dashboards/observability/log-investigation.json` so it is discovered by `GrafanaDashboardCatalog` and deployed with all other dashboards via `GrafanaManifestBuilder`.
@@ -101,7 +99,7 @@ The dashboard SHALL include a time-series panel showing log volume (count over t
 
 #### Scenario: Filters apply to histogram
 
-- **WHEN** user filters by `source:cassandra`
+- **WHEN** user filters by Service = `cassandra`
 - **THEN** the histogram SHALL only count Cassandra logs
 
 ### Requirement: Log viewer panel
@@ -131,3 +129,4 @@ The dashboard SHALL support auto-refresh with a default interval of 10 seconds. 
 
 - **WHEN** user changes the refresh interval to 5 seconds
 - **THEN** the dashboard SHALL refresh at the new interval
+

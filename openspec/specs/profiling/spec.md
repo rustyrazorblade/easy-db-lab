@@ -325,14 +325,20 @@ chunk remains shippable.
 ### Requirement: Completed JFR chunks are shipped to Pyroscope
 
 The system SHALL ship completed JFR chunks from each node to the Pyroscope server's ingest endpoint,
-labelled with the node's hostname and the cluster name. The system SHALL only ship chunks that are
-complete, and SHALL never ship the chunk currently being written. A chunk SHALL be shipped at most
-once, and SHALL remain retrievable after it has shipped.
+labelled with the node's hostname and the cluster name, and carrying the cluster's tenant in the
+`X-Scope-OrgID` header. The system SHALL only ship chunks that are complete, and SHALL never ship the
+chunk currently being written. A chunk SHALL be shipped at most once, and SHALL remain retrievable
+after it has shipped.
 
 #### Scenario: A completed chunk is shipped
 - **WHEN** a JFR chunk completes at the end of a rotation interval
 - **THEN** the reconciler uploads it to Pyroscope's ingest endpoint in JFR format, labelled with the
   node's hostname and cluster name, and marks it as shipped
+
+#### Scenario: A shipped chunk carries the tenant
+- **WHEN** the reconciler uploads a chunk from a cluster in tenant `acme`
+- **THEN** the upload carries `X-Scope-OrgID: acme`, and Pyroscope stores the profile under that
+  tenant
 
 #### Scenario: The chunk being written is never shipped while a session is running
 - **WHEN** the reconciler examines the profile directory while a profiling session is attached
@@ -342,7 +348,7 @@ once, and SHALL remain retrievable after it has shipped.
 #### Scenario: The final chunk of a stopped session is shipped
 - **WHEN** a session has been stopped, so its in-flight chunk was finalized and nothing is writing
 - **THEN** that chunk is shipped rather than held back as "the newest", so the last interval of the
-  run is not lost to retention
+  run is not lost
 
 #### Scenario: A shipped chunk stays retrievable and is not shipped again
 - **WHEN** a chunk has been uploaded successfully
@@ -423,38 +429,46 @@ error event types.
 
 ### Requirement: Local JFR retention is bounded
 
-The system SHALL bound the JFR chunks retained on each node by both age and total size, and SHALL
-prune automatically. Both bounds SHALL be configurable. Pruning SHALL apply to unshipped chunks as
-well, so that an unreachable Pyroscope server cannot exhaust the disk.
+The system SHALL bound the JFR chunks retained on each node by both age and total size. Both bounds
+SHALL be configurable. Pruning SHALL apply only to chunks that have shipped, because their data is in
+the profile store. The system SHALL NOT delete a chunk that has not shipped or that Pyroscope
+rejected, because that chunk is data the operator cannot get back. WHEN the profile directory reaches
+its size bound and no shipped chunk is left to prune, the system SHALL stop recording on that node
+instead of deleting data, and SHALL resume recording once the directory is back under its bound.
 
-#### Scenario: Chunks are pruned by age
-- **WHEN** a chunk ages past the configured retention window
+#### Scenario: Shipped chunks are pruned by age
+- **WHEN** a shipped chunk ages past the configured retention window
 - **THEN** it is deleted from the node
 
-#### Scenario: Chunks are pruned by total size
+#### Scenario: Shipped chunks are pruned by total size
 - **WHEN** the profile directory exceeds the configured size ceiling
-- **THEN** chunks are deleted oldest-first until it no longer does, regardless of their age
+- **THEN** shipped chunks are deleted oldest-first until it no longer does, regardless of their age
 
-#### Scenario: An unreachable server cannot fill the disk
+#### Scenario: Unshipped chunks are never pruned
 - **WHEN** Pyroscope has been unreachable for longer than the retention window
-- **THEN** unshipped chunks are pruned as well, so the profile directory stays within its bounds
+- **THEN** every unshipped chunk is kept on the node, whatever its age
 
-#### Scenario: Pruning accounts for what it deleted
-- **WHEN** pruning deletes a chunk that never reached the profile store
-- **THEN** it records that deletion as a warning and counts it separately from routine reclamation,
-  because that chunk is data the operator cannot get back and its loss must be attributable after
-  the fact
+#### Scenario: Rejected chunks are never pruned
+- **WHEN** Pyroscope has rejected chunks and the profile directory exceeds its size ceiling
+- **THEN** every rejected chunk is kept on the node, and remains retrievable and convertible to a
+  flame graph
+
+#### Scenario: Recording stops at the size bound instead of deleting data
+- **WHEN** the profile directory reaches its size ceiling and only unshipped or rejected chunks
+  remain
+- **THEN** the reconciler stops the recording session on that node and deletes no chunk
+- **AND** the stop and its reason reach the node's effective state, its logs, and its metrics, so
+  `cassandra profile status` renders it and emits a typed profiling event
+
+#### Scenario: Recording resumes once space is available
+- **WHEN** recording was stopped at the size bound and the directory falls back under its bound,
+  because chunks shipped and were pruned or the operator removed chunks
+- **THEN** the reconciler starts recording again with the desired profiling arguments
 
 #### Scenario: Profiling output does not endanger the database
 - **WHEN** profiling runs continuously over a long period
 - **THEN** the profile directory remains within its configured bounds, so it cannot exhaust the
   volume Cassandra stores data on
-
-#### Scenario: Chunks lost to pruning reach the operator
-- **WHEN** pruning destroys chunks that had never been shipped
-- **THEN** the count reaches the node's effective state as well as its logs and metrics, so
-  `cassandra profile status` renders it and emits a typed profiling event — it is the only pruning
-  number that means irreversible loss rather than reclaimed disk
 
 #### Scenario: Operator-supplied artifacts are never pruned
 - **WHEN** an operator has placed files such as heap dumps in the node's artifacts directory

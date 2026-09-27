@@ -3,9 +3,7 @@
 ## Purpose
 
 The server command (`easy-db-lab server`) provides a hybrid HTTP server exposing cluster management capabilities via MCP (Model Context Protocol) for AI assistants, REST endpoints for programmatic access, and background services for status caching and metrics collection.
-
 ## Requirements
-
 ### Requirement: Server Lifecycle
 
 The system MUST provide a server that AI assistants and HTTP clients can connect to for cluster management.
@@ -48,11 +46,11 @@ The server MUST expose REST HTTP endpoints for programmatic access to cluster st
 - **WHEN** a client sends GET /status?live=true
 - **THEN** the server bypasses the cache and fetches fresh data before responding.
 
-#### Scenario: Observability object includes Tempo and Pyroscope
+#### Scenario: Observability object includes every backend
 - **GIVEN** a running cluster with a reachable control node
 - **WHEN** a client sends GET /status
-- **THEN** the `accessInfo.observability` object SHALL include `tempo` and `pyroscope` URL fields alongside `grafana`, `victoriaMetrics`, and `victoriaLogs`
-- **AND** `tempo` is `http://<controlPrivateIp>:3200` and `pyroscope` is `http://<controlPrivateIp>:4040`
+- **THEN** the `accessInfo.observability` object SHALL include `grafana`, `mimir`, `loki`, `tempo` and `pyroscope` URL fields
+- **AND** `mimir` is `http://<controlPrivateIp>:9009`, `loki` is `http://<controlPrivateIp>:3100`, `tempo` is `http://<controlPrivateIp>:3200` and `pyroscope` is `http://<controlPrivateIp>:4040`
 
 ### Requirement: Background Status Cache
 
@@ -75,7 +73,7 @@ The server MUST optionally collect and publish live metrics when a Redis connect
 #### Scenario: Metrics collected when Redis configured
 - **GIVEN** the EASY_DB_LAB_REDIS_URL environment variable is set
 - **WHEN** the server starts
-- **THEN** the MetricsCollector polls VictoriaMetrics and publishes metric events to Redis pub/sub.
+- **THEN** the MetricsCollector polls Mimir with the cluster's tenant, scoped to the current cluster, and publishes metric events to Redis pub/sub.
 
 #### Scenario: Server runs without Redis
 - **GIVEN** the EASY_DB_LAB_REDIS_URL environment variable is not set
@@ -92,3 +90,4 @@ The server command SHALL accept an `--auto-shutdown` flag that enables infrastru
 #### Scenario: Flag provided
 - **WHEN** the user starts the server with `--auto-shutdown`
 - **THEN** the infrastructure watchdog service is started as a background service
+

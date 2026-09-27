@@ -806,7 +806,7 @@ easy-db-lab observability compactor stop
 
 ### observability compactor status
 
-Print the compactor's state, its desired and running task counts, and its current or last task with its state. It changes nothing.
+Print the compactor's state, its desired, running and pending task counts, and its current or last task with its state. It changes nothing.
 
 The state is one of `not created`, `stopped`, `stopping`, `starting`, `running` or `failing`. A compactor that asks for a task but runs none is `starting` while a task is pending or before any task has stopped, and `failing` when none is pending and its latest task stopped, so a task that crashes in a loop never reads as running.
 

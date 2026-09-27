@@ -76,14 +76,12 @@ class TeardownBackupServiceTest {
         DefaultTeardownBackupService(FakeSave(), manager, clock).backupBeforeTeardown(control, state).getOrThrow()
 
         val expected =
-            TailFlushRecord(
-                mapOf(
-                    TailSignal.LOGS to SavedSignal(now, verifiedObjects = 2),
-                    TailSignal.METRICS to SavedSignal(now, verifiedObjects = 5),
-                ),
+            mapOf(
+                TailSignal.LOGS to SavedSignal(now, verifiedObjects = 2),
+                TailSignal.METRICS to SavedSignal(now, verifiedObjects = 5),
             )
-        assertThat(state.tailFlush).isEqualTo(expected)
-        assertThat(manager.load().tailFlush).isEqualTo(expected)
+        assertThat(state.tailFlush?.signals).isEqualTo(expected)
+        assertThat(manager.load().tailFlush?.signals).isEqualTo(expected)
     }
 
     /** The logs record must be on disk while the Mimir flush still runs, so an interrupt keeps it. */
@@ -138,6 +136,31 @@ class TeardownBackupServiceTest {
         assertThat(failure).hasMessageContaining("traces (Tempo)").hasMessageContaining("timed out")
         assertThat(failure.backends).containsEntry("loki", BackendState.SCALED_TO_ZERO)
         assertThat(manager.load().tailFlush?.signals).containsOnlyKeys(TailSignal.LOGS, TailSignal.METRICS)
+    }
+
+    @Test
+    fun `a save of every signal is recorded as complete on disk before it returns`() {
+        val manager = manager()
+
+        DefaultTeardownBackupService(FakeSave(), manager, clock).backupBeforeTeardown(control, state).getOrThrow()
+
+        assertThat(manager.load().tailFlush?.saveCompletedAt).isEqualTo(now)
+    }
+
+    @Test
+    fun `a save with a failed signal is never recorded as complete`() {
+        val manager = manager()
+
+        DefaultTeardownBackupService(FakeSave(failing = setOf(TailSignal.TRACES)), manager, clock).backupBeforeTeardown(control, state)
+
+        assertThat(manager.load().tailFlush?.saveCompletedAt).isNull()
+    }
+
+    @Test
+    fun `a completed save leaves nothing unsaved`() {
+        state.tailFlush = TailFlushRecord(mapOf(TailSignal.LOGS to SavedSignal(now, 1)), saveCompletedAt = now)
+
+        assertThat(DefaultTeardownBackupService(FakeSave(), manager(), clock).unsavedSignals(state)).isEmpty()
     }
 
     @Test

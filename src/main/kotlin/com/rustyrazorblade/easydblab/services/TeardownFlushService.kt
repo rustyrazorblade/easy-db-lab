@@ -297,6 +297,7 @@ class DefaultTeardownFlushService(
                 tasks +=
                     SaveTask(TailSignal.TRACES, progress) {
                         requireRunning(controlHost, Constants.K8s.TEMPO_APP_LABEL, "Tempo", progress)
+                        eventBus.emit(Event.Teardown.TempoDrainStarting(timeouts.tempoDrain.seconds))
                         tempoDrain.flush(controlHost, clusterState, progress)
                     }
             }

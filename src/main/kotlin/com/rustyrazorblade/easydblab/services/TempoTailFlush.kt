@@ -20,7 +20,8 @@ import java.time.Instant
  * 1. Poll `/metrics` until `tempo_live_store_live_traces` is 0 for every tenant and
  *    `tempo_live_store_traces_created_total` is the same in two readings at least
  *    [Constants.TeardownFlush.TEMPO_STABLE_READING_GAP_SECONDS] apart. The live-traces gauge is set
- *    only at the start of each cut tick, so one reading of 0 can be stale.
+ *    only at the start of each cut tick, so one reading of 0 can be stale. A reading with no
+ *    live-traces series fails, rather than passing as idle.
  * 2. Poll the control node's disk under [WAL_DIR] until it is drained ([drained]). A cut tick writes
  *    the head block's `meta.json` in the same tick it appends traces, completion renames it to
  *    `meta.deleted.json`, and `flushed` is written only once the block is in the backend.
@@ -117,7 +118,7 @@ class TempoTailFlush(
         check(listing.second) {
             "Tempo has not uploaded every block within ${timeouts.tempoDrain.seconds}s: WAL blocks not yet complete " +
                 "${pendingWalBlocks(listing.first)}, local blocks not yet in S3 ${unflushedBlocks(listing.first)}; " +
-                describe(read())
+                runCatching { describe(read()) }.getOrElse { it.message.orEmpty() }
         }
         return SignalReport.Traces(flushedBlocks(listing.first))
     }
@@ -142,15 +143,18 @@ class TempoTailFlush(
                 .lines()
                 .filter { it.startsWith("tempo_live_store_") && it.substringBefore('{').substringBefore(' ').contains("fail") }
                 .associate { it.substringBeforeLast(' ') to (it.substringAfterLast(' ').toDoubleOrNull() ?: Double.NaN) }
+        val liveTraces = series(response.body, LIVE_TRACES)
+        // With no series there is nothing to read as idle: the drain would pass without looking.
+        check(liveTraces.isNotEmpty()) { "Tempo's /metrics has no $LIVE_TRACES series, so its live traces cannot be read" }
         return Reading(
-            liveTraces = series(response.body, LIVE_TRACES),
+            liveTraces = liveTraces,
             created = series(response.body, TRACES_CREATED).values.sum(),
             failures = failureCounters,
         )
     }
 
     private fun describe(reading: Reading): String =
-        "live traces ${reading.liveTraces.ifEmpty { mapOf("" to 0.0) }}, traces created ${reading.created}, " +
+        "live traces ${reading.liveTraces}, traces created ${reading.created}, " +
             "failure counters ${reading.failures}"
 
     /** Every `meta.json` and `flushed` under [WAL_DIR], relative to it; a missing directory lists nothing. */

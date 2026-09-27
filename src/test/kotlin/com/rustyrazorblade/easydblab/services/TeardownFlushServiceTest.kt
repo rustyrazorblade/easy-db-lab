@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -212,6 +213,55 @@ class TeardownFlushServiceTest {
         assertThat(logs).hasMessageContaining("Loki was stopped by an earlier `down`")
         assertThat(order).doesNotContain("mirror", "loki start")
         assertThat(outcome.saved.keys).contains(TailSignal.METRICS, TailSignal.TRACES)
+    }
+
+    @Test
+    fun `a Mimir an earlier down stopped fails metrics with that cause, its flush never runs, and the rest are saved`() {
+        val outcome = service(workloads = FakeWorkloads(mapOf("mimir" to BackendState.SCALED_TO_ZERO))).saveTail(control, state, all)
+
+        val metrics = outcome.failed.getValue(TailSignal.METRICS)
+        assertThat(metrics.step).isEqualTo(FlushStep.MIMIR_RUNNING)
+        assertThat(metrics).hasMessageContaining("Mimir was stopped by an earlier `down`")
+        assertThat(metrics.backends).containsEntry("mimir", BackendState.SCALED_TO_ZERO)
+        assertThat(order).doesNotContain("mimir start")
+        assertThat(outcome.failed.keys).containsExactly(TailSignal.METRICS)
+        assertThat(outcome.saved.keys).containsExactlyInAnyOrder(
+            TailSignal.LOGS,
+            TailSignal.TRACES,
+            TailSignal.PROFILES,
+            TailSignal.ANNOTATIONS,
+        )
+    }
+
+    @Test
+    fun `a Tempo that is not ready fails traces with that cause, its drain never runs, and the rest are saved`() {
+        val outcome = service(workloads = FakeWorkloads(mapOf("tempo" to BackendState.NOT_READY))).saveTail(control, state, all)
+
+        val traces = outcome.failed.getValue(TailSignal.TRACES)
+        assertThat(traces.step).isEqualTo(FlushStep.TEMPO_RUNNING)
+        assertThat(traces).hasMessageContaining("Tempo was stopped by an earlier `down`")
+        assertThat(traces.backends).containsEntry("tempo", BackendState.NOT_READY)
+        assertThat(order).doesNotContain("tempo start")
+        assertThat(events).noneMatch { it is Event.Teardown.TempoDrainStarting }
+        assertThat(outcome.failed.keys).containsExactly(TailSignal.TRACES)
+        assertThat(outcome.saved.keys).containsExactlyInAnyOrder(
+            TailSignal.LOGS,
+            TailSignal.METRICS,
+            TailSignal.PROFILES,
+            TailSignal.ANNOTATIONS,
+        )
+    }
+
+    @Test
+    fun `the drain start is announced with its timeout before Tempo's drain runs`() {
+        val starting = Event.Teardown.TempoDrainStarting(Constants.TeardownFlush.TEMPO_DRAIN_TIMEOUT_SECONDS)
+        var announcedBeforeDrain = false
+        val tempo = FakeFlush("tempo", SignalReport.Traces(4), "tempo") { announcedBeforeDrain = starting in events }
+
+        val outcome = service(tempo = tempo).saveTail(control, state, all)
+
+        assertThat(outcome.failed).isEmpty()
+        assertThat(announcedBeforeDrain).isTrue()
     }
 
     @Test

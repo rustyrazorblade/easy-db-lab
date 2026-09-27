@@ -96,10 +96,17 @@ data class InfrastructureState(
  * an interrupted or failed save skips them and saves the rest again. `up` clears the record, since
  * the backends it starts take data the record does not cover.
  *
+ * [saveCompletedAt] is set once every signal of a save succeeded. The infrastructure teardown starts
+ * right after it, and no operation but `down` is supported on the cluster from then on, so the
+ * record cannot go stale: a `down` re-run after a teardown that failed part-way skips the whole save,
+ * without the SOCKS tunnel to a control node that may be gone, and goes straight to the teardown.
+ *
  * @property signals each recorded signal and what its save proved.
+ * @property saveCompletedAt when a save of every signal succeeded, or null while any signal is unsaved.
  */
 data class TailFlushRecord(
     val signals: Map<TailSignal, SavedSignal> = emptyMap(),
+    val saveCompletedAt: Instant? = null,
 )
 
 /**

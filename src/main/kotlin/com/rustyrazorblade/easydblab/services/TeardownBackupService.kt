@@ -15,7 +15,9 @@ import java.util.concurrent.Executors
  *
  * The save runs once and is never retried within a run: a retry would POST to an ingester the
  * failed attempt already stopped. Logs and metrics are recorded the moment each flush succeeds, so
- * a `down` re-run after a failed or interrupted save skips them and saves the rest again.
+ * a `down` re-run after a failed or interrupted save skips them and saves the rest again. A save of
+ * every signal is recorded as complete ([TailFlushRecord.saveCompletedAt]), so a re-run after a
+ * teardown that failed part-way saves nothing again.
  */
 interface TeardownBackupService {
     /**
@@ -24,7 +26,8 @@ interface TeardownBackupService {
      * @param controlHost The control node running the backends and Grafana.
      * @param clusterState The cluster state carrying the account bucket and tenant; the record is
      *   set on it and saved.
-     * @return what was saved, or a [TailFlushFailed] naming every signal that is not.
+     * @return what was saved, recorded as a complete save; or a [TailFlushFailed] naming every signal
+     *   that is not saved; or the failure to write the record.
      */
     fun backupBeforeTeardown(
         controlHost: ClusterHost,
@@ -33,7 +36,8 @@ interface TeardownBackupService {
 
     /**
      * The signals a teardown now would lose: logs and metrics unless recorded, then traces and
-     * annotations. Profiles are never listed: Pyroscope writes each batch to S3 before it accepts it.
+     * annotations; nothing once a save of every signal is recorded as complete. Profiles are never
+     * listed: Pyroscope writes each batch to S3 before it accepts it.
      */
     fun unsavedSignals(clusterState: ClusterState): List<TailSignal>
 }
@@ -77,15 +81,19 @@ class DefaultTeardownBackupService(
                     }
                 }
             }
-        return if (outcome.failed.isEmpty()) {
-            Result.success(outcome)
-        } else {
-            Result.failure(TailFlushFailed(outcome.failed, outcome.backends))
+        if (outcome.failed.isNotEmpty()) return Result.failure(TailFlushFailed(outcome.failed, outcome.backends))
+        return runCatching {
+            recordComplete(clusterState)
+            outcome
         }
     }
 
     override fun unsavedSignals(clusterState: ClusterState): List<TailSignal> =
-        (TailSignal.entries - TailSignal.PROFILES).filterNot { it in recorded(clusterState) }
+        if (clusterState.tailFlush?.saveCompletedAt != null) {
+            emptyList()
+        } else {
+            (TailSignal.entries - TailSignal.PROFILES).filterNot { it in recorded(clusterState) }
+        }
 
     private fun recorded(clusterState: ClusterState): Map<TailSignal, SavedSignal> = clusterState.tailFlush?.signals.orEmpty()
 
@@ -96,6 +104,15 @@ class DefaultTeardownBackupService(
     ) {
         clusterState.tailFlush =
             TailFlushRecord(recorded(clusterState) + (signal to SavedSignal(clock.instant(), report.verifiedObjects)))
+        clusterStateManager.save(clusterState)
+    }
+
+    /**
+     * Records that every signal is saved. `down` starts the infrastructure teardown right after, so a
+     * re-run finds the save complete and goes straight to the teardown.
+     */
+    private fun recordComplete(clusterState: ClusterState) {
+        clusterState.tailFlush = TailFlushRecord(recorded(clusterState), saveCompletedAt = clock.instant())
         clusterStateManager.save(clusterState)
     }
 }

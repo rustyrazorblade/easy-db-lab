@@ -40,6 +40,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.verifyNoMoreInteractions
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayInputStream
+import java.nio.file.AccessDeniedException
 import java.time.Instant
 
 /**
@@ -124,9 +125,10 @@ class DownBackupTest : BaseKoinTest() {
 
         whenever(socksProxyService.ensureRunning(any()))
             .thenReturn(SocksProxyState(1080, controlHost, Instant.now()))
-        whenever(teardownBackupService.unsavedSignals(any()))
-            .thenReturn(listOf(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES, TailSignal.ANNOTATIONS))
+        whenever(teardownBackupService.unsavedSignals(any())).thenReturn(unsavedSignals)
     }
+
+    private val unsavedSignals = listOf(TailSignal.LOGS, TailSignal.METRICS, TailSignal.TRACES, TailSignal.ANNOTATIONS)
 
     private val saved = Result.success(FlushOutcome(saved = emptyMap(), failed = emptyMap(), backends = emptyMap()))
 
@@ -303,7 +305,10 @@ class DownBackupTest : BaseKoinTest() {
         val exitCode = Down().apply { autoApprove = true }.call()
 
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
-        assertThat(errorOutput()).contains("no infrastructure was removed")
+        assertThat(errorOutput())
+            .contains("no infrastructure was removed")
+            .contains("'SOCKS tunnel to the control node' failed: SOCKS5 proxy failed to establish a working tunnel")
+        unsavedSignals.forEach { assertThat(errorOutput()).contains("${it.description}: 'SOCKS tunnel to the control node'") }
     }
 
     @Test
@@ -519,9 +524,66 @@ class DownBackupTest : BaseKoinTest() {
         Down().apply { autoApprove = true }.execute()
 
         verify(teardownService, never()).teardownVpc(any(), eq(false))
+        verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
         assertThat(errorOutput())
             .contains("no infrastructure was removed")
             // No backend was stopped, so running down again is the way forward.
             .contains("run 'easy-db-lab down' again")
+            .contains("'SOCKS tunnel to the control node' failed: ssh tunnel refused")
+        unsavedSignals.forEach { assertThat(errorOutput()).contains("${it.description}: 'SOCKS tunnel to the control node'") }
+    }
+
+    @Test
+    fun `a save that fails for a reason other than a signal is reported as the save's failure, not the tunnel's`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        whenever(clusterStateManager.load()).thenReturn(upClusterState())
+        previewFindsResources()
+        whenever(teardownBackupService.backupBeforeTeardown(any(), any()))
+            .thenReturn(Result.failure(AccessDeniedException("state.json")))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        verify(teardownService, never()).teardownVpc(any(), eq(false))
+        assertThat(errorOutput())
+            .contains("no infrastructure was removed")
+            .contains("'pre-teardown save' failed: state.json")
+            .doesNotContain("SOCKS tunnel")
+        unsavedSignals.forEach { assertThat(errorOutput()).contains("${it.description}: 'pre-teardown save'") }
+    }
+
+    @Test
+    fun `a re-run after a complete save skips the whole save and its tunnel, and tears down`() {
+        whenever(clusterStateManager.exists()).thenReturn(true)
+        val completed =
+            upClusterState().apply {
+                tailFlush =
+                    TailFlushRecord(
+                        mapOf(
+                            TailSignal.LOGS to SavedSignal(Instant.parse("2026-09-26T12:00:00Z"), 4),
+                            TailSignal.METRICS to SavedSignal(Instant.parse("2026-09-26T12:00:05Z"), 2),
+                        ),
+                        saveCompletedAt = Instant.parse("2026-09-26T12:01:00Z"),
+                    )
+            }
+        whenever(clusterStateManager.load()).thenReturn(completed)
+        previewFindsResources()
+        // The control node was terminated by the teardown that failed part-way: no tunnel reaches it.
+        whenever(socksProxyService.ensureRunning(any())).thenThrow(IllegalStateException("control node unreachable"))
+        whenever(teardownService.teardownVpc(eq("vpc-123"), eq(false))).thenReturn(TeardownResult.success(resources))
+
+        val exitCode = Down().apply { autoApprove = true }.call()
+
+        assertThat(exitCode).isEqualTo(0)
+        verify(socksProxyService, never()).ensureRunning(any())
+        verify(teardownBackupService, never()).backupBeforeTeardown(any(), any())
+        verify(teardownService).teardownVpc(eq("vpc-123"), eq(false))
+        assertThat(messageOutput())
+            .contains("Already saved by an earlier down")
+            .contains("${TailSignal.LOGS.description} at 2026-09-26T12:00:00Z")
+            .contains("${TailSignal.TRACES.description} at 2026-09-26T12:01:00Z")
+            .contains("${TailSignal.ANNOTATIONS.description} at 2026-09-26T12:01:00Z")
+            .doesNotContain("Saving annotations, logs, metrics and traces")
+        assertThat(errorOutput()).isEmpty()
     }
 }

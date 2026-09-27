@@ -4130,7 +4130,8 @@ sealed interface Event {
         }
 
         /**
-         * An earlier `down` already saved [saved], so this one skips them and saves the rest.
+         * An earlier `down` already saved [saved], so this one skips them and saves the rest; when
+         * that `down` saved every signal, this one skips the whole save and goes to the teardown.
          *
          * @property saved each saved signal and when its flush completed (ISO-8601).
          */
@@ -4142,7 +4143,20 @@ sealed interface Event {
             override fun toDisplayString(): String =
                 "Already saved by an earlier down, skipped: " +
                     saved.entries.joinToString("; ") { (signal, completedAt) -> "$signal at $completedAt" } +
-                    ". Their backends stay stopped."
+                    ". Nothing is started again."
+        }
+
+        /**
+         * The Tempo drain has started. Tempo has no flush endpoint, so the drain waits for Tempo's own
+         * one-minute block cut and upload, for at most [timeoutSeconds].
+         */
+        @Serializable
+        @SerialName("Teardown.TempoDrainStarting")
+        data class TempoDrainStarting(
+            val timeoutSeconds: Long,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "Draining Tempo: waiting for its one-minute block cut and upload to S3 (at most ${timeoutSeconds}s)..."
         }
 
         /** The OTel collector is gone, so its last batches are in the backends and Tempo gets no new span. */

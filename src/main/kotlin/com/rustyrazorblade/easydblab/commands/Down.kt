@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
@@ -13,6 +14,7 @@ import com.rustyrazorblade.easydblab.proxy.Socks5ProxyStateFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.BackendState
 import com.rustyrazorblade.easydblab.services.TailFlushFailed
+import com.rustyrazorblade.easydblab.services.TailSignal
 import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.TeardownBackupService
@@ -94,6 +96,14 @@ class Down : PicoBaseCommand() {
     private val socksProxyService: SocksProxyService by inject()
     private val log = KotlinLogging.logger {}
 
+    private companion object {
+        /** The step a tunnel failure names: it fails every signal before the save starts. */
+        const val TUNNEL_STEP = "SOCKS tunnel to the control node"
+
+        /** The step a failure of the save itself names, as opposed to one of its signals. */
+        const val SAVE_STEP = "pre-teardown save"
+    }
+
     /**
      * The process exit code. Set to [Constants.ExitCodes.ERROR] when the pre-teardown backup aborts
      * the teardown, when the teardown completes with errors, or when the user declines the
@@ -152,25 +162,28 @@ class Down : PicoBaseCommand() {
      *
      * Only the current-cluster teardown of a running cluster saves its tail: the other modes
      * (`--all`, `--packer`, a specific VPC id) do not map to a single reachable control node, and
-     * `--force` skips it outright. Logs and metrics an earlier `down` saved are skipped: Loki and
-     * Mimir are already at 0 and hold nothing new. The collector stop, the Tempo drain, the profiles
-     * report and the annotations backup run on every `down`. When any signal fails, every other step
-     * still finishes, nothing is undone and nothing is started again (owner decision, 2026-09-26),
-     * and the teardown does not run.
+     * `--force` skips it outright. A save an earlier `down` completed is skipped whole, before any
+     * tunnel is opened: that `down`'s teardown then failed part-way, and the control node may be
+     * gone. Otherwise logs and metrics an earlier `down` saved are skipped: Loki and Mimir are
+     * already at 0 and hold nothing new, and the collector stop, the Tempo drain, the profiles report
+     * and the annotations backup run again. When any signal fails, every other step still finishes,
+     * nothing is undone and nothing is started again (owner decision, 2026-09-26), and the teardown
+     * does not run.
      *
      * @return whether the teardown may go ahead.
      */
     private fun saveTailBeforeTeardown(): Boolean {
         val state = stateToSave() ?: return true
 
-        val saved = state.tailFlush?.signals.orEmpty()
+        val record = state.tailFlush ?: TailFlushRecord()
+        val completedAt = record.saveCompletedAt
+        // A complete save put every signal in S3; the ones it did not record were saved when it completed.
+        val completeSave = completedAt?.let { at -> (TailSignal.entries - TailSignal.PROFILES).associateWith { at } }.orEmpty()
+        val saved = completeSave + record.signals.mapValues { it.value.completedAt }
         if (saved.isNotEmpty()) {
-            eventBus.emit(
-                Event.Teardown.TailAlreadySaved(
-                    saved.entries.associate { (signal, record) -> signal.description to record.completedAt.toString() },
-                ),
-            )
+            eventBus.emit(Event.Teardown.TailAlreadySaved(saved.entries.associate { (signal, at) -> signal.description to at.toString() }))
         }
+        if (completedAt != null) return true
 
         val controlHost = state.getControlHost()
         if (controlHost == null) {
@@ -179,15 +192,16 @@ class Down : PicoBaseCommand() {
         }
 
         eventBus.emit(Event.Teardown.BackupStarting)
-        // The tunnel setup and the save are one failure boundary: a tunnel failure fails every
-        // signal. Both are inside the runCatching so either stops `down` with the standard
-        // "no infrastructure removed / --force" guidance rather than a raw stack trace. The
-        // tunnel is established here, before clearProxySystemProperties()/cleanupSocks5Proxy() tear
-        // it down.
-        return runCatching {
-            socksProxyService.ensureRunning(controlHost)
-            teardownBackupService.backupBeforeTeardown(controlHost, state).getOrThrow()
-        }.fold(
+        // The tunnel is established here, before clearProxySystemProperties()/cleanupSocks5Proxy() tear
+        // it down. A tunnel failure touched nothing and fails every signal the save would have saved.
+        // Either failure stops `down` with the standard "no infrastructure removed / --force"
+        // guidance rather than a raw stack trace.
+        runCatching { socksProxyService.ensureRunning(controlHost) }.onFailure { failure ->
+            log.error(failure) { "The SOCKS tunnel to the control node failed before the pre-teardown save" }
+            eventBus.emit(unsavedAbort(state, TUNNEL_STEP, failure))
+            return false
+        }
+        return runCatching { teardownBackupService.backupBeforeTeardown(controlHost, state).getOrThrow() }.fold(
             onSuccess = { true },
             onFailure = { failure ->
                 eventBus.emit(abortEvent(failure, state))
@@ -233,8 +247,8 @@ class Down : PicoBaseCommand() {
 
     /**
      * The report of a save that failed. A [TailFlushFailed] names each failed signal, its step, and
-     * the workloads as the save left them; any other failure is the tunnel's, which touched nothing
-     * and failed every signal the save would have saved.
+     * the workloads as the save left them; any other failure is the save's own (writing the record,
+     * for one), which fails every signal still unsaved.
      */
     private fun abortEvent(
         failure: Throwable,
@@ -258,18 +272,27 @@ class Down : PicoBaseCommand() {
                             .keys
                             .toList(),
                 )
-            else ->
-                Event.Teardown.BackupFailedAbort(
-                    failures =
-                        teardownBackupService.unsavedSignals(state).map {
-                            Event.Teardown.BackupFailedAbort.SignalFailure(
-                                signal = it.description,
-                                step = "SOCKS tunnel to the control node",
-                                reason = failure.message ?: failure.toString(),
-                            )
-                        },
-                )
+            else -> {
+                log.error(failure) { "The pre-teardown save failed" }
+                unsavedAbort(state, SAVE_STEP, failure)
+            }
         }
+
+    /** A failure at [step] that fails every signal not yet saved. */
+    private fun unsavedAbort(
+        state: ClusterState,
+        step: String,
+        failure: Throwable,
+    ) = Event.Teardown.BackupFailedAbort(
+        failures =
+            teardownBackupService.unsavedSignals(state).map {
+                Event.Teardown.BackupFailedAbort.SignalFailure(
+                    signal = it.description,
+                    step = step,
+                    reason = failure.message ?: failure.toString(),
+                )
+            },
+    )
 
     /**
      * Determines the teardown mode based on command line options.

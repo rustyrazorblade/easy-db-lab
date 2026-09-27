@@ -188,7 +188,7 @@ Phase B runs every step at the same time, so the save takes about as long as its
 
 - **Logs.** Loki's ingester is stopped, which writes every open chunk to S3, and each index file it built is checked in S3. If the shutdown wrote chunks but no index file is found on the control node, or the node cannot list its index, the flush fails rather than passing with nothing checked. If the mirror failed, the Loki flush does not run and Loki keeps running.
 - **Metrics.** Mimir's ingester is stopped, which cuts and ships every block it holds, and each block is checked in S3 with one listing of the tenant's blocks.
-- **Traces.** `down` waits until Tempo holds no live trace and its count of created traces stops changing, then until every block on the control node's disk carries its `flushed` marker, which Tempo writes only once the block is in S3. Tempo is never stopped or restarted. This step times out after 5 minutes.
+- **Traces.** `down` reports that the Tempo drain has started, with its timeout. It waits until Tempo holds no live trace and its count of created traces stops changing, then until every block on the control node's disk carries its `flushed` marker, which Tempo writes only once the block is in S3. Tempo is never stopped or restarted. This step times out after 5 minutes.
 - **Profiles.** Nothing to do: Pyroscope writes each batch to S3 before it accepts it. `down` reports this.
 - **Annotations.** The Grafana annotations are backed up to `grafana/annotations/<tenant>/` in the account bucket.
 
@@ -198,11 +198,11 @@ Every step has a timeout. A redirect cluster has no local backends, so it skips 
 
 **Logs and metrics are recorded as they finish.** The Loki and Mimir flushes stop their backends and cannot run twice, so each is recorded in the cluster state the moment it succeeds, with the time and what it verified. A `down` that fails or is interrupted keeps these records. Run `down` again and it reports them as already saved, skips them, and runs the collector stop, the Tempo drain, the profiles report and the annotations backup again. `up` clears the record, so the next `down` saves the new data.
 
-**A teardown that fails after the save restores nothing.** If removing the infrastructure fails, `down` reports the failure: Loki and Mimir stay at 0 and the collector stays deleted. Run `down` again to finish.
+**A teardown that fails after the save restores nothing.** If removing the infrastructure fails, `down` reports the failure: Loki and Mimir stay at 0 and the collector stays deleted. A save of every signal is recorded in the cluster state before any infrastructure is removed. Run `down` again to finish: it reports every signal as already saved, skips the whole save without connecting to the control node, and goes straight to the teardown.
 
 **Nothing is deleted.** `down` sets no S3 lifecycle, expiry or retention rule on any bucket and deletes no object that holds your data. With `--all`, a per-cluster data bucket is deleted only when it is already empty. A data bucket that still holds objects is left as it is, and `down` reports it as kept, with S3's reason.
 
-**`--force` skips the save.** Pass `--force` to skip both phases and tear down anyway. With the teardown preview, before the confirmation prompt, `down --force` lists the signals it will not save: logs and metrics unless an earlier `down` saved them, then traces and annotations. Profiles are never listed. Use it only when the backends are already stopped or gone, or when you do not need the data.
+**`--force` skips the save.** Pass `--force` to skip both phases and tear down anyway. With the teardown preview, before the confirmation prompt, `down --force` lists the signals it will not save: logs and metrics unless an earlier `down` saved them, then traces and annotations. After a save of every signal, it lists none. Profiles are never listed. Use it only when the backends are already stopped or gone, or when you do not need the data.
 
 **Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the save stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
 

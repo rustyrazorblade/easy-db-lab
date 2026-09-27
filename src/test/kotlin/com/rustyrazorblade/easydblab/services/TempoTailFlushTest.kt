@@ -90,6 +90,19 @@ class TempoTailFlushTest {
     }
 
     @Test
+    fun `a metrics exposition with no live-traces series fails the drain, naming the metric`() {
+        val noGauge =
+            ObservabilityResponse(200, "tempo_live_store_traces_created_total{tenant=\"acme\"} 4\ntempo_live_store_failed_flushes_total 0")
+        val http = RecordingObservabilityHttp(*(1..1000).map { noGauge }.toTypedArray())
+        val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, "tempo")
+        walListing("")
+
+        assertThatThrownBy { drain(http, timeout = Duration.ofMillis(200), progress = progress) }
+            .hasMessageContaining(TempoTailFlush.LIVE_TRACES)
+        assertThat(progress.step).isEqualTo(FlushStep.TEMPO_LIVE_TRACES)
+    }
+
+    @Test
     fun `an unflushed block past the timeout fails the block wait and names it`() {
         val http = RecordingObservabilityHttp(metrics(created = 1), metrics(created = 1), metrics(created = 1))
         walListing("blocks/acme/01HSTUCK/meta.json")

@@ -43,7 +43,7 @@ Central state data class persisted as `state.json`. Key fields:
 - `dataBucket: String` — per-cluster data bucket (`easy-db-lab-data-{clusterId}`) for ClickHouse data and CloudWatch metrics
 - `backupHashes: Map<String, String>` — SHA-256 hashes of backed-up files
 - `infrastructureStatus: InfrastructureStatus` — UP, DOWN, or UNKNOWN
-- `tailFlush: TailFlushRecord?` — the signals a `down` already saved, as `TailSignal` → `SavedSignal(completedAt, verifiedObjects)`. Only `LOGS` and `METRICS` are ever recorded, each the moment its flush succeeds (their flushes stop Loki and Mimir and cannot run twice); a re-run skips them. `markInfrastructureUp()` clears it. `ClusterStateManager.save` writes a temp file and renames it over `state.json`, so a concurrent `load()` never reads a torn file
+- `tailFlush: TailFlushRecord?` — the signals a `down` already saved, as `TailSignal` → `SavedSignal(completedAt, verifiedObjects)`. Only `LOGS` and `METRICS` are ever recorded, each the moment its flush succeeds (their flushes stop Loki and Mimir and cannot run twice); a re-run skips them. `saveCompletedAt` is set once a save of every signal succeeded, right before the infrastructure teardown; a re-run (after a teardown that failed part-way) then skips the whole save and its SOCKS tunnel. `markInfrastructureUp()` clears it. `ClusterStateManager.save` writes a temp file with the state file's permissions and renames it over `state.json`, so a concurrent `load()` never reads a torn file
 
 Key methods:
 - `getControlHost()` — first control node (convenience)

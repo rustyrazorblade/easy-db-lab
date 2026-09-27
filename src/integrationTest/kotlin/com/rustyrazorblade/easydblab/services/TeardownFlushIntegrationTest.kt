@@ -77,6 +77,9 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
         val READER_WAIT: Duration = Duration.ofMinutes(2)
         val UNDRAINED_WAIT: Duration = Duration.ofSeconds(30)
         val UNDRAINED_POLL: Duration = Duration.ofMillis(200)
+
+        /** Two metric readings a poll interval apart, and one WAL listing: far below the 300s timeout. */
+        val NO_SPAN_DRAIN_WITHIN: Duration = Duration.ofSeconds(30)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -555,6 +558,18 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
         assertThat(sendersStopped.get()).isEqualTo(2)
         assertThat(annotationBackups.get()).isEqualTo(2)
         assertThat(containerIds()).containsExactly(entry(Constants.K8s.TEMPO_APP_LABEL, tempo))
+    }
+
+    /** Tempo exposes no per-tenant live-store series before its first span; that must read as drained. */
+    @Test
+    fun `the drain of a Tempo that never received a span passes promptly`() {
+        startTempo()
+        val started = Instant.now()
+
+        val report = tempoDrain().flush(control, state, FlushProgress(FlushStep.TEMPO_LIVE_TRACES, Constants.K8s.TEMPO_APP_LABEL))
+
+        assertThat(report).isEqualTo(SignalReport.Traces(0))
+        assertThat(Duration.between(started, Instant.now())).isLessThan(NO_SPAN_DRAIN_WITHIN)
     }
 
     @Test

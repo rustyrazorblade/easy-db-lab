@@ -89,16 +89,35 @@ class TempoTailFlushTest {
         assertThat(progress.backends).containsEntry("tempo", BackendState.RUNNING)
     }
 
+    /** What Tempo 3.0.3 exposes before its first span: the live store's metrics, but no per-tenant series. */
+    private val noTenantYet =
+        ObservabilityResponse(
+            200,
+            """
+            tempo_live_store_blocks_completed_total 0
+            tempo_live_store_complete_queue_length 0
+            tempo_live_store_failed_completions_total 0
+            tempo_live_store_ready 1
+            """.trimIndent(),
+        )
+
     @Test
-    fun `a metrics exposition with no live-traces series fails the drain, naming the metric`() {
-        val noGauge =
-            ObservabilityResponse(200, "tempo_live_store_traces_created_total{tenant=\"acme\"} 4\ntempo_live_store_failed_flushes_total 0")
-        val http = RecordingObservabilityHttp(*(1..1000).map { noGauge }.toTypedArray())
+    fun `a Tempo that never received a span has no live-traces series and drains at once`() {
+        walListing("")
+
+        assertThat(drain(RecordingObservabilityHttp(noTenantYet, noTenantYet))).isEqualTo(SignalReport.Traces(0))
+    }
+
+    @Test
+    fun `an exposition with neither the live-traces series nor the live store's queue fails the drain, naming both`() {
+        val notTempo = ObservabilityResponse(200, "go_goroutines 12\nprocess_open_fds 40")
+        val http = RecordingObservabilityHttp(*(1..1000).map { notTempo }.toTypedArray())
         val progress = FlushProgress(FlushStep.TEMPO_LIVE_TRACES, "tempo")
         walListing("")
 
         assertThatThrownBy { drain(http, timeout = Duration.ofMillis(200), progress = progress) }
             .hasMessageContaining(TempoTailFlush.LIVE_TRACES)
+            .hasMessageContaining(TempoTailFlush.COMPLETE_QUEUE)
         assertThat(progress.step).isEqualTo(FlushStep.TEMPO_LIVE_TRACES)
     }
 

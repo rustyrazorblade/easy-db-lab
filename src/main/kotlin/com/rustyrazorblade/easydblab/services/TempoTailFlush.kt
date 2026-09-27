@@ -20,8 +20,9 @@ import java.time.Instant
  * 1. Poll `/metrics` until `tempo_live_store_live_traces` is 0 for every tenant and
  *    `tempo_live_store_traces_created_total` is the same in two readings at least
  *    [Constants.TeardownFlush.TEMPO_STABLE_READING_GAP_SECONDS] apart. The live-traces gauge is set
- *    only at the start of each cut tick, so one reading of 0 can be stale. A reading with no
- *    live-traces series fails, rather than passing as idle.
+ *    only at the start of each cut tick, so one reading of 0 can be stale. Both metrics are per
+ *    tenant: a Tempo that never received a span has no series of either, which reads as idle. A
+ *    reading without [COMPLETE_QUEUE] either is not Tempo's live store, and fails.
  * 2. Poll the control node's disk under [WAL_DIR] until it is drained ([drained]). A cut tick writes
  *    the head block's `meta.json` in the same tick it appends traces, completion renames it to
  *    `meta.deleted.json`, and `flushed` is written only once the block is in the backend.
@@ -42,6 +43,9 @@ class TempoTailFlush(
         const val WAL_DIR = "${TempoManifestBuilder.DATA_HOST_PATH}/live-store/wal"
         const val LIVE_TRACES = "tempo_live_store_live_traces"
         const val TRACES_CREATED = "tempo_live_store_traces_created_total"
+
+        /** The live store's completion queue: unlabelled, and exposed from startup, before any tenant exists. */
+        const val COMPLETE_QUEUE = "tempo_live_store_complete_queue_length"
         private const val META = "meta.json"
         private const val FLUSHED = "flushed"
         private const val BLOCKS_DIR = "blocks"
@@ -144,8 +148,12 @@ class TempoTailFlush(
                 .filter { it.startsWith("tempo_live_store_") && it.substringBefore('{').substringBefore(' ').contains("fail") }
                 .associate { it.substringBeforeLast(' ') to (it.substringAfterLast(' ').toDoubleOrNull() ?: Double.NaN) }
         val liveTraces = series(response.body, LIVE_TRACES)
-        // With no series there is nothing to read as idle: the drain would pass without looking.
-        check(liveTraces.isNotEmpty()) { "Tempo's /metrics has no $LIVE_TRACES series, so its live traces cannot be read" }
+        // The live-traces gauge is per tenant, so a Tempo that never received a span has no series:
+        // no tenant holds a live trace. Only when the live store's own queue is missing too are the
+        // metrics themselves absent, and nothing can be read as idle.
+        check(liveTraces.isNotEmpty() || series(response.body, COMPLETE_QUEUE).isNotEmpty()) {
+            "Tempo's /metrics has neither a $LIVE_TRACES series nor $COMPLETE_QUEUE, so its live traces cannot be read"
+        }
         return Reading(
             liveTraces = liveTraces,
             created = series(response.body, TRACES_CREATED).values.sum(),

@@ -5,6 +5,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermissions
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -146,5 +148,32 @@ class ClusterStateManagerTest {
         assertThat(failures.get()).describedAs("loads that read a partial state.json").isZero()
         assertThat(manager.load().stressJobCounter).isEqualTo(299)
         assertThat(tempDir.list().orEmpty().toList()).describedAs("no temp file left behind").containsExactly("state.json")
+    }
+
+    @Test
+    fun `a save keeps the state file's permissions`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+        manager.save(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+        val chosen = PosixFilePermissions.fromString("rw-r-----")
+        Files.setPosixFilePermissions(stateFile.toPath(), chosen)
+
+        manager.save(ClusterState(name = "test-cluster", versions = mutableMapOf(), stressJobCounter = 1))
+
+        assertThat(Files.getPosixFilePermissions(stateFile.toPath())).isEqualTo(chosen)
+    }
+
+    @Test
+    fun `a first save gives the state file the permissions any new file gets`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val plain = Files.createFile(File(tempDir, "plain").toPath())
+
+        ClusterStateManager(stateFile).save(ClusterState(name = "test-cluster", versions = mutableMapOf()))
+
+        assertThat(Files.getPosixFilePermissions(stateFile.toPath())).isEqualTo(Files.getPosixFilePermissions(plain))
     }
 }

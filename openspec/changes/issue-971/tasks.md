@@ -8,9 +8,9 @@
 
 ## 2. Query classification and annotation tests (D2, D3)
 
-- [ ] 2.1 `DashboardQueries.languageOf` (integration tier): classify by `type` first; recognise `${metrics_datasource}`, `${logs_datasource}` and `${traces_datasource}` as well as the stable uids, so no Loki or Prometheus query drops out of `LogQlCompatibilityIntegrationTest` or `PromQlCompatibilityIntegrationTest`.
-- [ ] 2.2 `CoreDashboardAnnotationsTest`: expect the annotation datasource `{"type":"loki","uid":"${logs_datasource}"}`.
-- [ ] 2.3 Add sample values for the new variables to the `DashboardQueries` substitution table (`lookback`, `resolution`, run starts, ends, lengths, a negative and a positive offset, `@` end), so `PromQlCompatibilityIntegrationTest` parses the negative `offset`, `@` and subquery forms against the pinned Mimir (verification item 1).
+- [x] 2.1 `DashboardQueries.languageOf` (integration tier): classify by `type` first; recognise `${metrics_datasource}`, `${logs_datasource}` and `${traces_datasource}` as well as the stable uids, so no Loki or Prometheus query drops out of `LogQlCompatibilityIntegrationTest` or `PromQlCompatibilityIntegrationTest`.
+- [x] 2.2 `CoreDashboardAnnotationsTest`: expect the annotation datasource `{"type":"loki","uid":"${logs_datasource}"}`.
+- [x] 2.3 Add sample values for the new variables to the `DashboardQueries` substitution table (`lookback`, `resolution`, run starts, ends, lengths, a negative and a positive offset, `@` end), so `PromQlCompatibilityIntegrationTest` parses the negative `offset`, `@` and subquery forms against the pinned Mimir (verification item 1).
 
 ## 3. Install-time defaults (F10)
 

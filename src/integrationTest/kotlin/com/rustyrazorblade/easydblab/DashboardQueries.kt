@@ -101,13 +101,41 @@ object DashboardQueries {
                 else -> null to null
             }
         return when {
-            uid == "loki" || type == "loki" -> Language.LOGQL
-            uid == "mimir" || type == "prometheus" || uid == "\${datasource}" -> Language.PROMQL
+            type == "loki" -> Language.LOGQL
+            type == "prometheus" -> Language.PROMQL
+            type != null -> null
+            uid == "loki" || uid == LOGS_PICKER -> Language.LOGQL
+            uid == "mimir" || uid == METRICS_PICKER -> Language.PROMQL
             // A panel with no datasource uses the default, which is Mimir.
-            uid == null && type == null -> Language.PROMQL
+            uid == null -> Language.PROMQL
             else -> null
         }
     }
+
+    private const val METRICS_PICKER = "\${metrics_datasource}"
+    private const val LOGS_PICKER = "\${logs_datasource}"
+
+    /**
+     * Plausible values for the comparison and Tests dashboards' helper variables. Each is a query
+     * variable that Grafana fills at load time, so the file holds no value to substitute; these
+     * stand in for them so the negative `offset`, `@` and subquery forms reach the pinned Mimir.
+     */
+    private val sampleValues =
+        mapOf(
+            "lookback" to "180d",
+            "resolution" to "5m",
+            "base_start" to "1790000000",
+            "base_end" to "1790086400",
+            "base_len" to "86400",
+            "cand_start" to "1790600000",
+            "cand_end" to "1790621600",
+            "cand_len" to "21600",
+            "max_len" to "86400",
+            "base_offset" to "3600",
+            "cand_offset" to "-600",
+            "base_since_end" to "600000",
+            "cand_since_end" to "600",
+        )
 
     private fun walkPanels(
         element: JsonElement,
@@ -182,7 +210,7 @@ object DashboardQueries {
                     ?.firstOrNull()
                     ?.trim()
             name to
-                when (type) {
+                sampleValues[name] ?: when (type) {
                     "custom", "interval", "constant" -> currentValue ?: firstOption ?: "x"
                     "textbox" -> currentValue ?: ""
                     else -> "x"

@@ -37,18 +37,14 @@ class CoreDashboardAnnotationsTest {
             .single { it["name"]?.jsonPrimitive?.content == "easy-db-lab markers" }
 
     @Test
-    fun `every core dashboard reads global annotations from Loki`() {
+    fun `every core dashboard reads global annotations from the logs picker`() {
         for (path in coreDashboards) {
             val query = markers(path)
             val expr = query["expr"]?.jsonPrimitive?.content.orEmpty()
 
-            assertThat(
-                query
-                    .getValue("datasource")
-                    .jsonObject["uid"]
-                    ?.jsonPrimitive
-                    ?.content,
-            ).describedAs(path).isEqualTo("loki")
+            assertThat(query.getValue("datasource"))
+                .describedAs(path)
+                .isEqualTo(Json.parseToJsonElement("""{"type":"loki","uid":"${'$'}{logs_datasource}"}"""))
             assertThat(expr).describedAs(path).contains("source=\"annotation\"", "cluster=~", "| dashboard_uid=\"\"")
             assertThat(query).describedAs(path).doesNotContainKey("target")
         }

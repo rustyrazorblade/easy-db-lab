@@ -8,12 +8,12 @@
   "templating": {
     "list": [
       {
-        "current": { "text": "Mimir", "value": "mimir" },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Metrics",
         "multi": false,
-        "name": "datasource",
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
@@ -21,7 +21,7 @@
       },
       {
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
         "definition": "label_values(up{job=\"flink\"}, cluster)",
         "hide": 0,
         "includeAll": false,
@@ -49,7 +49,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TaskManagers currently registered with the JobManager",
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short" }, "overrides": [] },
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 1 },
@@ -62,7 +62,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Jobs running in the session cluster",
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short" }, "overrides": [] },
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 1 },
@@ -75,7 +75,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Free task slots in the session cluster",
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short" }, "overrides": [] },
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 1 },
@@ -88,7 +88,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Total task slots in the session cluster",
       "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "unit": "short" }, "overrides": [] },
       "gridPos": { "h": 4, "w": 6, "x": 18, "y": 1 },
@@ -109,7 +109,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Time since each job entered the RUNNING state",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
@@ -122,7 +122,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Cumulative job restarts (full restarts shown separately)",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
@@ -136,7 +136,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Checkpoint completion counts",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
@@ -151,7 +151,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Duration of the most recent checkpoint",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
@@ -172,7 +172,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Records consumed and emitted per second, summed across subtasks per operator",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 23 },
@@ -186,7 +186,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Busy / idle / back-pressured time per second (0-1000 ms/s), averaged across subtasks per operator",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms", "max": 1000 }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 23 },
@@ -201,7 +201,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Bytes consumed and emitted per second, summed across subtasks per operator",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 },
@@ -215,7 +215,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Input and output buffer pool usage (0-1), averaged across subtasks per operator",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "percentunit", "max": 1 }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 },
@@ -237,7 +237,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TaskManager heap memory used vs max, per app node",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "bytes" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
@@ -251,7 +251,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TaskManager process CPU load (0-1), per app node",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "percentunit", "max": 1 }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
@@ -264,7 +264,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TaskManager garbage collection time per second, per app node",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 48 },
@@ -277,7 +277,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Live JVM thread count, per app node",
       "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" }, "overrides": [] },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 48 },

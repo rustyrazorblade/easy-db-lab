@@ -4,7 +4,7 @@
       {
         "datasource": {
           "type": "loki",
-          "uid": "loki"
+          "uid": "${logs_datasource}"
         },
         "enable": true,
         "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\"",
@@ -34,7 +34,7 @@
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "One row per cluster: write throughput, the ${percentile} write and read latency of the slowest node in that cluster, and the error rate. Cassandra emits its percentiles pre-aggregated per node, so there is no cluster-wide percentile to compute; the slowest node is the honest cluster-level summary. Latency thresholds assume milliseconds.",
       "fieldConfig": {
         "defaults": {
@@ -98,28 +98,28 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(cassandra_client_request_count_total{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "Write ops/s",
           "refId": "A",
           "instant": true
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "Write latency",
           "refId": "B",
           "instant": true
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "Read latency",
           "refId": "C",
           "instant": true
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "Error rate",
           "refId": "D",
@@ -140,7 +140,7 @@
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -177,7 +177,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(cassandra_client_request_count_total{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -187,7 +187,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -224,7 +224,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(cassandra_client_request_count_total{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -234,7 +234,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -271,7 +271,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(mutations_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -281,7 +281,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "fieldConfig": {
         "defaults": {
           "color": {"mode": "palette-classic"},
@@ -318,7 +318,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(selects_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -335,7 +335,7 @@
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Write failures and timeouts per cluster over time. One line per cluster per error type.",
       "fieldConfig": {
         "defaults": {
@@ -373,19 +373,19 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster, cassandra_status) (rate(cassandra_client_request_error_total{cassandra_status=\"failure\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "failures — {{cluster}}",
           "refId": "A"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster, cassandra_status) (rate(cassandra_client_request_error_total{cassandra_status=\"timeout\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "timeouts — {{cluster}}",
           "refId": "B"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster, cassandra_status) (rate(cassandra_client_request_error_total{cassandra_status=\"unavailable\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "unavailables — {{cluster}}",
           "refId": "C"
@@ -395,7 +395,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Each row is one cluster. Red segments indicate time windows with non-zero errors. Best for identifying which cluster had incidents and when.",
       "fieldConfig": {
         "defaults": {
@@ -425,7 +425,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -442,7 +442,7 @@
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Slowest node in each cluster at ${percentile}. Cassandra now reports this percentile pre-aggregated, straight from the EstimatedHistogram reservoir on each node. Pre-aggregated percentiles cannot be recombined into a true cluster-wide percentile, so this panel reports the worst node rather than inventing one.",
       "fieldConfig": {
         "defaults": {
@@ -487,7 +487,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "${percentile} {{cluster}}",
           "refId": "A"
@@ -497,7 +497,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "p50 overlaid with ${percentile} per cluster, both taken from the slowest node. Shows typical and tail latency in one view.",
       "fieldConfig": {
         "defaults": {
@@ -540,13 +540,13 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "p50 {{cluster}}",
           "refId": "A"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "${percentile} {{cluster}}",
           "refId": "B"
@@ -556,7 +556,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Filled band showing the spread between the fastest and slowest node inside each cluster at ${percentile}. A wide band means high node-to-node variance. Works best with a single cluster selected.",
       "fieldConfig": {
         "defaults": {
@@ -609,13 +609,13 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "max {{cluster}}",
           "refId": "A"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "min {{cluster}}",
           "refId": "B"
@@ -625,7 +625,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "The whole percentile ladder at once, per node: p50, p99, p999 and max on a log axis. This panel deliberately ignores the $percentile variable — its job is showing the shape of the distribution, not one point on it. The gap between p50 and max is the tail. A log axis keeps all four readable together.",
       "fieldConfig": {
         "defaults": {
@@ -665,25 +665,25 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "p50 {{host_name}}",
           "refId": "A"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "p99 {{host_name}}",
           "refId": "B"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "p999 {{host_name}}",
           "refId": "C"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "cassandra_client_request_latency_max_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "max {{host_name}}",
           "refId": "D"
@@ -700,7 +700,7 @@
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Each row = one cluster. Color = throughput tier. Green=low, yellow=medium, blue=high. Best for identifying activity windows across many clusters simultaneously.",
       "fieldConfig": {
         "defaults": {
@@ -731,7 +731,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(cassandra_client_request_count_total{cassandra_operation=~\"read|write\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -741,7 +741,7 @@
       "type": "status-history"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Each row = one cluster. Red = non-zero errors. Quickly identifies which clusters had error windows and when.",
       "fieldConfig": {
         "defaults": {
@@ -771,7 +771,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -788,7 +788,7 @@
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "One row per cluster, one column per percentile, each taken from the slowest node in that cluster. Useful for comparing distribution shape: a cluster with a similar p50 but a much higher p999 has a heavier tail. Thresholds assume milliseconds.",
       "fieldConfig": {
         "defaults": {
@@ -828,28 +828,28 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "p50",
           "refId": "A",
           "instant": true
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "p99",
           "refId": "B",
           "instant": true
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "p999",
           "refId": "C",
           "instant": true
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "max by (cluster) (cassandra_client_request_latency_max_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "max",
           "refId": "D",
@@ -870,7 +870,7 @@
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Average CPU utilization across all nodes in each cluster.",
       "fieldConfig": {
         "defaults": {
@@ -910,7 +910,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "1 - sum by (cluster) (rate(system_cpu_time_seconds_total{state=\"idle\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -920,7 +920,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Average memory in use across all nodes in each cluster.",
       "fieldConfig": {
         "defaults": {
@@ -958,7 +958,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "avg by (cluster) (system_memory_usage_bytes{state=\"used\", cluster=~\"$cluster\", host_name=~\"$host\"})",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -968,7 +968,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Total network I/O across all nodes in each cluster, split by direction (transmit/receive).",
       "fieldConfig": {
         "defaults": {
@@ -1006,7 +1006,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster, direction) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}} {{direction}}",
           "refId": "A"
@@ -1023,7 +1023,7 @@
       "type": "row"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Client-side write and read throughput as measured by cassandra-easy-stress. Compare with the Cassandra coordinator throughput in Section 2 to see if drops are client-side or server-side.",
       "fieldConfig": {
         "defaults": {
@@ -1064,13 +1064,13 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(mutations_count{job=\"cassandra-easy-stress\", job_name=\"$job_name\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "writes — {{cluster}}",
           "refId": "A"
         },
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(selects_count{job=\"cassandra-easy-stress\", job_name=\"$job_name\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "reads — {{cluster}}",
           "refId": "B"
@@ -1080,7 +1080,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Client-side error rate from cassandra-easy-stress. Any non-zero value means the stress job is seeing failures.",
       "fieldConfig": {
         "defaults": {
@@ -1127,7 +1127,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "sum by (cluster) (rate(errors_total{job=\"cassandra-easy-stress\", job_name=\"$job_name\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -1137,7 +1137,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Client-observed write p99 latency per cluster, a pre-computed quantile from the stress job JVM. Compare with the coordinator write latency in Section 4 — the difference is network plus driver overhead. Note this panel is in seconds; the coordinator panels follow the $latency_unit variable.",
       "fieldConfig": {
         "defaults": {
@@ -1185,7 +1185,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "mutations{job=\"cassandra-easy-stress\", job_name=\"$job_name\", quantile=\"0.99\", cluster=~\"$cluster\"}",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -1195,7 +1195,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": {"type": "prometheus", "uid": "${datasource}"},
+      "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
       "description": "Client-observed read p99 latency per cluster. Pre-computed quantile from the stress job JVM.",
       "fieldConfig": {
         "defaults": {
@@ -1243,7 +1243,7 @@
       },
       "targets": [
         {
-          "datasource": {"type": "prometheus", "uid": "${datasource}"},
+          "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "selects{job=\"cassandra-easy-stress\", job_name=\"$job_name\", quantile=\"0.99\", cluster=~\"$cluster\"}",
           "legendFormat": "{{cluster}}",
           "refId": "A"
@@ -1288,7 +1288,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Change in read latency at ${percentile}, cluster B against cluster A. Negative is better: B answers reads faster. The percentile is a pre-aggregated gauge from each node's EstimatedHistogram, averaged over the nodes of each cluster.",
       "fieldConfig": {
@@ -1345,7 +1345,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_b}\", cassandra_operation=\"read\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_a}\", cassandra_operation=\"read\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_a}\", cassandra_operation=\"read\"})",
           "legendFormat": "Read ${percentile}",
@@ -1358,7 +1358,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Change in write latency at ${percentile}, cluster B against cluster A. Negative is better: B acknowledges writes faster.",
       "fieldConfig": {
@@ -1415,7 +1415,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_b}\", cassandra_operation=\"write\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_a}\", cassandra_operation=\"write\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"${cluster_a}\", cassandra_operation=\"write\"})",
           "legendFormat": "Write ${percentile}",
@@ -1428,7 +1428,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Change in coordinator requests per second per node. Positive is better: B serves more work. Averaged per node so clusters of different sizes stay comparable.",
       "fieldConfig": {
@@ -1485,7 +1485,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "100 * (\n    avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"${cluster_b}\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))",
           "legendFormat": "Throughput",
@@ -1498,7 +1498,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Change in the share of wall clock time spent in stop-the-world GC pauses. Negative is better. Concurrent cycles are excluded with jvm_gc_name!~\".*Cycles\"; leaving them in counts a concurrent collector's background work as pause time and makes it look worse than a stop-the-world collector, which is backwards.",
       "fieldConfig": {
@@ -1555,7 +1555,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"${cluster_b}\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"${cluster_a}\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"${cluster_a}\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
           "legendFormat": "GC pause overhead",
@@ -1568,7 +1568,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Change in bytes allocated per second per node. Negative is better only at equal throughput: allocating less for the same work means less garbage to collect. Always read it beside the Throughput tile, because a cluster doing more work allocates more. jvm_memory_allocation_bytes is a histogram, so this is the _sum series, never a _total. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`).",
       "fieldConfig": {
@@ -1625,7 +1625,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=\"${cluster_b}\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))",
           "legendFormat": "Allocation rate",
@@ -1638,7 +1638,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Errors per second per node on cluster B minus cluster A. Negative is better. This one is an absolute difference, not a percentage: a healthy cluster has zero errors, and a percentage change from zero is undefined and would blank the tile.",
       "fieldConfig": {
@@ -1695,7 +1695,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "  avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"${cluster_b}\"}[$__rate_interval])))\n- avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"${cluster_a}\"}[$__rate_interval])))",
           "legendFormat": "Error rate (absolute)",
@@ -1708,7 +1708,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Slowest node in each cluster at ${percentile} for reads. The percentile arrives pre-aggregated per node and cannot be recombined into a cluster-wide percentile, so this reports the worst node rather than inventing one.",
       "fieldConfig": {
@@ -1768,7 +1768,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "${percentile} {{cluster}}",
@@ -1781,7 +1781,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "p50 overlaid with ${percentile} for reads, both from the slowest node. Shows typical and tail read latency together.",
       "fieldConfig": {
@@ -1864,7 +1864,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "max by (cluster) (cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "p50 {{cluster}}",
@@ -1873,7 +1873,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "${percentile} {{cluster}}",
@@ -1886,7 +1886,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Filled band showing the spread between the fastest and slowest node inside each cluster, for reads at ${percentile}. A wide band means high node-to-node variance. Works best with a single cluster selected.",
       "fieldConfig": {
@@ -1979,7 +1979,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "max {{cluster}}",
@@ -1988,7 +1988,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "min {{cluster}}",
@@ -2001,7 +2001,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "The whole read percentile ladder at once, per node: p50, p99, p999 and max on a log axis. This panel deliberately ignores the $percentile variable — its job is the shape of the distribution, not one point on it.",
       "fieldConfig": {
@@ -2093,7 +2093,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "p50 {{host_name}}",
@@ -2102,7 +2102,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "p99 {{host_name}}",
@@ -2111,7 +2111,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "p999 {{host_name}}",
@@ -2120,7 +2120,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "cassandra_client_request_latency_max_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "max {{host_name}}",
@@ -2136,7 +2136,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Bytes read from and written to the block devices of each cluster's database nodes, from the OTel host metrics scraper. Sits beside CPU, memory and network so an I/O-bound cluster is visible next to its other resources.",
       "fieldConfig": {
@@ -2196,7 +2196,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (cluster, direction) (rate(system_disk_io_bytes_total{host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}} {{direction}}",
@@ -2209,7 +2209,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Block device service time at p99, measured in the kernel by ebpf_exporter. This family is a real Prometheus histogram, so histogram_quantile is correct here, unlike the Cassandra latency gauges. It is the storage layer underneath the client latency panels: a jump here explains a jump there.",
       "fieldConfig": {
@@ -2269,7 +2269,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "read p99 {{cluster}}",
@@ -2278,7 +2278,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"write\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "write p99 {{cluster}}",
@@ -2304,7 +2304,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Share of wall clock time each cluster's nodes spend STOPPED in a GC pause, averaged per node. This is the number that costs you request latency. Concurrent cycles are excluded with jvm_gc_name!~\".*Cycles\". Compare it with the panel to its right: a concurrent collector moves work out of this panel and into that one, which is the whole point of using one.",
       "fieldConfig": {
@@ -2364,7 +2364,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg by (cluster) (sum by (cluster, host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", jvm_gc_name!~\".*Cycles\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{cluster}}",
@@ -2377,7 +2377,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Share of wall clock time spent in any GC activity, averaged per node, with concurrent cycles INCLUDED. This measures CPU the collector consumes, not time the application is stopped. A concurrent collector will read far higher here than in the pause panel to its left, and that is correct, not a regression. Never use this panel to compare collectors on latency.",
       "fieldConfig": {
@@ -2437,7 +2437,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg by (cluster) (sum by (cluster, host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{cluster}}",
@@ -2450,7 +2450,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Stop-the-world pauses per second across each cluster. Read it with the pause duration panel beside it: overhead is rate multiplied by duration, and the two shapes tell you which one moved.",
       "fieldConfig": {
@@ -2510,7 +2510,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (cluster) (rate(jvm_gc_duration_seconds_count{job=\"cassandra\", jvm_gc_name!~\".*Cycles\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "pauses/s {{cluster}}",
@@ -2523,7 +2523,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "How long an individual stop-the-world pause lasts. jvm_gc_duration_seconds is a genuine Prometheus histogram, so histogram_quantile is legitimate here — unlike the Cassandra latency gauges, which arrive pre-aggregated. The buckets are wide, so treat these as an order of magnitude rather than an exact figure.",
       "fieldConfig": {
@@ -2583,7 +2583,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.5, sum by (le, cluster) (rate(jvm_gc_duration_seconds_bucket{job=\"cassandra\", jvm_gc_name!~\".*Cycles\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "p50 {{cluster}}",
@@ -2592,7 +2592,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(jvm_gc_duration_seconds_bucket{job=\"cassandra\", jvm_gc_name!~\".*Cycles\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "p99 {{cluster}}",
@@ -2605,7 +2605,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Bytes allocated per second, split into TLAB (thread-local, the fast path) and Main (allocated straight from the heap). Allocation rate is what drives collection frequency, so it is the upstream cause of most GC differences. jvm_memory_allocation_bytes is a histogram; this is the _sum series, and there is no _total. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`).",
       "fieldConfig": {
@@ -2665,7 +2665,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (cluster, arena) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}} {{arena}}",
@@ -2678,7 +2678,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "The same GC time broken out by collector phase, unfiltered, so you can see which phase dominates. G1 reports Young and Old Generation; generational ZGC reports Major and Minor, each split into Cycles (concurrent) and Pauses (stop-the-world). This is the panel that shows why the two panels above disagree.",
       "fieldConfig": {
@@ -2738,7 +2738,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg by (cluster, jvm_gc_name) (sum by (cluster, host_name, jvm_gc_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{cluster}} {{jvm_gc_name}}",
@@ -2751,7 +2751,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Heap in use against the heap ceiling, averaged per node. The ceiling uses max by (cluster, host_name), never a sum: generational ZGC reports the whole-heap limit on BOTH the young and the old pool, while G1 reports it only on G1 Old Gen, so summing the pools doubles the ceiling on a ZGC node alone.",
       "fieldConfig": {
@@ -2811,7 +2811,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg by (cluster) (sum by (cluster, host_name) (jvm_memory_used_bytes{jvm_memory_type=\"heap\", job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}))",
           "legendFormat": "used {{cluster}}",
@@ -2820,7 +2820,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg by (cluster) (max by (cluster, host_name) (jvm_memory_limit_bytes{jvm_memory_type=\"heap\", job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}))",
           "legendFormat": "ceiling {{cluster}}",
@@ -2833,7 +2833,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Heap still occupied immediately after the last collection, averaged per node. This is the real working set: unlike heap used, it does not include garbage waiting to be collected, so it is the number to watch for a leak or for genuine memory growth under load.",
       "fieldConfig": {
@@ -2893,7 +2893,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg by (cluster) (sum by (cluster, host_name) (jvm_memory_used_after_last_gc_bytes{jvm_memory_type=\"heap\", job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}))",
           "legendFormat": "{{cluster}}",
@@ -2919,7 +2919,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Compaction queue depth against how fast it is draining. A rising backlog with a flat completion rate means compaction cannot keep up, which shows up later as more SSTables per read and worse read latency.",
       "fieldConfig": {
@@ -2979,7 +2979,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (cluster) (cassandra_compaction_tasks_pending{cluster=~\"$cluster\", host_name=~\"$host\"})",
           "legendFormat": "pending {{cluster}}",
@@ -2988,7 +2988,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (cluster) (rate(cassandra_compaction_tasks_completed_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "completed/s {{cluster}}",
@@ -3001,7 +3001,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "The same backlog attributed to a table, so a single hot table is distinguishable from a cluster-wide problem. System and sidecar keyspaces are excluded.",
       "fieldConfig": {
@@ -3061,7 +3061,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (cluster, keyspace, table) (cassandra_table_compaction_pending{keyspace!~\"system.*|sidecar_internal\", cluster=~\"$cluster\", host_name=~\"$host\"})",
           "legendFormat": "{{cluster}} {{keyspace}}.{{table}}",
@@ -3074,7 +3074,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "How many SSTables a read touches at p99. This is the mechanical cause behind most read latency differences, and the first thing to check when the read latency panels diverge between clusters. This gauge has no p999, so it does not follow the Percentile picker.",
       "fieldConfig": {
@@ -3134,7 +3134,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "max by (cluster, keyspace, table) (cassandra_table_sstables_per_read_p99{keyspace!~\"system.*|sidecar_internal\", cluster=~\"$cluster\", host_name=~\"$host\"})",
           "legendFormat": "{{cluster}} {{keyspace}}.{{table}}",
@@ -3147,7 +3147,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "The five most backed-up thread pools. Pending work here is queueing inside Cassandra and is the usual cause when latency rises without any change in disk or CPU.",
       "fieldConfig": {
@@ -3207,7 +3207,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "topk(5, sum by (cluster, pool) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}))",
           "legendFormat": "{{cluster}} {{pool}}",
@@ -3220,7 +3220,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Messages the node gave up on rather than processed. Any sustained non-zero value here means the cluster is shedding work, and a latency comparison against a cluster that is not shedding work is not a fair one.",
       "fieldConfig": {
@@ -3280,7 +3280,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "topk(5, sum by (cluster, message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{cluster}} {{message_type}}",
@@ -3293,7 +3293,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Hints being replayed, and the rate at which new ones are stored. Hints accrue when a replica is unreachable or too slow to accept a write, so a rising accrual rate marks the moment a cluster started failing writes internally.",
       "fieldConfig": {
@@ -3353,7 +3353,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (cluster) (cassandra_storage_hints_in_progress{cluster=~\"$cluster\", host_name=~\"$host\"})",
           "legendFormat": "in progress {{cluster}}",
@@ -3362,7 +3362,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (cluster) (rate(cassandra_storage_hints_count_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "accrued/s {{cluster}}",
@@ -3379,16 +3379,27 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": true,
-          "text": "Mimir",
-          "value": "mimir"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Logs",
         "multi": false,
-        "name": "datasource",
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "queryValue": "",
@@ -3402,7 +3413,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "hide": 0,
         "includeAll": true,
@@ -3418,7 +3429,7 @@
       },
       {
         "current": {},
-        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
         "description": "Baseline cluster for the A/B section at the top. Single select. Every delta up there is B measured against this.",
         "hide": 0,
         "includeAll": false,
@@ -3434,7 +3445,7 @@
       },
       {
         "current": {},
-        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
         "description": "Candidate cluster for the A/B section at the top. Single select. Written with braces as ${cluster_b} in every query, because a bare $cluster_b would be read as a variable named cluster_b only by luck of the parser and $cluster already exists.",
         "hide": 0,
         "includeAll": false,
@@ -3450,7 +3461,7 @@
       },
       {
         "current": {},
-        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
         "description": "Derived from a Cassandra-only metric, so it lists database nodes only and can never offer control0 or app0. host_name is carried by every exporter, so the same filter also works on the system panels.",
         "hide": 0,
         "includeAll": true,
@@ -3503,7 +3514,7 @@
       {
         "allValue": ".*",
         "current": {},
-        "datasource": {"type": "prometheus", "uid": "${datasource}"},
+        "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
         "hide": 0,
         "includeAll": true,
         "label": "Stress Job",
@@ -3519,7 +3530,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "mimir"
+          "uid": "${metrics_datasource}"
         },
         "filters": [],
         "hide": 0,

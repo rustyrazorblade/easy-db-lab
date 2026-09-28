@@ -35,15 +35,12 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "Mimir",
-          "value": "mimir"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Metrics",
         "multi": false,
-        "name": "datasource",
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
@@ -53,7 +50,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(memcached_up{job=\"memcached\"}, cluster)",
         "hide": 0,
@@ -77,7 +74,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(memcached_up{job=\"memcached\", cluster=~\"$cluster.*\"}, instance)",
         "hide": 0,
@@ -116,7 +113,7 @@
       "description": "memcached instances the exporter can reach (memcached_up)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -173,7 +170,7 @@
       "description": "Time since memcached started (lowest across instances)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -226,7 +223,7 @@
       "description": "RAM memcached has allocated for slab pages (memcached_malloced_bytes) as a share of the configured cache size (--memory). Item values moved to extstore on flash are not counted.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -289,7 +286,7 @@
       "description": "Items currently stored",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -342,7 +339,7 @@
       "description": "get hits / (get hits + get misses) over the rate window",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -406,7 +403,7 @@
       "description": "Open client connections",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -471,7 +468,7 @@
       "description": "Commands processed per second, by command (all statuses)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -516,7 +513,7 @@
       "description": "get commands per second split by hit and miss",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -561,7 +558,7 @@
       "description": "get hits / (get hits + get misses) per instance",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -608,7 +605,7 @@
       "description": "Commands per second for every command/status pair the exporter reports",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -665,7 +662,7 @@
       "description": "RAM used is the memory memcached has allocated for slab pages (memcached_malloced_bytes); it cannot exceed the limit (--memory). Item bytes is the full size of every stored item (memcached_current_bytes), including values moved to extstore on flash, so with extstore on it can be far above the limit.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -721,7 +718,7 @@
       "description": "Items currently stored, per instance",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -767,7 +764,7 @@
       "description": "Rate of items stored (memcached_items_total)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -812,7 +809,7 @@
       "description": "Valid items evicted to free memory, and expired items whose memory was reused, per second",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -874,7 +871,7 @@
       "description": "Open connections against the connection limit",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -925,7 +922,7 @@
       "description": "New connections accepted per second, and connections rejected at the limit",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -975,7 +972,7 @@
       "description": "Bytes read from and written to clients per second",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1025,7 +1022,7 @@
       "description": "CPU seconds per second used by the memcached process, split by user and system",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1076,7 +1073,7 @@
       "description": "Connections that yielded after the per-event request limit, and times the listener was disabled at the connection limit, per second",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1138,7 +1135,7 @@
       "description": "Items stored in each slab class",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1184,7 +1181,7 @@
       "description": "Bytes requested for items in each slab class",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1230,7 +1227,7 @@
       "description": "Chunks holding items and free chunks in each slab class",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1281,7 +1278,7 @@
       "description": "Items evicted from each slab class per second",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1338,7 +1335,7 @@
       "description": "Bytes written to and read from extstore on flash per second. No data when memcached runs without extstore (--extstore-size not set).",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1388,7 +1385,7 @@
       "description": "Items written to and read from extstore per second. No data when extstore is off.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1438,7 +1435,7 @@
       "description": "Get hits served from RAM and from extstore, and get misses, per second. Flash hits are items read from extstore; RAM hits are the remaining get hits. No data when extstore is off.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1493,7 +1490,7 @@
       "description": "Items read from extstore as a fraction of all get hits. No data when extstore is off.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1540,7 +1537,7 @@
       "description": "Bytes holding items in extstore, bytes in allocated pages not holding an item, and the extstore size. memcached_extstore_bytes_used_total is a gauge despite its suffix. No data when extstore is off.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1595,7 +1592,7 @@
       "description": "Extstore pages holding at least one item and pages still free, with the number of items stored in extstore. No data when extstore is off.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1663,7 +1660,7 @@
       "description": "Extstore pages allocated, evicted to free space, and reclaimed once empty, per second. No data when extstore is off.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1718,7 +1715,7 @@
       "description": "Items evicted from extstore to free space, and items rescued, skipped, or lost during compaction, per second. No data when extstore is off.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1778,7 +1775,7 @@
       "description": "Bytes evicted from extstore to free space per second. No data when extstore is off.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1823,7 +1820,7 @@
       "description": "Items waiting in the extstore IO queue. No data when extstore is off.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {

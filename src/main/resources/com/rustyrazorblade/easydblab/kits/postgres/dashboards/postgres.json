@@ -27,12 +27,27 @@
   "templating": {
     "list": [
       {
-        "current": { "text": "Mimir", "value": "mimir" },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Logs",
         "multi": false,
-        "name": "datasource",
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
@@ -41,7 +56,7 @@
       {
         "allValue": ".+",
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
         "definition": "label_values(up, cluster)",
         "description": "Clusters of this tenant, for the logs panels. All is .+ because Loki refuses a stream selector that matches an empty value.",
         "hide": 0,
@@ -58,7 +73,7 @@
         "type": "query"
       },
       {
-        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
         "definition": "label_values(cnpg_collector_up{job=\"postgres\"}, k8s_app_instance)",
         "description": "The instance whose logs the logs panel shows. Its job selector is rewritten at install to the instance's own scrape job, so it resolves to that instance.",
         "hide": 2,
@@ -87,7 +102,7 @@
       "id": 2,
       "type": "stat",
       "title": "Total Connections",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 3, "w": 4, "x": 0, "y": 1 },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none" },
       "fieldConfig": {
@@ -95,14 +110,14 @@
         "overrides": []
       },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(cnpg_backends_total{job=\"postgres\"})", "refId": "A", "legendFormat": "" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(cnpg_backends_total{job=\"postgres\"})", "refId": "A", "legendFormat": "" }
       ]
     },
     {
       "id": 3,
       "type": "stat",
       "title": "Database Size",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 3, "w": 4, "x": 4, "y": 1 },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none" },
       "fieldConfig": {
@@ -110,14 +125,14 @@
         "overrides": []
       },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "max(cnpg_pg_database_size_bytes{job=\"postgres\",datname=\"postgres\"})", "refId": "A", "legendFormat": "" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "max(cnpg_pg_database_size_bytes{job=\"postgres\",datname=\"postgres\"})", "refId": "A", "legendFormat": "" }
       ]
     },
     {
       "id": 4,
       "type": "stat",
       "title": "Cache Hit Ratio",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 3, "w": 4, "x": 8, "y": 1 },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none" },
       "fieldConfig": {
@@ -126,7 +141,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\"}[5m])) / (sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\"}[5m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\"}[5m])))",
           "refId": "A",
           "legendFormat": ""
@@ -137,7 +152,7 @@
       "id": 5,
       "type": "stat",
       "title": "Streaming Replicas",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 3, "w": 4, "x": 12, "y": 1 },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none" },
       "fieldConfig": {
@@ -145,14 +160,14 @@
         "overrides": []
       },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "max(cnpg_pg_replication_streaming_replicas{job=\"postgres\"})", "refId": "A", "legendFormat": "" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "max(cnpg_pg_replication_streaming_replicas{job=\"postgres\"})", "refId": "A", "legendFormat": "" }
       ]
     },
     {
       "id": 6,
       "type": "stat",
       "title": "Max TX Duration",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 3, "w": 4, "x": 16, "y": 1 },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none" },
       "fieldConfig": {
@@ -160,14 +175,14 @@
         "overrides": []
       },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "max(cnpg_backends_max_tx_duration_seconds{job=\"postgres\"})", "refId": "A", "legendFormat": "" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "max(cnpg_backends_max_tx_duration_seconds{job=\"postgres\"})", "refId": "A", "legendFormat": "" }
       ]
     },
     {
       "id": 7,
       "type": "stat",
       "title": "Deadlocks (5m)",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 3, "w": 4, "x": 20, "y": 1 },
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "none" },
       "fieldConfig": {
@@ -175,7 +190,7 @@
         "overrides": []
       },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(increase(cnpg_pg_stat_database_deadlocks_total{job=\"postgres\"}[5m]))", "refId": "A", "legendFormat": "" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(increase(cnpg_pg_stat_database_deadlocks_total{job=\"postgres\"}[5m]))", "refId": "A", "legendFormat": "" }
       ]
     },
     {
@@ -190,7 +205,7 @@
       "id": 11,
       "type": "timeseries",
       "title": "Transaction Rate",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 5 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "ops", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -198,15 +213,15 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\"}[2m]))", "refId": "A", "legendFormat": "commits/s" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{job=\"postgres\"}[2m]))", "refId": "B", "legendFormat": "rollbacks/s" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\"}[2m]))", "refId": "A", "legendFormat": "commits/s" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{job=\"postgres\"}[2m]))", "refId": "B", "legendFormat": "rollbacks/s" }
       ]
     },
     {
       "id": 12,
       "type": "timeseries",
       "title": "Row Operations Rate",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 5 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "rps", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -214,17 +229,17 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted_total{job=\"postgres\"}[2m]))", "refId": "A", "legendFormat": "inserted/s" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_tup_updated_total{job=\"postgres\"}[2m]))", "refId": "B", "legendFormat": "updated/s" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted_total{job=\"postgres\"}[2m]))", "refId": "C", "legendFormat": "deleted/s" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_tup_fetched_total{job=\"postgres\"}[2m]))", "refId": "D", "legendFormat": "fetched/s" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted_total{job=\"postgres\"}[2m]))", "refId": "A", "legendFormat": "inserted/s" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_tup_updated_total{job=\"postgres\"}[2m]))", "refId": "B", "legendFormat": "updated/s" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted_total{job=\"postgres\"}[2m]))", "refId": "C", "legendFormat": "deleted/s" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_tup_fetched_total{job=\"postgres\"}[2m]))", "refId": "D", "legendFormat": "fetched/s" }
       ]
     },
     {
       "id": 13,
       "type": "timeseries",
       "title": "Active Connections",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 12 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "none", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -232,15 +247,15 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum by (datname) (cnpg_backends_total{job=\"postgres\"})", "refId": "A", "legendFormat": "{{datname}}" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(cnpg_backends_waiting_total{job=\"postgres\"})", "refId": "B", "legendFormat": "waiting (lock)" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum by (datname) (cnpg_backends_total{job=\"postgres\"})", "refId": "A", "legendFormat": "{{datname}}" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(cnpg_backends_waiting_total{job=\"postgres\"})", "refId": "B", "legendFormat": "waiting (lock)" }
       ]
     },
     {
       "id": 14,
       "type": "timeseries",
       "title": "Deadlocks & Conflicts",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 12 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "none", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -248,8 +263,8 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_deadlocks_total{job=\"postgres\"}[5m]))", "refId": "A", "legendFormat": "deadlocks/s" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_conflicts_total{job=\"postgres\"}[5m]))", "refId": "B", "legendFormat": "conflicts/s" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_deadlocks_total{job=\"postgres\"}[5m]))", "refId": "A", "legendFormat": "deadlocks/s" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "sum(rate(cnpg_pg_stat_database_conflicts_total{job=\"postgres\"}[5m]))", "refId": "B", "legendFormat": "conflicts/s" }
       ]
     },
     {
@@ -264,7 +279,7 @@
       "id": 21,
       "type": "timeseries",
       "title": "Buffer Cache Hit Ratio",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 20 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "percentunit", "min": 0, "max": 1, "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -273,7 +288,7 @@
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "sum by (datname) (rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\"}[2m])) / (sum by (datname) (rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\"}[2m])) + sum by (datname) (rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\"}[2m])))",
           "refId": "A",
           "legendFormat": "{{datname}}"
@@ -284,7 +299,7 @@
       "id": 22,
       "type": "timeseries",
       "title": "Buffer Writes (bgwriter & checkpointer)",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 20 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "binBps", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -292,15 +307,15 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{job=\"postgres\"}[2m]) * 8192", "refId": "A", "legendFormat": "bgwriter" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_buffers_written_total{job=\"postgres\"}[2m]) * 8192", "refId": "B", "legendFormat": "checkpointer" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{job=\"postgres\"}[2m]) * 8192", "refId": "A", "legendFormat": "bgwriter" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_buffers_written_total{job=\"postgres\"}[2m]) * 8192", "refId": "B", "legendFormat": "checkpointer" }
       ]
     },
     {
       "id": 23,
       "type": "timeseries",
       "title": "Checkpoint Duration",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 27 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "ms", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -308,15 +323,15 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_write_time_total{job=\"postgres\"}[5m])", "refId": "A", "legendFormat": "write time (ms/s)" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_sync_time_total{job=\"postgres\"}[5m])", "refId": "B", "legendFormat": "sync time (ms/s)" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_write_time_total{job=\"postgres\"}[5m])", "refId": "A", "legendFormat": "write time (ms/s)" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_sync_time_total{job=\"postgres\"}[5m])", "refId": "B", "legendFormat": "sync time (ms/s)" }
       ]
     },
     {
       "id": 24,
       "type": "timeseries",
       "title": "Checkpoints Rate",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 27 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "cpm", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -324,8 +339,8 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_checkpoints_timed_total{job=\"postgres\"}[5m]) * 60", "refId": "A", "legendFormat": "scheduled" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_checkpoints_req_total{job=\"postgres\"}[5m]) * 60", "refId": "B", "legendFormat": "requested" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_checkpoints_timed_total{job=\"postgres\"}[5m]) * 60", "refId": "A", "legendFormat": "scheduled" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_pg_stat_checkpointer_checkpoints_req_total{job=\"postgres\"}[5m]) * 60", "refId": "B", "legendFormat": "requested" }
       ]
     },
     {
@@ -340,7 +355,7 @@
       "id": 31,
       "type": "timeseries",
       "title": "WAL Generation Rate",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 35 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "Bps", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -348,14 +363,14 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\"}[2m])", "refId": "A", "legendFormat": "WAL bytes/s" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\"}[2m])", "refId": "A", "legendFormat": "WAL bytes/s" }
       ]
     },
     {
       "id": 32,
       "type": "timeseries",
       "title": "WAL Sync & Write Time",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 35 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "µs", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -363,15 +378,15 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_collector_wal_write_time{job=\"postgres\"}[2m])", "refId": "A", "legendFormat": "write µs/s" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_collector_wal_sync_time{job=\"postgres\"}[2m])", "refId": "B", "legendFormat": "sync µs/s" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_collector_wal_write_time{job=\"postgres\"}[2m])", "refId": "A", "legendFormat": "write µs/s" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_collector_wal_sync_time{job=\"postgres\"}[2m])", "refId": "B", "legendFormat": "sync µs/s" }
       ]
     },
     {
       "id": 33,
       "type": "timeseries",
       "title": "WAL Archive Status",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 42 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "none", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -379,8 +394,8 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_pg_stat_archiver_archived_count_total{job=\"postgres\"}[5m])", "refId": "A", "legendFormat": "archived/s" },
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "rate(cnpg_pg_stat_archiver_failed_count_total{job=\"postgres\"}[5m])", "refId": "B", "legendFormat": "failed/s" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_pg_stat_archiver_archived_count_total{job=\"postgres\"}[5m])", "refId": "A", "legendFormat": "archived/s" },
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "rate(cnpg_pg_stat_archiver_failed_count_total{job=\"postgres\"}[5m])", "refId": "B", "legendFormat": "failed/s" }
       ]
     },
     {
@@ -395,7 +410,7 @@
       "id": 41,
       "type": "timeseries",
       "title": "Streaming Replicas",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 50 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "none", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -403,14 +418,14 @@
       },
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "max(cnpg_pg_replication_streaming_replicas{job=\"postgres\"})", "refId": "A", "legendFormat": "streaming replicas" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "max(cnpg_pg_replication_streaming_replicas{job=\"postgres\"})", "refId": "A", "legendFormat": "streaming replicas" }
       ]
     },
     {
       "id": 42,
       "type": "timeseries",
       "title": "Replication Lag",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 50 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -418,7 +433,7 @@
       },
       "options": { "legend": { "calcs": ["mean", "lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${datasource}" }, "expr": "max(cnpg_pg_replication_lag{job=\"postgres\"})", "refId": "A", "legendFormat": "replication lag" }
+        { "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" }, "expr": "max(cnpg_pg_replication_lag{job=\"postgres\"})", "refId": "A", "legendFormat": "replication lag" }
       ]
     },
     {
@@ -433,7 +448,7 @@
       "id": 51,
       "type": "timeseries",
       "title": "Database Size by DB",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 58 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "bytes", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -442,7 +457,7 @@
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "max by (datname) (cnpg_pg_database_size_bytes{job=\"postgres\",datname!~\"template.*\"})",
           "refId": "A",
           "legendFormat": "{{datname}}"
@@ -453,7 +468,7 @@
       "id": 52,
       "type": "timeseries",
       "title": "Transaction ID Age (XID Age)",
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 58 },
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "unit": "none", "custom": { "lineWidth": 1, "fillOpacity": 10 } },
@@ -462,7 +477,7 @@
       "options": { "legend": { "calcs": ["lastNotNull"], "displayMode": "table", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "max by (datname) (cnpg_pg_database_xid_age{job=\"postgres\",datname!~\"template.*\"})",
           "refId": "A",
           "legendFormat": "{{datname}}"
@@ -481,12 +496,12 @@
       "id": 61,
       "type": "logs",
       "title": "PostgreSQL Logs",
-      "datasource": { "type": "loki", "uid": "loki" },
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 66 },
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": false },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
           "expr": "{cluster=~\"$cluster\", k8s_container_name=\"postgres\"} | k8s_app_instance=\"$app_instance\"",
           "legendFormat": "",

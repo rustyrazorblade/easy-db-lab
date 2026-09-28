@@ -24,7 +24,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -114,7 +114,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_s3_bytes_downloaded_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "BytesDownloaded {{dimension_BucketName}}",
@@ -123,7 +123,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_s3_bytes_uploaded_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "BytesUploaded {{dimension_BucketName}}",
@@ -148,7 +148,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -225,7 +225,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_s3_get_requests_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "GetRequests {{dimension_BucketName}}",
@@ -234,7 +234,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_s3_put_requests_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "PutRequests {{dimension_BucketName}}",
@@ -259,7 +259,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -336,7 +336,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_s3_first_byte_latency_p99{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "FirstByteLatency p99 {{dimension_BucketName}}",
@@ -349,7 +349,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -426,7 +426,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_s3_total_request_latency_p99{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
           "legendFormat": "TotalRequestLatency p99 {{dimension_BucketName}}",
@@ -451,7 +451,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -541,7 +541,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_ebs_volume_read_ops_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "VolumeReadOps {{dimension_VolumeId}}",
@@ -550,7 +550,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_ebs_volume_write_ops_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "VolumeWriteOps {{dimension_VolumeId}}",
@@ -563,7 +563,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -653,7 +653,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_ebs_volume_read_bytes_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "VolumeReadBytes {{dimension_VolumeId}}",
@@ -662,7 +662,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_ebs_volume_write_bytes_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "VolumeWriteBytes {{dimension_VolumeId}}",
@@ -675,7 +675,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -752,7 +752,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_ebs_volume_queue_length_average{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "QueueLength {{dimension_VolumeId}}",
@@ -765,7 +765,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -842,7 +842,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_ebs_burst_balance_average{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}",
           "legendFormat": "BurstBalance {{dimension_VolumeId}}",
@@ -867,7 +867,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -947,7 +947,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_ec2_status_check_failed_instance_maximum{dimension_InstanceId=~\"$instance\", cluster=~\"$cluster\"}",
           "legendFormat": "InstanceCheck {{dimension_InstanceId}}",
@@ -956,7 +956,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_ec2_status_check_failed_system_maximum{dimension_InstanceId=~\"$instance\", cluster=~\"$cluster\"}",
           "legendFormat": "SystemCheck {{dimension_InstanceId}}",
@@ -981,7 +981,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1057,7 +1057,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_s3_bucket_size_bytes_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"StandardStorage\", cluster=~\"$cluster\"}",
           "legendFormat": "BucketSize {{dimension_BucketName}}",
@@ -1070,7 +1070,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1146,7 +1146,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_s3_number_of_objects_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"AllStorageTypes\", cluster=~\"$cluster\"}",
           "legendFormat": "NumberOfObjects {{dimension_BucketName}}",
@@ -1170,16 +1170,12 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": true,
-          "text": "Mimir",
-          "value": "mimir"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Metrics",
         "multi": false,
-        "name": "datasource",
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "queryValue": "",
@@ -1192,7 +1188,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(up, cluster)",
         "hide": 0,
@@ -1217,7 +1213,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(aws_s3_info, name)",
         "hide": 0,
@@ -1241,7 +1237,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(aws_ec2_cpuutilization_average, dimension_InstanceId)",
         "hide": 0,
@@ -1261,7 +1257,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(aws_ebs_volume_read_ops_sum, dimension_VolumeId)",
         "hide": 0,
@@ -1280,7 +1276,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "mimir"
+          "uid": "${metrics_datasource}"
         },
         "filters": [],
         "hide": 0,

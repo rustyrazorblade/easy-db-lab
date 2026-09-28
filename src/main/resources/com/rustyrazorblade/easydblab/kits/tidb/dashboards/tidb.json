@@ -38,7 +38,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Active SQL connections to TiDB",
       "fieldConfig": {
         "defaults": {
@@ -56,7 +56,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Total number of Raft regions",
       "fieldConfig": {
         "defaults": {
@@ -74,7 +74,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Number of TiKV stores currently up",
       "fieldConfig": {
         "defaults": {
@@ -92,7 +92,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Number of TiKV stores currently down — should be 0",
       "fieldConfig": {
         "defaults": {
@@ -110,7 +110,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Percentage of cluster storage used",
       "fieldConfig": {
         "defaults": {
@@ -128,7 +128,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "DDL job queue depth",
       "fieldConfig": {
         "defaults": {
@@ -154,7 +154,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of SQL statements executed per second, broken down by statement type",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -168,7 +168,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of SQL execution errors per second",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -182,7 +182,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Active SQL connections over time",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -196,7 +196,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of critical (non-recoverable) errors",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -210,7 +210,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "50th and 99th percentile query handle duration — key latency signal for the SQL layer",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "s" },
@@ -227,7 +227,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Plan cache hit and miss rates — high miss rate means the optimizer re-plans frequently, adding CPU overhead",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -244,7 +244,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of queries offloaded to the TiFlash MPP engine — rising rate confirms HTAP pushdown is working",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -258,7 +258,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Region errors returned to the SQL layer from TiKV — auto-retried but indicate TiKV instability or leader election churn",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -280,7 +280,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Number of TiKV stores currently up",
       "fieldConfig": {
         "defaults": {
@@ -298,7 +298,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Number of TiKV stores currently down — alert if > 0",
       "fieldConfig": {
         "defaults": {
@@ -316,7 +316,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Total cluster storage capacity in bytes",
       "fieldConfig": {
         "defaults": {
@@ -334,7 +334,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Currently used cluster storage in bytes",
       "fieldConfig": {
         "defaults": {
@@ -352,7 +352,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TSO operations per second — timestamp oracle throughput",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -366,7 +366,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Region count over time",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -383,7 +383,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TSO clock skew in milliseconds",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" },
@@ -397,7 +397,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of scheduling operators created by PD (balance-region, balance-leader, etc.) — a spike indicates active rebalancing",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -411,7 +411,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Regions in each health state — elevated missing-peer or extra-peer counts indicate replication issues",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -425,7 +425,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Regions pending each PD checker (replica, merge, split) — a growing count indicates scheduling backlog",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -439,7 +439,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Hot region and store counts by type — elevated values indicate uneven load distribution",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -461,7 +461,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Missing Raft leaders per store — should be 0",
       "fieldConfig": {
         "defaults": {
@@ -479,7 +479,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Hibernated Raft peers (idle regions conserving resources)",
       "fieldConfig": {
         "defaults": {
@@ -497,7 +497,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Local read requests served by TiKV follower read without going through Raft",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -511,7 +511,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of Raft admin commands (splits, merges, config changes)",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -525,7 +525,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Data size per RocksDB column family (default, write, lock)",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "bytes" },
@@ -539,7 +539,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Bytes waiting for RocksDB compaction — elevated value indicates I/O backpressure that will cause write stalls",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "bytes" },
@@ -553,7 +553,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Write stall time rate (µs/s) — any non-zero value means RocksDB compaction is blocking incoming writes",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -567,7 +567,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Bytes read and written through the RocksDB storage engine",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" },
@@ -581,7 +581,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "SST file count at L0 per column family — high L0 count (>10) indicates compaction lag and impending write stalls",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -595,7 +595,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rows and keys scanned by coprocessor push-down queries — high scanned/returned ratio indicates full scans",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -617,7 +617,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Currently active MPP (Massively Parallel Processing) tasks",
       "fieldConfig": {
         "defaults": {
@@ -635,7 +635,7 @@
       "type": "stat"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Active MPP task count over time",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -649,7 +649,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TiFlash request units consumed per second",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -663,7 +663,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Data exchange bytes per second between TiFlash MPP nodes",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" },
@@ -677,7 +677,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TiFlash coprocessor request errors per second",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -691,7 +691,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "TiFlash process RSS memory usage broken down by type",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "bytes" },
@@ -705,7 +705,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Bytes read and written at the TiFlash columnar storage layer — shows actual I/O load for HTAP queries",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" },
@@ -719,7 +719,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rows read and written at the TiFlash columnar storage layer — useful for understanding scan amplification",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "short" },
@@ -733,7 +733,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Bytes replicated from TiKV to TiFlash via Raft — shows the throughput of the row-to-columnar replication pipeline",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "Bps" },
@@ -755,14 +755,14 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "loki", "uid": "loki" },
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
       "description": "Log stream from TiDB pods",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 142 },
       "id": 34,
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showTime": true, "wrapLogMessage": true },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
           "expr": "{cluster=~\"$cluster\"} | k8s_app_instance=~\".*tidb.*\"",
           "queryType": "range",
@@ -781,7 +781,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "Rate of traced operations by span name — shows which TiKV gRPC calls and SQL executor paths are active",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "reqps" },
@@ -801,7 +801,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "description": "99th percentile span duration by operation — trace-derived latency breakdown per TiKV call and SQL executor phase",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10, "lineWidth": 1 }, "unit": "ms" },
@@ -829,7 +829,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "tempo", "uid": "tempo" },
+      "datasource": { "type": "tempo", "uid": "${traces_datasource}" },
       "description": "Recent traces from the TiDB SQL layer — click any row to open the full trace in Tempo",
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 161 },
@@ -840,7 +840,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "tempo", "uid": "tempo" },
+          "datasource": { "type": "tempo", "uid": "${traces_datasource}" },
           "limit": 20,
           "query": "{ resource.service.name = \"TiDB\" }",
           "queryType": "traceql",
@@ -859,7 +859,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "tempo", "uid": "tempo" },
+      "datasource": { "type": "tempo", "uid": "${traces_datasource}" },
       "description": "Service topology derived from distributed traces — nodes are services, edges are calls with request rate and error rate",
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 15, "w": 24, "x": 0, "y": 172 },
@@ -867,7 +867,7 @@
       "options": {},
       "targets": [
         {
-          "datasource": { "type": "tempo", "uid": "tempo" },
+          "datasource": { "type": "tempo", "uid": "${traces_datasource}" },
           "queryType": "serviceMap",
           "refId": "A",
           "serviceMapQuery": "{}"
@@ -884,12 +884,42 @@
   "templating": {
     "list": [
       {
-        "current": { "text": "Mimir", "value": "mimir" },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Logs",
         "multi": false,
-        "name": "datasource",
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Traces",
+        "multi": false,
+        "name": "traces_datasource",
+        "options": [],
+        "query": "tempo",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
@@ -898,7 +928,7 @@
       {
         "allValue": ".+",
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
         "definition": "label_values(up, cluster)",
         "description": "Clusters of this tenant, for the logs panels. All is .+ because Loki refuses a stream selector that matches an empty value.",
         "hide": 0,

@@ -35,15 +35,12 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "Mimir",
-          "value": "mimir"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Metrics",
         "multi": false,
-        "name": "datasource",
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
@@ -53,7 +50,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(jvm_thread_count{job=\"neo4j\"}, cluster)",
         "hide": 0,
@@ -77,7 +74,7 @@
         },
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(jvm_thread_count{job=\"neo4j\", cluster=~\"$cluster.*\"}, host_name)",
         "hide": 0,
@@ -131,7 +128,7 @@
       "description": "Heap used as a share of the maximum heap (jvm_memory_used_bytes / jvm_memory_limit_bytes, type heap)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -194,7 +191,7 @@
       "description": "Recent CPU utilization of the Neo4j JVM across all available cores (jvm_cpu_recent_utilization_ratio)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -250,7 +247,7 @@
       "description": "Processors available to the JVM (jvm_cpu_count)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -303,7 +300,7 @@
       "description": "JVM threads in all states (jvm_thread_count)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -356,7 +353,7 @@
       "description": "HTTP API requests per second (http_server_request_duration_seconds_count)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -409,7 +406,7 @@
       "description": "95th percentile HTTP API request latency",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -474,7 +471,7 @@
       "description": "Heap bytes used, committed by the JVM, and the maximum heap",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -530,7 +527,7 @@
       "description": "Non-heap bytes used and committed. The limit sums only the pools that report a maximum (code heaps, compressed class space); Metaspace is unbounded and reports none",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -586,7 +583,7 @@
       "description": "Bytes used in each JVM memory pool",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -632,7 +629,7 @@
       "description": "Bytes still in use in each heap pool right after the most recent GC; a rising Old Gen floor means the live set is growing",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -690,7 +687,7 @@
       "description": "Seconds spent in GC per second of wall clock, by collector and action. Concurrent GC time runs alongside application threads and is not pause time",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -736,7 +733,7 @@
       "description": "GC events per second, by collector and action",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -782,7 +779,7 @@
       "description": "95th percentile GC duration by collector, from the jvm_gc_duration_seconds histogram (bucket bounds 10ms, 100ms, 1s, 10s, so values are coarse)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -840,7 +837,7 @@
       "description": "Recent CPU utilization of the Neo4j JVM as a fraction of all available cores",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -887,7 +884,7 @@
       "description": "CPU seconds per second consumed by the Neo4j JVM (jvm_cpu_time_seconds_total)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -933,7 +930,7 @@
       "description": "JVM threads by state, plus the daemon-thread total",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -984,7 +981,7 @@
       "description": "Classes currently loaded, and classes loaded and unloaded per second",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1052,7 +1049,7 @@
       "description": "HTTP API requests per second by method, route and response status",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1098,7 +1095,7 @@
       "description": "HTTP API request latency percentiles across all routes",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1154,7 +1151,7 @@
       "description": "95th percentile HTTP API request latency per route",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1200,7 +1197,7 @@
       "description": "Mean HTTP API request latency per route (sum / count)",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1258,7 +1255,7 @@
       "description": "Log records at WARN and above in the selected time range, by severity and logger. cassandra_log_records_total is the collector's generic count connector, applied to every service's logs",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,

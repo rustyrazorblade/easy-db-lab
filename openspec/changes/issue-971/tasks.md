@@ -29,12 +29,12 @@
 
 ## 5. Picker edit of every dashboard (through the `dashboard-editor` agent, in batches)
 
-- [ ] 5.1 Batch 1, kit dashboards: declare the pickers each file uses with empty `current`; rename `datasource` to `metrics_datasource`; move every fixed uid to its picker, keeping `type`; byte-preserving `perl -0pi` passes, never `jq` rewrites; `jq empty` and `git diff --stat` on each file.  Deploy and read back per the agent's sequence.
-- [ ] 5.2 Batch 2, `dashboards/infrastructure/`.
-- [ ] 5.3 Batch 3, `dashboards/cassandra/`.
-- [ ] 5.4 Batch 4, `dashboards/observability/`, `dashboards/networking/`, `dashboards/opensearch/` (declares `metrics_datasource` for its `cluster` variable, D1).
-- [ ] 5.5 Hand-edit the 4 files with Explore URLs so the `panes=` JSON names the picker, left unencoded.
-- [ ] 5.6 Rewrite every `/d/` link to pass the carried variables its source declares (F2, F4), including the system-ab to ab link with `baseline_cluster` and `candidate_cluster`.
+- [x] 5.1 Batch 1, kit dashboards: declare the pickers each file uses with empty `current`; rename `datasource` to `metrics_datasource`; move every fixed uid to its picker, keeping `type`; byte-preserving `perl -0pi` passes, never `jq` rewrites; `jq empty` and `git diff --stat` on each file.  Deploy and read back per the agent's sequence.
+- [x] 5.2 Batch 2, `dashboards/infrastructure/`.
+- [x] 5.3 Batch 3, `dashboards/cassandra/`.
+- [x] 5.4 Batch 4, `dashboards/observability/`, `dashboards/networking/`, `dashboards/opensearch/` (declares `metrics_datasource` for its `cluster` variable, D1).
+- [x] 5.5 Hand-edit the 4 files with Explore URLs so the `panes=` JSON names the picker, left unencoded.
+- [x] 5.6 Rewrite every `/d/` link to pass the carried variables its source declares (F2, F4), including the system-ab to ab link with `baseline_cluster` and `candidate_cluster`.
 - [ ] 5.7 Run the guard tests, the query-compatibility integration tests (in a subagent) and `CoreDashboardAnnotationsTest`: all pass.
 
 ## 6. Tests dashboard

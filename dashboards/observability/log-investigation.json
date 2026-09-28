@@ -12,7 +12,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "loki"
+        "uid": "${logs_datasource}"
       },
       "description": "Log lines per interval by the level Loki detects, counting exactly the lines the Logs panel shows: every filter (cluster, source, service, severity, search) applies.",
       "fieldConfig": {
@@ -61,7 +61,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "loki"
+            "uid": "${logs_datasource}"
           },
           "editorMode": "code",
           "expr": "sum by (detected_level) (count_over_time({cluster=~\"$cluster\", source=~\"$source\", service_name=~\"$service\"} | detected_level=~\"$severity\" |~ \"(?i)$search\" [$__auto]))",
@@ -76,7 +76,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "loki"
+        "uid": "${logs_datasource}"
       },
       "gridPos": {
         "h": 24,
@@ -99,7 +99,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "loki"
+            "uid": "${logs_datasource}"
           },
           "editorMode": "code",
           "expr": "{cluster=~\"$cluster\", source=~\"$source\", service_name=~\"$service\"} | detected_level=~\"$severity\" |~ \"(?i)$search\"",
@@ -112,7 +112,7 @@
       "links": [
         {
           "title": "System Overview",
-          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${cluster:queryparam}",
           "targetBlank": false
         }
       ]
@@ -129,16 +129,27 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": true,
-          "text": "Mimir",
-          "value": "mimir"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Logs",
         "multi": false,
-        "name": "datasource",
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "queryValue": "",
@@ -151,7 +162,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(up, cluster)",
         "hide": 0,
@@ -179,7 +190,7 @@
         "type": "query",
         "datasource": {
           "type": "loki",
-          "uid": "loki"
+          "uid": "${logs_datasource}"
         },
         "definition": "label_values({cluster=~\"$cluster\"}, service_name)",
         "query": {
@@ -203,7 +214,7 @@
         "type": "query",
         "datasource": {
           "type": "loki",
-          "uid": "loki"
+          "uid": "${logs_datasource}"
         },
         "definition": "label_values({cluster=~\"$cluster\"}, source)",
         "query": {
@@ -261,7 +272,7 @@
       {
         "datasource": {
           "type": "loki",
-          "uid": "loki"
+          "uid": "${logs_datasource}"
         },
         "filters": [],
         "hide": 0,

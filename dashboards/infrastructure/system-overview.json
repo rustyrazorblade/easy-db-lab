@@ -4,7 +4,7 @@
       {
         "datasource": {
           "type": "loki",
-          "uid": "loki"
+          "uid": "${logs_datasource}"
         },
         "enable": true,
         "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\"",
@@ -41,7 +41,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -92,12 +92,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -131,7 +131,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "100 * (1 - sum by(host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])) / sum by(host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])))",
           "legendFormat": "{{host_name}}",
@@ -145,7 +145,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -196,12 +196,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -235,7 +235,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} 1m",
@@ -244,7 +244,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_cpu_load_average_5m{host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} 5m",
@@ -253,7 +253,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_cpu_load_average_15m{host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} 15m",
@@ -267,7 +267,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -318,12 +318,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -357,7 +357,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} iowait",
@@ -366,7 +366,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} steal",
@@ -380,7 +380,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -435,12 +435,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -474,7 +474,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\"} / on (host_name) system_cpu_logical_count{host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}}",
@@ -488,7 +488,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Names come from the exporter's amd64 table, which has a few wrong entries: 202 shows as futex_time64 but is futex on x86_64. Counts are per syscall number and are correct.",
       "fieldConfig": {
@@ -540,12 +540,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -579,7 +579,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "topk(10, sum by (host_name, syscall) (rate(ebpf_exporter_syscalls_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} {{syscall}}",
@@ -593,7 +593,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Excludes errno=unknown:* series: the exporter reports non-error syscall return values (pointers, offsets) under thousands of bogus unknown:<n> labels.",
       "fieldConfig": {
@@ -645,12 +645,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -684,7 +684,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name, errno) (rate(ebpf_exporter_syscall_errors_total{errno!~\"unknown:.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} {{errno}}",
@@ -698,7 +698,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -749,12 +749,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -788,7 +788,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, host_name, kind) (rate(ebpf_exporter_softirq_service_latency_seconds_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} {{kind}}",
@@ -802,7 +802,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -853,12 +853,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -892,7 +892,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name, kind) (rate(ebpf_exporter_softirq_serviced_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} {{kind}}",
@@ -906,7 +906,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -957,12 +957,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -1015,7 +1015,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name, kind) (rate(ebpf_exporter_softirq_raised_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} {{kind}} raised",
@@ -1024,7 +1024,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name, kind) (rate(ebpf_exporter_softirq_serviced_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} {{kind}} serviced",
@@ -1038,7 +1038,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "CloudWatch's view of the instance, 1-minute granularity; compare against CPU Usage to spot steal or a credit limit.",
       "fieldConfig": {
@@ -1090,12 +1090,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.tag_Name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.tag_Name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.tag_Name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.tag_Name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -1129,7 +1129,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "aws_ec2_cpuutilization_average{tag_Name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{tag_Name}}",
@@ -1143,7 +1143,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1194,12 +1194,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -1233,7 +1233,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_processes_created_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])",
           "legendFormat": "{{host_name}}",
@@ -1247,7 +1247,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "From the OTel Java agent; only present where the database is a JVM.",
       "fieldConfig": {
@@ -1299,12 +1299,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -1338,7 +1338,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "jvm_cpu_recent_utilization_ratio{host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} {{service_name}}",
@@ -1352,7 +1352,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Averaged over the selected hosts; pick one host in the dropdown to see that host's mix.",
       "fieldConfig": {
@@ -1406,7 +1406,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -1439,7 +1439,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"user\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "user",
@@ -1448,7 +1448,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"system\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "system",
@@ -1457,7 +1457,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"softirq\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "softirq",
@@ -1466,7 +1466,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"interrupt\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "interrupt",
@@ -1475,7 +1475,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "steal",
@@ -1484,7 +1484,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "wait",
@@ -1493,7 +1493,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"nice\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "nice",
@@ -1519,7 +1519,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1570,12 +1570,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -1609,7 +1609,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_memory_usage_bytes{state=\"used\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}}",
@@ -1623,7 +1623,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1674,7 +1674,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -1706,7 +1706,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_memory_usage_bytes{state=\"used\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} used",
@@ -1715,7 +1715,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_memory_usage_bytes{state=\"buffered\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} buffered",
@@ -1724,7 +1724,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_memory_usage_bytes{state=\"cached\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} cached",
@@ -1733,7 +1733,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_memory_usage_bytes{state=\"free\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} free",
@@ -1742,7 +1742,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_memory_usage_bytes{state=\"slab_reclaimable\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} slab",
@@ -1755,7 +1755,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -1806,7 +1806,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -1839,7 +1839,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_paging_operations_total{direction=\"page_in\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} page in",
@@ -1848,7 +1848,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_paging_operations_total{direction=\"page_out\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} page out",
@@ -1861,7 +1861,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Share of page cache accesses that did not add a page to the LRU (i.e. were served from cache). From ebpf_exporter cachestat.",
       "fieldConfig": {
@@ -1915,7 +1915,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -1948,7 +1948,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}}",
@@ -1961,7 +1961,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -2012,7 +2012,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -2045,7 +2045,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} access",
@@ -2054,7 +2054,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} miss",
@@ -2067,7 +2067,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -2118,7 +2118,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -2151,7 +2151,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_writes\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} cache_writes",
@@ -2160,7 +2160,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_mark_dirties\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} page_mark_dirties",
@@ -2173,7 +2173,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "p99 latency of kernel shrink_node (direct/kswapd memory reclaim) on the left axis, reclaim calls per second on the right axis. From ebpf_exporter shrinklat.",
       "fieldConfig": {
@@ -2225,7 +2225,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -2289,7 +2289,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, host_name) (rate(ebpf_exporter_shrink_node_latency_seconds_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} p99",
@@ -2298,7 +2298,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(ebpf_exporter_shrink_node_latency_seconds_count{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} calls/s",
@@ -2311,7 +2311,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Major and minor page faults per second. Major faults need a disk read and are the expensive ones. The query divides the stored value by 4096 to correct an upstream scaling bug (gopsutil multiplies pgfault/pgmajfault by the page size).",
       "fieldConfig": {
@@ -2363,7 +2363,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -2396,7 +2396,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_paging_faults_total{type=\"major\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]) / 4096",
           "legendFormat": "{{host_name}} major",
@@ -2405,7 +2405,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_paging_faults_total{type=\"minor\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]) / 4096",
           "legendFormat": "{{host_name}} minor",
@@ -2418,7 +2418,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -2469,7 +2469,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -2502,7 +2502,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_memory_usage_bytes{state=\"slab_reclaimable\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} reclaimable",
@@ -2511,7 +2511,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_memory_usage_bytes{state=\"slab_unreclaimable\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} unreclaimable",
@@ -2524,7 +2524,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "OOM killer invocations per host, from the ebpf_exporter oomkill program. The counter only exists once a kill has happened; \"no OOM kills\" means none have been recorded.",
       "fieldConfig": {
@@ -2577,7 +2577,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -2610,7 +2610,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (increase(ebpf_exporter_oom_kills_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}}",
@@ -2623,7 +2623,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "description": "Averaged over the selected hosts; pick one host in the dropdown to see that host's mix.",
       "fieldConfig": {
@@ -2677,7 +2677,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -2710,7 +2710,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "avg by (state) ( sum by (host_name, state) (label_replace(system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\"}, \"state\", \"slab\", \"state\", \"slab_.*\")) / on (host_name) group_left sum by (host_name) (system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\"}) )",
           "legendFormat": "{{state}}",
@@ -2736,7 +2736,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -2787,12 +2787,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -2826,7 +2826,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_io_bytes_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} read",
@@ -2835,7 +2835,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_io_bytes_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} write",
@@ -2849,7 +2849,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -2900,7 +2900,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -2933,7 +2933,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_operations_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} read",
@@ -2942,7 +2942,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_operations_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} write",
@@ -2955,7 +2955,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3006,12 +3006,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3045,7 +3045,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, host_name, device) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", device!~\"loop.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} {{device}}",
@@ -3059,7 +3059,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3110,12 +3110,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3149,7 +3149,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, host_name, device) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"write\", device!~\"loop.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} {{device}}",
@@ -3163,7 +3163,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3214,7 +3214,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3247,7 +3247,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "100 * system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\", cluster=~\"$cluster\"} / ignoring(state) (system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\", cluster=~\"$cluster\"} + ignoring(state) system_filesystem_usage_bytes{state=\"free\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\", cluster=~\"$cluster\"})",
           "legendFormat": "{{host_name}} {{mountpoint}}",
@@ -3260,7 +3260,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3311,12 +3311,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3350,7 +3350,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_filesystem_usage_bytes{state=\"free\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} {{mountpoint}}",
@@ -3364,7 +3364,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3417,12 +3417,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3456,7 +3456,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_filesystem_inodes_usage{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\"} / ignoring(state) (system_filesystem_inodes_usage{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\"} + ignoring(state) system_filesystem_inodes_usage{state=\"free\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\"})",
           "legendFormat": "{{host_name}} {{mountpoint}}",
@@ -3470,7 +3470,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3521,12 +3521,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3560,7 +3560,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, host_name, operation) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} {{operation}}",
@@ -3574,7 +3574,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3627,12 +3627,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3666,7 +3666,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_io_time_seconds_total{device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} {{device}}",
@@ -3680,7 +3680,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3731,12 +3731,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3770,7 +3770,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_disk_pending_operations{device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} {{device}}",
@@ -3784,7 +3784,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3835,12 +3835,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3874,7 +3874,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_operation_time_seconds_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} {{device}} read",
@@ -3883,7 +3883,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_operation_time_seconds_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} {{device}} write",
@@ -3897,7 +3897,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -3948,12 +3948,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -3987,7 +3987,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_io_bytes_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} {{device}} read",
@@ -3996,7 +3996,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_io_bytes_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} {{device}} write",
@@ -4010,7 +4010,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4061,12 +4061,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -4100,7 +4100,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_merged_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} {{device}} read",
@@ -4109,7 +4109,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_disk_merged_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} {{device}} write",
@@ -4136,7 +4136,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4187,12 +4187,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -4226,7 +4226,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_network_io_bytes_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} rx",
@@ -4235,7 +4235,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_network_io_bytes_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} tx",
@@ -4249,7 +4249,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4300,7 +4300,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -4333,7 +4333,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_network_packets_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} rx",
@@ -4342,7 +4342,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_network_packets_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} tx",
@@ -4355,7 +4355,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4406,7 +4406,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -4439,7 +4439,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_network_errors_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} rx errors",
@@ -4448,7 +4448,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_network_errors_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} tx errors",
@@ -4457,7 +4457,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_network_dropped_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} rx drops",
@@ -4466,7 +4466,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "rate(system_network_dropped_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[1m])",
           "legendFormat": "{{host_name}} {{device}} tx drops",
@@ -4479,7 +4479,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4530,12 +4530,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -4569,7 +4569,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_network_connections{protocol=\"tcp\", state=~\"ESTABLISHED|TIME_WAIT|CLOSE_WAIT|SYN_RECV\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} {{state}}",
@@ -4583,7 +4583,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4634,12 +4634,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -4673,7 +4673,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{main_port=\"7000\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} internode (7000)",
@@ -4683,7 +4683,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{main_port=\"9042\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} client (9042)",
@@ -4693,7 +4693,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{main_port!~\"7000|9042\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} other",
@@ -4707,7 +4707,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4758,12 +4758,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -4797,7 +4797,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "sum by (host_name, type) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} {{type}}",
@@ -4811,7 +4811,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4862,12 +4862,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -4901,7 +4901,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, host_name) (rate(ebpf_exporter_tcp_syn_backlog_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}}",
@@ -4915,7 +4915,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -4966,12 +4966,12 @@
           "links": [
             {
               "title": "View Logs",
-              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}",
+              "url": "/d/log-investigation/log-investigation?var-search=host.name:${__field.labels.host_name}&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
               "targetBlank": false
             },
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -5005,7 +5005,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, host_name) (rate(ebpf_exporter_softirq_entry_latency_seconds_bucket{kind=\"NET_RX_SOFTIRQ\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} raise to entry",
@@ -5015,7 +5015,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "histogram_quantile(0.99, sum by (le, host_name) (rate(ebpf_exporter_softirq_service_latency_seconds_bucket{kind=\"NET_RX_SOFTIRQ\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} service",
@@ -5042,7 +5042,7 @@
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -5093,7 +5093,7 @@
           "links": [
             {
               "title": "Traces",
-              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+              "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20resource.host.name%20%3D%20%5C%22${__field.labels.host_name}%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
               "targetBlank": true
             }
           ]
@@ -5125,7 +5125,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_processes_count{status=\"running\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} running",
@@ -5134,7 +5134,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
           "expr": "system_processes_count{status=\"blocked\", host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} blocked",
@@ -5155,16 +5155,42 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": true,
-          "text": "Mimir",
-          "value": "mimir"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Logs",
         "multi": false,
-        "name": "datasource",
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Traces",
+        "multi": false,
+        "name": "traces_datasource",
+        "options": [],
+        "query": "tempo",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "queryValue": "",
@@ -5177,7 +5203,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(up, cluster)",
         "hide": 0,
@@ -5202,7 +5228,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(system_cpu_time_seconds_total, node_role)",
         "hide": 0,
@@ -5226,7 +5252,7 @@
         "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(system_cpu_time_seconds_total{node_role=~\"$service\", cluster=~\"$cluster\"}, host_name)",
         "hide": 0,
@@ -5249,7 +5275,7 @@
       {
         "datasource": {
           "type": "prometheus",
-          "uid": "mimir"
+          "uid": "${metrics_datasource}"
         },
         "filters": [],
         "hide": 0,

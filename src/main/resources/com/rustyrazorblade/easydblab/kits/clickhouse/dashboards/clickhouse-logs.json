@@ -12,7 +12,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "loki"
+        "uid": "${logs_datasource}"
       },
       "gridPos": {
         "h": 16,
@@ -33,7 +33,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
           "expr": "{cluster=~\"$cluster\", k8s_container_name=~\".*clickhouse.*\"} | detected_level=\"error\"",
           "queryType": "range",
@@ -46,17 +46,17 @@
       "links": [
         {
           "title": "Traces (ClickHouse spans)",
-          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.db.system%20%3D%20%5C%22clickhouse%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.db.system%20%3D%20%5C%22clickhouse%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
           "targetBlank": true
         },
         {
           "title": "All ClickHouse Logs",
-          "url": "/d/log-investigation/log-investigation?var-search=service_name%3Dclickhouse&from=${__from}&to=${__to}",
+          "url": "/d/log-investigation/log-investigation?var-search=service_name%3Dclickhouse&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
           "targetBlank": false
         },
         {
           "title": "System Overview",
-          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
           "targetBlank": false
         }
       ]
@@ -64,7 +64,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "loki"
+        "uid": "${logs_datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -85,7 +85,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
           "expr": "{cluster=~\"$cluster\", k8s_container_name=~\".*clickhouse.*\"} | detected_level=\"warn\"",
           "queryType": "range",
@@ -98,17 +98,17 @@
       "links": [
         {
           "title": "Traces (ClickHouse spans)",
-          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.db.system%20%3D%20%5C%22clickhouse%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.db.system%20%3D%20%5C%22clickhouse%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
           "targetBlank": true
         },
         {
           "title": "All ClickHouse Logs",
-          "url": "/d/log-investigation/log-investigation?var-search=service_name%3Dclickhouse&from=${__from}&to=${__to}",
+          "url": "/d/log-investigation/log-investigation?var-search=service_name%3Dclickhouse&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
           "targetBlank": false
         },
         {
           "title": "System Overview",
-          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
           "targetBlank": false
         }
       ]
@@ -116,7 +116,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "loki"
+        "uid": "${logs_datasource}"
       },
       "gridPos": {
         "h": 16,
@@ -137,7 +137,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
           "expr": "{cluster=~\"$cluster\", k8s_container_name=~\".*clickhouse.*\"}",
           "queryType": "range",
@@ -149,17 +149,17 @@
       "links": [
         {
           "title": "Traces (ClickHouse spans)",
-          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22tempo%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22tempo%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.db.system%20%3D%20%5C%22clickhouse%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
+          "url": "/explore?schemaVersion=1&orgId=1&panes=%7B%22a%22%3A%7B%22datasource%22%3A%22${traces_datasource}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22datasource%22%3A%7B%22uid%22%3A%22${traces_datasource}%22%2C%22type%22%3A%22tempo%22%7D%2C%22queryType%22%3A%22traceql%22%2C%22query%22%3A%22%7B%20span.db.system%20%3D%20%5C%22clickhouse%5C%22%20%7D%22%2C%22limit%22%3A20%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D%7D",
           "targetBlank": true
         },
         {
           "title": "All ClickHouse Logs",
-          "url": "/d/log-investigation/log-investigation?var-search=service_name%3Dclickhouse&from=${__from}&to=${__to}",
+          "url": "/d/log-investigation/log-investigation?var-search=service_name%3Dclickhouse&from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
           "targetBlank": false
         },
         {
           "title": "System Overview",
-          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
           "targetBlank": false
         }
       ]
@@ -177,9 +177,54 @@
     "list": [
       {
         "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Logs",
+        "multi": false,
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Traces",
+        "multi": false,
+        "name": "traces_datasource",
+        "options": [],
+        "query": "tempo",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
         "datasource": {
           "type": "prometheus",
-          "uid": "${datasource}"
+          "uid": "${metrics_datasource}"
         },
         "definition": "label_values(up, cluster)",
         "hide": 0,
@@ -203,7 +248,7 @@
       {
         "datasource": {
           "type": "loki",
-          "uid": "loki"
+          "uid": "${logs_datasource}"
         },
         "filters": [],
         "hide": 0,

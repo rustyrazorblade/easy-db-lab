@@ -25,7 +25,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -56,7 +56,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "sysbench_tps{kit=~\"$kit\"}",
           "legendFormat": "{{kit}}",
           "refId": "A"
@@ -66,7 +66,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -97,7 +97,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "sysbench_qps{kit=~\"$kit\"}",
           "legendFormat": "{{kit}}",
           "refId": "A"
@@ -114,7 +114,7 @@
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -145,19 +145,19 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "sysbench_lat_p50_ms{kit=~\"$kit\"}",
           "legendFormat": "p50 {{kit}}",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "sysbench_lat_p95_ms{kit=~\"$kit\"}",
           "legendFormat": "p95 {{kit}}",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "sysbench_lat_p99_ms{kit=~\"$kit\"}",
           "legendFormat": "p99 {{kit}}",
           "refId": "C"
@@ -167,7 +167,7 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -201,7 +201,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${datasource}" },
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "expr": "sysbench_errors_per_second{kit=~\"$kit\"}",
           "legendFormat": "{{kit}}",
           "refId": "A"
@@ -220,9 +220,9 @@
         "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Metrics",
         "multi": false,
-        "name": "datasource",
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
@@ -231,7 +231,7 @@
       },
       {
         "current": {},
-        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
         "definition": "label_values(sysbench_tps, kit)",
         "hide": 0,
         "includeAll": true,

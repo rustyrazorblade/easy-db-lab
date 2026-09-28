@@ -23,7 +23,9 @@ Core dashboards are standalone JSON files in the top-level `dashboards/<folder>/
 | Provisioning YAML | `src/main/kotlin/.../configuration/grafana/GrafanaDashboardProvisioningConfig.kt` (single `foldersFromFilesStructure` provider) |
 | Manifest builder | `src/main/kotlin/.../configuration/grafana/GrafanaManifestBuilder.kt` (provisioning ConfigMap + Deployment) |
 | Datasource config | `src/main/kotlin/.../configuration/grafana/GrafanaDatasourceConfig.kt` |
-| Dashboard service | `src/main/kotlin/.../services/GrafanaDashboardService.kt` |
+| Deploy service | `src/main/kotlin/.../services/GrafanaDeployService.kt` (datasources, tree upload, K8s apply) |
+| Grafana HTTP client | `src/main/kotlin/.../services/GrafanaClient.kt` (dashboard install, folders, annotations) |
+| Install-time pass | `src/main/kotlin/.../configuration/grafana/DashboardDefaults.kt` (picker, cluster and `doc_tenant` defaults) |
 | Deploy command | `src/main/kotlin/.../commands/grafana/GrafanaUpdateConfig.kt` |
 | Parent command | `src/main/kotlin/.../commands/grafana/Grafana.kt` |
 
@@ -41,7 +43,7 @@ Run `find dashboards -name '*.json' | sort` for the current list. The Grafana fo
 | Tempo | `tempo` | `tempo` | 3200 |
 | Pyroscope | `grafana-pyroscope-datasource` | `pyroscope` | 4040 |
 
-Datasources are created at runtime by `GrafanaDatasourceConfig.create()` and applied as a ConfigMap by `GrafanaDashboardService`.
+Datasources are created at runtime by `GrafanaDatasourceConfig.create()` and applied as a ConfigMap by `GrafanaDeployService`. Dashboards name `mimir`, `loki` and `tempo` only through the pickers `${metrics_datasource}`, `${logs_datasource}` and `${traces_datasource}`; see [`dashboards/CLAUDE.md`](../../dashboards/CLAUDE.md).
 
 ---
 
@@ -82,13 +84,13 @@ The file is discovered at runtime and copied to the control node with the rest o
 1. Creates the cluster-config ConfigMap (control node IP, region, S3 bucket, etc.)
 2. Applies all Fabric8-built observability resources (OTel, Mimir, Loki, Tempo, Vector, Beyla, ebpf_exporter, Registry, S3 Manager, Pyroscope)
 3. Prepares `/mnt/db1/grafana` on the control node (mkdir, chown 472)
-4. Calls `GrafanaDashboardService.uploadDashboards()` which:
+4. Calls `GrafanaDeployService.deploy()` which:
    - Creates the datasource ConfigMap
    - Copies the dashboard tree to `/mnt/db1/grafana/dashboards` on the control node via `GrafanaDashboardTreeUploader` (see [`dashboards/CLAUDE.md`](../../dashboards/CLAUDE.md) for the staging and rename swap)
    - Builds the provisioning ConfigMap and Deployment via `GrafanaManifestBuilder` and applies each via `k8sService.applyResource()`
 5. Restarts the observability workloads and waits for them to become Ready
 
-`grafana install <path> --folder=<name>` is the one-off path: it POSTs a single dashboard file to the Grafana HTTP API and does not touch the copied tree.
+`grafana install <path> --folder=<name>` is the one-off path: it applies the same install-time pass (`DashboardDefaults`), POSTs the dashboard to the Grafana HTTP API, and does not touch the copied tree.
 
 ---
 

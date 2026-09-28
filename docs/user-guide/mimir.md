@@ -35,6 +35,8 @@ Grafana's default datasource is **Mimir** (uid `mimir`). It sends the cluster's 
 
 Grafana also has one metrics datasource per tenant in the shared store, **Mimir (&lt;tenant&gt;)** (uid `mimir-<tenant>`), and one for all of them, **Mimir (all tenants)** (uid `mimir--all`), which sends every tenant joined with `|`. `up` and `grafana update-config` list the tenants under `mimir/` in the account bucket and rebuild these datasources, so run `grafana update-config` to pick up a tenant that appeared after `up`. A UID longer than 40 characters is shortened to `mimir-<prefix>-<8 hex characters>`.
 
+Dashboards reach these datasources through their **Metrics** picker, not a fixed uid. The picker opens on **Mimir** (the cluster's own tenant); pick another tenant, or all tenants, and every metric panel, variable and link on the dashboard follows. See [Monitoring](monitoring.md#tenant-pickers-and-the-current-cluster).
+
 ### HTTP API
 
 Mimir serves the Prometheus API under `/prometheus`. A query that carries no tenant reads nothing, so always send `X-Scope-OrgID`:

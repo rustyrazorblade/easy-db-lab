@@ -832,7 +832,7 @@ easy-db-lab grafana update-config
 
 ### grafana install
 
-Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the copied tree, and the dashboard is updated in place only if the JSON carries a top-level `uid`.
+Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the copied tree, and the dashboard is updated in place only if the JSON carries a top-level `uid`. Before the upload, the command applies the same defaults `up` applies, from the workspace's cluster state: each tenant picker selects the cluster's own tenant, and `cluster`, `baseline_cluster` and `candidate_cluster` select the current cluster.
 
 ```bash
 easy-db-lab grafana install my-dashboard.json --folder=experiments
@@ -876,6 +876,26 @@ easy-db-lab grafana backup
 ```
 
 This backup also runs automatically before teardown; see [`down`](#down).
+
+---
+
+## Report Commands
+
+### report upload
+
+Attach markdown documents to the current test. Each file is stored in the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, with an HTML copy, and the test's `index.html` is rebuilt to hold every document, each under its own heading, in name order. The Tests and comparison dashboards show that index. A file with the name of a stored document replaces it.
+
+The command accepts only `.md` files whose names hold letters, digits, `.`, `_` and `-`, and refuses `index.md`. It checks every file first; if it refuses any, it names each one and uploads nothing. It uses your own AWS credentials and needs only the workspace's `state.json`, so it works before and after `down`.
+
+```bash
+easy-db-lab report upload results.md notes.md
+```
+
+| Argument | Description |
+|----------|-------------|
+| `FILE...` | One or more markdown files (required) |
+
+Two uploads for one test at the same moment can each rebuild the index without the other's document; the next upload restores it.
 
 ---
 

@@ -25,6 +25,7 @@ services/aws/
 ├── CompactorIam.kt            # Its task and execution roles and ECS's service-linked role
 ├── CompactorNetwork.kt        # Its VPC easy-db-lab-compactor, found or created like the packer VPC, in a Fargate zone
 ├── ClusterCensus.kt           # Tagged VPCs naming the account bucket in every region; CompactorShutdownPolicy
+├── BucketRegion.kt            # A bucket's region from GetBucketLocation; the compactor and the Grafana documents proxy sign for it
 └── InstanceSpecFactory.kt     # Instance spec creation
 ```
 
@@ -104,4 +105,4 @@ Services that call S3 indirectly (via `ObjectStore`) also need integration tests
 ## S3 data handling
 
 - **Nothing sets a lifecycle, expiry or retention rule.** `down` only disables the data bucket's request metrics (`teardownDataBucket`); with `--all` it deletes a data bucket only when it is empty (`deleteEmptyBucket`, a `Result` carrying S3's error), and emits `Event.S3.DataBucketKept(bucket, reason)` for one it leaves in place. The IAM policy grants no lifecycle actions.
-- **Observability data lives in the account bucket** under the tool-named roots `mimir/`, `loki/`, `tempo/`, `pyroscope/` and `grafana/annotations/<tenant>/` (see `configuration/ObservabilityStore`). The per-cluster data bucket holds database data (ClickHouse S3 storage, Cassandra artifacts, Spark); the observability stack writes nothing to it.
+- **Observability data lives in the account bucket** under the tool-named roots `mimir/`, `loki/`, `tempo/`, `pyroscope/` and `grafana/annotations/<tenant>/`, and the test documents under `reports/<tenant>/<name>-<id>/` (see `configuration/ObservabilityStore`). The instance role's delete deny (`AWSPolicy.Inline.S3AccessWildcard`) covers `mimir/`, `loki/`, `tempo/`, `grafana/` and `reports/`; it denies no `PutObject`, and `report upload` runs with the operator's credentials. The per-cluster data bucket holds database data (ClickHouse S3 storage, Cassandra artifacts, Spark); the observability stack writes nothing to it.

@@ -83,17 +83,17 @@
 
 ## 11. Link recipes (D5)
 
-- [ ] 11.1 Remove the two references to `bin/generate-dashboard-links.py` from `dashboards/CLAUDE.md`; the script does not exist, and the inline recipe is the one source (owner decision at Seam 1).
-- [ ] 11.2 Update the Python snippets in `dashboards/CLAUDE.md` to take the picker variables.
+- [x] 11.1 Remove the two references to `bin/generate-dashboard-links.py` from `dashboards/CLAUDE.md`; the script does not exist, and the inline recipe is the one source (owner decision at Seam 1).
+- [x] 11.2 Update the Python snippets in `dashboards/CLAUDE.md` to take the picker variables.
 
 ## 12. Docs
 
-- [ ] 12.1 `dashboards/CLAUDE.md`: the pickers replace "the uids are constants"; the guard tests; the link rule; the Explore recipes; the Tests dashboard; the comparison views and helper variables; the documents iframe and `doc_tenant`.
-- [ ] 12.2 `configuration/CLAUDE.md`: `DashboardDefaults`, the tree writer's pass, the two sidecars, `ObservabilityStore.documentsRoot`.
-- [ ] 12.3 `services/aws/CLAUDE.md` and root `CLAUDE.md`: `reports/` in the deny list and the store layout; the `GrafanaDashboardService` split; the bucket region helper; the new sidecars in the Observability section.
-- [ ] 12.4 `docs/development/kits.md`: kit dashboards declare the pickers, name no fixed uid, and follow the link rule; the install-time `cluster` default.
-- [ ] 12.5 `docs/user-guide/monitoring.md`: the pickers, the current-cluster default, the Tests dashboard, the comparison views, `report upload`, and the note that two concurrent uploads can drop a document from `index.html` until the next upload.
-- [ ] 12.6 `docs/reference/commands.md`: `report upload`.  `docs/reference/ports.md`: the proxy and web server ports.  `docs/user-guide/mimir.md` and `docs/user-guide/loki.md`: the pickers where they mention datasources.
+- [x] 12.1 `dashboards/CLAUDE.md`: the pickers replace "the uids are constants"; the guard tests; the link rule; the Explore recipes; the Tests dashboard; the comparison views and helper variables; the documents iframe and `doc_tenant`.
+- [x] 12.2 `configuration/CLAUDE.md`: `DashboardDefaults`, the tree writer's pass, the two sidecars, `ObservabilityStore.documentsRoot`.
+- [x] 12.3 `services/aws/CLAUDE.md` and root `CLAUDE.md`: `reports/` in the deny list and the store layout; the `GrafanaDashboardService` split; the bucket region helper; the new sidecars in the Observability section.
+- [x] 12.4 `docs/development/kits.md`: kit dashboards declare the pickers, name no fixed uid, and follow the link rule; the install-time `cluster` default.
+- [x] 12.5 `docs/user-guide/monitoring.md`: the pickers, the current-cluster default, the Tests dashboard, the comparison views, `report upload`, and the note that two concurrent uploads can drop a document from `index.html` until the next upload.
+- [x] 12.6 `docs/reference/commands.md`: `report upload`.  `docs/reference/ports.md`: the proxy and web server ports.  `docs/user-guide/mimir.md` and `docs/user-guide/loki.md`: the pickers where they mention datasources.
 - [ ] 12.7 On archive, update the `multi-cluster-dashboards` Purpose, which still names VictoriaMetrics (D7).
 
 ## 13. Build and live verification

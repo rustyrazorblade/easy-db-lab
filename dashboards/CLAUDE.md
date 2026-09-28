@@ -15,7 +15,7 @@ Each subdirectory is a Grafana folder, and the folder's name is the directory na
 There is no registry. This section is the canonical description of how the tree reaches Grafana; other docs link here rather than restate it.
 
 1. **Discovery** — `GrafanaDashboardCatalog.discover()` (`src/main/kotlin/.../configuration/grafana/`) scans the classpath under `dashboards/` with ClassGraph and yields one `GrafanaDashboard(folder, jsonFileName)` per `<folder>/<name>.json`, sorted. A JSON file at the root of the tree or nested deeper is an error, not skipped. The home dashboard is pinned to exactly `infrastructure/system-overview.json` (`Constants.Grafana.HOME_DASHBOARD_PATH`); the catalog refuses to exist without it, and a `system-overview.json` in another folder is an ordinary dashboard. The catalog also knows the classpath base the JSON is read from (`resourcePathOf`); a `GrafanaDashboard` is only `(folder, jsonFileName)`.
-2. **Local tree** — `GrafanaDashboardTreeWriter` writes the catalog to a temp directory as `<folder>/<file>.json`, copying each JSON from the classpath with exactly one substitution, applied to every file: `__PYROSCOPE_URL__` becomes the control node's Pyroscope URL (`pyroscopeIngestBaseUrl`). Today only `observability/profiling.json` carries it; a file without it is written byte-for-byte. No `TemplateService`: dashboards carry Grafana built-ins like `$__rate_interval` that general substitution corrupts.
+2. **Local tree** — `GrafanaDashboardTreeWriter` writes the catalog to a temp directory as `<folder>/<file>.json`. It reads each JSON from the classpath, replaces `__PYROSCOPE_URL__` with the control node's Pyroscope URL (`pyroscopeIngestBaseUrl`; only `observability/profiling.json` carries it), and applies the install-time pass, `DashboardDefaults` (see [Install-time defaults](#install-time-defaults)). The result is written as compact JSON with every number as written. No `TemplateService`: dashboards carry Grafana built-ins like `$__rate_interval` that general substitution corrupts.
 3. **Upload and swap** — `GrafanaDashboardTreeUploader` (`src/main/kotlin/.../services/`) hands the local tree to `RemoteOperationsService.replaceDirectory(host, localDir, "/mnt/db1/grafana/dashboards", "472:472")`. That method creates a staging directory beside the target with `sudo mktemp -d -p /mnt/db1/grafana` (same filesystem, chowned to the SSH user so SFTP can write, in one remote command), uploads the tree into it, then in one remote command renames the old tree to `dashboards.old`, renames the staged tree in, `chown -R`s it to the owner, and removes `.old`. Grafana's provider therefore never polls an empty or partial directory, and a dashboard deleted from the repo disappears because the whole tree is replaced. If anything fails before the swap the staging directory is removed. No dashboard is a K8s object and nothing is deleted from K8s.
 4. **Provisioning** — `GrafanaDashboardProvisioningConfig` emits one file provider with `options.path: /var/lib/grafana/dashboards` (the hostPath as the Deployment mounts it) and `foldersFromFilesStructure: true`, so each directory becomes a Grafana folder of the same title. `GrafanaManifestBuilder` ships that YAML in the `grafana-dashboards-config` ConfigMap and points `GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH` at `/var/lib/grafana/dashboards/` + `Constants.Grafana.HOME_DASHBOARD_PATH`; it does not take the catalog and nothing it builds varies with the tree's contents.
 
@@ -30,18 +30,120 @@ So:
 
 Dashboards that belong to a kit go in the kit's own `dashboards/` directory under `src/main/resources/.../kits/<name>/`, not here.
 
-## Datasource UIDs
+## Datasources and the tenant pickers
 
-| Datasource | UID         | Type                           |
-|------------|-------------|--------------------------------|
-| Mimir      | `mimir`     | `prometheus`                   |
-| Loki       | `loki`      | `loki`                         |
-| Tempo      | `tempo`     | `tempo`                        |
-| Pyroscope  | `pyroscope` | `grafana-pyroscope-datasource` |
+Grafana has a datasource per tenant for metrics, logs and traces, plus one for all tenants
+(`GrafanaDatasourceSet`). The stable uids read the cluster's own tenant:
 
-The uids are constants (`Constants.Grafana.DatasourceUid`), and `DashboardDatasourceTest` fails when
-a dashboard names any other datasource. Every datasource sends the cluster's tenant in
-`X-Scope-OrgID`.
+| Datasource | Stable UID  | Type                           | Picker               |
+|------------|-------------|--------------------------------|----------------------|
+| Mimir      | `mimir`     | `prometheus`                   | `metrics_datasource` |
+| Loki       | `loki`      | `loki`                         | `logs_datasource`    |
+| Tempo      | `tempo`     | `tempo`                        | `traces_datasource`  |
+| Pyroscope  | `pyroscope` | `grafana-pyroscope-datasource` | none                 |
+
+A dashboard names `mimir`, `loki` and `tempo` only through its pickers, so an operator can switch it
+to another tenant. The rules:
+
+- Declare one `type: datasource` variable for each signal the dashboard uses: `metrics_datasource`
+  (label "Metrics", `query: prometheus`), `logs_datasource` ("Logs", `loki`), `traces_datasource`
+  ("Traces", `tempo`). A second picker of one type, such as ClickHouse's `KeeperDatasource`, is
+  allowed. Profiles have one datasource only, so there is no Pyroscope picker; `pyroscope` stays a
+  fixed uid.
+- Every datasource reference names the picker and keeps its `type`:
+  `{"type": "prometheus", "uid": "${metrics_datasource}"}`. That covers panels, targets, variable
+  queries (the `cluster` variable included), ad hoc filters, annotation queries, and the uids inside
+  Explore links (left unencoded in the `panes=` JSON, like any other Grafana variable).
+- Leave every picker's `current` empty (`{}`). The install-time pass sets it.
+
+`DashboardDatasourceVariablesTest` enforces all three rules on every core and kit dashboard: no
+`uid` or string `datasource` equal to `mimir`, `loki` or `tempo` anywhere (Explore links are
+URL-decoded first), a picker for each used type, and the link rule below. It names the file and the
+JSON path. `DashboardDatasourceTest` still fails when a dashboard names a datasource Grafana does not
+have.
+
+### Links carry the pickers and the selected clusters
+
+Every `/d/` link (dashboard link or data link) passes each of `metrics_datasource`,
+`logs_datasource`, `traces_datasource`, `cluster`, `baseline_cluster`, `candidate_cluster` and
+`doc_tenant` that its own dashboard declares, as `${name:queryparam}` or as an explicit
+`var-<name>=value`, and passes no `${name:queryparam}` for a variable it does not declare. So a
+drill-down keeps the tenant and the cluster:
+
+```
+/d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${cluster:queryparam}
+```
+
+### Install-time defaults
+
+The dashboard files store no defaults, because a default names a cluster or a tenant. Every install
+path applies one pass, `DashboardDefaults` (`configuration/grafana/`): the core tree
+(`GrafanaDashboardTreeWriter`), kit dashboards on `start` (`KitRunnerCommand`), and
+`grafana install`. It sets, and changes nothing else:
+
+- each picker's `current` to the stable datasource of its type;
+- `cluster`, `baseline_cluster` and `candidate_cluster` to the current cluster, `<name>-<id>` (a
+  one-element list when the variable is multi-select);
+- `doc_tenant`'s options to every tenant, and its `current` to the cluster's own tenant;
+- `__DOCUMENTS_URL__` in any string to the documents web server, `http://<control private
+  IP>:3080`.
+
+So `grafana install` shows exactly what `up` installs.
+
+## The Tests dashboard
+
+`infrastructure/tests.json` (uid `tests`) lists every cluster of the tenant the Metrics picker
+selects, with its start, end and duration: the first and last `up` sample within `lookback`
+(custom, default `180d`), found by a subquery at the `resolution` step. `resolution` holds seconds
+(text `5m`, value `300`), so the subquery step is `${resolution}s` and the row window is padded by
+one step in PromQL. The listing does not depend on the dashboard time range, so torn-down clusters
+are listed.
+
+The `cluster` column links to System Overview and Cassandra Overview (with `var-cluster` and the
+row's window as `from`/`to`), to `cluster-comparison` with only `var-baseline_cluster` set (no
+absolute range, because panel `timeFrom` is ignored under one), and back to Tests with
+`var-cluster` set. The single-select `cluster` variable picks the test whose documents the
+Documents panel shows.
+
+## Comparison views
+
+`cluster-comparison`, `ab-comparison` and `system-ab-comparison` compare two runs of any lengths.
+`baseline_cluster` and `candidate_cluster` are single-select `query_result` variables over
+`$lookback`, evaluated at now; the dashboard range stays relative and ends at now. Hidden helper
+variables (all `query_result`, evaluated at now) hold each run's `base_start`/`cand_start` and
+`base_end`/`cand_end` (epoch seconds), `base_len`/`cand_len`, `max_len`, the overlay offsets
+`base_offset`/`cand_offset` (`now - max_len - start`, negative for a run that started later) and the
+side-by-side shifts `base_since_end`/`cand_since_end`.
+
+Three rows sit at the top, above the existing panels:
+
+- **Overlay**: panel `timeFrom` `${max_len}s`; each run's query has `offset ${base_offset}s` or
+  `offset ${cand_offset}s`, so both start at the left edge.
+- **Side by side**: one column per run, panel `timeFrom` `${base_len}s` and `timeShift`
+  `${base_since_end}s` (and the candidate's), so each axis shows the run's real times.
+- **Summary and documents**: one instant query per figure, `[${base_len}s] @ ${base_end}` per run,
+  with `100 * (C - B) / B`, tagged with `label_replace` and laid out by `groupingToMatrix`; beside it
+  both runs' documents.
+
+The new views filter by cluster only; the build and host variables of the A/B dashboards apply to
+the existing panels. They need a relative dashboard range: an absolute range turns panel `timeFrom`
+off. `DashboardQueries` gives the helper variables sample values, so
+`PromQlCompatibilityIntegrationTest` runs the negative `offset`, `@` and subquery forms against the
+pinned Mimir.
+
+## Test documents on dashboards
+
+A test's documents are `reports/<tenant>/<name>-<id>/index.html` in the account bucket (written by
+`report upload` and by `up`). A dashboard shows them in a Text panel in HTML mode with an iframe:
+
+```html
+<iframe src="__DOCUMENTS_URL__/reports/${doc_tenant}/${cluster}/index.html" style="width: 100%; height: 100%; border: 0; background: #fff;"></iframe>
+```
+
+`doc_tenant` is a custom variable with empty options in the file; the installer fills them. One
+`doc_tenant` serves the whole dashboard, so the documents of two tenants are not shown together.
+Grafana runs with `disable_sanitize_html`, and the documents web server in the Grafana pod serves
+the file (see `configuration/CLAUDE.md`).
 
 ## Label Name Conventions
 
@@ -74,6 +176,7 @@ Mimir and Loki both turn OTel attribute names into underscore names:
 
 Every Grafana annotation is mirrored to Loki as its own stream (`source="annotation"`, `cluster`, `annotation_id`; the text is the log line, and the tags, dashboard uid, panel id and end time are structured metadata), so it survives the cluster. Core dashboards read their markers from Loki, not from Grafana's tag query:
 
+- Datasource: `{"type": "loki", "uid": "${logs_datasource}"}`, so the markers follow the Logs picker.
 - Query: `{source="annotation", cluster=~"${cluster:regex}"} | dashboard_uid=""` — global markers only. A dashboard with no `cluster` variable uses `cluster=~".+"`.
 - `CoreDashboardAnnotationsTest` fails when a core dashboard lacks this annotation query.
 
@@ -117,7 +220,7 @@ The panes JSON contains `queryType: "traceql"` with a query like `{ resource.hos
 
 - **Logs panels (`type: "logs"`) do NOT support this mechanism** — `fieldConfig.defaults.links` is ignored on log panels
 - Only works on `timeseries`, `stat`, `table`, and similar metric panel types
-- Use `bin/generate-dashboard-links.py` to build correct URL-encoded panes values
+- Build the URL-encoded panes value with the `encode_panes` recipe in [Cross-Dashboard Navigation](#cross-dashboard-navigation-datalinks)
 
 ### Summary table
 
@@ -152,7 +255,7 @@ Always use `panes=` (NOT the legacy `left=` parameter). The `left=` format is un
 
 The panes value is a JSON object URL-encoded with `urllib.parse.quote`. Grafana template variables (`${__field.labels.service_name}`, `${__from}`, `${__to}`) must **not** be URL-encoded — leave them as-is so Grafana interpolates them before navigating.
 
-Use the Python helper in `bin/generate-dashboard-links.py` (or inline in migration scripts) to build correct URLs:
+Build the URLs with this recipe, inline in the edit script. It is the one copy; there is no helper script:
 
 ```python
 import json, re, urllib.parse
@@ -176,9 +279,10 @@ Use `queryType: "traceql"` with a raw TraceQL `query` string. **Do NOT use `quer
 
 ```python
 def tempo_explore(traceql, title):
-    panes = {"a": {"datasource": "tempo",
+    # The picker, not the fixed uid: encode_panes leaves ${traces_datasource} unencoded.
+    panes = {"a": {"datasource": "${traces_datasource}",
                    "queries": [{"refId": "A",
-                                "datasource": {"uid": "tempo", "type": "tempo"},
+                                "datasource": {"uid": "${traces_datasource}", "type": "tempo"},
                                 "queryType": "traceql",
                                 "query": traceql,
                                 "limit": 20}],
@@ -198,9 +302,9 @@ Common TraceQL patterns:
 
 ```python
 def logs_explore(expr, title):
-    panes = {"a": {"datasource": "loki",
+    panes = {"a": {"datasource": "${logs_datasource}",
                    "queries": [{"refId": "A",
-                                "datasource": {"uid": "loki", "type": "loki"},
+                                "datasource": {"uid": "${logs_datasource}", "type": "loki"},
                                 "editorMode": "code",
                                 "expr": expr,
                                 "queryType": "range"}],
@@ -233,6 +337,8 @@ def pyroscope_explore(label_selector, title):
 
 Example: `label_selector = '{service_name="${__field.labels.service_name}"}'`
 
+Pyroscope has no picker, so this link keeps the fixed `pyroscope` uid.
+
 ### Dashboard Navigation Link (panel header)
 
 Added to the panel-level `links` array (not `fieldConfig.defaults.links`). Appears in the panel `...` menu.
@@ -240,7 +346,9 @@ Added to the panel-level `links` array (not `fieldConfig.defaults.links`). Appea
 ```python
 def sysoverview_link():
     return {"title": "System Overview",
-            "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}",
+            # Pass each picker and cluster variable the source dashboard declares (the link rule).
+            "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}"
+                   "&${metrics_datasource:queryparam}&${cluster:queryparam}",
             "targetBlank": False}
 ```
 

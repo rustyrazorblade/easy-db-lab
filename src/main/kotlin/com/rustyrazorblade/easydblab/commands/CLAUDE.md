@@ -74,6 +74,7 @@ commands/
 ├── opensearch/            # OpenSearch commands
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
 ├── profile/               # Profile inspection and setup (profile show, profile setup)
+├── report/                # report upload — a test's markdown documents in the account bucket; works after down
 ├── spark/                 # Spark commands
 ├── tailscale/             # Tailscale VPN commands
 ├── mixins/                # Reusable PicoCLI mixins
@@ -228,7 +229,9 @@ Commands should delegate to these services:
 | `AWSResourceSetupService` | IAM roles, security groups, VPC setup (`services.aws`) |
 | `AwsS3BucketService` | S3 bucket admin: creation, request metrics, policies (`services.aws`); never sets lifecycle rules |
 | `OpenSearchService` | OpenSearch domain management (`services.aws`) |
-| `GrafanaDashboardService` | Grafana dashboard deployment |
+| `GrafanaDeployService` | Grafana deployment: datasources, the dashboard tree, the Grafana K8s resources |
+| `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
+| `TestDocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
 | `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki on the control node (SOCKS unless Tailscale) |
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |

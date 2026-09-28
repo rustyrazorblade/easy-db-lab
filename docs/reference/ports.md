@@ -16,6 +16,9 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | Port | Service |
 |------|---------|
 | 3000 | Grafana |
+| 3080 | Test documents web server (read-only, in the Grafana pod) |
+| 3081 | Test documents signing proxy (loopback only, in the Grafana pod) |
+| 8081 | Grafana image renderer (in the Grafana pod) |
 | 4040 | Pyroscope (continuous profiling) |
 | 9009 | Mimir HTTP (metrics storage; Prometheus API under `/prometheus`) |
 | 9097 | Mimir gRPC |

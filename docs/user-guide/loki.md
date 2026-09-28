@@ -89,7 +89,7 @@ Every option but `--query` is scoped to this cluster. A raw query is sent as wri
 
 ### Grafana
 
-The **Loki** datasource (uid `loki`) sends the cluster's own tenant on every query. Grafana also has one logs datasource per tenant in the shared store, **Loki (&lt;tenant&gt;)** (uid `loki-<tenant>`), and one for all of them, **Loki (all tenants)** (uid `loki--all`). Each links a trace ID to the Tempo datasource of the same tenant view. See [the Mimir page](mimir.md#grafana) for how the tenants are found.
+The **Loki** datasource (uid `loki`) sends the cluster's own tenant on every query. Grafana also has one logs datasource per tenant in the shared store, **Loki (&lt;tenant&gt;)** (uid `loki-<tenant>`), and one for all of them, **Loki (all tenants)** (uid `loki--all`). Each links a trace ID to the Tempo datasource of the same tenant view. See [the Mimir page](mimir.md#grafana) for how the tenants are found. Dashboards reach them through their **Logs** picker, which opens on **Loki**; the annotation markers follow it too.
 
 The **Log Investigation** dashboard (Dashboards → Log Investigation) filters by:
 

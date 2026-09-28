@@ -9,7 +9,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import java.io.File
 
 /**
  * Every datasource a dashboard names must be one Grafana is provisioned with. A panel whose
@@ -26,16 +25,6 @@ class DashboardDatasourceTest {
 
     /** Grafana's own datasources, which every instance has. */
     private val builtIn = setOf("-- Grafana --", "grafana", "-- Mixed --", "-- Dashboard --")
-
-    /** The core dashboards and every kit's dashboards. */
-    private fun dashboards(): List<File> {
-        val core = File("dashboards").walkTopDown().filter { it.isFile && it.extension == "json" }
-        val kits =
-            File("src/main/resources/com/rustyrazorblade/easydblab/kits")
-                .walkTopDown()
-                .filter { it.isFile && it.extension == "json" && it.parentFile.name == "dashboards" }
-        return (core + kits).toList()
-    }
 
     /** Every datasource reference in [element]: a uid, or the old bare-string form. */
     private fun datasourceRefs(element: JsonElement): List<String> =
@@ -67,7 +56,7 @@ class DashboardDatasourceTest {
 
     @Test
     fun `every dashboard names only provisioned datasources`() {
-        val files = dashboards()
+        val files = DashboardFiles.all()
         assertThat(files).isNotEmpty()
 
         val unknown =

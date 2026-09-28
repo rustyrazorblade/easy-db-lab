@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab
 
+import com.rustyrazorblade.easydblab.configuration.grafana.DashboardFiles
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -36,14 +37,7 @@ object DashboardQueries {
     private val json = Json { ignoreUnknownKeys = true }
 
     /** The core dashboards and every kit's dashboards. */
-    fun files(): List<File> {
-        val core = File("dashboards").walkTopDown().filter { it.isFile && it.extension == "json" }
-        val kits =
-            File("src/main/resources/com/rustyrazorblade/easydblab/kits")
-                .walkTopDown()
-                .filter { it.isFile && it.extension == "json" && it.parentFile.name == "dashboards" }
-        return (core + kits).sortedBy { it.path }.toList()
-    }
+    fun files(): List<File> = DashboardFiles.all()
 
     /** Every query of [language] in every dashboard. */
     fun all(language: Language): List<Query> = files().flatMap { queries(it) }.filter { it.language == language }

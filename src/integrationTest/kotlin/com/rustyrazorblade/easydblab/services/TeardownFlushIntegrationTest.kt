@@ -462,8 +462,10 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
     @Test
     fun `a save puts every signal in S3, records logs and metrics as they finish, and a re-run saves only the rest`() {
         startTempo()
-        val backdated = Instant.now().minus(Duration.ofDays(2))
-        pushLine("today")
+        // One instant for the push and the assertion, so a run across midnight UTC reads the same day.
+        val pushedAt = Instant.now()
+        val backdated = pushedAt.minus(Duration.ofDays(2))
+        pushLine("today", at = pushedAt)
         pushLine("two days ago", at = backdated, host = "db1")
         writeSample()
         // Pushed just before the save: still live traces in Tempo's memory when the drain starts.
@@ -480,7 +482,7 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
 
         assertThat(outcome.saved.keys).containsExactlyInAnyOrderElementsOf(TailSignal.entries)
         val index = keys("$LOGS_PREFIX/index/")
-        assertThat(index).anyMatch { it.startsWith("$LOGS_PREFIX/index/index_${day(Instant.now())}/") && it.contains("$TENANT.$CLUSTER") }
+        assertThat(index).anyMatch { it.startsWith("$LOGS_PREFIX/index/index_${day(pushedAt)}/") && it.contains("$TENANT.$CLUSTER") }
         assertThat(index).anyMatch { it.startsWith("$LOGS_PREFIX/index/index_${day(backdated)}/") }
         assertThat(keys("$LOGS_PREFIX/$TENANT/")).isNotEmpty()
         assertThat(keys("${Constants.Observability.METRICS_ROOT}/$TENANT/")).anyMatch { it.endsWith("/meta.json") }

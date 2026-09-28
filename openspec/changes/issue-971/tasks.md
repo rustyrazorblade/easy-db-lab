@@ -39,11 +39,11 @@
 
 ## 6. Tests dashboard
 
-- [ ] 6.1 Through the `dashboard-editor` agent, add `dashboards/infrastructure/tests.json`, uid `tests`: pickers; single-select `cluster`; `lookback` (custom, default `180d`); `resolution` (custom, default `5m`); `doc_tenant`.
-- [ ] 6.2 Table panel: start and end queries from decision 4 (instant, table format, joined by `cluster`) and a duration column.
-- [ ] 6.3 Row data links: System Overview and Cassandra Overview (row cluster, window padded one step), "Compare with the current cluster" (`var-baseline_cluster` only, no absolute range), "Show documents"; each carries the pickers and `doc_tenant`.
-- [ ] 6.4 Documents panel: Text panel in HTML mode with an iframe to `<documents host>/reports/${doc_tenant}/${cluster}/index.html`.
-- [ ] 6.5 Guard tests pass on the new file; `PromQlCompatibilityIntegrationTest` parses its queries.
+- [x] 6.1 Through the `dashboard-editor` agent, add `dashboards/infrastructure/tests.json`, uid `tests`: pickers; single-select `cluster`; `lookback` (custom, default `180d`); `resolution` (custom, default `5m`); `doc_tenant`.
+- [x] 6.2 Table panel: start and end queries from decision 4 (instant, table format, joined by `cluster`) and a duration column.
+- [x] 6.3 Row data links: System Overview and Cassandra Overview (row cluster, window padded one step), "Compare with the current cluster" (`var-baseline_cluster` only, no absolute range), "Show documents"; each carries the pickers and `doc_tenant`.
+- [x] 6.4 Documents panel: Text panel in HTML mode with an iframe to `<documents host>/reports/${doc_tenant}/${cluster}/index.html`.
+- [x] 6.5 Guard tests pass on the new file; `PromQlCompatibilityIntegrationTest` parses its queries.
 
 ## 7. Comparison views (curated figures, decision 12)
 

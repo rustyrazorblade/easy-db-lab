@@ -123,7 +123,7 @@ object DashboardQueries {
     private val sampleValues =
         mapOf(
             "lookback" to "180d",
-            "resolution" to "5m",
+            "resolution" to "300",
             "base_start" to "1790000000",
             "base_end" to "1790086400",
             "base_len" to "86400",

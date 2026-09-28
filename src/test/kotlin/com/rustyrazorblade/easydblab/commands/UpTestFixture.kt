@@ -46,6 +46,7 @@ import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.junit.jupiter.api.BeforeEach
 import org.koin.core.module.Module
@@ -82,6 +83,7 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected lateinit var mockK8sService: K8sService
     protected lateinit var mockCommandExecutor: CommandExecutor
     protected lateinit var mockObservabilityStackService: ObservabilityStackService
+    protected lateinit var mockDocumentService: TestDocumentService
     protected lateinit var outputHandler: BufferedOutputHandler
 
     /** exit code returned by the fake CommandExecutor for a nested command, keyed by simple class name */
@@ -155,6 +157,7 @@ abstract class UpTestFixture : BaseKoinTest() {
                 single { CiliumNodeImageCheck(get()) }
                 single { ProvisioningPreflight(get(), get()) }
                 single { AccountBucketSetup(get(), get(), get(), get(), get()) }
+                single<TestDocumentService> { mock<TestDocumentService>().also { mockDocumentService = it } }
                 single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
                 single<RegistryService> { mock<RegistryService>() }
                 single<SocksProxyService> { mock<SocksProxyService>() }
@@ -282,6 +285,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         mockClusterConfigurationService = getKoin().get()
         mockK3sClusterService = getKoin().get()
         mockCiliumService = getKoin().get()
+        mockDocumentService = getKoin().get()
         mockGrafanaClient = getKoin().get()
         mockK8sService = getKoin().get()
         mockCommandExecutor = getKoin().get()

@@ -196,6 +196,8 @@ dependencies {
 
     // Utilities
     implementation(libs.classgraph)
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.ext.gfm.tables)
     implementation(libs.commons.io)
     implementation(libs.commons.text)
 

@@ -57,6 +57,20 @@ data class ObservabilityStore(
 
     /** File of one Grafana annotations backup. */
     fun annotationsArtifact(name: SnapshotName): ClusterS3Path = annotationsRoot().resolve("$name.json")
+
+    /** The folder of one test's documents, `reports/<tenant>/<cluster>`, for the cluster label [cluster]. */
+    fun documentsRoot(cluster: String): ClusterS3Path =
+        ClusterS3Path
+            .root(bucket)
+            .resolve(Constants.Observability.REPORTS_ROOT)
+            .resolve(tenant)
+            .resolve(cluster)
+
+    /** One document, or the index, named [name] in the documents folder of [cluster]. */
+    fun document(
+        cluster: String,
+        name: String,
+    ): ClusterS3Path = documentsRoot(cluster).resolve(name)
 }
 
 /**

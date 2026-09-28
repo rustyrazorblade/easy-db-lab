@@ -37,6 +37,16 @@ class ObservabilityStoreTest {
     }
 
     @Test
+    fun `a test's documents live under reports, the tenant and the cluster label`() {
+        val store = ObservabilityStore.from(state)
+        val cluster = state.clusterLabelName()
+
+        assertThat(store.documentsRoot(cluster).getKey()).isEqualTo("reports/acme/lab-0f1e2d3c-aaaa-bbbb-cccc-123456789abc")
+        assertThat(store.document(cluster, "results.md").getKey())
+            .isEqualTo("reports/acme/lab-0f1e2d3c-aaaa-bbbb-cccc-123456789abc/results.md")
+    }
+
+    @Test
     fun `snapshot locations are named by time and cluster`() {
         val store = ObservabilityStore.from(state)
         val name = SnapshotName.of(state, at)

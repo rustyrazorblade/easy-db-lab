@@ -21,6 +21,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.inOrder
@@ -67,6 +68,18 @@ class UpTest : UpTestFixture() {
         order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
         order.verify(compactor).ensureRunning("easy-db-lab-test-bucket")
         verify(compactor).ensureRunning(any())
+    }
+
+    /** The test's document index is rebuilt with the operator's credentials once the account bucket is configured. */
+    @Test
+    fun `up rebuilds the test's document index after the account bucket is configured`() {
+        newUp().execute()
+
+        val state = argumentCaptor<ClusterState>()
+        val order = inOrder(mockS3BucketService, mockDocumentService)
+        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
+        order.verify(mockDocumentService).rebuildIndex(state.capture())
+        assertThat(state.firstValue.s3Bucket).isEqualTo("easy-db-lab-test-bucket")
     }
 
     // =========================================================================

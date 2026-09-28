@@ -35,6 +35,7 @@ import com.rustyrazorblade.easydblab.commands.observability.Observability
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.platform.Platform
 import com.rustyrazorblade.easydblab.commands.profile.Profile
+import com.rustyrazorblade.easydblab.commands.report.Report
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -101,6 +102,7 @@ import kotlin.system.exitProcess
         OpenSearch::class,
         Aws::class,
         Logs::class,
+        Report::class,
         Tailscale::class,
         Platform::class,
         Kit::class,

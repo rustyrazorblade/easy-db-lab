@@ -64,6 +64,7 @@ jedis = "7.5.3"
 
 # Other
 classgraph = "4.8.184"
+commonmark = "0.24.0"
 presto-jdbc = "0.289"
 trino-jdbc = "474"
 clickhouse-jdbc = "0.7.2"
@@ -164,6 +165,8 @@ commons-text = { module = "org.apache.commons:commons-text", version.ref = "comm
 
 # Other
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
+commonmark = { module = "org.commonmark:commonmark", version.ref = "commonmark" }
+commonmark-ext-gfm-tables = { module = "org.commonmark:commonmark-ext-gfm-tables", version.ref = "commonmark" }
 
 # Kotlinx Serialization
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }

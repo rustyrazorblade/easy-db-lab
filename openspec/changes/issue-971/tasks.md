@@ -57,14 +57,14 @@
 
 ## 8. `report upload`
 
-- [ ] 8.1 `Constants.Observability.REPORTS_ROOT = "reports"`; `ObservabilityStore.documentsRoot(cluster)` = `reports/<tenant>/<name>-<id>/` and `document(name)`.  Extend `ObservabilityStoreTest`.
-- [ ] 8.2 Add a markdown library (GFM tables) to `gradle/libs.versions.toml` and the build.
-- [ ] 8.3 Pure name check: `.md` only, `[A-Za-z0-9._-]+`, not `index.md`, file exists and is not a directory; returns every rejected file.  Unit tests for each rule.
-- [ ] 8.4 Pure index builder: from `(name, html)` pairs in name order, one section per document headed with its name; "No documents yet" when empty; `<meta charset="utf-8">`.  Unit tests (empty, one, several, a replaced document appears once).
-- [ ] 8.5 `TestDocumentService` (interface + default): check all names first; upload each `.md` and its `.html` (written to a local `.html` file) through `ObjectStore`; list the folder's `.md` keys; download and render them; write `index.html` the same way.  Integration test against S3 TestContainers/LocalStack in the pattern of `S3ObjectStoreIntegrationTest`: key layout, replace on same name, index holds every document.
-- [ ] 8.6 `commands/report/Report.kt` and `ReportUpload.kt`: `@Parameters(arity = "1..*")`, no `@RequiresProxy`; register in the command tree.  One typed event `Event.Report.DocumentsUploaded` with each name and S3 URI and the index URI; add it to `events/Event.kt` and its serialization.
-- [ ] 8.7 `Up`: rebuild the test's index with the operator's credentials after the account bucket is configured (F7).
-- [ ] 8.8 Command test: rejected files are named and nothing is uploaded; the command works with no running cluster.
+- [x] 8.1 `Constants.Observability.REPORTS_ROOT = "reports"`; `ObservabilityStore.documentsRoot(cluster)` = `reports/<tenant>/<name>-<id>/` and `document(name)`.  Extend `ObservabilityStoreTest`.
+- [x] 8.2 Add a markdown library (GFM tables) to `gradle/libs.versions.toml` and the build.
+- [x] 8.3 Pure name check: `.md` only, `[A-Za-z0-9._-]+`, not `index.md`, file exists and is not a directory; returns every rejected file.  Unit tests for each rule.
+- [x] 8.4 Pure index builder: from `(name, html)` pairs in name order, one section per document headed with its name; "No documents yet" when empty; `<meta charset="utf-8">`.  Unit tests (empty, one, several, a replaced document appears once).
+- [x] 8.5 `TestDocumentService` (interface + default): check all names first; upload each `.md` and its `.html` (written to a local `.html` file) through `ObjectStore`; list the folder's `.md` keys; download and render them; write `index.html` the same way.  Integration test against S3 TestContainers/LocalStack in the pattern of `S3ObjectStoreIntegrationTest`: key layout, replace on same name, index holds every document.
+- [x] 8.6 `commands/report/Report.kt` and `ReportUpload.kt`: `@Parameters(arity = "1..*")`, no `@RequiresProxy`; register in the command tree.  One typed event `Event.Report.DocumentsUploaded` with each name and S3 URI and the index URI; add it to `events/Event.kt` and its serialization.
+- [x] 8.7 `Up`: rebuild the test's index with the operator's credentials after the account bucket is configured (F7).
+- [x] 8.8 Command test: rejected files are named and nothing is uploaded; the command works with no running cluster.
 
 ## 9. Documents sidecars and Grafana settings
 

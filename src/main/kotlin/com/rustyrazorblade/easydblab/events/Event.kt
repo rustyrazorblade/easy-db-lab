@@ -5755,4 +5755,29 @@ sealed interface Event {
                 "Account compactor kept running: ${clusterVpcs.size} other cluster(s) use the account bucket"
         }
     }
+
+    /**
+     * Test documents: the markdown files `report upload` stores in a test's folder, `reports/<tenant>/<name>-<id>/`,
+     * with an HTML copy of each and one `index.html` that holds them all.
+     */
+    @Serializable
+    sealed interface Report : Event {
+        /** One stored document: its file name and its S3 URI. */
+        @Serializable
+        data class StoredDocument(
+            val name: String,
+            val uri: String,
+        )
+
+        /** [documents] were stored in the test's folder and its index at [indexUri] was rebuilt. */
+        @Serializable
+        @SerialName("Report.DocumentsUploaded")
+        data class DocumentsUploaded(
+            val documents: List<StoredDocument>,
+            val indexUri: String,
+        ) : Report {
+            override fun toDisplayString(): String =
+                (documents.map { "Uploaded ${it.name} to ${it.uri}" } + "Rebuilt the test's index at $indexUri").joinToString("\n")
+        }
+    }
 }

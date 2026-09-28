@@ -24,7 +24,7 @@
 
 - [x] 4.1 Split into a Grafana HTTP client (dashboard install, folder lookup, annotation create and fetch; implements `GrafanaAnnotationSource`) and a deploy service (datasource ConfigMap, dashboard tree upload, K8s apply, `ConfigHashAnnotator` map).  Each gets a class-level KDoc.
 - [x] 4.2 Rewire every caller: `ObservabilityStackService`, `KitRunnerCommand`, `GrafanaInstall`, `grafana annotate`, `grafana backup`, the `down` annotation mirror and backup path (`AnnotationMirror`, `TeardownFlushService`), and the Koin modules.
-- [ ] 4.3 Move the existing `GrafanaDashboardServiceTest` cases to the class that now owns each behavior; deploy tests no longer mock HTTP.  Run `AnnotationMirrorTest` and `AnnotationMirrorIntegrationTest` (in a subagent).
+- [x] 4.3 Move the existing `GrafanaDashboardServiceTest` cases to the class that now owns each behavior; deploy tests no longer mock HTTP.  Run `AnnotationMirrorTest` and `AnnotationMirrorIntegrationTest` (in a subagent).
 - [x] 4.4 Run detekt; fix findings with code only.
 
 ## 5. Picker edit of every dashboard (through the `dashboard-editor` agent, in batches)
@@ -35,7 +35,7 @@
 - [x] 5.4 Batch 4, `dashboards/observability/`, `dashboards/networking/`, `dashboards/opensearch/` (declares `metrics_datasource` for its `cluster` variable, D1).
 - [x] 5.5 Hand-edit the 4 files with Explore URLs so the `panes=` JSON names the picker, left unencoded.
 - [x] 5.6 Rewrite every `/d/` link to pass the carried variables its source declares (F2, F4), including the system-ab to ab link with `baseline_cluster` and `candidate_cluster`.
-- [ ] 5.7 Run the guard tests, the query-compatibility integration tests (in a subagent) and `CoreDashboardAnnotationsTest`: all pass.
+- [x] 5.7 Run the guard tests, the query-compatibility integration tests (in a subagent) and `CoreDashboardAnnotationsTest`: all pass.
 
 ## 6. Tests dashboard
 

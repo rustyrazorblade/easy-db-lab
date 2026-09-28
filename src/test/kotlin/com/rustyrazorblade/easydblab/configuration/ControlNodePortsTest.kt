@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
@@ -93,7 +94,7 @@ class ControlNodePortsTest : BaseKoinTest() {
                 EbpfExporterManifestBuilder().buildAllResources() +
                 BeylaManifestBuilder(templates).buildAllResources() +
                 PyroscopeManifestBuilder(templates).buildAllResources() +
-                GrafanaManifestBuilder(templates).buildAllResources() +
+                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2")) +
                 RegistryManifestBuilder().buildAllResources() +
                 S3ManagerManifestBuilder(templates).buildAllResources() +
                 YaceManifestBuilder(templates).buildAllResources()

@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import com.rustyrazorblade.easydblab.services.aws.ClusterCensus
 import com.rustyrazorblade.easydblab.services.aws.CompactorIam
 import com.rustyrazorblade.easydblab.services.aws.CompactorNetwork
@@ -266,5 +267,6 @@ val awsModule =
         single { CompactorNetwork(get(), get(), get(), get()) }
         single { ClusterCensus(get(), get()) }
         single<CompactorService> { DefaultCompactorService(get(), get(), get(), get(), get(), get()) }
+        factory { BucketRegion(get()) }
         factory { AccountBucketSetup(get(), get(), get(), get(), get()) }
     }

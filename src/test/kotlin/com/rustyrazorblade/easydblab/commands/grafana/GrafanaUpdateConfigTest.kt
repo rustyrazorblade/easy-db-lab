@@ -190,7 +190,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.deploy(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
@@ -200,7 +200,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         // Verify Fabric8 resources were applied (all builders produce multiple resources)
         verify(mockK8sService, atLeastOnce()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService).deploy(any(), any())
+        verify(mockDashboardService).deploy(any(), any(), any())
 
         // Nothing is force-restarted: a workload rolls only when its configuration hash changes.
         verify(mockK8sService, never()).rolloutRestartDeployment(any(), any(), any())
@@ -225,7 +225,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.deploy(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
         // The stack applied and restarted, but a pod never reached Ready (e.g. Grafana CrashLoopBackOff).
@@ -283,7 +283,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.deploy(any(), any()))
+        whenever(mockDashboardService.deploy(any(), any(), any()))
             .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
         val command = GrafanaUpdateConfig()
@@ -322,6 +322,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             .hasMessageContaining("telemetry-redirect")
 
         verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService, never()).deploy(any(), any())
+        verify(mockDashboardService, never()).deploy(any(), any(), any())
     }
 }

@@ -28,6 +28,9 @@ object SharedK3s {
     /** Pod image preloaded into the cluster, so a test's pods never pull from a registry. */
     const val BUSYBOX_IMAGE = "busybox:1.36"
 
+    /** The documents web server image, preloaded for the web server test. */
+    const val WEB_SERVER_IMAGE = Constants.Grafana.Documents.WEB_SERVER_IMAGE
+
     private const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
 
     private val container: K3sContainer by lazy {
@@ -38,7 +41,7 @@ object SharedK3s {
                     .withCgroupnsMode("host")
                     .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
             }.withEnv("K3S_SNAPSHOTTER", "native")
-            .let { (it as K3sContainer).withPreloadedImages(BUSYBOX_IMAGE) }
+            .let { (it as K3sContainer).withPreloadedImages(BUSYBOX_IMAGE, WEB_SERVER_IMAGE) }
             .apply { start() }
     }
 

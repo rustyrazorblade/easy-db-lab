@@ -68,18 +68,18 @@
 
 ## 9. Documents sidecars and Grafana settings
 
-- [ ] 9.1 Extract `CompactorService.bucketRegion` into a shared bucket region helper in `services/aws/` and use it from both places (D6).  Keep `CompactorServiceTest` passing.
-- [ ] 9.2 `Constants`: the proxy port, the web server host port (not 8081), and the pinned `aws-sigv4-proxy` and web server images.
-- [ ] 9.3 `GrafanaManifestBuilder.buildDeployment(...)` takes the bucket, the bucket region and the ports: add the `aws-sigv4-proxy` container bound to `127.0.0.1` (`--name s3 --region <region> --host s3.<region>.amazonaws.com`) and the web server container, built with fabric8; set `GF_SECURITY_DISABLE_SANITIZE_HTML=true`.
-- [ ] 9.4 Web server config as a classpath resource loaded with `TemplateService`: GET only, only normalized paths under `/reports/`, fixed bucket prefix, query string dropped, forward to the proxy.  Add its ConfigMap to the `ConfigHashAnnotator` map.
-- [ ] 9.5 Unit tests on the manifest (containers, images pinned, proxy bound to loopback, ports, env) and on the rendered web server config (method and path rules).
-- [ ] 9.6 Integration test with a K3s TestContainer (in a subagent): the web server refuses `PUT`, `POST`, `DELETE`, a path outside `reports/`, and `/reports/../mimir/`, and forwards a `GET` under `reports/`.
-- [ ] 9.7 Confirm the instance role can `GetObject` under `reports/` in the account bucket.
+- [x] 9.1 Extract `CompactorService.bucketRegion` into a shared bucket region helper in `services/aws/` and use it from both places (D6).  Keep `CompactorServiceTest` passing.
+- [x] 9.2 `Constants`: the proxy port, the web server host port (not 8081), and the pinned `aws-sigv4-proxy` and web server images.
+- [x] 9.3 `GrafanaManifestBuilder.buildDeployment(...)` takes the bucket, the bucket region and the ports: add the `aws-sigv4-proxy` container bound to `127.0.0.1` (`--name s3 --region <region> --host s3.<region>.amazonaws.com`) and the web server container, built with fabric8; set `GF_SECURITY_DISABLE_SANITIZE_HTML=true`.
+- [x] 9.4 Web server config as a classpath resource loaded with `TemplateService`: GET only, only normalized paths under `/reports/`, fixed bucket prefix, query string dropped, forward to the proxy.  Add its ConfigMap to the `ConfigHashAnnotator` map.
+- [x] 9.5 Unit tests on the manifest (containers, images pinned, proxy bound to loopback, ports, env) and on the rendered web server config (method and path rules).
+- [x] 9.6 Integration test with a K3s TestContainer (in a subagent): the web server refuses `PUT`, `POST`, `DELETE`, a path outside `reports/`, and `/reports/../mimir/`, and forwards a `GET` under `reports/`.
+- [x] 9.7 Confirm the instance role can `GetObject` under `reports/` in the account bucket.
 
 ## 10. IAM
 
-- [ ] 10.1 `AWSPolicy.Inline.S3AccessWildcard`: add `reports/*` to the instance role's `s3:DeleteObject`/`s3:DeleteObjectVersion` deny.  No `PutObject` deny.
-- [ ] 10.2 Extend `AWSpolicyTest` to assert the deny covers `reports/*`.
+- [x] 10.1 `AWSPolicy.Inline.S3AccessWildcard`: add `reports/*` to the instance role's `s3:DeleteObject`/`s3:DeleteObjectVersion` deny.  No `PutObject` deny.
+- [x] 10.2 Extend `AWSpolicyTest` to assert the deny covers `reports/*`.
 
 ## 11. Link recipes (D5)
 

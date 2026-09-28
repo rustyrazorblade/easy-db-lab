@@ -838,6 +838,12 @@ object Constants {
 
             /** Loopback port of the `aws-sigv4-proxy` that signs the web server's S3 requests. */
             const val PROXY_PORT = 3081
+
+            /** The signing proxy, a released version. */
+            const val SIGV4_PROXY_IMAGE = "public.ecr.aws/aws-observability/aws-sigv4-proxy:1.13"
+
+            /** The read-only web server, a released stable nginx that runs as a non-root user. */
+            const val WEB_SERVER_IMAGE = "nginxinc/nginx-unprivileged:1.30.5-alpine"
         }
     }
 

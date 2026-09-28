@@ -145,7 +145,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
-        whenever(mockDashboardService.deploy(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any(), any())).thenReturn(Result.success(Unit))
 
         service =
             DefaultObservabilityStackService(
@@ -248,7 +248,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
         val context = argumentCaptor<DashboardInstallContext>()
-        verify(mockDashboardService).deploy(any(), context.capture())
+        verify(mockDashboardService).deploy(any(), context.capture(), any())
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
 
@@ -315,7 +315,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(kindNames).contains("DaemonSet/pyroscope-ebpf")
 
         // No Grafana in redirect mode, so no dashboards uploaded.
-        verify(mockDashboardService, never()).deploy(any(), any())
+        verify(mockDashboardService, never()).deploy(any(), any(), any())
 
         // Neither on-node directory (Pyroscope server data, Grafana data) is prepared: the server
         // and Grafana do not exist here, so redirect makes no SSH calls at all.
@@ -379,7 +379,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockDashboardService, mockK8sService)
-        order.verify(mockDashboardService).deploy(any(), any())
+        order.verify(mockDashboardService).deploy(any(), any(), any())
         order.verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
         assertThat(workloads.firstValue).contains(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }

@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
@@ -326,7 +327,7 @@ class K8sServiceIntegrationTest {
 
         // Apply all resources including Deployment. Dashboards are files on the hostPath, not
         // K8s objects, so nothing per dashboard is expected here.
-        applyAndVerify(builder.buildAllResources())
+        applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2")))
         assertDeploymentExists("grafana")
     }
 
@@ -836,7 +837,7 @@ class K8sServiceIntegrationTest {
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
             KubeStateMetricsManifestBuilder().buildAllResources() +
-            GrafanaManifestBuilder(templateService).buildAllResources()
+            GrafanaManifestBuilder(templateService).buildAllResources(DocumentsBucket("acct", "us-west-2"))
 
     private fun waitForPvcBound(
         pvcName: String,

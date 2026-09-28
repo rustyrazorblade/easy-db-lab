@@ -4,11 +4,13 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
+import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 
 /**
  * Gets Grafana, its datasources and the core dashboard tree onto the cluster.
@@ -35,10 +37,12 @@ interface GrafanaDeployService {
      *
      * @param controlHost The control node running K3s
      * @param context The cluster the dashboards are installed on; its tenants make the datasources
+     * @param bucket The account bucket, which the documents sidecars read from in its own region
      */
     fun deploy(
         controlHost: ClusterHost,
         context: DashboardInstallContext,
+        bucket: String,
     ): Result<Unit>
 }
 
@@ -50,6 +54,7 @@ interface GrafanaDeployService {
  * @property manifestBuilder Builder for Grafana K8s resources
  * @property treeUploader Copies the dashboard tree onto the Grafana hostPath
  * @property configChangeReport Says whether Grafana rolls
+ * @property bucketRegion Finds the account bucket's region, which the documents proxy signs for
  */
 class DefaultGrafanaDeployService(
     private val k8sService: K8sService,
@@ -57,6 +62,7 @@ class DefaultGrafanaDeployService(
     private val treeUploader: GrafanaDashboardTreeUploader,
     private val eventBus: EventBus,
     private val configChangeReport: ConfigChangeReport,
+    private val bucketRegion: BucketRegion,
 ) : GrafanaDeployService {
     companion object {
         private const val DATASOURCES_CONFIGMAP_NAME = "grafana-datasources"
@@ -82,6 +88,7 @@ class DefaultGrafanaDeployService(
     override fun deploy(
         controlHost: ClusterHost,
         context: DashboardInstallContext,
+        bucket: String,
     ): Result<Unit> {
         eventBus.emit(Event.Grafana.DatasourcesCreating)
         createDatasourcesConfigMap(controlHost, context.tenants).getOrElse { exception ->
@@ -100,7 +107,7 @@ class DefaultGrafanaDeployService(
         // it in: a datasource change then rolls Grafana.
         val resources =
             ConfigHashAnnotator.annotate(
-                manifestBuilder.buildAllResources(),
+                manifestBuilder.buildAllResources(DocumentsBucket(bucket, bucketRegion.of(bucket))),
                 mapOf(DATASOURCES_CONFIGMAP_NAME to datasourcesData(context.tenants)),
             )
         runCatching { configChangeReport.report(controlHost, resources, DEFAULT_NAMESPACE) }

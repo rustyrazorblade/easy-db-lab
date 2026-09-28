@@ -91,8 +91,11 @@ class AWSpolicyTest {
                 "arn:aws:s3:::easy-db-lab-*/loki/*",
                 "arn:aws:s3:::easy-db-lab-*/tempo/*",
                 "arn:aws:s3:::easy-db-lab-*/grafana/*",
+                "arn:aws:s3:::easy-db-lab-*/reports/*",
             )
             assertThat(values("Resource")).noneMatch { it.contains("pyroscope") }
+            // Only deletes are denied: the cluster still reads the documents and the owner uploads them.
+            assertThat(statements.toString()).doesNotContain("s3:PutObject")
         }
 
         @Test

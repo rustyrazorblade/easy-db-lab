@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
@@ -218,9 +219,11 @@ class DefaultObservabilityStackService(
         controlNode: ClusterHost,
         clusterState: ClusterState,
     ) {
-        grafanaDeployService.deploy(controlNode, installContextFactory.forCluster(clusterState, controlNode)).getOrElse { exception ->
-            error("Failed to upload dashboards: ${exception.message}")
-        }
+        grafanaDeployService
+            .deploy(controlNode, installContextFactory.forCluster(clusterState, controlNode), ObservabilityStore.from(clusterState).bucket)
+            .getOrElse { exception ->
+                error("Failed to upload dashboards: ${exception.message}")
+            }
     }
 
     private fun applyStage(

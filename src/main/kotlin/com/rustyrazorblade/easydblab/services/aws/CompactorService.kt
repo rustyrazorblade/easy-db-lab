@@ -22,7 +22,6 @@ import software.amazon.awssdk.services.ecs.model.NetworkConfiguration
 import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
 
 /**
  * The account compactor: one ECS Fargate service per AWS account, in the account bucket's region,
@@ -69,9 +68,6 @@ class DefaultCompactorService(
     private val statusReader: CompactorStatusReader = CompactorStatusReader(regionalClients),
 ) : CompactorService {
     private companion object {
-        /** S3 reports the original region as an empty location constraint. */
-        const val DEFAULT_BUCKET_REGION = "us-east-1"
-
         /** A deployment may run at most the desired count: never two tasks at once. */
         const val MAXIMUM_PERCENT = 100
     }
@@ -181,13 +177,8 @@ class DefaultCompactorService(
             )
         }
 
-    /** The account bucket's region, from `GetBucketLocation`. */
-    private fun bucketRegion(bucket: String): String =
-        s3
-            .getBucketLocation(GetBucketLocationRequest.builder().bucket(bucket).build())
-            .locationConstraintAsString()
-            .orEmpty()
-            .ifEmpty { DEFAULT_BUCKET_REGION }
+    /** The account bucket's region. */
+    private fun bucketRegion(bucket: String): String = BucketRegion(s3).of(bucket)
 
     private fun ensureLogGroup(logs: CloudWatchLogsClient) {
         try {

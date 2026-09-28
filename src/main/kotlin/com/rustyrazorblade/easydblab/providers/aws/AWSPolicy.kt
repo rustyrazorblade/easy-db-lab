@@ -210,10 +210,11 @@ sealed class AWSPolicy {
                                     ),
                                 resource = IamPolicyResource.single("arn:aws:ecr:*:$accountId:repository/*"),
                             ),
-                            // No code path on a cluster may delete observability data. An explicit deny
-                            // beats the s3:* above; the owner's own deletes from a workstation are not
-                            // affected. pyroscope/ is left out: Pyroscope v2 compaction writes a merged
-                            // block and then removes the segments it merged. Compaction is not deletion.
+                            // No code path on a cluster may delete observability data or test documents. An
+                            // explicit deny beats the s3:* above; the owner's own deletes from a workstation
+                            // are not affected, so `report upload` still replaces a document. pyroscope/ is
+                            // left out: Pyroscope v2 compaction writes a merged block and then removes the
+                            // segments it merged. Compaction is not deletion.
                             IamPolicyStatement(
                                 effect = "Deny",
                                 action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
@@ -224,6 +225,7 @@ sealed class AWSPolicy {
                                             "${Constants.Observability.LOGS_ROOT}/*",
                                             "${Constants.Observability.TRACES_ROOT}/*",
                                             "${Constants.Observability.GRAFANA_ROOT}/*",
+                                            "${Constants.Observability.REPORTS_ROOT}/*",
                                         ).map { "arn:aws:s3:::easy-db-lab-*/$it" },
                                     ),
                             ),

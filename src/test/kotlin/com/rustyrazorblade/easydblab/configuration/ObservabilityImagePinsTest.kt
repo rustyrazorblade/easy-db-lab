@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
@@ -68,7 +69,7 @@ class ObservabilityImagePinsTest : BaseKoinTest() {
                 LokiManifestBuilder(templates).buildAllResources() +
                 TempoManifestBuilder(templates).buildAllResources() +
                 PyroscopeManifestBuilder(templates).buildAllResources() +
-                GrafanaManifestBuilder(templates).buildAllResources() +
+                GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2")) +
                 YaceManifestBuilder(templates).buildAllResources() +
                 KubeStateMetricsManifestBuilder().buildAllResources()
         return podSpecs(resources).flatMap { pod ->
@@ -99,6 +100,8 @@ class ObservabilityImagePinsTest : BaseKoinTest() {
             "grafana/alloy:v1.20.0",
             "grafana/beyla:3.36.0",
             "otel/opentelemetry-collector-contrib:0.161.0",
+            Constants.Grafana.Documents.SIGV4_PROXY_IMAGE,
+            Constants.Grafana.Documents.WEB_SERVER_IMAGE,
         )
         assertThat(images).noneMatch { it.startsWith("victoriametrics/") || it.startsWith("amazon/aws-cli") }
         assertThat(Constants.OtelCollector.VERSION).describedAs("EMR collector binary").isEqualTo("0.161.0")

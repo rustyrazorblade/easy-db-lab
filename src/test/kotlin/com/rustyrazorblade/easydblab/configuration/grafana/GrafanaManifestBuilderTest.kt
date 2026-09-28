@@ -19,6 +19,7 @@ import org.mockito.kotlin.whenever
  */
 class GrafanaManifestBuilderTest : BaseKoinTest() {
     private lateinit var builder: GrafanaManifestBuilder
+    private val documents = DocumentsBucket("acct-bucket", "eu-west-1")
     private lateinit var templateService: TemplateService
     private lateinit var mockClusterStateManager: ClusterStateManager
 
@@ -50,7 +51,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
 
     private fun grafanaContainer() =
         builder
-            .buildDeployment()
+            .buildDeployment(documents)
             .spec.template.spec.containers
             .first { it.name == "grafana" }
 
@@ -74,26 +75,17 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildAllResources is only the provisioning ConfigMap and the Deployment`() {
+    fun `buildAllResources is the provisioning ConfigMap, the documents web server ConfigMap and the Deployment`() {
         // Dashboards reach Grafana as files on the hostPath, not as K8s objects, so nothing here
         // may vary with the catalog's contents.
-        val names = builder.buildAllResources().map { it.metadata.name }
+        val names = builder.buildAllResources(documents).map { it.metadata.name }
 
-        assertThat(names).containsExactly("grafana-dashboards-config", "grafana")
-    }
-
-    @Test
-    fun `buildDeployment includes grafana and image renderer containers`() {
-        val deployment = builder.buildDeployment()
-        val containers = deployment.spec.template.spec.containers
-
-        assertThat(containers).hasSize(2)
-        assertThat(containers.map { it.name }).containsExactly("grafana", "grafana-image-renderer")
+        assertThat(names).containsExactly("grafana-dashboards-config", "grafana-documents-web", "grafana")
     }
 
     @Test
     fun `buildDeployment rendering env vars reference correct ports`() {
-        val deployment = builder.buildDeployment()
+        val deployment = builder.buildDeployment(documents)
         val containers = deployment.spec.template.spec.containers
         val grafanaContainer = containers.first { it.name == "grafana" }
         val rendererContainer = containers.first { it.name == "grafana-image-renderer" }
@@ -126,7 +118,7 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
 
     @Test
     fun `buildDeployment mounts the data hostPath that holds the dashboard tree and nothing per dashboard`() {
-        val deployment = builder.buildDeployment()
+        val deployment = builder.buildDeployment(documents)
         val volumes = deployment.spec.template.spec.volumes
         val mounts = grafanaContainer().volumeMounts
 
@@ -134,7 +126,25 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
         assertThat(data.hostPath.path).isEqualTo(GrafanaManifestBuilder.GRAFANA_DATA_PATH)
         assertThat(mounts.first { it.name == "data" }.mountPath).isEqualTo("/var/lib/grafana")
 
-        assertThat(volumes.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data")
+        assertThat(volumes.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data", "documents-web-config")
         assertThat(mounts.map { it.name }).containsExactlyInAnyOrder("datasources", "dashboards-config", "data")
+    }
+
+    @Test
+    fun `Grafana lets a Text panel hold the documents iframe`() {
+        val env = grafanaContainer().env.associate { it.name to it.value }
+
+        assertThat(env).containsEntry("GF_SECURITY_DISABLE_SANITIZE_HTML", "true")
+    }
+
+    @Test
+    fun `the pod runs the documents proxy and web server beside Grafana and the renderer`() {
+        val containers =
+            builder
+                .buildDeployment(documents)
+                .spec.template.spec.containers
+
+        assertThat(containers.map { it.name })
+            .containsExactly("grafana", "grafana-image-renderer", "documents-sigv4-proxy", "documents-web")
     }
 }

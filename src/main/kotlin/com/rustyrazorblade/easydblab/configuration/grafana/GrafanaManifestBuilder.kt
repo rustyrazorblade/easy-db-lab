@@ -27,11 +27,17 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * it. Nothing built here varies with how many dashboards or folders exist; the home dashboard is
  * a fixed path in that tree ([Constants.Grafana.HOME_DASHBOARD_PATH]).
  *
+ * The pod also runs the test documents' signing proxy and read-only web server
+ * ([GrafanaDocumentsSidecars]), and Grafana runs with `disable_sanitize_html` so a Text panel can
+ * hold the documents iframe.
+ *
  * @property templateService Used for reading the cluster name for Grafana branding
  */
 class GrafanaManifestBuilder(
     private val templateService: TemplateService,
 ) {
+    private val documentsSidecars = GrafanaDocumentsSidecars(templateService)
+
     companion object {
         /** The Grafana Deployment's name, which the deploy waits on to finish rolling out. */
         const val DEPLOYMENT_NAME = "grafana"
@@ -103,9 +109,10 @@ class GrafanaManifestBuilder(
      *
      * The cluster name for Grafana branding is read from TemplateService context variables.
      *
+     * @param documents The bucket and region the documents sidecars read from
      * @return Fabric8 Deployment object
      */
-    fun buildDeployment(): Deployment {
+    fun buildDeployment(documents: DocumentsBucket): Deployment {
         val clusterName = templateService.buildContextVariables()["CLUSTER_NAME"] ?: "cluster"
 
         return DeploymentBuilder()
@@ -141,8 +148,9 @@ class GrafanaManifestBuilder(
                     .withFsGroup(FS_GROUP)
                     .withRunAsUser(RUN_AS_USER)
                     .build(),
-            ).withContainers(buildGrafanaContainer(clusterName), buildImageRendererContainer())
-            .withVolumes(buildVolumes())
+            ).withContainers(
+                listOf(buildGrafanaContainer(clusterName), buildImageRendererContainer()) + documentsSidecars.containers(documents),
+            ).withVolumes(buildVolumes() + documentsSidecars.volume())
             .endSpec()
             .endTemplate()
             .endSpec()
@@ -150,11 +158,14 @@ class GrafanaManifestBuilder(
     }
 
     /**
-     * Builds all Grafana K8s resources: the provisioning ConfigMap and the Deployment.
+     * Builds all Grafana K8s resources: the provisioning ConfigMap, the documents web server's
+     * ConfigMap and the Deployment.
      *
+     * @param documents The bucket and region the documents sidecars read from
      * @return List of all Grafana K8s resources in apply order
      */
-    fun buildAllResources(): List<HasMetadata> = listOf(buildDashboardProvisioningConfigMap(), buildDeployment())
+    fun buildAllResources(documents: DocumentsBucket): List<HasMetadata> =
+        listOf(buildDashboardProvisioningConfigMap(), documentsSidecars.configMap(documents), buildDeployment(documents))
 
     private fun buildGrafanaContainer(clusterName: String): Container =
         ContainerBuilder()
@@ -258,6 +269,8 @@ class GrafanaManifestBuilder(
             envVar("GF_RENDERING_SERVER_URL", "http://localhost:$IMAGE_RENDERER_PORT/render"),
             envVar("GF_RENDERING_CALLBACK_URL", "http://localhost:$GRAFANA_PORT/"),
             envVar("GF_RENDERING_RENDERER_TOKEN", RENDERER_TOKEN),
+            // The Tests and comparison dashboards show a test's documents in an iframe in a Text panel.
+            envVar("GF_SECURITY_DISABLE_SANITIZE_HTML", "true"),
         )
 
     private fun envVar(

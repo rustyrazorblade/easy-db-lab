@@ -823,6 +823,19 @@ object Constants {
             const val TEMPO = "tempo"
             const val PYROSCOPE = "pyroscope"
         }
+
+        /**
+         * The test documents Grafana shows: a read-only web server on the control node's host
+         * network, and the signing proxy it forwards to, bound to loopback. 8081 is the image
+         * renderer's.
+         */
+        object Documents {
+            /** Host port of the read-only documents web server, reachable from the browser like Grafana. */
+            const val WEB_PORT = 3080
+
+            /** Loopback port of the `aws-sigv4-proxy` that signs the web server's S3 requests. */
+            const val PROXY_PORT = 3081
+        }
     }
 
     // Proxy configuration

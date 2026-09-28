@@ -83,7 +83,7 @@
 
 ## 11. Link recipes (D5)
 
-- [ ] 11.1 `bin/generate-dashboard-links.py`: `dashboards/CLAUDE.md` names it, but the file is not in the tree.  Add it, taking the datasource variable in place of the hard-coded `"tempo"` and `"loki"`, or drop the reference (owner's call at implementation).
+- [ ] 11.1 Remove the two references to `bin/generate-dashboard-links.py` from `dashboards/CLAUDE.md`; the script does not exist, and the inline recipe is the one source (owner decision at Seam 1).
 - [ ] 11.2 Update the Python snippets in `dashboards/CLAUDE.md` to take the picker variables.
 
 ## 12. Docs
@@ -102,4 +102,5 @@
 - [ ] 13.2 Live cluster: verification item 2, variable interpolation in panel `timeShift` and `timeFrom` on the comparison dashboards.
 - [ ] 13.3 Live cluster: verification item 3, the iframe renders under `disable_sanitize_html`.
 - [ ] 13.4 Live cluster: verification item 4, the browser reaches the web server over Tailscale and SOCKS, and the proxy signs for the bucket's region.
-- [ ] 13.5 Live cluster: `report upload` before and after `down`, and the Tests dashboard shows the documents.  Any check across two clusters runs only when the owner authorizes it.
+- [ ] 13.5 Live cluster: `report upload` before and after `down`, and the Tests dashboard shows the documents.
+- [ ] 13.6 Live comparison, short tests only (owner-authorized, no 24h test): one new cluster with 15 to 20 minutes of data and a short stress load, compared against a past test already in the store in the same tenant within `lookback`, of a different length.  If no such past test exists, run two short clusters in the same tenant one after the other (for example 20 minutes, then `down`, then a new cluster for 10 minutes); this also checks that the torn-down cluster shows on the Tests dashboard.  Check the overlay, the side-by-side panels, the summary table and both runs' documents.

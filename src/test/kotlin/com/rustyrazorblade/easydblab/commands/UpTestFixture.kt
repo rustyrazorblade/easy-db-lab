@@ -25,7 +25,7 @@ import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.K3sClusterService
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
@@ -78,7 +78,7 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected lateinit var mockClusterConfigurationService: ClusterConfigurationService
     protected lateinit var mockK3sClusterService: K3sClusterService
     protected lateinit var mockCiliumService: CiliumService
-    protected lateinit var mockGrafanaDashboardService: GrafanaDashboardService
+    protected lateinit var mockGrafanaClient: GrafanaClient
     protected lateinit var mockK8sService: K8sService
     protected lateinit var mockCommandExecutor: CommandExecutor
     protected lateinit var mockObservabilityStackService: ObservabilityStackService
@@ -126,12 +126,12 @@ abstract class UpTestFixture : BaseKoinTest() {
 
     /**
      * The Grafana annotation path `up` uses for the Cilium install markers: a real
-     * [CiliumInstallAnnotator] over a mocked [GrafanaDashboardService], so the tests assert what
+     * [CiliumInstallAnnotator] over a mocked [GrafanaClient], so the tests assert what
      * was posted, not merely that something was.
      */
     protected fun ciliumAnnotationModule(): Module =
         module {
-            single { mock<GrafanaDashboardService>().also { mockGrafanaDashboardService = it } }
+            single { mock<GrafanaClient>().also { mockGrafanaClient = it } }
             single { CiliumInstallAnnotator(get(), RecordingAnnotationMirror()) }
         }
 
@@ -282,7 +282,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         mockClusterConfigurationService = getKoin().get()
         mockK3sClusterService = getKoin().get()
         mockCiliumService = getKoin().get()
-        mockGrafanaDashboardService = getKoin().get()
+        mockGrafanaClient = getKoin().get()
         mockK8sService = getKoin().get()
         mockCommandExecutor = getKoin().get()
         mockObservabilityStackService = getKoin().get()

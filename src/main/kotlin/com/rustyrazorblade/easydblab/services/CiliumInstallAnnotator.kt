@@ -26,12 +26,12 @@ data class PostedAnnotation(
  * This is a Koin singleton: the service that records and the command that posts are different
  * objects, and the pending list must be shared between them within one process.
  *
- * @property grafanaDashboardService Posts the annotations over the Grafana HTTP API.
+ * @property grafanaClient Posts the annotations over the Grafana HTTP API.
  * @property annotationMirror Copies each posted annotation to Loki.
  * @property clock Time source; tests inject a fixed clock to assert the recorded timestamps.
  */
 class CiliumInstallAnnotator(
-    private val grafanaDashboardService: GrafanaDashboardService,
+    private val grafanaClient: GrafanaClient,
     private val annotationMirror: AnnotationMirror,
     private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -73,7 +73,7 @@ class CiliumInstallAnnotator(
             val posted = mutableListOf<PostedAnnotation>()
             while (_pending.isNotEmpty()) {
                 val request = _pending.first()
-                val response = grafanaDashboardService.createAnnotation(controlHost, request)
+                val response = grafanaClient.createAnnotation(controlHost, request)
                 _pending.removeAt(0)
                 annotationMirror.push(request.toMirrored(response.id)).getOrThrow()
                 posted += PostedAnnotation(request, response)

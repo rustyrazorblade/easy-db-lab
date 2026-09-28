@@ -7,17 +7,13 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.AnnotationMirror
-import com.rustyrazorblade.easydblab.services.ConfigChangeReport
-import com.rustyrazorblade.easydblab.services.DefaultGrafanaDashboardService
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardTreeUploader
-import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.DefaultGrafanaClient
+import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.RecordingAnnotationMirror
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -40,7 +36,7 @@ import org.mockito.kotlin.whenever
 /**
  * Integration tests for [GrafanaAnnotate].
  *
- * These drive the real [DefaultGrafanaDashboardService] against a [MockWebServer] that stands in for
+ * These drive the real [DefaultGrafanaClient] against a [MockWebServer] that stands in for
  * the control node's Grafana HTTP API. They verify the POST body the command sends for the default,
  * explicit-time-and-tags, and dashboard/panel-scope cases, the success event, and the non-zero-exit
  * behavior when the Grafana endpoint is unreachable.
@@ -87,14 +83,10 @@ class GrafanaAnnotateTest : BaseKoinTest() {
                         }
                     OkHttpClient.Builder().addInterceptor(interceptor).build()
                 }
-                single<GrafanaDashboardService> {
-                    DefaultGrafanaDashboardService(
-                        k8sService = mock<K8sService>(),
-                        manifestBuilder = mock<GrafanaManifestBuilder>(),
-                        treeUploader = mock<GrafanaDashboardTreeUploader>(),
+                single<GrafanaClient> {
+                    DefaultGrafanaClient(
                         eventBus = get<EventBus>(),
                         okHttpClient = get<OkHttpClient>(),
-                        configChangeReport = ConfigChangeReport(mock<K8sService>(), get<EventBus>()),
                     )
                 }
             },

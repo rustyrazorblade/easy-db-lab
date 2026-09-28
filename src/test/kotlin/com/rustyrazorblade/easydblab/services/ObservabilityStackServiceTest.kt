@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
@@ -68,7 +69,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     private lateinit var mockK8sService: K8sService
     private lateinit var mockK8sClientProvider: K8sClientProvider
     private lateinit var mockRemoteOps: RemoteOperationsService
-    private lateinit var mockDashboardService: GrafanaDashboardService
+    private lateinit var mockDashboardService: GrafanaDeployService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockK8sClient: KubernetesClient
 
@@ -89,7 +90,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 single { mock<K8sService>().also { mockK8sService = it } }
                 single { mock<K8sClientProvider>().also { mockK8sClientProvider = it } }
                 single<RemoteOperationsService> { mock<RemoteOperationsService>().also { mockRemoteOps = it } }
-                single { mock<GrafanaDashboardService>().also { mockDashboardService = it } }
+                single { mock<GrafanaDeployService>().also { mockDashboardService = it } }
                 single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
 
                 // Real TemplateService and manifest builders — never mock configuration classes.
@@ -144,7 +145,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForRollouts(any(), any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.workloadConfigHashes(any(), any(), any())).thenReturn(Result.success(emptyMap()))
-        whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any())).thenReturn(Result.success(Unit))
 
         service =
             DefaultObservabilityStackService(
@@ -168,7 +169,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
-                sharedStoreTenants(),
+                DashboardInstallContextFactory(sharedStoreTenants()),
             )
     }
 
@@ -246,7 +247,10 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(names).doesNotContain("victoriametrics", "victorialogs")
 
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
-        verify(mockDashboardService).uploadDashboards(any(), eq(TenantSet("default", listOf("acme", "default"))))
+        val context = argumentCaptor<DashboardInstallContext>()
+        verify(mockDashboardService).deploy(any(), context.capture())
+        assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
+        assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
 
         // Both on-node data directories are prepared over SSH.
         val commands = remoteCommands()
@@ -311,7 +315,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         assertThat(kindNames).contains("DaemonSet/pyroscope-ebpf")
 
         // No Grafana in redirect mode, so no dashboards uploaded.
-        verify(mockDashboardService, never()).uploadDashboards(any(), any())
+        verify(mockDashboardService, never()).deploy(any(), any())
 
         // Neither on-node directory (Pyroscope server data, Grafana data) is prepared: the server
         // and Grafana do not exist here, so redirect makes no SSH calls at all.
@@ -375,7 +379,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         val workloads = argumentCaptor<List<WorkloadRef>>()
         val order = inOrder(mockDashboardService, mockK8sService)
-        order.verify(mockDashboardService).uploadDashboards(any(), any())
+        order.verify(mockDashboardService).deploy(any(), any())
         order.verify(mockK8sService).waitForRollouts(any(), workloads.capture(), eq("default"), any())
         assertThat(workloads.firstValue).contains(WorkloadRef(WorkloadKind.Deployment, "grafana"))
     }

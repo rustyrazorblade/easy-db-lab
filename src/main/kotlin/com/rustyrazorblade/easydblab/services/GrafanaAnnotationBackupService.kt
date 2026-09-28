@@ -27,7 +27,7 @@ data class GrafanaAnnotationBackupResult(
  *
  * The annotations are the A/B config-change markers an operator wants to keep after the ephemeral
  * cluster is gone. This service captures them over the Grafana HTTP API (`GET /api/annotations`, via
- * [GrafanaDashboardService.fetchAnnotations]) and uploads the JSON verbatim to
+ * [GrafanaClient.fetchAnnotations]) and uploads the JSON verbatim to
  * `grafana/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json`, so clusters in one
  * tenant never overwrite each other's backups.
  */
@@ -48,13 +48,13 @@ interface GrafanaAnnotationBackupService {
 /**
  * Default implementation of [GrafanaAnnotationBackupService].
  *
- * @property grafanaDashboardService Reaches the Grafana HTTP API over the proxied client.
+ * @property grafanaClient Reaches the Grafana HTTP API over the proxied client.
  * @property objectStore Uploads the JSON artifact to S3.
  * @property eventBus Emits backup lifecycle events.
  * @property clock The time a backup is named by.
  */
 class DefaultGrafanaAnnotationBackupService(
-    private val grafanaDashboardService: GrafanaDashboardService,
+    private val grafanaClient: GrafanaClient,
     private val objectStore: ObjectStore,
     private val eventBus: EventBus,
     private val clock: Clock = Clock.systemUTC(),
@@ -71,7 +71,7 @@ class DefaultGrafanaAnnotationBackupService(
 
             eventBus.emit(Event.Backup.GrafanaAnnotationsBackupStarting(artifact.toUri()))
 
-            val annotationsJson = grafanaDashboardService.fetchAnnotations(controlHost)
+            val annotationsJson = grafanaClient.fetchAnnotations(controlHost)
             val count = countAnnotations(annotationsJson)
             objectStore.uploadContent(annotationsJson, artifact)
 

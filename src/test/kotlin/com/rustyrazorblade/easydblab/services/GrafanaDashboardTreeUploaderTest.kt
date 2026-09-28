@@ -3,9 +3,11 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.TestDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter.Companion.PYROSCOPE_URL_PLACEHOLDER
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
@@ -46,6 +48,7 @@ class GrafanaDashboardTreeUploaderTest : BaseKoinTest() {
     private val host = controlHost.toHost()
     private val hostPath = GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH
     private val grafanaUid = GrafanaManifestBuilder.GRAFANA_UID
+    private val installContext = DashboardInstallContext("test-abc", TenantSet.of("default"), "http://10.0.1.5:3080")
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -77,7 +80,7 @@ class GrafanaDashboardTreeUploaderTest : BaseKoinTest() {
     fun `hands the whole dashboard tree to the Grafana hostPath as the Grafana user`() {
         val uploaded = captureUploadedTree()
 
-        uploader().upload(controlHost)
+        uploader().upload(controlHost, installContext)
 
         assertThat(uploaded.keys).containsExactlyInAnyOrderElementsOf(catalog.dashboards.map { it.relativePath })
     }
@@ -90,7 +93,7 @@ class GrafanaDashboardTreeUploaderTest : BaseKoinTest() {
             }
         val uploaded = captureUploadedTree()
 
-        uploader().upload(controlHost)
+        uploader().upload(controlHost, installContext)
 
         assertThat(uploaded[profiling.relativePath]).contains(pyroscopeIngestBaseUrl("10.0.1.5"))
     }
@@ -103,7 +106,7 @@ class GrafanaDashboardTreeUploaderTest : BaseKoinTest() {
             error("sftp failed")
         }
 
-        assertThatThrownBy { uploader().upload(controlHost) }.hasMessage("sftp failed")
+        assertThatThrownBy { uploader().upload(controlHost, installContext) }.hasMessage("sftp failed")
 
         assertThat(localTree).isNotNull().doesNotExist()
     }

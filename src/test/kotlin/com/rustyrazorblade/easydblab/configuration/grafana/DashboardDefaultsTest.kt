@@ -103,8 +103,13 @@ class DashboardDefaultsTest {
         val out = DashboardDefaults.apply(dashboardWith("""{"name":"doc_tenant","type":"custom","query":"","options":[]}"""), context)
 
         val docTenant = variable(out, "doc_tenant")
-        assertThat(docTenant.getValue("options").jsonArray.map { it.jsonObject.getValue("value").jsonPrimitive.content })
-            .containsExactly("acme", "default")
+        assertThat(
+            docTenant.getValue("options").jsonArray.map {
+                it.jsonObject
+                    .getValue("value")
+                    .jsonPrimitive.content
+            },
+        ).containsExactly("acme", "default")
         assertThat(docTenant.getValue("query").jsonPrimitive.content).isEqualTo("acme,default")
         assertThat(current(out, "doc_tenant").jsonPrimitive.content).isEqualTo("acme")
     }
@@ -112,7 +117,9 @@ class DashboardDefaultsTest {
     @Test
     fun `the documents placeholder becomes the web server URL`() {
         val dashboard =
-            parse("""{"panels":[{"type":"text","options":{"content":"<iframe src=\"__DOCUMENTS_URL__/reports/x/index.html\"></iframe>"}}]}""")
+            parse(
+                """{"panels":[{"type":"text","options":{"content":"<iframe src=\"__DOCUMENTS_URL__/reports/x/index.html\"></iframe>"}}]}""",
+            )
 
         val out = DashboardDefaults.apply(dashboard, context)
 
@@ -149,8 +156,13 @@ class DashboardDefaultsTest {
 
             assertThat(targets(out)).describedAs(file.path).isEqualTo(targets(dashboard))
             val queries = { d: JsonObject ->
-                (d["templating"]?.jsonObject?.get("list")?.jsonArray.orEmpty())
-                    .map { it.jsonObject }
+                (
+                    d["templating"]
+                        ?.jsonObject
+                        ?.get("list")
+                        ?.jsonArray
+                        .orEmpty()
+                ).map { it.jsonObject }
                     .filter { it["name"]?.jsonPrimitive?.content != DashboardDefaults.DOC_TENANT_VARIABLE }
                     .map { it["query"] }
             }

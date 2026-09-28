@@ -61,7 +61,7 @@ val servicesModule =
         // posts the annotations later, after Grafana is deployed, so the state must be shared.
         single { CiliumInstallAnnotator(get(), get()) }
         single { LokiPushClient(get()) }
-        single<AnnotationMirror> { DefaultAnnotationMirror(get(), get<GrafanaDashboardService>(), get(), get()) }
+        single<AnnotationMirror> { DefaultAnnotationMirror(get(), get<GrafanaClient>(), get(), get()) }
         factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
@@ -106,8 +106,10 @@ val servicesModule =
         factoryOf(::LokiManifestBuilder)
         factoryOf(::YaceManifestBuilder)
         factoryOf(::KubeStateMetricsManifestBuilder)
-        factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
-        // GrafanaDashboardService calls the Grafana API on the control node's PRIVATE IP, so its
+        factoryOf(::DefaultGrafanaDeployService) bind GrafanaDeployService::class
+        factoryOf(::DefaultGrafanaClient) bind GrafanaClient::class
+        factory { DashboardInstallContextFactory(get()) }
+        // GrafanaClient calls the Grafana API on the control node's PRIVATE IP, so its
         // client must route through the SOCKS tunnel when active. Source it from the proxied factory
         // rather than a bare OkHttpClient (which, without the global socks property, would go direct).
         single<OkHttpClient> { get<HttpClientFactory>().createClient() }

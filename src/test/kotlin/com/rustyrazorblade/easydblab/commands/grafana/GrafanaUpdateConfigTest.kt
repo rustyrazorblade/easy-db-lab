@@ -20,8 +20,9 @@ import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBu
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.services.ConfigChangeReport
+import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultObservabilityStackService
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.GrafanaDeployService
 import com.rustyrazorblade.easydblab.services.K8sClientProvider
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.ObjectStore
@@ -55,7 +56,7 @@ import org.mockito.kotlin.whenever
  * mocked K8sService to verify the full observability stack is applied.
  */
 class GrafanaUpdateConfigTest : BaseKoinTest() {
-    private lateinit var mockDashboardService: GrafanaDashboardService
+    private lateinit var mockDashboardService: GrafanaDeployService
     private lateinit var mockClusterStateManager: ClusterStateManager
     private lateinit var mockK8sService: K8sService
     private lateinit var mockK8sClientProvider: K8sClientProvider
@@ -73,7 +74,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
-                single { mock<GrafanaDashboardService>().also { mockDashboardService = it } }
+                single { mock<GrafanaDeployService>().also { mockDashboardService = it } }
                 single { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
                 single { mock<K8sService>().also { mockK8sService = it } }
                 single { mock<K8sClientProvider>().also { mockK8sClientProvider = it } }
@@ -120,7 +121,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
                         get(),
                         get(),
                         get(),
-                        TenantDirectory(mock<ObjectStore>()),
+                        DashboardInstallContextFactory(TenantDirectory(mock<ObjectStore>())),
                     )
                 }
             },
@@ -189,7 +190,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.waitForPodsReady(any(), any())).thenReturn(Result.success(Unit))
@@ -199,7 +200,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         // Verify Fabric8 resources were applied (all builders produce multiple resources)
         verify(mockK8sService, atLeastOnce()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService).uploadDashboards(any(), any())
+        verify(mockDashboardService).deploy(any(), any())
 
         // Nothing is force-restarted: a workload rolls only when its configuration hash changes.
         verify(mockK8sService, never()).rolloutRestartDeployment(any(), any(), any())
@@ -224,7 +225,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockDashboardService.deploy(any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDeployment(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockK8sService.rolloutRestartDaemonSet(any(), any(), any())).thenReturn(Result.success(Unit))
         // The stack applied and restarted, but a pod never reached Ready (e.g. Grafana CrashLoopBackOff).
@@ -282,7 +283,7 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
 
         whenever(mockClusterStateManager.load()).thenReturn(stateWithControl)
         whenever(mockK8sService.applyResource(any(), any<HasMetadata>())).thenReturn(Result.success(Unit))
-        whenever(mockDashboardService.uploadDashboards(any(), any()))
+        whenever(mockDashboardService.deploy(any(), any()))
             .thenReturn(Result.failure(RuntimeException("Upload failed")))
 
         val command = GrafanaUpdateConfig()
@@ -321,6 +322,6 @@ class GrafanaUpdateConfigTest : BaseKoinTest() {
             .hasMessageContaining("telemetry-redirect")
 
         verify(mockK8sService, never()).applyResource(any(), any<HasMetadata>())
-        verify(mockDashboardService, never()).uploadDashboards(any(), any())
+        verify(mockDashboardService, never()).deploy(any(), any())
     }
 }

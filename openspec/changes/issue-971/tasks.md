@@ -16,16 +16,16 @@
 
 - [x] 3.1 `DashboardDefaults` in `configuration/grafana/`, pure, on kotlinx `JsonObject`: set picker `current` to `mimir`/`loki`/`tempo` by picker type (including `KeeperDatasource`); set `cluster`, `baseline_cluster`, `candidate_cluster` `current` to `<name>-<id>` (one-element list when `multi`); fill `doc_tenant` options from the tenant list and default it to the home tenant; replace the documents host placeholder.  No string splicing; nothing else changes.
 - [x] 3.2 Unit tests for `DashboardDefaults`: multi and single `cluster`; the run variables; picker types; `doc_tenant` options and default; a dashboard with none of these comes out equal; every query and variable query is unchanged.
-- [ ] 3.3 Core path: `ObservabilityStackService` passes the cluster label, tenants and documents host through the deploy service and `GrafanaDashboardTreeUploader` to `GrafanaDashboardTreeWriter`; `render` parses, applies `DashboardDefaults` and the `__PYROSCOPE_URL__` substitution, then serialises.  Update its KDoc ("one substitution").  Extend `GrafanaDashboardTreeWriterTest`.
-- [ ] 3.4 Kit path: `KitRunnerCommand.installDashboards` applies `DashboardDefaults` after `KitDashboardInstance.rendered()` and before install.  Test on a real kit dashboard file.
-- [ ] 3.5 `grafana install`: `GrafanaInstall` loads the workspace cluster state and tenants and applies the same pass.  Extend `GrafanaInstallTest`.
+- [x] 3.3 Core path: `ObservabilityStackService` passes the cluster label, tenants and documents host through the deploy service and `GrafanaDashboardTreeUploader` to `GrafanaDashboardTreeWriter`; `render` parses, applies `DashboardDefaults` and the `__PYROSCOPE_URL__` substitution, then serialises.  Update its KDoc ("one substitution").  Extend `GrafanaDashboardTreeWriterTest`.
+- [x] 3.4 Kit path: `KitRunnerCommand.installDashboards` applies `DashboardDefaults` after `KitDashboardInstance.rendered()` and before install.  Test on a real kit dashboard file.
+- [x] 3.5 `grafana install`: `GrafanaInstall` loads the workspace cluster state and tenants and applies the same pass.  Extend `GrafanaInstallTest`.
 
 ## 4. Split `GrafanaDashboardService` (D8)
 
-- [ ] 4.1 Split into a Grafana HTTP client (dashboard install, folder lookup, annotation create and fetch; implements `GrafanaAnnotationSource`) and a deploy service (datasource ConfigMap, dashboard tree upload, K8s apply, `ConfigHashAnnotator` map).  Each gets a class-level KDoc.
-- [ ] 4.2 Rewire every caller: `ObservabilityStackService`, `KitRunnerCommand`, `GrafanaInstall`, `grafana annotate`, `grafana backup`, the `down` annotation mirror and backup path (`AnnotationMirror`, `TeardownFlushService`), and the Koin modules.
+- [x] 4.1 Split into a Grafana HTTP client (dashboard install, folder lookup, annotation create and fetch; implements `GrafanaAnnotationSource`) and a deploy service (datasource ConfigMap, dashboard tree upload, K8s apply, `ConfigHashAnnotator` map).  Each gets a class-level KDoc.
+- [x] 4.2 Rewire every caller: `ObservabilityStackService`, `KitRunnerCommand`, `GrafanaInstall`, `grafana annotate`, `grafana backup`, the `down` annotation mirror and backup path (`AnnotationMirror`, `TeardownFlushService`), and the Koin modules.
 - [ ] 4.3 Move the existing `GrafanaDashboardServiceTest` cases to the class that now owns each behavior; deploy tests no longer mock HTTP.  Run `AnnotationMirrorTest` and `AnnotationMirrorIntegrationTest` (in a subagent).
-- [ ] 4.4 Run detekt; fix findings with code only.
+- [x] 4.4 Run detekt; fix findings with code only.
 
 ## 5. Picker edit of every dashboard (through the `dashboard-editor` agent, in batches)
 

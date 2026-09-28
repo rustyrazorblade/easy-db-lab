@@ -55,7 +55,7 @@ class CiliumServiceTest : BaseKoinTest() {
                     }
                 }
                 single<RemoteOperationsService> { mock<RemoteOperationsService>().also { mockRemoteOps = it } }
-                single { mock<GrafanaDashboardService>() }
+                single { mock<GrafanaClient>() }
                 single { CiliumInstallAnnotator(get(), RecordingAnnotationMirror()) }
             },
         )

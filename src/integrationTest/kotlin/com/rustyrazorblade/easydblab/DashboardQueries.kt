@@ -209,12 +209,13 @@ object DashboardQueries {
                     ?.split(",")
                     ?.firstOrNull()
                     ?.trim()
-            name to
+            name to (
                 sampleValues[name] ?: when (type) {
                     "custom", "interval", "constant" -> currentValue ?: firstOption ?: "x"
                     "textbox" -> currentValue ?: ""
                     else -> "x"
                 }
+            )
         }
 
     /** [text] with Grafana's built-in and dashboard variables replaced the way Grafana would. */

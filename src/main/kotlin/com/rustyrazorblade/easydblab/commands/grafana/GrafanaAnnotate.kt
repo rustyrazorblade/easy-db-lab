@@ -10,7 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.AnnotationMirror
 import com.rustyrazorblade.easydblab.services.GrafanaAnnotationRequest
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.toMirrored
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -28,7 +28,7 @@ import picocli.CommandLine.Option
  * core dashboards read global annotations from and where it outlives the cluster.
  *
  * The command reaches Grafana over the proxied HTTP client, so it carries `@RequiresProxy`. If the
- * Grafana API cannot be reached, [GrafanaDashboardService.createAnnotation] throws and the command
+ * Grafana API cannot be reached, [GrafanaClient.createAnnotation] throws and the command
  * exits non-zero, naming the unreachable endpoint; if Loki refuses the mirror, it exits non-zero
  * too. It does NOT emit a failure event and return 0.
  */
@@ -72,7 +72,7 @@ class GrafanaAnnotate : PicoBaseCommand() {
     @Option(names = ["--panel"], description = ["Optional panel id to scope the annotation to one panel"])
     var panelId: Int? = null
 
-    private val grafanaDashboardService: GrafanaDashboardService by inject()
+    private val grafanaClient: GrafanaClient by inject()
     private val annotationMirror: AnnotationMirror by inject()
 
     override fun execute() {
@@ -92,7 +92,7 @@ class GrafanaAnnotate : PicoBaseCommand() {
                 panelId = panelId,
             )
 
-        val response = grafanaDashboardService.createAnnotation(controlHost, annotation)
+        val response = grafanaClient.createAnnotation(controlHost, annotation)
         val mirrored = annotationMirror.push(annotation.toMirrored(response.id))
 
         // Grafana holds the annotation whether or not Loki took it, so it is reported either way.

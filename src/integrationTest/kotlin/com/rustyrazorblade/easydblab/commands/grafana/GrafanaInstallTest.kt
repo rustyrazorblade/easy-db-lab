@@ -2,18 +2,19 @@ package com.rustyrazorblade.easydblab.commands.grafana
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.services.ConfigChangeReport
-import com.rustyrazorblade.easydblab.services.DefaultGrafanaDashboardService
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardTreeUploader
-import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
+import com.rustyrazorblade.easydblab.services.DefaultGrafanaClient
+import com.rustyrazorblade.easydblab.services.GrafanaClient
+import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.TenantDirectory
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.MockResponse
@@ -27,6 +28,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -48,6 +51,7 @@ class GrafanaInstallTest : BaseKoinTest() {
         ClusterState(
             name = "test-cluster",
             versions = mutableMapOf(),
+            s3Bucket = "acct-bucket",
             initConfig = InitConfig(region = "us-west-2"),
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
         )
@@ -70,15 +74,17 @@ class GrafanaInstallTest : BaseKoinTest() {
                         }
                     OkHttpClient.Builder().addInterceptor(interceptor).build()
                 }
-                single<GrafanaDashboardService> {
-                    DefaultGrafanaDashboardService(
-                        k8sService = mock<K8sService>(),
-                        manifestBuilder = mock<GrafanaManifestBuilder>(),
-                        treeUploader = mock<GrafanaDashboardTreeUploader>(),
+                single<GrafanaClient> {
+                    DefaultGrafanaClient(
                         eventBus = get<EventBus>(),
                         okHttpClient = get<OkHttpClient>(),
-                        configChangeReport = ConfigChangeReport(mock<K8sService>(), get<EventBus>()),
                     )
+                }
+                single {
+                    val objectStore = mock<ObjectStore>()
+                    whenever(objectStore.listFiles(any(), eq(false), any()))
+                        .thenReturn(listOf(ObjectStore.FileInfo(ClusterS3Path.fromKey("acct-bucket", "mimir/acme/"), 0, "")))
+                    DashboardInstallContextFactory(TenantDirectory(objectStore))
                 }
             },
         )
@@ -125,6 +131,44 @@ class GrafanaInstallTest : BaseKoinTest() {
                 ?.jsonPrimitive
                 ?.content,
         ).isEqualTo("My Dashboard")
+    }
+
+    @Test
+    fun `execute applies the install-time pass for the workspace cluster`() {
+        val dashboardJson =
+            """
+            {"title": "T", "panels": [], "templating": {"list": [
+              {"name": "metrics_datasource", "type": "datasource", "query": "prometheus", "current": {}},
+              {"name": "cluster", "type": "query", "multi": true, "current": {}},
+              {"name": "doc_tenant", "type": "custom", "query": "", "options": []}
+            ]}}
+            """.trimIndent()
+        val dashboardFile = File(tempDir, "dashboard.json").also { it.writeText(dashboardJson) }
+        mockWebServer.enqueue(MockResponse(code = 200, body = """[{"uid":"f1","title":"General"}]"""))
+        mockWebServer.enqueue(MockResponse(code = 200, body = """{"status":"success"}"""))
+
+        val command = GrafanaInstall()
+        command.dashboardPath = dashboardFile.absolutePath
+        command.execute()
+
+        mockWebServer.takeRequest() // GET /api/folders
+        val body = Json.parseToJsonElement(requireNotNull(mockWebServer.takeRequest().body).utf8()).jsonObject
+        val variables =
+            body
+                .getValue("dashboard")
+                .jsonObject
+                .getValue("templating")
+                .jsonObject
+                .getValue("list")
+                .jsonArray
+                .associate {
+                    it.jsonObject
+                        .getValue("name")
+                        .jsonPrimitive.content to it.jsonObject.getValue("current").jsonObject["value"]
+                }
+        assertThat(variables["metrics_datasource"]?.jsonPrimitive?.content).isEqualTo("mimir")
+        assertThat(variables["cluster"]?.jsonArray?.map { it.jsonPrimitive.content }).containsExactly(testClusterState.clusterLabelName())
+        assertThat(variables["doc_tenant"]?.jsonPrimitive?.content).isEqualTo("default")
     }
 
     @Test

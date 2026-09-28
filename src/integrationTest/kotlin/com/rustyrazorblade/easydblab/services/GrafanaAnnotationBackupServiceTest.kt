@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
@@ -72,13 +71,9 @@ class GrafanaAnnotationBackupServiceTest : BaseKoinTest() {
                 chain.proceed(original.newBuilder().url(redirected).build())
             }
         val grafanaService =
-            DefaultGrafanaDashboardService(
-                k8sService = mock(),
-                manifestBuilder = mock<GrafanaManifestBuilder>(),
-                treeUploader = mock<GrafanaDashboardTreeUploader>(),
+            DefaultGrafanaClient(
                 eventBus = getKoin().get<EventBus>(),
                 okHttpClient = OkHttpClient.Builder().addInterceptor(interceptor).build(),
-                configChangeReport = ConfigChangeReport(mock(), getKoin().get<EventBus>()),
             )
         service = DefaultGrafanaAnnotationBackupService(grafanaService, objectStore, getKoin().get<EventBus>())
     }

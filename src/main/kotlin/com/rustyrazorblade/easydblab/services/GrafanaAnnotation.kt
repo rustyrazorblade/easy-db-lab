@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
  *
  * Field names match Grafana's JSON keys exactly. Null fields are omitted on the wire so a global
  * annotation (no dashboard/panel scope, no explicit end time) sends only the fields it sets. See
- * the `grafana annotate` command and [GrafanaDashboardService.createAnnotation].
+ * the `grafana annotate` command and [GrafanaClient.createAnnotation].
  *
  * @property text The human-readable annotation body.
  * @property tags Zero or more tags. The core dashboards render global annotations by a tag filter.

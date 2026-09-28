@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.Event
@@ -21,8 +22,12 @@ interface GrafanaDashboardTreeUploader {
      * Replaces the dashboard tree on [controlHost] with the one on this CLI's classpath.
      *
      * @param controlHost The control node running Grafana
+     * @param context The cluster the dashboards are installed on, for the install-time pass
      */
-    fun upload(controlHost: ClusterHost)
+    fun upload(
+        controlHost: ClusterHost,
+        context: DashboardInstallContext,
+    )
 }
 
 /**
@@ -41,11 +46,14 @@ class DefaultGrafanaDashboardTreeUploader(
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
 ) : GrafanaDashboardTreeUploader {
-    override fun upload(controlHost: ClusterHost) {
+    override fun upload(
+        controlHost: ClusterHost,
+        context: DashboardInstallContext,
+    ) {
         val hostPath = GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH
         val localTree = createTempDirectory(LOCAL_TEMP_PREFIX)
         try {
-            val count = writer.writeTo(localTree, pyroscopeIngestBaseUrl(controlHost.privateIp))
+            val count = writer.writeTo(localTree, pyroscopeIngestBaseUrl(controlHost.privateIp), context)
             eventBus.emit(Event.Grafana.DashboardTreeUploading(count, hostPath))
             remoteOps.replaceDirectory(controlHost.toHost(), localTree.toFile(), hostPath, GRAFANA_OWNER)
             eventBus.emit(Event.Grafana.DashboardTreeUploaded(count, hostPath))

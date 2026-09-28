@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import mockwebserver3.MockResponse
@@ -16,7 +15,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.mockito.kotlin.mock
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -65,13 +63,9 @@ class GrafanaAnnotationBackupS3IntegrationTest : BaseKoinTest() {
             }
         val eventBus = getKoin().get<EventBus>()
         val dashboards =
-            DefaultGrafanaDashboardService(
-                k8sService = mock(),
-                manifestBuilder = mock<GrafanaManifestBuilder>(),
-                treeUploader = mock<GrafanaDashboardTreeUploader>(),
+            DefaultGrafanaClient(
                 eventBus = eventBus,
                 okHttpClient = OkHttpClient.Builder().addInterceptor(toGrafana).build(),
-                configChangeReport = ConfigChangeReport(mock(), eventBus),
             )
         service = DefaultGrafanaAnnotationBackupService(dashboards, objectStore, eventBus, sameSecond)
     }

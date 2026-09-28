@@ -13,14 +13,17 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.CollisionCheck
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
+import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
+import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -46,7 +49,7 @@ import java.io.File
  */
 class KitEndToEndTest : BaseKoinTest() {
     private val mockClusterStateManager: ClusterStateManager = mock()
-    private val mockGrafanaDashboardService: GrafanaDashboardService = mock()
+    private val mockGrafanaClient: GrafanaClient = mock()
     private val mockWorkloadStepExecutor: WorkloadStepExecutor = mock()
     private val mockMetricsRegistryService: MetricsRegistryService = mock()
     private val mockKitHookExecutor: KitHookExecutor = mock()
@@ -75,7 +78,8 @@ class KitEndToEndTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
-                single<GrafanaDashboardService> { mockGrafanaDashboardService }
+                single<GrafanaClient> { mockGrafanaClient }
+                single { DashboardInstallContextFactory(TenantDirectory(mock<ObjectStore>())) }
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
@@ -88,7 +92,7 @@ class KitEndToEndTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
-        whenever(mockGrafanaDashboardService.installDashboard(any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockGrafanaClient.installDashboard(any(), any(), any())).thenReturn(Result.success(Unit))
         workingDir = get<Context>().workingDirectory
     }
 

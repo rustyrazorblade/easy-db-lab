@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -22,6 +23,9 @@ data class DashboardInstallContext(
     val tenants: TenantSet,
     val documentsUrl: String,
 )
+
+/** The base URL of the documents web server on [controlHost], as the browser reaches it. */
+fun documentsUrl(controlHost: ClusterHost): String = "http://${controlHost.privateIp}:${Constants.Grafana.Documents.WEB_PORT}"
 
 /**
  * The one install-time pass every dashboard goes through on its way to Grafana, whichever path

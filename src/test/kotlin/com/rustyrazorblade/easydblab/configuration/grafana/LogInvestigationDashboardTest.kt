@@ -41,7 +41,7 @@ class LogInvestigationDashboardTest {
                 .jsonArray
                 .map { it.jsonObject }
                 .filter { it.string("type") == "timeseries" }
-                .filter { it.getValue("datasource").jsonObject.string("uid") == "loki" }
+                .filter { it.getValue("datasource").jsonObject.string("type") == "loki" }
                 .flatMap { panel -> panel.getValue("targets").jsonArray.mapNotNull { it.jsonObject.string("expr") } }
                 .filter { it.contains("count_over_time(") }
 

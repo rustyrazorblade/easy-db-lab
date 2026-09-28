@@ -29,13 +29,19 @@ class DashboardDatasourceVariablesTest {
 
     @Test
     fun `every dashboard declares a picker for each signal it uses`() {
-        val found = DashboardFiles.all().flatMap { file -> DashboardDatasourceGuards.missingPickers(parse(file)).map { "${file.path}: $it" } }
+        val found =
+            DashboardFiles.all().flatMap { file ->
+                DashboardDatasourceGuards.missingPickers(parse(file)).map { "${file.path}: $it" }
+            }
         assertThat(found).isEmpty()
     }
 
     @Test
     fun `every dashboard link carries the declared pickers and clusters`() {
-        val found = DashboardFiles.all().flatMap { file -> DashboardDatasourceGuards.linkViolations(parse(file)).map { "${file.path}: $it" } }
+        val found =
+            DashboardFiles.all().flatMap { file ->
+                DashboardDatasourceGuards.linkViolations(parse(file)).map { "${file.path}: $it" }
+            }
         assertThat(found).isEmpty()
     }
 
@@ -151,7 +157,10 @@ class DashboardDatasourceVariablesTest {
         fun `an explicit var value satisfies the rule`() {
             val violations =
                 DashboardDatasourceGuards.linkViolations(
-                    dashboard(listOf("metrics_datasource", "cluster"), "/d/x/x?\${metrics_datasource:queryparam}&var-cluster=\${__data.fields.cluster}"),
+                    dashboard(
+                        listOf("metrics_datasource", "cluster"),
+                        "/d/x/x?\${metrics_datasource:queryparam}&var-cluster=\${__data.fields.cluster}",
+                    ),
                 )
 
             assertThat(violations).isEmpty()
@@ -160,7 +169,9 @@ class DashboardDatasourceVariablesTest {
         @Test
         fun `an undeclared queryparam is reported`() {
             val violations =
-                DashboardDatasourceGuards.linkViolations(dashboard(listOf("metrics_datasource"), "/d/x/x?\${metrics_datasource:queryparam}&\${cluster:queryparam}"))
+                DashboardDatasourceGuards.linkViolations(
+                    dashboard(listOf("metrics_datasource"), "/d/x/x?\${metrics_datasource:queryparam}&\${cluster:queryparam}"),
+                )
 
             assertThat(violations).singleElement().asString().contains("passes undeclared cluster")
         }

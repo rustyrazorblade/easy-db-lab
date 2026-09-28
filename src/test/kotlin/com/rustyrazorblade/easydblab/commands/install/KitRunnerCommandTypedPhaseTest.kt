@@ -2,6 +2,10 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.KitMetrics
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -215,7 +219,48 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
             """.trimIndent(),
         )
         command("mydb", "start").call()
-        verify(mockGrafanaDashboardService).installDashboard(any(), any(), any())
+        verify(mockGrafanaClient).installDashboard(any(), any(), any())
+    }
+
+    @Test
+    fun `a shipped kit dashboard is installed with the current cluster and the stable pickers selected`() {
+        val kitDir = File(workingDir, "memcached").also { it.mkdirs() }
+        File("src/main/resources/com/rustyrazorblade/easydblab/kits/memcached/dashboards/memcached.json")
+            .copyTo(File(kitDir, "memcached.json"))
+        writeKitYaml(
+            "memcached",
+            """
+            name: memcached
+            dashboards:
+              - path: memcached.json
+            start:
+              - type: shell
+                script: echo hello
+            """.trimIndent(),
+        )
+
+        command("memcached", "start").call()
+
+        val installed = argumentCaptor<JsonObject>()
+        verify(mockGrafanaClient).installDashboard(installed.capture(), any(), eq("memcached"))
+        val current =
+            installed.firstValue
+                .getValue("templating")
+                .jsonObject
+                .getValue("list")
+                .jsonArray
+                .map { it.jsonObject }
+                .filter { it["type"]?.jsonPrimitive?.content == "datasource" || it["name"]?.jsonPrimitive?.content == "cluster" }
+                .associate {
+                    it.getValue("name").jsonPrimitive.content to
+                        it
+                            .getValue("current")
+                            .jsonObject
+                            .getValue("value")
+                            .toString()
+                }
+        assertThat(current.filterKeys { it != "cluster" }.values).isNotEmpty().allMatch { it == "\"mimir\"" }
+        assertThat(current["cluster"]).contains(clusterState.clusterLabelName())
     }
 
     /**
@@ -253,9 +298,9 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
 
         command("postgres-duckdb", "start").call()
 
-        val installed = argumentCaptor<String>()
-        verify(mockGrafanaDashboardService, times(2)).installDashboard(installed.capture(), any(), eq("postgres-duckdb"))
-        assertThat(installed.allValues.map { Regex("\"uid\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) })
+        val installed = argumentCaptor<JsonObject>()
+        verify(mockGrafanaClient, times(2)).installDashboard(installed.capture(), any(), eq("postgres-duckdb"))
+        assertThat(installed.allValues.map { it["uid"]?.jsonPrimitive?.content })
             .containsExactly("postgres-overview-duckdb", "postgres-duckdb-duckdb")
     }
 

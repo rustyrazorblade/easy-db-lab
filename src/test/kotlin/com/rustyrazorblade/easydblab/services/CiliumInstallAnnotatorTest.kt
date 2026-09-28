@@ -48,7 +48,7 @@ class CiliumInstallAnnotatorTest {
 
     @Test
     fun `post sends started then finished with the times they were recorded, tagged cilium and global`() {
-        val grafana = mock<GrafanaDashboardService>()
+        val grafana = mock<GrafanaClient>()
         whenever(grafana.createAnnotation(any(), any()))
             .doReturn(GrafanaAnnotationResponse(id = 1), GrafanaAnnotationResponse(id = 2))
         val annotator = CiliumInstallAnnotator(grafana, RecordingAnnotationMirror(), SteppingClock(t0, Duration.ofSeconds(90)))
@@ -89,7 +89,7 @@ class CiliumInstallAnnotatorTest {
 
     @Test
     fun `post with nothing recorded calls Grafana zero times`() {
-        val grafana = mock<GrafanaDashboardService>()
+        val grafana = mock<GrafanaClient>()
         val annotator = CiliumInstallAnnotator(grafana, RecordingAnnotationMirror())
 
         val posted = annotator.post(controlHost).getOrThrow()
@@ -100,7 +100,7 @@ class CiliumInstallAnnotatorTest {
 
     @Test
     fun `a failed post keeps the unposted annotations pending and drops the posted one`() {
-        val grafana = mock<GrafanaDashboardService>()
+        val grafana = mock<GrafanaClient>()
         whenever(grafana.createAnnotation(any(), any()))
             .doReturn(GrafanaAnnotationResponse(id = 1))
             .doThrow(IllegalStateException("Grafana annotation API at http://10.0.0.1:3000 returned 502"))
@@ -117,7 +117,7 @@ class CiliumInstallAnnotatorTest {
 
     @Test
     fun `each posted annotation is mirrored to Loki with the id Grafana gave it`() {
-        val grafana = mock<GrafanaDashboardService>()
+        val grafana = mock<GrafanaClient>()
         whenever(grafana.createAnnotation(any(), any()))
             .doReturn(GrafanaAnnotationResponse(id = 11), GrafanaAnnotationResponse(id = 12))
         val mirror = RecordingAnnotationMirror()
@@ -143,7 +143,7 @@ class CiliumInstallAnnotatorTest {
      */
     @Test
     fun `a failed mirror fails the post without posting the annotation to Grafana twice`() {
-        val grafana = mock<GrafanaDashboardService>()
+        val grafana = mock<GrafanaClient>()
         whenever(grafana.createAnnotation(any(), any())).doReturn(GrafanaAnnotationResponse(id = 1))
         val mirror = RecordingAnnotationMirror(failure = IllegalStateException("Loki refused the push with status 503"))
         val annotator = CiliumInstallAnnotator(grafana, mirror, Clock.fixed(t0, ZoneOffset.UTC))

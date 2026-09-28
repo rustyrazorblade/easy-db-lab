@@ -105,7 +105,7 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
     }
 
     /** The real Grafana client, with every request redirected to the Grafana container. */
-    private fun grafanaService(): GrafanaDashboardService {
+    private fun grafanaService(): GrafanaClient {
         val redirect =
             Interceptor { chain ->
                 val url =
@@ -125,13 +125,9 @@ class AnnotationMirrorIntegrationTest : BaseKoinTest() {
                 )
             }
         val eventBus = getKoin().get<EventBus>()
-        return DefaultGrafanaDashboardService(
-            k8sService = mock(),
-            manifestBuilder = mock(),
-            treeUploader = mock(),
+        return DefaultGrafanaClient(
             eventBus = eventBus,
             okHttpClient = OkHttpClient.Builder().addInterceptor(redirect).build(),
-            configChangeReport = ConfigChangeReport(mock(), eventBus),
         )
     }
 

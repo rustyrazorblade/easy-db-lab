@@ -8,10 +8,13 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
-import com.rustyrazorblade.easydblab.services.GrafanaDashboardService
+import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
+import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
+import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -25,7 +28,7 @@ import java.io.File
 
 class KitRunnerCommandFactoryTest : BaseKoinTest() {
     private val mockClusterStateManager: ClusterStateManager = mock()
-    private val mockGrafanaDashboardService: GrafanaDashboardService = mock()
+    private val mockGrafanaClient: GrafanaClient = mock()
     private val mockWorkloadStepExecutor: WorkloadStepExecutor = mock()
     private val mockMetricsRegistryService: MetricsRegistryService = mock()
     private val mockHelmService: HelmService = mock()
@@ -41,7 +44,8 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
-                single<GrafanaDashboardService> { mockGrafanaDashboardService }
+                single<GrafanaClient> { mockGrafanaClient }
+                single { DashboardInstallContextFactory(TenantDirectory(mock<ObjectStore>())) }
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<HelmService> { mockHelmService }

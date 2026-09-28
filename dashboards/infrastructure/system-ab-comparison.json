@@ -61,7 +61,7 @@
       "title": "Cassandra A/B Comparison",
       "tooltip": "The database side of the comparison, on a Cassandra cluster",
       "type": "link",
-      "url": "/d/ab-comparison/a-b-comparison?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}"
+      "url": "/d/ab-comparison/a-b-comparison?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${baseline_cluster:queryparam}&${candidate_cluster:queryparam}&${doc_tenant:queryparam}"
     }
   ],
   "liveNow": false,
@@ -73,6 +73,875 @@
         "w": 24,
         "x": 0,
         "y": 0
+      },
+      "id": 1000,
+      "panels": [],
+      "title": "Overlay: both runs from a common start",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Both runs on one axis, moved by a PromQL offset so each starts at the left edge. The panel covers the longer run and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a run whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1001,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[$__rate_interval] offset ${base_offset}s)) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[$__rate_interval] offset ${base_offset}s)))",
+          "legendFormat": "baseline ${baseline_cluster}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[$__rate_interval] offset ${cand_offset}s)) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[$__rate_interval] offset ${cand_offset}s)))",
+          "legendFormat": "candidate ${candidate_cluster}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len}s",
+      "title": "CPU busy: overlay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Both runs on one axis, moved by a PromQL offset so each starts at the left edge. The panel covers the longer run and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a run whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "id": 1002,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(system_memory_usage_bytes{cluster=\"$baseline_cluster\", state=\"used\"} offset ${base_offset}s)",
+          "legendFormat": "baseline ${baseline_cluster}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(system_memory_usage_bytes{cluster=\"$candidate_cluster\", state=\"used\"} offset ${cand_offset}s)",
+          "legendFormat": "candidate ${candidate_cluster}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len}s",
+      "title": "Memory used: overlay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Both runs on one axis, moved by a PromQL offset so each starts at the left edge. The panel covers the longer run and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a run whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "id": 1003,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval] offset ${base_offset}s))",
+          "legendFormat": "baseline ${baseline_cluster}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval] offset ${cand_offset}s))",
+          "legendFormat": "candidate ${candidate_cluster}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len}s",
+      "title": "Disk I/O: overlay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Both runs on one axis, moved by a PromQL offset so each starts at the left edge. The panel covers the longer run and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a run whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 9
+      },
+      "id": 1004,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_network_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"ens.*|eth.*\"}[$__rate_interval] offset ${base_offset}s))",
+          "legendFormat": "baseline ${baseline_cluster}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_network_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"ens.*|eth.*\"}[$__rate_interval] offset ${cand_offset}s))",
+          "legendFormat": "candidate ${candidate_cluster}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len}s",
+      "title": "Network: overlay",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 1005,
+      "panels": [],
+      "title": "Side by side: each run on its own time range",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "The baseline run over its own whole window, at its real times. The panel covers the run's length and is shifted back from now to the run's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "id": 1006,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[$__rate_interval])) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[$__rate_interval])))",
+          "legendFormat": "baseline ${baseline_cluster}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${base_len}s",
+      "timeShift": "${base_since_end}s",
+      "title": "CPU busy: baseline",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "The candidate run over its own whole window, at its real times. The panel covers the run's length and is shifted back from now to the run's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "id": 1007,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[$__rate_interval])) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[$__rate_interval])))",
+          "legendFormat": "candidate ${candidate_cluster}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${cand_len}s",
+      "timeShift": "${cand_since_end}s",
+      "title": "CPU busy: candidate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "The baseline run over its own whole window, at its real times. The panel covers the run's length and is shifted back from now to the run's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "id": 1008,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(system_memory_usage_bytes{cluster=\"$baseline_cluster\", state=\"used\"})",
+          "legendFormat": "baseline ${baseline_cluster}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${base_len}s",
+      "timeShift": "${base_since_end}s",
+      "title": "Memory used: baseline",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "The candidate run over its own whole window, at its real times. The panel covers the run's length and is shifted back from now to the run's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "id": 1009,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(system_memory_usage_bytes{cluster=\"$candidate_cluster\", state=\"used\"})",
+          "legendFormat": "candidate ${candidate_cluster}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${cand_len}s",
+      "timeShift": "${cand_since_end}s",
+      "title": "Memory used: candidate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "The baseline run over its own whole window, at its real times. The panel covers the run's length and is shifted back from now to the run's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "id": 1010,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
+          "legendFormat": "baseline ${baseline_cluster}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${base_len}s",
+      "timeShift": "${base_since_end}s",
+      "title": "Disk I/O: baseline",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "The candidate run over its own whole window, at its real times. The panel covers the run's length and is shifted back from now to the run's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "id": 1011,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
+          "legendFormat": "candidate ${candidate_cluster}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${cand_len}s",
+      "timeShift": "${cand_since_end}s",
+      "title": "Disk I/O: candidate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "The baseline run over its own whole window, at its real times. The panel covers the run's length and is shifted back from now to the run's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 39
+      },
+      "id": 1012,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_network_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"ens.*|eth.*\"}[$__rate_interval]))",
+          "legendFormat": "baseline ${baseline_cluster}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${base_len}s",
+      "timeShift": "${base_since_end}s",
+      "title": "Network: baseline",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "The candidate run over its own whole window, at its real times. The panel covers the run's length and is shifted back from now to the run's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 39
+      },
+      "id": 1013,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_network_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"ens.*|eth.*\"}[$__rate_interval]))",
+          "legendFormat": "candidate ${candidate_cluster}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${cand_len}s",
+      "timeShift": "${cand_since_end}s",
+      "title": "Network: candidate",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 46
+      },
+      "id": 1014,
+      "panels": [],
+      "title": "Summary and documents",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Each figure over each run's whole window: a range the length of the run, evaluated at the run's end. The difference is 100 * (candidate - baseline) / baseline.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 12,
+        "x": 0,
+        "y": 47
+      },
+      "id": 1015,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(label_replace(100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[${base_len}s] @ ${base_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[${cand_len}s] @ ${cand_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end}))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[${cand_len}s] @ ${cand_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end})))) - (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[${base_len}s] @ ${base_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))))) / (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[${base_len}s] @ ${base_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(label_replace(sum(avg_over_time(system_memory_usage_bytes{cluster=\"$baseline_cluster\", state=\"used\"}[${base_len}s] @ ${base_end})), \"figure\", \"Memory used (bytes)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(sum(avg_over_time(system_memory_usage_bytes{cluster=\"$candidate_cluster\", state=\"used\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Memory used (bytes)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(avg_over_time(system_memory_usage_bytes{cluster=\"$candidate_cluster\", state=\"used\"}[${cand_len}s] @ ${cand_end}))) - (sum(avg_over_time(system_memory_usage_bytes{cluster=\"$baseline_cluster\", state=\"used\"}[${base_len}s] @ ${base_end})))) / (sum(avg_over_time(system_memory_usage_bytes{cluster=\"$baseline_cluster\", state=\"used\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Memory used (bytes)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(label_replace(sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${base_len}s] @ ${base_end})), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${cand_len}s] @ ${cand_end}))) - (sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${base_len}s] @ ${base_end})))) / (sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(label_replace(sum(rate(system_network_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"ens.*|eth.*\"}[${base_len}s] @ ${base_end})), \"figure\", \"Network (Bps)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(sum(rate(system_network_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"ens.*|eth.*\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Network (Bps)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(system_network_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"ens.*|eth.*\"}[${cand_len}s] @ ${cand_end}))) - (sum(rate(system_network_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"ens.*|eth.*\"}[${base_len}s] @ ${base_end})))) / (sum(rate(system_network_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"ens.*|eth.*\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Network (Bps)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "D"
+        }
+      ],
+      "title": "Summary: baseline ${baseline_cluster}, candidate ${candidate_cluster}",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "run",
+            "rowField": "figure",
+            "valueField": "Value"
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "description": "The documents of the baseline run, reports/<doc_tenant>/<cluster>/index.html, served read-only by the documents web server. Upload them with easy-db-lab report upload FILE....",
+      "gridPos": {
+        "h": 14,
+        "w": 6,
+        "x": 12,
+        "y": 47
+      },
+      "id": 1016,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${baseline_cluster}/index.html\" style=\"width: 100%; height: 100%; border: 0; background: #fff;\"></iframe>",
+        "mode": "html"
+      },
+      "title": "Documents: baseline ${baseline_cluster}",
+      "type": "text"
+    },
+    {
+      "description": "The documents of the candidate run, reports/<doc_tenant>/<cluster>/index.html, served read-only by the documents web server. Upload them with easy-db-lab report upload FILE....",
+      "gridPos": {
+        "h": 14,
+        "w": 6,
+        "x": 18,
+        "y": 47
+      },
+      "id": 1017,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${candidate_cluster}/index.html\" style=\"width: 100%; height: 100%; border: 0; background: #fff;\"></iframe>",
+        "mode": "html"
+      },
+      "title": "Documents: candidate ${candidate_cluster}",
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 61
       },
       "id": 1,
       "panels": [],
@@ -117,7 +986,7 @@
         "h": 5,
         "w": 4,
         "x": 0,
-        "y": 1
+        "y": 62
       },
       "id": 2,
       "options": {
@@ -190,7 +1059,7 @@
         "h": 5,
         "w": 4,
         "x": 4,
-        "y": 1
+        "y": 62
       },
       "id": 3,
       "options": {
@@ -263,7 +1132,7 @@
         "h": 5,
         "w": 4,
         "x": 8,
-        "y": 1
+        "y": 62
       },
       "id": 4,
       "options": {
@@ -336,7 +1205,7 @@
         "h": 5,
         "w": 4,
         "x": 12,
-        "y": 1
+        "y": 62
       },
       "id": 5,
       "options": {
@@ -409,7 +1278,7 @@
         "h": 5,
         "w": 4,
         "x": 16,
-        "y": 1
+        "y": 62
       },
       "id": 6,
       "options": {
@@ -482,7 +1351,7 @@
         "h": 5,
         "w": 4,
         "x": 20,
-        "y": 1
+        "y": 62
       },
       "id": 7,
       "options": {
@@ -523,7 +1392,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 6
+        "y": 67
       },
       "id": 8,
       "panels": [],
@@ -594,7 +1463,7 @@
         "h": 7,
         "w": 16,
         "x": 0,
-        "y": 7
+        "y": 68
       },
       "id": 9,
       "options": {
@@ -716,7 +1585,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 7
+        "y": 68
       },
       "id": 10,
       "options": {
@@ -769,7 +1638,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 75
       },
       "id": 11,
       "panels": [],
@@ -781,7 +1650,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 15
+        "y": 76
       },
       "id": 12,
       "options": {
@@ -802,7 +1671,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 15
+        "y": 76
       },
       "id": 13,
       "options": {
@@ -824,7 +1693,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 24
+        "y": 85
       },
       "id": 14,
       "panels": [],
@@ -966,7 +1835,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 25
+        "y": 86
       },
       "id": 15,
       "options": {
@@ -1083,7 +1952,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 25
+        "y": 86
       },
       "id": 16,
       "options": {
@@ -1262,7 +2131,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 34
+        "y": 95
       },
       "id": 17,
       "options": {
@@ -1379,7 +2248,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 34
+        "y": 95
       },
       "id": 18,
       "options": {
@@ -1430,7 +2299,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 43
+        "y": 104
       },
       "id": 19,
       "panels": [],
@@ -1498,7 +2367,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 44
+        "y": 105
       },
       "id": 20,
       "options": {
@@ -1593,7 +2462,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 44
+        "y": 105
       },
       "id": 21,
       "options": {
@@ -1760,7 +2629,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 53
+        "y": 114
       },
       "id": 22,
       "options": {
@@ -1949,7 +2818,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 53
+        "y": 114
       },
       "id": 23,
       "options": {
@@ -2138,7 +3007,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 62
+        "y": 123
       },
       "id": 24,
       "options": {
@@ -2327,7 +3196,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 62
+        "y": 123
       },
       "id": 25,
       "options": {
@@ -2516,7 +3385,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 71
+        "y": 132
       },
       "id": 26,
       "options": {
@@ -2633,7 +3502,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 71
+        "y": 132
       },
       "id": 27,
       "options": {
@@ -2684,7 +3553,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 80
+        "y": 141
       },
       "id": 28,
       "panels": [],
@@ -2752,7 +3621,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 81
+        "y": 142
       },
       "id": 29,
       "options": {
@@ -2880,7 +3749,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 81
+        "y": 142
       },
       "id": 30,
       "options": {
@@ -3080,7 +3949,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 90
+        "y": 151
       },
       "id": 31,
       "options": {
@@ -3269,7 +4138,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 90
+        "y": 151
       },
       "id": 32,
       "options": {
@@ -3458,7 +4327,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 99
+        "y": 160
       },
       "id": 33,
       "options": {
@@ -3647,7 +4516,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 99
+        "y": 160
       },
       "id": 34,
       "options": {
@@ -3838,7 +4707,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 108
+        "y": 169
       },
       "id": 35,
       "options": {
@@ -4028,7 +4897,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 108
+        "y": 169
       },
       "id": 36,
       "options": {
@@ -4218,7 +5087,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 117
+        "y": 178
       },
       "id": 37,
       "options": {
@@ -4407,7 +5276,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 117
+        "y": 178
       },
       "id": 38,
       "options": {
@@ -4469,7 +5338,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 126
+        "y": 187
       },
       "id": 39,
       "panels": [],
@@ -4539,7 +5408,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 127
+        "y": 188
       },
       "id": 40,
       "options": {
@@ -4645,7 +5514,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 127
+        "y": 188
       },
       "id": 41,
       "options": {
@@ -4751,7 +5620,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 136
+        "y": 197
       },
       "id": 42,
       "options": {
@@ -4879,7 +5748,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 136
+        "y": 197
       },
       "id": 43,
       "options": {
@@ -4952,7 +5821,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 145
+        "y": 206
       },
       "id": 44,
       "panels": [],
@@ -5020,7 +5889,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 146
+        "y": 207
       },
       "id": 45,
       "options": {
@@ -5148,7 +6017,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 146
+        "y": 207
       },
       "id": 46,
       "options": {
@@ -5348,7 +6217,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 155
+        "y": 216
       },
       "id": 47,
       "options": {
@@ -5537,7 +6406,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 155
+        "y": 216
       },
       "id": 48,
       "options": {
@@ -5599,7 +6468,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 164
+        "y": 225
       },
       "id": 49,
       "panels": [],
@@ -5667,7 +6536,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 165
+        "y": 226
       },
       "id": 50,
       "options": {
@@ -5846,7 +6715,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 165
+        "y": 226
       },
       "id": 51,
       "options": {
@@ -5908,7 +6777,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 174
+        "y": 235
       },
       "id": 52,
       "panels": [],
@@ -5976,7 +6845,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 175
+        "y": 236
       },
       "id": 53,
       "options": {
@@ -6071,7 +6940,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 175
+        "y": 236
       },
       "id": 54,
       "options": {
@@ -6166,7 +7035,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 184
+        "y": 245
       },
       "id": 55,
       "options": {
@@ -6261,7 +7130,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 184
+        "y": 245
       },
       "id": 56,
       "options": {
@@ -6356,7 +7225,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 193
+        "y": 254
       },
       "id": 57,
       "options": {
@@ -6451,7 +7320,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 193
+        "y": 254
       },
       "id": 58,
       "options": {
@@ -6546,7 +7415,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 202
+        "y": 263
       },
       "id": 59,
       "options": {
@@ -6641,7 +7510,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 202
+        "y": 263
       },
       "id": 60,
       "options": {
@@ -6736,7 +7605,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 211
+        "y": 272
       },
       "id": 61,
       "options": {
@@ -6831,7 +7700,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 211
+        "y": 272
       },
       "id": 62,
       "options": {
@@ -7044,6 +7913,340 @@
         "name": "adhoc",
         "skipUrlSync": false,
         "type": "adhoc"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])))",
+        "description": "The baseline run: any cluster of the selected tenant with up samples within Lookback. The installer selects the current cluster.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Baseline",
+        "multi": false,
+        "name": "baseline_cluster",
+        "options": [],
+        "query": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])))",
+        "refresh": 2,
+        "regex": "/cluster=\"([^\"]+)\"/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])))",
+        "description": "The candidate run: any cluster of the selected tenant with up samples within Lookback. The installer selects the current cluster.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Candidate",
+        "multi": false,
+        "name": "candidate_cluster",
+        "options": [],
+        "query": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])))",
+        "refresh": 2,
+        "regex": "/cluster=\"([^\"]+)\"/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "180d",
+          "value": "180d"
+        },
+        "description": "How far back to look for runs.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Lookback",
+        "multi": false,
+        "name": "lookback",
+        "options": [
+          {
+            "selected": false,
+            "text": "7d",
+            "value": "7d"
+          },
+          {
+            "selected": false,
+            "text": "30d",
+            "value": "30d"
+          },
+          {
+            "selected": false,
+            "text": "90d",
+            "value": "90d"
+          },
+          {
+            "selected": true,
+            "text": "180d",
+            "value": "180d"
+          },
+          {
+            "selected": false,
+            "text": "365d",
+            "value": "365d"
+          }
+        ],
+        "query": "7d,30d,90d,180d,365d",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "5m",
+          "value": "300"
+        },
+        "description": "The step, in seconds, at which each run's first and last up sample is found.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Resolution",
+        "multi": false,
+        "name": "resolution",
+        "options": [
+          {
+            "selected": false,
+            "text": "1m",
+            "value": "60"
+          },
+          {
+            "selected": true,
+            "text": "5m",
+            "value": "300"
+          },
+          {
+            "selected": false,
+            "text": "15m",
+            "value": "900"
+          },
+          {
+            "selected": false,
+            "text": "1h",
+            "value": "3600"
+          }
+        ],
+        "query": "1m : 60,5m : 300,15m : 900,1h : 3600",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "description": "The tenant folder the documents are read from. The installer lists every tenant and selects the cluster's own; set it with the pickers.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Documents tenant",
+        "multi": false,
+        "name": "doc_tenant",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(min(min_over_time(timestamp(count(up{cluster=\"$baseline_cluster\"}))[$lookback:${resolution}s]))))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "base_start",
+        "options": [],
+        "query": "query_result(round(min(min_over_time(timestamp(count(up{cluster=\"$baseline_cluster\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(max(max_over_time(timestamp(count(up{cluster=\"$baseline_cluster\"}))[$lookback:${resolution}s]))))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "base_end",
+        "options": [],
+        "query": "query_result(round(max(max_over_time(timestamp(count(up{cluster=\"$baseline_cluster\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(min(min_over_time(timestamp(count(up{cluster=\"$candidate_cluster\"}))[$lookback:${resolution}s]))))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "cand_start",
+        "options": [],
+        "query": "query_result(round(min(min_over_time(timestamp(count(up{cluster=\"$candidate_cluster\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(max(max_over_time(timestamp(count(up{cluster=\"$candidate_cluster\"}))[$lookback:${resolution}s]))))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "cand_end",
+        "options": [],
+        "query": "query_result(round(max(max_over_time(timestamp(count(up{cluster=\"$candidate_cluster\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${base_end} - ${base_start}))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "base_len",
+        "options": [],
+        "query": "query_result(vector(${base_end} - ${base_start}))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${cand_end} - ${cand_start}))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "cand_len",
+        "options": [],
+        "query": "query_result(vector(${cand_end} - ${cand_start}))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${base_len}) > vector(${cand_len}) or vector(${cand_len}))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "max_len",
+        "options": [],
+        "query": "query_result(vector(${base_len}) > vector(${cand_len}) or vector(${cand_len}))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(vector(time() - ${max_len} - ${base_start})))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "base_offset",
+        "options": [],
+        "query": "query_result(round(vector(time() - ${max_len} - ${base_start})))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(vector(time() - ${max_len} - ${cand_start})))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "cand_offset",
+        "options": [],
+        "query": "query_result(round(vector(time() - ${max_len} - ${cand_start})))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(vector(time() - ${base_end})))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "base_since_end",
+        "options": [],
+        "query": "query_result(round(vector(time() - ${base_end})))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(vector(time() - ${cand_end})))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "cand_since_end",
+        "options": [],
+        "query": "query_result(round(vector(time() - ${cand_end})))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
       }
     ]
   },

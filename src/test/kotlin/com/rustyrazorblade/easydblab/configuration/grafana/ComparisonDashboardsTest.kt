@@ -150,6 +150,38 @@ class ComparisonDashboardsTest {
         }
     }
 
+    /**
+     * A difference over a zero baseline is NaN (0 vs 0) or infinite, so each difference term
+     * divides by the baseline filtered to non-zero values: over a zero baseline the term returns
+     * nothing and the Difference % cell stays empty.
+     */
+    @Test
+    fun `each difference is empty over a zero baseline`() {
+        val guardedDifference = Regex("""^label_replace\(label_replace\(100 \* \(\((.+)\) - \((.+)\)\) / \(\(\2\) != 0\), "figure", """)
+        for (path in comparisonDashboards) {
+            val summary =
+                runViewPanels(dashboard(path)).single { it["type"]?.jsonPrimitive?.content == "table" }
+            val terms =
+                summary
+                    .getValue("targets")
+                    .jsonArray
+                    .single()
+                    .jsonObject
+                    .getValue("expr")
+                    .jsonPrimitive.content
+                    .split("\nor ")
+                    .filter { it.contains("\"run\", \"3 difference %\"") }
+            assertThat(terms).describedAs(path).isNotEmpty()
+
+            for (term in terms) {
+                assertThat(term).describedAs(path).containsPattern(guardedDifference.pattern)
+            }
+            assertThat(summary.getValue("description").jsonPrimitive.content)
+                .describedAs(path)
+                .contains("empty when the baseline is 0")
+        }
+    }
+
     private companion object {
         /** The comparison rows were added with panel ids from 1000; every older panel has a lower id. */
         const val RUN_VIEW_FIRST_ID = 1000

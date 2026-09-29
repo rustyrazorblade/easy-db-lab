@@ -138,12 +138,13 @@ Three rows sit at the top, above the existing panels:
 - **Side by side**: one column per run, panel `timeFrom` `${base_len_s}s-${base_len_d}d` and `timeShift`
   `${base_since_end_s}s-${base_since_end_d}d` (and the candidate's), so each axis shows the run's real times.
 - **Summary and documents**: one instant table query that joins every figure with `or`: each figure
-  over `[${base_len}s] @ ${base_end}` per run and `100 * (C - B) / B`, tagged with `label_replace` as
+  over `[${base_len}s] @ ${base_end}` per run and `100 * (C - B) / (B != 0)`, tagged with `label_replace` as
   `figure` and `run` (`1 baseline`, `2 candidate`, `3 difference %`). `groupingToMatrix` (column `run`,
   row `figure`, value `Value`) makes one row per figure, and `organize` orders and names the columns
   Figure, Baseline, Candidate, Difference %. Beside it both runs' documents. Keep it one query: with
   several, Grafana names the value fields `Value #A`, `Value #B`, ..., and `groupingToMatrix`, which needs
   one frame and a field named `Value`, returns the rows unpivoted. `ComparisonDashboardsTest` checks this.
+  The `!= 0` filter drops a zero baseline, so that figure's Difference % cell is empty instead of NaN (0 vs 0) or an infinite percentage; each summary's description says so. `ComparisonDashboardsTest` checks every difference term for the guard.
 
 The new views filter by cluster only; the build and host variables of the A/B dashboards apply to
 the existing panels. They need a relative dashboard range: an absolute range turns panel `timeFrom`

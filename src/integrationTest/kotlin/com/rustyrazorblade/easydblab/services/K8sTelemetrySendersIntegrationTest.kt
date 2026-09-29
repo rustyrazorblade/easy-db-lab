@@ -9,10 +9,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.ServiceAccountBuilder
 import io.fabric8.kubernetes.api.model.apps.DaemonSetBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
+import io.fabric8.kubernetes.client.dsl.base.PatchContext
+import io.fabric8.kubernetes.client.dsl.base.PatchType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -82,34 +83,22 @@ class K8sTelemetrySendersIntegrationTest : BaseKoinTest() {
     }
 
     /** Holds every collector pod: deleted, it stays Terminating until [releaseCollectorPods]. */
-    private fun holdCollectorPods() =
-        collectorPods().forEach { pod ->
-            client
-                .pods()
-                .inNamespace(NAMESPACE)
-                .withName(pod.metadata.name)
-                .edit {
-                    PodBuilder(it)
-                        .editMetadata()
-                        .addToFinalizers(FINALIZER)
-                        .endMetadata()
-                        .build()
-                }
-        }
+    private fun holdCollectorPods() = patchCollectorPods("""{"metadata":{"finalizers":["$FINALIZER"]}}""")
 
-    private fun releaseCollectorPods() =
+    private fun releaseCollectorPods() = patchCollectorPods("""{"metadata":{"${'$'}deleteFromPrimitiveList/finalizers":["$FINALIZER"]}}""")
+
+    /**
+     * Applies [patch] to every collector pod as a strategic merge patch. The patch carries no
+     * resourceVersion, so it does not conflict with the DaemonSet controller and kubelet updating
+     * the pod at the same moment, as an edit (a read, then an update) did.
+     */
+    private fun patchCollectorPods(patch: String) =
         collectorPods().forEach { pod ->
             client
                 .pods()
                 .inNamespace(NAMESPACE)
                 .withName(pod.metadata.name)
-                .edit {
-                    PodBuilder(it)
-                        .editMetadata()
-                        .removeFromFinalizers(FINALIZER)
-                        .endMetadata()
-                        .build()
-                }
+                .patch(PatchContext.of(PatchType.STRATEGIC_MERGE), patch)
         }
 
     private fun collectorPods() =

@@ -80,6 +80,8 @@ Every `/d/` link also keeps the time range: `from=${__from}&to=${__to}` in its U
 
 Every `cluster` variable lists the clusters of the tenant the Metrics picker selects with `label_values(up, cluster)` on `${metrics_datasource}`.  It is multi-select and includes "All".  So every query that reads `$cluster` matches it with `=~`, never `=`: `cluster=~"$cluster"`.  The Tests dashboard is the one exception: its `cluster` is single-select, because it picks one test.  `ClusterVariableTest` (`configuration/grafana/`) checks these rules for every dashboard file.
 
+Every dashboard that queries metrics or logs declares `cluster`, and every selector of every metrics and logs query filters by it: panel targets, annotation queries, Explore links, and the queries of other variables (`label_values(system_cpu_logical_count{cluster=~"$cluster"}, host_name)`).  Clusters of one tenant share Mimir's and Loki's store, so a selector without the filter mixes every cluster that ran at the same time.  Each side of a binary expression needs its own filter, because `a{cluster=~"$cluster"} / b` still divides by every cluster's `b`.  A new `cluster` variable has `allValue: ".+"`.  The comparison dashboards' run views filter by `baseline_cluster` or `candidate_cluster` instead.  Two queries read every cluster on purpose: the `cluster`, `baseline_cluster` and `candidate_cluster` variables, which list the clusters, and the Tests dashboard's listing.  `ClusterFilterTest` (`configuration/grafana/`) checks every core and kit dashboard and names the dashboard, the query and the unfiltered selector.  Pyroscope profile queries are not metrics or logs, and it does not check them.
+
 ### Install-time defaults
 
 The dashboard files store no defaults, because a default names a cluster or a tenant. Every install
@@ -146,8 +148,8 @@ Three rows sit at the top, above the existing panels:
   one frame and a field named `Value`, returns the rows unpivoted. `ComparisonDashboardsTest` checks this.
   The `!= 0` filter drops a zero baseline, so that figure's Difference % cell is empty instead of NaN (0 vs 0) or an infinite percentage; each summary's description says so. `ComparisonDashboardsTest` checks every difference term for the guard.
 
-The new views filter by cluster only; the build and host variables of the A/B dashboards apply to
-the existing panels. They need a relative dashboard range: an absolute range turns panel `timeFrom`
+The new views filter by `baseline_cluster` and `candidate_cluster` only; the `cluster`, build and
+host variables of the A/B dashboards apply to the existing panels. They need a relative dashboard range: an absolute range turns panel `timeFrom`
 off. `DashboardQueries` gives the helper variables sample values, so
 `PromQlCompatibilityIntegrationTest` runs the negative `offset`, `@` and subquery forms against the
 pinned Mimir.
@@ -204,7 +206,7 @@ Mimir and Loki both turn OTel attribute names into underscore names:
 Every Grafana annotation is mirrored to Loki as its own stream (`source="annotation"`, `cluster`, `annotation_id`; the text is the log line, and the tags, dashboard uid, panel id and end time are structured metadata), so it survives the cluster. Core dashboards read their markers from Loki, not from Grafana's tag query:
 
 - Datasource: `{"type": "loki", "uid": "${logs_datasource}"}`, so the markers follow the Logs picker.
-- Query: `{source="annotation", cluster=~"${cluster:regex}"} | dashboard_uid=""` — global markers only. A dashboard with no `cluster` variable uses `cluster=~".+"`.
+- Query: `{source="annotation", cluster=~"${cluster:regex}"} | dashboard_uid=""` — global markers only.
 - `CoreDashboardAnnotationsTest` fails when a core dashboard lacks this annotation query.
 
 ## Trace Links in Log Panels — Two Distinct Mechanisms

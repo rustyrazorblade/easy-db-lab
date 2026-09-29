@@ -23,6 +23,8 @@ Mimir cuts a one-minute block and ships it within seconds, so a sample is in S3 
 
 Queries read the ingester and, through the store-gateway, every tenant's blocks in S3. The store-gateway finds blocks through each tenant's bucket index, which the [account compactor](compactor.md) rewrites every minute, and it syncs every minute. The ingester keeps local blocks for 2 hours; older data is read from S3.
 
+Mimir queues up to 5000 queries per tenant (`query_scheduler.max_outstanding_requests_per_tenant`; the default is 100). One load of the heaviest dashboard sends about 150 queries, and the query frontend splits each into as many as 14 parts. With the default, a full dashboard load filled the queue and Mimir refused the rest with HTTP 429, so panels showed errors. The limit of 5000 holds two full loads of that dashboard at once.
+
 A tenant that has no bucket index yet returns no stored data rather than an error. A stale bucket index is accepted for about 10 years, so metrics queries still succeed while the compactor is stopped; blocks shipped after it stopped become readable once it runs again.
 
 **Nothing in the cluster deletes a block.** Mimir on a cluster runs no compactor and no retention. The account compactor merges blocks and removes the sources only after it wrote the merged block. Every sample stays in S3 until you delete it yourself.

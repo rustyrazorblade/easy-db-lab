@@ -108,8 +108,8 @@
 
 ## 14. Cluster filter on every dashboard (#983, folded in 2026-09-29, owner-approved)
 
-- [ ] 14.1 Check on qa971 which sources carry a `cluster` label: Pyroscope profiles (profiling, profiler-health, profile-comparison) and the YACE CloudWatch metrics (instance-cloud).  Report any source without one to the lead before editing its dashboard.
-- [ ] 14.2 Guard test (red first): every dashboard that queries metrics or logs declares the `cluster` variable (multi-select, All, `label_values(up, cluster)` on `${metrics_datasource}`), and every metrics and logs query, including variable queries such as host lists, filters by `cluster=~"$cluster"`; a source without the label is exempt only with a dashboard description that says so.
-- [ ] 14.3 Add the variable and the filter to every dashboard the guard reports (the 17 of #983, including read-path-anatomy), byte-preserving edits per dashboards/CLAUDE.md; keep the PromQL and LogQL compatibility tests green.
-- [ ] 14.4 Docs: dashboards/CLAUDE.md, docs/development/kits.md; and `docs/user-guide/mimir.md` gains the Mimir query queue limit of 5000.
+- [x] 14.1 Check on qa971 which sources carry a `cluster` label: Pyroscope profiles (profiling, profiler-health, profile-comparison) and the YACE CloudWatch metrics (instance-cloud).  Report any source without one to the lead before editing its dashboard.
+- [x] 14.2 Guard test (red first): every dashboard that queries metrics or logs declares the `cluster` variable (multi-select, All, `label_values(up, cluster)` on `${metrics_datasource}`), and every metrics and logs query, including variable queries such as host lists, filters by `cluster=~"$cluster"`; a source without the label is exempt only with a dashboard description that says so.
+- [x] 14.3 Add the variable and the filter to every dashboard the guard reports (the 17 of #983, including read-path-anatomy), byte-preserving edits per dashboards/CLAUDE.md; keep the PromQL and LogQL compatibility tests green.
+- [x] 14.4 Docs: dashboards/CLAUDE.md, docs/development/kits.md; and `docs/user-guide/mimir.md` gains the Mimir query queue limit of 5000.
 - [ ] 14.5 Live: bring up a second cluster `qa971b` in tenant `default` next to qa971, run a short stress on both, and check that each dashboard shows only the selected cluster and both under All; tear qa971b down after.

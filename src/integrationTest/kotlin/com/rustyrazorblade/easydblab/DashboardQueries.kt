@@ -135,6 +135,16 @@ object DashboardQueries {
             "cand_offset" to "-600",
             "base_since_end" to "600000",
             "cand_since_end" to "600",
+            "max_len_d" to "1",
+            "max_len_s" to "0",
+            "base_len_d" to "1",
+            "base_len_s" to "0",
+            "cand_len_d" to "0",
+            "cand_len_s" to "21600",
+            "base_since_end_d" to "6",
+            "base_since_end_s" to "81600",
+            "cand_since_end_d" to "0",
+            "cand_since_end_s" to "600",
         )
 
     private fun walkPanels(

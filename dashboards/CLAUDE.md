@@ -118,14 +118,21 @@ Documents panel shows.
 variables (all `query_result`, evaluated at now) hold each run's `base_start`/`cand_start` and
 `base_end`/`cand_end` (epoch seconds), `base_len`/`cand_len`, `max_len`, the overlay offsets
 `base_offset`/`cand_offset` (`now - max_len - start`, negative for a run that started later) and the
-side-by-side shifts `base_since_end`/`cand_since_end`.
+side-by-side shifts `base_since_end`/`cand_since_end`. Each of `max_len`, `base_len`, `cand_len`,
+`base_since_end` and `cand_since_end` also has a `_d` helper (whole days, `floor(x / 86400)`) and a `_s`
+helper (the remaining seconds, `x % 86400`) for the panel time overrides.
+
+Grafana's date math reads at most five digits per number, so a `timeFrom` or `timeShift` of `${x}s`
+fails with "invalid timeshift" once `x` passes 99999 seconds (27.8 hours). Write each override as
+`${x_d}d-${x_s}s`: `timeShift: "5d-3600s"` shifts by 5 days and 1 hour. PromQL has no such limit, so
+`offset` and range values stay in plain seconds. `PanelTimeOverrideTest` fails on any `${x}s` override.
 
 Three rows sit at the top, above the existing panels:
 
-- **Overlay**: panel `timeFrom` `${max_len}s`; each run's query has `offset ${base_offset}s` or
+- **Overlay**: panel `timeFrom` `${max_len_d}d-${max_len_s}s`; each run's query has `offset ${base_offset}s` or
   `offset ${cand_offset}s`, so both start at the left edge.
-- **Side by side**: one column per run, panel `timeFrom` `${base_len}s` and `timeShift`
-  `${base_since_end}s` (and the candidate's), so each axis shows the run's real times.
+- **Side by side**: one column per run, panel `timeFrom` `${base_len_d}d-${base_len_s}s` and `timeShift`
+  `${base_since_end_d}d-${base_since_end_s}s` (and the candidate's), so each axis shows the run's real times.
 - **Summary and documents**: one instant query per figure, `[${base_len}s] @ ${base_end}` per run,
   with `100 * (C - B) / B`, tagged with `label_replace` and laid out by `groupingToMatrix`; beside it
   both runs' documents.

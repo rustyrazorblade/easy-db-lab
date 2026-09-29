@@ -444,9 +444,11 @@ class Status :
             val running = kitDir.name in runningKits
             println("  ${if (running) "✓" else "○"} ${kitDir.name}")
             if (running) {
-                KitEndpointAddresses.resolveInstalled(kitDir, clusterState.hosts).forEach { resolved ->
-                    println("  " + KitEndpointAddresses.toEndpointAddress(resolved).displayLine())
-                }
+                KitEndpointAddresses
+                    .resolveInstalled(kitDir, clusterState.hosts)
+                    .onSuccess { resolved ->
+                        resolved.forEach { println("  " + KitEndpointAddresses.toEndpointAddress(it).displayLine()) }
+                    }.onFailure { println("    (endpoints unavailable: ${KitEndpointAddresses.UNREADABLE_DESCRIPTOR})") }
             }
         }
     }

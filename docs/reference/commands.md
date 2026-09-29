@@ -231,7 +231,7 @@ Display full environment status.
 easy-db-lab status
 ```
 
-The `=== KITS ===` section lists every installed kit, marking the running ones with `✓`. Under each running kit it prints the endpoints that the kit's `kit.yaml` declares: the NodePorts on each host of the endpoint's node type. A stopped kit shows no endpoints.
+The `=== KITS ===` section lists every installed kit, marking the running ones with `✓`. Under each running kit it prints the endpoints that the kit's `kit.yaml` declares: the NodePorts on each host of the endpoint's node type. A stopped kit shows no endpoints.  If a running kit's `kit.yaml` cannot be read, the kit shows `(endpoints unavailable: cannot read kit.yaml)` instead of its endpoints.
 
 `status` is the one command that degrades instead of failing outright when the SOCKS proxy
 tunnel can't be established. It still reports EC2, VPC, security groups, Spark/EMR, OpenSearch,

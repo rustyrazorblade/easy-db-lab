@@ -26,6 +26,7 @@ import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
@@ -491,6 +492,30 @@ class StatusCacheTest : BaseKoinTest() {
         val accessInfo = statusCache.getStatus("accessInfo")!!
 
         assertThat(accessInfo).doesNotContain("30123", "8123", "playUi")
+    }
+
+    @Test
+    fun `accessInfo says why a running kit with an unreadable kit descriptor has no endpoints`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("broken", "clickhouse")))
+        installPackagedKit("clickhouse")
+        File(context.workingDirectory, "broken").mkdirs()
+        File(File(context.workingDirectory, "broken"), Constants.Kit.CONFIG_FILE).writeText("name: [broken\nendpoints: {")
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val kits =
+            Json
+                .parseToJsonElement(statusCache.getStatus("accessInfo")!!)
+                .jsonObject["kits"]!!
+                .jsonArray
+                .associateBy { it.jsonObject["name"]!!.jsonPrimitive.content }
+
+        assertThat(kits["broken"]!!.jsonObject["endpointsUnavailable"]?.jsonPrimitive?.content)
+            .isEqualTo("cannot read ${Constants.Kit.CONFIG_FILE}")
+        assertThat(kits["clickhouse"]!!.jsonObject["endpointsUnavailable"]).isNull()
+        assertThat(kits["clickhouse"]!!.jsonObject["endpoints"]!!.jsonArray).isNotEmpty()
     }
 
     private fun installPackagedKit(name: String) {

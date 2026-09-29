@@ -387,6 +387,21 @@ class StatusTest : BaseKoinTest() {
         assertThat(output).doesNotContain("30123", "8123", "Play UI")
     }
 
+    // A running kit whose kit.yaml cannot be read has endpoints nobody can list. Status says so
+    // under the kit, rather than showing a running kit with no endpoints and no reason, and goes on.
+
+    @Test
+    fun `a running kit with an unreadable kit descriptor says its endpoints are unavailable`() {
+        setupBasicClusterState(runningKits = setOf("broken"))
+        File(createWorkspaceDir("broken"), Constants.Kit.CONFIG_FILE).writeText("name: [broken\nendpoints: {")
+
+        Status().execute()
+
+        val output = capturedOutput()
+        assertThat(output).contains("  ✓ broken\n    (endpoints unavailable: cannot read ${Constants.Kit.CONFIG_FILE})")
+        assertThat(output.substringAfter("=== KITS ===")).contains("=== CASSANDRA VERSION ===")
+    }
+
     private fun installPackagedKit(name: String) {
         val kitYaml =
             checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/${Constants.Kit.CONFIG_FILE}")) {

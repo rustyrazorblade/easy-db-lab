@@ -160,11 +160,16 @@ data class ObservabilityAccess(
     val pyroscope: String,
 )
 
-/** A running kit and the endpoints its `kit.yaml` declares, resolved to each host's address. */
+/**
+ * A running kit and the endpoints its `kit.yaml` declares, resolved to each host's address.
+ * [endpointsUnavailable] says why [endpoints] is empty when the `kit.yaml` cannot be read, and is
+ * absent when it was read, so an empty list with no reason means the kit declares no endpoints.
+ */
 @Serializable
 data class KitAccess(
     val name: String,
     val endpoints: List<KitEndpointAccess>,
+    val endpointsUnavailable: String? = null,
 )
 
 /** One declared kit endpoint on one host. */

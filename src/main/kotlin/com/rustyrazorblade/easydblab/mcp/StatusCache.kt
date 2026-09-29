@@ -509,13 +509,15 @@ class StatusCache(
             .filter { it.name in state.runningKits }
             .sortedBy { it.name }
             .map { kitDir ->
+                val resolved = KitEndpointAddresses.resolveInstalled(kitDir, state.hosts)
                 KitAccess(
                     name = kitDir.name,
                     endpoints =
-                        KitEndpointAddresses.resolveInstalled(kitDir, state.hosts).map { resolved ->
-                            val address = KitEndpointAddresses.toEndpointAddress(resolved)
+                        resolved.getOrDefault(emptyList()).map {
+                            val address = KitEndpointAddresses.toEndpointAddress(it)
                             KitEndpointAccess(name = address.name, type = address.type, address = address.address)
                         },
+                    endpointsUnavailable = resolved.exceptionOrNull()?.let { KitEndpointAddresses.UNREADABLE_DESCRIPTOR },
                 )
             }
 

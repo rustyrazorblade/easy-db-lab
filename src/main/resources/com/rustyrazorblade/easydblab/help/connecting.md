@@ -9,7 +9,7 @@ Get endpoints and open shells on running cluster nodes. Run from the workspace d
 Steps:
 1. `easy-db-lab status` — prints URLs (Grafana, Mimir, Loki, Tempo, Pyroscope) and node counts. Control node IP listed first.
 2. `easy-db-lab hosts` — lists node aliases (db0, db1, app0, ...). Use these in other commands.
-3. SSH access: `easy-db-lab exec run <host-alias> -- <command>` — run one-shot commands on a host. Interactive shell: `ssh -F sshConfig <host-alias>`.
+3. SSH access: `easy-db-lab exec run --hosts <host-alias> "<command>"` — run a one-shot shell command on a host. Interactive shell: `ssh -F sshConfig <host-alias>`.
 
 Database access:
 - Cassandra: `easy-db-lab cassandra cql` — opens cqlsh on db0.

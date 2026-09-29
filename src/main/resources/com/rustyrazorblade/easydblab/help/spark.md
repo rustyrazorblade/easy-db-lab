@@ -7,12 +7,12 @@ description: Provision EMR and submit Spark jobs
 Provision an EMR cluster and submit Spark jobs. Requires an active cluster (after `up`). Example jobs built separately in `../spark-examples` repo.
 
 Steps:
-1. `easy-db-lab spark init` — provisions EMR on the existing cluster's VPC. Defaults: 3 workers, instance type from cluster profile.
-2. `easy-db-lab spark submit <jar-path> [args]` — submit job. Jar built in separate `spark-examples` repo.
-3. `easy-db-lab spark status [<job-id>]` — defaults to most recent job. Shows state, start time, duration.
-4. `easy-db-lab spark logs [<job-id>]` — stderr/stdout. Defaults to most recent.
-5. `easy-db-lab spark jobs` — list recent jobs with status.
-6. `easy-db-lab spark stop [<job-id>]` — cancel running/pending job.
+1. `easy-db-lab spark init` — provisions EMR on the existing cluster's VPC. Defaults: 3 m5.xlarge workers and an m5.xlarge master; change them with `--worker.instance.count`, `--worker.instance.type` and `--master.instance.type`.
+2. `easy-db-lab spark submit --jar <path> --main-class <class> --args <arg>` — submit a job. `--jar` takes a local path or an `s3://` URI; `--args` takes the application arguments. Add `--wait` to block until the job finishes.
+3. `easy-db-lab spark status` — state, start time, and duration of the most recent job. Add `--step-id <id>` for another job, `--verbose` for the full step detail.
+4. `easy-db-lab spark logs` — the job's logs from Loki. Defaults to the most recent job; `--step-id <id>` picks another, `--since 1h` sets the time range.
+5. `easy-db-lab spark jobs` — list recent jobs with status and step IDs.
+6. `easy-db-lab spark stop` — cancel the most recent job if it is running or pending; `--step-id <id>` cancels another.
 7. `easy-db-lab spark down` — terminate EMR cluster.
 
 Notes:

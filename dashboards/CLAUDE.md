@@ -163,6 +163,10 @@ the file (see `configuration/CLAUDE.md`).
 
 The Text panel sanitizer keeps only `src`, `width` and `height` on an iframe and strips `style`, so size the iframe with attributes: `width="100%"` and a pixel `height` that fills the panel. The height is the panel height, `h * 38 - 8` px, less 56 px for the header, the padding and the inline gap. `DocumentsIframeTest` checks every iframe against its panel's `gridPos.h`.
 
+## Rows are placed by position, not by file order
+
+Grafana sorts a dashboard's top-level panels by `gridPos` (y, then x) and gives each panel to the row above it in that order. A collapsed row keeps its own panels in its `panels` array, so a top-level panel that sorts under a collapsed row is hidden in it, and the row it was written under renders empty. Give every row its own `y`, below the panels of the row before it. `DashboardRowOrderTest` fails when a top-level panel sorts under a collapsed row or two rows share a `y`, for core and kit dashboards.
+
 ## Label Name Conventions
 
 Mimir and Loki both turn OTel attribute names into underscore names:

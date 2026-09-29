@@ -166,6 +166,8 @@ Scripts are run by `KitRunnerCommand` with cluster state variables injected as e
 variables. Dashboard JSON files in `<kit>/dashboards/` are installed into Grafana
 automatically after a successful `start`.
 
+If the tenant listing or a dashboard file cannot be read, `start` does not fail.  It emits `Event.Grafana.KitDashboardsSkipped`, which names the kit, its dashboards and the reason, and the kit keeps running.
+
 ## Annotations
 
 - `@McpCommand` — expose command as an MCP tool in the server (must also add to `McpToolRegistry`)

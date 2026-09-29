@@ -74,6 +74,10 @@ drill-down keeps the tenant and the cluster:
 /d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${cluster:queryparam}
 ```
 
+### The cluster variable
+
+Every `cluster` variable lists the clusters of the tenant the Metrics picker selects with `label_values(up, cluster)` on `${metrics_datasource}`.  It is multi-select and includes "All".  So every query that reads `$cluster` matches it with `=~`, never `=`: `cluster=~"$cluster"`.  The Tests dashboard is the one exception: its `cluster` is single-select, because it picks one test.  `ClusterVariableTest` (`configuration/grafana/`) checks these rules for every dashboard file.
+
 ### Install-time defaults
 
 The dashboard files store no defaults, because a default names a cluster or a tenant. Every install
@@ -94,7 +98,8 @@ So `grafana install` shows exactly what `up` installs.
 
 `infrastructure/tests.json` (uid `tests`) lists every cluster of the tenant the Metrics picker
 selects, with its start, end and duration: the first and last `up` sample within `lookback`
-(custom, default `180d`), found by a subquery at the `resolution` step. `resolution` holds seconds
+(custom, default `180d`), found by a subquery at the `resolution` step. The dashboard opens on
+`now-180d`, so its `cluster` variable lists over the same window as the default `lookback`. `resolution` holds seconds
 (text `5m`, value `300`), so the subquery step is `${resolution}s` and the row window is padded by
 one step in PromQL. The listing does not depend on the dashboard time range, so torn-down clusters
 are listed.

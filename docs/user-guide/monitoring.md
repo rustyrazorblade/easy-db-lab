@@ -17,11 +17,11 @@ When running multiple environments side by side, Grafana displays the cluster na
 
 Every dashboard has a picker for each kind of data it shows: **Metrics**, **Logs** and **Traces**. Each picker lists the cluster's own tenant (the default), every tenant in the shared store by name, and one "all tenants" choice. Change the pickers to read another tenant's tests; every panel, variable, annotation and link on the dashboard follows them, and a link to another dashboard keeps them. Profiles have one datasource only, so there is no profiles picker.
 
-A dashboard with a `cluster` variable opens on the current cluster, so it shows this cluster's data with no selection by hand. "All" is still offered: with the "all tenants" datasource in each picker and "All" in `cluster`, a dashboard shows every cluster of every tenant.
+A dashboard with a `cluster` variable opens on the current cluster, so it shows this cluster's data with no selection by hand.  The variable lists every cluster of the tenant the Metrics picker selects.  You can select more than one cluster, or "All".  With the "all tenants" datasource in each picker and "All" in `cluster`, a dashboard shows every cluster of every tenant.
 
 ### Tests
 
-The **Tests** dashboard (Infrastructure folder) lists every test (cluster) of the tenant the Metrics picker selects, with its start, end and duration: its first and last `up` sample within **Lookback** (default 180 days). Torn-down clusters are listed too. Click a cluster for:
+The **Tests** dashboard (Infrastructure folder) lists every test (cluster) of the tenant the Metrics picker selects, with its start, end and duration: its first and last `up` sample within **Lookback** (default 180 days).  The dashboard opens on the same 180 days.  Torn-down clusters are listed too. Click a cluster for:
 
 - **System Overview** or **Cassandra Overview**, opened on that test's window;
 - **Compare with the current cluster**, which opens Cluster Comparison with that test as the baseline and the current cluster as the candidate;
@@ -45,9 +45,9 @@ Attach notes and results to a test as markdown files:
 easy-db-lab report upload results.md notes.md
 ```
 
-The files go to the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, each with an HTML copy, and one `index.html` holds them all, each under its own heading. Only `.md` files named with letters, digits, `.`, `_` and `-` are accepted, and `index.md` is refused; the command names every file it refuses and uploads nothing. A file with the name of a stored document replaces it. The command uses your own AWS credentials and needs only the workspace, so it works after `down`. `up` writes the index of a new test, which says "No documents yet".
+The files go to the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, each with an HTML copy, and one `index.html` holds them all, each under its own heading. Only `.md` files named with letters, digits, `.`, `_` and `-` are accepted, and `index.md` is refused.  Each name can occur only one time in a command.  The command names every file it refuses and uploads nothing.  If an upload fails, the command names the failed file and each document it already stored; run the command again. A file with the name of a stored document replaces it. The command uses your own AWS credentials and needs only the workspace, so it works after `down`. `up` writes the index of a new test, which says "No documents yet".
 
-The Tests dashboard and the comparison dashboards show the documents through a read-only web server in the Grafana pod (port 3080 of the control node). Pick the tenant folder with **Documents tenant**; it defaults to the cluster's own tenant.
+The Tests dashboard and the comparison dashboards show the documents through a read-only web server in the Grafana pod (port 3080 of the control node).  The server answers only `GET` requests for document paths under `/reports/`; it answers 400 for a path with other characters, and it drops the query string.  Pick the tenant folder with **Documents tenant**; it defaults to the cluster's own tenant.
 
 Two `report upload` runs for one test at the same moment can each rebuild the index without the other's document. The document itself is stored; the next upload puts it back in the index.
 

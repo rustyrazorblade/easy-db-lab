@@ -885,7 +885,9 @@ This backup also runs automatically before teardown; see [`down`](#down).
 
 Attach markdown documents to the current test. Each file is stored in the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, with an HTML copy, and the test's `index.html` is rebuilt to hold every document, each under its own heading, in name order. The Tests and comparison dashboards show that index. A file with the name of a stored document replaces it.
 
-The command accepts only `.md` files whose names hold letters, digits, `.`, `_` and `-`, and refuses `index.md`. It checks every file first; if it refuses any, it names each one and uploads nothing. It uses your own AWS credentials and needs only the workspace's `state.json`, so it works before and after `down`.
+The command accepts only `.md` files whose names hold letters, digits, `.`, `_` and `-`, and refuses `index.md` and a name given twice. It checks every file first; if it refuses any, it names each one and uploads nothing. It uses your own AWS credentials and needs only the workspace's `state.json`, so it works before and after `down`.
+
+If an upload fails, the command names the failed file and each document it already stored.  Those documents are in the bucket but not yet in the index.  Run the command again.
 
 ```bash
 easy-db-lab report upload results.md notes.md

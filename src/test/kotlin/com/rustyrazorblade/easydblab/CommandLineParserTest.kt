@@ -157,4 +157,19 @@ class CommandLineParserTest : BaseKoinTest() {
                 .subcommands.keys,
         ).containsExactly("query")
     }
+
+    /** `commands` and `--help` print each option's description; an empty one tells the user nothing. */
+    @Test
+    fun `every visible option in the command tree has a description`() {
+        fun undescribed(cl: CommandLine): List<String> =
+            cl.commandSpec
+                .options()
+                .filter { !it.hidden() && it.description().joinToString("").isBlank() }
+                .map { "${cl.commandSpec.qualifiedName()} ${it.longestName()}" } +
+                cl.subcommands.values
+                    .distinct()
+                    .flatMap { undescribed(it) }
+
+        assertThat(undescribed(CommandLineParser().commandLine)).isEmpty()
+    }
 }

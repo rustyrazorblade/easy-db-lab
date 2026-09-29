@@ -427,6 +427,31 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a declared value arg shows a value placeholder in the command usage`() {
+        writeKitYaml(
+            """
+            name: kafka
+            commands:
+              producer-perf:
+                description: "Run producer perf test"
+                args:
+                  - flag: --num-records
+                    variable: NUM_RECORDS
+                    type: int
+                    default: "1000000"
+            start:
+              - type: shell
+                script: echo start
+            """.trimIndent(),
+        )
+        File(File(kitDir, "bin").also { it.mkdirs() }, "producer-perf.sh").writeText("#!/bin/sh\necho perf")
+
+        val perfCl = factory.buildKitGroup("kafka", kitDir).subcommands.getValue("producer-perf")
+
+        assertThat(perfCl.usageMessage).contains("--num-records=<num-records>")
+    }
+
+    @Test
     fun `command with no commands entry has only help and name options`() {
         writeKitYaml(
             """

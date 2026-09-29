@@ -129,7 +129,10 @@ class Up(
     // Lock for synchronizing access to workingState from parallel threads
     private val stateLock = Any()
 
-    @CommandLine.Option(names = ["--no-setup", "-n"])
+    @CommandLine.Option(
+        names = ["--no-setup", "-n"],
+        description = ["Provision the instances only: skip instance setup, K3s, and AxonOps configuration"],
+    )
     var noSetup = false
 
     @CommandLine.Mixin

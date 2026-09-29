@@ -9,6 +9,11 @@ import picocli.CommandLine.Spec
 
 /**
  * Displays the full command tree with all subcommands and options.
+ *
+ * Each command appears once, under its name, with any aliases named beside it; picocli registers
+ * a command under every alias, so walking the subcommand map as-is lists it once per name. Option
+ * placeholders come from picocli's own label renderer, so the tree shows `--size=<size>` exactly
+ * as `--help` does and shows no placeholder for a flag.
  */
 @Command(
     name = "commands",
@@ -37,9 +42,11 @@ class Commands :
         val spec = cmd.commandSpec
         val indent = "  ".repeat(depth)
 
-        // Print command name and description
+        // Print command name, aliases, and description
         val description = spec.usageMessage().description().firstOrNull() ?: ""
-        println("$indent${spec.name()} - $description")
+        val aliases = spec.aliases().takeIf { it.isNotEmpty() }?.joinToString(", ", prefix = " (alias: ", postfix = ")") ?: ""
+        println("$indent${spec.name()}$aliases - $description")
+        val labelRenderer = CommandLine.Help(spec).createDefaultParamLabelRenderer()
 
         // Skip hidden options and the standard help/version mixin flags.
         // usageHelp() covers --help; versionHelp() covers --version/-V from the mixin.
@@ -52,12 +59,7 @@ class Commands :
         for (opt in options) {
             val optDesc = opt.description().firstOrNull() ?: ""
             val names = opt.names().joinToString(", ")
-            val paramLabel =
-                if (opt.paramLabel().isNotEmpty() && opt.paramLabel() != "PARAM") {
-                    " <${opt.paramLabel()}>"
-                } else {
-                    ""
-                }
+            val paramLabel = labelRenderer.renderParameterLabel(opt, CommandLine.Help.Ansi.OFF, emptyList()).toString()
             val required = if (opt.required()) " (required)" else ""
             println("$indent    $names$paramLabel$required - $optDesc")
         }
@@ -71,16 +73,14 @@ class Commands :
             }
         }
 
-        // Recursively print subcommands
+        // Recursively print subcommands, once each: the map holds one entry per name and alias.
         val subcommands =
-            cmd.subcommands.entries
-                .filter {
-                    !it.value.commandSpec
-                        .usageMessage()
-                        .hidden()
-                }.sortedBy { it.key }
+            cmd.subcommands.values
+                .distinct()
+                .filter { !it.commandSpec.usageMessage().hidden() }
+                .sortedBy { it.commandName }
 
-        for ((_, subCmd) in subcommands) {
+        for (subCmd in subcommands) {
             printCommandTree(subCmd, depth + 1)
         }
     }

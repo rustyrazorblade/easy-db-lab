@@ -304,6 +304,12 @@ data class KitArgSpec(
     val default: String = "",
     val capability: String = "",
 ) {
+    /**
+     * The value placeholder `--help` and `commands` show for this arg, from its variable name
+     * (`NUM_RECORDS` becomes `<num-records>`). Picocli omits it for a boolean flag.
+     */
+    val paramLabel: String get() = "<${variable.lowercase().replace('_', '-')}>"
+
     @Serializable
     enum class ArgType {
         @SerialName("string")

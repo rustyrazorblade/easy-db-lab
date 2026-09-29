@@ -107,6 +107,18 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a declared value arg shows a value placeholder and a boolean arg shows none`() {
+        val cl =
+            factory.build(
+                config(arg("--size", "STORAGE_SIZE"), arg("--cache-on-write", "CACHE_ON_WRITE", KitArgSpec.ArgType.BOOLEAN)),
+                directorySource,
+            )
+
+        assertThat(cl.usageMessage).contains("--size=<storage-size>")
+        assertThat(cl.usageMessage).doesNotContain("--cache-on-write=")
+    }
+
+    @Test
     fun `force option is added when collisionCheck is true`() {
         val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck.ENABLED)
         val cl = factory.build(cfg, directorySource)

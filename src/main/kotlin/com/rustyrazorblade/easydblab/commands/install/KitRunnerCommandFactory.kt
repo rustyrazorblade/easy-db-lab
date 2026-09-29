@@ -184,6 +184,7 @@ class KitRunnerCommandFactory {
             OptionSpec
                 .builder(arg.flag)
                 .type(picoType)
+                .paramLabel(arg.paramLabel)
                 .description(arg.description)
                 .setter(
                     object : ISetter {

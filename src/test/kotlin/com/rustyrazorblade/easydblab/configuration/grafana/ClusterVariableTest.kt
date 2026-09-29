@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -95,6 +97,30 @@ class ClusterVariableTest {
         assertThat(cluster.string("includeAll")).isEqualTo("false")
         assertThat(tests.getValue("time").jsonObject.string("from")).isEqualTo("now-$lookback")
         assertThat(tests.getValue("time").jsonObject.string("to")).isEqualTo("now")
+    }
+
+    /** Every string in [element], at any depth. */
+    private fun strings(element: JsonElement): List<String> =
+        when (element) {
+            is JsonObject -> element.values.flatMap { strings(it) }
+            is JsonArray -> element.flatMap { strings(it) }
+            is JsonPrimitive -> listOfNotNull(element.contentOrNull.takeIf { element.isString })
+        }
+
+    /**
+     * A multi-select `cluster` renders as a regex (`(a|b)`, or the All value), which an equality
+     * matcher never matches: `cluster="\$cluster"` goes empty as soon as a second cluster is picked.
+     */
+    @Test
+    fun `no query on a dashboard with a multi-select cluster matches it by equality`() {
+        val equality = Regex("""cluster\s*=\s*"\$\{?cluster\b""")
+        val wrong =
+            DashboardFiles.all().flatMap { file ->
+                val dashboard = parse(file)
+                val multi = variables(dashboard).any { it.string("name") == "cluster" && it.string("multi") == "true" }
+                if (!multi) emptyList() else strings(dashboard).filter { equality.containsMatchIn(it) }.map { "${file.path}: $it" }
+            }
+        assertThat(wrong).isEmpty()
     }
 
     private companion object {

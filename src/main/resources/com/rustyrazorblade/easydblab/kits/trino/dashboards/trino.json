@@ -51,7 +51,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 0, "y": 1 },
       "id": 2,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "trino_execution_name_QueryManager_RunningQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Running", "refId": "A" }],
+      "targets": [{ "expr": "trino_execution_name_QueryManager_RunningQueries{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Running", "refId": "A" }],
       "title": "Running Queries",
       "type": "stat"
     },
@@ -69,7 +69,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 4, "y": 1 },
       "id": 3,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "trino_execution_name_QueryManager_QueuedQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Queued", "refId": "A" }],
+      "targets": [{ "expr": "trino_execution_name_QueryManager_QueuedQueries{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Queued", "refId": "A" }],
       "title": "Queued Queries",
       "type": "stat"
     },
@@ -87,7 +87,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 8, "y": 1 },
       "id": 4,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "trino_execution_name_QueryManager_FullyBlockedQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Blocked", "refId": "A" }],
+      "targets": [{ "expr": "trino_execution_name_QueryManager_FullyBlockedQueries{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Blocked", "refId": "A" }],
       "title": "Fully Blocked Queries",
       "type": "stat"
     },
@@ -105,7 +105,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 12, "y": 1 },
       "id": 5,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "rate(trino_execution_name_QueryManager_CompletedQueries_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Completed/s", "refId": "A" }],
+      "targets": [{ "expr": "rate(trino_execution_name_QueryManager_CompletedQueries_total{job=\"trino\", cluster=~\"$cluster\"}[5m])", "legendFormat": "Completed/s", "refId": "A" }],
       "title": "Completed Queries/sec",
       "type": "stat"
     },
@@ -123,7 +123,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 16, "y": 1 },
       "id": 6,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "rate(trino_execution_name_QueryManager_FailedQueries_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Failed/s", "refId": "A" }],
+      "targets": [{ "expr": "rate(trino_execution_name_QueryManager_FailedQueries_total{job=\"trino\", cluster=~\"$cluster\"}[5m])", "legendFormat": "Failed/s", "refId": "A" }],
       "title": "Failed Queries/sec",
       "type": "stat"
     },
@@ -138,9 +138,9 @@
       "id": 7,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "trino_execution_name_QueryManager_RunningQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Running {{instance}}", "refId": "A" },
-        { "expr": "trino_execution_name_QueryManager_QueuedQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Queued {{instance}}", "refId": "B" },
-        { "expr": "trino_execution_name_QueryManager_FullyBlockedQueries{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Blocked {{instance}}", "refId": "C" }
+        { "expr": "trino_execution_name_QueryManager_RunningQueries{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Running {{instance}}", "refId": "A" },
+        { "expr": "trino_execution_name_QueryManager_QueuedQueries{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Queued {{instance}}", "refId": "B" },
+        { "expr": "trino_execution_name_QueryManager_FullyBlockedQueries{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Blocked {{instance}}", "refId": "C" }
       ],
       "title": "Query Counts Over Time",
       "type": "timeseries"
@@ -156,8 +156,8 @@
       "id": 8,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "rate(trino_execution_name_QueryManager_CompletedQueries_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Completed {{instance}}", "refId": "A" },
-        { "expr": "rate(trino_execution_name_QueryManager_FailedQueries_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Failed {{instance}}", "refId": "B" }
+        { "expr": "rate(trino_execution_name_QueryManager_CompletedQueries_total{job=\"trino\", cluster=~\"$cluster\"}[5m])", "legendFormat": "Completed {{instance}}", "refId": "A" },
+        { "expr": "rate(trino_execution_name_QueryManager_FailedQueries_total{job=\"trino\", cluster=~\"$cluster\"}[5m])", "legendFormat": "Failed {{instance}}", "refId": "B" }
       ],
       "title": "Query Completion/Failure Rate",
       "type": "timeseries"
@@ -184,7 +184,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 0, "y": 13 },
       "id": 10,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_ClusterMemoryBytes{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Total Memory", "refId": "A" }],
+      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_ClusterMemoryBytes{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Total Memory", "refId": "A" }],
       "title": "Cluster Total Memory",
       "type": "stat"
     },
@@ -202,7 +202,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 4, "y": 13 },
       "id": 11,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_ClusterTotalMemoryReservation{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Total Reserved", "refId": "A" }],
+      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_ClusterTotalMemoryReservation{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Total Reserved", "refId": "A" }],
       "title": "Total Memory Reservation",
       "type": "stat"
     },
@@ -220,7 +220,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 8, "y": 13 },
       "id": 12,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_ClusterUserMemoryReservation{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "User Reserved", "refId": "A" }],
+      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_ClusterUserMemoryReservation{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "User Reserved", "refId": "A" }],
       "title": "User Memory Reservation",
       "type": "stat"
     },
@@ -238,7 +238,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 12, "y": 13 },
       "id": 13,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_QueriesKilledDueToOutOfMemory{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "OOM Kills", "refId": "A" }],
+      "targets": [{ "expr": "trino_memory_name_ClusterMemoryManager_QueriesKilledDueToOutOfMemory{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "OOM Kills", "refId": "A" }],
       "title": "Queries Killed (OOM)",
       "type": "stat"
     },
@@ -253,9 +253,9 @@
       "id": 14,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "trino_memory_name_ClusterMemoryManager_ClusterMemoryBytes{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Total Capacity {{instance}}", "refId": "A" },
-        { "expr": "trino_memory_name_ClusterMemoryManager_ClusterTotalMemoryReservation{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "Total Reserved {{instance}}", "refId": "B" },
-        { "expr": "trino_memory_name_ClusterMemoryManager_ClusterUserMemoryReservation{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "User Reserved {{instance}}", "refId": "C" }
+        { "expr": "trino_memory_name_ClusterMemoryManager_ClusterMemoryBytes{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Total Capacity {{instance}}", "refId": "A" },
+        { "expr": "trino_memory_name_ClusterMemoryManager_ClusterTotalMemoryReservation{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "Total Reserved {{instance}}", "refId": "B" },
+        { "expr": "trino_memory_name_ClusterMemoryManager_ClusterUserMemoryReservation{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "User Reserved {{instance}}", "refId": "C" }
       ],
       "title": "Cluster Memory Over Time",
       "type": "timeseries"
@@ -271,7 +271,7 @@
       "id": 15,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "trino_memory_name_ClusterMemoryManager_QueriesKilledDueToOutOfMemory{job=\"trino\", cluster=\"$cluster\"}", "legendFormat": "OOM Kills {{instance}}", "refId": "A" }
+        { "expr": "trino_memory_name_ClusterMemoryManager_QueriesKilledDueToOutOfMemory{job=\"trino\", cluster=~\"$cluster\"}", "legendFormat": "OOM Kills {{instance}}", "refId": "A" }
       ],
       "title": "OOM Kills Over Time",
       "type": "timeseries"
@@ -295,8 +295,8 @@
       "id": 17,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "rate(trino_execution_name_SqlTaskManager_InputDataSize_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Input Bytes/s {{instance}}", "refId": "A" },
-        { "expr": "rate(trino_execution_name_SqlTaskManager_OutputDataSize_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Output Bytes/s {{instance}}", "refId": "B" }
+        { "expr": "rate(trino_execution_name_SqlTaskManager_InputDataSize_total{job=\"trino\", cluster=~\"$cluster\"}[5m])", "legendFormat": "Input Bytes/s {{instance}}", "refId": "A" },
+        { "expr": "rate(trino_execution_name_SqlTaskManager_OutputDataSize_total{job=\"trino\", cluster=~\"$cluster\"}[5m])", "legendFormat": "Output Bytes/s {{instance}}", "refId": "B" }
       ],
       "title": "Task Data Throughput (Bytes)",
       "type": "timeseries"
@@ -312,8 +312,8 @@
       "id": 18,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "rate(trino_execution_name_SqlTaskManager_InputPositions_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Input Rows/s {{instance}}", "refId": "A" },
-        { "expr": "rate(trino_execution_name_SqlTaskManager_OutputPositions_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "Output Rows/s {{instance}}", "refId": "B" }
+        { "expr": "rate(trino_execution_name_SqlTaskManager_InputPositions_total{job=\"trino\", cluster=~\"$cluster\"}[5m])", "legendFormat": "Input Rows/s {{instance}}", "refId": "A" },
+        { "expr": "rate(trino_execution_name_SqlTaskManager_OutputPositions_total{job=\"trino\", cluster=~\"$cluster\"}[5m])", "legendFormat": "Output Rows/s {{instance}}", "refId": "B" }
       ],
       "title": "Task Row Throughput",
       "type": "timeseries"
@@ -329,7 +329,7 @@
       "id": 19,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "rate(trino_execution_name_QueryManager_ConsumedCpuTimeSecs_total{job=\"trino\", cluster=\"$cluster\"}[5m])", "legendFormat": "CPU s/s {{instance}}", "refId": "A" }
+        { "expr": "rate(trino_execution_name_QueryManager_ConsumedCpuTimeSecs_total{job=\"trino\", cluster=~\"$cluster\"}[5m])", "legendFormat": "CPU s/s {{instance}}", "refId": "A" }
       ],
       "title": "Query CPU Consumption Rate",
       "type": "timeseries"

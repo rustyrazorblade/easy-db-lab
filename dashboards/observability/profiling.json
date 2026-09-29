@@ -62,7 +62,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -93,7 +93,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "wall:wall:nanoseconds:wall:nanoseconds",
-          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -124,7 +124,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "memory:alloc_in_new_tlab_bytes:bytes:space:bytes",
-          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -155,7 +155,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "block:contentions:count:block:count",
-          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -186,7 +186,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "mutex:delay:nanoseconds:mutex:count",
-          "labelSelector": "{service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -210,6 +210,47 @@
     "list": [
       {
         "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every profile query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
         "datasource": {
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
@@ -225,7 +266,8 @@
           "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue",
-          "labelName": "service_name"
+          "labelName": "service_name",
+          "labelSelector": "{cluster=~\"$cluster\"}"
         },
         "refresh": 2,
         "regex": "",
@@ -252,7 +294,7 @@
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue",
           "labelName": "hostname",
-          "labelSelector": "{service_name=\"$application\"}"
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\"}"
         },
         "refresh": 2,
         "regex": "",

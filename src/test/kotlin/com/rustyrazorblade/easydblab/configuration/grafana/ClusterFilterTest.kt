@@ -12,7 +12,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
- * Every dashboard that reads metrics or logs shows only the clusters its `cluster` variable selects.
+ * Every dashboard that reads metrics, logs or profiles shows only the clusters its `cluster` variable selects.
  *
  * Clusters of one tenant share one store, so a dashboard without the filter mixes every cluster
  * that ran at the same time, and a performance review reads another cluster's numbers as its own.
@@ -88,6 +88,13 @@ class ClusterFilterTest {
     }
 
     @Test
+    fun `a profile query is scoped by its label selector, and one without a selector reads every cluster`() {
+        assertThat(unscoped("""{cluster=~"${'$'}cluster", service_name="${'$'}application"}""", Language.PROFILES)).isEmpty()
+        assertThat(unscoped("""{service_name="${'$'}application"}""", Language.PROFILES)).hasSize(1)
+        assertThat(unscoped("{}", Language.PROFILES)).containsExactly("{}")
+    }
+
+    @Test
     fun `queries are read from nested panels, links, annotations and variables`() {
         val dashboard =
             parse(
@@ -96,10 +103,12 @@ class ClusterFilterTest {
                             {"title": "logs", "datasource": {"type": "loki", "uid": "${'$'}{logs_datasource}"},
                              "targets": [{"expr": "{source=\"x\"}"}]},
                             {"title": "profiles", "datasource": {"type": "grafana-pyroscope-datasource", "uid": "pyroscope"},
-                             "targets": [{"labelSelector": "{service_name=\"x\"}"}]}],
+                             "targets": [{"labelSelector": "{service_name=\"x\"}"}, {"refId": "B"}]}],
                  "annotations": {"list": [{"name": "marks", "datasource": {"type": "loki"}, "expr": "{source=\"annotation\"}"}]},
                  "templating": {"list": [{"name": "host", "type": "query", "datasource": {"type": "prometheus"},
-                                          "definition": "label_values(b, host_name)", "query": {"query": "label_values(b, host_name)"}}]}}
+                                          "definition": "label_values(b, host_name)", "query": {"query": "label_values(b, host_name)"}},
+                                         {"name": "app", "type": "query", "datasource": {"type": "grafana-pyroscope-datasource"},
+                                          "definition": "label_values(service_name)", "query": {"labelName": "service_name"}}]}}
                 """,
             )
 
@@ -111,11 +120,14 @@ class ClusterFilterTest {
             "annotation 'marks': LOGQL {source=\"annotation\"}",
             "variable 'host': PROMQL label_values(b, host_name)",
             "variable 'host': PROMQL label_values(b, host_name)",
+            "panel 'profiles': PROFILES {service_name=\"x\"}",
+            "panel 'profiles': PROFILES {}",
+            "variable 'app': PROFILES {}",
         )
     }
 
     @Test
-    fun `every dashboard that queries metrics or logs declares the cluster variable`() {
+    fun `every dashboard that queries metrics, logs or profiles declares the cluster variable`() {
         val missing =
             DashboardFiles.all().mapNotNull { file ->
                 val dashboard = parse(file.readText())
@@ -126,7 +138,7 @@ class ClusterFilterTest {
     }
 
     @Test
-    fun `every metrics and logs query filters by the selected clusters`() {
+    fun `every metrics, logs and profile query filters by the selected clusters`() {
         val unscoped =
             DashboardFiles.all().flatMap { file ->
                 val dashboard = parse(file.readText())

@@ -210,7 +210,7 @@
             "hostname",
             "cluster"
           ],
-          "labelSelector": "{service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
           "profileTypeId": "${profile_type}",
           "queryType": "metrics",
           "refId": "A"
@@ -224,7 +224,7 @@
             "hostname",
             "cluster"
           ],
-          "labelSelector": "{service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
           "profileTypeId": "${profile_type}",
           "queryType": "metrics",
           "refId": "B"
@@ -260,7 +260,7 @@
             "uid": "pyroscope"
           },
           "groupBy": [],
-          "labelSelector": "{service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
           "profileTypeId": "${profile_type}",
           "queryType": "profile",
           "refId": "A"
@@ -296,7 +296,7 @@
             "uid": "pyroscope"
           },
           "groupBy": [],
-          "labelSelector": "{service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
           "profileTypeId": "${profile_type}",
           "queryType": "profile",
           "refId": "A"
@@ -461,6 +461,7 @@
         "options": [],
         "query": {
           "labelName": "service_name",
+          "labelSelector": "{cluster=~\"$cluster\"}",
           "profileTypeId": "${profile_type}",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue"
@@ -487,7 +488,7 @@
         "options": [],
         "query": {
           "labelName": "${compare_by}",
-          "labelSelector": "{service_name=\"${service}\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\"}",
           "profileTypeId": "${profile_type}",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue"
@@ -514,7 +515,7 @@
         "options": [],
         "query": {
           "labelName": "${compare_by}",
-          "labelSelector": "{service_name=\"${service}\"}",
+          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\"}",
           "profileTypeId": "${profile_type}",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue"

@@ -9,9 +9,9 @@ import kotlinx.serialization.json.contentOrNull
 import java.net.URLDecoder
 
 /**
- * Finds the metrics and logs queries of a dashboard that read more than the selected clusters.
+ * Finds the metrics, logs and profile queries of a dashboard that read more than the selected clusters.
  *
- * Clusters of one tenant share Mimir's and Loki's store, so a selector without a `cluster` matcher
+ * Clusters of one tenant share Mimir's, Loki's and Pyroscope's store, so a selector without a `cluster` matcher
  * mixes every cluster that ran in the dashboard's time range. A query is scoped only when each of
  * its selectors is, since `a{cluster=~"$cluster"} / b` still divides by every cluster's `b`. A
  * selector is scoped when it matches `cluster` against `$cluster`, or, on the comparison
@@ -19,7 +19,7 @@ import java.net.URLDecoder
  */
 object ClusterFilterGuards {
     /** Which backend a query is for. */
-    enum class Language { PROMQL, LOGQL }
+    enum class Language { PROMQL, LOGQL, PROFILES }
 
     /** One query of a dashboard: where it is and its text as the file holds it. */
     data class Query(
@@ -64,7 +64,8 @@ object ClusterFilterGuards {
     fun unscoped(query: Query): List<String> =
         when (query.language) {
             // A LogQL pipeline is full of bare words (`json`, `unwrap x`); only `{...}` selects streams.
-            Language.LOGQL -> selectors(query.text).filter { it.braced && !it.scoped }.map { it.text }
+            // A Pyroscope label selector is one `{...}`.
+            Language.LOGQL, Language.PROFILES -> selectors(query.text).filter { it.braced && !it.scoped }.map { it.text }
             Language.PROMQL -> unscopedPromQl(query.text)
         }
 
@@ -205,9 +206,10 @@ object ClusterFilterGuards {
     }
 
     /**
-     * Every metrics and logs query of [dashboard]: panel targets (rows included), Explore links,
-     * annotation queries, and the queries of template variables. A target with no datasource of
-     * its own uses its panel's, and a panel with none uses the default, Mimir.
+     * Every metrics, logs and profile query of [dashboard]: panel targets (rows included), Explore
+     * links, annotation queries, and the queries of template variables. A target with no datasource
+     * of its own uses its panel's, and a panel with none uses the default, Mimir. A profile query is
+     * its label selector; one with none reads every cluster and is reported as `{}`.
      */
     fun queries(dashboard: JsonObject): List<Query> {
         val found = mutableListOf<Query>()
@@ -221,6 +223,10 @@ object ClusterFilterGuards {
             val language = languageOf(variable["datasource"]) ?: return@forEach
             val where = "variable '${variable.string("name")}'"
             val query = variable["query"]
+            if (language == Language.PROFILES) {
+                found += Query(where, language, (query as? JsonObject)?.string("labelSelector") ?: NO_SELECTOR)
+                return@forEach
+            }
             val texts =
                 listOfNotNull(
                     variable.string("definition"),
@@ -243,7 +249,8 @@ object ClusterFilterGuards {
             val datasource = panel["datasource"] ?: inherited
             (panel["targets"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().forEach { target ->
                 val language = languageOf(target["datasource"] ?: datasource) ?: return@forEach
-                target.string("expr")?.takeIf { it.isNotBlank() }?.let { found += Query("panel '$title'", language, it) }
+                val text = if (language == Language.PROFILES) target.string("labelSelector") ?: NO_SELECTOR else target.string("expr")
+                text?.takeIf { it.isNotBlank() }?.let { found += Query("panel '$title'", language, it) }
             }
             exploreQueries(panel).forEach { (ds, expr) ->
                 languageOf(ds)?.let { found += Query("link on '$title'", it, expr) }
@@ -275,7 +282,7 @@ object ClusterFilterGuards {
                 val panes = json.parseToJsonElement(URLDecoder.decode(url.substringAfter("panes="), Charsets.UTF_8)) as JsonObject
                 panes.values.filterIsInstance<JsonObject>().flatMap { pane ->
                     (pane["queries"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { query ->
-                        query.string("expr")?.let { (query["datasource"] ?: pane["datasource"]) to it }
+                        (query.string("expr") ?: query.string("labelSelector"))?.let { (query["datasource"] ?: pane["datasource"]) to it }
                     }
                 }
             }
@@ -291,7 +298,9 @@ object ClusterFilterGuards {
         return when {
             type == "prometheus" -> Language.PROMQL
             type == "loki" -> Language.LOGQL
+            type == PYROSCOPE_TYPE -> Language.PROFILES
             type != null -> null
+            uid == "pyroscope" -> Language.PROFILES
             uid == "\${logs_datasource}" -> Language.LOGQL
             uid == null || uid == "\${metrics_datasource}" -> Language.PROMQL
             else -> null
@@ -304,4 +313,9 @@ object ClusterFilterGuards {
     ): List<JsonObject> = ((parent as? JsonObject)?.get(key) as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
 
     private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
+
+    private const val PYROSCOPE_TYPE = "grafana-pyroscope-datasource"
+
+    /** The selector of a profile query that has none: it reads every cluster. */
+    private const val NO_SELECTOR = "{}"
 }

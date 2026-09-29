@@ -39,6 +39,13 @@ class DocumentNamesTest {
     }
 
     @Test
+    fun `the rejection of index md names the file once`() {
+        val message = DocumentsRejectedException(DocumentNames.rejected(listOf(file("index.md")))).message
+
+        assertThat(message).isEqualTo("Nothing was uploaded. Rejected: index.md is reserved for the test's index")
+    }
+
+    @Test
     fun `a name with no stem is rejected`() {
         assertThat(rejectedNames(file(".md"))).containsExactly(".md")
     }

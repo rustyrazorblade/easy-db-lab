@@ -58,7 +58,7 @@ object DocumentNames {
             file.isDirectory -> "is a directory"
             !SAFE_NAME.matches(name) -> "names may hold only letters, digits, '.', '_' and '-'"
             !name.endsWith(MARKDOWN_SUFFIX) || name.length == MARKDOWN_SUFFIX.length -> "is not a markdown (.md) file"
-            name == RESERVED -> "$RESERVED is reserved for the test's index"
+            name == RESERVED -> "is reserved for the test's index"
             else -> null
         }
     }

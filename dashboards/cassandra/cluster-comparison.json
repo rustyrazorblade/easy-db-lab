@@ -2632,7 +2632,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "Pick one cluster in **Cluster A** and another in **Cluster B**. Every number in the row below is cluster B measured against cluster A.\n\n**What the colours mean.** Green means B is better than A, red means worse. The direction is set per metric: for latency, GC pause and errors, lower is better; for throughput, higher is better. Read the sign, not just the colour.\n\n**Percent or absolute.** The latency, throughput, GC and allocation tiles are percent changes. The error tile is an **absolute** difference in errors per second per node, because a healthy baseline is zero and a percentage of zero is undefined.\n\n**A blank tile** means one side had no data: either the baseline was zero, or Cluster A and Cluster B are not both set. Set both dropdowns before reading anything here.\n\n**Comparing the same cluster with itself** reads 0% everywhere. That is the expected result, and a useful check that the section is wired up.\n\nEverything below this section is the multi-cluster fleet view. It overlays every cluster selected in the **Cluster** dropdown and is the right tool for looking at more than two.",
+        "content": "Pick one cluster in **Baseline** and another in **Candidate**. Every number in the row below is the candidate measured against the baseline.\n\n**What the colours mean.** Green means the candidate is better than the baseline, red means worse. The direction is set per metric: for latency, GC pause and errors, lower is better; for throughput, higher is better. Read the sign, not just the colour.\n\n**Percent or absolute.** The latency, throughput, GC and allocation tiles are percent changes. The error tile is an **absolute** difference in errors per second per node, because a healthy baseline is zero and a percentage of zero is undefined.\n\n**A blank tile** means one side had no data: either the baseline was zero, or Baseline and Candidate are not both set. Set both dropdowns before reading anything here.\n\n**Comparing the same cluster with itself** reads 0% everywhere. That is the expected result, and a useful check that the section is wired up.\n\nEverything below this section is the multi-cluster fleet view. It overlays every cluster selected in the **Cluster** dropdown and is the right tool for looking at more than two.",
         "mode": "markdown"
       },
       "transparent": false,
@@ -2648,7 +2648,7 @@
       },
       "id": 901,
       "panels": [],
-      "title": "A/B verdict — cluster B measured against cluster A",
+      "title": "A/B verdict — the candidate measured against the baseline",
       "type": "row"
     },
     {
@@ -2656,7 +2656,7 @@
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "Change in read latency at ${percentile}, cluster B against cluster A. Negative is better: B answers reads faster. The percentile is a pre-aggregated gauge from each node's EstimatedHistogram, averaged over the nodes of each cluster.",
+      "description": "Change in read latency at ${percentile}, the candidate against the baseline. Negative is better: the candidate answers reads faster. The percentile is a pre-aggregated gauge from each node's EstimatedHistogram, averaged over the nodes of each cluster.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2726,7 +2726,7 @@
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "Change in write latency at ${percentile}, cluster B against cluster A. Negative is better: B acknowledges writes faster.",
+      "description": "Change in write latency at ${percentile}, the candidate against the baseline. Negative is better: the candidate acknowledges writes faster.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2796,7 +2796,7 @@
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "Change in coordinator requests per second per node. Positive is better: B serves more work. Averaged per node so clusters of different sizes stay comparable.",
+      "description": "Change in coordinator requests per second per node. Positive is better: the candidate serves more work. Averaged per node so clusters of different sizes stay comparable.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -3006,7 +3006,7 @@
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "Errors per second per node on cluster B minus cluster A. Negative is better. This one is an absolute difference, not a percentage: a healthy cluster has zero errors, and a percentage change from zero is undefined and would blank the tile.",
+      "description": "Errors per second per node on the candidate minus the baseline. Negative is better. This one is an absolute difference, not a percentage: a healthy cluster has zero errors, and a percentage change from zero is undefined and would blank the tile.",
       "fieldConfig": {
         "defaults": {
           "color": {

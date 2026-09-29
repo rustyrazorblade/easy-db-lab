@@ -46,7 +46,13 @@ class Nodetool : PicoBaseCommand() {
         val command = args.joinToString(" ")
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
-            val result = remoteOps.executeRemotely(host.toHost(), "/usr/local/cassandra/current/bin/nodetool $command")
+            // output = false: the NodetoolOutput event prints the output once, under the host's header.
+            val result =
+                remoteOps.executeRemotely(
+                    host.toHost(),
+                    "/usr/local/cassandra/current/bin/nodetool $command",
+                    output = false,
+                )
             eventBus.emit(Event.Cassandra.NodetoolOutput(host.alias, result.text))
         }
     }

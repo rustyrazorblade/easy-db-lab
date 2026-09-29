@@ -102,7 +102,7 @@
 - [x] 13.2 Live cluster: verification item 2, variable interpolation in panel `timeShift` and `timeFrom` on the comparison dashboards.
 - [x] 13.3 Live cluster: verification item 3, the iframe renders under `disable_sanitize_html`.
 - [x] 13.4 Live cluster: verification item 4, the browser reaches the web server over Tailscale and SOCKS, and the proxy signs for the bucket's region.
-- [ ] 13.5 Live cluster: `report upload` before and after `down`, and the Tests dashboard shows the documents.
+- [x] 13.5 Live cluster: `report upload` before and after `down`, and the Tests dashboard shows the documents.
 - [x] 13.7 Live QA of every dashboard (owner requirement): on the live cluster, open every core and kit dashboard in Grafana and read it back.  For each one record: the pickers show and default to the home tenant; `cluster` defaults to the current cluster; every panel renders without a query error; annotations show; links open the target with the pickers and cluster carried.  The PR carries the per-dashboard results.
 - [x] 13.6 Live comparison, short tests only (owner-authorized, no 24h test): one new cluster with 15 to 20 minutes of data and a short stress load, compared against a past test already in the store in the same tenant within `lookback`, of a different length.  If no such past test exists, run two short clusters in the same tenant one after the other (for example 20 minutes, then `down`, then a new cluster for 10 minutes); this also checks that the torn-down cluster shows on the Tests dashboard.  Check the overlay, the side-by-side panels, the summary table and both runs' documents.
 

@@ -135,6 +135,8 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 s3Bucket = "easy-db-lab-test",
+                // A data bucket distinct from the account bucket, so a mix-up between the two shows.
+                dataBucket = "easy-db-lab-data-test",
             ),
         )
 
@@ -248,9 +250,11 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         // Dashboards are uploaded only in local mode, with a datasource for every tenant in the store.
         val context = argumentCaptor<DashboardInstallContext>()
-        verify(mockDashboardService).deploy(any(), context.capture(), any())
+        // The documents sidecars read the account bucket, never the data bucket.
+        verify(mockDashboardService).deploy(any(), context.capture(), eq("easy-db-lab-test"))
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
+        assertThat(context.firstValue.documentsUrl).isEqualTo("http://${controlNode.privateIp}:${Constants.Grafana.Documents.WEB_PORT}")
 
         // Both on-node data directories are prepared over SSH.
         val commands = remoteCommands()

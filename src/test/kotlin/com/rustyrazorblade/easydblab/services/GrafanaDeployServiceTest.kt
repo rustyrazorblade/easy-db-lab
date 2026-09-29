@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
+import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
@@ -209,5 +210,26 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
 
         assertThat(emitted.filterIsInstance<Event.Grafana.WorkloadConfigCompared>())
             .containsExactly(Event.Grafana.WorkloadConfigCompared("Deployment/grafana", changed = true))
+    }
+
+    /**
+     * The documents proxy signs for the account bucket's own region, from GetBucketLocation, not the
+     * cluster's (the test user's us-west-2), and the web server reads the account bucket.
+     */
+    @Test
+    fun `the applied Grafana pod reads the account bucket in the bucket's own region`() {
+        service().deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
+
+        val applied = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, times(3)).applyResource(any(), applied.capture())
+        val proxy =
+            applied.allValues
+                .filterIsInstance<Deployment>()
+                .single()
+                .spec.template.spec.containers
+                .single { it.name == "documents-sigv4-proxy" }
+        assertThat(proxy.args).containsSequence("--region", "eu-west-1").containsSequence("--host", "s3.eu-west-1.amazonaws.com")
+        val web = applied.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == "grafana-documents-web" }
+        assertThat(web.data.values.single()).contains("/acct-bucket/reports/;")
     }
 }

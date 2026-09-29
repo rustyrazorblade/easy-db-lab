@@ -23,6 +23,7 @@ class CoreDashboardAnnotationsTest {
             "cassandra/node-divergence.json",
             "infrastructure/system-ab-comparison.json",
             "infrastructure/system-overview.json",
+            "infrastructure/tests.json",
         )
 
     private fun markers(path: String): JsonObject =

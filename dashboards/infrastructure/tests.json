@@ -12,6 +12,21 @@
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
         "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "${logs_datasource}"
+        },
+        "enable": true,
+        "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\"",
+        "hide": false,
+        "iconColor": "green",
+        "instant": false,
+        "name": "easy-db-lab markers",
+        "tagKeys": "tags",
+        "textFormat": "",
+        "titleFormat": "{{cluster}}"
       }
     ]
   },
@@ -64,19 +79,19 @@
                 "value": [
                   {
                     "title": "System Overview",
-                    "url": "/d/system-overview/system-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${doc_tenant:queryparam}"
+                    "url": "/d/system-overview/system-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${doc_tenant:queryparam}"
                   },
                   {
                     "title": "Cassandra Overview",
-                    "url": "/d/1e7b6436-9a13-44cf-bdae-7528a9a7f537/cassandra-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${doc_tenant:queryparam}"
+                    "url": "/d/1e7b6436-9a13-44cf-bdae-7528a9a7f537/cassandra-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${doc_tenant:queryparam}"
                   },
                   {
                     "title": "Compare with the current cluster",
-                    "url": "/d/c09599ec-8d87-4fe5-9346-9e85c41d33af/cluster-comparison?var-baseline_cluster=${__data.fields.cluster}&${metrics_datasource:queryparam}&${cluster:queryparam}&${doc_tenant:queryparam}&${lookback:queryparam}"
+                    "url": "/d/c09599ec-8d87-4fe5-9346-9e85c41d33af/cluster-comparison?var-baseline_cluster=${__data.fields.cluster}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}&${doc_tenant:queryparam}&${lookback:queryparam}"
                   },
                   {
                     "title": "Show documents",
-                    "url": "/d/tests/tests?var-cluster=${__data.fields.cluster}&${metrics_datasource:queryparam}&${doc_tenant:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
+                    "url": "/d/tests/tests?var-cluster=${__data.fields.cluster}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${doc_tenant:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
                   }
                 ]
               }
@@ -302,6 +317,36 @@
         "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Logs",
+        "multi": false,
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Traces",
+        "multi": false,
+        "name": "traces_datasource",
+        "options": [],
+        "query": "tempo",
         "queryValue": "",
         "refresh": 1,
         "regex": "",

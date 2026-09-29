@@ -715,7 +715,11 @@ class Up(
         val port = Constants.Network.SSH_PORT
         val maxAttempts = Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS
 
-        val retry = Retry.of("tailnet-reachability", RetryUtil.createTailscaleReachabilityRetryConfig(tailnetRetryInterval))
+        val retry =
+            Retry.of(
+                "tailnet-reachability",
+                RetryUtil.createBooleanPollRetryConfig(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS, tailnetRetryInterval),
+            )
         retry.eventPublisher.onRetry { event ->
             val attempt = event.numberOfRetryAttempts
             eventBus.emit(Event.Tailscale.RouteWaiting(controlHost.alias, controlHost.privateIp, port, attempt, maxAttempts))

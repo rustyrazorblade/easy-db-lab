@@ -208,7 +208,11 @@ class EMRSparkService(
         stepEnd: Instant?,
     ): Boolean {
         eventBus.emit(Event.Emr.StepStderrWaiting(stepId, finalStderrMaxWait().seconds))
-        val retry = Retry.of("emr-final-step-stderr", RetryUtil.createFinalStepStderrRetryConfig(finalLogPollInterval))
+        val retry =
+            Retry.of(
+                "emr-final-step-stderr",
+                RetryUtil.createBooleanPollRetryConfig(Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS, finalLogPollInterval),
+            )
         return Retry
             .decorateSupplier(retry) { StepStderrReadiness.isFinal(objectStore.getFileInfo(stderrPath), stepEnd) }
             .get()

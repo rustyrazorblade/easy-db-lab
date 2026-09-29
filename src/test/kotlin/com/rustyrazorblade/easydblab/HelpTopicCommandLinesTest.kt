@@ -76,8 +76,15 @@ class HelpTopicCommandLinesTest : BaseKoinTest() {
         val takesPositional = spec.positionalParameters().isNotEmpty()
         val standsForSubcommand = index < tokens.size && tokens[index].isPlaceholder() && !takesPositional
         if (command === root || standsForSubcommand && command.subcommands.isNotEmpty()) return null
+        return problemWithArguments(spec, tokens.drop(index))
+    }
 
-        val rest = tokens.drop(index)
+    /** Checks the tokens after the deepest subcommand against that command's options and parameters. */
+    private fun problemWithArguments(
+        spec: CommandLine.Model.CommandSpec,
+        rest: List<String>,
+    ): String? {
+        val takesPositional = spec.positionalParameters().isNotEmpty()
         var position = 0
         while (position < rest.size) {
             val token = rest[position]

@@ -105,78 +105,109 @@ object ClusterFilterGuards {
      * The vector selectors (PromQL) or stream selectors (LogQL) of [text]. Strings, ranges and the
      * label lists of `by (...)` and its kin are skipped; an identifier followed by `(` is a function.
      */
-    private fun selectors(text: String): List<Selector> {
-        val found = mutableListOf<Selector>()
-        var i = 0
-        var pendingName: String? = null
-        while (i < text.length) {
-            val c = text[i]
-            when {
-                c == '"' || c == '\'' || c == '`' -> i = skipString(text, i)
-                c == '[' -> i = skipGroup(text, i, '[', ']')
-                c == '{' -> {
-                    val end = skipGroup(text, i, '{', '}')
-                    val body = text.substring(i, end)
-                    found += Selector((pendingName ?: "") + body, clusterMatcher.containsMatchIn(body), braced = true)
-                    pendingName = null
-                    i = end
-                }
-                c.isDigit() || (c == '.' && i + 1 < text.length && text[i + 1].isDigit()) -> {
-                    pendingName = flush(pendingName, found)
-                    i = skipWhile(text, i) { it.isLetterOrDigit() || it == '.' }
-                }
-                c.isLetter() || c == '_' || c == ':' || c == '$' -> {
-                    pendingName = flush(pendingName, found)
-                    val end = identifierEnd(text, i)
-                    val word = text.substring(i, end)
-                    val next = skipWhile(text, end) { it.isWhitespace() }
-                    val follows = text.getOrNull(next)
-                    i =
-                        when {
-                            word in labelLists && follows == '(' -> skipGroup(text, next, '(', ')')
-                            follows == '(' || word in keywords || word.startsWith("$") -> end
-                            else -> {
-                                pendingName = word
-                                end
-                            }
-                        }
-                }
+    private fun selectors(text: String): List<Selector> = SelectorScanner(text).scan()
+
+    /** One pass over a query's text, collecting its selectors; [selectors] describes what it skips. */
+    private class SelectorScanner(
+        private val text: String,
+    ) {
+        private val found = mutableListOf<Selector>()
+        private var i = 0
+        private var pendingName: String? = null
+
+        fun scan(): List<Selector> {
+            while (i < text.length) {
+                val c = text[i]
+                i =
+                    when {
+                        isQuote(c) -> skipString(text, i)
+                        c == '[' -> skipGroup(text, i, '[', ']')
+                        c == '{' -> braced()
+                        startsNumber(c) -> number()
+                        startsIdentifier(c) -> identifier()
+                        else -> other(c)
+                    }
+            }
+            flush()
+            return found
+        }
+
+        private fun startsNumber(c: Char) = c.isDigit() || (c == '.' && text.getOrNull(i + 1)?.isDigit() == true)
+
+        /** A `{...}` matcher list, joined to the metric name just before it, if any. */
+        private fun braced(): Int {
+            val end = skipGroup(text, i, '{', '}')
+            val body = text.substring(i, end)
+            found += Selector((pendingName ?: "") + body, clusterMatcher.containsMatchIn(body), braced = true)
+            pendingName = null
+            return end
+        }
+
+        private fun number(): Int {
+            flush()
+            return skipWhile(text, i) { it.isLetterOrDigit() || it == '.' }
+        }
+
+        /** A function, keyword, Grafana variable, label list, or the name of a metric selector. */
+        private fun identifier(): Int {
+            flush()
+            val end = identifierEnd(text, i)
+            val word = text.substring(i, end)
+            val next = skipWhile(text, end) { it.isWhitespace() }
+            val follows = text.getOrNull(next)
+            return when {
+                word in labelLists && follows == '(' -> skipGroup(text, next, '(', ')')
+                follows == '(' || word in keywords || word.startsWith("$") -> end
                 else -> {
-                    if (!c.isWhitespace()) pendingName = flush(pendingName, found)
-                    i++
+                    pendingName = word
+                    end
                 }
             }
         }
-        flush(pendingName, found)
-        return found
+
+        private fun other(c: Char): Int {
+            if (!c.isWhitespace()) flush()
+            return i + 1
+        }
+
+        /** Records the pending name as a bare metric selector, which has no matchers at all. */
+        private fun flush() {
+            pendingName?.let { found += Selector(it, scoped = false, braced = false) }
+            pendingName = null
+        }
     }
 
-    /** Records [name] as a bare metric selector, which has no matchers at all. */
-    private fun flush(
-        name: String?,
-        found: MutableList<Selector>,
-    ): String? {
-        if (name != null) found += Selector(name, scoped = false, braced = false)
-        return null
-    }
+    private fun isQuote(c: Char) = c == '"' || c == '\'' || c == '`'
+
+    private fun startsIdentifier(c: Char) = c.isLetter() || c == '_' || c == ':' || c == '$'
+
+    private fun isIdentifierChar(c: Char) = c.isLetterOrDigit() || c == '_' || c == ':' || c == '$'
 
     /** The end of an identifier that may hold Grafana variables: `a_${b}_c`, `$x`. */
     private fun identifierEnd(
         text: String,
         start: Int,
     ): Int {
-        var i = start
-        while (i < text.length) {
-            val c = text[i]
-            i =
-                when {
-                    text.startsWith("\${", i) -> text.indexOf('}', i).let { if (it < 0) text.length else it + 1 }
-                    c.isLetterOrDigit() || c == '_' || c == ':' || c == '$' -> i + 1
-                    else -> return i
-                }
+        var end = start
+        var next = identifierStep(text, end)
+        while (next > end) {
+            end = next
+            next = identifierStep(text, end)
         }
-        return i
+        return end
     }
+
+    /** The index after the identifier piece at [i], one character or one `${...}`; [i] when there is none. */
+    private fun identifierStep(
+        text: String,
+        i: Int,
+    ): Int =
+        when {
+            i >= text.length -> i
+            text.startsWith("\${", i) -> text.indexOf('}', i).let { if (it < 0) text.length else it + 1 }
+            isIdentifierChar(text[i]) -> i + 1
+            else -> i
+        }
 
     private fun skipWhile(
         text: String,
@@ -210,7 +241,7 @@ object ClusterFilterGuards {
         while (i < text.length) {
             val c = text[i]
             when {
-                c == '"' || c == '\'' || c == '`' -> {
+                isQuote(c) -> {
                     i = skipString(text, i)
                     continue
                 }

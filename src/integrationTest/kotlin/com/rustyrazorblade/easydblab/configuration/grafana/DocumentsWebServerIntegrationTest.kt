@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
+import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.IntOrString
 import io.fabric8.kubernetes.api.model.PodBuilder
@@ -63,70 +64,81 @@ class DocumentsWebServerIntegrationTest {
                 .withNamespace(NAMESPACE)
                 .endMetadata()
                 .build()
-        val stubConfig =
-            ConfigMapBuilder()
-                .withNewMetadata()
-                .withName(STUB_CONFIGMAP)
-                .withNamespace(NAMESPACE)
-                .endMetadata()
-                .addToData("nginx.conf", checkNotNull(javaClass.getResource("stub-s3-nginx.conf")).readText())
-                .build()
-        // The web server exactly as the Grafana pod runs it, less the host port, which this pod does not need.
-        val web =
-            ContainerBuilder(sidecars.containers(documents).single { it.name == "documents-web" })
-                .editFirstPort()
-                .withHostPort(null)
-                .endPort()
-                .withNewReadinessProbe()
-                .withNewTcpSocket()
-                .withPort(IntOrString(Constants.Grafana.Documents.WEB_PORT))
-                .endTcpSocket()
-                .withPeriodSeconds(1)
-                .endReadinessProbe()
-                .build()
-        val stub =
-            ContainerBuilder()
-                .withName("stub")
-                .withImage(Constants.Grafana.Documents.WEB_SERVER_IMAGE)
-                .addNewVolumeMount()
-                .withName("stub-config")
-                .withMountPath("/etc/nginx/nginx.conf")
-                .withSubPath("nginx.conf")
-                .endVolumeMount()
-                .withNewReadinessProbe()
-                .withNewTcpSocket()
-                .withPort(IntOrString(Constants.Grafana.Documents.PROXY_PORT))
-                .endTcpSocket()
-                .withPeriodSeconds(1)
-                .endReadinessProbe()
-                .build()
-        val pod =
-            PodBuilder()
-                .withNewMetadata()
-                .withName(POD)
-                .withNamespace(NAMESPACE)
-                .endMetadata()
-                .withNewSpec()
-                .withContainers(web, stub)
-                .withVolumes(sidecars.volume())
-                .addNewVolume()
-                .withName("stub-config")
-                .withNewConfigMap()
-                .withName(STUB_CONFIGMAP)
-                .endConfigMap()
-                .endVolume()
-                .endSpec()
-                .build()
 
         client.resource(webConfig).create()
-        client.resource(stubConfig).create()
-        client.resource(pod).create()
+        client.resource(stubConfigMap()).create()
+        client.resource(pod(webContainer(sidecars, documents), stubContainer(), sidecars)).create()
         client
             .pods()
             .inNamespace(NAMESPACE)
             .withName(POD)
             .waitUntilReady(READY_TIMEOUT_SECONDS, TimeUnit.SECONDS)
     }
+
+    /** The stub S3 endpoint's nginx configuration. */
+    private fun stubConfigMap() =
+        ConfigMapBuilder()
+            .withNewMetadata()
+            .withName(STUB_CONFIGMAP)
+            .withNamespace(NAMESPACE)
+            .endMetadata()
+            .addToData("nginx.conf", checkNotNull(javaClass.getResource("stub-s3-nginx.conf")).readText())
+            .build()
+
+    /** The web server exactly as the Grafana pod runs it, less the host port, which this pod does not need. */
+    private fun webContainer(
+        sidecars: GrafanaDocumentsSidecars,
+        documents: DocumentsBucket,
+    ) = ContainerBuilder(sidecars.containers(documents).single { it.name == "documents-web" })
+        .editFirstPort()
+        .withHostPort(null)
+        .endPort()
+        .withNewReadinessProbe()
+        .withNewTcpSocket()
+        .withPort(IntOrString(Constants.Grafana.Documents.WEB_PORT))
+        .endTcpSocket()
+        .withPeriodSeconds(1)
+        .endReadinessProbe()
+        .build()
+
+    /** A stub S3 endpoint on the proxy port, which records every request it receives. */
+    private fun stubContainer() =
+        ContainerBuilder()
+            .withName("stub")
+            .withImage(Constants.Grafana.Documents.WEB_SERVER_IMAGE)
+            .addNewVolumeMount()
+            .withName("stub-config")
+            .withMountPath("/etc/nginx/nginx.conf")
+            .withSubPath("nginx.conf")
+            .endVolumeMount()
+            .withNewReadinessProbe()
+            .withNewTcpSocket()
+            .withPort(IntOrString(Constants.Grafana.Documents.PROXY_PORT))
+            .endTcpSocket()
+            .withPeriodSeconds(1)
+            .endReadinessProbe()
+            .build()
+
+    private fun pod(
+        web: Container,
+        stub: Container,
+        sidecars: GrafanaDocumentsSidecars,
+    ) = PodBuilder()
+        .withNewMetadata()
+        .withName(POD)
+        .withNamespace(NAMESPACE)
+        .endMetadata()
+        .withNewSpec()
+        .withContainers(web, stub)
+        .withVolumes(sidecars.volume())
+        .addNewVolume()
+        .withName("stub-config")
+        .withNewConfigMap()
+        .withName(STUB_CONFIGMAP)
+        .endConfigMap()
+        .endVolume()
+        .endSpec()
+        .build()
 
     @AfterAll
     fun tearDown() {

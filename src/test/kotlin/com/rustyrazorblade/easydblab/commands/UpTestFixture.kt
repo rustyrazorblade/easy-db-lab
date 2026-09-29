@@ -140,48 +140,58 @@ abstract class UpTestFixture : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             ciliumAnnotationModule(),
-            module {
-                single<ClusterStateManager> { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
-                single<AwsS3BucketService> { mock<AwsS3BucketService>().also { mockS3BucketService = it } }
-                single<OpenSearchService> { mock<OpenSearchService>() }
-                single<VpcService> { mock<VpcService>().also { mockVpcService = it } }
-                single<AwsInfrastructureService> { mock<AwsInfrastructureService>().also { mockAwsInfrastructureService = it } }
-                single<EC2InstanceService> { mock<EC2InstanceService>().also { mockEc2InstanceService = it } }
-                single<HostOperationsService> { HostOperationsService(get()) }
-                single<AMIResolver> { mock<AMIResolver>().also { mockAmiResolver = it } }
-                single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
-                single<ClusterProvisioningService> { mock<ClusterProvisioningService>().also { mockClusterProvisioningService = it } }
-                single<ClusterConfigurationService> { mock<ClusterConfigurationService>().also { mockClusterConfigurationService = it } }
-                single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
-                single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
-                single { CiliumNodeImageCheck(get()) }
-                single { ProvisioningPreflight(get(), get()) }
-                single { AccountBucketSetup(get(), get(), get(), get(), get()) }
-                single<TestDocumentService> { mock<TestDocumentService>().also { mockDocumentService = it } }
-                single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
-                single<RegistryService> { mock<RegistryService>() }
-                single<SocksProxyService> { mock<SocksProxyService>() }
-                single<CommandExecutor> { mock<CommandExecutor>().also { mockCommandExecutor = it } }
-                single<ObservabilityStackService> {
-                    mock<ObservabilityStackService>().also { mockObservabilityStackService = it }
-                }
-
-                single<LocalTailscaleClient> {
-                    LocalTailscaleClient {
-                        localTailscaleQueries++
-                        localTailscaleState
-                    }
-                }
-                single<TcpReachabilityProbe> {
-                    TcpReachabilityProbe { host, port ->
-                        probedTargets.add("$host:$port")
-                        tailnetReachable && probedTargets.size > tailnetProbesBeforeReachable
-                    }
-                }
-
-                factory<RemoteOperationsService> { fakeRemoteOperations() }
-            },
+            provisioningModule(),
+            clusterModule(),
         )
+
+    /** The AWS side of `up`: state, bucket, network, instances and the provisioning services. */
+    private fun provisioningModule(): Module =
+        module {
+            single<ClusterStateManager> { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
+            single<AwsS3BucketService> { mock<AwsS3BucketService>().also { mockS3BucketService = it } }
+            single<OpenSearchService> { mock<OpenSearchService>() }
+            single<VpcService> { mock<VpcService>().also { mockVpcService = it } }
+            single<AwsInfrastructureService> { mock<AwsInfrastructureService>().also { mockAwsInfrastructureService = it } }
+            single<EC2InstanceService> { mock<EC2InstanceService>().also { mockEc2InstanceService = it } }
+            single<HostOperationsService> { HostOperationsService(get()) }
+            single<AMIResolver> { mock<AMIResolver>().also { mockAmiResolver = it } }
+            single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
+            single<ClusterProvisioningService> { mock<ClusterProvisioningService>().also { mockClusterProvisioningService = it } }
+            single<ClusterConfigurationService> { mock<ClusterConfigurationService>().also { mockClusterConfigurationService = it } }
+            single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
+            single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
+            single { CiliumNodeImageCheck(get()) }
+            single { ProvisioningPreflight(get(), get()) }
+            single { AccountBucketSetup(get(), get(), get(), get(), get()) }
+        }
+
+    /** The cluster side of `up`: K8s, the nested commands, the stack, Tailscale and SSH. */
+    private fun clusterModule(): Module =
+        module {
+            single<TestDocumentService> { mock<TestDocumentService>().also { mockDocumentService = it } }
+            single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
+            single<RegistryService> { mock<RegistryService>() }
+            single<SocksProxyService> { mock<SocksProxyService>() }
+            single<CommandExecutor> { mock<CommandExecutor>().also { mockCommandExecutor = it } }
+            single<ObservabilityStackService> {
+                mock<ObservabilityStackService>().also { mockObservabilityStackService = it }
+            }
+
+            single<LocalTailscaleClient> {
+                LocalTailscaleClient {
+                    localTailscaleQueries++
+                    localTailscaleState
+                }
+            }
+            single<TcpReachabilityProbe> {
+                TcpReachabilityProbe { host, port ->
+                    probedTargets.add("$host:$port")
+                    tailnetReachable && probedTargets.size > tailnetProbesBeforeReachable
+                }
+            }
+
+            factory<RemoteOperationsService> { fakeRemoteOperations() }
+        }
 
     /** An SSH layer that runs nothing and answers through [fakeRemoteResponse]. */
     private fun fakeRemoteOperations(): RemoteOperationsService =

@@ -263,46 +263,30 @@ object RetryUtil {
             }.build()
 
     /**
-     * Creates retry configuration for the pre-K3s probe of the control node over the tailnet.
+     * Creates retry configuration for polling a check that returns a boolean until it is `true`.
      *
-     * The probe returns a boolean, not an exception: `false` means the subnet route has not
-     * reached this machine yet, so the retry is on the result. The interval is a parameter so
-     * tests can run the full attempt count without sleeping.
+     * The check returns a boolean, not an exception: `false` means the awaited state has not
+     * arrived yet, so the retry is on the result. When the attempts run out the last result,
+     * `false`, is returned. The interval is a parameter so tests can run every attempt without
+     * sleeping. Used for the pre-K3s probe of the control node over the tailnet
+     * ([Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS]) and for the final stderr EMR uploads
+     * for a failed step ([Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS]).
      *
-     * Fixed interval: [retryInterval] between attempts, up to
-     * [Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS] attempts
+     * Fixed interval: [retryInterval] between attempts, up to [maxAttempts] attempts
      *
-     * @param retryInterval how long to wait between probes
-     * @return RetryConfig configured for the tailnet reachability probe
-     */
-    fun createTailscaleReachabilityRetryConfig(retryInterval: Duration): RetryConfig =
-        RetryConfig
-            .custom<Boolean>()
-            .maxAttempts(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS)
-            .intervalFunction { _ -> retryInterval.toMillis() }
-            .retryOnResult { reachable -> !reachable }
-            .build()
-
-    /**
-     * Creates retry configuration for waiting on the final stderr EMR uploads for a failed step.
-     *
-     * The check returns a boolean, not an exception: `false` means the uploaded copy predates the
-     * step's end (or none exists yet), so the retry is on the result. When the attempts run out the
-     * last result, `false`, is returned. The interval is a parameter so tests can run every attempt
-     * without sleeping.
-     *
-     * Fixed interval: [retryInterval] between attempts, up to
-     * [Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS] attempts
-     *
+     * @param maxAttempts how many times to run the check
      * @param retryInterval how long to wait between checks
-     * @return RetryConfig configured for the final step stderr wait
+     * @return RetryConfig configured for the poll
      */
-    fun createFinalStepStderrRetryConfig(retryInterval: Duration): RetryConfig =
+    fun createBooleanPollRetryConfig(
+        maxAttempts: Int,
+        retryInterval: Duration,
+    ): RetryConfig =
         RetryConfig
             .custom<Boolean>()
-            .maxAttempts(Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS)
+            .maxAttempts(maxAttempts)
             .intervalFunction { _ -> retryInterval.toMillis() }
-            .retryOnResult { final -> !final }
+            .retryOnResult { done -> !done }
             .build()
 
     /**

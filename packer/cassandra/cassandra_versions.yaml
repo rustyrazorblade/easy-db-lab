@@ -25,7 +25,7 @@
 
 - version: "5.0-HEAD"
   url: https://github.com/rustyrazorblade/easy-db-lab/releases/download/nightly/apache-cassandra-5.0-HEAD-bin.tar.gz
-  java: "11"
+  java: "17"
   python: "3.11.9"
 
 - version: "6.0-HEAD"

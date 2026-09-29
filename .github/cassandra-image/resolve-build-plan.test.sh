@@ -158,6 +158,31 @@ assert_fails "empty source ref fails fast" \
   VERSION=5.0.3 SHORT_SHA=deadbeef0000 SOURCE_REF= \
   JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
 
+# --- every nightly tarball runs on the JDK it was built with -----------------
+# The nightly release holds tarballs this workflow built with the auto-mapped JDK. A node runs
+# each one on the `java` its cassandra_versions.yaml entry declares, so the two must agree: a
+# 5.0-HEAD entry left on Java 11 died at startup with UnsupportedClassVersionError. The label
+# (5.0-HEAD, 6.0-HEAD, trunk) falls in the same auto-map branch as the build.xml version.
+VERSIONS_FILE="${SCRIPT_DIR}/../../packer/cassandra/cassandra_versions.yaml"
+if ! command -v yq >/dev/null 2>&1; then
+  echo "FAIL - yq is not installed; the nightly JDK check reads cassandra_versions.yaml with it." >&2
+  exit 1
+fi
+nightly_entries="$(yq -r '.[] | select((.url // "") | test("/releases/download/nightly/")) | .version + " " + .java' "$VERSIONS_FILE")"
+tests_run=$((tests_run + 1))
+if [[ -n "$nightly_entries" ]]; then
+  echo "ok   - cassandra_versions.yaml declares nightly entries"
+else
+  echo "FAIL - found no nightly entries in ${VERSIONS_FILE}"
+  tests_failed=$((tests_failed + 1))
+fi
+while read -r label java; do
+  [[ -z "$label" ]] && continue
+  assert_field "nightly ${label} declares the JDK it is built with" build_jdk "$java" \
+    VERSION="$label" SHORT_SHA=deadbeef0000 SOURCE_REF=nightly \
+    JDK_OVERRIDE= BASE_IMAGE_OVERRIDE= REPO_OWNER=o REPO_NAME=r
+done <<<"$nightly_entries"
+
 echo ""
 echo "${tests_run} tests, ${tests_failed} failed"
 [[ "$tests_failed" -eq 0 ]]

@@ -286,4 +286,10 @@ Consequences when editing those scripts:
 ## Output
 
 See the root `CLAUDE.md` for output conventions (events vs `println()`).
+
+A command that fails must exit non-zero: scripts and test plans read the exit code, not the text.
+When the command has already told the user what went wrong through its own typed event (a query
+error, a per-host failure), throw `kernel/CommandFailedException` after emitting it. The executor
+returns the error exit code and does not print the failure a second time. Any other exception is
+reported as `Command.ExecutionError` with its cause chain.
 See [`events/CLAUDE.md`](../events/CLAUDE.md) for the event hierarchy and how to add new events.

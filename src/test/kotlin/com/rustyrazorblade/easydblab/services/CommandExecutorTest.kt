@@ -13,7 +13,11 @@ import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
@@ -67,6 +71,22 @@ class CommandExecutorTest : BaseKoinTest() {
             },
         )
 
+    private val emitted = mutableListOf<Event>()
+    private val eventBus =
+        EventBus().also {
+            it.addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        emitted.add(envelope.event)
+                    }
+
+                    override fun close() {
+                        // Nothing to release.
+                    }
+                },
+            )
+        }
+
     @BeforeEach
     fun setupMocks() {
         executionOrder.clear()
@@ -92,7 +112,7 @@ class CommandExecutorTest : BaseKoinTest() {
                         dockerClientProvider = mockDockerClientProvider,
                     ),
                 resourceManager = mockResourceManager,
-                eventBus = EventBus(),
+                eventBus = eventBus,
                 socksProxyService = mockSocksProxyService,
                 proxyAvailability = proxyAvailability,
                 profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run here") },
@@ -124,6 +144,21 @@ class CommandExecutorTest : BaseKoinTest() {
 
         // Then
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+    }
+
+    @Test
+    fun `a command that already reported its failure exits non-zero without a second error report`() {
+        val exitCode = commandExecutor.execute { ReportedFailureCommand() }
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `an unexpected failure is reported as an execution error`() {
+        commandExecutor.execute { FailingCommand() }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).hasSize(1)
     }
 
     // ========== SCHEDULE DEFERRED TESTS ==========
@@ -606,6 +641,12 @@ class CommandExecutorTest : BaseKoinTest() {
     @Command(name = "failing-command")
     inner class FailingCommand : PicoBaseCommand() {
         override fun execute(): Unit = throw RuntimeException("Command failed intentionally")
+    }
+
+    /** Test command that reports its own failure, then signals it through the exit code only */
+    @Command(name = "reported-failure-command")
+    inner class ReportedFailureCommand : PicoBaseCommand() {
+        override fun execute(): Unit = throw CommandFailedException("query failed")
     }
 
     /** Test command with @TriggerBackup annotation */

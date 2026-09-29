@@ -1,74 +1,141 @@
 package com.rustyrazorblade.easydblab.commands.exec
 
+import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.koin.core.module.Module
+import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
+import java.rmi.ServerException
 
-class ExecRunTest {
-    private val execRun = ExecRun()
+/**
+ * Tests the systemd-run command line `exec run` sends to each host. The remote operations are
+ * mocked because `systemd-run` exists only on the node; the command string is what can be wrong.
+ */
+class ExecRunTest : BaseKoinTest() {
+    private val mockClusterStateManager: ClusterStateManager = mock()
+    private val mockRemoteOps: RemoteOperationsService = mock()
 
-    @Test
-    fun `deriveUnitName uses provided name when set`() {
-        execRun.unitNameOverride = "my-watcher"
-        val result = execRun.deriveUnitName("inotifywait -m /mnt/db1")
-        assertThat(result).isEqualTo("my-watcher")
-    }
-
-    @Test
-    fun `deriveUnitName extracts tool name from simple command`() {
-        execRun.unitNameOverride = null
-        val result = execRun.deriveUnitName("inotifywait -m /mnt/db1")
-        assertThat(result).startsWith("inotifywait-")
-        assertThat(result.substringAfter("inotifywait-")).matches("\\d+")
-    }
-
-    @Test
-    fun `deriveUnitName extracts tool name from absolute path`() {
-        execRun.unitNameOverride = null
-        val result = execRun.deriveUnitName("/usr/bin/inotifywait -m /mnt/db1")
-        assertThat(result).startsWith("inotifywait-")
-    }
-
-    @Test
-    fun `deriveUnitName handles command with no arguments`() {
-        execRun.unitNameOverride = null
-        val result = execRun.deriveUnitName("htop")
-        assertThat(result).startsWith("htop-")
-    }
-
-    @Test
-    fun `buildSystemdRunCommand constructs foreground command with journal output`() {
-        execRun.background = false
-        val result =
-            execRun.buildSystemdRunCommand(
-                "edl-exec-test",
-                "ls /mnt/db1",
+    private val dbHosts =
+        listOf("db0", "db1").mapIndexed { index, alias ->
+            ClusterHost(
+                publicIp = "54.1.2.${index + 1}",
+                privateIp = "10.0.1.${index + 1}",
+                alias = alias,
+                availabilityZone = "us-west-2a",
+                instanceId = "i-$alias",
             )
-        assertThat(result).contains("--wait")
-        assertThat(result).contains("--unit=edl-exec-test")
-        assertThat(result).endsWith("-- ls /mnt/db1")
+        }
+
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                single<ClusterStateManager> { mockClusterStateManager }
+                single<RemoteOperationsService> { mockRemoteOps }
+                single { HostOperationsService(mockClusterStateManager) }
+            },
+        )
+
+    @BeforeEach
+    fun setupState() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                initConfig = InitConfig(region = "us-west-2"),
+                hosts = mapOf(ServerType.Cassandra to dbHosts),
+            ),
+        )
+        whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
+    }
+
+    private fun run(
+        vararg command: String,
+        configure: ExecRun.() -> Unit = {},
+    ): List<String> {
+        ExecRun()
+            .apply {
+                this.command = command.toList()
+                configure()
+            }.execute()
+        val captor = argumentCaptor<String>()
+        verify(mockRemoteOps, atLeastOnce()).executeRemotely(any(), captor.capture(), any(), any())
+        return captor.allValues.filter { it.contains("systemd-run") }
     }
 
     @Test
-    fun `buildSystemdRunCommand constructs background command with journal output`() {
-        execRun.background = true
-        val result =
-            execRun.buildSystemdRunCommand(
-                "edl-exec-inotifywait",
-                "inotifywait -m /mnt/db1",
-            )
-        assertThat(result).doesNotContain("--wait")
-        assertThat(result).contains("--unit=edl-exec-inotifywait")
-        assertThat(result).endsWith("-- inotifywait -m /mnt/db1")
+    fun `a quoted command with arguments runs through a shell under a unit name with no quote in it`() {
+        val sent = run("uname -n; uptime")
+
+        assertThat(sent).hasSize(2)
+        assertThat(sent).allSatisfy {
+            assertThat(it).matches("""sudo systemd-run --unit=edl-exec-uname-\d+ --wait -- bash -c 'uname -n; uptime'""")
+        }
     }
 
     @Test
-    fun `buildSystemdRunCommand uses sudo`() {
-        execRun.background = false
-        val result =
-            execRun.buildSystemdRunCommand(
-                "edl-exec-test",
-                "ls",
-            )
-        assertThat(result).startsWith("sudo systemd-run")
+    fun `a named run passes the whole command line to a shell, not as one executable name`() {
+        val sent = run("uname -a") { unitNameOverride = "qa-uname" }
+
+        assertThat(sent).allSatisfy {
+            assertThat(it).isEqualTo("sudo systemd-run --unit=edl-exec-qa-uname --wait -- bash -c 'uname -a'")
+        }
+    }
+
+    @Test
+    fun `separate words keep their boundaries inside the shell command`() {
+        val sent = run("grep", "a b", "/etc/hosts") { hosts.hostList = "db0" }
+
+        assertThat(sent.single())
+            .matches("""sudo systemd-run --unit=edl-exec-grep-\d+ --wait -- bash -c 'grep '\\''a b'\\'' /etc/hosts'""")
+    }
+
+    @Test
+    fun `a unit name keeps only the characters systemd allows`() {
+        val sent = run("uptime") { unitNameOverride = "my tool's run" }
+
+        assertThat(sent).allSatisfy { assertThat(it).startsWith("sudo systemd-run --unit=edl-exec-my-tool-s-run --wait") }
+    }
+
+    @Test
+    fun `a background run starts the unit without waiting`() {
+        val sent = run("sleep 300") { background = true }
+
+        assertThat(sent).allSatisfy {
+            assertThat(it).matches("""sudo systemd-run --unit=edl-exec-sleep-\d+ -- bash -c 'sleep 300'""")
+        }
+    }
+
+    @Test
+    fun `a run that fails on one host still runs on the others, reports the failure, and fails the command`() {
+        whenever(mockRemoteOps.executeRemotely(eq(dbHosts[0].toHost()), any(), any(), any()))
+            .thenThrow(RuntimeException("Remote command failed (1)", ServerException("1")))
+
+        assertThatThrownBy { ExecRun().apply { command = listOf("false") }.execute() }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasMessageContaining("db0")
+
+        verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[1].toHost()), any(), any(), any())
+        val output = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
+        assertThat(output).contains("=== db0 ===\nError executing command: Remote command failed (1)")
     }
 }

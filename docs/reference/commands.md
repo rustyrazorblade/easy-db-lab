@@ -639,11 +639,14 @@ Execute commands on remote hosts via `systemd-run`. Tool output is captured by t
 
 #### exec run
 
-Run a command on remote hosts (foreground by default).
+Run a command on remote hosts (foreground by default). The command runs through `bash -c`: pass a whole command line as one quoted argument, or pass words after `--`, which are quoted one by one. If the command fails on any host, `exec run` reports that host and exits non-zero.
 
 ```bash
 # Foreground (blocks until complete, shows output)
 easy-db-lab exec run -t cassandra -- ls /mnt/db1
+
+# A shell command line, quoted as one argument
+easy-db-lab exec run --hosts db0 "df -h /mnt/db1 | tail -1"
 
 # Background (returns immediately, tool keeps running)
 easy-db-lab exec run --bg -t cassandra -- inotifywait -m /mnt/db1/data
@@ -656,7 +659,7 @@ easy-db-lab exec run --bg --name watch-imports -t cassandra -- inotifywait -m /m
 |--------|-------------|
 | `-t, --type` | Server type: cassandra, stress, control (default: cassandra) |
 | `--bg` | Run in background (returns immediately) |
-| `--name` | Name for the systemd unit (auto-derived if not provided) |
+| `--name` | Name for the systemd unit, `edl-exec-<name>` (default: the command's first word and a timestamp). Characters systemd does not allow become `-`. |
 | `--hosts` | Filter to specific hosts |
 | `-p` | Execute in parallel across hosts |
 

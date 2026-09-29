@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
@@ -193,6 +194,10 @@ class DefaultCommandExecutor(
             try {
                 checkRequirements(command)
                 command.call()
+            } catch (e: CommandFailedException) {
+                // The command already reported this failure through its own event.
+                log.debug(e) { "Command reported failure" }
+                Constants.ExitCodes.ERROR
             } catch (e: Exception) {
                 log.error(e) { "Command execution failed" }
                 val causeChain =

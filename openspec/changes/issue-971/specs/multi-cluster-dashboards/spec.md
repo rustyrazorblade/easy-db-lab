@@ -2,7 +2,7 @@
 
 ### Requirement: All dashboards have a cluster multi-select variable
 
-Every dashboard that has a `cluster` template variable (lowercase) SHALL populate it with `label_values(up, cluster)` on the dashboard's metrics datasource picker, `${metrics_datasource}`, and never on a fixed datasource.  The variable SHALL support multi-select and SHALL include an "All" option.  The Tests dashboard is the one exception: its `cluster` variable is single-select, because it selects one test.  The dashboard file SHALL store no default for the variable.  The installer SHALL set the default to the current cluster, as the requirement "Installed dashboards default to the current cluster" states.  "All" SHALL NOT be the default.  Every dashboard that queries metrics or logs SHALL have this `cluster` variable, and every metrics and logs query on it, including the queries of other template variables such as a host list, SHALL filter by `cluster=~"$cluster"` (issue #983, folded into this change).  A data source whose series carry no `cluster` label is the one exception, and the dashboard SHALL say so in its description.
+Every dashboard that has a `cluster` template variable (lowercase) SHALL populate it with `label_values(up, cluster)` on the dashboard's metrics datasource picker, `${metrics_datasource}`, and never on a fixed datasource.  The variable SHALL support multi-select and SHALL include an "All" option.  The Tests dashboard is the one exception: its `cluster` variable is single-select, because it selects one test.  The dashboard file SHALL store no default for the variable.  The installer SHALL set the default to the current cluster, as the requirement "Installed dashboards default to the current cluster" states.  "All" SHALL NOT be the default.  Every dashboard that queries metrics or logs SHALL have this `cluster` variable, and every metrics and logs query on it, including the queries of other template variables such as a host list, SHALL filter by `cluster=~"$cluster"` (issue #983, folded into this change).  Two exceptions apply: the Tests dashboard's listing of tests, which lists every cluster of the tenant by design; and the variables that list the clusters themselves (`cluster`, `baseline_cluster`, `candidate_cluster`).
 
 #### Scenario: Cluster variable reads the selected metrics tenant
 
@@ -190,3 +190,57 @@ Every path that installs a dashboard SHALL apply one install-time pass to it: th
 
 - **WHEN** the pass runs on a dashboard that has no picker, no `cluster`, no run variable and no `doc_tenant`
 - **THEN** the installed dashboard has the same content as the file
+
+### Requirement: System dashboards have a role picker
+
+System Overview and System A/B Comparison SHALL declare `role`, a multi-select custom variable with an "All" option.  A host's role SHALL be read from its host name: `db` is `db[0-9]+`, `app` is `app[0-9]+`, `control` is `control[0-9]+`, and `spark` is `ip-.+` (EMR nodes).  The default SHALL be All, whose value `.*` matches every host.  Queries SHALL read the variable as `host_name=~"${role:pipe}"`, and the CloudWatch selector SHALL read it as `tag_Name=~"${role:pipe}"`.  The host pickers (`hostname` on System Overview; `baseline` and `candidate` on System A/B Comparison) SHALL list only hosts of the selected roles.  Every panel selector and PromQL annotation on these dashboards that has a cluster matcher SHALL filter by `role`.  Every `/d/` link from these dashboards SHALL carry `role`, as `${role:queryparam}` or as an explicit `var-role=` value, in addition to the variables that the requirement "Dashboard links carry the pickers and the selected runs" lists.  A unit test SHALL check the variable, its patterns against sample host names, the host pickers and every panel selector.
+
+#### Scenario: A role shows every host of that role
+
+- **WHEN** an operator selects the role `db` on System Overview
+- **THEN** the host picker lists only the db hosts
+- **AND** every panel shows only db hosts
+
+#### Scenario: Each role's pattern selects exactly its hosts
+
+- **WHEN** the role patterns are matched against the host names `db0`, `db12`, `app0`, `control0` and `ip-10-28-1-222`
+- **THEN** each host matches only the pattern of its own role
+
+#### Scenario: All is the default and shows every host
+
+- **WHEN** an operator opens System Overview or System A/B Comparison with no role selected by hand
+- **THEN** `role` is All and every host shows
+
+#### Scenario: A link keeps the selected roles
+
+- **WHEN** an operator with the role `app` selected follows a `/d/` link from System Overview
+- **THEN** the target dashboard opens with `role` set to `app`
+
+#### Scenario: A panel selector without the role filter fails the unit test
+
+- **WHEN** a panel selector on System Overview or System A/B Comparison has a cluster matcher and no `role` matcher
+- **THEN** the unit test fails and names the file and the selector
+
+### Requirement: Dashboards match hosts on cluster and host name
+
+Every cluster names its hosts the same way, so a PromQL vector match that pairs hosts SHALL use `on (cluster, host_name)`, never `on (host_name)` alone.  No match SHALL use `ignoring (cluster)`.  Every `by (...)` that feeds a host match SHALL keep `cluster`.  A unit test SHALL check every core and kit dashboard, and SHALL fail on a match on `host_name` without `cluster`, on a match that ignores `cluster`, and on an aggregation by `host_name` that drops `cluster` in a query that matches on `host_name`.
+
+#### Scenario: Two clusters with the same host name
+
+- **WHEN** `cluster` is All and two clusters each have `app0`
+- **THEN** System Overview's Load per core shows both hosts and does not fail with "found duplicate series"
+
+#### Scenario: A host match without the cluster fails the unit test
+
+- **WHEN** a dashboard query matches `on (host_name)` without `cluster`
+- **THEN** the unit test fails and names the file and the clause
+
+#### Scenario: A match that ignores the cluster fails the unit test
+
+- **WHEN** a dashboard query matches with `ignoring (cluster)`
+- **THEN** the unit test fails and names the file and the clause
+
+#### Scenario: An aggregation that drops the cluster fails the unit test
+
+- **WHEN** a dashboard query aggregates `by (host_name)` without `cluster` and matches on `host_name`
+- **THEN** the unit test fails and names the file and the clause

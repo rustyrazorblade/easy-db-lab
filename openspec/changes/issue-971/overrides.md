@@ -28,6 +28,14 @@
 **Currently** (`openspec/specs/grafana-install-dashboard/spec.md`): "The `grafana install <path>` command SHALL read a dashboard JSON file and upload it to the running Grafana instance via `POST /api/dashboards/db` with `overwrite: true`."
 **This change:** `grafana install` applies the same install-time pass as `up` and kit `start`, from the workspace cluster state (F10).  Adds the scenario "Install applies the install-time pass".
 
+### tool-execution: Foreground command execution with logging (MODIFIED)
+**Currently** (`openspec/specs/tool-execution/spec.md`): "The `exec run` command SHALL execute commands on remote hosts via `systemd-run --wait`, routing stdout and stderr to the systemd journal. After the command completes, its output SHALL be displayed to the user."
+**This change:** if the unit fails, `exec run` still prints the unit's journal for that host, and then reports the failure (owner decision 2026-09-29).  Adds the scenario "A failed foreground run prints the unit's journal".  The two existing scenarios are unchanged.
+
+### tool-execution: Unit naming (MODIFIED)
+**Currently:** "Background and foreground commands SHALL be run as systemd transient units with predictable names following the pattern `edl-exec-<name>`."
+**This change:** every character that systemd does not allow in a unit name becomes `-`, and `exec run` and `exec stop` build the name the same way (owner decision 2026-09-29).  Adds the scenarios "A name with characters systemd does not allow is sanitized" and "exec stop sanitizes the name the same way".  The two existing scenarios are unchanged.
+
 ## Conflicts with other in-flight changes
 
 **issue-966** (merged, not archived) modifies `observability-store` ("Observability data lands in one layout in the account bucket", "The cluster cannot delete observability objects", "Data reaches S3 while the cluster is up and survives a restart"), `cluster-lifecycle`, `grafana-annotations` and `cloudwatch-metrics-export`.
@@ -39,3 +47,5 @@
 - **No actual conflict: "Grafana has a datasource per tenant and one for all tenants"** (issue-970).  This change uses those datasources and does not modify the requirement.
 - **No actual conflict: `grafana-annotations`** (issue-966).  This change moves the annotation query onto `${logs_datasource}` and rewires the annotation client in the D8 split, but the behavior that requirement states does not change, so it has no delta here.
 - **No actual conflict** on `multi-cluster-dashboards`, `cluster-comparison-dashboard`, `observability`, `grafana-install-dashboard`, `tests-dashboard` or `test-documents`: neither in-flight change touches them.
+- **No actual conflict: `cloudwatch-metrics-export`** (issue-966 modifies "CloudWatch metrics scraped into Mimir").  This change only adds two requirements, "Each cluster's YACE discovers only its own resources" and "S3 panels count the shared account bucket once", and does not modify that requirement.
+- **No actual conflict** on `tool-execution`, `server` or `spark-emr`: neither in-flight change touches them.

@@ -57,4 +57,17 @@ class DocumentNamesTest {
         assertThat(rejected.map { it.name }).containsExactly("a.txt", "index.md", "gone.md")
         assertThat(rejected).allSatisfy { assertThat(it.reason).isNotBlank() }
     }
+
+    @Test
+    fun `the same file name given twice in one upload is rejected`() {
+        val first = File(dir, "a").also { it.mkdirs() }.resolve("results.md").also { it.writeText("a") }
+        val second = File(dir, "b").also { it.mkdirs() }.resolve("results.md").also { it.writeText("b") }
+
+        val rejected = DocumentNames.rejected(listOf(first, second, file("notes.md")))
+
+        assertThat(rejected).singleElement().satisfies({
+            assertThat(it.name).isEqualTo("results.md")
+            assertThat(it.reason).contains("given twice")
+        })
+    }
 }

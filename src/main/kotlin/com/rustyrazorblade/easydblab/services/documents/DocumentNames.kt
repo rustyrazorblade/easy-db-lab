@@ -30,9 +30,20 @@ object DocumentNames {
     private const val RESERVED = "index$MARKDOWN_SUFFIX"
     private val SAFE_NAME = Regex("[A-Za-z0-9._-]+")
 
-    /** Every file of [files] that breaks the rule, in the order given. */
-    fun rejected(files: List<File>): List<RejectedDocument> =
-        files.mapNotNull { file -> reasonFor(file)?.let { RejectedDocument(file.name, it) } }
+    /**
+     * Every file of [files] that breaks the rule, in the order given. A name given twice is rejected
+     * once, because both files would land on the same key and the second would replace the first.
+     */
+    fun rejected(files: List<File>): List<RejectedDocument> {
+        val invalid = files.mapNotNull { file -> reasonFor(file)?.let { RejectedDocument(file.name, it) } }
+        val repeated =
+            files
+                .groupBy { it.name }
+                .filter { (name, sameName) -> sameName.size > 1 && invalid.none { it.name == name } }
+                .keys
+                .map { RejectedDocument(it, "is given twice; each document needs its own name") }
+        return invalid + repeated
+    }
 
     /** The name of the HTML copy of the document named [name]. */
     fun htmlName(name: String): String = stem(name) + ".html"

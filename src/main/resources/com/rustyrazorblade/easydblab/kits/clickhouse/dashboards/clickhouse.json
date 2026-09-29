@@ -380,7 +380,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace(ClickHouseMetrics_VersionInteger{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(label_replace(ClickHouseMetrics_VersionInteger{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
           "format": "table",
           "instant": true,
           "interval": "",
@@ -394,7 +394,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace(ClickHouseMetrics_Revision{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(label_replace(ClickHouseMetrics_Revision{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -409,7 +409,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace(ClickHouseAsyncMetrics_NumberOfTables{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(label_replace(ClickHouseAsyncMetrics_NumberOfTables{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -424,7 +424,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace(ClickHouseAsyncMetrics_Uptime{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(label_replace(ClickHouseAsyncMetrics_Uptime{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -439,7 +439,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace(ClickHouseAsyncMetrics_NumberOfDatabases{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(label_replace(ClickHouseAsyncMetrics_NumberOfDatabases{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -454,7 +454,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace(ClickHouseMetrics_ReadonlyReplica{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(label_replace(ClickHouseMetrics_ReadonlyReplica{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -469,7 +469,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace(ClickHouseMetrics_KafkaConsumers{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(label_replace(ClickHouseMetrics_KafkaConsumers{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -484,7 +484,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace((ClickHouseAsyncMetrics_OSMemoryTotal{cluster=~\"$cluster\",  instance=~\"($Instance)\"}\n-\nClickHouseAsyncMetrics_OSMemoryFreePlusCached{cluster=~\"$cluster\", instance=~\"($Instance)\"})\n/ ClickHouseAsyncMetrics_OSMemoryTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"} * 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(label_replace((ClickHouseAsyncMetrics_OSMemoryTotal{cluster=~\"$cluster\",  instance=~\"($Instance)\"}\n-\nClickHouseAsyncMetrics_OSMemoryFreePlusCached{cluster=~\"$cluster\", instance=~\"($Instance)\"})\n/ ClickHouseAsyncMetrics_OSMemoryTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"} * 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -499,7 +499,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace((1 - ClickHouseAsyncMetrics_OSIdleTimeNormalized{cluster=~\"$cluster\",  instance=~\"($Instance)\"}) * 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\") ",
+          "expr": "label_join(label_replace((1 - ClickHouseAsyncMetrics_OSIdleTimeNormalized{cluster=~\"$cluster\",  instance=~\"($Instance)\"}) * 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\") ",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -514,7 +514,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace(ClickHouseAsyncMetrics_OSUptime{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(label_replace(ClickHouseAsyncMetrics_OSUptime{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -528,7 +528,7 @@
         {
           "id": "seriesToColumns",
           "options": {
-            "byField": "instance"
+            "byField": "cluster_instance"
           }
         },
         {
@@ -588,7 +588,17 @@
               "cluster_name 7": true,
               "cluster_name 8": true,
               "cluster_name 9": true,
-              "cluster_name 10": true
+              "cluster_name 10": true,
+              "cluster_instance": true,
+              "instance 2": true,
+              "instance 3": true,
+              "instance 4": true,
+              "instance 5": true,
+              "instance 6": true,
+              "instance 7": true,
+              "instance 8": true,
+              "instance 9": true,
+              "instance 10": true
             },
             "indexByName": {
               "Time 1": 1,
@@ -629,7 +639,6 @@
               "cluster 7": 40,
               "cluster 8": 42,
               "cluster 9": 44,
-              "instance": 0,
               "job 1": 3,
               "job 10": 28,
               "job 2": 6,
@@ -639,7 +648,8 @@
               "job 6": 18,
               "job 7": 21,
               "job 8": 24,
-              "job 9": 26
+              "job 9": 26,
+              "instance 1": 0
             },
             "renameByName": {
               "Value #A": "ClickHouse Version",
@@ -660,8 +670,8 @@
               "cluster 1": "Cluster",
               "cluster 2": "",
               "cluster 6": "",
-              "instance": "Instance",
-              "cluster_name 1": "Cluster"
+              "cluster_name 1": "Cluster",
+              "instance 1": "Instance"
             }
           }
         }
@@ -26777,7 +26787,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "label_replace(ClickHouseAsyncMetrics_NumberOfTables{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+              "expr": "label_join(label_replace(ClickHouseAsyncMetrics_NumberOfTables{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
               "format": "table",
               "hide": false,
               "instant": true,
@@ -26792,7 +26802,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "label_replace(ClickHouseAsyncMetrics_Uptime{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+              "expr": "label_join(label_replace(ClickHouseAsyncMetrics_Uptime{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
               "format": "table",
               "hide": false,
               "instant": true,
@@ -26807,7 +26817,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "label_replace((ClickHouseAsyncMetrics_OSMemoryTotal{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}\n-\nClickHouseAsyncMetrics_OSMemoryFreePlusCached{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"})\n/ ClickHouseAsyncMetrics_OSMemoryTotal{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"} * 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+              "expr": "label_join(label_replace((ClickHouseAsyncMetrics_OSMemoryTotal{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}\n-\nClickHouseAsyncMetrics_OSMemoryFreePlusCached{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"})\n/ ClickHouseAsyncMetrics_OSMemoryTotal{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"} * 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
               "format": "table",
               "hide": false,
               "instant": true,
@@ -26822,7 +26832,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "label_replace((1 - ClickHouseAsyncMetrics_OSIdleTimeNormalized{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}) * 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\") ",
+              "expr": "label_join(label_replace((1 - ClickHouseAsyncMetrics_OSIdleTimeNormalized{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}) * 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\") ",
               "format": "table",
               "hide": false,
               "instant": true,
@@ -26837,7 +26847,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "label_replace(ClickHouseAsyncMetrics_OSUptime{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+              "expr": "label_join(label_replace(ClickHouseAsyncMetrics_OSUptime{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
               "format": "table",
               "hide": false,
               "instant": true,
@@ -26852,7 +26862,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "label_replace(ClickHouseAsyncMetrics_KeeperIsLeader{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+              "expr": "label_join(label_replace(ClickHouseAsyncMetrics_KeeperIsLeader{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
               "format": "table",
               "hide": false,
               "instant": true,
@@ -26867,7 +26877,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "label_replace(ClickHouseAsyncMetrics_KeeperIsFollower{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+              "expr": "label_join(label_replace(ClickHouseAsyncMetrics_KeeperIsFollower{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
               "format": "table",
               "hide": false,
               "instant": true,
@@ -26882,7 +26892,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "label_replace(ClickHouseAsyncMetrics_KeeperIsObserver{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+              "expr": "label_join(label_replace(ClickHouseAsyncMetrics_KeeperIsObserver{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
               "format": "table",
               "hide": false,
               "instant": true,
@@ -26897,7 +26907,7 @@
               },
               "editorMode": "code",
               "exemplar": false,
-              "expr": "label_replace(ClickHouseAsyncMetrics_KeeperZnodeCount{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+              "expr": "label_join(label_replace(ClickHouseAsyncMetrics_KeeperZnodeCount{cluster=~\"$KeeperCluster\", instance=~\"($KeeperInstance)\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance\", \"/\", \"cluster_name\", \"instance\")",
               "format": "table",
               "hide": false,
               "instant": true,
@@ -26911,7 +26921,7 @@
             {
               "id": "seriesToColumns",
               "options": {
-                "byField": "instance"
+                "byField": "cluster_instance"
               }
             },
             {
@@ -26970,7 +26980,17 @@
                   "cluster_name 6": true,
                   "cluster_name 7": true,
                   "cluster_name 8": true,
-                  "cluster_name 9": true
+                  "cluster_name 9": true,
+                  "cluster_instance": true,
+                  "instance 2": true,
+                  "instance 3": true,
+                  "instance 4": true,
+                  "instance 5": true,
+                  "instance 6": true,
+                  "instance 7": true,
+                  "instance 8": true,
+                  "instance 9": true,
+                  "instance 10": true
                 },
                 "indexByName": {
                   "Time 1": 6,
@@ -27003,7 +27023,6 @@
                   "__name__ 7": 28,
                   "__name__ 8": 31,
                   "__name__ 9": 35,
-                  "instance": 0,
                   "job 1": 8,
                   "job 10": 39,
                   "job 2": 11,
@@ -27013,7 +27032,8 @@
                   "job 6": 25,
                   "job 7": 29,
                   "job 8": 32,
-                  "job 9": 36
+                  "job 9": 36,
+                  "instance 1": 0
                 },
                 "renameByName": {
                   "Value #A": "Leader",
@@ -27034,8 +27054,8 @@
                   "cluster 1": "Cluster",
                   "cluster 2": "",
                   "cluster 6": "",
-                  "instance": "Keeper Instance",
-                  "cluster_name 1": "Cluster"
+                  "cluster_name 1": "Cluster",
+                  "instance 1": "Keeper Instance"
                 }
               }
             }

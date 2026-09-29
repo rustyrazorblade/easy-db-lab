@@ -201,6 +201,30 @@ class SeriesClusterTest {
     }
 
     @Test
+    fun `a join on a key without the cluster is reported`() {
+        fun joined(byField: String) =
+            parse("""{"type": "table", "transformations": [{"id": "seriesToColumns", "options": {"byField": "$byField"}}]}""")
+
+        assertThat(SeriesClusterGuards.joinProblems(joined("instance")))
+            .containsExactly("seriesToColumns joins on 'instance', which does not hold the cluster")
+        assertThat(SeriesClusterGuards.joinProblems(joined("cluster_instance"))).isEmpty()
+        assertThat(SeriesClusterGuards.joinProblems(parse("""{"transformations": [{"id": "merge", "options": {}}]}"""))).isEmpty()
+    }
+
+    @Test
+    fun `every join on a dashboard with a cluster variable keeps clusters apart`() {
+        val problems =
+            DashboardFiles.all().flatMap { file ->
+                val dashboard = parse(file.readText())
+                panels(dashboard).takeIf { hasClusterVariable(dashboard) }.orEmpty().flatMap { panel ->
+                    SeriesClusterGuards.joinProblems(panel).map { "${file.path} panel '${title(panel)}': $it" }
+                }
+            }
+
+        assertThat(problems).isEmpty()
+    }
+
+    @Test
     fun `every field override still matches the legend it styled`() {
         val stale =
             DashboardFiles.all().flatMap { file ->

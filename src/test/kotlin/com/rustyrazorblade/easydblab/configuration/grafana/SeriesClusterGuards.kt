@@ -215,6 +215,22 @@ object SeriesClusterGuards {
     }
 
     /**
+     * Each join of a [panel] (`seriesToColumns` or `joinByField`) whose key does not hold the
+     * cluster. Every cluster names its hosts and pods the same way, so a join on `instance` alone
+     * puts one cluster's row beside another's; the key is a label that joins the cluster to the
+     * instance, such as `cluster_instance`.
+     */
+    fun joinProblems(panel: JsonObject): List<String> =
+        (panel["transformations"] as? JsonArray)
+            .orEmpty()
+            .filterIsInstance<JsonObject>()
+            .filter { (it["id"] as? JsonPrimitive)?.contentOrNull in setOf("seriesToColumns", "joinByField") }
+            .mapNotNull { join ->
+                val key = ((join["options"] as? JsonObject)?.get("byField") as? JsonPrimitive)?.contentOrNull.orEmpty()
+                "${(join["id"] as JsonPrimitive).content} joins on '$key', which does not hold the cluster".takeUnless { CLUSTER in key }
+            }
+
+    /**
      * Each field override of a series panel that matched a legend before the cluster was put in
      * front of it, and no longer does: `byName "baseline"` stops matching "db-a baseline". A legend
      * is read with every `{{label}}` as a sample value.

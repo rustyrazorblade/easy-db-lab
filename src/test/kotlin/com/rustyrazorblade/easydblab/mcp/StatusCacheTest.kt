@@ -20,6 +20,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.services.K3sService
 import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.StressJobService
+import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -107,6 +108,7 @@ class StatusCacheTest : BaseKoinTest() {
                 single { mockEmrService }
                 single { mockOpenSearchService }
                 single<StressJobService> { mockStressJobService }
+                single { WorkspaceKitScanner(get()) }
             },
         )
 
@@ -459,6 +461,45 @@ class StatusCacheTest : BaseKoinTest() {
         assertThat(observability["loki"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3100")
         assertThat(observability["tempo"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3200")
         assertThat(observability["pyroscope"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:4040")
+    }
+
+    @Test
+    fun `accessInfo lists a running kit's declared NodePort endpoints`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")))
+        installPackagedKit("clickhouse")
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val accessInfo = statusCache.getStatus("accessInfo")!!
+
+        assertThat(accessInfo).contains("\"clickhouse\"", "http://10.0.1.100:30123", "10.0.1.100:30900")
+        assertThat(accessInfo).doesNotContain(":8123", ":9000")
+    }
+
+    @Test
+    fun `accessInfo reports no endpoints for a stopped kit even while pods run in its namespace`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        installPackagedKit("clickhouse")
+        whenever(mockK8sService.getNamespaceStatus(any(), any()))
+            .thenReturn(Result.success("chk-clickhouse-keeper-0-0-0   1/1   Running"))
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val accessInfo = statusCache.getStatus("accessInfo")!!
+
+        assertThat(accessInfo).doesNotContain("30123", "8123", "playUi")
+    }
+
+    private fun installPackagedKit(name: String) {
+        val kitYaml =
+            checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/${Constants.Kit.CONFIG_FILE}")) {
+                "packaged kit $name not found"
+            }.readText()
+        File(context.workingDirectory, name).mkdirs()
+        File(File(context.workingDirectory, name), Constants.Kit.CONFIG_FILE).writeText(kitYaml)
     }
 
     @Test

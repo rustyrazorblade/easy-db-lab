@@ -20,7 +20,7 @@ import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
-import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.StressJobService
 import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -39,6 +39,7 @@ import java.time.format.DateTimeFormatter
  * - Nodes (cassandra, stress, control) with instance IDs, IPs, aliases, and live state
  * - Networking info (VPC, IGW, subnets, route tables)
  * - Security group rules (full ingress/egress)
+ * - Installed kits, with the NodePort endpoints of each running kit
  * - Kubernetes jobs running on K3s cluster
  * - Cassandra version (live via SSH, fallback to cached)
  *
@@ -52,8 +53,8 @@ import java.time.format.DateTimeFormatter
  * Unavailability follows the **transport** a section actually uses, not a hand-picked list.
  * Sections sourced from cluster state, the AWS SDK, or direct SSH to the nodes still render when
  * the proxy is down — SSH never traverses the tunnel, which exists only to reach the private
- * Kubernetes API. Only the two sections sourced from that API (stress jobs and the ClickHouse
- * namespace status) are marked unavailable, via [renderProxyDependentSection]. There is exactly
+ * Kubernetes API. Only the section sourced from that API (stress jobs) is marked unavailable,
+ * via [renderProxyDependentSection]. There is exactly
  * one rendering path ([execute]) for both the healthy and degraded reports, so a section added
  * to the healthy report cannot silently vanish from the degraded one unless it too depends on
  * the Kubernetes API.
@@ -91,7 +92,6 @@ class Status :
     private val clusterStateManager: ClusterStateManager by inject()
     private val ec2InstanceService: EC2InstanceService by inject()
     private val vpcService: VpcService by inject()
-    private val k8sService: K8sService by inject()
     private val remoteOperationsService: RemoteOperationsService by inject()
     private val emrService: EMRService by inject()
     private val openSearchService: OpenSearchService by inject()
@@ -116,8 +116,8 @@ class Status :
         }
 
         // One rendering path for both the healthy and degraded reports. Every section renders by
-        // default; only the two sourced from the private Kubernetes API are wrapped in
-        // renderProxyDependentSection, so a proxy failure marks exactly those unavailable while
+        // default; only the one sourced from the private Kubernetes API is wrapped in
+        // renderProxyDependentSection, so a proxy failure marks exactly that one unavailable while
         // every AWS-, cluster-state-, and SSH-backed section still renders. A section added here
         // renders unless it is deliberately wrapped — it can never silently vanish when degraded.
         displayClusterSection()
@@ -130,7 +130,6 @@ class Status :
         displayKitsSection()
         renderProxyDependentSection("Stress jobs") { displayStressJobsSection() }
         displayObservabilitySection()
-        renderProxyDependentSection("ClickHouse") { displayClickHouseSection() }
         displayS3ManagerSection()
         displayCassandraVersionSection()
 
@@ -426,22 +425,29 @@ class Status :
     }
 
     /**
-     * Display installed kits with a running indicator.
+     * Display installed kits with a running indicator, and under each running kit the endpoints
+     * its `kit.yaml` declares (the NodePorts its Service exposes). A stopped kit shows none: its
+     * server is gone even when other pods of the kit, such as ClickHouse Keeper, still run.
      * Reads [WorkspaceKitScanner], the same discovery rule dynamic subcommand registration uses.
      * Registration can still drop a discovered kit afterwards — on a name collision, or when
      * building its command group fails — so this listing may name a kit that has no subcommand.
      */
     private fun displayKitsSection() {
-        val installedKits = workspaceKitScanner.discover().map { it.name }.sorted()
+        val installedKits = workspaceKitScanner.discover().sortedBy { it.name }
 
         if (installedKits.isEmpty()) return
 
         val runningKits = clusterState.runningKits
         println()
         println("=== KITS ===")
-        installedKits.forEach { kit ->
-            val icon = if (kit in runningKits) "✓" else "○"
-            println("  $icon $kit")
+        installedKits.forEach { kitDir ->
+            val running = kitDir.name in runningKits
+            println("  ${if (running) "✓" else "○"} ${kitDir.name}")
+            if (running) {
+                KitEndpointAddresses.resolveInstalled(kitDir, clusterState.hosts).forEach { resolved ->
+                    println("  " + KitEndpointAddresses.toEndpointAddress(resolved).displayLine())
+                }
+            }
         }
     }
 
@@ -515,41 +521,6 @@ Observability:
   Pyroscope:       http://$ip:${Constants.K8s.PYROSCOPE_PORT}
 """,
         )
-    }
-
-    /**
-     * Display ClickHouse access information if ClickHouse is running
-     */
-    private fun displayClickHouseSection() {
-        val controlHost = clusterState.getControlHost() ?: return
-
-        // Get a db node IP for ClickHouse access (ClickHouse pods run on db nodes)
-        val dbHosts = clusterState.hosts[ServerType.Cassandra]
-        if (dbHosts.isNullOrEmpty()) {
-            return
-        }
-        val dbNodeIp = dbHosts.first().privateIp
-
-        // Check if kubeconfig exists locally (indicates K3s is initialized)
-        val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
-        if (!File(kubeconfigPath).exists()) {
-            return
-        }
-
-        // Check if ClickHouse namespace has running pods
-        val status = k8sService.getNamespaceStatus(controlHost, Constants.ClickHouse.NAMESPACE)
-        status.onSuccess { podStatus ->
-            if (podStatus.isNotBlank() && !podStatus.contains("No resources found")) {
-                println(
-                    """
-
-ClickHouse:
-  Play UI:         http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}/play
-  HTTP Interface:  http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}
-  Native Protocol: $dbNodeIp:${Constants.ClickHouse.NATIVE_PORT}""",
-                )
-            }
-        }
     }
 
     /**

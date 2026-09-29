@@ -1,17 +1,19 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.File
 
 /**
  * Resolves a kit's declared [KitEndpoint]s to concrete addresses on the cluster.
  *
  * A kit declares each endpoint against a node type (`db`, `app`, `control`) and a
  * NodePort. The address a user connects to is that port on every host of the node
- * type, at the host's private IP. `kit info`, `<kit> status` and `<kit> start` all
- * report endpoints, so the lookup and the line format live here once.
+ * type, at the host's private IP. `kit info`, `<kit> status`, `<kit> start` and `status`
+ * all report endpoints, so the lookup and the line format live here once.
  */
 object KitEndpointAddresses {
     private val log = KotlinLogging.logger {}
@@ -47,6 +49,27 @@ object KitEndpointAddresses {
         endpoints.flatMap { endpoint ->
             privateIps(endpoint.nodeType, hosts).map { ip -> Resolved(endpoint, endpoint.formatUrl(ip)) }
         }
+
+    /**
+     * Resolves the endpoints declared in the `kit.yaml` of the installed kit in [kitDir].
+     * Returns an empty list, and logs why, when the descriptor cannot be read.
+     */
+    fun resolveInstalled(
+        kitDir: File,
+        hosts: Map<ServerType, List<ClusterHost>>,
+    ): List<Resolved> {
+        val config =
+            runCatching {
+                installConfigYaml.decodeFromString(
+                    KitConfig.serializer(),
+                    File(kitDir, Constants.Kit.CONFIG_FILE).readText(),
+                )
+            }.getOrElse { e ->
+                log.warn(e) { "Cannot read ${Constants.Kit.CONFIG_FILE} of kit '${kitDir.name}'; its endpoints are not shown" }
+                return emptyList()
+            }
+        return resolve(config.endpoints, hosts)
+    }
 
     /** The structured form of one resolved endpoint, as carried by kit events. */
     fun toEndpointAddress(resolved: Resolved): Event.Kit.EndpointAddress =

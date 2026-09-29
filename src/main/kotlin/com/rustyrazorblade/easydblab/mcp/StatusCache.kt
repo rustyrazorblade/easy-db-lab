@@ -14,8 +14,9 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.K3sService
-import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
 import com.rustyrazorblade.easydblab.services.StressJobService
+import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -77,11 +78,11 @@ class StatusCache(
     private val ec2InstanceService: EC2InstanceService by inject()
     private val vpcService: VpcService by inject()
     private val k3sService: K3sService by inject()
-    private val k8sService: K8sService by inject()
     private val remoteOperationsService: RemoteOperationsService by inject()
     private val emrService: EMRService by inject()
     private val openSearchService: OpenSearchService by inject()
     private val stressJobService: StressJobService by inject()
+    private val workspaceKitScanner: WorkspaceKitScanner by inject()
 
     private val lock = ReentrantLock()
     private val timer = Timer("status-cache-refresh", true)
@@ -236,7 +237,7 @@ class StatusCache(
             kubernetes = buildKubernetesInfo(state),
             stressJobs = buildStressInfo(state),
             cassandraVersion = buildCassandraVersionInfo(state, instanceStates),
-            accessInfo = buildAccessInfo(state, instanceStates),
+            accessInfo = buildAccessInfo(state),
         )
     }
 
@@ -461,10 +462,7 @@ class StatusCache(
         return CassandraVersionInfo(version = cachedVersion, source = "cached")
     }
 
-    private fun buildAccessInfo(
-        state: ClusterState,
-        instanceStates: Map<String, InstanceDetails>,
-    ): AccessInfo? {
+    private fun buildAccessInfo(state: ClusterState): AccessInfo? {
         val controlHost = state.getControlHost() ?: return null
         val kubeconfigPath = getLocalKubeconfigPath(context.workingDirectory.absolutePath)
         if (!File(kubeconfigPath).exists()) return null
@@ -480,7 +478,7 @@ class StatusCache(
                 pyroscope = "http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
             )
 
-        val clickhouse = buildClickHouseAccess(state, controlHost, instanceStates)
+        val kits = buildKitAccess(state)
 
         val s3Path = state.s3Path()
         val s3Manager =
@@ -495,46 +493,31 @@ class StatusCache(
 
         return AccessInfo(
             observability = observability,
-            clickhouse = clickhouse,
+            kits = kits,
             s3Manager = s3Manager,
             registry = registry,
         )
     }
 
-    private fun buildClickHouseAccess(
-        state: ClusterState,
-        controlHost: ClusterHost,
-        instanceStates: Map<String, InstanceDetails>,
-    ): ClickHouseAccess? {
-        val dbHosts = state.hosts[ServerType.Cassandra]
-        if (dbHosts.isNullOrEmpty()) return null
-
-        // Check if any Cassandra nodes are running
-        val hasRunningCassandra =
-            dbHosts.any { host ->
-                instanceStates[host.instanceId]?.state?.uppercase() == "RUNNING"
+    /**
+     * The endpoints of every installed kit recorded as running, from each kit's `kit.yaml`.
+     * A stopped kit is left out even when other pods of the kit, such as ClickHouse Keeper, run.
+     */
+    private fun buildKitAccess(state: ClusterState): List<KitAccess> =
+        workspaceKitScanner
+            .discover()
+            .filter { it.name in state.runningKits }
+            .sortedBy { it.name }
+            .map { kitDir ->
+                KitAccess(
+                    name = kitDir.name,
+                    endpoints =
+                        KitEndpointAddresses.resolveInstalled(kitDir, state.hosts).map { resolved ->
+                            val address = KitEndpointAddresses.toEndpointAddress(resolved)
+                            KitEndpointAccess(name = address.name, type = address.type, address = address.address)
+                        },
+                )
             }
-        if (!hasRunningCassandra) return null
-
-        // Check if ClickHouse namespace has running pods
-        val status = k8sService.getNamespaceStatus(controlHost, Constants.ClickHouse.NAMESPACE)
-        val hasClickHousePods =
-            status.fold(
-                onSuccess = { podStatus ->
-                    podStatus.isNotBlank() && !podStatus.contains("No resources found")
-                },
-                onFailure = { false },
-            )
-
-        if (!hasClickHousePods) return null
-
-        val dbNodeIp = dbHosts.first().privateIp
-        return ClickHouseAccess(
-            playUi = "http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}/play",
-            httpInterface = "http://$dbNodeIp:${Constants.ClickHouse.HTTP_PORT}",
-            nativePort = "$dbNodeIp:${Constants.ClickHouse.NATIVE_PORT}",
-        )
-    }
 
     private fun tryGetLiveVersion(hosts: List<ClusterHost>): String? {
         for (host in hosts) {

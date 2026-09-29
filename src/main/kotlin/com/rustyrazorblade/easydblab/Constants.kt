@@ -434,13 +434,6 @@ object Constants {
         val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
     }
 
-    // ClickHouse configuration
-    object ClickHouse {
-        const val NAMESPACE = "default"
-        const val HTTP_PORT = 8123
-        const val NATIVE_PORT = 9000
-    }
-
     // YACE (Yet Another CloudWatch Exporter) configuration
     object Yace {
         const val IMAGE = "quay.io/prometheuscommunity/yet-another-cloudwatch-exporter:v0.63.0"

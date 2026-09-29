@@ -256,8 +256,8 @@ attempt and is the fastest way to find the real cause (a host-key mismatch, a se
 blocking port 22, the control node not yet accepting SSH, and so on).
 
 `easy-db-lab status` is the one exception: it still reports everything it can reach over SSH and
-the AWS SDK even when the tunnel is down, marking only the sections that require the private
-Kubernetes API (stress jobs, ClickHouse) as unavailable. See the
+the AWS SDK even when the tunnel is down, marking only the section that requires the private
+Kubernetes API (stress jobs) as unavailable. See the
 [`status` command reference](../reference/commands.md#status) for details.
 
 ### Troubleshooting SOCKS Proxy

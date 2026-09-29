@@ -231,11 +231,13 @@ Display full environment status.
 easy-db-lab status
 ```
 
+The `=== KITS ===` section lists every installed kit, marking the running ones with `✓`. Under each running kit it prints the endpoints that the kit's `kit.yaml` declares: the NodePorts on each host of the endpoint's node type. A stopped kit shows no endpoints.
+
 `status` is the one command that degrades instead of failing outright when the SOCKS proxy
 tunnel can't be established. It still reports EC2, VPC, security groups, Spark/EMR, OpenSearch,
 S3, kits, observability URLs, and database versions — the last read directly over SSH, which
-never uses the tunnel. Only the sections that require the private Kubernetes API (stress jobs,
-ClickHouse) are marked unavailable, each stating the proxy failure as the reason. `status` still
+never uses the tunnel. Only the section that requires the private Kubernetes API (stress jobs)
+is marked unavailable, stating the proxy failure as the reason. `status` still
 exits non-zero when degraded, so a partial report is never mistaken for a healthy cluster by a
 script. See [Network Connectivity](../user-guide/network-connectivity.md) for how to diagnose a
 tunnel that won't come up.

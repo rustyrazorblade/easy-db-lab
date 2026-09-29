@@ -449,7 +449,13 @@ class KitRunnerCommand(
             runCatching {
                 val elsewhere =
                     uidsInstalledElsewhere(config.dashboards, instanceExtension(config)) { ref ->
-                        File(kitDir, ref.path).takeIf { it.isFile }?.readText()
+                        val file = File(kitDir, ref.path)
+                        if (file.isFile) {
+                            file.readText()
+                        } else {
+                            log.warn { "Dashboard file not found: ${file.absolutePath}" }
+                            null
+                        }
                     }
                 KitDashboardInstance(
                     kitName = kitName,

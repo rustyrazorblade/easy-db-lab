@@ -1,20 +1,16 @@
 #!/bin/bash
+#
+# Wait until the local Cassandra reports OperationMode NORMAL, then print "OK" and exit 0.
+#
+# Exits 1 with a FAIL message if the process goes away, or if the node is not NORMAL within
+# WAIT_FOR_UP_NORMAL_TIMEOUT seconds (default 600).  The JMX wait and the NORMAL wait share that
+# one deadline.
 
+TIMEOUT="${WAIT_FOR_UP_NORMAL_TIMEOUT:-600}"
+DEADLINE=$(( $(date +%s) + TIMEOUT ))
 
-CPID=$(cassandra-pid)
-
-if [[ $CPID -eq 0 ]]; then
-  echo "CASSANDRA NOT RUNNING: FAIL"
-  exit 1
-fi
-
-echo "Waiting for JMX"
-while ! ss -tulwn | grep ':7199' ; do sleep 1; done
-
-while true; do
-
-# first check if it's up
-
+# Exit 1, with the reason systemd gives, if the Cassandra process is gone.
+fail_if_shut_down() {
   CPID=$(cassandra-pid)
 
   if [[ $CPID -eq 0 ]]; then
@@ -32,6 +28,33 @@ while true; do
 
     exit 1
   fi
+}
+
+# Exit 1 once the deadline has passed.  $1 names what the script was waiting for.
+fail_if_timed_out() {
+  if [[ $(date +%s) -ge $DEADLINE ]]; then
+    echo "TIMED OUT after ${TIMEOUT}s waiting for $1: FAIL"
+    echo "Check logs with: journalctl -u cassandra -n 100"
+    exit 1
+  fi
+}
+
+CPID=$(cassandra-pid)
+
+if [[ $CPID -eq 0 ]]; then
+  echo "CASSANDRA NOT RUNNING: FAIL"
+  exit 1
+fi
+
+echo "Waiting for JMX"
+while ! ss -tulwn | grep ':7199' ; do
+  fail_if_shut_down
+  fail_if_timed_out "JMX on port 7199"
+  sleep 1
+done
+
+while true; do
+  fail_if_shut_down
 
   sjk-mx -b org.apache.cassandra.db:type=StorageService -mg -f OperationMode | grep NORMAL
   status=$?
@@ -41,6 +64,6 @@ while true; do
     exit 0
   fi
 
+  fail_if_timed_out "OperationMode NORMAL"
   sleep 1
-
 done

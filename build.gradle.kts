@@ -574,6 +574,15 @@ tasks.register<Exec>("testCassandraUseScript") {
     commandLine = listOf("bash", "packer/cassandra/bin/use-cassandra.test.sh")
 }
 
+// Unit-test wait-for-up-normal: it fails fast when Cassandra dies and at a deadline when it never
+// reaches NORMAL.  cassandra-pid, ss, sjk-mx, systemctl, sleep and the clock are stubbed.
+tasks.register<Exec>("testCassandraWaitScript") {
+    group = "Verification"
+    description = "Unit-test the wait-for-up-normal script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/wait-for-up-normal.test.sh")
+}
+
 // Unit-test the agent selection cassandra.in.sh runs on every Cassandra start: deriving X.Y from
 // the release jar name (every shape, including the unparseable one) and mapping it to the AxonOps
 // agent. Also parses cassandra.in.sh under dash, which is the shell Cassandra actually sources it
@@ -603,6 +612,7 @@ tasks.register("testCassandraScripts") {
         "testCassandraInstallScript",
         "testCassandraInstallLoop",
         "testCassandraUseScript",
+        "testCassandraWaitScript",
         "testCassandraAgentSelection",
         "testCacheLib",
     )

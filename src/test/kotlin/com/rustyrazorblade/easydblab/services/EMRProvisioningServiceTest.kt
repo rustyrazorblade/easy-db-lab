@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.YamlTestSupport
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -278,6 +279,48 @@ internal class EMRProvisioningServiceTest {
             .contains("NODE_ROLE=\"spark-master\"")
             .contains("NODE_ROLE=\"spark-worker\"")
             .contains("sed -i \"s/__NODE_ROLE__/\$NODE_ROLE/g\" \"\$COLLECTOR_CONFIG\"")
+    }
+
+    /**
+     * The EMR collector tails the log files EMR and YARN write on the node (container stdout and
+     * stderr, step logs, bootstrap-action logs) into its logs pipeline, which stamps `source=emr`
+     * and the node role; the control node's collector adds the cluster. Before, only OTLP logs from
+     * the Spark agent reached Loki, and a driver that died before logging anything left no trace.
+     */
+    @Test
+    fun `the EMR collector tails the YARN container, step and bootstrap-action logs into its logs pipeline`() {
+        setupEmrMocks("j-LOGS", "myenv-spark")
+        service.provisionEmrCluster(
+            EmrClusterProvisioningConfig(
+                clusterName = "myenv",
+                masterInstanceType = "m5.2xlarge",
+                workerInstanceType = "m5.4xlarge",
+                workerCount = 3,
+                subnetId = "subnet-123",
+                securityGroupId = "sg-456",
+                keyName = "my-key",
+                clusterState = createTestClusterState(clusterId = "test-id"),
+                tags = emptyMap(),
+            ),
+        )
+        val scriptCaptor = argumentCaptor<String>()
+        verify(mockObjectStore).uploadContent(scriptCaptor.capture(), any())
+        val script = scriptCaptor.firstValue
+        val config = script.substringAfter("<< 'CONFIGEOF'\n").substringBefore("\nCONFIGEOF")
+
+        assertThat(YamlTestSupport.listAt(config, "receivers", "file_log/emr", "include")).containsExactlyInAnyOrder(
+            "/var/log/hadoop-yarn/containers/application_*/container_*/*",
+            "/mnt/var/log/hadoop/steps/*/*",
+            "/emr/instance-controller/log/bootstrap-actions/*/*",
+        )
+        assertThat(YamlTestSupport.scalarAt(config, "receivers", "file_log/emr", "start_at")).isEqualTo("beginning")
+        assertThat(YamlTestSupport.scalarAt(config, "receivers", "file_log/emr", "include_file_path")).isEqualTo("true")
+        assertThat(YamlTestSupport.listAt(config, "service", "pipelines", "logs", "receivers")).contains("otlp", "file_log/emr")
+        assertThat(YamlTestSupport.listAt(config, "service", "pipelines", "logs", "processors"))
+            .contains("resource_detection", "resource/role", "resource/source")
+        assertThat(YamlTestSupport.listAt(config, "service", "pipelines", "logs", "exporters")).containsExactly("otlp_grpc/control")
+        // The files belong to EMR and YARN users, so the collector runs as root to read all of them.
+        assertThat(script.substringAfter("[Service]").substringBefore("[Install]")).contains("User=root")
     }
 
     @Test

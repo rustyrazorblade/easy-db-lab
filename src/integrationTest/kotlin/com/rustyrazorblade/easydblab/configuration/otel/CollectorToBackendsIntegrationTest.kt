@@ -59,6 +59,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         const val COMPONENT_ID_LENGTH = 30
         const val CONTROL_HOST = "control0"
         const val EMR_HOST = "ip-10-0-0-5"
+        const val STEP_STDERR_LINE = "Exception in thread \"main\" java.lang.NoSuchMethodError: e2e"
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -159,6 +160,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
                 .replace("__NODE_ROLE__", "spark-master")
         return GenericContainer("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}")
             .withCreateContainerCmdModifier { it.withHostName(EMR_HOST) }
+            .withCopyToContainer(Transferable.of("$STEP_STDERR_LINE\n"), "/mnt/var/log/hadoop/steps/s-E2E/stderr")
             .withCopyToContainer(Transferable.of(config), "/etc/otel-collector-config.yaml")
             .withCommand("--config=/etc/otel-collector-config.yaml")
             .withExposedPorts(Constants.K8s.OTEL_HTTP_PORT, Constants.K8s.OTEL_HEALTH_PORT)
@@ -297,6 +299,25 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         assertThat(labelsOf(step, "stream")).containsEntry("cluster", CLUSTER).containsEntry("source", "emr")
         assertThat(lokiStreams(loki, LogQl.logsQuery(CLUSTER, source = "emr"))).isNotEmpty()
         assertThat(lokiStreams(loki, LogQl.sparkStep(CLUSTER, "OtherJob"))).isEmpty()
+    }
+
+    /**
+     * A line EMR writes to a step's stderr file on the node reaches Loki with the EMR source, the
+     * node's role and host, and the cluster, so a driver that dies before its Java agent exports
+     * anything still leaves its exception where `logs query --source emr` finds it.
+     */
+    @Test
+    fun `a step log file on an EMR node reaches Loki with the emr source, node role and cluster`() {
+        val (mimir, loki) = startBackends()
+        val control = startCollector(mimir, loki)
+        startEmrCollector(control)
+
+        val stream = await(control) { lokiStreams(loki, "{cluster=\"$CLUSTER\", source=\"emr\"} |= \"NoSuchMethodError\"").firstOrNull() }
+
+        assertThat(labelsOf(stream, "stream"))
+            .containsEntry("node_role", "spark-master")
+            .containsEntry("host_name", EMR_HOST)
+            .containsEntry("log_file_path", "/mnt/var/log/hadoop/steps/s-E2E/stderr")
     }
 
     /**

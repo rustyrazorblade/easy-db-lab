@@ -15,6 +15,24 @@ receivers:
       memory:
       network:
       processes:
+  # The log files EMR and YARN write on the node. Paths per the EMR Management Guide ("View Amazon EMR
+  # log files": step logs in /mnt/var/log/hadoop/steps/<step-id>/ on the primary node, bootstrap
+  # action logs in /emr/instance-controller/log/bootstrap-actions) and the knowledge-center article
+  # "How can I push Amazon EMR application logs to CloudWatch?" (YARN container logs in
+  # /var/log/hadoop-yarn/containers/application_*/container_*/). A driver that dies before its
+  # Java agent exports anything leaves its exception only here. The files are new on every node, so
+  # every line is read from the start. The files belong to EMR and YARN users; the bootstrap action
+  # runs this collector as root (User=root), so it reads all of them.
+  file_log/emr:
+    include:
+      - /var/log/hadoop-yarn/containers/application_*/container_*/*
+      - /mnt/var/log/hadoop/steps/*/*
+      - /emr/instance-controller/log/bootstrap-actions/*/*
+    exclude:
+      - /**/*.gz
+    start_at: beginning
+    include_file_path: true
+    include_file_name: true
 
 processors:
   batch:
@@ -60,7 +78,7 @@ service:
       processors: [resource_detection, resource/role, batch]
       exporters: [otlp_grpc/control]
     logs:
-      receivers: [otlp]
+      receivers: [otlp, file_log/emr]
       processors: [resource_detection, resource/role, resource/source, batch]
       exporters: [otlp_grpc/control]
     traces:

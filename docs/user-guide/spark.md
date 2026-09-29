@@ -164,6 +164,22 @@ once within `--since`, every run's lines are returned.
 Every line from an EMR node also carries the label `source="emr"`, so
 `easy-db-lab logs query --source emr` shows all of them.
 
+The collector on each EMR node also sends the log files that EMR and YARN write on the node:
+
+| Files | Node |
+|-------|------|
+| YARN container `stdout`, `stderr` and `syslog`, `/var/log/hadoop-yarn/containers/application_*/container_*/` | every node |
+| Step logs (`controller`, `stderr`, `stdout`, `syslog`), `/mnt/var/log/hadoop/steps/<step-id>/` | primary |
+| Bootstrap action logs, `/emr/instance-controller/log/bootstrap-actions/<n>/` | every node |
+
+These lines have `source="emr"`, the node's `node_role` (`spark-master` or `spark-worker`), its
+`host_name` and the cluster label, and the file path in `log_file_path`. A driver that fails before
+its Java agent sends anything still leaves its exception in the step's `stderr`:
+
+```bash
+easy-db-lab logs query --source emr --grep NoSuchMethodError
+```
+
 ## Architecture
 
 When Spark is enabled, easy-db-lab provisions:
@@ -171,7 +187,7 @@ When Spark is enabled, easy-db-lab provisions:
 - **EMR Cluster**: Managed Spark cluster with master and worker nodes
 - **S3 Integration**: Logs stored at `s3://<bucket>/spark/emr-logs/`
 - **IAM Roles**: Service and job flow roles for EMR operations
-- **Observability**: Each EMR node runs an OTel Collector (host metrics, OTLP forwarding), OTel Java Agent (auto-instrumentation for logs/metrics/traces), and Pyroscope Java Agent (continuous CPU/allocation/lock profiling). All telemetry flows to the control node's observability stack.
+- **Observability**: Each EMR node runs an OTel Collector (host metrics, the node's EMR and YARN log files, OTLP forwarding), OTel Java Agent (auto-instrumentation for logs/metrics/traces), and Pyroscope Java Agent (continuous CPU/allocation/lock profiling). All telemetry flows to the control node's observability stack.
 
 ### Timeouts and Polling
 

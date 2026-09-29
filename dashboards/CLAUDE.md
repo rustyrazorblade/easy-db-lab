@@ -74,6 +74,8 @@ drill-down keeps the tenant and the cluster:
 /d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${cluster:queryparam}
 ```
 
+Every `/d/` link also keeps the time range: `from=${__from}&to=${__to}` in its URL, `${__url_time_range}`, or `keepTime`. Links into Tests and the comparison dashboards are the exception, because those open on their own relative ranges. `DashboardLinkTimeTest` checks this for core and kit dashboards.
+
 ### The cluster variable
 
 Every `cluster` variable lists the clusters of the tenant the Metrics picker selects with `label_values(up, cluster)` on `${metrics_datasource}`.  It is multi-select and includes "All".  So every query that reads `$cluster` matches it with `=~`, never `=`: `cluster=~"$cluster"`.  The Tests dashboard is the one exception: its `cluster` is single-select, because it picks one test.  `ClusterVariableTest` (`configuration/grafana/`) checks these rules for every dashboard file.

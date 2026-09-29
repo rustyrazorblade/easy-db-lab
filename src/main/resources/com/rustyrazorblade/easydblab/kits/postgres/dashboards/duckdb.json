@@ -13,7 +13,7 @@
     {
       "title": "PostgreSQL Overview",
       "type": "link",
-      "url": "/d/postgres-overview?${metrics_datasource:queryparam}",
+      "url": "/d/postgres-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     }

@@ -16,21 +16,21 @@
     {
       "title": "PostgreSQL Overview",
       "type": "link",
-      "url": "/d/postgres-overview?${metrics_datasource:queryparam}",
+      "url": "/d/postgres-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     },
     {
       "title": "DuckDB Analytics",
       "type": "link",
-      "url": "/d/postgres-duckdb?${metrics_datasource:queryparam}",
+      "url": "/d/postgres-duckdb?from=${__from}&to=${__to}&${metrics_datasource:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     },
     {
       "title": "TimescaleDB",
       "type": "link",
-      "url": "/d/postgres-timescaledb?${metrics_datasource:queryparam}",
+      "url": "/d/postgres-timescaledb?from=${__from}&to=${__to}&${metrics_datasource:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     }

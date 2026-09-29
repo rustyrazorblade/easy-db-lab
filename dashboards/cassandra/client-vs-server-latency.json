@@ -1598,11 +1598,6 @@
           },
           {
             "selected": false,
-            "text": "cluster",
-            "value": "cluster"
-          },
-          {
-            "selected": false,
             "text": "job_name",
             "value": "job_name"
           },
@@ -1617,7 +1612,7 @@
             "value": "table"
           }
         ],
-        "query": "host_name,cassandra_build,cassandra_operation,cassandra_status,cluster,job_name,keyspace,table",
+        "query": "host_name,cassandra_build,cassandra_operation,cassandra_status,job_name,keyspace,table",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"

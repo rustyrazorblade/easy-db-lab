@@ -23,13 +23,14 @@ object ClusterFilterGuards {
 
     /**
      * One query of a dashboard: where it is and its text as the file holds it. A panel target also
-     * carries its `legendFormat`, when it has one.
+     * carries its `legendFormat`, when it has one, and its panel's type.
      */
     data class Query(
         val where: String,
         val language: Language,
         val text: String,
         val legendFormat: String? = null,
+        val panelType: String? = null,
     )
 
     /** The variables whose own query lists clusters, so it must read every cluster. */
@@ -311,7 +312,9 @@ object ClusterFilterGuards {
             (panel["targets"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().forEach { target ->
                 val language = languageOf(target["datasource"] ?: datasource) ?: return@forEach
                 val text = if (language == Language.PROFILES) target.string("labelSelector") ?: NO_SELECTOR else target.string("expr")
-                text?.takeIf { it.isNotBlank() }?.let { found += Query("panel '$title'", language, it, target.string("legendFormat")) }
+                text?.takeIf { it.isNotBlank() }?.let {
+                    found += Query("panel '$title'", language, it, target.string("legendFormat"), panel.string("type"))
+                }
             }
             exploreQueries(panel).forEach { (ds, expr) ->
                 languageOf(ds)?.let { found += Query("link on '$title'", it, expr) }

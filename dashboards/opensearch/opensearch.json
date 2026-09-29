@@ -76,8 +76,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "ClusterStatus.green"
+              "id": "byRegexp",
+              "options": "^(.* )?ClusterStatus\\.green$"
             },
             "properties": [
               {
@@ -91,8 +91,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "ClusterStatus.yellow"
+              "id": "byRegexp",
+              "options": "^(.* )?ClusterStatus\\.yellow$"
             },
             "properties": [
               {
@@ -106,8 +106,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "ClusterStatus.red"
+              "id": "byRegexp",
+              "options": "^(.* )?ClusterStatus\\.red$"
             },
             "properties": [
               {
@@ -907,8 +907,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "2xx"
+              "id": "byRegexp",
+              "options": "^(.* )?2xx$"
             },
             "properties": [
               {
@@ -922,8 +922,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "4xx"
+              "id": "byRegexp",
+              "options": "^(.* )?4xx$"
             },
             "properties": [
               {
@@ -937,8 +937,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "5xx"
+              "id": "byRegexp",
+              "options": "^(.* )?5xx$"
             },
             "properties": [
               {

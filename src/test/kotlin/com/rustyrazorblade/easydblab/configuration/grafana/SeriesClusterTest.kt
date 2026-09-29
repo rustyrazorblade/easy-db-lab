@@ -110,6 +110,149 @@ class SeriesClusterTest {
         assertThat(hidden).isEmpty()
     }
 
+    @Test
+    fun `a grouping that names a label twice, directly or through a variable, is reported`() {
+        val groupby = mapOf("groupby" to listOf("host_name", "cluster"))
+
+        assertThat(
+            SeriesClusterGuards.repeatedGrouping("sum by (cluster, cluster) (a)", emptyMap()),
+        ).containsExactly("by (cluster, cluster)")
+        assertThat(
+            SeriesClusterGuards.repeatedGrouping("sum by (cluster, \$groupby) (a)", groupby),
+        ).containsExactly("by (cluster, \$groupby)")
+        assertThat(SeriesClusterGuards.repeatedGrouping("sum by (cluster, \${groupby}) (a)", groupby)).hasSize(1)
+        assertThat(SeriesClusterGuards.repeatedGrouping("sum by (cluster, \$groupby) (a)", mapOf("groupby" to listOf("host_name"))))
+            .isEmpty()
+        assertThat(SeriesClusterGuards.repeatedGrouping("a / on (cluster, cluster) b", emptyMap())).isEmpty()
+    }
+
+    @Test
+    fun `no dashboard aggregation groups by one label twice`() {
+        val repeated =
+            DashboardFiles.all().flatMap { file ->
+                val dashboard = Json.parseToJsonElement(file.readText()).jsonObject
+                val variables = customValues(dashboard)
+                ClusterFilterGuards
+                    .queries(dashboard)
+                    .filter { it.language != Language.PROFILES }
+                    .flatMap { query ->
+                        SeriesClusterGuards.repeatedGrouping(query.text, variables).map { "${file.path} ${query.where}: $it" }
+                    }
+            }
+
+        assertThat(repeated).isEmpty()
+    }
+
+    @Test
+    fun `a table legend names a column, so a table is not held to the legend rule`() {
+        assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, short, "Write ops/s", "table"))).isEmpty()
+        assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, short, "Write ops/s", "timeseries"))).hasSize(1)
+    }
+
+    @Test
+    fun `a table that writes cluster_name hides the long cluster and shows the short one as Cluster`() {
+        val expr = Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(short))
+
+        fun table(transformations: String) =
+            parse("""{"type": "table", "targets": [{"expr": $expr}], "transformations": $transformations}""")
+
+        fun organize(
+            hidden: String,
+            renamed: String,
+        ) = """[{"id": "organize", "options": {"excludeByName": {"$hidden": true}, "renameByName": {"$renamed": "Cluster"}}}]"""
+
+        val shown = organize("cluster", "cluster_name")
+        val joined = organize("cluster 1", "cluster_name 1")
+
+        assertThat(SeriesClusterGuards.tableProblems(table(shown))).isEmpty()
+        assertThat(SeriesClusterGuards.tableProblems(table(joined))).isEmpty()
+        assertThat(SeriesClusterGuards.tableProblems(table("""[{"id": "merge", "options": {}}]"""))).containsExactly(
+            "the long cluster column is not hidden",
+            "cluster_name is not shown as Cluster",
+        )
+        assertThat(SeriesClusterGuards.tableProblems(parse("""{"type": "table", "targets": [{"expr": "up"}]}"""))).isEmpty()
+    }
+
+    @Test
+    fun `an override that only matched the legend without its cluster is reported`() {
+        val legends = listOf("{{cluster_name}} baseline", "{{cluster_name}} candidate {{host_name}}")
+
+        assertThat(
+            SeriesClusterGuards.staleOverrides(
+                legends,
+                listOf("byName" to "baseline", "byRegexp" to "^candidate.*", "byRegexp" to ".*candidate.*"),
+            ),
+        ).containsExactly("byName 'baseline'", "byRegexp '^candidate.*'")
+        assertThat(
+            SeriesClusterGuards.staleOverrides(legends, listOf("byRegexp" to "^(.* )?baseline$", "byRegexp" to "^(.* )?candidate.*")),
+        ).isEmpty()
+    }
+
+    @Test
+    fun `every table that writes cluster_name shows it as its Cluster column`() {
+        val problems =
+            DashboardFiles.all().flatMap { file ->
+                panels(parse(file.readText())).flatMap { panel ->
+                    SeriesClusterGuards.tableProblems(panel).map { "${file.path} panel '${title(panel)}': $it" }
+                }
+            }
+
+        assertThat(problems).isEmpty()
+    }
+
+    @Test
+    fun `every field override still matches the legend it styled`() {
+        val stale =
+            DashboardFiles.all().flatMap { file ->
+                panels(parse(file.readText())).filter { (it["type"] as? JsonPrimitive)?.contentOrNull != "table" }.flatMap { panel ->
+                    val legends =
+                        (panel["targets"] as? JsonArray)
+                            .orEmpty()
+                            .mapNotNull { ((it as? JsonObject)?.get("legendFormat") as? JsonPrimitive)?.contentOrNull }
+                    val matchers =
+                        (((panel["fieldConfig"] as? JsonObject)?.get("overrides")) as? JsonArray)
+                            .orEmpty()
+                            .mapNotNull { (it as? JsonObject)?.get("matcher") as? JsonObject }
+                            .mapNotNull { m ->
+                                val id = (m["id"] as? JsonPrimitive)?.contentOrNull
+                                val options = (m["options"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                                if (id == null || options == null) null else id to options
+                            }
+                    SeriesClusterGuards.staleOverrides(legends, matchers).map { "${file.path} panel '${title(panel)}': $it" }
+                }
+            }
+
+        assertThat(stale).isEmpty()
+    }
+
+    private fun parse(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
+
+    private fun title(panel: JsonObject): String = (panel["title"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+
+    /** Every panel of [dashboard], the panels of rows included. */
+    private fun panels(dashboard: JsonObject): List<JsonObject> {
+        fun walk(list: JsonArray?): List<JsonObject> =
+            list.orEmpty().filterIsInstance<JsonObject>().flatMap { listOf(it) + walk(it["panels"] as? JsonArray) }
+        return walk(dashboard["panels"] as? JsonArray)
+    }
+
+    /** Each custom variable's possible values: the comma-separated list in its `query`. */
+    private fun customValues(dashboard: JsonObject): Map<String, List<String>> =
+        ((dashboard["templating"] as? JsonObject)?.get("list") as? JsonArray)
+            .orEmpty()
+            .filterIsInstance<JsonObject>()
+            .filter { (it["type"] as? JsonPrimitive)?.contentOrNull == "custom" }
+            .associate { variable ->
+                val name = (variable["name"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                val values =
+                    (variable["query"] as? JsonPrimitive)
+                        ?.contentOrNull
+                        .orEmpty()
+                        .split(',')
+                        .map { it.trim() }
+                name to values
+            }
+
     /** The PromQL and LogQL queries of every dashboard with a `cluster` variable, less the exempt ones. */
     private fun seriesQueries(): List<Pair<String, Query>> =
         DashboardFiles.all().flatMap { file ->

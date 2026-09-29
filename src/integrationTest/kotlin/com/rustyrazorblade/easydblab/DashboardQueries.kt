@@ -45,6 +45,7 @@ object DashboardQueries {
     private fun queries(file: File): List<Query> {
         val dashboard = json.parseToJsonElement(file.readText()).jsonObject
         val variables = variableValues(dashboard)
+        val groupings = groupingValues(dashboard)
         val found = mutableListOf<Query>()
 
         fun add(
@@ -54,7 +55,7 @@ object DashboardQueries {
         ) {
             val language = languageOf(datasource) ?: return
             if (text.isNullOrBlank()) return
-            found += Query("${file.path} $where", language, substitute(text, variables))
+            found += variants("${file.path} $where", text, variables, groupings).map { (source, query) -> Query(source, language, query) }
         }
 
         walkPanels(dashboard) { panel ->
@@ -228,6 +229,35 @@ object DashboardQueries {
                 }
             )
         }
+
+    /**
+     * [text] with its variables substituted, labelled with [source]. A grouping picker's every value
+     * goes into a `by (...)`, so a query that reads one is run once per value.
+     */
+    private fun variants(
+        source: String,
+        text: String,
+        variables: Map<String, String>,
+        groupings: Map<String, List<String>>,
+    ): List<Pair<String, String>> {
+        val grouped = groupings.filterKeys { Regex("""\$\{?$it\b""").containsMatchIn(text) }
+        if (grouped.isEmpty()) return listOf(source to substitute(text, variables))
+        return grouped.flatMap { (name, values) ->
+            values.map { value -> "$source [$name=$value]" to substitute(text, variables + (name to value)) }
+        }
+    }
+
+    /** The custom variables that pick a label to group by (`groupby`), with every value each offers. */
+    private fun groupingValues(dashboard: JsonObject): Map<String, List<String>> =
+        templating(dashboard)
+            .filter { it["type"]?.jsonPrimitive?.contentOrNull == "custom" }
+            .mapNotNull { variable ->
+                val name = variable["name"]?.jsonPrimitive?.contentOrNull?.takeIf { it in groupingVariables }
+                val query = (variable["query"] as? JsonPrimitive)?.contentOrNull
+                if (name == null || query == null) null else name to query.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+            }.toMap()
+
+    private val groupingVariables = setOf("groupby")
 
     /** [text] with Grafana's built-in and dashboard variables replaced the way Grafana would. */
     fun substitute(

@@ -1938,14 +1938,9 @@
             "selected": true,
             "text": "host_name",
             "value": "host_name"
-          },
-          {
-            "selected": false,
-            "text": "cluster",
-            "value": "cluster"
           }
         ],
-        "query": "host_name,cluster",
+        "query": "host_name",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"

@@ -1473,7 +1473,7 @@
           },
           "editorMode": "code",
           "expr": "label_replace(max by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} {{host_name}}",
+          "legendFormat": "",
           "range": false,
           "refId": "A",
           "instant": true,
@@ -1486,7 +1486,7 @@
           },
           "editorMode": "code",
           "expr": "label_replace(max by (cluster, host_name) (sum by (cluster, host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} {{host_name}}",
+          "legendFormat": "",
           "range": false,
           "refId": "B",
           "instant": true,
@@ -1499,7 +1499,7 @@
           },
           "editorMode": "code",
           "expr": "label_replace(max by (cluster, host_name, cassandra_build) ((group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"})))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} {{host_name}} {{cassandra_build}}",
+          "legendFormat": "",
           "range": false,
           "refId": "C",
           "instant": true,
@@ -1517,7 +1517,8 @@
           "options": {
             "excludeByName": {
               "Time": true,
-              "Value #C": true
+              "Value #C": true,
+              "cluster": true
             },
             "includeByName": {},
             "indexByName": {},
@@ -1525,7 +1526,8 @@
               "host_name": "Host",
               "cassandra_build": "Build",
               "Value #A": "Cores",
-              "Value #B": "RAM"
+              "Value #B": "RAM",
+              "cluster_name": "Cluster"
             }
           }
         }
@@ -1741,8 +1743,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -1756,8 +1758,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -1771,8 +1773,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -2037,8 +2039,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -2052,8 +2054,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -2067,8 +2069,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -2535,8 +2537,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -2550,8 +2552,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -2565,8 +2567,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -2724,8 +2726,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -2739,8 +2741,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -2754,8 +2756,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -2913,8 +2915,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -2928,8 +2930,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -2943,8 +2945,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -3102,8 +3104,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -3117,8 +3119,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -3132,8 +3134,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -3291,8 +3293,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -3306,8 +3308,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -3321,8 +3323,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -3855,8 +3857,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -3870,8 +3872,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -3885,8 +3887,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -4044,8 +4046,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -4059,8 +4061,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -4074,8 +4076,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -4233,8 +4235,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -4248,8 +4250,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -4263,8 +4265,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -4422,8 +4424,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -4437,8 +4439,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -4452,8 +4454,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -4613,8 +4615,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -4628,8 +4630,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -4643,8 +4645,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -4803,8 +4805,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -4818,8 +4820,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -4833,8 +4835,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -4993,8 +4995,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -5008,8 +5010,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -5023,8 +5025,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -5182,8 +5184,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -5197,8 +5199,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -5212,8 +5214,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -6123,8 +6125,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -6138,8 +6140,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -6153,8 +6155,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -6312,8 +6314,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -6327,8 +6329,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -6342,8 +6344,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -6621,8 +6623,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "baseline"
+              "id": "byRegexp",
+              "options": "^(.* )?baseline$"
             },
             "properties": [
               {
@@ -6636,8 +6638,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "candidate"
+              "id": "byRegexp",
+              "options": "^(.* )?candidate$"
             },
             "properties": [
               {
@@ -6651,8 +6653,8 @@
           },
           {
             "matcher": {
-              "id": "byName",
-              "options": "delta %"
+              "id": "byRegexp",
+              "options": "^(.* )?delta %$"
             },
             "properties": [
               {
@@ -7908,11 +7910,6 @@
           },
           {
             "selected": false,
-            "text": "cluster",
-            "value": "cluster"
-          },
-          {
-            "selected": false,
             "text": "state",
             "value": "state"
           },
@@ -7952,7 +7949,7 @@
             "value": "cassandra_build"
           }
         ],
-        "query": "host_name,cluster,state,device,mountpoint,direction,operation,status,arena,cassandra_build",
+        "query": "host_name,state,device,mountpoint,direction,operation,status,arena,cassandra_build",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"

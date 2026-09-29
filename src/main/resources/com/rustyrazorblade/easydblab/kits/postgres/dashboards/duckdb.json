@@ -249,11 +249,11 @@
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "seq scan (tup_returned/s)" },
+            "matcher": { "id": "byRegexp", "options": "^(.* )?seq scan \\(tup_returned\\/s\\)$" },
             "properties": [{ "id": "color", "value": { "fixedColor": "#73BF69", "mode": "fixed" } }]
           },
           {
-            "matcher": { "id": "byName", "options": "index lookup (tup_fetched/s)" },
+            "matcher": { "id": "byRegexp", "options": "^(.* )?index lookup \\(tup_fetched\\/s\\)$" },
             "properties": [{ "id": "color", "value": { "fixedColor": "#FADE2A", "mode": "fixed" } }]
           }
         ]

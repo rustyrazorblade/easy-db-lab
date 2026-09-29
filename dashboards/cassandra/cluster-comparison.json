@@ -1466,35 +1466,36 @@
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_count_total{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} Write ops/s",
+          "legendFormat": "Write ops/s",
           "refId": "A",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} Write latency",
+          "legendFormat": "Write latency",
           "refId": "B",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} Read latency",
+          "legendFormat": "Read latency",
           "refId": "C",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} Error rate",
+          "legendFormat": "Error rate",
           "refId": "D",
           "instant": true
         }
       ],
       "title": "Cluster Summary",
       "transformations": [
-        {"id": "merge", "options": {}}
+        {"id": "merge", "options": {}},
+        {"id": "organize", "options": {"excludeByName": {"cluster": true}, "renameByName": {"cluster_name": "Cluster"}}}
       ],
       "type": "table"
     },
@@ -2011,11 +2012,11 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byRegexp", "options": "^p50 "},
+            "matcher": {"id": "byRegexp", "options": "^(.* )?p50 "},
             "properties": [{"id": "custom.lineStyle", "value": {"dash": [10, 10], "fill": "dash"}}]
           },
           {
-            "matcher": {"id": "byRegexp", "options": "^max "},
+            "matcher": {"id": "byRegexp", "options": "^(.* )?max "},
             "properties": [{"id": "custom.lineWidth", "value": 1}]
           }
         ]
@@ -2176,7 +2177,7 @@
         },
         "overrides": [
           {
-            "matcher": {"id": "byName", "options": "cluster"},
+            "matcher": {"id": "byName", "options": "Cluster"},
             "properties": [
               {"id": "custom.cellOptions", "value": {"type": "auto"}},
               {"id": "custom.width", "value": 200}
@@ -2196,35 +2197,36 @@
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} p50",
+          "legendFormat": "p50",
           "refId": "A",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} p99",
+          "legendFormat": "p99",
           "refId": "B",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} p999",
+          "legendFormat": "p999",
           "refId": "C",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_max_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} max",
+          "legendFormat": "max",
           "refId": "D",
           "instant": true
         }
       ],
       "title": "Latency Percentile Ladder (slowest node per cluster, ${latency_unit:text})",
       "transformations": [
-        {"id": "merge", "options": {}}
+        {"id": "merge", "options": {}},
+        {"id": "organize", "options": {"excludeByName": {"cluster": true}, "renameByName": {"cluster_name": "Cluster"}}}
       ],
       "type": "table"
     },
@@ -3405,7 +3407,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "^p50 "
+              "options": "^(.* )?p50 "
             },
             "properties": [
               {
@@ -3423,7 +3425,7 @@
           {
             "matcher": {
               "id": "byRegexp",
-              "options": "^max "
+              "options": "^(.* )?max "
             },
             "properties": [
               {

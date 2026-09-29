@@ -384,7 +384,7 @@
           "format": "table",
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "A"
         },
         {
@@ -399,7 +399,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "B"
         },
         {
@@ -414,7 +414,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "C"
         },
         {
@@ -429,7 +429,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "D"
         },
         {
@@ -444,7 +444,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "E"
         },
         {
@@ -459,7 +459,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "F"
         },
         {
@@ -474,7 +474,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "G"
         },
         {
@@ -489,7 +489,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "H"
         },
         {
@@ -504,7 +504,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "I"
         },
         {
@@ -519,7 +519,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "J"
         }
       ],
@@ -579,7 +579,16 @@
               "job 6": true,
               "job 7": true,
               "job 8": true,
-              "job 9": true
+              "job 9": true,
+              "cluster_name 2": true,
+              "cluster_name 3": true,
+              "cluster_name 4": true,
+              "cluster_name 5": true,
+              "cluster_name 6": true,
+              "cluster_name 7": true,
+              "cluster_name 8": true,
+              "cluster_name 9": true,
+              "cluster_name 10": true
             },
             "indexByName": {
               "Time 1": 1,
@@ -651,7 +660,8 @@
               "cluster 1": "Cluster",
               "cluster 2": "",
               "cluster 6": "",
-              "instance": "Instance"
+              "instance": "Instance",
+              "cluster_name 1": "Cluster"
             }
           }
         }
@@ -885,7 +895,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}} {{disk}}",
+          "legendFormat": "{{disk}}",
           "refId": "B"
         },
         {
@@ -900,7 +910,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}} {{disk}}",
+          "legendFormat": "{{disk}}",
           "refId": "D"
         },
         {
@@ -915,7 +925,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "C"
         },
         {
@@ -930,7 +940,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "E"
         },
         {
@@ -945,7 +955,7 @@
           "hide": false,
           "instant": true,
           "interval": "",
-          "legendFormat": "{{cluster_name}}",
+          "legendFormat": "",
           "refId": "A"
         }
       ],
@@ -985,7 +995,11 @@
               "job 2": true,
               "job 3": true,
               "job 4": true,
-              "job 5": true
+              "job 5": true,
+              "cluster_name 2": true,
+              "cluster_name 3": true,
+              "cluster_name 4": true,
+              "cluster_name 5": true
             },
             "indexByName": {
               "Time": 2,
@@ -1023,7 +1037,8 @@
               "disk 3": "",
               "instance 1": "Instance",
               "instance 3": "",
-              "job 1": ""
+              "job 1": "",
+              "cluster_name 1": "Cluster"
             }
           }
         },
@@ -26767,7 +26782,7 @@
               "hide": false,
               "instant": true,
               "interval": "",
-              "legendFormat": "{{cluster_name}}",
+              "legendFormat": "",
               "refId": "C"
             },
             {
@@ -26782,7 +26797,7 @@
               "hide": false,
               "instant": true,
               "interval": "",
-              "legendFormat": "{{cluster_name}}",
+              "legendFormat": "",
               "refId": "D"
             },
             {
@@ -26797,7 +26812,7 @@
               "hide": false,
               "instant": true,
               "interval": "",
-              "legendFormat": "{{cluster_name}}",
+              "legendFormat": "",
               "refId": "H"
             },
             {
@@ -26812,7 +26827,7 @@
               "hide": false,
               "instant": true,
               "interval": "",
-              "legendFormat": "{{cluster_name}}",
+              "legendFormat": "",
               "refId": "I"
             },
             {
@@ -26827,7 +26842,7 @@
               "hide": false,
               "instant": true,
               "interval": "",
-              "legendFormat": "{{cluster_name}}",
+              "legendFormat": "",
               "refId": "J"
             },
             {
@@ -26842,7 +26857,7 @@
               "hide": false,
               "instant": true,
               "interval": "",
-              "legendFormat": "{{cluster_name}}",
+              "legendFormat": "",
               "refId": "A"
             },
             {
@@ -26857,7 +26872,7 @@
               "hide": false,
               "instant": true,
               "interval": "",
-              "legendFormat": "{{cluster_name}}",
+              "legendFormat": "",
               "refId": "B"
             },
             {
@@ -26872,7 +26887,7 @@
               "hide": false,
               "instant": true,
               "interval": "",
-              "legendFormat": "{{cluster_name}}",
+              "legendFormat": "",
               "refId": "E"
             },
             {
@@ -26887,7 +26902,7 @@
               "hide": false,
               "instant": true,
               "interval": "",
-              "legendFormat": "{{cluster_name}}",
+              "legendFormat": "",
               "refId": "F"
             }
           ],
@@ -26947,7 +26962,15 @@
                   "job 6": true,
                   "job 7": true,
                   "job 8": true,
-                  "job 9": true
+                  "job 9": true,
+                  "cluster_name 2": true,
+                  "cluster_name 3": true,
+                  "cluster_name 4": true,
+                  "cluster_name 5": true,
+                  "cluster_name 6": true,
+                  "cluster_name 7": true,
+                  "cluster_name 8": true,
+                  "cluster_name 9": true
                 },
                 "indexByName": {
                   "Time 1": 6,
@@ -27011,7 +27034,8 @@
                   "cluster 1": "Cluster",
                   "cluster 2": "",
                   "cluster 6": "",
-                  "instance": "Keeper Instance"
+                  "instance": "Keeper Instance",
+                  "cluster_name 1": "Cluster"
                 }
               }
             }

@@ -146,7 +146,7 @@
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
           "expr": "label_replace(topk by (cluster) (25, sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" [$__range]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} records",
+          "legendFormat": "records",
           "queryType": "instant",
           "refId": "A"
         },
@@ -154,7 +154,7 @@
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
           "expr": "label_replace(sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"WARN|WARNING\" [$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} warnings",
+          "legendFormat": "warnings",
           "queryType": "instant",
           "refId": "B"
         },
@@ -162,7 +162,7 @@
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
           "expr": "label_replace(sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"ERROR|SEVERE\" [$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} errors",
+          "legendFormat": "errors",
           "queryType": "instant",
           "refId": "C"
         }
@@ -171,7 +171,7 @@
       "transformations": [
         { "id": "labelsToFields", "options": { "mode": "columns" } },
         { "id": "merge", "options": {} },
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": {} } }
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "cluster": true }, "indexByName": {}, "renameByName": { "cluster_name": "Cluster" } } }
       ],
       "type": "table"
     },
@@ -236,7 +236,7 @@
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
           "expr": "label_replace(topk by (cluster) (20, sum by (cluster, exception_type, scope_name, cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | exception_type!=\"\" [$__range]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} occurrences",
+          "legendFormat": "occurrences",
           "queryType": "instant",
           "refId": "A"
         }
@@ -245,7 +245,7 @@
       "transformations": [
         { "id": "labelsToFields", "options": { "mode": "columns" } },
         { "id": "merge", "options": {} },
-        { "id": "organize", "options": { "excludeByName": { "Time": true }, "indexByName": {}, "renameByName": {} } }
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "cluster": true }, "indexByName": {}, "renameByName": { "cluster_name": "Cluster" } } }
       ],
       "type": "table"
     },

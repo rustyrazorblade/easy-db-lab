@@ -939,7 +939,7 @@
           },
           "editorMode": "code",
           "expr": "label_replace(sum by (cluster, span_name) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} {{span_name}}",
+          "legendFormat": "",
           "range": false,
           "instant": true,
           "refId": "A",
@@ -952,7 +952,7 @@
           },
           "editorMode": "code",
           "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} {{span_name}} {{le}}",
+          "legendFormat": "",
           "range": false,
           "instant": true,
           "refId": "B",
@@ -965,7 +965,7 @@
           },
           "editorMode": "code",
           "expr": "label_replace(sum by (cluster, span_name) (rate(traces_spanmetrics_duration_milliseconds_sum{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) / sum by (cluster, span_name) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} {{span_name}}",
+          "legendFormat": "",
           "range": false,
           "instant": true,
           "refId": "C",
@@ -974,11 +974,8 @@
       ],
       "transformations": [
         {
-          "id": "joinByField",
-          "options": {
-            "byField": "span_name",
-            "mode": "outer"
-          }
+          "id": "merge",
+          "options": {}
         },
         {
           "id": "organize",
@@ -987,13 +984,15 @@
               "Time": true,
               "Time 1": true,
               "Time 2": true,
-              "Time 3": true
+              "Time 3": true,
+              "cluster": true
             },
             "renameByName": {
               "span_name": "Span name",
               "Value #A": "Rate (spans/s)",
               "Value #B": "p99 (ms)",
-              "Value #C": "Mean (ms)"
+              "Value #C": "Mean (ms)",
+              "cluster_name": "Cluster"
             }
           }
         }

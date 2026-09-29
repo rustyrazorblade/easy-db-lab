@@ -2782,11 +2782,6 @@
           },
           {
             "selected": false,
-            "text": "cluster",
-            "value": "cluster"
-          },
-          {
-            "selected": false,
             "text": "keyspace",
             "value": "keyspace"
           },
@@ -2821,7 +2816,7 @@
             "value": "mountpoint"
           }
         ],
-        "query": "host_name,cassandra_build,cluster,keyspace,table,cassandra_keyspace,cassandra_table,cassandra_compaction_task_type,cassandra_operation,mountpoint",
+        "query": "host_name,cassandra_build,keyspace,table,cassandra_keyspace,cassandra_table,cassandra_compaction_task_type,cassandra_operation,mountpoint",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"

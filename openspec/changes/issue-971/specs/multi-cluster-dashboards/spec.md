@@ -2,7 +2,7 @@
 
 ### Requirement: All dashboards have a cluster multi-select variable
 
-Every dashboard that has a `cluster` template variable (lowercase) SHALL populate it with `label_values(up, cluster)` on the dashboard's metrics datasource picker, `${metrics_datasource}`, and never on a fixed datasource.  The variable SHALL support multi-select and SHALL include an "All" option.  The Tests dashboard is the one exception: its `cluster` variable is single-select, because it selects one test.  The dashboard file SHALL store no default for the variable.  The installer SHALL set the default to the current cluster, as the requirement "Installed dashboards default to the current cluster" states.  "All" SHALL NOT be the default.  The dashboards that have no `cluster` variable today are tracked by issue #983 and are not covered by this requirement.
+Every dashboard that has a `cluster` template variable (lowercase) SHALL populate it with `label_values(up, cluster)` on the dashboard's metrics datasource picker, `${metrics_datasource}`, and never on a fixed datasource.  The variable SHALL support multi-select and SHALL include an "All" option.  The Tests dashboard is the one exception: its `cluster` variable is single-select, because it selects one test.  The dashboard file SHALL store no default for the variable.  The installer SHALL set the default to the current cluster, as the requirement "Installed dashboards default to the current cluster" states.  "All" SHALL NOT be the default.  Every dashboard that queries metrics or logs SHALL have this `cluster` variable, and every metrics and logs query on it, including the queries of other template variables such as a host list, SHALL filter by `cluster=~"$cluster"` (issue #983, folded into this change).  A data source whose series carry no `cluster` label is the one exception, and the dashboard SHALL say so in its description.
 
 #### Scenario: Cluster variable reads the selected metrics tenant
 
@@ -27,6 +27,17 @@ Every dashboard that has a `cluster` template variable (lowercase) SHALL populat
 - **WHEN** a URL includes `?var-cluster=<name>`
 - **THEN** Grafana selects that cluster in the dropdown
 - **AND** every dashboard panel shows data scoped to that cluster
+
+#### Scenario: Two clusters running at once are not mixed
+
+- **WHEN** two clusters of one tenant send metrics and logs at the same time
+- **AND** an operator opens any dashboard with the `cluster` variable set to one of them
+- **THEN** every panel and every variable list shows only that cluster's data
+
+#### Scenario: A dashboard without a cluster filter fails the unit test
+
+- **WHEN** a dashboard queries metrics or logs and has no `cluster` variable, or has a metrics or logs query that does not filter by `cluster=~"$cluster"`
+- **THEN** the unit test fails and names the dashboard and the query
 
 #### Scenario: All tenants and All clusters show every cluster
 

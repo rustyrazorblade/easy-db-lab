@@ -359,7 +359,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
+          "expr": "sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} iowait",
           "refId": "A"
         },
@@ -368,7 +368,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
+          "expr": "sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} steal",
           "refId": "B"
         }
@@ -476,7 +476,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\"} / on (host_name) system_cpu_logical_count{host_name=~\"$hostname\", cluster=~\"$cluster\"}",
+          "expr": "system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\"} / on (cluster, host_name) system_cpu_logical_count{host_name=~\"$hostname\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}}",
           "refId": "A"
         }
@@ -1441,7 +1441,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"user\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
+          "expr": "avg( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"user\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "user",
           "refId": "A"
         },
@@ -1450,7 +1450,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"system\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
+          "expr": "avg( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"system\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "system",
           "refId": "B"
         },
@@ -1459,7 +1459,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"softirq\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
+          "expr": "avg( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"softirq\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "softirq",
           "refId": "C"
         },
@@ -1468,7 +1468,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"interrupt\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
+          "expr": "avg( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"interrupt\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "interrupt",
           "refId": "D"
         },
@@ -1477,7 +1477,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
+          "expr": "avg( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "steal",
           "refId": "E"
         },
@@ -1486,7 +1486,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
+          "expr": "avg( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "wait",
           "refId": "F"
         },
@@ -1495,7 +1495,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "avg( sum by (host_name) (rate(system_cpu_time_seconds_total{state=\"nice\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (host_name) sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
+          "expr": "avg( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"nice\", host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\"}[$__rate_interval])) )",
           "legendFormat": "nice",
           "refId": "G"
         }
@@ -2712,7 +2712,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "avg by (state) ( sum by (host_name, state) (label_replace(system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\"}, \"state\", \"slab\", \"state\", \"slab_.*\")) / on (host_name) group_left sum by (host_name) (system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\"}) )",
+          "expr": "avg by (state) ( sum by (cluster, host_name, state) (label_replace(system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\"}, \"state\", \"slab\", \"state\", \"slab_.*\")) / on (cluster, host_name) group_left sum by (cluster, host_name) (system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\"}) )",
           "legendFormat": "{{state}}",
           "refId": "A"
         }

@@ -615,7 +615,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "system_filesystem_usage_bytes{state=\"used\", node_role=~\"spark-.*\", mountpoint=\"/\", cluster=~\"$cluster\"} / on(host_name) system_filesystem_usage_bytes{state=\"free\", node_role=~\"spark-.*\", mountpoint=\"/\", cluster=~\"$cluster\"}",
+          "expr": "system_filesystem_usage_bytes{state=\"used\", node_role=~\"spark-.*\", mountpoint=\"/\", cluster=~\"$cluster\"} / on(cluster, host_name) system_filesystem_usage_bytes{state=\"free\", node_role=~\"spark-.*\", mountpoint=\"/\", cluster=~\"$cluster\"}",
           "legendFormat": "{{host_name}} /",
           "refId": "A"
         }

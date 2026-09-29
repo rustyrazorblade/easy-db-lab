@@ -1498,7 +1498,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (host_name, cassandra_build) ((group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
+          "expr": "max by (cluster, host_name, cassandra_build) ((group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "",
           "range": false,
           "refId": "C",
@@ -6851,7 +6851,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - sum by ($groupby) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", state=\"idle\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))\n         / sum by ($groupby) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})))))",
+          "expr": "100 * (1 - sum by ($groupby) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", state=\"idle\"}[$__rate_interval]) * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))\n         / sum by ($groupby) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\"}[$__rate_interval]) * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -6946,7 +6946,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (system_memory_usage_bytes{cluster=~\"$cluster\"} * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
+          "expr": "sum by ($groupby) (system_memory_usage_bytes{cluster=~\"$cluster\"} * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7041,7 +7041,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
+          "expr": "sum by ($groupby) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]) * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7136,7 +7136,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * max by ($groupby) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
+          "expr": "100 * max by ($groupby) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]) * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7231,7 +7231,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, $groupby) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})))))",
+          "expr": "histogram_quantile(0.99, sum by (le, $groupby) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]) * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7326,7 +7326,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, $groupby) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})))))",
+          "expr": "histogram_quantile(0.99, sum by (le, $groupby) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]) * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7421,7 +7421,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
+          "expr": "sum by ($groupby) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]) * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7516,7 +7516,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
+          "expr": "sum by ($groupby) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\"}[$__rate_interval]) * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7611,7 +7611,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * sum by ($groupby) (system_filesystem_usage_bytes{cluster=~\"$cluster\", state=\"used\"} * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))\n      / sum by ($groupby) (system_filesystem_usage_bytes{cluster=~\"$cluster\"} * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
+          "expr": "100 * sum by ($groupby) (system_filesystem_usage_bytes{cluster=~\"$cluster\", state=\"used\"} * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))\n      / sum by ($groupby) (system_filesystem_usage_bytes{cluster=~\"$cluster\"} * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7706,7 +7706,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
+          "expr": "sum by ($groupby) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\"}[$__rate_interval]) * on(cluster, host_name) group_left(cassandra_build) (group by (cluster, host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (cluster, host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(cluster, host_name) group by (cluster, host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"

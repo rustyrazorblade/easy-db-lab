@@ -245,7 +245,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(100 * (1 - sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))) - on (host_name) (sum by (host_name) (label_replace((aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")))",
+          "expr": "(100 * (1 - sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))) - on (cluster, host_name) (sum by (cluster, host_name) (label_replace((aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")))",
           "legendFormat": "{{host_name}} in-box - CloudWatch",
           "range": true,
           "instant": false,

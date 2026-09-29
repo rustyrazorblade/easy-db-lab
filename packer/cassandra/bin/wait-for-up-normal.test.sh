@@ -97,15 +97,16 @@ fail() {
 }
 
 # run_script VAR=val ... — runs the script with a fresh clock and fresh call counts.  Sets OUTPUT,
-# STATUS and ELAPSED (fake seconds).  A run still going after 20 real seconds is killed, and
-# STATUS is set to "hung".
+# STATUS and ELAPSED (fake seconds).  A run still going after 120 real seconds is killed, and
+# STATUS is set to "hung".  The default-deadline case runs about 600 stubbed loop iterations, which
+# take over 20 real seconds when `check` runs the other test tiers alongside.
 run_script() {
   rm -f "${STATE}"/*.calls
   echo 1000 >"${STATE}/clock"
   env "$@" bash "$SCRIPT" >"${SANDBOX}/out" 2>&1 &
   local pid=$!
   local waited=0
-  while kill -0 "$pid" 2>/dev/null && [[ $waited -lt 200 ]]; do
+  while kill -0 "$pid" 2>/dev/null && [[ $waited -lt 1200 ]]; do
     "$REAL_SLEEP" 0.1
     waited=$((waited + 1))
   done

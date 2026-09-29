@@ -49,9 +49,9 @@
 
 - [x] 7.1 Through the `dashboard-editor` agent, rename `cluster_a`/`cluster_b` to `baseline_cluster`/`candidate_cluster` in `cluster-comparison.json` and update every reference.
 - [x] 7.2 Add to `cluster-comparison`, `ab-comparison` and `system-ab-comparison`: `baseline_cluster`, `candidate_cluster` (single-select, over `$lookback`, evaluated at now), `lookback`, `resolution`, `doc_tenant`, and the hidden helper variables (starts, ends, lengths, `max_len`, overlay offsets, side-by-side shifts).
-- [x] 7.3 Overlay row: panel `timeFrom` `${max_len}s`; each run's query with `offset ${<run>_offset}s`; panel description notes the relative range and the annotation limit.
-- [x] 7.4 Side-by-side row: one column per run, panel `timeFrom` `${<run>_len}s`, `timeShift` `${<run>_since_end}s`.
-- [x] 7.5 Summary row: one instant query per figure with `[${<run>_len}s] @ ${<run>_end}` and `100 * (C - B) / B`; the baseline and candidate documents iframes side by side next to it.
+- [x] 7.3 Overlay row: panel `timeFrom` `${max_len_d}d-${max_len_s}s` (days plus seconds, see design "Changes after live QA"); each run's query with `offset ${<run>_offset}s`; panel description notes the relative range and the annotation limit.
+- [x] 7.4 Side-by-side row: one column per run, panel `timeFrom` `${<run>_len_d}d-${<run>_len_s}s`, `timeShift` `${<run>_since_end_d}d-${<run>_since_end_s}s`.
+- [x] 7.5 Summary row: one instant query per panel joining the figures with `or`, pivoted with `groupingToMatrix` and `organize`, each figure with `[${<run>_len}s] @ ${<run>_end}` and `100 * (C - B) / B`; the baseline and candidate documents iframes side by side next to it.
 - [x] 7.6 Figures: `cluster-comparison` and `ab-comparison` throughput, read p99, write p99, error rate, CPU, disk I/O, GC pause; `system-ab-comparison` CPU, memory, disk, network.  Verify metric names against the metrics catalog.  The new views filter by cluster only; existing panels and filters stay below.
 - [x] 7.7 Guard tests and `PromQlCompatibilityIntegrationTest` pass.
 

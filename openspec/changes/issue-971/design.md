@@ -183,3 +183,13 @@ The four live-test unknowns from decision 19:
 2. **Variable interpolation in panel `timeShift` and `timeFrom`** on Grafana 13.2.2, checked on a live cluster.
 3. **The iframe under `disable_sanitize_html`** in a Text panel in HTML mode, checked on a live cluster.
 4. **Browser reachability of the web server and bucket-region signing by the proxy**, checked on a live cluster, including a bucket in a region other than the cluster's.
+
+## Changes after live QA (2026-09-29, owner-approved)
+
+Live QA on cluster qa971 found five defects in the forms above.  The code now differs from this document as follows; where the two disagree, this section wins.
+
+- **Panel `timeFrom` and `timeShift` use days plus seconds.**  Grafana 13.2.2's date math accepts at most five digits per number (`datemath.ts`, `MAX_MATH_TOKEN_DIGITS = 5`), so `${x}s` failed past 99,999 seconds (27.8 hours).  Each value used in a panel time override is split into two hidden helpers, `x_d = floor(x / 86400)` and `x_s = x % 86400`, and the field is `${x_d}d-${x_s}s`.  PromQL `offset` and range values stay in plain seconds.  `PanelTimeOverrideTest` guards it.
+- **The summary is one query per panel, pivoted.**  Grafana names value fields `Value #A`, `Value #B` when a panel has several queries, so `groupingToMatrix` never formed.  Each summary panel is one instant query that joins the figures with `or`, then `groupingToMatrix` and `organize` into Figure, Baseline, Candidate and Difference %.
+- **The sanitize setting is in `[panels]`.**  Grafana reads `disable_sanitize_html` from `[panels]` (env `GF_PANELS_DISABLE_SANITIZE_HTML`), not `[security]`.  The Text panel sanitizer keeps only `src`, `width` and `height` on an iframe, so every documents iframe is sized with `width` and `height` attributes, not `style`.
+- **Mimir's per-tenant query queue is 5000.**  The default of 100 rejected full dashboard loads with 429.  `query_scheduler.max_outstanding_requests_per_tenant` holds two full loads of the heaviest dashboard; parallelism and sharding are unchanged.
+- **Also fixed in this change:** every `cluster` variable except the Tests one is multi-select with All on `label_values(up, cluster)`, and trino matches it with `=~`; `clickhouse-overview` rows have distinct positions (`DashboardRowOrderTest`); the postgres extension dashboards link to the uids their instances install, with the time range kept (`DashboardLinkTimeTest`).

@@ -517,7 +517,9 @@ A kit with an `extension` arg (postgres) runs as several instances side by side 
 that extension; one without is installed by every instance. Grafana uids are global, so an
 instance other than the kit's own installs each dashboard under the uid suffixed with its
 extension (`postgres-overview-duckdb`), and links between the dashboards it installs point at
-its own copies; it never moves another instance's dashboard into its folder.
+its own copies; it never moves another instance's dashboard into its folder. A link to another
+extension's dashboard points at the uid that extension's instance installs it under
+(`/d/postgres-duckdb` becomes `/d/postgres-duckdb-duckdb`), in every instance.
 ```yaml
 dashboards:
   - path: dashboards/postgres.json

@@ -30,6 +30,15 @@ class KitDashboardInstanceTest {
 
     private val duckdb = """{"uid":"postgres-duckdb","title":"DuckDB","links":[{"url":"/d/postgres-overview"}]}"""
 
+    private val postgis = """{"uid":"postgres-postgis","title":"PostGIS","links":[{"url":"/d/postgres-duckdb?orgId=1"}]}"""
+
+    private val files =
+        mapOf(
+            "dashboards/postgres.json" to overview,
+            "dashboards/duckdb.json" to duckdb,
+            "dashboards/postgis.json" to postgis,
+        )
+
     private fun uidOf(json: String) = requireNotNull(Json.parseToJsonElement(json).jsonObject["uid"]).jsonPrimitive.content
 
     @Test
@@ -72,8 +81,41 @@ class KitDashboardInstanceTest {
         assertThat(uidOf(renderedOverview)).isEqualTo("postgres-overview-duckdb")
         assertThat(uidOf(renderedDuckdb)).isEqualTo("postgres-duckdb-duckdb")
         assertThat(renderedOverview).contains("/d/postgres-duckdb-duckdb?orgId=1")
-        // A dashboard this instance does not install keeps pointing at the kit's own copy.
-        assertThat(renderedOverview).contains("\"/d/postgres-postgis\"")
         assertThat(renderedDuckdb).contains("/d/postgres-overview-duckdb")
+    }
+
+    /**
+     * Only the postgres-<extension> instance installs an extension's dashboard, under its uid
+     * suffixed with the extension, so that is where a link from another instance must go.
+     */
+    @Test
+    fun `each extension's dashboard is installed elsewhere under its uid suffixed with the extension`() {
+        val elsewhere = uidsInstalledElsewhere(refs, extension = "postgis") { files[it.path] }
+
+        assertThat(elsewhere).containsExactlyEntriesOf(mapOf("postgres-duckdb" to "postgres-duckdb-duckdb"))
+    }
+
+    @Test
+    fun `a link to another extension's dashboard points at the uid its instance installs it under`() {
+        val elsewhere = uidsInstalledElsewhere(refs, extension = "postgis") { files[it.path] }
+        val instance =
+            KitDashboardInstance(kitName = "postgres-postgis", kitType = "postgres", dashboards = listOf(postgis), elsewhere = elsewhere)
+
+        val rendered = instance.rendered().single()
+
+        assertThat(uidOf(rendered)).isEqualTo("postgres-postgis-postgis")
+        assertThat(rendered).contains("/d/postgres-duckdb-duckdb?orgId=1").doesNotContain("/d/postgres-duckdb?")
+    }
+
+    @Test
+    fun `the plain kit's links to extension dashboards point at their instances' uids`() {
+        val elsewhere = uidsInstalledElsewhere(refs, extension = "") { files[it.path] }
+        val instance =
+            KitDashboardInstance(kitName = "postgres", kitType = "postgres", dashboards = listOf(overview), elsewhere = elsewhere)
+
+        val rendered = instance.rendered().single()
+
+        assertThat(uidOf(rendered)).isEqualTo("postgres-overview")
+        assertThat(rendered).contains("/d/postgres-duckdb-duckdb?orgId=1").contains("/d/postgres-postgis-postgis\"")
     }
 }

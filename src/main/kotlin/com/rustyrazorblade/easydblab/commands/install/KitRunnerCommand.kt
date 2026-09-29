@@ -24,6 +24,7 @@ import com.rustyrazorblade.easydblab.services.WorkloadPresence
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import com.rustyrazorblade.easydblab.services.selectInstanceDashboards
+import com.rustyrazorblade.easydblab.services.uidsInstalledElsewhere
 import com.rustyrazorblade.easydblab.services.withKitName
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.json.Json
@@ -446,8 +447,16 @@ class KitRunnerCommand(
             }
         val rendered =
             runCatching {
-                KitDashboardInstance(kitName = kitName, kitType = config.name, dashboards = files.map { it.readText() })
-                    .rendered()
+                val elsewhere =
+                    uidsInstalledElsewhere(config.dashboards, instanceExtension(config)) { ref ->
+                        File(kitDir, ref.path).takeIf { it.isFile }?.readText()
+                    }
+                KitDashboardInstance(
+                    kitName = kitName,
+                    kitType = config.name,
+                    dashboards = files.map { it.readText() },
+                    elsewhere = elsewhere,
+                ).rendered()
                     .map { DashboardDefaults.apply(Json.parseToJsonElement(it).jsonObject, context) }
             }.getOrElse { e ->
                 eventBus.emit(Event.Grafana.KitDashboardsSkipped(kitName, names, "reading the dashboards failed: ${e.message}"))
@@ -471,13 +480,15 @@ class KitRunnerCommand(
                 .orEmpty()
                 .sortedBy { it.name }
         }
-        val extension = config.extensionArg?.let { readResolvedArgs()[it.variable] }.orEmpty()
-        return selectInstanceDashboards(config.dashboards, extension)
+        return selectInstanceDashboards(config.dashboards, instanceExtension(config))
             .map { File(kitDir, it.path) }
             .filter { file ->
                 file.isFile.also { found -> if (!found) log.warn { "Dashboard file not found: ${file.absolutePath}" } }
             }
     }
+
+    /** The extension this instance was created with, or empty for the plain kit. */
+    private fun instanceExtension(config: KitConfig): String = config.extensionArg?.let { readResolvedArgs()[it.variable] }.orEmpty()
 
     companion object {
         private val log = KotlinLogging.logger {}

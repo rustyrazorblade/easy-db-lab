@@ -5,11 +5,13 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -163,10 +165,11 @@ class KitSqlCommandTest : BaseKoinTest() {
     }
 
     @Test
-    fun `missing file emits error`() {
+    fun `missing file emits error and fails the command`() {
         val command = buildCommand()
         command.file = File("/nonexistent/query.sql")
-        command.execute()
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
 
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("File not found")
     }
@@ -187,18 +190,19 @@ class KitSqlCommandTest : BaseKoinTest() {
     }
 
     @Test
-    fun `service failure emits error`() {
+    fun `service failure emits error and fails the command`() {
         val factory = JdbcConnectionFactory { _, _ -> throw RuntimeException("Table not found") }
 
         val command = buildCommand(connectionFactory = factory)
         command.statement = "SELECT * FROM missing"
-        command.execute()
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
 
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("Table not found")
     }
 
     @Test
-    fun `unknown driver class emits error and skips execution`() {
+    fun `unknown driver class emits error, skips execution, and fails the command`() {
         var connectionAttempted = false
         val factory =
             JdbcConnectionFactory { _, _ ->
@@ -208,7 +212,8 @@ class KitSqlCommandTest : BaseKoinTest() {
 
         val command = buildCommand(connectionFactory = factory, driverClass = "com.nonexistent.Driver")
         command.statement = "SELECT 1"
-        command.execute()
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
 
         assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("com.nonexistent.Driver")
         assertThat(connectionAttempted).isFalse()

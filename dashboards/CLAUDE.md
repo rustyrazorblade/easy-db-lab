@@ -65,8 +65,8 @@ have.
 ### Links carry the pickers and the selected clusters
 
 Every `/d/` link (dashboard link or data link) passes each of `metrics_datasource`,
-`logs_datasource`, `traces_datasource`, `cluster`, `baseline_cluster`, `candidate_cluster` and
-`doc_tenant` that its own dashboard declares, as `${name:queryparam}` or as an explicit
+`logs_datasource`, `traces_datasource`, `cluster`, `baseline_cluster`, `candidate_cluster`,
+`doc_tenant` and `role` that its own dashboard declares, as `${name:queryparam}` or as an explicit
 `var-<name>=value`, and passes no `${name:queryparam}` for a variable it does not declare. So a
 drill-down keeps the tenant and the cluster:
 
@@ -83,6 +83,10 @@ Every `cluster` variable lists the clusters of the tenant the Metrics picker sel
 Every dashboard that queries metrics, logs or profiles declares `cluster`, and every selector of every metrics, logs and profile query filters by it: panel targets, annotation queries, Explore links, and the queries of other variables (`label_values(system_cpu_logical_count{cluster=~"$cluster"}, host_name)`).  A Pyroscope query's selector is its `labelSelector`.  A Pyroscope variable is different: the plugin's `VariableSupport` lists values over `{__profile_type__="<profileTypeId>"}` and never reads a `labelSelector` on a variable, so the variable's matchers are written into its `profileTypeId`, which closes the plugin's quote and leaves the last one open: `"profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds\",cluster=~\"$cluster"`.  Its `definition` shows the resulting selector.  A dashboard that queries only profiles still declares the `metrics_datasource` picker, because the `cluster` variable reads it.  Clusters of one tenant share Mimir's, Loki's and Pyroscope's store, so a selector without the filter mixes every cluster that ran at the same time.  Each side of a binary expression needs its own filter, because `a{cluster=~"$cluster"} / b` still divides by every cluster's `b`.  A new `cluster` variable has `allValue: ".+"`.  The comparison dashboards' run views filter by `baseline_cluster` or `candidate_cluster` instead.  Two queries read every cluster on purpose: the `cluster`, `baseline_cluster` and `candidate_cluster` variables, which list the clusters, and the Tests dashboard's listing.  `ClusterFilterTest` (`configuration/grafana/`) checks every core and kit dashboard and names the dashboard, the query and the unfiltered selector.  Every profile producer labels its profiles `cluster=<name>-<id>`, the value on every other signal: the JFR shipper, Alloy, the sidecar, the stress job, the Spark agent on EMR, and the presto and trino kits (which read `cluster_name` from `cluster-config`).
 
 Every cluster names its hosts the same way (db0, app0, control0), so a vector match pairs hosts `on (cluster, host_name)`, never `on (host_name)` alone.  With `cluster` set to All, `a / on (host_name) b` fails with "found duplicate series for the match group", and `and on (host_name)` keeps one cluster's series for another cluster's reason.  Every `by (...)` that feeds such a match keeps `cluster` (`sum by (cluster, host_name)`), and no match ignores `cluster`.  `ClusterJoinTest` (`configuration/grafana/`) checks every core and kit dashboard.
+
+### The role picker
+
+System Overview and System A/B Comparison declare `role`, a multi-select custom variable with All.  A host's role is read from its name (owner decision), so the variable's `key : value` query maps each role to a host-name regex: `db : db[0-9]+,app : app[0-9]+,control : control[0-9]+,spark : ip-.+` (EMR nodes are named `ip-...` by EC2).  `allValue` is `.*`, which also matches a series with no `host_name`.  Queries read it as `host_name=~"${role:pipe}"`: `:pipe` joins the selected regexes with `|` unescaped, whereas `:regex` would escape them.  The host pickers (`hostname`; `baseline` and `candidate`) apply it, and so does every panel selector and PromQL annotation that has a cluster matcher.  The CloudWatch series carry the host as `tag_Name`, so that selector uses `tag_Name=~"${role:pipe}"`.  Links from these dashboards carry `${role:queryparam}`.  `RolePickerTest` (`configuration/grafana/`) checks the variable, the patterns against sample host names, the host pickers and every selector.
 
 ### Install-time defaults
 

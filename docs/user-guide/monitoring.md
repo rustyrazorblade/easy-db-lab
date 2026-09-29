@@ -55,6 +55,17 @@ Two `report upload` runs for one test at the same moment can each rebuild the in
 
 Shows CPU, memory, disk I/O, network I/O, and load average for all cluster nodes via OpenTelemetry metrics.
 
+System Overview and System A/B Comparison have a **Role** picker.  It selects hosts by the role in their name:
+
+| Role | Hosts |
+|------|-------|
+| db | `db0`, `db1`, ... |
+| app | `app0`, `app1`, ... |
+| control | `control0` |
+| spark | EMR nodes, which EC2 names `ip-...` |
+
+Pick one or more roles to show every host of those roles, with no host selection by hand.  The host pickers list only hosts of the selected roles, and every panel shows only them.  The default is All, which shows every host.  A link from these dashboards to another dashboard keeps the selected roles.
+
 ### AWS CloudWatch Overview
 
 A combined dashboard showing S3, EBS, and EC2 metrics via CloudWatch. Available after running `easy-db-lab up`.

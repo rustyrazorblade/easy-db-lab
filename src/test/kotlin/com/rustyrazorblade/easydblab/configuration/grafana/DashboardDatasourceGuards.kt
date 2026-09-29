@@ -35,6 +35,7 @@ object DashboardDatasourceGuards {
             "baseline_cluster",
             "candidate_cluster",
             "doc_tenant",
+            "role",
         )
 
     private val encodedUidRef = Regex(""""(uid|datasource)"\s*:\s*"(mimir|loki|tempo)"""")

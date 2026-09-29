@@ -98,7 +98,7 @@
 
 ## 13. Build and live verification
 
-- [ ] 13.1 `./gradlew ktlintFormat`, `./gradlew check` on JDK 21 (in a subagent), and `./gradlew installDist`.
+- [x] 13.1 `./gradlew ktlintFormat`, `./gradlew check` on JDK 21 (in a subagent), and `./gradlew installDist`.
 - [ ] 13.2 Live cluster: verification item 2, variable interpolation in panel `timeShift` and `timeFrom` on the comparison dashboards.
 - [ ] 13.3 Live cluster: verification item 3, the iframe renders under `disable_sanitize_html`.
 - [ ] 13.4 Live cluster: verification item 4, the browser reaches the web server over Tailscale and SOCKS, and the proxy signs for the bucket's region.

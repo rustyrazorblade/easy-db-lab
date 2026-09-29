@@ -108,19 +108,39 @@ class ExecRun : PicoBaseCommand() {
                 remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false)
                 eventBus.emit(Event.Command.ToolStarted(host.alias, systemdUnit, commandString))
             } else {
-                remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false)
-                // Read output from systemd journal after foreground execution
-                val journalCmd = "sudo journalctl --unit=$systemdUnit --no-pager --output=cat"
-                val logOutput = remoteOps.executeRemotely(host, journalCmd, output = false, secret = false)
-                println("=== ${host.alias} ===")
-                if (logOutput.text.isNotEmpty()) println(logOutput.text)
-                if (logOutput.stderr.isNotEmpty()) println(logOutput.stderr)
+                runInForeground(host, systemdUnit, systemdRunCmd)
             }
             return true
         } catch (e: Exception) {
             eventBus.emit(Event.Command.HostExecError(host.alias, e.message ?: e::class.simpleName ?: "Unknown error"))
             return false
         }
+    }
+
+    /**
+     * Runs the unit and waits for it, then prints its output from the journal. `systemd-run --wait`
+     * exits non-zero when the unit fails, so the journal is printed on failure too: the unit's own
+     * output is the reason it failed. The run's failure is rethrown, not the journal's.
+     */
+    private fun runInForeground(
+        host: Host,
+        systemdUnit: String,
+        systemdRunCmd: String,
+    ) {
+        val run = runCatching { remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false) }
+        if (run.isFailure) runCatching { printUnitOutput(host, systemdUnit) } else printUnitOutput(host, systemdUnit)
+        run.getOrThrow()
+    }
+
+    private fun printUnitOutput(
+        host: Host,
+        systemdUnit: String,
+    ) {
+        val journalCmd = "sudo journalctl --unit=$systemdUnit --no-pager --output=cat"
+        val logOutput = remoteOps.executeRemotely(host, journalCmd, output = false, secret = false)
+        println("=== ${host.alias} ===")
+        if (logOutput.text.isNotEmpty()) println(logOutput.text)
+        if (logOutput.stderr.isNotEmpty()) println(logOutput.stderr)
     }
 
     internal fun deriveUnitName(commandString: String): String {

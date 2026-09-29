@@ -14,17 +14,21 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.ByteArrayOutputStream
+import java.io.PrintStream
 import java.rmi.ServerException
 
 /**
@@ -34,6 +38,8 @@ import java.rmi.ServerException
 class ExecRunTest : BaseKoinTest() {
     private val mockClusterStateManager: ClusterStateManager = mock()
     private val mockRemoteOps: RemoteOperationsService = mock()
+    private val originalOut = System.out
+    private val stdout = ByteArrayOutputStream()
 
     private val dbHosts =
         listOf("db0", "db1").mapIndexed { index, alias ->
@@ -66,6 +72,12 @@ class ExecRunTest : BaseKoinTest() {
             ),
         )
         whenever(mockRemoteOps.executeRemotely(any(), any(), any(), any())).thenReturn(Response(""))
+        System.setOut(PrintStream(stdout))
+    }
+
+    @AfterEach
+    fun restoreStdout() {
+        System.setOut(originalOut)
     }
 
     private fun run(
@@ -137,5 +149,33 @@ class ExecRunTest : BaseKoinTest() {
         verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[1].toHost()), any(), any(), any())
         val output = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
         assertThat(output).contains("=== db0 ===\nError executing command: Remote command failed (1)")
+    }
+
+    /**
+     * `systemd-run --wait` exits non-zero when the unit fails, and the unit's own output is only in
+     * the journal, so a failed run still prints it: that output is the reason the run failed.
+     */
+    @Test
+    fun `a failed foreground run prints the unit's journal before reporting the failure`() {
+        whenever(mockRemoteOps.executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("systemd-run") }, any(), any()))
+            .thenThrow(RuntimeException("Remote command failed (3)"))
+        whenever(mockRemoteOps.executeRemotely(eq(dbHosts[0].toHost()), argThat { contains("journalctl") }, any(), any()))
+            .thenReturn(Response("cat: /missing: No such file or directory"))
+
+        assertThatThrownBy {
+            ExecRun()
+                .apply {
+                    command = listOf("cat /missing")
+                    unitNameOverride = "qa-cat"
+                    hosts.hostList = "db0"
+                }.execute()
+        }.isInstanceOf(CommandFailedException::class.java)
+
+        val sent = argumentCaptor<String>()
+        verify(mockRemoteOps, atLeastOnce()).executeRemotely(eq(dbHosts[0].toHost()), sent.capture(), any(), any())
+        assertThat(sent.allValues).contains("sudo journalctl --unit=edl-exec-qa-cat --no-pager --output=cat")
+        assertThat(stdout.toString()).contains("=== db0 ===\ncat: /missing: No such file or directory")
+        val events = (getKoin().get<OutputHandler>() as BufferedOutputHandler).messages.joinToString("\n")
+        assertThat(events).contains("Error executing command: Remote command failed (3)")
     }
 }

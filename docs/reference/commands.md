@@ -639,7 +639,7 @@ Execute commands on remote hosts via `systemd-run`. Tool output is captured by t
 
 #### exec run
 
-Run a command on remote hosts (foreground by default). The command runs through `bash -c`: pass a whole command line as one quoted argument, or pass words after `--`, which are quoted one by one. If the command fails on any host, `exec run` reports that host and exits non-zero.
+Run a command on remote hosts (foreground by default). The command runs through `bash -c`: pass a whole command line as one quoted argument, or pass words after `--`, which are quoted one by one. If the command fails on any host, `exec run` prints that host's output, reports the host, and exits non-zero.
 
 ```bash
 # Foreground (blocks until complete, shows output)

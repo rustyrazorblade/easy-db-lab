@@ -817,6 +817,12 @@ object Constants {
         const val MAX_UID_LENGTH = 40
 
         /**
+         * The environment variable that sets `disable_sanitize_html`. Grafana reads the setting from
+         * `[panels]`, so a Text panel keeps the documents iframe only when this is `true`.
+         */
+        const val DISABLE_SANITIZE_HTML_ENV = "GF_PANELS_DISABLE_SANITIZE_HTML"
+
+        /**
          * The uids of the provisioned datasources. Dashboards, links between datasources and the
          * annotation queries name a datasource by its uid, so these are part of every dashboard.
          */

@@ -142,13 +142,15 @@ A test's documents are `reports/<tenant>/<name>-<id>/index.html` in the account 
 `report upload` and by `up`). A dashboard shows them in a Text panel in HTML mode with an iframe:
 
 ```html
-<iframe src="__DOCUMENTS_URL__/reports/${doc_tenant}/${cluster}/index.html" style="width: 100%; height: 100%; border: 0; background: #fff;"></iframe>
+<iframe src="__DOCUMENTS_URL__/reports/${doc_tenant}/${cluster}/index.html" width="100%" height="696"></iframe>
 ```
 
 `doc_tenant` is a custom variable with empty options in the file; the installer fills them. One
 `doc_tenant` serves the whole dashboard, so the documents of two tenants are not shown together.
-Grafana runs with `disable_sanitize_html`, and the documents web server in the Grafana pod serves
+Grafana runs with `disable_sanitize_html` (set in `[panels]` by `GF_PANELS_DISABLE_SANITIZE_HTML`), and the documents web server in the Grafana pod serves
 the file (see `configuration/CLAUDE.md`).
+
+The Text panel sanitizer keeps only `src`, `width` and `height` on an iframe and strips `style`, so size the iframe with attributes: `width="100%"` and a pixel `height` that fills the panel. The height is the panel height, `h * 38 - 8` px, less 56 px for the header, the padding and the inline gap. `DocumentsIframeTest` checks every iframe against its panel's `gridPos.h`.
 
 ## Label Name Conventions
 

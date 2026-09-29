@@ -134,7 +134,8 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     fun `Grafana lets a Text panel hold the documents iframe`() {
         val env = grafanaContainer().env.associate { it.name to it.value }
 
-        assertThat(env).containsEntry("GF_SECURITY_DISABLE_SANITIZE_HTML", "true")
+        // Grafana reads disable_sanitize_html from [panels]; the [security] spelling has no effect.
+        assertThat(env).containsEntry("GF_PANELS_DISABLE_SANITIZE_HTML", "true").doesNotContainKey("GF_SECURITY_DISABLE_SANITIZE_HTML")
     }
 
     @Test

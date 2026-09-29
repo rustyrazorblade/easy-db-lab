@@ -270,7 +270,7 @@ class GrafanaManifestBuilder(
             envVar("GF_RENDERING_CALLBACK_URL", "http://localhost:$GRAFANA_PORT/"),
             envVar("GF_RENDERING_RENDERER_TOKEN", RENDERER_TOKEN),
             // The Tests and comparison dashboards show a test's documents in an iframe in a Text panel.
-            envVar("GF_SECURITY_DISABLE_SANITIZE_HTML", "true"),
+            envVar(Constants.Grafana.DISABLE_SANITIZE_HTML_ENV, "true"),
         )
 
     private fun envVar(

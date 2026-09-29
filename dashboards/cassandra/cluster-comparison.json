@@ -1423,7 +1423,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${baseline_cluster}/index.html\" style=\"width: 100%; height: 100%; border: 0; background: #fff;\"></iframe>",
+        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${baseline_cluster}/index.html\" width=\"100%\" height=\"468\"></iframe>",
         "mode": "html"
       },
       "title": "Documents: baseline ${baseline_cluster}",
@@ -1444,7 +1444,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${candidate_cluster}/index.html\" style=\"width: 100%; height: 100%; border: 0; background: #fff;\"></iframe>",
+        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${candidate_cluster}/index.html\" width=\"100%\" height=\"468\"></iframe>",
         "mode": "html"
       },
       "title": "Documents: candidate ${candidate_cluster}",

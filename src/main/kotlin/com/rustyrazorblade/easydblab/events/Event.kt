@@ -2994,7 +2994,8 @@ sealed interface Event {
         @Serializable
         @SerialName("Tailscale.StoppedSuccessfully")
         data object StoppedSuccessfully : Tailscale {
-            override fun toDisplayString(): String = "Tailscale stopped successfully."
+            override fun toDisplayString(): String =
+                "Tailscale stopped successfully. Cluster commands cannot reach this cluster until 'easy-db-lab tailscale start'."
         }
 
         @Serializable

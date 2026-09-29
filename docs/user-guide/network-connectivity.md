@@ -102,6 +102,8 @@ easy-db-lab tailscale status
 easy-db-lab tailscale stop
 ```
 
+Cluster commands cannot reach this cluster until 'easy-db-lab tailscale start'.
+
 ### Troubleshooting Tailscale
 
 **"requested tags are invalid or not permitted"** - Add the tag to your ACL (Step 1).

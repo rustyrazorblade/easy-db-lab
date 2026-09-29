@@ -38,7 +38,13 @@ class DocumentsIframeTest {
     private fun iframePanels(): List<IframePanel> =
         DashboardFiles.all().flatMap { file ->
             textPanels(Json.parseToJsonElement(file.readText())).flatMap { panel ->
-                val content = panel["options"]?.jsonObject?.get("content")?.jsonPrimitive?.content.orEmpty()
+                val content =
+                    panel["options"]
+                        ?.jsonObject
+                        ?.get("content")
+                        ?.jsonPrimitive
+                        ?.content
+                        .orEmpty()
                 val gridHeight =
                     panel
                         .getValue("gridPos")
@@ -57,14 +63,21 @@ class DocumentsIframeTest {
     @Test
     fun `every iframe is sized by attributes and carries no style`() {
         for (panel in iframePanels()) {
-            assertThat(panel.tag).describedAs(panel.location).contains("""width="100%"""").containsPattern(height.pattern).doesNotContain("style=")
+            assertThat(
+                panel.tag,
+            ).describedAs(panel.location).contains("""width="100%"""").containsPattern(height.pattern).doesNotContain("style=")
         }
     }
 
     @Test
     fun `every iframe is as tall as its panel's content area`() {
         for (panel in iframePanels()) {
-            val pixels = height.find(panel.tag)?.groupValues?.get(1)?.toInt()
+            val pixels =
+                height
+                    .find(panel.tag)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.toInt()
             val panelPixels = panel.gridHeight * (GRID_CELL_HEIGHT + GRID_CELL_MARGIN) - GRID_CELL_MARGIN
 
             assertThat(pixels).describedAs(panel.location).isEqualTo(panelPixels - PANEL_CHROME)

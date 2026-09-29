@@ -128,7 +128,12 @@ class ComparisonDashboardsTest {
 
             val transformations = summary.getValue("transformations").jsonArray.map { it.jsonObject }
             val organize = transformations.last().getValue("options").jsonObject
-            val expr = targets.single().jsonObject.getValue("expr").jsonPrimitive.content
+            val expr =
+                targets
+                    .single()
+                    .jsonObject
+                    .getValue("expr")
+                    .jsonPrimitive.content
             for (run in SUMMARY_COLUMNS.keys.drop(1)) {
                 assertThat(expr).describedAs(path).contains("\"run\", \"$run\"")
             }

@@ -78,8 +78,12 @@ class PanelTimeOverrideTest {
                     assertThat(parts).describedAs("${override.location}: ${override.value}").hasSize(2)
                     val (days, seconds) = parts
                     assertThat(days).describedAs(override.location).isEqualTo(seconds)
-                    assertThat(queries["${days}_d"]).describedAs(override.location).isEqualTo("query_result(floor(vector(\${$days}) / 86400))")
-                    assertThat(queries["${seconds}_s"]).describedAs(override.location).isEqualTo("query_result(vector(\${$seconds}) % 86400)")
+                    assertThat(
+                        queries["${days}_d"],
+                    ).describedAs(override.location).isEqualTo("query_result(floor(vector(\${$days}) / 86400))")
+                    assertThat(
+                        queries["${seconds}_s"],
+                    ).describedAs(override.location).isEqualTo("query_result(vector(\${$seconds}) % 86400)")
                 }
             }
 

@@ -94,6 +94,53 @@ class ClusterFilterTest {
         assertThat(unscoped("{}", Language.PROFILES)).containsExactly("{}")
     }
 
+    /**
+     * The Pyroscope plugin lists a variable's values over `{__profile_type__="<profileTypeId>"}`
+     * and never reads a `labelSelector` on a variable, so the variable's cluster filter has to be
+     * in its profile type: a cluster matcher in `labelSelector` left every picker unfiltered.
+     */
+    @Test
+    fun `a profile variable is read as the selector the plugin sends, built from its profile type`() {
+        val dashboard =
+            parse(
+                """
+                {"templating": {"list": [
+                  {"name": "ignored", "type": "query", "datasource": {"type": "grafana-pyroscope-datasource"},
+                   "query": {"type": "labelValue", "labelName": "service_name", "profileTypeId": "cpu",
+                             "labelSelector": "{cluster=~\"${'$'}cluster\"}"}},
+                  {"name": "scoped", "type": "query", "datasource": {"type": "grafana-pyroscope-datasource"},
+                   "query": {"type": "labelValue", "labelName": "service_name",
+                             "profileTypeId": "cpu\",cluster=~\"${'$'}cluster"}}]}}
+                """,
+            )
+
+        val found = ClusterFilterGuards.queries(dashboard)
+
+        assertThat(found.map { it.text }).containsExactly(
+            "{__profile_type__=\"cpu\"}",
+            "{__profile_type__=\"cpu\",cluster=~\"${'$'}cluster\"}",
+        )
+        assertThat(ClusterFilterGuards.unscoped(found[0])).hasSize(1)
+        assertThat(ClusterFilterGuards.unscoped(found[1])).isEmpty()
+    }
+
+    /** A matcher written into a profile type must close the plugin's own quote exactly once. */
+    @Test
+    fun `every profile variable sends a well-formed selector`() {
+        val matcher = """\s*(\w+|\$\{?\w+}?)\s*(=|!=|=~|!~)\s*"[^"]*"\s*"""
+        val wellFormed = Regex("""^\{($matcher)(,$matcher)*}$""")
+        val malformed =
+            DashboardFiles.all().flatMap { file ->
+                ClusterFilterGuards
+                    .queries(parse(file.readText()))
+                    .filter { it.language == Language.PROFILES && it.where.startsWith("variable ") && it.text != "{}" }
+                    .filterNot { wellFormed.matches(it.text) }
+                    .map { "${file.path} ${it.where}: ${it.text}" }
+            }
+
+        assertThat(malformed).isEmpty()
+    }
+
     @Test
     fun `queries are read from nested panels, links, annotations and variables`() {
         val dashboard =

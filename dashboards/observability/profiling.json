@@ -255,7 +255,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values(service_name)",
+        "definition": "label_values({cluster=~\"$cluster\"}, service_name)",
         "hide": 0,
         "includeAll": false,
         "label": "Application",
@@ -263,11 +263,10 @@
         "name": "application",
         "options": [],
         "query": {
-          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds\",cluster=~\"$cluster",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue",
-          "labelName": "service_name",
-          "labelSelector": "{cluster=~\"$cluster\"}"
+          "labelName": "service_name"
         },
         "refresh": 2,
         "regex": "",
@@ -281,7 +280,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values(hostname)",
+        "definition": "label_values({cluster=~\"$cluster\",service_name=\"$application\"}, hostname)",
         "hide": 0,
         "includeAll": true,
         "allValue": ".*",
@@ -290,11 +289,10 @@
         "name": "hostname",
         "options": [],
         "query": {
-          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds\",cluster=~\"$cluster\",service_name=\"$application",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue",
-          "labelName": "hostname",
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\"}"
+          "labelName": "hostname"
         },
         "refresh": 2,
         "regex": "",

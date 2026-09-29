@@ -209,7 +209,8 @@ object ClusterFilterGuards {
      * Every metrics, logs and profile query of [dashboard]: panel targets (rows included), Explore
      * links, annotation queries, and the queries of template variables. A target with no datasource
      * of its own uses its panel's, and a panel with none uses the default, Mimir. A profile query is
-     * its label selector; one with none reads every cluster and is reported as `{}`.
+     * its label selector, and a profile variable the selector its profile type makes; one with none
+     * reads every cluster and is reported as `{}`.
      */
     fun queries(dashboard: JsonObject): List<Query> {
         val found = mutableListOf<Query>()
@@ -224,7 +225,7 @@ object ClusterFilterGuards {
             val where = "variable '${variable.string("name")}'"
             val query = variable["query"]
             if (language == Language.PROFILES) {
-                found += Query(where, language, (query as? JsonObject)?.string("labelSelector") ?: NO_SELECTOR)
+                found += Query(where, language, profileVariableSelector(query as? JsonObject))
                 return@forEach
             }
             val texts =
@@ -238,6 +239,14 @@ object ClusterFilterGuards {
         }
         return found
     }
+
+    /**
+     * The selector the Pyroscope plugin lists a variable's values over. Its `VariableSupport`
+     * builds `{__profile_type__="<profileTypeId>"}` and never reads a `labelSelector` on a
+     * variable, so any other matcher has to be written into the profile type.
+     */
+    private fun profileVariableSelector(query: JsonObject?): String =
+        query?.string("profileTypeId")?.let { "{__profile_type__=\"$it\"}" } ?: NO_SELECTOR
 
     private fun panels(
         panels: JsonArray,

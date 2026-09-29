@@ -451,7 +451,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values(service_name)",
+        "definition": "label_values({cluster=~\"$cluster\"}, service_name)",
         "description": "The profiled process. Every panel filters on it, so both sides always describe the same program.",
         "hide": 0,
         "includeAll": false,
@@ -461,8 +461,7 @@
         "options": [],
         "query": {
           "labelName": "service_name",
-          "labelSelector": "{cluster=~\"$cluster\"}",
-          "profileTypeId": "${profile_type}",
+          "profileTypeId": "${profile_type}\",cluster=~\"$cluster",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue"
         },
@@ -478,7 +477,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values(${compare_by})",
+        "definition": "label_values({cluster=~\"$cluster\",service_name=\"${service}\"}, ${compare_by})",
         "description": "The left-hand subject. The list is every value of the chosen axis that reported a profile for the selected service.",
         "hide": 0,
         "includeAll": false,
@@ -488,8 +487,7 @@
         "options": [],
         "query": {
           "labelName": "${compare_by}",
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\"}",
-          "profileTypeId": "${profile_type}",
+          "profileTypeId": "${profile_type}\",cluster=~\"$cluster\",service_name=\"${service}",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue"
         },
@@ -505,7 +503,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values(${compare_by})",
+        "definition": "label_values({cluster=~\"$cluster\",service_name=\"${service}\"}, ${compare_by})",
         "description": "The right-hand subject. Pick a different value from Side A, or the page compares a subject against itself.",
         "hide": 0,
         "includeAll": false,
@@ -515,8 +513,7 @@
         "options": [],
         "query": {
           "labelName": "${compare_by}",
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\"}",
-          "profileTypeId": "${profile_type}",
+          "profileTypeId": "${profile_type}\",cluster=~\"$cluster\",service_name=\"${service}",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue"
         },

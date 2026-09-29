@@ -112,6 +112,14 @@ frontend:
 frontend_worker:
   scheduler_address: 127.0.0.1:9097
 
+query_scheduler:
+  # The query-frontend splits each query by day and into 16 shards, and queues up to 14 parts of it
+  # at once (max_query_parallelism). The heaviest dashboard sends about 150 queries in one load, so
+  # a load can queue about 2100 parts, which the 8 querier workers drain slowly. Past this limit the
+  # scheduler answers 429 and the panel fails. The default of 100 fails most of such a dashboard;
+  # 5000 holds two full loads at once.
+  max_outstanding_requests_per_tenant: 5000
+
 limits:
   # 0 = every query goes to the ingester, however far back.
   query_ingesters_within: 0

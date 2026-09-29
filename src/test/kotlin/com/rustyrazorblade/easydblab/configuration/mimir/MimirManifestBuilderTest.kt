@@ -6,11 +6,18 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.listAt
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.grafana.DashboardFiles
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
@@ -121,6 +128,37 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(yaml, "limits", "max_label_names_per_series")?.toInt()).isGreaterThan(DEFAULT_LABEL_NAMES)
     }
 
+    /**
+     * The queries one load of [dashboard] sends: the targets of every top-level panel and every query
+     * variable. A collapsed row keeps its panels inside it and loads none of them until it is opened.
+     */
+    private fun queriesPerLoad(dashboard: JsonObject): Int {
+        val targets =
+            dashboard["panels"]
+                ?.jsonArray
+                .orEmpty()
+                .sumOf { (it.jsonObject["targets"] as? JsonArray)?.size ?: 0 }
+        val variables =
+            dashboard["templating"]
+                ?.jsonObject
+                ?.get("list")
+                ?.jsonArray
+                .orEmpty()
+                .count { it.jsonObject["type"]?.jsonPrimitive?.content == "query" }
+        return targets + variables
+    }
+
+    @Test
+    fun `the query queue holds two full loads of the heaviest dashboard`() {
+        // The query-frontend splits each query and schedules at most max_query_parallelism parts of it
+        // at once; the scheduler rejects a tenant's request with 429 past its outstanding limit.
+        val heaviest = DashboardFiles.all().maxOf { queriesPerLoad(Json.parseToJsonElement(it.readText()).jsonObject) }
+        val limit = scalarAt(config(), "query_scheduler", "max_outstanding_requests_per_tenant")?.toInt()
+
+        assertThat(scalarAt(config(), "limits", "max_query_parallelism")).describedAs("query parallelism stays at its default").isNull()
+        assertThat(limit).isGreaterThanOrEqualTo(2 * heaviest * DEFAULT_MAX_QUERY_PARALLELISM)
+    }
+
     @Test
     fun `rings live in memory with one replica`() {
         val yaml = config()
@@ -169,5 +207,8 @@ class MimirManifestBuilderTest : BaseKoinTest() {
     private companion object {
         const val DEFAULT_INGESTION_RATE = 10_000.0
         const val DEFAULT_LABEL_NAMES = 30
+
+        /** Mimir's default `limits.max_query_parallelism`. */
+        const val DEFAULT_MAX_QUERY_PARALLELISM = 14
     }
 }

@@ -1759,6 +1759,19 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepStderrNotUploaded")
+        data class StepStderrNotUploaded(
+            val stepId: String,
+            val s3Uri: String,
+        ) : Emr {
+            override fun toDisplayString(): String =
+                """
+                |EMR has not uploaded the stderr of step $stepId to S3 yet. It will appear at:
+                |  $s3Uri
+                """.trimMargin()
+        }
+
+        @Serializable
         @SerialName("Emr.SparkLogDownloadFailed")
         data class SparkLogDownloadFailed(
             val error: String,

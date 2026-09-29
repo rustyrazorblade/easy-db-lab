@@ -20,8 +20,10 @@ import software.amazon.awssdk.services.emr.model.StepState
  * - `spark status` - Shows status of most recent job
  * - `spark status --step-id s-XXXXX` - Shows status of specific job
  * - `spark status --verbose` - Shows detailed step information (equivalent to `aws emr describe-step`)
+ * - `spark status --logs` - Also downloads the step's `stderr.gz` from the EMR log path in S3 and
+ *   prints it; a failed `spark submit --wait` names this command when the final stderr arrives late
  *
- * To view logs, use: easy-db-lab spark logs --step-id <step-id>
+ * To query logs from Loki, use: easy-db-lab spark logs --step-id <step-id>
  */
 @McpCommand
 @RequireProfileSetup
@@ -43,6 +45,12 @@ class SparkStatus : PicoBaseCommand() {
         description = ["Show detailed step information (equivalent to aws emr describe-step)"],
     )
     var verbose: Boolean = false
+
+    @Option(
+        names = ["--logs"],
+        description = ["Download the step's stderr from S3 and print it"],
+    )
+    var logs: Boolean = false
 
     override fun execute() {
         // Validate cluster exists and is accessible
@@ -93,6 +101,31 @@ class SparkStatus : PicoBaseCommand() {
             if (jobStatus.state == StepState.FAILED) {
                 eventBus.emit(Event.Emr.StepFailedHint(targetStepId))
             }
+        }
+
+        if (logs) {
+            showStderr(clusterInfo.clusterId, targetStepId)
+        }
+    }
+
+    /**
+     * Prints the step's stderr from S3, or names the S3 path when EMR has not uploaded it yet.
+     *
+     * @throws IllegalStateException if the log cannot be fetched
+     */
+    private fun showStderr(
+        clusterId: String,
+        stepId: String,
+    ) {
+        val stderr =
+            sparkService
+                .fetchStepStderr(clusterId, stepId)
+                .getOrElse { error ->
+                    error(error.message ?: "Failed to fetch the stderr of step $stepId")
+                }
+        when (stderr) {
+            is SparkService.StepStderr.Available -> println(stderr.content)
+            is SparkService.StepStderr.NotUploaded -> eventBus.emit(Event.Emr.StepStderrNotUploaded(stepId, stderr.s3Uri))
         }
     }
 

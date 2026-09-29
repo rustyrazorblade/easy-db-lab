@@ -528,6 +528,19 @@ class EMRSparkService(
             Files.readString(localLogFile)
         }
 
+    override fun fetchStepStderr(
+        clusterId: String,
+        stepId: String,
+    ): Result<SparkService.StepStderr> =
+        runCatching {
+            val stderrPath = stepLogPath(clusterId, stepId, SparkService.LogType.STDERR)
+            if (objectStore.getFileInfo(stderrPath) == null) {
+                SparkService.StepStderr.NotUploaded(stderrPath.toUri())
+            } else {
+                SparkService.StepStderr.Available(getStepLogs(clusterId, stepId, SparkService.LogType.STDERR).getOrThrow())
+            }
+        }
+
     override fun downloadAllLogs(stepId: String): Result<Path> =
         runCatching {
             val clusterState = clusterStateManager.load()

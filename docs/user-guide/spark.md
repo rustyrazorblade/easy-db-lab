@@ -145,7 +145,8 @@ Without `--step-id`, shows the status of the most recent job.
 Options:
 
 - `--step-id` - EMR step ID to check
-- `--logs` - Download step logs (stdout, stderr)
+- `--verbose` - Show detailed step information (equivalent to `aws emr describe-step`)
+- `--logs` - Download the step's `stderr.gz` from the EMR log path in S3, save it under `logs/<cluster-id>/<step-id>/`, and print it. If EMR has not uploaded the log yet, the command says so and prints the S3 path where it will appear.
 
 ## Retrieving Logs
 

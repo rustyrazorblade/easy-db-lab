@@ -946,11 +946,17 @@ easy-db-lab spark submit [options]
 
 ### spark status
 
-Check status of a Spark job.
+Check status of a Spark job (the most recent job, or the one `--step-id` names).
 
 ```bash
 easy-db-lab spark status [options]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--step-id` | EMR step ID (defaults to the most recent job) |
+| `--verbose`, `-v` | Show detailed step information (equivalent to `aws emr describe-step`) |
+| `--logs` | Download the step's `stderr.gz` from S3 and print it; if EMR has not uploaded it yet, print the S3 path where it will appear |
 
 ### spark jobs
 

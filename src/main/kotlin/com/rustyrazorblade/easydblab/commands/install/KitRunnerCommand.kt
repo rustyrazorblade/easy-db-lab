@@ -435,14 +435,22 @@ class KitRunnerCommand(
             }
 
         val files = dashboardFiles(config)
+        if (files.isEmpty()) return
+        val names = files.map { it.name }
+        val context =
+            runCatching { installContextFactory.forCluster(clusterState, controlHost) }.getOrElse { e ->
+                eventBus.emit(
+                    Event.Grafana.KitDashboardsSkipped(kitName, names, "listing the tenants in the account bucket failed: ${e.message}"),
+                )
+                return
+            }
         val rendered =
             runCatching {
-                val context = installContextFactory.forCluster(clusterState, controlHost)
                 KitDashboardInstance(kitName = kitName, kitType = config.name, dashboards = files.map { it.readText() })
                     .rendered()
                     .map { DashboardDefaults.apply(Json.parseToJsonElement(it).jsonObject, context) }
             }.getOrElse { e ->
-                log.warn(e) { "Failed to read the dashboards of $kitName" }
+                eventBus.emit(Event.Grafana.KitDashboardsSkipped(kitName, names, "reading the dashboards failed: ${e.message}"))
                 return
             }
         files.zip(rendered).forEach { (file, dashboard) ->

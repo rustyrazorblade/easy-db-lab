@@ -47,6 +47,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     protected val mockMetricsRegistryService: MetricsRegistryService = mock()
     protected val mockKitHookExecutor: KitHookExecutor = mock()
     protected val mockKubeService: KubernetesService = mock()
+    protected val mockObjectStore: ObjectStore = mock()
 
     protected lateinit var workingDir: File
 
@@ -86,7 +87,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single<GrafanaClient> { mockGrafanaClient }
-                single { DashboardInstallContextFactory(TenantDirectory(mock<ObjectStore>())) }
+                single { DashboardInstallContextFactory(TenantDirectory(mockObjectStore)) }
                 single<WorkloadStepExecutor> { mockWorkloadStepExecutor }
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }

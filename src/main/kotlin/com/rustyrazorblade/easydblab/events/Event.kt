@@ -2524,6 +2524,22 @@ sealed interface Event {
             override fun toDisplayString(): String = "Installed Grafana dashboard: $title"
         }
 
+        /**
+         * [kit]'s [dashboards] were not installed because preparing them failed, for [reason]: the
+         * tenant listing in the account bucket, or reading a dashboard file. The kit itself is running.
+         */
+        @Serializable
+        @SerialName("Grafana.KitDashboardsSkipped")
+        data class KitDashboardsSkipped(
+            val kit: String,
+            val dashboards: List<String>,
+            val reason: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Skipped the Grafana dashboards of $kit (${dashboards.joinToString(", ")}): $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Grafana.AnnotationCreated")
         data class AnnotationCreated(

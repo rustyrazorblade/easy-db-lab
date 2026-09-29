@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.KitMetrics
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -220,6 +221,35 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         )
         command("mydb", "start").call()
         verify(mockGrafanaClient).installDashboard(any(), any(), any())
+    }
+
+    @Test
+    fun `a failure to list the tenants names every skipped dashboard and the cause`() {
+        whenever(mockObjectStore.listFiles(any(), any(), any())).thenThrow(IllegalStateException("S3 Access Denied"))
+        val kitDir = File(workingDir, "mydb").also { it.mkdirs() }
+        File(kitDir, "overview.json").writeText("{}")
+        File(kitDir, "queries.json").writeText("{}")
+        writeKitYaml(
+            "mydb",
+            """
+            name: mydb
+            dashboards:
+              - path: overview.json
+              - path: queries.json
+            start:
+              - type: shell
+                script: echo hello
+            """.trimIndent(),
+        )
+
+        val events = captureEvents { command("mydb", "start").call() }
+
+        val skipped = events.filterIsInstance<Event.Grafana.KitDashboardsSkipped>().single()
+        assertThat(skipped.kit).isEqualTo("mydb")
+        assertThat(skipped.dashboards).containsExactly("overview.json", "queries.json")
+        assertThat(skipped.reason).contains("S3 Access Denied")
+        assertThat(skipped.isError()).isTrue()
+        verify(mockGrafanaClient, never()).installDashboard(any(), any(), any())
     }
 
     @Test

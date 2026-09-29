@@ -33,6 +33,7 @@ object ClusterFilterGuards {
 
     private val clusterMatcher =
         Regex("""(^|[{,\s])cluster\s*=~?\s*"\$\{?(cluster|baseline_cluster|candidate_cluster)(:regex)?\b""")
+    private val variableRegexMatcher = Regex("""\w+\s*=~\s*"\$\{?\w+(:\w+)?}?"""")
     private val labelValues = Regex("""^label_values\((.*)\)$""", RegexOption.DOT_MATCHES_ALL)
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -67,6 +68,22 @@ object ClusterFilterGuards {
             // A Pyroscope label selector is one `{...}`.
             Language.LOGQL, Language.PROFILES -> selectors(query.text).filter { it.braced && !it.scoped }.map { it.text }
             Language.PROMQL -> unscopedPromQl(query.text)
+        }
+
+    /**
+     * Every regex matcher of a profile [query] that reads a variable in Grafana's default format.
+     * The Pyroscope plugin interpolates with that format, which writes a multi-value selection as the
+     * glob `{a,b}`, so a matcher only works as `name=~"${'$'}{variable:regex}"`.
+     */
+    fun unformattedMatchers(query: Query): List<String> =
+        if (query.language != Language.PROFILES) {
+            emptyList()
+        } else {
+            variableRegexMatcher
+                .findAll(query.text)
+                .filter { it.groupValues[1] != ":regex" }
+                .map { it.value }
+                .toList()
         }
 
     private fun unscopedPromQl(text: String): List<String> {

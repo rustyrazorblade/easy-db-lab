@@ -210,7 +210,7 @@
             "hostname",
             "cluster"
           ],
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
           "profileTypeId": "${profile_type}",
           "queryType": "metrics",
           "refId": "A"
@@ -224,7 +224,7 @@
             "hostname",
             "cluster"
           ],
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
           "profileTypeId": "${profile_type}",
           "queryType": "metrics",
           "refId": "B"
@@ -260,7 +260,7 @@
             "uid": "pyroscope"
           },
           "groupBy": [],
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"${service}\",${compare_by}=\"${side_a}\"}",
           "profileTypeId": "${profile_type}",
           "queryType": "profile",
           "refId": "A"
@@ -296,7 +296,7 @@
             "uid": "pyroscope"
           },
           "groupBy": [],
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"${service}\",${compare_by}=\"${side_b}\"}",
           "profileTypeId": "${profile_type}",
           "queryType": "profile",
           "refId": "A"
@@ -451,7 +451,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values({cluster=~\"$cluster\"}, service_name)",
+        "definition": "label_values({cluster=~\"${cluster:regex}\"}, service_name)",
         "description": "The profiled process. Every panel filters on it, so both sides always describe the same program.",
         "hide": 0,
         "includeAll": false,
@@ -461,7 +461,7 @@
         "options": [],
         "query": {
           "labelName": "service_name",
-          "profileTypeId": "${profile_type}\",cluster=~\"$cluster",
+          "profileTypeId": "${profile_type}\",cluster=~\"${cluster:regex}",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue"
         },
@@ -477,7 +477,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values({cluster=~\"$cluster\",service_name=\"${service}\"}, ${compare_by})",
+        "definition": "label_values({cluster=~\"${cluster:regex}\",service_name=\"${service}\"}, ${compare_by})",
         "description": "The left-hand subject. The list is every value of the chosen axis that reported a profile for the selected service.",
         "hide": 0,
         "includeAll": false,
@@ -487,7 +487,7 @@
         "options": [],
         "query": {
           "labelName": "${compare_by}",
-          "profileTypeId": "${profile_type}\",cluster=~\"$cluster\",service_name=\"${service}",
+          "profileTypeId": "${profile_type}\",cluster=~\"${cluster:regex}\",service_name=\"${service}",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue"
         },
@@ -503,7 +503,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values({cluster=~\"$cluster\",service_name=\"${service}\"}, ${compare_by})",
+        "definition": "label_values({cluster=~\"${cluster:regex}\",service_name=\"${service}\"}, ${compare_by})",
         "description": "The right-hand subject. Pick a different value from Side A, or the page compares a subject against itself.",
         "hide": 0,
         "includeAll": false,
@@ -513,7 +513,7 @@
         "options": [],
         "query": {
           "labelName": "${compare_by}",
-          "profileTypeId": "${profile_type}\",cluster=~\"$cluster\",service_name=\"${service}",
+          "profileTypeId": "${profile_type}\",cluster=~\"${cluster:regex}\",service_name=\"${service}",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue"
         },

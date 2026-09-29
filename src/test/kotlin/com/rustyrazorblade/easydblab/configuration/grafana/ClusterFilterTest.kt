@@ -124,6 +124,38 @@ class ClusterFilterTest {
         assertThat(ClusterFilterGuards.unscoped(found[1])).isEmpty()
     }
 
+    /**
+     * The Pyroscope plugin interpolates its queries with Grafana's default format, which writes two
+     * selected clusters as `{a,b}`, a glob that matches no cluster. Only `${'$'}{cluster:regex}` writes `(a|b)`.
+     */
+    @Test
+    fun `a profile regex matcher on a variable must use the regex format`() {
+        val glob =
+            ClusterFilterGuards.unformattedMatchers(
+                Query("sample", Language.PROFILES, """{cluster=~"${'$'}cluster",hostname=~"${'$'}{hostname}",service_name="${'$'}app"}"""),
+            )
+
+        assertThat(glob).containsExactly("""cluster=~"${'$'}cluster"""", """hostname=~"${'$'}{hostname}"""")
+        assertThat(
+            ClusterFilterGuards.unformattedMatchers(
+                Query("sample", Language.PROFILES, """{__profile_type__="cpu",cluster=~"${'$'}{cluster:regex}"}"""),
+            ),
+        ).isEmpty()
+        assertThat(ClusterFilterGuards.unformattedMatchers(Query("sample", Language.PROMQL, """up{cluster=~"${'$'}cluster"}"""))).isEmpty()
+    }
+
+    @Test
+    fun `every profile query formats the variables its regex matchers read as a regex`() {
+        val glob =
+            DashboardFiles.all().flatMap { file ->
+                ClusterFilterGuards
+                    .queries(parse(file.readText()))
+                    .flatMap { query -> ClusterFilterGuards.unformattedMatchers(query).map { "${file.path} ${query.where}: $it" } }
+            }
+
+        assertThat(glob).isEmpty()
+    }
+
     /** A matcher written into a profile type must close the plugin's own quote exactly once. */
     @Test
     fun `every profile variable sends a well-formed selector`() {

@@ -62,7 +62,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds",
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -93,7 +93,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "wall:wall:nanoseconds:wall:nanoseconds",
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -124,7 +124,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "memory:alloc_in_new_tlab_bytes:bytes:space:bytes",
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -155,7 +155,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "block:contentions:count:block:count",
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -186,7 +186,7 @@
             "uid": "pyroscope"
           },
           "profileTypeId": "mutex:delay:nanoseconds:mutex:count",
-          "labelSelector": "{cluster=~\"$cluster\",service_name=\"$application\",hostname=~\"$hostname\"}",
+          "labelSelector": "{cluster=~\"${cluster:regex}\",service_name=\"$application\",hostname=~\"${hostname:regex}\"}",
           "queryType": "both",
           "refId": "A",
           "groupBy": [
@@ -255,7 +255,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values({cluster=~\"$cluster\"}, service_name)",
+        "definition": "label_values({cluster=~\"${cluster:regex}\"}, service_name)",
         "hide": 0,
         "includeAll": false,
         "label": "Application",
@@ -263,7 +263,7 @@
         "name": "application",
         "options": [],
         "query": {
-          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds\",cluster=~\"$cluster",
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds\",cluster=~\"${cluster:regex}",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue",
           "labelName": "service_name"
@@ -280,7 +280,7 @@
           "type": "grafana-pyroscope-datasource",
           "uid": "pyroscope"
         },
-        "definition": "label_values({cluster=~\"$cluster\",service_name=\"$application\"}, hostname)",
+        "definition": "label_values({cluster=~\"${cluster:regex}\",service_name=\"$application\"}, hostname)",
         "hide": 0,
         "includeAll": true,
         "allValue": ".*",
@@ -289,7 +289,7 @@
         "name": "hostname",
         "options": [],
         "query": {
-          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds\",cluster=~\"$cluster\",service_name=\"$application",
+          "profileTypeId": "process_cpu:cpu:nanoseconds:cpu:nanoseconds\",cluster=~\"${cluster:regex}\",service_name=\"$application",
           "refId": "PyroscopeVariableQueryEditor-VariableQuery",
           "type": "labelValue",
           "labelName": "hostname"

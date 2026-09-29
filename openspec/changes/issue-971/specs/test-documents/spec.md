@@ -78,7 +78,7 @@ The Grafana pod SHALL run two more containers, built with fabric8:
 - an `aws-sigv4-proxy` container, bound to `127.0.0.1` on a fixed port, that signs requests to S3 with the instance role for the account bucket's region;
 - a read-only web server on a fixed host port, reachable from the browser the same way as Grafana, that forwards only `GET` requests for paths under `reports/` to the proxy.  It SHALL prefix the account bucket itself, SHALL match the normalized path, and SHALL drop the query string.
 
-Both ports SHALL be constants and SHALL be listed in the port reference; neither SHALL be 8081, which the image renderer uses.  The web server's configuration SHALL be part of the configuration hash that rolls the Grafana pod.  Grafana SHALL run with `[security] disable_sanitize_html = true`, so a Text panel in HTML mode can hold the documents iframe.
+Both ports SHALL be constants and SHALL be listed in the port reference; neither SHALL be 8081, which the image renderer uses.  The web server's configuration SHALL be part of the configuration hash that rolls the Grafana pod.  Grafana SHALL run with `[panels] disable_sanitize_html = true`, so a Text panel in HTML mode can hold the documents iframe.
 
 #### Scenario: A document is served
 

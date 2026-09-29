@@ -96,7 +96,7 @@ An `aws-sigv4-proxy` sidecar in the Grafana pod, bound to `127.0.0.1`, signing w
 ### 16-17b. Documents (decisions 16, 17, 17a, 17b, F5, F7)
 
 - `report upload` stores `<stem>.md` and `<stem>.html` and rewrites one `index.html` per test from every `.md` in the folder, each under its own heading, in name order.  Generated HTML declares `<meta charset="utf-8">` and is uploaded from a local `.html` file, so `S3ObjectStore` infers `text/html`.
-- Grafana shows the index in an iframe in a Text panel in HTML mode, with `[security] disable_sanitize_html = true`.
+- Grafana shows the index in an iframe in a Text panel in HTML mode, with `[panels] disable_sanitize_html = true`.
 - The browser loads the iframe from a read-only web server sidecar on a fixed host port, reachable like Grafana.  It prefixes the fixed bucket, matches the normalized path under `reports/`, accepts `GET` only, and drops the query string.  It forwards to the signing proxy.  The iframe host is filled at install time, as `__PYROSCOPE_URL__` is, with the control node's private IP.
 - `doc_tenant` is a custom variable.  The installer fills its options from `TenantDirectory` and defaults it to the home tenant.  One `doc_tenant` per dashboard; no cross-tenant documents (F5).
 - `up` rebuilds the index, which says "No documents yet" when the test has none (F7).  Past clusters without an index show the S3 error; the owner accepts that.
@@ -172,7 +172,7 @@ From the research agent (`.spec-flow/research.md`, Grafana `v13.2.2`, scenes, In
 - **Panel `timeFrom` and `timeShift`** go through variable interpolation and re-evaluate when a variable changes.  **`timeFrom` is ignored when the dashboard range is absolute.**  `timeShift` works with absolute ranges but is always prefixed with `-`, so it **only moves backward**.
 - **PromQL offset.**  Grafana interpolates variables before it sends the query, so `offset ${shift}s` works.  **Negative offsets and `@` are stable, on by default, since Prometheus 2.33**; Mimir removed the `promql-negative-offset` flag as stable.
 - **Infinity 4.0.0** supports only static keys (`authType: "keys"`) for AWS; the default credential chain is merged on main but unreleased.  It has **no raw-text mode**; `as-is` works only for JSON.  XML listings get one page.
-- **Table markdown cell** ("Markdown + HTML", `cellOptions.type: "markdown"`) renders GitHub-flavored markdown, sanitized unless `[security] disable_sanitize_html = true`.
+- **Table markdown cell** ("Markdown + HTML", `cellOptions.type: "markdown"`) renders GitHub-flavored markdown, sanitized unless `[panels] disable_sanitize_html = true`.
 - **Data links.**  `${__data.fields.x}` gives a column of the same row; `${var:queryparam}` gives `var-var=value`; `?` and `&` are not added automatically.
 
 ## Verification items

@@ -70,7 +70,7 @@
 
 - [x] 9.1 Extract `CompactorService.bucketRegion` into a shared bucket region helper in `services/aws/` and use it from both places (D6).  Keep `CompactorServiceTest` passing.
 - [x] 9.2 `Constants`: the proxy port, the web server host port (not 8081), and the pinned `aws-sigv4-proxy` and web server images.
-- [x] 9.3 `GrafanaManifestBuilder.buildDeployment(...)` takes the bucket, the bucket region and the ports: add the `aws-sigv4-proxy` container bound to `127.0.0.1` (`--name s3 --region <region> --host s3.<region>.amazonaws.com`) and the web server container, built with fabric8; set `GF_SECURITY_DISABLE_SANITIZE_HTML=true`.
+- [x] 9.3 `GrafanaManifestBuilder.buildDeployment(...)` takes the bucket, the bucket region and the ports: add the `aws-sigv4-proxy` container bound to `127.0.0.1` (`--name s3 --region <region> --host s3.<region>.amazonaws.com`) and the web server container, built with fabric8; set `GF_PANELS_DISABLE_SANITIZE_HTML=true`.
 - [x] 9.4 Web server config as a classpath resource loaded with `TemplateService`: GET only, only normalized paths under `/reports/`, fixed bucket prefix, query string dropped, forward to the proxy.  Add its ConfigMap to the `ConfigHashAnnotator` map.
 - [x] 9.5 Unit tests on the manifest (containers, images pinned, proxy bound to loopback, ports, env) and on the rendered web server config (method and path rules).
 - [x] 9.6 Integration test with a K3s TestContainer (in a subagent): the web server refuses `PUT`, `POST`, `DELETE`, a path outside `reports/`, and `/reports/../mimir/`, and forwards a `GET` under `reports/`.

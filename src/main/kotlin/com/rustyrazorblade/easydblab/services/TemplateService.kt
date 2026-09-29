@@ -36,6 +36,7 @@ class TemplateService(
         return mapOf(
             "ACCOUNT_BUCKET" to store.bucket,
             "AWS_REGION" to region,
+            "CLUSTER_ID" to state.clusterId,
             "CLUSTER_NAME" to state.clusterLabelName(),
             "CONTROL_NODE_IP" to (controlHost?.privateIp.orEmpty()),
             "METRICS_FILTER_ID" to buildMetricsFilterId(state),

@@ -27,6 +27,7 @@ import software.amazon.awssdk.services.ec2.model.InstanceTypeInfo
 import software.amazon.awssdk.services.ec2.model.Placement
 import software.amazon.awssdk.services.ec2.model.ProcessorInfo
 import software.amazon.awssdk.services.ec2.model.Reservation
+import software.amazon.awssdk.services.ec2.model.ResourceType
 import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 import software.amazon.awssdk.services.ec2.model.RunInstancesResponse
 import software.amazon.awssdk.services.ec2.model.Tag
@@ -426,6 +427,52 @@ internal class EC2InstanceServiceTest {
         assertThat(metadataOptions).isNotNull
         assertThat(metadataOptions.httpPutResponseHopLimit()).isEqualTo(2)
         assertThat(metadataOptions.httpTokens()).isEqualTo(HttpTokensState.REQUIRED)
+    }
+
+    /**
+     * YACE finds a cluster's EBS volumes by their `ClusterId` tag, like its instances. The
+     * volumes created with an instance carried no tags, so the EBS job found none.
+     */
+    @Test
+    fun `createInstances tags the volumes it launches with the instance's tags`() {
+        val config =
+            InstanceCreationConfig(
+                serverType = ServerType.Cassandra,
+                count = 1,
+                instanceType = "m5.large",
+                amiId = "ami-123",
+                keyName = "test-key",
+                securityGroupId = "sg-123",
+                subnetIds = listOf("subnet-a"),
+                iamInstanceProfile = "test-profile",
+                ebsConfig = null,
+                tags = mapOf("easy_cass_lab" to "1", "ClusterId" to "c-1"),
+                clusterName = "test-cluster",
+                startIndex = 0,
+            )
+        val instance =
+            Instance
+                .builder()
+                .instanceId("i-test")
+                .placement(Placement.builder().availabilityZone("us-west-2a").build())
+                .build()
+        whenever(mockEc2Client.runInstances(any<RunInstancesRequest>()))
+            .thenReturn(RunInstancesResponse.builder().instances(instance).build())
+
+        ec2InstanceService.createInstances(config)
+
+        val requestCaptor = argumentCaptor<RunInstancesRequest>()
+        verify(mockEc2Client).runInstances(requestCaptor.capture())
+        val specs =
+            requestCaptor.firstValue.tagSpecifications().associate { spec ->
+                spec.resourceType() to
+                    spec.tags().associate { it.key() to it.value() }
+            }
+        assertThat(specs.keys).containsExactlyInAnyOrder(ResourceType.INSTANCE, ResourceType.VOLUME)
+        assertThat(specs.getValue(ResourceType.VOLUME))
+            .containsEntry("ClusterId", "c-1")
+            .containsEntry("easy_cass_lab", "1")
+            .isEqualTo(specs.getValue(ResourceType.INSTANCE))
     }
 
     @Test

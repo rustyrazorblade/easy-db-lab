@@ -211,7 +211,7 @@ Key details:
 
 ### YACE CloudWatch Scrape
 
-YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find relevant resources.
+YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag. For EC2 instances, EBS volumes and OpenSearch domains it also requires the cluster's own `ClusterId` tag, so each cluster reports only its own resources. The S3 job finds every bucket tagged `easy_cass_lab=1`, because the account bucket is shared by every cluster.
 
 YACE scrapes metrics for:
 - **S3** — bucket request/byte counts

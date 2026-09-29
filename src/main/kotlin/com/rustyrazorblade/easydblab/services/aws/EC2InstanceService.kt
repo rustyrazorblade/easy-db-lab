@@ -119,7 +119,7 @@ class EC2InstanceService(
         subnetId: SubnetId,
         alias: String,
     ): CreatedInstance {
-        val tagSpec = buildTagSpecification(config, alias)
+        val tagSpecs = buildTagSpecifications(config, alias)
         val blockDeviceMappings = buildBlockDeviceMappings(config.ebsConfig)
 
         val requestBuilder =
@@ -137,7 +137,7 @@ class EC2InstanceService(
                         .builder()
                         .name(config.iamInstanceProfile)
                         .build(),
-                ).tagSpecifications(tagSpec)
+                ).tagSpecifications(tagSpecs)
 
         if (blockDeviceMappings.isNotEmpty()) {
             requestBuilder.blockDeviceMappings(blockDeviceMappings)
@@ -171,12 +171,14 @@ class EC2InstanceService(
     }
 
     /**
-     * Builds tag specification for the instance.
+     * Builds the tag specifications for the instance and the volumes launched with it. The volumes
+     * carry the instance's tags, so YACE finds a cluster's EBS volumes by `ClusterId` as it finds
+     * its instances.
      */
-    private fun buildTagSpecification(
+    private fun buildTagSpecifications(
         config: InstanceCreationConfig,
         alias: String,
-    ): TagSpecification {
+    ): List<TagSpecification> {
         val allTags =
             config.tags +
                 mapOf(
@@ -194,11 +196,13 @@ class EC2InstanceService(
                     .build()
             }
 
-        return TagSpecification
-            .builder()
-            .resourceType(ResourceType.INSTANCE)
-            .tags(tags)
-            .build()
+        return listOf(ResourceType.INSTANCE, ResourceType.VOLUME).map { type ->
+            TagSpecification
+                .builder()
+                .resourceType(type)
+                .tags(tags)
+                .build()
+        }
     }
 
     /**

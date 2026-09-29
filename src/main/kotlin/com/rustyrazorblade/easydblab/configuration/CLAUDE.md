@@ -133,7 +133,7 @@ Factory methods: `from(clusterState)`, `root(bucket)`, `fromKey(bucket, key)`
 Handles `__KEY__` placeholder substitution in K8s manifests, YAML configs, etc. Uses `__` delimiters (not `${}`) to avoid conflicts with Grafana template syntax.
 
 **Context variables** (built from cluster state):
-- `ACCOUNT_BUCKET` (the account bucket; the observability stack never writes to the data bucket), `AWS_REGION`, `CLUSTER_NAME`, `CONTROL_NODE_IP`, `TENANT` (the cluster's observability tenant), `PROFILES_S3_PREFIX` (`pyroscope`)
+- `ACCOUNT_BUCKET` (the account bucket; the observability stack never writes to the data bucket), `AWS_REGION`, `CLUSTER_ID` (the UUID `up` tags every instance, volume and OpenSearch domain with as `ClusterId`), `CLUSTER_NAME`, `CONTROL_NODE_IP`, `TENANT` (the cluster's observability tenant), `PROFILES_S3_PREFIX` (`pyroscope`)
 - `METRICS_FILTER_ID`, `CLUSTER_S3_PREFIX`
 
 **Key methods:**
@@ -308,6 +308,6 @@ operator-facing guide, including the reserved-parameter set and the cpu+wall haz
 
 ## YACE Subpackage (`yace/`)
 
-- **`YaceManifestBuilder`** — builds YACE (Yet Another CloudWatch Exporter) ConfigMap + Deployment. Runs on control plane, scrapes AWS CloudWatch metrics for S3, EBS, EC2, and OpenSearch services. Exposes Prometheus metrics on port 5001, scraped by OTel collector. (EMR metrics removed — replaced by direct OTel collection on Spark nodes.)
+- **`YaceManifestBuilder`** — builds YACE (Yet Another CloudWatch Exporter) ConfigMap + Deployment. Runs on control plane, scrapes AWS CloudWatch metrics for S3, EBS, EC2, and OpenSearch services. Exposes Prometheus metrics on port 5001, scraped by OTel collector. The EBS, EC2 and OpenSearch jobs search on `easy_cass_lab=1` and `ClusterId=__CLUSTER_ID__`, so each cluster's YACE reports only its own resources; the S3 job keeps `easy_cass_lab=1` alone, because the account bucket is shared (`YaceManifestBuilderTest`). (EMR metrics removed — replaced by direct OTel collection on Spark nodes.)
 - **Config resource** — `yace-config.yaml` stored in `resources/.../configuration/yace/` with `__AWS_REGION__` template variable for region substitution.
 - **Auto-discovery** — uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find cluster resources in CloudWatch.

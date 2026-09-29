@@ -99,7 +99,7 @@
           "refId": "B"
         }
       ],
-      "timeFrom": "${max_len_d}d-${max_len_s}s",
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
       "title": "Throughput: overlay",
       "type": "timeseries"
     },
@@ -163,7 +163,7 @@
           "refId": "B"
         }
       ],
-      "timeFrom": "${max_len_d}d-${max_len_s}s",
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
       "title": "Read p99: overlay",
       "type": "timeseries"
     },
@@ -227,7 +227,7 @@
           "refId": "B"
         }
       ],
-      "timeFrom": "${max_len_d}d-${max_len_s}s",
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
       "title": "Write p99: overlay",
       "type": "timeseries"
     },
@@ -291,7 +291,7 @@
           "refId": "B"
         }
       ],
-      "timeFrom": "${max_len_d}d-${max_len_s}s",
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
       "title": "Error rate: overlay",
       "type": "timeseries"
     },
@@ -355,7 +355,7 @@
           "refId": "B"
         }
       ],
-      "timeFrom": "${max_len_d}d-${max_len_s}s",
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
       "title": "CPU busy: overlay",
       "type": "timeseries"
     },
@@ -419,7 +419,7 @@
           "refId": "B"
         }
       ],
-      "timeFrom": "${max_len_d}d-${max_len_s}s",
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
       "title": "Disk I/O: overlay",
       "type": "timeseries"
     },
@@ -483,7 +483,7 @@
           "refId": "B"
         }
       ],
-      "timeFrom": "${max_len_d}d-${max_len_s}s",
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
       "title": "GC pause: overlay",
       "type": "timeseries"
     },
@@ -549,8 +549,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${base_len_d}d-${base_len_s}s",
-      "timeShift": "${base_since_end_d}d-${base_since_end_s}s",
+      "timeFrom": "${base_len_s}s-${base_len_d}d",
+      "timeShift": "${base_since_end_s}s-${base_since_end_d}d",
       "title": "Throughput: baseline",
       "type": "timeseries"
     },
@@ -603,8 +603,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${cand_len_d}d-${cand_len_s}s",
-      "timeShift": "${cand_since_end_d}d-${cand_since_end_s}s",
+      "timeFrom": "${cand_len_s}s-${cand_len_d}d",
+      "timeShift": "${cand_since_end_s}s-${cand_since_end_d}d",
       "title": "Throughput: candidate",
       "type": "timeseries"
     },
@@ -657,8 +657,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${base_len_d}d-${base_len_s}s",
-      "timeShift": "${base_since_end_d}d-${base_since_end_s}s",
+      "timeFrom": "${base_len_s}s-${base_len_d}d",
+      "timeShift": "${base_since_end_s}s-${base_since_end_d}d",
       "title": "Read p99: baseline",
       "type": "timeseries"
     },
@@ -711,8 +711,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${cand_len_d}d-${cand_len_s}s",
-      "timeShift": "${cand_since_end_d}d-${cand_since_end_s}s",
+      "timeFrom": "${cand_len_s}s-${cand_len_d}d",
+      "timeShift": "${cand_since_end_s}s-${cand_since_end_d}d",
       "title": "Read p99: candidate",
       "type": "timeseries"
     },
@@ -765,8 +765,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${base_len_d}d-${base_len_s}s",
-      "timeShift": "${base_since_end_d}d-${base_since_end_s}s",
+      "timeFrom": "${base_len_s}s-${base_len_d}d",
+      "timeShift": "${base_since_end_s}s-${base_since_end_d}d",
       "title": "Write p99: baseline",
       "type": "timeseries"
     },
@@ -819,8 +819,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${cand_len_d}d-${cand_len_s}s",
-      "timeShift": "${cand_since_end_d}d-${cand_since_end_s}s",
+      "timeFrom": "${cand_len_s}s-${cand_len_d}d",
+      "timeShift": "${cand_since_end_s}s-${cand_since_end_d}d",
       "title": "Write p99: candidate",
       "type": "timeseries"
     },
@@ -873,8 +873,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${base_len_d}d-${base_len_s}s",
-      "timeShift": "${base_since_end_d}d-${base_since_end_s}s",
+      "timeFrom": "${base_len_s}s-${base_len_d}d",
+      "timeShift": "${base_since_end_s}s-${base_since_end_d}d",
       "title": "Error rate: baseline",
       "type": "timeseries"
     },
@@ -927,8 +927,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${cand_len_d}d-${cand_len_s}s",
-      "timeShift": "${cand_since_end_d}d-${cand_since_end_s}s",
+      "timeFrom": "${cand_len_s}s-${cand_len_d}d",
+      "timeShift": "${cand_since_end_s}s-${cand_since_end_d}d",
       "title": "Error rate: candidate",
       "type": "timeseries"
     },
@@ -981,8 +981,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${base_len_d}d-${base_len_s}s",
-      "timeShift": "${base_since_end_d}d-${base_since_end_s}s",
+      "timeFrom": "${base_len_s}s-${base_len_d}d",
+      "timeShift": "${base_since_end_s}s-${base_since_end_d}d",
       "title": "CPU busy: baseline",
       "type": "timeseries"
     },
@@ -1035,8 +1035,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${cand_len_d}d-${cand_len_s}s",
-      "timeShift": "${cand_since_end_d}d-${cand_since_end_s}s",
+      "timeFrom": "${cand_len_s}s-${cand_len_d}d",
+      "timeShift": "${cand_since_end_s}s-${cand_since_end_d}d",
       "title": "CPU busy: candidate",
       "type": "timeseries"
     },
@@ -1089,8 +1089,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${base_len_d}d-${base_len_s}s",
-      "timeShift": "${base_since_end_d}d-${base_since_end_s}s",
+      "timeFrom": "${base_len_s}s-${base_len_d}d",
+      "timeShift": "${base_since_end_s}s-${base_since_end_d}d",
       "title": "Disk I/O: baseline",
       "type": "timeseries"
     },
@@ -1143,8 +1143,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${cand_len_d}d-${cand_len_s}s",
-      "timeShift": "${cand_since_end_d}d-${cand_since_end_s}s",
+      "timeFrom": "${cand_len_s}s-${cand_len_d}d",
+      "timeShift": "${cand_since_end_s}s-${cand_since_end_d}d",
       "title": "Disk I/O: candidate",
       "type": "timeseries"
     },
@@ -1197,8 +1197,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${base_len_d}d-${base_len_s}s",
-      "timeShift": "${base_since_end_d}d-${base_since_end_s}s",
+      "timeFrom": "${base_len_s}s-${base_len_d}d",
+      "timeShift": "${base_since_end_s}s-${base_since_end_d}d",
       "title": "GC pause: baseline",
       "type": "timeseries"
     },
@@ -1251,8 +1251,8 @@
           "refId": "A"
         }
       ],
-      "timeFrom": "${cand_len_d}d-${cand_len_s}s",
-      "timeShift": "${cand_since_end_d}d-${cand_since_end_s}s",
+      "timeFrom": "${cand_len_s}s-${cand_len_d}d",
+      "timeShift": "${cand_since_end_s}s-${cand_since_end_d}d",
       "title": "GC pause: candidate",
       "type": "timeseries"
     },
@@ -5225,13 +5225,13 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(vector(${max_len}) % 86400)",
+        "definition": "query_result(vector(${max_len}) - 86400 * ${max_len_d})",
         "hide": 2,
         "includeAll": false,
         "multi": false,
         "name": "max_len_s",
         "options": [],
-        "query": "query_result(vector(${max_len}) % 86400)",
+        "query": "query_result(vector(${max_len}) - 86400 * ${max_len_d})",
         "refresh": 2,
         "regex": "/\\} (\\S+) /",
         "skipUrlSync": false,
@@ -5261,13 +5261,13 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(vector(${base_len}) % 86400)",
+        "definition": "query_result(vector(${base_len}) - 86400 * ${base_len_d})",
         "hide": 2,
         "includeAll": false,
         "multi": false,
         "name": "base_len_s",
         "options": [],
-        "query": "query_result(vector(${base_len}) % 86400)",
+        "query": "query_result(vector(${base_len}) - 86400 * ${base_len_d})",
         "refresh": 2,
         "regex": "/\\} (\\S+) /",
         "skipUrlSync": false,
@@ -5297,13 +5297,13 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(vector(${cand_len}) % 86400)",
+        "definition": "query_result(vector(${cand_len}) - 86400 * ${cand_len_d})",
         "hide": 2,
         "includeAll": false,
         "multi": false,
         "name": "cand_len_s",
         "options": [],
-        "query": "query_result(vector(${cand_len}) % 86400)",
+        "query": "query_result(vector(${cand_len}) - 86400 * ${cand_len_d})",
         "refresh": 2,
         "regex": "/\\} (\\S+) /",
         "skipUrlSync": false,
@@ -5333,13 +5333,13 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(vector(${base_since_end}) % 86400)",
+        "definition": "query_result(vector(${base_since_end}) - 86400 * ${base_since_end_d})",
         "hide": 2,
         "includeAll": false,
         "multi": false,
         "name": "base_since_end_s",
         "options": [],
-        "query": "query_result(vector(${base_since_end}) % 86400)",
+        "query": "query_result(vector(${base_since_end}) - 86400 * ${base_since_end_d})",
         "refresh": 2,
         "regex": "/\\} (\\S+) /",
         "skipUrlSync": false,
@@ -5369,13 +5369,13 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(vector(${cand_since_end}) % 86400)",
+        "definition": "query_result(vector(${cand_since_end}) - 86400 * ${cand_since_end_d})",
         "hide": 2,
         "includeAll": false,
         "multi": false,
         "name": "cand_since_end_s",
         "options": [],
-        "query": "query_result(vector(${cand_since_end}) % 86400)",
+        "query": "query_result(vector(${cand_since_end}) - 86400 * ${cand_since_end_d})",
         "refresh": 2,
         "regex": "/\\} (\\S+) /",
         "skipUrlSync": false,

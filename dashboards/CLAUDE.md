@@ -122,19 +122,21 @@ variables (all `query_result`, evaluated at now) hold each run's `base_start`/`c
 `base_offset`/`cand_offset` (`now - max_len - start`, negative for a run that started later) and the
 side-by-side shifts `base_since_end`/`cand_since_end`. Each of `max_len`, `base_len`, `cand_len`,
 `base_since_end` and `cand_since_end` also has a `_d` helper (whole days, `floor(x / 86400)`) and a `_s`
-helper (the remaining seconds, `x % 86400`) for the panel time overrides.
+helper (the remaining seconds, `x - 86400 * ${x_d}`, so it reads `_d` and resolves after it) for the panel time overrides.
 
 Grafana's date math reads at most five digits per number, so a `timeFrom` or `timeShift` of `${x}s`
 fails with "invalid timeshift" once `x` passes 99999 seconds (27.8 hours). Write each override as
-`${x_d}d-${x_s}s`: `timeShift: "5d-3600s"` shifts by 5 days and 1 hour. PromQL has no such limit, so
+`${x_s}s-${x_d}d`: `timeShift: "3600s-5d"` shifts by 1 hour and 5 days. PromQL has no such limit, so
 `offset` and range values stay in plain seconds. `PanelTimeOverrideTest` fails on any `${x}s` override.
+
+The order is load-bearing. Grafana 13.2.2's `PanelTimeRange` recomputes the override each time a helper it reads completes, but keeps the new range only when the header text (`timeInfo`) changes, and a `timeFrom` header names only the first number ("Last 0 day"). With days first, a panel whose `_s` resolved after its `_d` kept the one-second range from `0d-s` until a manual refresh. Seconds first, with `_s` computed from `_d`, makes the seconds helper complete last, and that completion always changes the header: from invalid while it is empty to "Last 9000 seconds". `PanelTimeOverrideTest` checks both the order and the `_s` query.
 
 Three rows sit at the top, above the existing panels:
 
-- **Overlay**: panel `timeFrom` `${max_len_d}d-${max_len_s}s`; each run's query has `offset ${base_offset}s` or
+- **Overlay**: panel `timeFrom` `${max_len_s}s-${max_len_d}d`; each run's query has `offset ${base_offset}s` or
   `offset ${cand_offset}s`, so both start at the left edge.
-- **Side by side**: one column per run, panel `timeFrom` `${base_len_d}d-${base_len_s}s` and `timeShift`
-  `${base_since_end_d}d-${base_since_end_s}s` (and the candidate's), so each axis shows the run's real times.
+- **Side by side**: one column per run, panel `timeFrom` `${base_len_s}s-${base_len_d}d` and `timeShift`
+  `${base_since_end_s}s-${base_since_end_d}d` (and the candidate's), so each axis shows the run's real times.
 - **Summary and documents**: one instant table query that joins every figure with `or`: each figure
   over `[${base_len}s] @ ${base_end}` per run and `100 * (C - B) / B`, tagged with `label_replace` as
   `figure` and `run` (`1 baseline`, `2 candidate`, `3 difference %`). `groupingToMatrix` (column `run`,

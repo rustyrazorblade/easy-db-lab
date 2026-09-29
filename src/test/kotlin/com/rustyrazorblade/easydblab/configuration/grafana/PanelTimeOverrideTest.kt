@@ -12,14 +12,19 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
- * A panel's `timeFrom` and `timeShift` survive runs of any length. Grafana's date math reads at most
- * five digits per number, so `${x}s` fails with "invalid timeshift" once `x` passes 99999 seconds
- * (27.8 hours). A variable length is written as whole days and the remaining seconds instead,
- * `${x_d}d-${x_s}s`, and both parts come from the same helper.
+ * A panel's `timeFrom` and `timeShift` survive runs of any length and are right on first load.
+ * Grafana's date math reads at most five digits per number, so `${x}s` fails with "invalid
+ * timeshift" once `x` passes 99999 seconds (27.8 hours). A variable length is written as the
+ * remaining seconds and whole days instead, `${x_s}s-${x_d}d`, and both parts come from the same helper.
+ *
+ * Grafana 13.2.2's `PanelTimeRange` recomputes the override when a helper completes, but keeps the
+ * new range only when its header text changes, and a `timeFrom` header shows only the first number.
+ * So the seconds come first, and `x_s` reads `x_d`: the seconds helper completes last, and its
+ * completion turns the header from invalid (empty seconds) to a valid one that names the seconds.
  */
 class PanelTimeOverrideTest {
     private val singleSeconds = Regex("""^\$\{[A-Za-z0-9_]+}s$""")
-    private val daysAndSeconds = Regex("""^\$\{([A-Za-z0-9_]+)_d}d-\$\{([A-Za-z0-9_]+)_s}s$""")
+    private val secondsAndDays = Regex("""^\$\{([A-Za-z0-9_]+)_s}s-\$\{([A-Za-z0-9_]+)_d}d$""")
 
     private data class Override(
         val location: String,
@@ -63,27 +68,28 @@ class PanelTimeOverrideTest {
     }
 
     @Test
-    fun `every variable override is the days and seconds of one helper`() {
+    fun `every variable override is the seconds then days of one helper, with the seconds read from the days`() {
         val checked =
             DashboardFiles.all().flatMap { file ->
                 val dashboard = Json.parseToJsonElement(file.readText()).jsonObject
                 val queries = queriesByName(dashboard)
                 overrides(dashboard, file.path).filter { "$" in it.value }.onEach { override ->
                     val parts =
-                        daysAndSeconds
+                        secondsAndDays
                             .matchEntire(override.value)
                             ?.destructured
                             ?.toList()
                             .orEmpty()
                     assertThat(parts).describedAs("${override.location}: ${override.value}").hasSize(2)
-                    val (days, seconds) = parts
+                    val (seconds, days) = parts
                     assertThat(days).describedAs(override.location).isEqualTo(seconds)
                     assertThat(
                         queries["${days}_d"],
                     ).describedAs(override.location).isEqualTo("query_result(floor(vector(\${$days}) / 86400))")
                     assertThat(
                         queries["${seconds}_s"],
-                    ).describedAs(override.location).isEqualTo("query_result(vector(\${$seconds}) % 86400)")
+                    ).describedAs(override.location)
+                        .isEqualTo("query_result(vector(\${$seconds}) - 86400 * \${${seconds}_d})")
                 }
             }
 

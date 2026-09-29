@@ -116,7 +116,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "aws_s3_bytes_downloaded_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_bytes_downloaded_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"})",
           "legendFormat": "BytesDownloaded {{dimension_BucketName}}",
           "refId": "A"
         },
@@ -125,7 +125,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "aws_s3_bytes_uploaded_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_bytes_uploaded_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"})",
           "legendFormat": "BytesUploaded {{dimension_BucketName}}",
           "refId": "B"
         }
@@ -227,7 +227,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "aws_s3_get_requests_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_get_requests_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"})",
           "legendFormat": "GetRequests {{dimension_BucketName}}",
           "refId": "A"
         },
@@ -236,7 +236,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "aws_s3_put_requests_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_put_requests_sum{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"})",
           "legendFormat": "PutRequests {{dimension_BucketName}}",
           "refId": "B"
         }
@@ -338,7 +338,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "aws_s3_first_byte_latency_p99{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_first_byte_latency_p99{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"})",
           "legendFormat": "FirstByteLatency p99 {{dimension_BucketName}}",
           "refId": "A"
         }
@@ -428,7 +428,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "aws_s3_total_request_latency_p99{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_total_request_latency_p99{dimension_BucketName=~\"$bucket\", cluster=~\"$cluster\"})",
           "legendFormat": "TotalRequestLatency p99 {{dimension_BucketName}}",
           "refId": "A"
         }
@@ -1059,7 +1059,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "aws_s3_bucket_size_bytes_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"StandardStorage\", cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_bucket_size_bytes_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"StandardStorage\", cluster=~\"$cluster\"})",
           "legendFormat": "BucketSize {{dimension_BucketName}}",
           "refId": "A"
         }
@@ -1148,7 +1148,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "aws_s3_number_of_objects_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"AllStorageTypes\", cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_number_of_objects_average{dimension_BucketName=~\"$bucket\", dimension_StorageType=\"AllStorageTypes\", cluster=~\"$cluster\"})",
           "legendFormat": "NumberOfObjects {{dimension_BucketName}}",
           "refId": "A"
         }

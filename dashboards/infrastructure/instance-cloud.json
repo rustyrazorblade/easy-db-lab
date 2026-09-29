@@ -1982,7 +1982,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_first_byte_latency_average{cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_first_byte_latency_average{cluster=~\"$cluster\"})",
           "legendFormat": "{{dimension_BucketName}} first byte avg",
           "range": true,
           "instant": false,
@@ -1994,7 +1994,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_first_byte_latency_p99{cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_first_byte_latency_p99{cluster=~\"$cluster\"})",
           "legendFormat": "{{dimension_BucketName}} first byte p99",
           "range": true,
           "instant": false,
@@ -2006,7 +2006,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_total_request_latency_average{cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_total_request_latency_average{cluster=~\"$cluster\"})",
           "legendFormat": "{{dimension_BucketName}} total avg",
           "range": true,
           "instant": false,
@@ -2018,7 +2018,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_total_request_latency_p99{cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_total_request_latency_p99{cluster=~\"$cluster\"})",
           "legendFormat": "{{dimension_BucketName}} total p99",
           "range": true,
           "instant": false,
@@ -2129,7 +2129,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_get_requests_sum{cluster=~\"$cluster\"} / 60",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_get_requests_sum{cluster=~\"$cluster\"} / 60)",
           "legendFormat": "{{dimension_BucketName}} GET/s",
           "range": true,
           "instant": false,
@@ -2141,7 +2141,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_bytes_downloaded_sum{cluster=~\"$cluster\"} / 60",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_bytes_downloaded_sum{cluster=~\"$cluster\"} / 60)",
           "legendFormat": "{{dimension_BucketName}} bytes/s",
           "range": true,
           "instant": false,
@@ -2252,7 +2252,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_bucket_size_bytes_average{cluster=~\"$cluster\"} and on (name) aws_s3_info{cluster=~\"$cluster\", tag_cluster_id=~\"$cluster_id\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_bucket_size_bytes_average{cluster=~\"$cluster\"} and on (name) aws_s3_info{cluster=~\"$cluster\", tag_cluster_id=~\"$cluster_id\"})",
           "legendFormat": "{{dimension_BucketName}} bytes",
           "range": true,
           "instant": false,
@@ -2264,7 +2264,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_number_of_objects_average{cluster=~\"$cluster\"} and on (name) aws_s3_info{cluster=~\"$cluster\", tag_cluster_id=~\"$cluster_id\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_number_of_objects_average{cluster=~\"$cluster\"} and on (name) aws_s3_info{cluster=~\"$cluster\", tag_cluster_id=~\"$cluster_id\"})",
           "legendFormat": "{{dimension_BucketName}} objects",
           "range": true,
           "instant": false,
@@ -2362,7 +2362,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_bucket_size_bytes_average{cluster=~\"$cluster\"}",
+          "expr": "max by (name, dimension_BucketName, dimension_FilterId, dimension_StorageType) (aws_s3_bucket_size_bytes_average{cluster=~\"$cluster\"})",
           "legendFormat": "{{dimension_BucketName}}",
           "range": true,
           "instant": false,

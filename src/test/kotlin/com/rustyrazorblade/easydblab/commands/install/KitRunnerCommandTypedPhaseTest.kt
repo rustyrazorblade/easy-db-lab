@@ -301,7 +301,9 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
     @Test
     fun `an extension instance installs only its own dashboards, under its own uids, into its folder`() {
         val kitDir = File(workingDir, "postgres-duckdb/dashboards").also { it.mkdirs() }.parentFile
-        File(kitDir, "dashboards/postgres.json").writeText("""{"uid":"postgres-overview","title":"PostgreSQL Overview"}""")
+        File(kitDir, "dashboards/postgres.json").writeText(
+            """{"uid":"postgres-overview","title":"PostgreSQL Overview","links":[{"url":"/d/postgres-postgis?orgId=1"}]}""",
+        )
         File(kitDir, "dashboards/duckdb.json").writeText("""{"uid":"postgres-duckdb","title":"DuckDB"}""")
         File(kitDir, "dashboards/postgis.json").writeText("""{"uid":"postgres-postgis","title":"PostGIS"}""")
         writeKitYaml(
@@ -332,6 +334,9 @@ class KitRunnerCommandTypedPhaseTest : KitRunnerCommandTestBase() {
         verify(mockGrafanaClient, times(2)).installDashboard(installed.capture(), any(), eq("postgres-duckdb"))
         assertThat(installed.allValues.map { it["uid"]?.jsonPrimitive?.content })
             .containsExactly("postgres-overview-duckdb", "postgres-duckdb-duckdb")
+        val overview = installed.allValues.first().toString()
+        assertThat(overview).contains("/d/postgres-postgis-postgis?orgId=1")
+        assertThat(overview).doesNotContain("/d/postgres-postgis?")
     }
 
     @Test

@@ -279,56 +279,23 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         assertThat(results(ObservabilityBackends.get("$mimirUrl/prometheus/api/v1/query?query=edl_e2e_probe", "other").body())).isEmpty()
     }
 
-    @Test
-    fun `a Spark job's line from an EMR node is found by spark logs and by logs query for the emr source`() {
-        val (mimir, loki) = startBackends()
-        val control = startCollector(mimir, loki)
-        val emr = startEmrCollector(control)
-        val nanos = System.currentTimeMillis() * 1_000_000
-
-        post(
-            emr,
-            "/v1/logs",
-            """
-            {"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"spark-BulkWriter"}}]},
-             "scopeLogs":[{"logRecords":[{"timeUnixNano":"$nanos","body":{"stringValue":"Job 0 finished"}}]}]}]}
-            """.trimIndent(),
-        )
-
-        val step = await(control) { lokiStreams(loki, LogQl.sparkStep(CLUSTER, "BulkWriter")).firstOrNull() }
-        assertThat(labelsOf(step, "stream")).containsEntry("cluster", CLUSTER).containsEntry("source", "emr")
-        assertThat(lokiStreams(loki, LogQl.logsQuery(CLUSTER, source = "emr"))).isNotEmpty()
-        assertThat(lokiStreams(loki, LogQl.sparkStep(CLUSTER, "OtherJob"))).isEmpty()
-    }
-
     /**
-     * A line EMR writes to a step's stderr file on the node reaches Loki with the EMR source, the
-     * node's role and host, and the cluster, so a driver that dies before its Java agent exports
-     * anything still leaves its exception where `logs query --source emr` finds it.
+     * One topology (Mimir, Loki, the cluster's collector and an EMR node's collector) serves every
+     * EMR check, since starting it is most of the test's cost.
+     *
+     * - A Spark job's line sent to the EMR collector is found by the queries `spark logs` and `logs
+     *   query --source emr` send.
+     * - A line EMR writes to a step's stderr file on the node reaches Loki with the EMR source, the
+     *   node's role and host, and the cluster, so a driver that dies before its Java agent exports
+     *   anything still leaves its exception where `logs query --source emr` finds it.
+     * - An EMR node's metrics keep the EMR node's host name through the cluster's collector, while
+     *   an OTLP producer on a cluster node (a JVM in a pod reports its pod name) is still stamped
+     *   with the node's. Before, every Spark master and worker arrived as `host_name="control0"`,
+     *   collided with the real control node and failed System Overview's Filesystem Usage with
+     *   "found duplicate series".
      */
     @Test
-    fun `a step log file on an EMR node reaches Loki with the emr source, node role and cluster`() {
-        val (mimir, loki) = startBackends()
-        val control = startCollector(mimir, loki)
-        startEmrCollector(control)
-
-        val stream = await(control) { lokiStreams(loki, "{cluster=\"$CLUSTER\", source=\"emr\"} |= \"NoSuchMethodError\"").firstOrNull() }
-
-        assertThat(labelsOf(stream, "stream"))
-            .containsEntry("node_role", "spark-master")
-            .containsEntry("host_name", EMR_HOST)
-            .containsEntry("log_file_path", "/mnt/var/log/hadoop/steps/s-E2E/stderr")
-    }
-
-    /**
-     * An EMR node's metrics keep the EMR node's host name through the cluster's collector, while
-     * an OTLP producer on a cluster node (a JVM in a pod reports its pod name) is still stamped
-     * with the node's. Before, every Spark master and worker arrived as `host_name="control0"`,
-     * collided with the real control node and failed System Overview's Filesystem Usage with
-     * "found duplicate series".
-     */
-    @Test
-    fun `an EMR node's metrics keep its host name, and a cluster producer's get the node's`() {
+    fun `an EMR node's Spark lines, step log files and metrics reach the cluster's backends`() {
         val (mimir, loki) = startBackends()
         val control = startCollector(mimir, loki)
         val emr = startEmrCollector(control)
@@ -341,9 +308,31 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
             {"resourceMetrics":[{"resource":{"attributes":[{"key":"host.name","value":{"stringValue":"$hostName"}}]},
              "scopeMetrics":[{"metrics":[{"name":"$name","gauge":{"dataPoints":[{"asDouble":1,"timeUnixNano":"$nanos"}]}}]}]}]}
             """.trimIndent()
+        post(
+            emr,
+            "/v1/logs",
+            """
+            {"resourceLogs":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"spark-BulkWriter"}}]},
+             "scopeLogs":[{"logRecords":[{"timeUnixNano":"$nanos","body":{"stringValue":"Job 0 finished"}}]}]}]}
+            """.trimIndent(),
+        )
         post(emr, "/v1/metrics", probe("edl_emr_host_probe", "set-by-the-spark-jvm"))
         post(control, "/v1/metrics", probe("edl_pod_host_probe", "stress-pod-7d9f"))
 
+        // The Spark job's line.
+        val step = await(control) { lokiStreams(loki, LogQl.sparkStep(CLUSTER, "BulkWriter")).firstOrNull() }
+        assertThat(labelsOf(step, "stream")).containsEntry("cluster", CLUSTER).containsEntry("source", "emr")
+        assertThat(lokiStreams(loki, LogQl.logsQuery(CLUSTER, source = "emr"))).isNotEmpty()
+        assertThat(lokiStreams(loki, LogQl.sparkStep(CLUSTER, "OtherJob"))).isEmpty()
+
+        // The step's stderr file.
+        val stderr = await(control) { lokiStreams(loki, "{cluster=\"$CLUSTER\", source=\"emr\"} |= \"NoSuchMethodError\"").firstOrNull() }
+        assertThat(labelsOf(stderr, "stream"))
+            .containsEntry("node_role", "spark-master")
+            .containsEntry("host_name", EMR_HOST)
+            .containsEntry("log_file_path", "/mnt/var/log/hadoop/steps/s-E2E/stderr")
+
+        // The host names of the metrics.
         val mimirUrl = ObservabilityBackends.baseUrl(mimir, Constants.K8s.MIMIR_HTTP_PORT)
 
         fun series(name: String) =

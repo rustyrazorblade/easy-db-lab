@@ -24,7 +24,13 @@ class SharedBucketCountTest {
                     .queries(Json.parseToJsonElement(file.readText()).jsonObject)
                     .filter { it.language == Language.PROMQL && "aws_s3_" in it.text && !it.where.startsWith("variable ") }
                     .mapNotNull { query ->
-                        val labels = collapsed.find(query.text.trim())?.groupValues?.get(1)?.split(",")?.map { it.trim() }
+                        val labels =
+                            collapsed
+                                .find(query.text.trim())
+                                ?.groupValues
+                                ?.get(1)
+                                ?.split(",")
+                                ?.map { it.trim() }
                         when {
                             labels == null -> "${file.path} ${query.where}: ${query.text} is not collapsed with max by (...)"
                             "cluster" in labels -> "${file.path} ${query.where}: ${query.text} keeps cluster"

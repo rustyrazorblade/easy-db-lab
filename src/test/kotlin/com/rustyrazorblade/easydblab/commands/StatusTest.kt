@@ -26,7 +26,6 @@ import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
-import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import com.rustyrazorblade.easydblab.services.RequirementCheckDeps
 import com.rustyrazorblade.easydblab.services.ResourceManager
@@ -57,7 +56,6 @@ class StatusTest : BaseKoinTest() {
     private val mockRemoteOperationsService: RemoteOperationsService = mock()
     private val mockEmrService: EMRService = mock()
     private val mockStressJobService: StressJobService = mock()
-    private val mockK8sService: K8sService = mock()
     private lateinit var outputHandler: BufferedOutputHandler
     private lateinit var proxyAvailability: ProxyAvailability
     private val stdout = ByteArrayOutputStream()
@@ -139,7 +137,6 @@ class StatusTest : BaseKoinTest() {
                 single<RemoteOperationsService> { mockRemoteOperationsService }
                 single<EMRService> { mockEmrService }
                 single<StressJobService> { mockStressJobService }
-                single<K8sService> { mockK8sService }
                 single<ProxyAvailability> { DefaultProxyAvailability() }
                 // Real instance: the scanner only reads the filesystem, so faking it would
                 // hide the very rule these tests exercise.
@@ -371,14 +368,11 @@ class StatusTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute prints no endpoints for a stopped kit even while pods run in its namespace`() {
+    fun `a stopped kit prints no endpoints`() {
         // A bucket, because a present kubeconfig also renders the S3 Manager section.
         setupBasicClusterStateWithS3Bucket("test-bucket")
         installPackagedKit("clickhouse")
         File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
-        // Only the Keeper pods run: the server is stopped, so nothing listens for queries.
-        whenever(mockK8sService.getNamespaceStatus(any(), any()))
-            .thenReturn(Result.success("chk-clickhouse-keeper-0-0-0   1/1   Running"))
 
         Status().execute()
 

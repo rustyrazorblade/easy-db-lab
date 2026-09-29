@@ -65,7 +65,8 @@ class DefaultSidecarService(
     ): Result<Unit> =
         runCatching {
             val state = clusterStateManager.load()
-            val clusterName = state.name
+            // The cluster label every signal carries, <name>-<id>, not the bare name.
+            val clusterName = state.clusterLabelName()
 
             val pullSecretName = ecrPullSecrets.ensureFor(controlHost, image, Constants.K8s.NAMESPACE)
 

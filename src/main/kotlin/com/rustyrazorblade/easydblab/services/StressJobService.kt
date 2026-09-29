@@ -389,7 +389,7 @@ class DefaultStressJobService(
                 config,
                 region,
                 controlNodeIp,
-                clusterState.name,
+                clusterState.clusterLabelName(),
                 clusterState.tenant(),
                 clusterState.initConfig?.telemetryRedirect,
             )

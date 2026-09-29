@@ -198,7 +198,10 @@ internal class EMRProvisioningServiceTest {
         assertThat(sparkEnv.configurations).hasSize(1)
         val exportConfig = sparkEnv.configurations.first()
         assertThat(exportConfig.classification).isEqualTo("export")
-        assertThat(exportConfig.properties).containsKey("PYROSCOPE_LABELS")
+        // Spark's profiles carry the cluster label every other signal carries, so the profiling
+        // dashboards' cluster filter finds them.
+        assertThat(exportConfig.properties["PYROSCOPE_LABELS"])
+            .isEqualTo("hostname=\$(hostname -s),cluster=test-cluster-test-id")
     }
 
     @Test

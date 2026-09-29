@@ -422,7 +422,17 @@ tasks.register("testScripts") {
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
         "testSysbenchStartScript",
+        "testPyroscopeKitLabels",
     )
+}
+
+// Unit-test the Pyroscope labels the presto and trino start scripts put on their profiles: the
+// cluster label from cluster-config, not the bare cluster name. kubectl and helm are stubbed.
+tasks.register<Exec>("testPyroscopeKitLabels") {
+    group = "Verification"
+    description = "Unit-test the Pyroscope labels of the presto and trino kit start scripts"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/pyroscope-kit-labels.test.sh")
 }
 
 // Unit-test the sysbench kit's start script: it pushes its figures as OTLP JSON to the collector,

@@ -439,7 +439,10 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.event=cpu")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.alloc=512k")
         assertThat(javaToolOptions).contains("-Dpyroscope.profiler.lock=10ms")
-        assertThat(javaToolOptions).contains("-Dpyroscope.labels=cluster=test-cluster,job_name=stress-test-123")
+        // The cluster label is <name>-<id>, the value every other signal carries, so the profiling
+        // dashboards' cluster filter matches these profiles.
+        val cluster = getKoin().get<ClusterStateManager>().load().clusterLabelName()
+        assertThat(javaToolOptions).contains("-Dpyroscope.labels=cluster=$cluster,job_name=stress-test-123")
         assertThat(javaToolOptions).contains("-Dpyroscope.tenant.id=default")
     }
 

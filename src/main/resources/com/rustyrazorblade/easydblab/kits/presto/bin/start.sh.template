@@ -4,6 +4,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 
+# Profiles carry the cluster label every other signal carries, <name>-<id>, so the profiling
+# dashboards' cluster filter finds them. CLUSTER_NAME is the bare name; cluster-config holds the label.
+CLUSTER_LABEL=$(kubectl get configmap cluster-config -n default -o jsonpath='{.data.cluster_name}')
+if [ -z "${CLUSTER_LABEL}" ]; then
+  echo "ERROR: cluster-config has no cluster_name; run 'easy-db-lab grafana update-config' first." >&2
+  exit 1
+fi
+
 echo "Installing Presto..."
 helm repo add prestodb https://prestodb.github.io/presto-helm-charts 2>/dev/null || true
 
@@ -19,7 +27,7 @@ PORTS_JSON=$(echo "${PORTS_RAW:-[]}" \
   | jq -c 'map(if .containerPort == 8080 then . + {"hostPort": 8080} elif .containerPort == 9090 then . + {"hostPort": 9090} else . end)')
 COORD_PATCH=$(jq -n \
   --argjson ports "$PORTS_JSON" \
-  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_NAME},component=coordinator" \
+  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_LABEL},component=coordinator" \
   '{spec:{template:{spec:{
     volumes:[{name:"pyroscope-agent",hostPath:{path:"/usr/local/pyroscope"}}],
     containers:[{name:"coordinator",ports:$ports,env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],
@@ -32,7 +40,7 @@ kubectl patch deployment presto-coordinator \
 
 echo "Patching worker: Pyroscope profiling agent..."
 WORKER_PATCH=$(jq -n \
-  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_NAME},component=worker" \
+  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_LABEL},component=worker" \
   '{spec:{template:{spec:{
     volumes:[{name:"pyroscope-agent",hostPath:{path:"/usr/local/pyroscope"}}],
     containers:[{name:"worker",env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],

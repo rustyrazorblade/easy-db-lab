@@ -83,7 +83,7 @@ class DefaultEMRProvisioningService(
         val bootstrapAction = uploadOtelBootstrapScript(s3Path)
 
         val sparkDefaults = buildSparkDefaultsConfiguration(config.clusterState)
-        val sparkEnv = buildSparkEnvConfiguration()
+        val sparkEnv = buildSparkEnvConfiguration(config.clusterState)
 
         val emrConfig =
             EMRClusterConfig(
@@ -237,9 +237,11 @@ class DefaultEMRProvisioningService(
     /**
      * Builds a spark-env EMR classification that exports PYROSCOPE_LABELS with the node hostname.
      * spark-env.sh is sourced by YARN before launching Spark processes, so $(hostname) resolves
-     * per-node at runtime. This allows the Pyroscope Java agent to tag profiles with hostname.
+     * per-node at runtime. This allows the Pyroscope Java agent to tag profiles with hostname,
+     * and with the cluster label every other signal carries, so the dashboards' cluster filter
+     * finds Spark's profiles.
      */
-    private fun buildSparkEnvConfiguration(): EMRConfiguration =
+    private fun buildSparkEnvConfiguration(clusterState: ClusterState): EMRConfiguration =
         EMRConfiguration(
             classification = "spark-env",
             configurations =
@@ -248,7 +250,7 @@ class DefaultEMRProvisioningService(
                         classification = "export",
                         properties =
                             mapOf(
-                                "PYROSCOPE_LABELS" to "hostname=\$(hostname -s)",
+                                "PYROSCOPE_LABELS" to "hostname=\$(hostname -s),cluster=${clusterState.clusterLabelName()}",
                             ),
                     ),
                 ),

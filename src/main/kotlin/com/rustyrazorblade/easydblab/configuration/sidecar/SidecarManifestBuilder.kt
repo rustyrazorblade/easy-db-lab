@@ -54,7 +54,7 @@ class SidecarManifestBuilder(
      *
      * @param image Container image for the sidecar (default: ghcr.io/apache/cassandra-sidecar:latest)
      * @param controlNodeIp Private IP of the control node (for Pyroscope server address)
-     * @param clusterName Cluster name (for Pyroscope labels)
+     * @param clusterName The cluster label, `<name>-<id>` (for Pyroscope labels)
      * @param tenant The cluster's observability tenant, sent by the Pyroscope agent on every write
      * @param telemetryRedirect When non-null, the Pyroscope agent ships to this external stack.
      * @return List of: ConfigMap, DaemonSet
@@ -264,7 +264,8 @@ class SidecarManifestBuilder(
             "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",
             "-Dpyroscope.application.name=$APP_LABEL",
             "-Dpyroscope.server.address=$pyroscopeServerAddress",
-            "-Dpyroscope.labels=hostname:\$(NODE_NAME),cluster:$clusterName",
+            // The agent parses `k=v,k=v`; it drops labels written as `k:v`.
+            "-Dpyroscope.labels=hostname=\$(NODE_NAME),cluster=$clusterName",
             // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
             "-Dpyroscope.tenant.id=$tenant",
             "-Dpyroscope.profiler.event=cpu",

@@ -173,6 +173,17 @@ class DocumentsWebServerIntegrationTest {
     }
 
     @Test
+    fun `an encoded line break or question mark in the path is refused and never reaches the proxy`() {
+        // Decoded, %0d%0a would split the proxied request into a second one, and %3F would add a query.
+        for (path in listOf("/reports/a%0d%0aX", "/reports/a%0d%0aDELETE%20/acct-bucket/x", "/reports/a%3Facl", "/reports/a%3Flist-type=2")) {
+            val response = request("GET $path HTTP/1.0")
+
+            assertThat(status(response)).describedAs(path).contains(" 400 ")
+            assertThat(response).describedAs(path).doesNotContain("upstream saw")
+        }
+    }
+
+    @Test
     fun `a path outside reports is refused, a normalized dot-dot path included`() {
         for (path in listOf("/mimir/", "/reports/../mimir/", "/reports/%2e%2e/loki/", "/")) {
             val response = request("GET $path HTTP/1.0")

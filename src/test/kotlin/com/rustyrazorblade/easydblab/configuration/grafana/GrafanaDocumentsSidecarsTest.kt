@@ -85,11 +85,15 @@ class GrafanaDocumentsSidecarsTest : BaseKoinTest() {
             "location /reports/ {",
             "if (\$request_method != GET) {",
             "return 405;",
-            "proxy_pass http://127.0.0.1:${Constants.Grafana.Documents.PROXY_PORT}/acct-bucket\$uri;",
+            "if (\$uri !~ \"^/reports/[A-Za-z0-9._/-]+\$\") {",
+            "return 400;",
+            "set \$args \"\";",
+            "proxy_pass http://127.0.0.1:${Constants.Grafana.Documents.PROXY_PORT}/acct-bucket/reports/;",
         )
         assertThat(config).containsPattern("location / \\{\\s*return 404;")
-        // $uri is the normalized path without the query string; $request_uri and $args would pass either through.
-        assertThat(config).doesNotContain("\$request_uri", "\$args", "__")
+        // A variable in proxy_pass would send the decoded path unescaped: an encoded line break would split the request.
+        assertThat(config.lines().filter { "proxy_pass" in it }).noneMatch { "\$" in it }
+        assertThat(config).doesNotContain("\$request_uri", "__")
     }
 
     @Test

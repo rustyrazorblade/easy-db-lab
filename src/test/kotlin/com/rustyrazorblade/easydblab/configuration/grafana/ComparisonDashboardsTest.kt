@@ -2,10 +2,13 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.File
@@ -97,8 +100,62 @@ class ComparisonDashboardsTest {
         }
     }
 
+    /**
+     * Grafana names a table query's value field `Value` only when the panel has one query; with
+     * several it is `Value #A`, `Value #B`, ... and `groupingToMatrix`, which needs one frame and a
+     * field named `Value`, returns the rows unpivoted. So each summary is one query that holds every
+     * figure, pivoted by run and given its column order and names.
+     */
+    @Test
+    fun `each summary is one query pivoted to a row per figure with baseline, candidate and difference columns`() {
+        val grouping =
+            buildJsonObject {
+                put("id", "groupingToMatrix")
+                put(
+                    "options",
+                    buildJsonObject {
+                        put("columnField", "run")
+                        put("rowField", "figure")
+                        put("valueField", "Value")
+                    },
+                )
+            }
+        for (path in comparisonDashboards) {
+            val summary =
+                runViewPanels(dashboard(path)).single { it["type"]?.jsonPrimitive?.content == "table" }
+            val targets = summary.getValue("targets").jsonArray
+            assertThat(targets).describedAs(path).hasSize(1)
+
+            val transformations = summary.getValue("transformations").jsonArray.map { it.jsonObject }
+            val organize = transformations.last().getValue("options").jsonObject
+            val expr = targets.single().jsonObject.getValue("expr").jsonPrimitive.content
+            for (run in SUMMARY_COLUMNS.keys.drop(1)) {
+                assertThat(expr).describedAs(path).contains("\"run\", \"$run\"")
+            }
+            assertThat(transformations.map { it.getValue("id").jsonPrimitive.content })
+                .describedAs(path)
+                .containsExactly("groupingToMatrix", "organize")
+            assertThat(transformations.first()).describedAs(path).isEqualTo(grouping)
+            assertThat(organize.getValue("indexByName").jsonObject.mapValues { it.value.jsonPrimitive.int })
+                .describedAs(path)
+                .containsExactlyEntriesOf(SUMMARY_COLUMNS.keys.withIndex().associate { it.value to it.index })
+            assertThat(organize.getValue("renameByName").jsonObject.mapValues { (it.value as JsonPrimitive).content })
+                .describedAs(path)
+                .containsExactlyEntriesOf(SUMMARY_COLUMNS)
+        }
+    }
+
     private companion object {
         /** The comparison rows were added with panel ids from 1000; every older panel has a lower id. */
         const val RUN_VIEW_FIRST_ID = 1000
+
+        /** The matrix's columns, in order, and the header each shows. The first is the figure column groupingToMatrix names. */
+        val SUMMARY_COLUMNS =
+            linkedMapOf(
+                "figure\\run" to "Figure",
+                "1 baseline" to "Baseline",
+                "2 candidate" to "Candidate",
+                "3 difference %" to "Difference %",
+            )
     }
 }

@@ -1324,7 +1324,13 @@
       "id": 1024,
       "options": {
         "cellHeight": "sm",
-        "showHeader": true
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Figure"
+          }
+        ]
       },
       "targets": [
         {
@@ -1333,104 +1339,40 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(label_replace(sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})), \"figure\", \"Throughput (reqps)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Throughput (reqps)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end}))) - (sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})))) / (sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Throughput (reqps)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
+          "expr": "label_replace(label_replace(sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})), \"figure\", \"Throughput (reqps)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Throughput (reqps)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end}))) - (sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})))) / (sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Throughput (reqps)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"read\"}[${base_len}s] @ ${base_end})), \"figure\", \"Read p99 (\u00b5s)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"read\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Read p99 (\u00b5s)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"read\"}[${cand_len}s] @ ${cand_end}))) - (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"read\"}[${base_len}s] @ ${base_end})))) / (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"read\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Read p99 (\u00b5s)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"write\"}[${base_len}s] @ ${base_end})), \"figure\", \"Write p99 (\u00b5s)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"write\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Write p99 (\u00b5s)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"write\"}[${cand_len}s] @ ${cand_end}))) - (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"write\"}[${base_len}s] @ ${base_end})))) / (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"write\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Write p99 (\u00b5s)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")\nor label_replace(label_replace(sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})), \"figure\", \"Error rate (reqps)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Error rate (reqps)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end}))) - (sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})))) / (sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Error rate (reqps)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")\nor label_replace(label_replace(100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[${base_len}s] @ ${base_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[${cand_len}s] @ ${cand_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end}))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[${cand_len}s] @ ${cand_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end})))) - (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[${base_len}s] @ ${base_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))))) / (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[${base_len}s] @ ${base_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")\nor label_replace(label_replace(sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${base_len}s] @ ${base_end})), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${cand_len}s] @ ${cand_end}))) - (sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${base_len}s] @ ${base_end})))) / (sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")\nor label_replace(label_replace(100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$baseline_cluster\", jvm_gc_name!~\".*Cycles\"}[${base_len}s] @ ${base_end}))), \"figure\", \"GC pause (percent)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$candidate_cluster\", jvm_gc_name!~\".*Cycles\"}[${cand_len}s] @ ${cand_end}))), \"figure\", \"GC pause (percent)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$candidate_cluster\", jvm_gc_name!~\".*Cycles\"}[${cand_len}s] @ ${cand_end})))) - (100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$baseline_cluster\", jvm_gc_name!~\".*Cycles\"}[${base_len}s] @ ${base_end}))))) / (100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$baseline_cluster\", jvm_gc_name!~\".*Cycles\"}[${base_len}s] @ ${base_end})))), \"figure\", \"GC pause (percent)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
           "range": false,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${metrics_datasource}"
-          },
-          "editorMode": "code",
-          "expr": "label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"read\"}[${base_len}s] @ ${base_end})), \"figure\", \"Read p99 (\u00b5s)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"read\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Read p99 (\u00b5s)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"read\"}[${cand_len}s] @ ${cand_end}))) - (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"read\"}[${base_len}s] @ ${base_end})))) / (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"read\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Read p99 (\u00b5s)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${metrics_datasource}"
-          },
-          "editorMode": "code",
-          "expr": "label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"write\"}[${base_len}s] @ ${base_end})), \"figure\", \"Write p99 (\u00b5s)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"write\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Write p99 (\u00b5s)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"write\"}[${cand_len}s] @ ${cand_end}))) - (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"write\"}[${base_len}s] @ ${base_end})))) / (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"write\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Write p99 (\u00b5s)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "C"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${metrics_datasource}"
-          },
-          "editorMode": "code",
-          "expr": "label_replace(label_replace(sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})), \"figure\", \"Error rate (reqps)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Error rate (reqps)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end}))) - (sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})))) / (sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Error rate (reqps)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "D"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${metrics_datasource}"
-          },
-          "editorMode": "code",
-          "expr": "label_replace(label_replace(100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[${base_len}s] @ ${base_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[${cand_len}s] @ ${cand_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end}))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[${cand_len}s] @ ${cand_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[${cand_len}s] @ ${cand_end})))) - (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[${base_len}s] @ ${base_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end}))))) / (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[${base_len}s] @ ${base_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[${base_len}s] @ ${base_end})))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "E"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${metrics_datasource}"
-          },
-          "editorMode": "code",
-          "expr": "label_replace(label_replace(sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${base_len}s] @ ${base_end})), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${cand_len}s] @ ${cand_end})), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${cand_len}s] @ ${cand_end}))) - (sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${base_len}s] @ ${base_end})))) / (sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[${base_len}s] @ ${base_end}))), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "F"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${metrics_datasource}"
-          },
-          "editorMode": "code",
-          "expr": "label_replace(label_replace(100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$baseline_cluster\", jvm_gc_name!~\".*Cycles\"}[${base_len}s] @ ${base_end}))), \"figure\", \"GC pause (percent)\", \"\", \"\"), \"run\", \"1 baseline\", \"\", \"\")\nor label_replace(label_replace(100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$candidate_cluster\", jvm_gc_name!~\".*Cycles\"}[${cand_len}s] @ ${cand_end}))), \"figure\", \"GC pause (percent)\", \"\", \"\"), \"run\", \"2 candidate\", \"\", \"\")\nor label_replace(label_replace(100 * ((100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$candidate_cluster\", jvm_gc_name!~\".*Cycles\"}[${cand_len}s] @ ${cand_end})))) - (100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$baseline_cluster\", jvm_gc_name!~\".*Cycles\"}[${base_len}s] @ ${base_end}))))) / (100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$baseline_cluster\", jvm_gc_name!~\".*Cycles\"}[${base_len}s] @ ${base_end})))), \"figure\", \"GC pause (percent)\", \"\", \"\"), \"run\", \"3 difference %\", \"\", \"\")",
-          "format": "table",
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "G"
         }
       ],
       "title": "Summary: baseline ${baseline_cluster}, candidate ${candidate_cluster}",
       "transformations": [
-        {
-          "id": "merge",
-          "options": {}
-        },
         {
           "id": "groupingToMatrix",
           "options": {
             "columnField": "run",
             "rowField": "figure",
             "valueField": "Value"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "figure\\run": 0,
+              "1 baseline": 1,
+              "2 candidate": 2,
+              "3 difference %": 3
+            },
+            "renameByName": {
+              "figure\\run": "Figure",
+              "1 baseline": "Baseline",
+              "2 candidate": "Candidate",
+              "3 difference %": "Difference %"
+            }
           }
         }
       ],

@@ -284,6 +284,28 @@ object RetryUtil {
             .build()
 
     /**
+     * Creates retry configuration for waiting on the final stderr EMR uploads for a failed step.
+     *
+     * The check returns a boolean, not an exception: `false` means the uploaded copy predates the
+     * step's end (or none exists yet), so the retry is on the result. When the attempts run out the
+     * last result, `false`, is returned. The interval is a parameter so tests can run every attempt
+     * without sleeping.
+     *
+     * Fixed interval: [retryInterval] between attempts, up to
+     * [Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS] attempts
+     *
+     * @param retryInterval how long to wait between checks
+     * @return RetryConfig configured for the final step stderr wait
+     */
+    fun createFinalStepStderrRetryConfig(retryInterval: Duration): RetryConfig =
+        RetryConfig
+            .custom<Boolean>()
+            .maxAttempts(Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS)
+            .intervalFunction { _ -> retryInterval.toMillis() }
+            .retryOnResult { final -> !final }
+            .build()
+
+    /**
      * Creates retry configuration for creating a VPC on an auto-selected CIDR.
      *
      * Each attempt picks a new random unused block, excluding the ones already tried, so there is

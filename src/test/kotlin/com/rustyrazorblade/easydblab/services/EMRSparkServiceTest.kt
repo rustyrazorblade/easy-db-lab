@@ -1,12 +1,18 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -15,7 +21,10 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.emr.EmrClient
@@ -34,7 +43,9 @@ import software.amazon.awssdk.services.emr.model.StepCancellationOption
 import software.amazon.awssdk.services.emr.model.StepState
 import software.amazon.awssdk.services.emr.model.StepStateChangeReason
 import software.amazon.awssdk.services.emr.model.StepStatus
+import software.amazon.awssdk.services.emr.model.StepTimeline
 import java.time.Duration
+import java.time.Instant
 
 /**
  * Test suite for EMRSparkService following TDD principles.
@@ -88,6 +99,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
                         get(),
                         pollInterval = Duration.ZERO,
                         logIngestionWait = Duration.ZERO,
+                        finalLogPollInterval = Duration.ZERO,
                     )
                 }
             },
@@ -725,5 +737,93 @@ class EMRSparkServiceTest : BaseKoinTest() {
         // Then
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()).isInstanceOf(EmrException::class.java)
+    }
+
+    // ========== FINAL STDERR AFTER A FAILED STEP ==========
+
+    private val stepEnd = Instant.parse("2026-09-28T14:08:52Z")
+
+    private fun stderrPath() =
+        ClusterS3Path
+            .from(defaultClusterState)
+            .emrLogs()
+            .resolve(testClusterId)
+            .resolve("steps")
+            .resolve(testStepId)
+            .resolve("stderr.gz")
+
+    private fun stderrUploadedAt(time: String) = ObjectStore.FileInfo(stderrPath(), size = 1, lastModified = time)
+
+    private fun failStepEndingAt(end: Instant) {
+        val status =
+            StepStatus
+                .builder()
+                .state(StepState.FAILED)
+                .timeline(StepTimeline.builder().endDateTime(end).build())
+                .build()
+        whenever(mockEmrClient.describeStep(any<DescribeStepRequest>()))
+            .thenReturn(
+                DescribeStepResponse
+                    .builder()
+                    .step(
+                        Step
+                            .builder()
+                            .id(testStepId)
+                            .name("qa-connector-writer")
+                            .status(status)
+                            .build(),
+                    ).build(),
+            )
+        whenever(mockLokiQueryService.query(any(), any(), any())).thenReturn(Result.success(emptyList()))
+    }
+
+    private fun recordEvents(): List<Event> {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return events
+    }
+
+    /**
+     * F14: the CLI printed the stderr EMR had uploaded before the driver failed, and the copy
+     * holding the exception arrived five minutes later. The failed step now waits for a copy
+     * uploaded after the step ended, then downloads it.
+     */
+    @Test
+    fun `a failed step's logs are downloaded once EMR uploads a stderr newer than the step's end`() {
+        failStepEndingAt(stepEnd)
+        whenever(mockObjectStore.getFileInfo(stderrPath())).thenReturn(
+            stderrUploadedAt("2026-09-28T14:08:45Z"),
+            stderrUploadedAt("2026-09-28T14:08:45Z"),
+            stderrUploadedAt("2026-09-28T14:13:48Z"),
+        )
+
+        val result = sparkService.waitForJobCompletion(testClusterId, testStepId)
+
+        assertThat(result.isFailure).isTrue()
+        verify(mockObjectStore, times(3)).getFileInfo(stderrPath())
+        verify(mockObjectStore).downloadFile(eq(stderrPath()), any(), any())
+    }
+
+    @Test
+    fun `a failed step whose final stderr never arrives names the S3 path instead of printing the stale copy`() {
+        failStepEndingAt(stepEnd)
+        whenever(mockObjectStore.getFileInfo(stderrPath())).thenReturn(stderrUploadedAt("2026-09-28T14:08:45Z"))
+        val events = recordEvents()
+
+        val result = sparkService.waitForJobCompletion(testClusterId, testStepId)
+
+        assertThat(result.isFailure).isTrue()
+        verify(mockObjectStore, times(Constants.EMR.FINAL_STDERR_MAX_ATTEMPTS)).getFileInfo(stderrPath())
+        verify(mockObjectStore, never()).downloadFile(any(), any(), any())
+        assertThat(events.filterIsInstance<Event.Emr.StepStderrNotFinal>().single().s3Uri)
+            .isEqualTo(stderrPath().toUri())
     }
 }

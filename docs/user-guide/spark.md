@@ -88,6 +88,8 @@ easy-db-lab spark submit \
 
 When `--jar` is a local path, it is automatically uploaded to the cluster's S3 bucket before submission. When it is an `s3://` URI, it is used directly.
 
+When a job submitted with `--wait` fails, the command waits up to 7 minutes for EMR to upload the step's final `stderr`. EMR uploads a running step's logs every few minutes and once more after the step ends, so an earlier copy can end before the exception. The command then shows the last lines of the final copy. If the final copy does not arrive in time, the command prints the S3 path where it will appear; fetch it later with `easy-db-lab spark status --step-id <step-id> --logs`.
+
 ### Using a JAR Already on S3
 
 If your JAR is already on S3 (e.g., from a CI pipeline or a previous upload), pass the S3 URI directly:

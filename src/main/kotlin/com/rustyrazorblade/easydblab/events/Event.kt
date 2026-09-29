@@ -1733,6 +1733,32 @@ sealed interface Event {
         }
 
         @Serializable
+        @SerialName("Emr.StepStderrWaiting")
+        data class StepStderrWaiting(
+            val stepId: String,
+            val maxWaitSeconds: Long,
+        ) : Emr {
+            override fun toDisplayString(): String =
+                "Waiting up to ${maxWaitSeconds}s for EMR to upload the final stderr of step $stepId..."
+        }
+
+        @Serializable
+        @SerialName("Emr.StepStderrNotFinal")
+        data class StepStderrNotFinal(
+            val stepId: String,
+            val s3Uri: String,
+            val waitedSeconds: Long,
+        ) : Emr {
+            override fun toDisplayString(): String =
+                """
+                |EMR did not upload the final stderr of step $stepId within ${waitedSeconds}s; the copy uploaded so far
+                |ends before the failure. The full log will appear at:
+                |  $s3Uri
+                |Fetch it later with: easy-db-lab spark status --step-id $stepId --logs
+                """.trimMargin()
+        }
+
+        @Serializable
         @SerialName("Emr.SparkLogDownloadFailed")
         data class SparkLogDownloadFailed(
             val error: String,

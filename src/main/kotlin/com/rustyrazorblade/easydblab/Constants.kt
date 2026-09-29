@@ -66,6 +66,12 @@ object Constants {
 
         // Maximum log lines to display on job failure
         const val MAX_LOG_LINES = 100
+
+        // After a step fails, how often to check for the stderr EMR uploads once the step has ended,
+        // and how many checks to make. EMR uploads a step's logs every five minutes while it runs
+        // and once more after it ends; the final copy has been seen five minutes after the failure.
+        const val FINAL_STDERR_POLL_INTERVAL_MS = 15_000L
+        const val FINAL_STDERR_MAX_ATTEMPTS = 28
     }
 
     // Retry configuration

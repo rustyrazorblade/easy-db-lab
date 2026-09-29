@@ -100,6 +100,7 @@ class EMRSparkServiceTest : BaseKoinTest() {
                         pollInterval = Duration.ZERO,
                         logIngestionWait = Duration.ZERO,
                         finalLogPollInterval = Duration.ZERO,
+                        logsDir = tempDir.toPath(),
                     )
                 }
             },

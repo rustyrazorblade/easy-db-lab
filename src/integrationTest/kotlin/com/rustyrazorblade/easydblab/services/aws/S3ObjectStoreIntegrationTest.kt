@@ -100,6 +100,28 @@ class S3ObjectStoreIntegrationTest {
             assertThat(result.fileSize).isEqualTo(sourceFile.length())
             assertThat(downloadPath.toFile().readText()).isEqualTo("download content")
         }
+
+        /**
+         * EMR re-uploads a step's stderr as the step runs, so a second download of the same key
+         * must replace the local copy. Keeping it printed a truncated stderr on every later run.
+         */
+        @Test
+        fun `should replace a local file that already exists with the object's current content`(
+            @TempDir tempDir: Path,
+        ) {
+            val sourceFile = tempDir.resolve("current.txt").toFile()
+            sourceFile.writeText("current content, uploaded after the local copy was saved")
+            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("download/replaced.txt")
+            objectStore.uploadFile(sourceFile, s3Path, showProgress = false)
+            val downloadPath = tempDir.resolve("replaced.txt")
+            downloadPath.toFile().writeText("stale")
+
+            val result = objectStore.downloadFile(s3Path, downloadPath, showProgress = false)
+
+            assertThat(downloadPath.toFile().readText()).isEqualTo(sourceFile.readText())
+            assertThat(result.fileSize).isEqualTo(sourceFile.length())
+            assertThat(tempDir.toFile().list()).containsExactlyInAnyOrder("current.txt", "replaced.txt")
+        }
     }
 
     @Nested

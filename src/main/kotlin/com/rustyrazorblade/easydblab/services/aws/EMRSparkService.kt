@@ -58,6 +58,8 @@ import java.util.zip.GZIPInputStream
  *   ingested. Defaults to [Constants.EMR.LOG_INGESTION_WAIT_MS]; tests inject [Duration.ZERO].
  * @property finalLogPollInterval Delay between checks for the final stderr of a failed step.
  *   Defaults to [Constants.EMR.FINAL_STDERR_POLL_INTERVAL_MS]; tests inject [Duration.ZERO].
+ * @property logsDir Local directory that downloaded EMR logs are saved under. Defaults to
+ *   [Constants.EMR.LOCAL_LOGS_DIR] in the working directory; tests inject a temporary directory.
  */
 class EMRSparkService(
     private val emrClient: EmrClient,
@@ -68,6 +70,7 @@ class EMRSparkService(
     private val pollInterval: Duration = Duration.ofMillis(Constants.EMR.POLL_INTERVAL_MS),
     private val logIngestionWait: Duration = Duration.ofMillis(Constants.EMR.LOG_INGESTION_WAIT_MS),
     private val finalLogPollInterval: Duration = Duration.ofMillis(Constants.EMR.FINAL_STDERR_POLL_INTERVAL_MS),
+    private val logsDir: Path = Paths.get(Constants.EMR.LOCAL_LOGS_DIR),
 ) : SparkService {
     private val log = KotlinLogging.logger {}
 
@@ -507,7 +510,7 @@ class EMRSparkService(
                     .resolve(logType.filename)
 
             // Create local logs directory: ./logs/{cluster-id}/{step-id}/
-            val localLogsDir = Paths.get("logs", clusterId, stepId)
+            val localLogsDir = logsDir.resolve(clusterId).resolve(stepId)
             Files.createDirectories(localLogsDir)
 
             val localGzFile = localLogsDir.resolve(logType.filename)
@@ -548,7 +551,7 @@ class EMRSparkService(
             val emrLogsPath = s3Path.emrLogs()
 
             // Save to logs/emr/<step-id>/
-            val localLogsDir = Paths.get("logs", "emr", stepId)
+            val localLogsDir = logsDir.resolve("emr").resolve(stepId)
             Files.createDirectories(localLogsDir)
 
             eventBus.emit(Event.Emr.EmrLogsDownloading(emrLogsPath.toUri()))
@@ -567,7 +570,7 @@ class EMRSparkService(
             val clusterState = clusterStateManager.load()
             val s3Path = clusterState.s3Path()
 
-            val localLogsDir = Paths.get("logs", clusterId, stepId)
+            val localLogsDir = logsDir.resolve(clusterId).resolve(stepId)
             Files.createDirectories(localLogsDir)
             eventBus.emit(Event.Emr.StepLogsDownloading(localLogsDir.toString()))
 

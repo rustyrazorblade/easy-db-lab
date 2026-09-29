@@ -44,6 +44,9 @@ object Constants {
         const val MAX_POLL_TIMEOUT_MS = 4 * 60 * 60 * 1000L // 4 hours
         const val LOG_INTERVAL_POLLS = 12 // Log every 12 polls (60 seconds at 5s interval)
         const val COMMAND_RUNNER_JAR = "command-runner.jar"
+
+        /** Directory, relative to the working directory, that downloaded EMR logs are saved under. */
+        const val LOCAL_LOGS_DIR = "logs"
         const val SPARK_SUBMIT_COMMAND = "spark-submit"
 
         // The Java agent's service.name for a job is this prefix and the job's (and its step's) name

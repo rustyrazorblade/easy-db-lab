@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
-import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
@@ -16,8 +15,10 @@ import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.File
-import java.nio.file.FileAlreadyExistsException
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.util.UUID
 import com.rustyrazorblade.easydblab.events.Event as DomainEvent
 
 /**
@@ -98,21 +99,19 @@ class S3ObjectStore(
         val retryConfig = RetryUtil.createAwsRetryConfig<Unit>()
         val retry = Retry.of("s3-download", retryConfig)
 
+        // The SDK will not write over an existing file, and a copy saved earlier can be stale (EMR
+        // re-uploads a running step's logs), so download beside the target and move it into place.
+        val partial = localPath.resolveSibling(".${localPath.fileName}.${UUID.randomUUID()}.part")
         try {
             Retry
                 .decorateRunnable(retry) {
-                    s3Client.getObject(getRequest, localPath)
-                    log.info { "Downloaded ${remotePath.toUri()} to $localPath" }
+                    Files.deleteIfExists(partial)
+                    s3Client.getObject(getRequest, partial)
                 }.run()
-        } catch (e: SdkClientException) {
-            if (isCausedByFileExists(e)) {
-                log.info { "File already exists, skipping download: $localPath" }
-                return ObjectStore.DownloadResult(
-                    localPath = localPath,
-                    fileSize = localPath.toFile().length(),
-                )
-            }
-            throw e
+            Files.move(partial, localPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            log.info { "Downloaded ${remotePath.toUri()} to $localPath" }
+        } finally {
+            Files.deleteIfExists(partial)
         }
 
         if (showProgress) {
@@ -374,10 +373,6 @@ class S3ObjectStore(
      * @param remotePath The S3 path to check
      * @return A configured HeadObjectRequest
      */
-    private fun isCausedByFileExists(e: SdkClientException): Boolean =
-        generateSequence(e as Throwable) { it.cause }
-            .any { it is FileAlreadyExistsException }
-
     private fun createHeadRequest(remotePath: ClusterS3Path): HeadObjectRequest =
         HeadObjectRequest
             .builder()

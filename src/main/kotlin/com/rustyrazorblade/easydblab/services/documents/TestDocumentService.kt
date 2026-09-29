@@ -19,6 +19,21 @@ class DocumentsRejectedException(
     )
 
 /**
+ * An upload stopped at [failed]. The documents in [stored] were uploaded before it, with their HTML
+ * copies, but the index was not rebuilt, so they are in S3 and not yet in the index; upload again.
+ */
+class DocumentUploadFailedException(
+    val failed: String,
+    val stored: List<String>,
+    cause: Throwable,
+) : IllegalStateException(
+        "Uploading $failed failed: ${cause.message}. " +
+            (if (stored.isEmpty()) "No document was stored." else "Already stored, not yet in the index: ${stored.joinToString(", ")}.") +
+            " Run report upload again.",
+        cause,
+    )
+
+/**
  * The documents of one upload.
  *
  * @property documents Each uploaded markdown file's name and S3 path.
@@ -68,14 +83,18 @@ class DefaultTestDocumentService(
         val cluster = clusterState.clusterLabelName()
         val uploaded =
             withScratch { scratch ->
-                files.map { file ->
-                    val markdown = store.document(cluster, file.name)
-                    objectStore.uploadFile(file, markdown, showProgress = false)
-                    val page = File(scratch, DocumentNames.htmlName(file.name))
-                    page.writeText(DocumentIndex.page(DocumentNames.stem(file.name), MarkdownRenderer.toHtml(file.readText())))
-                    objectStore.uploadFile(page, store.document(cluster, page.name), showProgress = false)
-                    file.name to markdown
+                val stored = mutableListOf<Pair<String, ClusterS3Path>>()
+                files.forEach { file ->
+                    runCatching {
+                        val markdown = store.document(cluster, file.name)
+                        objectStore.uploadFile(file, markdown, showProgress = false)
+                        val page = File(scratch, DocumentNames.htmlName(file.name))
+                        page.writeText(DocumentIndex.page(DocumentNames.stem(file.name), MarkdownRenderer.toHtml(file.readText())))
+                        objectStore.uploadFile(page, store.document(cluster, page.name), showProgress = false)
+                        stored += file.name to markdown
+                    }.getOrElse { e -> throw DocumentUploadFailedException(file.name, stored.map { it.first }, e) }
                 }
+                stored.toList()
             }
         return UploadedDocuments(uploaded, rebuildIndex(clusterState))
     }

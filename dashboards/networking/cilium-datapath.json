@@ -108,8 +108,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "up{job=\"cilium-agent\", cluster=~\"$cluster\", instance=~\"$instance\"}",
-          "legendFormat": "{{instance}}",
+          "expr": "label_replace(up{job=\"cilium-agent\", cluster=~\"$cluster\", instance=~\"$instance\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}}",
           "range": false,
           "refId": "A",
           "instant": true
@@ -172,8 +172,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (version) (cilium_version{job=\"cilium-agent\", cluster=~\"$cluster\", instance=~\"$instance\"})",
-          "legendFormat": "{{version}}",
+          "expr": "label_replace(count by (cluster, version) (cilium_version{job=\"cilium-agent\", cluster=~\"$cluster\", instance=~\"$instance\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{version}}",
           "range": false,
           "refId": "A",
           "instant": true
@@ -240,8 +240,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(cilium_controllers_failing{cluster=~\"$cluster\", instance=~\"$instance\"})",
-          "legendFormat": "failing",
+          "expr": "label_replace(sum by (cluster) (cilium_controllers_failing{cluster=~\"$cluster\", instance=~\"$instance\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} failing",
           "range": false,
           "refId": "A",
           "instant": true
@@ -337,8 +337,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (endpoint_state) (cilium_endpoint_state{cluster=~\"$cluster\", instance=~\"$instance\"})",
-          "legendFormat": "{{endpoint_state}}",
+          "expr": "label_replace(sum by (cluster, endpoint_state) (cilium_endpoint_state{cluster=~\"$cluster\", instance=~\"$instance\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{endpoint_state}}",
           "range": true,
           "refId": "A"
         }
@@ -449,8 +449,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, outcome) (rate(cilium_endpoint_regenerations_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{outcome}}",
+          "expr": "label_replace(sum by (cluster, instance, outcome) (rate(cilium_endpoint_regenerations_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{outcome}}",
           "range": true,
           "refId": "A"
         }
@@ -558,8 +558,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, instance) (rate(cilium_endpoint_regeneration_time_stats_seconds_bucket{scope=\"total\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])))",
-          "legendFormat": "{{instance}}",
+          "expr": "label_replace(histogram_quantile(0.95, sum by (cluster, le, instance) (rate(cilium_endpoint_regeneration_time_stats_seconds_bucket{scope=\"total\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}}",
           "range": true,
           "refId": "A"
         }
@@ -685,8 +685,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, level, subsystem) (rate(cilium_errors_warnings_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{level}} {{subsystem}}",
+          "expr": "label_replace(sum by (cluster, instance, level, subsystem) (rate(cilium_errors_warnings_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{level}} {{subsystem}}",
           "range": true,
           "refId": "A"
         }
@@ -781,8 +781,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, instance) (rate(cilium_k8s_client_api_latency_time_seconds_bucket{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])))",
-          "legendFormat": "{{instance}}",
+          "expr": "label_replace(histogram_quantile(0.95, sum by (cluster, le, instance) (rate(cilium_k8s_client_api_latency_time_seconds_bucket{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}}",
           "range": true,
           "refId": "A"
         }
@@ -877,8 +877,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, method) (rate(cilium_k8s_client_api_calls_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{method}}",
+          "expr": "label_replace(sum by (cluster, instance, method) (rate(cilium_k8s_client_api_calls_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{method}}",
           "range": true,
           "refId": "A"
         }
@@ -986,8 +986,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, reason, direction) (rate(cilium_drop_count_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{direction}} {{reason}}",
+          "expr": "label_replace(sum by (cluster, instance, reason, direction) (rate(cilium_drop_count_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{direction}} {{reason}}",
           "range": true,
           "refId": "A"
         }
@@ -1082,8 +1082,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, reason, direction) (rate(cilium_drop_bytes_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{direction}} {{reason}}",
+          "expr": "label_replace(sum by (cluster, instance, reason, direction) (rate(cilium_drop_bytes_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{direction}} {{reason}}",
           "range": true,
           "refId": "A"
         }
@@ -1178,8 +1178,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, direction) (rate(cilium_forward_bytes_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{direction}}",
+          "expr": "label_replace(sum by (cluster, instance, direction) (rate(cilium_forward_bytes_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{direction}}",
           "range": true,
           "refId": "A"
         }
@@ -1274,8 +1274,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, direction) (rate(cilium_forward_count_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{direction}}",
+          "expr": "label_replace(sum by (cluster, instance, direction) (rate(cilium_forward_count_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{direction}}",
           "range": true,
           "refId": "A"
         }
@@ -1380,8 +1380,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (instance, map_name) (cilium_bpf_map_pressure{cluster=~\"$cluster\", instance=~\"$instance\"})",
-          "legendFormat": "{{instance}} {{map_name}}",
+          "expr": "label_replace(max by (cluster, instance, map_name) (cilium_bpf_map_pressure{cluster=~\"$cluster\", instance=~\"$instance\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{map_name}}",
           "range": true,
           "refId": "A"
         }
@@ -1476,8 +1476,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, protocol, status) (cilium_datapath_conntrack_gc_entries{cluster=~\"$cluster\", instance=~\"$instance\"})",
-          "legendFormat": "{{instance}} {{protocol}} {{status}}",
+          "expr": "label_replace(sum by (cluster, instance, protocol, status) (cilium_datapath_conntrack_gc_entries{cluster=~\"$cluster\", instance=~\"$instance\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{protocol}} {{status}}",
           "range": true,
           "refId": "A"
         }
@@ -1572,8 +1572,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, protocol, status) (rate(cilium_datapath_conntrack_gc_runs_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{protocol}} {{status}}",
+          "expr": "label_replace(sum by (cluster, instance, protocol, status) (rate(cilium_datapath_conntrack_gc_runs_total{cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{protocol}} {{status}}",
           "range": true,
           "refId": "A"
         }
@@ -1668,8 +1668,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, protocol) (cilium_datapath_conntrack_gc_duration_seconds_sum{cluster=~\"$cluster\", instance=~\"$instance\"}) / sum by (instance, protocol) (cilium_datapath_conntrack_gc_duration_seconds_count{cluster=~\"$cluster\", instance=~\"$instance\"})",
-          "legendFormat": "{{instance}} {{protocol}}",
+          "expr": "label_replace(sum by (cluster, instance, protocol) (cilium_datapath_conntrack_gc_duration_seconds_sum{cluster=~\"$cluster\", instance=~\"$instance\"}) / sum by (cluster, instance, protocol) (cilium_datapath_conntrack_gc_duration_seconds_count{cluster=~\"$cluster\", instance=~\"$instance\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{protocol}}",
           "range": true,
           "refId": "A"
         }

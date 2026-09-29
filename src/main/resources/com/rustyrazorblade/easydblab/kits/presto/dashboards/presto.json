@@ -26,8 +26,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "avg by (host_name) (1 - rate(system_cpu_time_seconds_total{state=\"idle\",cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}}"
+          "expr": "label_replace(avg by (cluster, host_name) (1 - rate(system_cpu_time_seconds_total{state=\"idle\",cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}"
         }
       ],
       "title": "CPU Utilization",
@@ -44,18 +44,18 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "system_memory_usage_bytes{state=\"used\",cluster=~\"$cluster\"}",
-          "legendFormat": "{{host_name}} used"
+          "expr": "label_replace(system_memory_usage_bytes{state=\"used\",cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} used"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "system_memory_usage_bytes{state=\"free\",cluster=~\"$cluster\"}",
-          "legendFormat": "{{host_name}} free"
+          "expr": "label_replace(system_memory_usage_bytes{state=\"free\",cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} free"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "system_memory_usage_bytes{state=\"cached\",cluster=~\"$cluster\"}",
-          "legendFormat": "{{host_name}} cached"
+          "expr": "label_replace(system_memory_usage_bytes{state=\"cached\",cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} cached"
         }
       ],
       "title": "Memory Usage",
@@ -72,13 +72,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"read\",cluster=~\"$cluster\"}[$__rate_interval])",
-          "legendFormat": "{{host_name}} read"
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} read"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"write\",cluster=~\"$cluster\"}[$__rate_interval])",
-          "legendFormat": "{{host_name}} write"
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} write"
         }
       ],
       "title": "Disk I/O",
@@ -95,13 +95,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(system_network_io_bytes_total{direction=\"receive\",cluster=~\"$cluster\"}[$__rate_interval])",
-          "legendFormat": "{{host_name}} rx"
+          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"receive\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} rx"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(system_network_io_bytes_total{direction=\"transmit\",cluster=~\"$cluster\"}[$__rate_interval])",
-          "legendFormat": "{{host_name}} tx"
+          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"transmit\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} tx"
         }
       ],
       "title": "Network I/O",
@@ -118,18 +118,18 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "system_cpu_load_average_1m{cluster=~\"$cluster\"}",
-          "legendFormat": "{{host_name}} 1m"
+          "expr": "label_replace(system_cpu_load_average_1m{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} 1m"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "system_cpu_load_average_5m{cluster=~\"$cluster\"}",
-          "legendFormat": "{{host_name}} 5m"
+          "expr": "label_replace(system_cpu_load_average_5m{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} 5m"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "system_cpu_load_average_15m{cluster=~\"$cluster\"}",
-          "legendFormat": "{{host_name}} 15m"
+          "expr": "label_replace(system_cpu_load_average_15m{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} 15m"
         }
       ],
       "title": "Load Average",
@@ -146,13 +146,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"read\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval])",
-          "legendFormat": "{{host_name}} {{device}} read"
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{device}} read"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(system_disk_io_bytes_total{direction=\"write\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval])",
-          "legendFormat": "{{host_name}} {{device}} write"
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{device}} write"
         }
       ],
       "title": "Disk I/O (per device)",
@@ -177,13 +177,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_RunningQueries{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Running"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_RunningQueries{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Running"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_QueuedQueries{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Queued"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_QueuedQueries{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Queued"
         }
       ],
       "title": "Running / Queued Queries",
@@ -200,18 +200,18 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_dispatcher_DispatchManager_CompletedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Completed/s (1m)"
+          "expr": "label_replace(com_facebook_presto_dispatcher_DispatchManager_CompletedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Completed/s (1m)"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_FailedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Failed/s (1m)"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_FailedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Failed/s (1m)"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(com_facebook_presto_dispatcher_DispatchManager_AbandonedQueries_TotalCount{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval])",
-          "legendFormat": "Abandoned/s"
+          "expr": "label_replace(rate(com_facebook_presto_dispatcher_DispatchManager_AbandonedQueries_TotalCount{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Abandoned/s"
         }
       ],
       "title": "Query Throughput (1m rate)",
@@ -228,8 +228,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Blocked Splits"
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Blocked Splits"
         }
       ],
       "title": "Blocked Splits",
@@ -253,18 +253,18 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P50{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "p50"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P50{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p50"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P95{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "p95"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P95{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p95"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P99{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "p99"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P99{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p99"
         }
       ],
       "title": "Wall Input Bytes/s per Query (distribution)",
@@ -281,18 +281,18 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P50{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "p50"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P50{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p50"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P95{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "p95"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P95{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p95"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P99{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "p99"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P99{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p99"
         }
       ],
       "title": "CPU Input Bytes/s per Query (distribution)",
@@ -316,8 +316,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_Total{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Wall Input Bytes/s (1m total)"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_Total{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Wall Input Bytes/s (1m total)"
         }
       ],
       "title": "Total Wall Input Data Rate",
@@ -334,8 +334,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_Total{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "CPU Input Bytes/s (all-time total)"
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_Total{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} CPU Input Bytes/s (all-time total)"
         }
       ],
       "title": "Total CPU Input Data Rate",
@@ -359,8 +359,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_executor_TaskExecutor_RunnerThreads{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Runner Threads"
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_RunnerThreads{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Runner Threads"
         }
       ],
       "title": "Worker Runner Threads",
@@ -377,18 +377,18 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_executor_TaskExecutor_WaitingSplits{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Waiting"
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_WaitingSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Waiting"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_executor_TaskExecutor_RunningSplits{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Running"
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_RunningSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Running"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Blocked"
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Blocked"
         }
       ],
       "title": "Splits by State",
@@ -412,13 +412,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Total Spilled"
+          "expr": "label_replace(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Total Spilled"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Total Read Back"
+          "expr": "label_replace(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Total Read Back"
         }
       ],
       "title": "Cumulative Spill Bytes",
@@ -435,13 +435,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval])",
-          "legendFormat": "Spill Write Rate"
+          "expr": "label_replace(rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Spill Write Rate"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval])",
-          "legendFormat": "Spill Read Rate"
+          "expr": "label_replace(rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Spill Read Rate"
         }
       ],
       "title": "Spill Rate",
@@ -465,18 +465,18 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "jvm_memory_bytes_used{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}",
-          "legendFormat": "Heap Used"
+          "expr": "label_replace(jvm_memory_bytes_used{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Heap Used"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "jvm_memory_bytes_max{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}",
-          "legendFormat": "Heap Max"
+          "expr": "label_replace(jvm_memory_bytes_max{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Heap Max"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "jvm_memory_pool_bytes_used{cluster=~\"$cluster\",job=\"presto\",pool=\"G1 Old Gen\"}",
-          "legendFormat": "G1 Old Gen Used"
+          "expr": "label_replace(jvm_memory_pool_bytes_used{cluster=~\"$cluster\",job=\"presto\",pool=\"G1 Old Gen\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} G1 Old Gen Used"
         }
       ],
       "title": "JVM Heap",
@@ -493,13 +493,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_memory_ClusterMemoryManager_ClusterUserMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "User Memory Reserved"
+          "expr": "label_replace(com_facebook_presto_memory_ClusterMemoryManager_ClusterUserMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} User Memory Reserved"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "com_facebook_presto_memory_ClusterMemoryManager_ClusterTotalMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}",
-          "legendFormat": "Total Memory Reserved"
+          "expr": "label_replace(com_facebook_presto_memory_ClusterMemoryManager_ClusterTotalMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Total Memory Reserved"
         }
       ],
       "title": "Cluster Memory Reservation",
@@ -523,13 +523,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval])",
-          "legendFormat": "Young GC pause rate"
+          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Young GC pause rate"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval])",
-          "legendFormat": "Old GC pause rate"
+          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Old GC pause rate"
         }
       ],
       "title": "GC Pause Rate",
@@ -546,8 +546,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(process_cpu_seconds_total{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval])",
-          "legendFormat": "CPU usage"
+          "expr": "label_replace(rate(process_cpu_seconds_total{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} CPU usage"
         }
       ],
       "title": "Coordinator CPU Usage",
@@ -564,13 +564,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval])",
-          "legendFormat": "Young Gen avg pause"
+          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Young Gen avg pause"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval])",
-          "legendFormat": "Old Gen avg pause"
+          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Old Gen avg pause"
         }
       ],
       "title": "Avg GC Pause Duration",

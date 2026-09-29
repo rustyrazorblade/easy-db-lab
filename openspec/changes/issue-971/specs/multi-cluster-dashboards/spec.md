@@ -244,3 +244,22 @@ Every cluster names its hosts the same way, so a PromQL vector match that pairs 
 
 - **WHEN** a dashboard query aggregates `by (host_name)` without `cluster` and matches on `host_name`
 - **THEN** the unit test fails and names the file and the clause
+
+### Requirement: Series keep their cluster
+
+Every PromQL and LogQL aggregation on a dashboard with a `cluster` variable SHALL keep `cluster`: `by (host_name)` becomes `by (cluster, host_name)`, and an aggregation with no grouping becomes `by (cluster)`.  Every legend on those series SHALL show the cluster, as `{{cluster_name}}` (the short name that the query's `label_replace` cuts from `<name>-<uuid>`) or as `{{cluster}}`.  These queries are exempt: the variables that list clusters, the Tests dashboard's listing, the comparison views' baseline and candidate run queries, and the AWS/S3 queries that count the shared bucket once.  A unit test SHALL check every core and kit dashboard.
+
+#### Scenario: Two clusters selected
+
+- **WHEN** `cluster` selects two clusters that both have `db0`
+- **THEN** each panel draws a separate series for each cluster's `db0`, and each legend names the cluster
+
+#### Scenario: An aggregation that drops the cluster fails the unit test
+
+- **WHEN** a dashboard query aggregates without `cluster`, with `by (...)`, `without (cluster)`, or no grouping
+- **THEN** the unit test fails and names the file, the panel and the aggregation
+
+#### Scenario: A legend without the cluster fails the unit test
+
+- **WHEN** a panel target's legend shows neither `{{cluster_name}}` nor `{{cluster}}`, or reads `{{cluster_name}}` from a query that does not write it
+- **THEN** the unit test fails and names the file, the panel and the legend

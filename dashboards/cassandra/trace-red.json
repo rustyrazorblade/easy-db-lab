@@ -102,8 +102,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "",
+          "expr": "label_replace(sum by (cluster) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
           "refId": "A"
@@ -175,8 +175,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (sum(rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) or vector(0)) / sum(rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "",
+          "expr": "label_replace(100 * (sum by (cluster) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) or vector(0)) / sum by (cluster) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
           "refId": "A"
@@ -240,8 +240,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{le}}",
           "range": false,
           "instant": true,
           "refId": "A"
@@ -308,8 +308,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count(count by (span_name) (traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}))",
-          "legendFormat": "",
+          "expr": "label_replace(count by (cluster) (count by (cluster, span_name) (traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
           "refId": "A"
@@ -406,8 +406,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "{{$groupby}}",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{$groupby}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -504,8 +504,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (status_code) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "{{status_code}}",
+          "expr": "label_replace(sum by (cluster, status_code) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{status_code}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -602,8 +602,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "{{span_name}} p50",
+          "expr": "label_replace(histogram_quantile(0.50, sum by (cluster, span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{span_name}} p50",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -614,8 +614,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "{{span_name}} p90",
+          "expr": "label_replace(histogram_quantile(0.90, sum by (cluster, span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{span_name}} p90",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -626,8 +626,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "{{span_name}} p99",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{span_name}} p99",
           "range": true,
           "instant": false,
           "refId": "C"
@@ -724,8 +724,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by ($groupby, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "{{$groupby}} p99",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, $groupby, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{$groupby}} p99",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -822,8 +822,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(traces_spanmetrics_duration_milliseconds_sum{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) / sum by ($groupby) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "{{$groupby}} mean",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(traces_spanmetrics_duration_milliseconds_sum{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) / sum by (cluster, $groupby) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{$groupby}} mean",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -938,8 +938,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (span_name) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "",
+          "expr": "label_replace(sum by (cluster, span_name) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{span_name}}",
           "range": false,
           "instant": true,
           "refId": "A",
@@ -951,8 +951,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{span_name}} {{le}}",
           "range": false,
           "instant": true,
           "refId": "B",
@@ -964,8 +964,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (span_name) (rate(traces_spanmetrics_duration_milliseconds_sum{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) / sum by (span_name) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "",
+          "expr": "label_replace(sum by (cluster, span_name) (rate(traces_spanmetrics_duration_milliseconds_sum{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) / sum by (cluster, span_name) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{span_name}}",
           "range": false,
           "instant": true,
           "refId": "C",
@@ -1102,8 +1102,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (client, server, connection_type) (rate(traces_service_graph_request_total{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))",
-          "legendFormat": "{{client}} -> {{server}} ({{connection_type}})",
+          "expr": "label_replace(sum by (cluster, client, server, connection_type) (rate(traces_service_graph_request_total{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{client}} -> {{server}} ({{connection_type}})",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1200,8 +1200,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_total{cluster=~\"$cluster\", source=\"\", failed=\"true\"}[$__rate_interval]))",
-          "legendFormat": "{{client}} -> {{server}} failed",
+          "expr": "label_replace(sum by (cluster, client, server) (rate(traces_service_graph_request_total{cluster=~\"$cluster\", source=\"\", failed=\"true\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{client}} -> {{server}} failed",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1298,8 +1298,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_client_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])))",
-          "legendFormat": "{{client}} -> {{server}} client p99",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, client, server, le) (rate(traces_service_graph_request_client_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{client}} -> {{server}} client p99",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1310,8 +1310,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])))",
-          "legendFormat": "{{client}} -> {{server}} server p99",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{client}} -> {{server}} server p99",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -1407,8 +1407,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_client_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))) - histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])))",
-          "legendFormat": "{{client}} -> {{server}} delta (collector)",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, client, server, le) (rate(traces_service_graph_request_client_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))) - histogram_quantile(0.99, sum by (cluster, client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{client}} -> {{server}} delta (collector)",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1505,8 +1505,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_client_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_client_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))",
-          "legendFormat": "{{client}} -> {{server}} client mean",
+          "expr": "label_replace(sum by (cluster, client, server) (rate(traces_service_graph_request_client_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (cluster, client, server) (rate(traces_service_graph_request_client_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{client}} -> {{server}} client mean",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1517,8 +1517,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_server_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_server_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))",
-          "legendFormat": "{{client}} -> {{server}} server mean",
+          "expr": "label_replace(sum by (cluster, client, server) (rate(traces_service_graph_request_server_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (cluster, client, server) (rate(traces_service_graph_request_server_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{client}} -> {{server}} server mean",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -1614,8 +1614,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(sum by (client, server) (rate(traces_service_graph_request_client_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_client_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))) - (sum by (client, server) (rate(traces_service_graph_request_server_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_server_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])))",
-          "legendFormat": "{{client}} -> {{server}} mean delta",
+          "expr": "label_replace((sum by (cluster, client, server) (rate(traces_service_graph_request_client_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (cluster, client, server) (rate(traces_service_graph_request_client_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))) - (sum by (cluster, client, server) (rate(traces_service_graph_request_server_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (cluster, client, server) (rate(traces_service_graph_request_server_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{client}} -> {{server}} mean delta",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1712,8 +1712,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_edges_total{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}} edges built/s",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(otelcol_connector_servicegraph_edges_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} edges built/s",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1724,8 +1724,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_expired_edges_total{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}} expired edges/s",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(otelcol_connector_servicegraph_expired_edges_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} expired edges/s",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -1736,8 +1736,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_dropped_spans_total{cluster=~\"$cluster\"}[$__rate_interval])) or 0 * sum by (host_name) (rate(otelcol_connector_servicegraph_edges_total{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}} dropped spans/s",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(otelcol_connector_servicegraph_dropped_spans_total{cluster=~\"$cluster\"}[$__rate_interval])) or 0 * sum by (cluster, host_name) (rate(otelcol_connector_servicegraph_edges_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} dropped spans/s",
           "range": true,
           "instant": false,
           "refId": "C"
@@ -1847,8 +1847,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_distributor_spans_received_total{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "distributor received",
+          "expr": "label_replace(sum by (cluster) (rate(tempo_distributor_spans_received_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} distributor received",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1859,8 +1859,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_receiver_accepted_spans_total{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}} collector accepted (fed to connectors)",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(otelcol_receiver_accepted_spans_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} collector accepted (fed to connectors)",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -1871,8 +1871,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_live_store_traces_created_total{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "traces created",
+          "expr": "label_replace(sum by (cluster) (rate(tempo_live_store_traces_created_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} traces created",
           "range": true,
           "instant": false,
           "refId": "C"
@@ -1969,8 +1969,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_discarded_spans_total{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "discarded",
+          "expr": "label_replace(sum by (cluster) (rate(tempo_discarded_spans_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} discarded",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1981,8 +1981,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_receiver_refused_spans{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "refused",
+          "expr": "label_replace(sum by (cluster) (rate(tempo_receiver_refused_spans{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} refused",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -1993,8 +1993,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_receiver_refused_spans_total{cluster=~\"$cluster\"}[$__rate_interval])) + sum by (host_name) (rate(otelcol_receiver_failed_spans_total{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}} collector refused/failed",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(otelcol_receiver_refused_spans_total{cluster=~\"$cluster\"}[$__rate_interval])) + sum by (cluster, host_name) (rate(otelcol_receiver_failed_spans_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} collector refused/failed",
           "range": true,
           "instant": false,
           "refId": "C"
@@ -2005,8 +2005,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_distributor_attributes_truncated_total{cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "attributes truncated",
+          "expr": "label_replace(sum by (cluster) (rate(tempo_distributor_attributes_truncated_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} attributes truncated",
           "range": true,
           "instant": false,
           "refId": "D"
@@ -2103,8 +2103,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (host_name) ({cluster=~\"$cluster\", __name__=~\"traces_spanmetrics_.+\"})",
-          "legendFormat": "{{host_name}} span_metrics",
+          "expr": "label_replace(count by (cluster, host_name) ({cluster=~\"$cluster\", __name__=~\"traces_spanmetrics_.+\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} span_metrics",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2115,8 +2115,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (host_name) ({cluster=~\"$cluster\", __name__=~\"traces_service_graph_.+\"})",
-          "legendFormat": "{{host_name}} service_graph",
+          "expr": "label_replace(count by (cluster, host_name) ({cluster=~\"$cluster\", __name__=~\"traces_service_graph_.+\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} service_graph",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -2213,8 +2213,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(tempo_live_store_live_traces{cluster=~\"$cluster\"})",
-          "legendFormat": "live traces",
+          "expr": "label_replace(sum by (cluster) (tempo_live_store_live_traces{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} live traces",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2225,8 +2225,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(tempo_live_store_complete_queue_length{cluster=~\"$cluster\"})",
-          "legendFormat": "WAL blocks awaiting completion",
+          "expr": "label_replace(sum by (cluster) (tempo_live_store_complete_queue_length{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} WAL blocks awaiting completion",
           "range": true,
           "instant": false,
           "refId": "B"

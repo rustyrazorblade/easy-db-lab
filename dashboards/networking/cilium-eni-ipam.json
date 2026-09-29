@@ -108,8 +108,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "up{job=\"cilium-operator\", cluster=~\"$cluster\"}",
-          "legendFormat": "{{instance}}",
+          "expr": "label_replace(up{job=\"cilium-operator\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}}",
           "range": false,
           "refId": "A",
           "instant": true
@@ -172,8 +172,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (version) (cilium_operator_version{job=\"cilium-operator\", cluster=~\"$cluster\"})",
-          "legendFormat": "{{version}}",
+          "expr": "label_replace(count by (cluster, version) (cilium_operator_version{job=\"cilium-operator\", cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{version}}",
           "range": false,
           "refId": "A",
           "instant": true
@@ -236,8 +236,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "kube_daemonset_status_number_ready{daemonset=\"cilium\", cluster=~\"$cluster\"}",
-          "legendFormat": "Ready",
+          "expr": "label_replace(kube_daemonset_status_number_ready{daemonset=\"cilium\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Ready",
           "range": false,
           "refId": "A",
           "instant": true
@@ -248,8 +248,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "kube_daemonset_status_desired_number_scheduled{daemonset=\"cilium\", cluster=~\"$cluster\"}",
-          "legendFormat": "Desired",
+          "expr": "label_replace(kube_daemonset_status_desired_number_scheduled{daemonset=\"cilium\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Desired",
           "range": false,
           "refId": "B",
           "instant": true
@@ -316,8 +316,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(cilium_operator_ipam_ips{type=\"needed\", job=\"cilium-operator\", cluster=~\"$cluster\"})",
-          "legendFormat": "needed",
+          "expr": "label_replace(sum by (cluster) (cilium_operator_ipam_ips{type=\"needed\", job=\"cilium-operator\", cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} needed",
           "range": false,
           "refId": "A",
           "instant": true
@@ -474,8 +474,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"kube-system\", pod=~\"cilium.*|hubble.*\", cluster=~\"$cluster\"})",
-          "legendFormat": "{{phase}}",
+          "expr": "label_replace(sum by (cluster, phase) (kube_pod_status_phase{namespace=\"kube-system\", pod=~\"cilium.*|hubble.*\", cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{phase}}",
           "range": true,
           "refId": "A"
         }
@@ -616,8 +616,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cilium_operator_ipam_nodes{job=\"cilium-operator\", cluster=~\"$cluster\"}",
-          "legendFormat": "{{category}}",
+          "expr": "label_replace(cilium_operator_ipam_nodes{job=\"cilium-operator\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{category}}",
           "range": true,
           "refId": "A"
         }
@@ -771,8 +771,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cilium_operator_ipam_ips{job=\"cilium-operator\", cluster=~\"$cluster\"}",
-          "legendFormat": "{{type}}",
+          "expr": "label_replace(cilium_operator_ipam_ips{job=\"cilium-operator\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{type}}",
           "range": true,
           "refId": "A"
         }
@@ -871,8 +871,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cilium_operator_ipam_needed_ips{job=\"cilium-operator\", cluster=~\"$cluster\"}",
-          "legendFormat": "{{target_node}}",
+          "expr": "label_replace(cilium_operator_ipam_needed_ips{job=\"cilium-operator\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{target_node}}",
           "range": true,
           "refId": "A"
         }
@@ -967,8 +967,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cilium_operator_ipam_used_ips{job=\"cilium-operator\", cluster=~\"$cluster\"}",
-          "legendFormat": "{{target_node}}",
+          "expr": "label_replace(cilium_operator_ipam_used_ips{job=\"cilium-operator\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{target_node}}",
           "range": true,
           "refId": "A"
         }
@@ -1063,8 +1063,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cilium_operator_ipam_available_ips{job=\"cilium-operator\", cluster=~\"$cluster\"}",
-          "legendFormat": "{{target_node}}",
+          "expr": "label_replace(cilium_operator_ipam_available_ips{job=\"cilium-operator\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{target_node}}",
           "range": true,
           "refId": "A"
         }
@@ -1159,8 +1159,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cilium_operator_ipam_available_ips_per_subnet{job=\"cilium-operator\", cluster=~\"$cluster\"}",
-          "legendFormat": "{{subnet_id}} ({{availability_zone}})",
+          "expr": "label_replace(cilium_operator_ipam_available_ips_per_subnet{job=\"cilium-operator\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{subnet_id}} ({{availability_zone}})",
           "range": true,
           "refId": "A"
         }
@@ -1268,8 +1268,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (subnet_id) (rate(cilium_operator_ipam_ip_allocation_ops_total{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{subnet_id}}",
+          "expr": "label_replace(sum by (cluster, subnet_id) (rate(cilium_operator_ipam_ip_allocation_ops_total{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{subnet_id}}",
           "range": true,
           "refId": "A"
         }
@@ -1364,8 +1364,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (subnet_id) (rate(cilium_operator_ipam_interface_creation_ops_total{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{subnet_id}}",
+          "expr": "label_replace(sum by (cluster, subnet_id) (rate(cilium_operator_ipam_interface_creation_ops_total{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{subnet_id}}",
           "range": true,
           "refId": "A"
         }
@@ -1427,8 +1427,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cilium_operator_ipam_available_interfaces{job=\"cilium-operator\", cluster=~\"$cluster\"}",
-          "legendFormat": "interfaces",
+          "expr": "label_replace(cilium_operator_ipam_available_interfaces{job=\"cilium-operator\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} interfaces",
           "range": false,
           "refId": "A",
           "instant": true
@@ -1491,8 +1491,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cilium_operator_ipam_empty_interface_slots{job=\"cilium-operator\", cluster=~\"$cluster\"}",
-          "legendFormat": "slots",
+          "expr": "label_replace(cilium_operator_ipam_empty_interface_slots{job=\"cilium-operator\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} slots",
           "range": false,
           "refId": "A",
           "instant": true
@@ -1588,8 +1588,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "rate(cilium_operator_ipam_resync_queued_total{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval])",
-          "legendFormat": "resyncs",
+          "expr": "label_replace(rate(cilium_operator_ipam_resync_queued_total{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} resyncs",
           "range": true,
           "refId": "A"
         }
@@ -1684,8 +1684,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (operation, response_code) (rate(cilium_operator_ec2_api_duration_seconds_count{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{operation}} {{response_code}}",
+          "expr": "label_replace(sum by (cluster, operation, response_code) (rate(cilium_operator_ec2_api_duration_seconds_count{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{operation}} {{response_code}}",
           "range": true,
           "refId": "A"
         }
@@ -1780,8 +1780,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, operation) (rate(cilium_operator_ec2_api_duration_seconds_bucket{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval])))",
-          "legendFormat": "{{operation}}",
+          "expr": "label_replace(histogram_quantile(0.95, sum by (cluster, le, operation) (rate(cilium_operator_ec2_api_duration_seconds_bucket{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{operation}}",
           "range": true,
           "refId": "A"
         }
@@ -1907,8 +1907,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (level, subsystem) (rate(cilium_operator_errors_warnings_total{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval]))",
-          "legendFormat": "{{level}} {{subsystem}}",
+          "expr": "label_replace(sum by (cluster, level, subsystem) (rate(cilium_operator_errors_warnings_total{job=\"cilium-operator\", cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{level}} {{subsystem}}",
           "range": true,
           "refId": "A"
         }
@@ -2003,8 +2003,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(cilium_operator_ipam_allocation_duration_seconds_sum{job=\"cilium-operator\", cluster=~\"$cluster\"}) / sum(cilium_operator_ipam_allocation_duration_seconds_count{job=\"cilium-operator\", cluster=~\"$cluster\"})",
-          "legendFormat": "mean",
+          "expr": "label_replace(sum by (cluster) (cilium_operator_ipam_allocation_duration_seconds_sum{job=\"cilium-operator\", cluster=~\"$cluster\"}) / sum by (cluster) (cilium_operator_ipam_allocation_duration_seconds_count{job=\"cilium-operator\", cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} mean",
           "range": true,
           "refId": "A"
         }

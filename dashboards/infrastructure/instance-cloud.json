@@ -136,8 +136,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace((aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")",
-          "legendFormat": "{{host_name}} CloudWatch",
+          "expr": "label_replace(label_replace((aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} CloudWatch",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -148,8 +148,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "{{host_name}} in-box",
+          "expr": "label_replace(100 * (1 - sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} in-box",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -245,8 +245,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(100 * (1 - sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))) - on (cluster, host_name) (sum by (cluster, host_name) (label_replace((aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")))",
-          "legendFormat": "{{host_name}} in-box - CloudWatch",
+          "expr": "label_replace((100 * (1 - sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))) - on (cluster, host_name) (sum by (cluster, host_name) (label_replace((aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} in-box - CloudWatch",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -343,8 +343,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (label_replace(((aws_ec2_disk_read_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_disk_write_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"))",
-          "legendFormat": "{{host_name}} CloudWatch",
+          "expr": "label_replace(sum by (cluster, host_name) (label_replace(((aws_ec2_disk_read_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_disk_write_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} CloudWatch",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -355,8 +355,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}} in-box",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} in-box",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -453,8 +453,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (label_replace(((aws_ec2_network_in_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_network_out_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"))",
-          "legendFormat": "{{host_name}} CloudWatch",
+          "expr": "label_replace(sum by (cluster, host_name) (label_replace(((aws_ec2_network_in_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_network_out_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} CloudWatch",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -465,8 +465,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"en.*|eth.*\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}} in-box",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"en.*|eth.*\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} in-box",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -576,8 +576,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
-          "legendFormat": "{{host_name}} {{device}} {{direction}}",
+          "expr": "label_replace(1000 * (sum by (cluster, host_name, device, direction) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (cluster, host_name, device, direction) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{device}} {{direction}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -674,8 +674,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * max by (device, direction) (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
-          "legendFormat": "{{device}} {{direction}} slowest node",
+          "expr": "label_replace(1000 * max by (cluster, device, direction) (sum by (cluster, host_name, device, direction) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (cluster, host_name, device, direction) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{device}} {{direction}} slowest node",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -686,8 +686,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * min by (device, direction) (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
-          "legendFormat": "{{device}} {{direction}} fastest node",
+          "expr": "label_replace(1000 * min by (cluster, device, direction) (sum by (cluster, host_name, device, direction) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (cluster, host_name, device, direction) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{device}} {{direction}} fastest node",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -784,8 +784,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"})",
-          "legendFormat": "{{$groupby}}",
+          "expr": "label_replace(sum by (cluster, $groupby) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{$groupby}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -895,8 +895,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
-          "legendFormat": "{{$groupby}} bytes/s",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{$groupby}} bytes/s",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -907,8 +907,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
-          "legendFormat": "{{$groupby}} ops/s",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{$groupby}} ops/s",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -987,8 +987,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name, device, mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$host\", mountpoint!~\"/boot.*\"})",
-          "legendFormat": "",
+          "expr": "label_replace(sum by (cluster, host_name, device, mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$host\", mountpoint!~\"/boot.*\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{device}} {{mountpoint}}",
           "range": false,
           "instant": true,
           "refId": "A",
@@ -1103,8 +1103,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name, mountpoint) (system_filesystem_utilization_ratio{cluster=~\"$cluster\", host_name=~\"$host\", mountpoint!~\"/boot.*\"})",
-          "legendFormat": "{{host_name}} {{mountpoint}}",
+          "expr": "label_replace(sum by (cluster, host_name, mountpoint) (system_filesystem_utilization_ratio{cluster=~\"$cluster\", host_name=~\"$host\", mountpoint!~\"/boot.*\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{mountpoint}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1215,8 +1215,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"})",
-          "legendFormat": "{{tag_Name}}",
+          "expr": "label_replace((aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{tag_Name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1313,8 +1313,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_disk_read_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60",
-          "legendFormat": "{{tag_Name}} read",
+          "expr": "label_replace((aws_ec2_disk_read_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{tag_Name}} read",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1325,8 +1325,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_disk_write_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60",
-          "legendFormat": "{{tag_Name}} write",
+          "expr": "label_replace((aws_ec2_disk_write_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{tag_Name}} write",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -1423,8 +1423,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_network_in_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60",
-          "legendFormat": "{{tag_Name}} in",
+          "expr": "label_replace((aws_ec2_network_in_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{tag_Name}} in",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1435,8 +1435,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_network_out_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60",
-          "legendFormat": "{{tag_Name}} out",
+          "expr": "label_replace((aws_ec2_network_out_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{tag_Name}} out",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -1502,8 +1502,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}",
-          "legendFormat": "",
+          "expr": "label_replace(aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
           "refId": "A",
@@ -1663,8 +1663,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ebs_burst_balance_average{cluster=~\"$cluster\"}",
-          "legendFormat": "{{dimension_VolumeId}}",
+          "expr": "label_replace(aws_ebs_burst_balance_average{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dimension_VolumeId}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1761,8 +1761,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ebs_volume_queue_length_average{cluster=~\"$cluster\"}",
-          "legendFormat": "{{dimension_VolumeId}}",
+          "expr": "label_replace(aws_ebs_volume_queue_length_average{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dimension_VolumeId}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1859,8 +1859,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ebs_volume_read_ops_sum{cluster=~\"$cluster\"} / 60",
-          "legendFormat": "{{dimension_VolumeId}} read",
+          "expr": "label_replace(aws_ebs_volume_read_ops_sum{cluster=~\"$cluster\"} / 60, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dimension_VolumeId}} read",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1871,8 +1871,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ebs_volume_write_ops_sum{cluster=~\"$cluster\"} / 60",
-          "legendFormat": "{{dimension_VolumeId}} write",
+          "expr": "label_replace(aws_ebs_volume_write_ops_sum{cluster=~\"$cluster\"} / 60, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dimension_VolumeId}} write",
           "range": true,
           "instant": false,
           "refId": "B"

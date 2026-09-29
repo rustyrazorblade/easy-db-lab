@@ -108,8 +108,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "up{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}",
-          "legendFormat": "{{instance}}",
+          "expr": "label_replace(up{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}}",
           "range": false,
           "refId": "A",
           "instant": true
@@ -172,8 +172,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "flows",
+          "expr": "label_replace(sum by (cluster) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} flows",
           "range": false,
           "refId": "A",
           "instant": true
@@ -244,8 +244,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(hubble_flows_processed_total{verdict=\"DROPPED\", job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "dropped",
+          "expr": "label_replace(sum by (cluster) (rate(hubble_flows_processed_total{verdict=\"DROPPED\", job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} dropped",
           "range": false,
           "refId": "A",
           "instant": true
@@ -415,8 +415,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (verdict) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{verdict}}",
+          "expr": "label_replace(sum by (cluster, verdict) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{verdict}}",
           "range": true,
           "refId": "A"
         }
@@ -511,8 +511,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (protocol) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{protocol}}",
+          "expr": "label_replace(sum by (cluster, protocol) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{protocol}}",
           "range": true,
           "refId": "A"
         }
@@ -607,8 +607,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, verdict) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{verdict}}",
+          "expr": "label_replace(sum by (cluster, instance, verdict) (rate(hubble_flows_processed_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{verdict}}",
           "range": true,
           "refId": "A"
         }
@@ -703,8 +703,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (reason, protocol) (rate(hubble_drop_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{reason}} {{protocol}}",
+          "expr": "label_replace(sum by (cluster, reason, protocol) (rate(hubble_drop_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{reason}} {{protocol}}",
           "range": true,
           "refId": "A"
         }
@@ -873,8 +873,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (flag) (rate(hubble_tcp_flags_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{flag}}",
+          "expr": "label_replace(sum by (cluster, flag) (rate(hubble_tcp_flags_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{flag}}",
           "range": true,
           "refId": "A"
         }
@@ -939,8 +939,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(15, sum by (port, protocol) (increase(hubble_port_distribution_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__range])))",
-          "legendFormat": "{{protocol}}/{{port}}",
+          "expr": "label_replace(topk by (cluster) (15, sum by (cluster, port, protocol) (increase(hubble_port_distribution_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__range]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{protocol}}/{{port}}",
           "range": false,
           "refId": "A",
           "instant": true
@@ -1036,8 +1036,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (family, type) (rate(hubble_icmp_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{family}} {{type}}",
+          "expr": "label_replace(sum by (cluster, family, type) (rate(hubble_icmp_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{family}} {{type}}",
           "range": true,
           "refId": "A"
         }
@@ -1136,8 +1136,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (instance, source) (rate(hubble_lost_events_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval]))",
-          "legendFormat": "{{instance}} {{source}}",
+          "expr": "label_replace(sum by (cluster, instance, source) (rate(hubble_lost_events_total{job=\"hubble\", cluster=~\"$cluster\", instance=~\"$instance\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{instance}} {{source}}",
           "range": true,
           "refId": "A"
         }

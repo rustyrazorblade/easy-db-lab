@@ -1465,29 +1465,29 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "sum by (cluster) (rate(cassandra_client_request_count_total{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "Write ops/s",
+          "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_count_total{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Write ops/s",
           "refId": "A",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "Write latency",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Write latency",
           "refId": "B",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "Read latency",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Read latency",
           "refId": "C",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "sum by (cluster) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "Error rate",
+          "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Error rate",
           "refId": "D",
           "instant": true
         }
@@ -2032,26 +2032,26 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "p50 {{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p50 {{host_name}}",
           "refId": "A"
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "p99 {{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p99 {{host_name}}",
           "refId": "B"
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "p999 {{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p999 {{host_name}}",
           "refId": "C"
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "cassandra_client_request_latency_max_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "max {{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_max_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max {{host_name}}",
           "refId": "D"
         }
       ],
@@ -2195,29 +2195,29 @@
       "targets": [
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "max by (cluster) (cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "p50",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p50",
           "refId": "A",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "max by (cluster) (cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "p99",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p99",
           "refId": "B",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "max by (cluster) (cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "p999",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p999",
           "refId": "C",
           "instant": true
         },
         {
           "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-          "expr": "max by (cluster) (cassandra_client_request_latency_max_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
-          "legendFormat": "max",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_max_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max",
           "refId": "D",
           "instant": true
         }
@@ -3461,8 +3461,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "p50 {{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p50 {{host_name}}",
           "refId": "A"
         },
         {
@@ -3470,8 +3470,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "p99 {{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p99 {{host_name}}",
           "refId": "B"
         },
         {
@@ -3479,8 +3479,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "p999 {{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p999 {{host_name}}",
           "refId": "C"
         },
         {
@@ -3488,8 +3488,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "cassandra_client_request_latency_max_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "max {{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_max_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max {{host_name}}",
           "refId": "D"
         }
       ],
@@ -4575,7 +4575,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "topk(5, sum by (cluster, pool) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}))",
+          "expr": "topk by (cluster) (5, sum by (cluster, pool) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}))",
           "legendFormat": "{{cluster}} {{pool}}",
           "refId": "A"
         }
@@ -4648,7 +4648,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "topk(5, sum by (cluster, message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "topk by (cluster) (5, sum by (cluster, message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{cluster}} {{message_type}}",
           "refId": "A"
         }

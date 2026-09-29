@@ -64,8 +64,8 @@
             "uid": "${logs_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (detected_level) (count_over_time({cluster=~\"$cluster\", source=~\"$source\", service_name=~\"$service\"} | detected_level=~\"$severity\" |~ \"(?i)$search\" [$__auto]))",
-          "legendFormat": "{{detected_level}}",
+          "expr": "label_replace(sum by (cluster, detected_level) (count_over_time({cluster=~\"$cluster\", source=~\"$source\", service_name=~\"$service\"} | detected_level=~\"$severity\" |~ \"(?i)$search\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{detected_level}}",
           "queryType": "range",
           "refId": "A"
         }

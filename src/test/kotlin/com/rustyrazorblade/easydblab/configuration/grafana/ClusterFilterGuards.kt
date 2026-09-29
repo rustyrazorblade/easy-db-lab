@@ -21,11 +21,15 @@ object ClusterFilterGuards {
     /** Which backend a query is for. */
     enum class Language { PROMQL, LOGQL, PROFILES }
 
-    /** One query of a dashboard: where it is and its text as the file holds it. */
+    /**
+     * One query of a dashboard: where it is and its text as the file holds it. A panel target also
+     * carries its `legendFormat`, when it has one.
+     */
     data class Query(
         val where: String,
         val language: Language,
         val text: String,
+        val legendFormat: String? = null,
     )
 
     /** The variables whose own query lists clusters, so it must read every cluster. */
@@ -177,14 +181,14 @@ object ClusterFilterGuards {
         }
     }
 
-    private fun isQuote(c: Char) = c == '"' || c == '\'' || c == '`'
+    internal fun isQuote(c: Char) = c == '"' || c == '\'' || c == '`'
 
-    private fun startsIdentifier(c: Char) = c.isLetter() || c == '_' || c == ':' || c == '$'
+    internal fun startsIdentifier(c: Char) = c.isLetter() || c == '_' || c == ':' || c == '$'
 
     private fun isIdentifierChar(c: Char) = c.isLetterOrDigit() || c == '_' || c == ':' || c == '$'
 
     /** The end of an identifier that may hold Grafana variables: `a_${b}_c`, `$x`. */
-    private fun identifierEnd(
+    internal fun identifierEnd(
         text: String,
         start: Int,
     ): Int {
@@ -209,7 +213,7 @@ object ClusterFilterGuards {
             else -> i
         }
 
-    private fun skipWhile(
+    internal fun skipWhile(
         text: String,
         start: Int,
         test: (Char) -> Boolean,
@@ -219,7 +223,7 @@ object ClusterFilterGuards {
         return i
     }
 
-    private fun skipString(
+    internal fun skipString(
         text: String,
         start: Int,
     ): Int {
@@ -230,7 +234,7 @@ object ClusterFilterGuards {
     }
 
     /** The index after the [close] that matches the [open] at [start], skipping strings inside. */
-    private fun skipGroup(
+    internal fun skipGroup(
         text: String,
         start: Int,
         open: Char,
@@ -307,7 +311,7 @@ object ClusterFilterGuards {
             (panel["targets"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().forEach { target ->
                 val language = languageOf(target["datasource"] ?: datasource) ?: return@forEach
                 val text = if (language == Language.PROFILES) target.string("labelSelector") ?: NO_SELECTOR else target.string("expr")
-                text?.takeIf { it.isNotBlank() }?.let { found += Query("panel '$title'", language, it) }
+                text?.takeIf { it.isNotBlank() }?.let { found += Query("panel '$title'", language, it, target.string("legendFormat")) }
             }
             exploreQueries(panel).forEach { (ds, expr) ->
                 languageOf(ds)?.let { found += Query("link on '$title'", it, expr) }

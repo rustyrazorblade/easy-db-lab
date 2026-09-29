@@ -124,8 +124,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_commitlog_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(cassandra_commitlog_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -222,8 +222,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_commitlog_tasks_pending{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(cassandra_commitlog_tasks_pending{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -320,8 +320,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_commitlog_waiting_on_commit_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "{{host_name}} ${percentile}",
+          "expr": "label_replace(cassandra_commitlog_waiting_on_commit_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} ${percentile}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -418,8 +418,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_commitlog_waiting_on_segment_allocation_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "{{host_name}} ${percentile}",
+          "expr": "label_replace(cassandra_commitlog_waiting_on_segment_allocation_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} ${percentile}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -529,8 +529,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_table_memtable_heap_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}",
-          "legendFormat": "{{host_name}} {{keyspace}}.{{table}} heap",
+          "expr": "label_replace(cassandra_table_memtable_heap_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}} heap",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -541,8 +541,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_table_memtable_offheap_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}",
-          "legendFormat": "{{host_name}} {{keyspace}}.{{table}} off-heap",
+          "expr": "label_replace(cassandra_table_memtable_offheap_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}} off-heap",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -639,8 +639,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_table_memtable_live_data_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}",
-          "legendFormat": "{{host_name}} {{keyspace}}.{{table}}",
+          "expr": "label_replace(cassandra_table_memtable_live_data_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -737,8 +737,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_table_memtable_columns{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}",
-          "legendFormat": "{{host_name}} {{keyspace}}.{{table}}",
+          "expr": "label_replace(cassandra_table_memtable_columns{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -835,8 +835,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "rate(cassandra_table_memtable_switches_total{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}[$__rate_interval])",
-          "legendFormat": "{{host_name}} {{keyspace}}.{{table}}",
+          "expr": "label_replace(rate(cassandra_table_memtable_switches_total{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -933,8 +933,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (cassandra_table_memtable_heap_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"})",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(sum by (cluster, host_name) (cassandra_table_memtable_heap_size_bytes{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"

@@ -57,8 +57,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_tps{cluster=~\"$cluster\", kit=~\"$kit\"}",
-          "legendFormat": "{{kit}}",
+          "expr": "label_replace(sysbench_tps{cluster=~\"$cluster\", kit=~\"$kit\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{kit}}",
           "refId": "A"
         }
       ],
@@ -98,8 +98,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_qps{cluster=~\"$cluster\", kit=~\"$kit\"}",
-          "legendFormat": "{{kit}}",
+          "expr": "label_replace(sysbench_qps{cluster=~\"$cluster\", kit=~\"$kit\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{kit}}",
           "refId": "A"
         }
       ],
@@ -146,20 +146,20 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_lat_p50_ms{cluster=~\"$cluster\", kit=~\"$kit\"}",
-          "legendFormat": "p50 {{kit}}",
+          "expr": "label_replace(sysbench_lat_p50_ms{cluster=~\"$cluster\", kit=~\"$kit\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p50 {{kit}}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_lat_p95_ms{cluster=~\"$cluster\", kit=~\"$kit\"}",
-          "legendFormat": "p95 {{kit}}",
+          "expr": "label_replace(sysbench_lat_p95_ms{cluster=~\"$cluster\", kit=~\"$kit\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p95 {{kit}}",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_lat_p99_ms{cluster=~\"$cluster\", kit=~\"$kit\"}",
-          "legendFormat": "p99 {{kit}}",
+          "expr": "label_replace(sysbench_lat_p99_ms{cluster=~\"$cluster\", kit=~\"$kit\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} p99 {{kit}}",
           "refId": "C"
         }
       ],
@@ -202,8 +202,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_errors_per_second{cluster=~\"$cluster\", kit=~\"$kit\"}",
-          "legendFormat": "{{kit}}",
+          "expr": "label_replace(sysbench_errors_per_second{cluster=~\"$cluster\", kit=~\"$kit\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{kit}}",
           "refId": "A"
         }
       ],

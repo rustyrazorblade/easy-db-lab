@@ -66,7 +66,7 @@
       "gridPos": {"h": 4, "w": 4, "x": 0, "y": 1},
       "id": 2,
       "options": {"colorMode": "value", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
-      "targets": [{"expr": "max(kafka_brokers{cluster=~\"$cluster.*\"})", "refId": "A"}]
+      "targets": [{"expr": "max by (cluster) (kafka_brokers{cluster=~\"$cluster.*\"})", "refId": "A"}]
     },
     {
       "type": "stat",
@@ -92,7 +92,7 @@
       "gridPos": {"h": 4, "w": 4, "x": 4, "y": 1},
       "id": 3,
       "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
-      "targets": [{"expr": "max(kafka_controller_kafkacontroller_activecontrollercount{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+      "targets": [{"expr": "max by (cluster) (kafka_controller_kafkacontroller_activecontrollercount{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
     },
     {
       "type": "stat",
@@ -116,7 +116,7 @@
       "gridPos": {"h": 4, "w": 4, "x": 8, "y": 1},
       "id": 4,
       "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
-      "targets": [{"expr": "max(kafka_server_replicamanager_underreplicatedpartitions{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+      "targets": [{"expr": "max by (cluster) (kafka_server_replicamanager_underreplicatedpartitions{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
     },
     {
       "type": "stat",
@@ -140,7 +140,7 @@
       "gridPos": {"h": 4, "w": 4, "x": 12, "y": 1},
       "id": 5,
       "options": {"colorMode": "background", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
-      "targets": [{"expr": "max(kafka_controller_kafkacontroller_offlinepartitionscount{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+      "targets": [{"expr": "max by (cluster) (kafka_controller_kafkacontroller_offlinepartitionscount{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
     },
     {
       "type": "stat",
@@ -156,7 +156,7 @@
       "gridPos": {"h": 4, "w": 4, "x": 16, "y": 1},
       "id": 6,
       "options": {"colorMode": "none", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
-      "targets": [{"expr": "max(kafka_server_replicamanager_partitioncount{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+      "targets": [{"expr": "max by (cluster) (kafka_server_replicamanager_partitioncount{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
     },
     {
       "type": "stat",
@@ -172,7 +172,7 @@
       "gridPos": {"h": 4, "w": 4, "x": 20, "y": 1},
       "id": 7,
       "options": {"colorMode": "none", "graphMode": "none", "reduceOptions": {"calcs": ["lastNotNull"]}},
-      "targets": [{"expr": "max(kafka_coordinator_group_numgroups{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
+      "targets": [{"expr": "max by (cluster) (kafka_coordinator_group_numgroups{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "refId": "A"}]
     },
     {
       "type": "row",
@@ -198,8 +198,8 @@
       "id": 11,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "avg(kafka_server_brokertopicmetrics_bytesinpersec_rate{cluster=~\"$cluster.*\", job=\"kafka-jmx\", topic=\"\"})", "legendFormat": "bytes in", "refId": "A"},
-        {"expr": "avg(kafka_server_brokertopicmetrics_bytesoutpersec_rate{cluster=~\"$cluster.*\", job=\"kafka-jmx\", topic=\"\"})", "legendFormat": "bytes out", "refId": "B"}
+        {"expr": "label_replace(avg by (cluster) (kafka_server_brokertopicmetrics_bytesinpersec_rate{cluster=~\"$cluster.*\", job=\"kafka-jmx\", topic=\"\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} bytes in", "refId": "A"},
+        {"expr": "label_replace(avg by (cluster) (kafka_server_brokertopicmetrics_bytesoutpersec_rate{cluster=~\"$cluster.*\", job=\"kafka-jmx\", topic=\"\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} bytes out", "refId": "B"}
       ]
     },
     {
@@ -219,7 +219,7 @@
       "id": 12,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "avg by (topic)(kafka_server_brokertopicmetrics_messagesinpersec_rate{cluster=~\"$cluster.*\", job=\"kafka-jmx\", topic!=\"\"})", "legendFormat": "{{topic}}", "refId": "A"}
+        {"expr": "label_replace(avg by (cluster, topic)(kafka_server_brokertopicmetrics_messagesinpersec_rate{cluster=~\"$cluster.*\", job=\"kafka-jmx\", topic!=\"\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{topic}}", "refId": "A"}
       ]
     },
     {
@@ -245,8 +245,8 @@
       "id": 21,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "avg(kafka_network_requestmetrics_totaltimems_mean{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Produce\"})", "legendFormat": "mean", "refId": "A"},
-        {"expr": "max(kafka_network_requestmetrics_totaltimems_99thpercentile{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Produce\"})", "legendFormat": "p99", "refId": "B"}
+        {"expr": "label_replace(avg by (cluster) (kafka_network_requestmetrics_totaltimems_mean{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Produce\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} mean", "refId": "A"},
+        {"expr": "label_replace(max by (cluster) (kafka_network_requestmetrics_totaltimems_99thpercentile{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Produce\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} p99", "refId": "B"}
       ]
     },
     {
@@ -265,8 +265,8 @@
       "id": 22,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "avg(kafka_network_requestmetrics_totaltimems_mean{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"FetchConsumer\"})", "legendFormat": "mean", "refId": "A"},
-        {"expr": "max(kafka_network_requestmetrics_totaltimems_99thpercentile{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"FetchConsumer\"})", "legendFormat": "p99", "refId": "B"}
+        {"expr": "label_replace(avg by (cluster) (kafka_network_requestmetrics_totaltimems_mean{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"FetchConsumer\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} mean", "refId": "A"},
+        {"expr": "label_replace(max by (cluster) (kafka_network_requestmetrics_totaltimems_99thpercentile{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"FetchConsumer\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} p99", "refId": "B"}
       ]
     },
     {
@@ -285,8 +285,8 @@
       "id": 23,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "avg(kafka_network_requestmetrics_totaltimems_mean{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Metadata\"})", "legendFormat": "mean", "refId": "A"},
-        {"expr": "max(kafka_network_requestmetrics_totaltimems_99thpercentile{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Metadata\"})", "legendFormat": "p99", "refId": "B"}
+        {"expr": "label_replace(avg by (cluster) (kafka_network_requestmetrics_totaltimems_mean{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Metadata\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} mean", "refId": "A"},
+        {"expr": "label_replace(max by (cluster) (kafka_network_requestmetrics_totaltimems_99thpercentile{cluster=~\"$cluster.*\", job=\"kafka-jmx\", request=\"Metadata\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} p99", "refId": "B"}
       ]
     },
     {
@@ -313,7 +313,7 @@
       "id": 31,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "max by (consumergroup, topic)(kafka_consumergroup_lag_sum{cluster=~\"$cluster.*\", job=\"kafka-exporter\"})", "legendFormat": "{{consumergroup}} / {{topic}}", "refId": "A"}
+        {"expr": "label_replace(max by (cluster, consumergroup, topic)(kafka_consumergroup_lag_sum{cluster=~\"$cluster.*\", job=\"kafka-exporter\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{consumergroup}} / {{topic}}", "refId": "A"}
       ]
     },
     {
@@ -333,7 +333,7 @@
       "id": 32,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "max by (consumergroup, topic, partition)(kafka_consumergroup_lag{cluster=~\"$cluster.*\", job=\"kafka-exporter\"})", "legendFormat": "{{consumergroup}} / {{topic}} / p{{partition}}", "refId": "A"}
+        {"expr": "label_replace(max by (cluster, consumergroup, topic, partition)(kafka_consumergroup_lag{cluster=~\"$cluster.*\", job=\"kafka-exporter\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{consumergroup}} / {{topic}} / p{{partition}}", "refId": "A"}
       ]
     },
     {
@@ -360,7 +360,7 @@
       "id": 41,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "max by (topic, partition)(kafka_topic_partition_current_offset{cluster=~\"$cluster.*\", job=\"kafka-exporter\", topic!~\"__.*\"})", "legendFormat": "{{topic}} / p{{partition}}", "refId": "A"}
+        {"expr": "label_replace(max by (cluster, topic, partition)(kafka_topic_partition_current_offset{cluster=~\"$cluster.*\", job=\"kafka-exporter\", topic!~\"__.*\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{topic}} / p{{partition}}", "refId": "A"}
       ]
     },
     {
@@ -381,7 +381,7 @@
       "id": 42,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "max by (topic, partition)(kafka_topic_partition_in_sync_replica{cluster=~\"$cluster.*\", job=\"kafka-exporter\", topic!~\"__.*\"})", "legendFormat": "{{topic}} / p{{partition}}", "refId": "A"}
+        {"expr": "label_replace(max by (cluster, topic, partition)(kafka_topic_partition_in_sync_replica{cluster=~\"$cluster.*\", job=\"kafka-exporter\", topic!~\"__.*\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{topic}} / p{{partition}}", "refId": "A"}
       ]
     },
     {
@@ -407,7 +407,7 @@
       "id": 51,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "avg by (instance)(jvm_memory_heap_used_bytes{cluster=~\"$cluster.*\", job=\"kafka-jmx\"})", "legendFormat": "{{instance}}", "refId": "A"}
+        {"expr": "label_replace(avg by (cluster, instance)(jvm_memory_heap_used_bytes{cluster=~\"$cluster.*\", job=\"kafka-jmx\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{instance}}", "refId": "A"}
       ]
     },
     {
@@ -427,7 +427,7 @@
       "id": 52,
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"expr": "rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster.*\", job=\"kafka-jmx\"}[5m])", "legendFormat": "{{instance}} {{gc}}", "refId": "A"}
+        {"expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster.*\", job=\"kafka-jmx\"}[5m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{instance}} {{gc}}", "refId": "A"}
       ]
     }
   ]

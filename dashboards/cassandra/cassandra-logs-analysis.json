@@ -72,8 +72,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (cassandra_build, severity_text) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" [$__auto]))",
-          "legendFormat": "{{cassandra_build}} {{severity_text}}",
+          "expr": "label_replace(sum by (cluster, cassandra_build, severity_text) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{severity_text}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -109,8 +109,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | severity_text=~\"WARN|WARNING|ERROR|SEVERE\" [$__auto]))",
-          "legendFormat": "{{cassandra_build}}",
+          "expr": "label_replace(sum by (cluster, cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | severity_text=~\"WARN|WARNING|ERROR|SEVERE\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -145,24 +145,24 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "topk(25, sum by (scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" [$__range])))",
-          "legendFormat": "records",
+          "expr": "label_replace(topk by (cluster) (25, sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" [$__range]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} records",
           "queryType": "instant",
           "refId": "A"
         },
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"WARN|WARNING\" [$__range]))",
-          "legendFormat": "warnings",
+          "expr": "label_replace(sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"WARN|WARNING\" [$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} warnings",
           "queryType": "instant",
           "refId": "B"
         },
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"ERROR|SEVERE\" [$__range]))",
-          "legendFormat": "errors",
+          "expr": "label_replace(sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"ERROR|SEVERE\" [$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} errors",
           "queryType": "instant",
           "refId": "C"
         }
@@ -204,8 +204,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"WARN|WARNING|ERROR|SEVERE\" [$__auto]))",
-          "legendFormat": "{{scope_name}}",
+          "expr": "label_replace(sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"WARN|WARNING|ERROR|SEVERE\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{scope_name}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -235,8 +235,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "topk(20, sum by (exception_type, scope_name, cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | exception_type!=\"\" [$__range])))",
-          "legendFormat": "occurrences",
+          "expr": "label_replace(topk by (cluster) (20, sum by (cluster, exception_type, scope_name, cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | exception_type!=\"\" [$__range]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} occurrences",
           "queryType": "instant",
           "refId": "A"
         }
@@ -286,8 +286,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "max by (cassandra_build, gc_name) (max_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.service.GCInspector\" |= \"GC in\" | unwrap gc_event_ms | __error__=\"\" [$__auto]))",
-          "legendFormat": "{{cassandra_build}} {{gc_name}}",
+          "expr": "label_replace(max by (cluster, cassandra_build, gc_name) (max_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.service.GCInspector\" |= \"GC in\" | unwrap gc_event_ms | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{gc_name}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -324,8 +324,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (cassandra_build, gc_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.service.GCInspector\" |= \"GC in\" | gc_name!=\"\" [$__auto]))",
-          "legendFormat": "{{cassandra_build}} {{gc_name}}",
+          "expr": "label_replace(sum by (cluster, cassandra_build, gc_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.service.GCInspector\" |= \"GC in\" | gc_name!=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{gc_name}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -369,8 +369,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.db.compaction.CompactionTask\" |= \"Compacted (\" [$__auto]))",
-          "legendFormat": "{{cassandra_build}}",
+          "expr": "label_replace(sum by (cluster, cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.db.compaction.CompactionTask\" |= \"Compacted (\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -407,8 +407,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "max by (cassandra_build) (max_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.db.compaction.CompactionTask\" |= \"Compacted (\" | unwrap compaction_ms | __error__=\"\" [$__auto]))",
-          "legendFormat": "{{cassandra_build}}",
+          "expr": "label_replace(max by (cluster, cassandra_build) (max_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.db.compaction.CompactionTask\" |= \"Compacted (\" | unwrap compaction_ms | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -447,8 +447,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "avg by (cassandra_build) (avg_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.db.compaction.CompactionTask\" |= \"Compacted (\" | unwrap compaction_ratio_pct | __error__=\"\" [$__auto]))",
-          "legendFormat": "{{cassandra_build}}",
+          "expr": "label_replace(avg by (cluster, cassandra_build) (avg_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.db.compaction.CompactionTask\" |= \"Compacted (\" | unwrap compaction_ratio_pct | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -493,8 +493,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (dropped_type) (sum_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\" | unwrap dropped_cross_node | __error__=\"\" [$__auto]))",
-          "legendFormat": "{{dropped_type}}",
+          "expr": "label_replace(sum by (cluster, dropped_type) (sum_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\" | unwrap dropped_cross_node | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dropped_type}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -531,8 +531,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (dropped_type) (sum_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\" | unwrap dropped_internal | __error__=\"\" [$__auto]))",
-          "legendFormat": "{{dropped_type}}",
+          "expr": "label_replace(sum by (cluster, dropped_type) (sum_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\" | unwrap dropped_internal | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dropped_type}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -569,8 +569,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "max by (dropped_type) (max_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\" | unwrap dropped_cross_node_ms | __error__=\"\" [$__auto]))",
-          "legendFormat": "{{dropped_type}}",
+          "expr": "label_replace(max by (cluster, dropped_type) (max_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\" | unwrap dropped_cross_node_ms | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dropped_type}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -642,8 +642,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (cassandra_build, host_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.utils.StatusLogger\" |= \"Pool Name\" [$__auto]))",
-          "legendFormat": "{{cassandra_build}} {{host_name}}",
+          "expr": "label_replace(sum by (cluster, cassandra_build, host_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.utils.StatusLogger\" |= \"Pool Name\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{host_name}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -679,8 +679,8 @@
         {
           "datasource": { "type": "loki", "uid": "${logs_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (cassandra_build, host_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.utils.StatusLogger\" [$__auto]))",
-          "legendFormat": "{{cassandra_build}} {{host_name}}",
+          "expr": "label_replace(sum by (cluster, cassandra_build, host_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.utils.StatusLogger\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{host_name}}",
           "queryType": "range",
           "refId": "A"
         }
@@ -725,8 +725,8 @@
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "editorMode": "code",
-          "expr": "max by (cassandra_build, cassandra_operation) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", host_name=~\"$host\", cassandra_build=~\"$build\"}) / 1000",
-          "legendFormat": "{{cassandra_build}} {{cassandra_operation}}",
+          "expr": "label_replace(max by (cluster, cassandra_build, cassandra_operation) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", host_name=~\"$host\", cassandra_build=~\"$build\"}) / 1000, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{cassandra_operation}}",
           "range": true,
           "refId": "A"
         }
@@ -763,8 +763,8 @@
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval])) > 0",
-          "legendFormat": "{{message_type}}",
+          "expr": "label_replace(sum by (cluster, message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval])) > 0, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{message_type}}",
           "range": true,
           "refId": "A"
         }
@@ -802,8 +802,8 @@
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "editorMode": "code",
-          "expr": "100 * sum by (cassandra_build, host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", jvm_gc_name!~\".*Cycles\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval]))",
-          "legendFormat": "{{cassandra_build}} {{host_name}}",
+          "expr": "label_replace(100 * sum by (cluster, cassandra_build, host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", jvm_gc_name!~\".*Cycles\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{host_name}}",
           "range": true,
           "refId": "A"
         }

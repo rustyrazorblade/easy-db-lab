@@ -105,8 +105,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}) / min(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"})",
-          "legendFormat": "read latency ${percentile}",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}) / min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} read latency ${percentile}",
           "range": false,
           "instant": true,
           "refId": "A"
@@ -117,8 +117,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}) / min(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"})",
-          "legendFormat": "write latency ${percentile}",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}) / min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} write latency ${percentile}",
           "range": false,
           "instant": true,
           "refId": "B"
@@ -129,8 +129,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}) / min(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"})",
-          "legendFormat": "storage load",
+          "expr": "label_replace(max by (cluster) (cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}) / min by (cluster) (cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} storage load",
           "range": false,
           "instant": true,
           "refId": "C"
@@ -141,8 +141,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))\n  / min(sum by (host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))",
-          "legendFormat": "sstable count",
+          "expr": "label_replace(max by (cluster) (sum by (cluster, host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))\n  / min by (cluster) (sum by (cluster, host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} sstable count",
           "range": false,
           "instant": true,
           "refId": "D"
@@ -153,8 +153,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))\n  / min(sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))",
-          "legendFormat": "heap used",
+          "expr": "label_replace(max by (cluster) (sum by (cluster, host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))\n  / min by (cluster) (sum by (cluster, host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} heap used",
           "range": false,
           "instant": true,
           "refId": "E"
@@ -165,8 +165,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))\n  / min(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "request throughput",
+          "expr": "label_replace(max by (cluster) (sum by (cluster, host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))\n  / min by (cluster) (sum by (cluster, host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} request throughput",
           "range": false,
           "instant": true,
           "refId": "F"
@@ -276,8 +276,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"} / ${latency_unit}",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -412,8 +412,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(max(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}) - min(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"})) / ${latency_unit}",
-          "legendFormat": "max − min",
+          "expr": "label_replace((max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}) - min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"})) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -424,8 +424,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}) / min(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"})",
-          "legendFormat": "max / min",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}) / min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"read\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max / min",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -522,8 +522,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"} / ${latency_unit}",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -658,8 +658,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(max(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}) - min(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"})) / ${latency_unit}",
-          "legendFormat": "max − min",
+          "expr": "label_replace((max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}) - min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"})) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -670,8 +670,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}) / min(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"})",
-          "legendFormat": "max / min",
+          "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}) / min by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=\"write\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max / min",
           "range": true,
           "instant": false,
           "refId": "B"
@@ -781,8 +781,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -879,8 +879,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}) - min(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"})",
-          "legendFormat": "max − min",
+          "expr": "label_replace(max by (cluster) (cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}) - min by (cluster) (cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -977,8 +977,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"})",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(sum by (cluster, host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1082,8 +1082,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))\n  - min(sum by (host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))",
-          "legendFormat": "max − min",
+          "expr": "label_replace(max by (cluster) (sum by (cluster, host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))\n  - min by (cluster) (sum by (cluster, host_name) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1180,8 +1180,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1278,8 +1278,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}) - min(cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"})",
-          "legendFormat": "max − min",
+          "expr": "label_replace(max by (cluster) (cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}) - min by (cluster) (cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1389,8 +1389,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(100 * sum by (cluster, host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1494,8 +1494,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (max(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - min(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval]))))",
-          "legendFormat": "max − min",
+          "expr": "label_replace(100 * (max by (cluster) (sum by (cluster, host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - min by (cluster) (sum by (cluster, host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1592,8 +1592,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(sum by (cluster, host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1697,8 +1697,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))\n  - min(sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))",
-          "legendFormat": "max − min",
+          "expr": "label_replace(max by (cluster) (sum by (cluster, host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))\n  - min by (cluster) (sum by (cluster, host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1808,8 +1808,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"})",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(sum by (cluster, host_name) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -1913,8 +1913,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))\n  - min(sum by (host_name) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))",
-          "legendFormat": "max − min",
+          "expr": "label_replace(max by (cluster) (sum by (cluster, host_name) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))\n  - min by (cluster) (sum by (cluster, host_name) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2011,8 +2011,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2116,8 +2116,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))\n  - min(sum by (host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "max − min",
+          "expr": "label_replace(max by (cluster) (sum by (cluster, host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))\n  - min by (cluster) (sum by (cluster, host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2227,8 +2227,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2325,8 +2325,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))\n  - min(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "max − min",
+          "expr": "label_replace(max by (cluster) (sum by (cluster, host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))\n  - min by (cluster) (sum by (cluster, host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2423,8 +2423,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\", operation=\"read\"}[$__rate_interval])))",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\", operation=\"read\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2528,8 +2528,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\", operation=\"read\"}[$__rate_interval]))))\n  - min(histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\", operation=\"read\"}[$__rate_interval]))))",
-          "legendFormat": "max − min",
+          "expr": "label_replace(max by (cluster) (histogram_quantile(0.99, sum by (cluster, host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\", operation=\"read\"}[$__rate_interval]))))\n  - min by (cluster) (histogram_quantile(0.99, sum by (cluster, host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\", operation=\"read\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} max − min",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2640,8 +2640,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_messaging_cross_node_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "{{host_name}}",
+          "expr": "label_replace(cassandra_messaging_cross_node_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
           "refId": "A"
@@ -2738,8 +2738,8 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_messaging_datacenter_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"} / ${latency_unit}",
-          "legendFormat": "{{host_name}} to {{datacenter}}",
+          "expr": "label_replace(cassandra_messaging_datacenter_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} to {{datacenter}}",
           "range": true,
           "instant": false,
           "refId": "A"

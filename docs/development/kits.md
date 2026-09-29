@@ -531,12 +531,13 @@ Dashboard JSON files should:
 - Use `"uid": "<kit>-kit"` to make re-installs idempotent
 - Declare the `cluster` variable: `label_values(up, cluster)` on `${metrics_datasource}`, multi-select, with "All" and `allValue` `.+`. Leave its `current` empty.
 - Filter every metrics and logs selector by `cluster=~"$cluster"`, including the queries of other variables such as an instance list: `label_values(cnpg_collector_up{cluster=~"$cluster"}, instance)`. Clusters of one tenant share the store, so a selector without the filter mixes every cluster that ran at the same time. In a binary expression, each side needs its own filter.
+- Keep `cluster` in every aggregation (`sum by (cluster, instance)`, `sum by (cluster) (...)`), and show it in every legend by its short name: wrap the query in `label_replace(<expr>, "cluster_name", "$1", "cluster", "(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")` and write the legend as `{{cluster_name}} {{instance}}`. Two selected clusters then draw as separate series, each named.
 - Declare a datasource picker for each signal they use: `metrics_datasource` (`"type": "datasource", "query": "prometheus"`, label "Metrics"), and `logs_datasource` (`loki`) or `traces_datasource` (`tempo`) when they use logs or traces. Leave each picker's `current` empty.
 - Name every datasource through its picker, keeping the `type`: `{ "type": "prometheus", "uid": "${metrics_datasource}" }`. Never name `mimir`, `loki` or `tempo` directly, not even inside an Explore link; `pyroscope` has no picker and stays as it is.
 - Pass each picker and `cluster` the dashboard declares on every `/d/` link, as `${metrics_datasource:queryparam}` (or an explicit `var-<name>=`), and no `${name:queryparam}` for a variable it does not declare.
 - Include `"tags": ["<kit>", "kit"]`
 
-`DashboardDatasourceVariablesTest` checks the picker and link rules on every kit dashboard, and `ClusterFilterTest` checks the `cluster` variable and filter. `dashboards/CLAUDE.md` in the repository has the details.
+`DashboardDatasourceVariablesTest` checks the picker and link rules on every kit dashboard, `ClusterFilterTest` checks the `cluster` variable and filter, and `SeriesClusterTest` checks the aggregations and legends. `dashboards/CLAUDE.md` in the repository has the details.
 
 On `start`, the dashboards go through the same install-time pass as the core dashboards (`DashboardDefaults`): each picker selects the cluster's own tenant and `cluster` defaults to the current cluster, so a dashboard opens on the cluster with no selection by hand. Dashboards are installed with `overwrite: true`, so re-running `start` never duplicates them.
 

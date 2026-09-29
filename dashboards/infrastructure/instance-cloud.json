@@ -28,7 +28,7 @@
       "title": "",
       "options": {
         "mode": "markdown",
-        "content": "# Instance and Cloud\n\n**Is AWS throttling this instance?** No in-box counter can answer that. CloudWatch\nmeasures the machine from outside the guest, so when the hypervisor's view and the\nkernel's view disagree, the difference is something the OS cannot see.\n\n**How the two sides are joined.** CloudWatch series are keyed by instance ARN (`name`)\nand carry `tag_Name`, not `host_name`. The account also holds instances from other\nclusters with the same `tag_Name`, so every CloudWatch query is scoped with\n`and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}`. The hidden `cluster_id`\nvariable is the UUID suffix of the `cluster` label, so no cluster name is hard-coded.\nFor subtraction, `label_replace` renames `tag_Name` to `host_name`.\n\n**Resolution.** CloudWatch EC2 publishes every **5 minutes** under basic monitoring.\nThe YACE job asks for a 60-second period over a 120-second window, so most polls find\nno datapoint and the series is sparse or absent. Gaps here are a collection artefact,\nnot an idle instance; check the in-box series before concluding anything.\n\n**Scope of the CloudWatch disk counters.** `DiskReadOps` and `DiskWriteOps` cover\n**instance-store** volumes only. On an i4i that is the NVMe data disk, which is the\ndisk Cassandra uses. EBS traffic is absent from them by design.\n\nUnits: CPU in percent, `*_sum` counters converted from per-60-second sums to per-second\nrates, S3 latency in milliseconds.\n"
+        "content": "# Instance and Cloud\n\n**Is AWS throttling this instance?** No in-box counter can answer that. CloudWatch\nmeasures the machine from outside the guest, so when the hypervisor's view and the\nkernel's view disagree, the difference is something the OS cannot see.\n\n**How the two sides are joined.** CloudWatch series are keyed by instance ARN (`name`)\nand carry `tag_Name`, not `host_name`. The account also holds instances from other\nclusters with the same `tag_Name`, so every CloudWatch query is scoped with\n`and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}`. The hidden `cluster_id`\nvariable holds the UUID suffixes of the clusters the `cluster` variable selects, so no cluster name is hard-coded.\nFor subtraction, `label_replace` renames `tag_Name` to `host_name`.\n\n**Resolution.** CloudWatch EC2 publishes every **5 minutes** under basic monitoring.\nThe YACE job asks for a 60-second period over a 120-second window, so most polls find\nno datapoint and the series is sparse or absent. Gaps here are a collection artefact,\nnot an idle instance; check the in-box series before concluding anything.\n\n**Scope of the CloudWatch disk counters.** `DiskReadOps` and `DiskWriteOps` cover\n**instance-store** volumes only. On an i4i that is the NVMe data disk, which is the\ndisk Cassandra uses. EBS traffic is absent from them by design.\n\nUnits: CPU in percent, `*_sum` counters converted from per-60-second sums to per-second\nrates, S3 latency in milliseconds.\n"
       },
       "transparent": false,
       "gridPos": {
@@ -136,7 +136,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace((aws_ec2_cpuutilization_average{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")",
+          "expr": "label_replace((aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")",
           "legendFormat": "{{host_name}} CloudWatch",
           "range": true,
           "instant": false,
@@ -148,7 +148,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "100 * (1 - sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} in-box",
           "range": true,
           "instant": false,
@@ -245,7 +245,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(100 * (1 - sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])))) - on (host_name) (sum by (host_name) (label_replace((aws_ec2_cpuutilization_average{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")))",
+          "expr": "(100 * (1 - sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", state=\"idle\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))) - on (host_name) (sum by (host_name) (label_replace((aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}), \"host_name\", \"$1\", \"tag_Name\", \"(.*)\")))",
           "legendFormat": "{{host_name}} in-box - CloudWatch",
           "range": true,
           "instant": false,
@@ -343,7 +343,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (label_replace(((aws_ec2_disk_read_ops_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_disk_write_ops_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"))",
+          "expr": "sum by (host_name) (label_replace(((aws_ec2_disk_read_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_disk_write_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"))",
           "legendFormat": "{{host_name}} CloudWatch",
           "range": true,
           "instant": false,
@@ -355,7 +355,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} in-box",
           "range": true,
           "instant": false,
@@ -453,7 +453,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (label_replace(((aws_ec2_network_in_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_network_out_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"))",
+          "expr": "sum by (host_name) (label_replace(((aws_ec2_network_in_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) + (aws_ec2_network_out_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"})) / 60, \"host_name\", \"$1\", \"tag_Name\", \"(.*)\"))",
           "legendFormat": "{{host_name}} CloudWatch",
           "range": true,
           "instant": false,
@@ -465,7 +465,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_network_io_bytes_total{host_name=~\"$host\", device=~\"en.*|eth.*\"}[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"en.*|eth.*\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} in-box",
           "range": true,
           "instant": false,
@@ -576,7 +576,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
+          "expr": "1000 * (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
           "legendFormat": "{{host_name}} {{device}} {{direction}}",
           "range": true,
           "instant": false,
@@ -674,7 +674,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * max by (device, direction) (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
+          "expr": "1000 * max by (device, direction) (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
           "legendFormat": "{{device}} {{direction}} slowest node",
           "range": true,
           "instant": false,
@@ -686,7 +686,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * min by (device, direction) (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
+          "expr": "1000 * min by (device, direction) (sum by (host_name, device, direction) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])) / sum by (host_name, device, direction) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
           "legendFormat": "{{device}} {{direction}} fastest node",
           "range": true,
           "instant": false,
@@ -784,7 +784,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (system_disk_pending_operations{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"})",
+          "expr": "sum by ($groupby) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"})",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "instant": false,
@@ -895,7 +895,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(system_disk_io_bytes_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
+          "expr": "sum by ($groupby) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
           "legendFormat": "{{$groupby}} bytes/s",
           "range": true,
           "instant": false,
@@ -907,7 +907,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(system_disk_operations_total{host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
+          "expr": "sum by ($groupby) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$host\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
           "legendFormat": "{{$groupby}} ops/s",
           "range": true,
           "instant": false,
@@ -987,7 +987,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name, device, mountpoint) (system_filesystem_usage_bytes{host_name=~\"$host\", mountpoint!~\"/boot.*\"})",
+          "expr": "sum by (host_name, device, mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$host\", mountpoint!~\"/boot.*\"})",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -1103,7 +1103,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name, mountpoint) (system_filesystem_utilization_ratio{host_name=~\"$host\", mountpoint!~\"/boot.*\"})",
+          "expr": "sum by (host_name, mountpoint) (system_filesystem_utilization_ratio{cluster=~\"$cluster\", host_name=~\"$host\", mountpoint!~\"/boot.*\"})",
           "legendFormat": "{{host_name}} {{mountpoint}}",
           "range": true,
           "instant": false,
@@ -1215,7 +1215,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_cpuutilization_average{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"})",
+          "expr": "(aws_ec2_cpuutilization_average{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"})",
           "legendFormat": "{{tag_Name}}",
           "range": true,
           "instant": false,
@@ -1313,7 +1313,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_disk_read_ops_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) / 60",
+          "expr": "(aws_ec2_disk_read_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60",
           "legendFormat": "{{tag_Name}} read",
           "range": true,
           "instant": false,
@@ -1325,7 +1325,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_disk_write_ops_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) / 60",
+          "expr": "(aws_ec2_disk_write_ops_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60",
           "legendFormat": "{{tag_Name}} write",
           "range": true,
           "instant": false,
@@ -1423,7 +1423,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_network_in_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) / 60",
+          "expr": "(aws_ec2_network_in_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60",
           "legendFormat": "{{tag_Name}} in",
           "range": true,
           "instant": false,
@@ -1435,7 +1435,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(aws_ec2_network_out_sum{tag_Name=~\"$host\"} and on (name) aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}) / 60",
+          "expr": "(aws_ec2_network_out_sum{cluster=~\"$cluster\", tag_Name=~\"$host\"} and on (name) aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}) / 60",
           "legendFormat": "{{tag_Name}} out",
           "range": true,
           "instant": false,
@@ -1502,7 +1502,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ec2_info{tag_ClusterId=~\"$cluster_id\"}",
+          "expr": "aws_ec2_info{cluster=~\"$cluster\", tag_ClusterId=~\"$cluster_id\"}",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -1663,7 +1663,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ebs_burst_balance_average",
+          "expr": "aws_ebs_burst_balance_average{cluster=~\"$cluster\"}",
           "legendFormat": "{{dimension_VolumeId}}",
           "range": true,
           "instant": false,
@@ -1761,7 +1761,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ebs_volume_queue_length_average",
+          "expr": "aws_ebs_volume_queue_length_average{cluster=~\"$cluster\"}",
           "legendFormat": "{{dimension_VolumeId}}",
           "range": true,
           "instant": false,
@@ -1859,7 +1859,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ebs_volume_read_ops_sum / 60",
+          "expr": "aws_ebs_volume_read_ops_sum{cluster=~\"$cluster\"} / 60",
           "legendFormat": "{{dimension_VolumeId}} read",
           "range": true,
           "instant": false,
@@ -1871,7 +1871,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_ebs_volume_write_ops_sum / 60",
+          "expr": "aws_ebs_volume_write_ops_sum{cluster=~\"$cluster\"} / 60",
           "legendFormat": "{{dimension_VolumeId}} write",
           "range": true,
           "instant": false,
@@ -1982,7 +1982,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_first_byte_latency_average",
+          "expr": "aws_s3_first_byte_latency_average{cluster=~\"$cluster\"}",
           "legendFormat": "{{dimension_BucketName}} first byte avg",
           "range": true,
           "instant": false,
@@ -1994,7 +1994,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_first_byte_latency_p99",
+          "expr": "aws_s3_first_byte_latency_p99{cluster=~\"$cluster\"}",
           "legendFormat": "{{dimension_BucketName}} first byte p99",
           "range": true,
           "instant": false,
@@ -2006,7 +2006,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_total_request_latency_average",
+          "expr": "aws_s3_total_request_latency_average{cluster=~\"$cluster\"}",
           "legendFormat": "{{dimension_BucketName}} total avg",
           "range": true,
           "instant": false,
@@ -2018,7 +2018,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_total_request_latency_p99",
+          "expr": "aws_s3_total_request_latency_p99{cluster=~\"$cluster\"}",
           "legendFormat": "{{dimension_BucketName}} total p99",
           "range": true,
           "instant": false,
@@ -2129,7 +2129,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_get_requests_sum / 60",
+          "expr": "aws_s3_get_requests_sum{cluster=~\"$cluster\"} / 60",
           "legendFormat": "{{dimension_BucketName}} GET/s",
           "range": true,
           "instant": false,
@@ -2141,7 +2141,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_bytes_downloaded_sum / 60",
+          "expr": "aws_s3_bytes_downloaded_sum{cluster=~\"$cluster\"} / 60",
           "legendFormat": "{{dimension_BucketName}} bytes/s",
           "range": true,
           "instant": false,
@@ -2252,7 +2252,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_bucket_size_bytes_average and on (name) aws_s3_info{tag_cluster_id=~\"$cluster_id\"}",
+          "expr": "aws_s3_bucket_size_bytes_average{cluster=~\"$cluster\"} and on (name) aws_s3_info{cluster=~\"$cluster\", tag_cluster_id=~\"$cluster_id\"}",
           "legendFormat": "{{dimension_BucketName}} bytes",
           "range": true,
           "instant": false,
@@ -2264,7 +2264,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_number_of_objects_average and on (name) aws_s3_info{tag_cluster_id=~\"$cluster_id\"}",
+          "expr": "aws_s3_number_of_objects_average{cluster=~\"$cluster\"} and on (name) aws_s3_info{cluster=~\"$cluster\", tag_cluster_id=~\"$cluster_id\"}",
           "legendFormat": "{{dimension_BucketName}} objects",
           "range": true,
           "instant": false,
@@ -2362,7 +2362,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "aws_s3_bucket_size_bytes_average",
+          "expr": "aws_s3_bucket_size_bytes_average{cluster=~\"$cluster\"}",
           "legendFormat": "{{dimension_BucketName}}",
           "range": true,
           "instant": false,
@@ -2405,6 +2405,32 @@
         "type": "datasource"
       },
       {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
         "current": {
           "selected": false,
           "text": "",
@@ -2414,17 +2440,17 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(aws_ec2_info, cluster)",
-        "description": "UUID suffix of this cluster's name, extracted by regex from the cluster label on aws_ec2_info. Every CloudWatch query is scoped by it, because the AWS account holds instances from other clusters with the same tag_Name. Hidden: it is a join key, not a control.",
+        "definition": "label_values(aws_ec2_info{cluster=~\"$cluster\"}, cluster)",
+        "description": "UUID suffixes of the selected clusters' names, extracted by regex from the cluster label on aws_ec2_info. Every CloudWatch query is scoped by them, because the AWS account holds instances from other clusters with the same tag_Name. All, the default, is every selected cluster. Hidden: it is a join key, not a control.",
         "hide": 2,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Cluster id",
-        "multi": false,
+        "multi": true,
         "name": "cluster_id",
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(aws_ec2_info, cluster)",
+          "query": "label_values(aws_ec2_info{cluster=~\"$cluster\"}, cluster)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -2447,7 +2473,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(system_cpu_logical_count, host_name)",
+        "definition": "label_values(system_cpu_logical_count{cluster=~\"$cluster\"}, host_name)",
         "description": "Every node the host-metrics scraper covers, which is also every node CloudWatch reports on. All expands to the explicit list; allValue is deliberately unset. CloudWatch panels match it against tag_Name, host panels against host_name.",
         "hide": 0,
         "includeAll": true,
@@ -2457,7 +2483,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(system_cpu_logical_count, host_name)",
+          "query": "label_values(system_cpu_logical_count{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

@@ -19,7 +19,7 @@
           "uid": "${metrics_datasource}"
         },
         "enable": true,
-        "expr": "resets(jvm_cpu_time_seconds_total{job=\"cassandra\"}[$__interval]) > 0",
+        "expr": "resets(jvm_cpu_time_seconds_total{cluster=~\"$cluster\", job=\"cassandra\"}[$__interval]) > 0",
         "hide": false,
         "iconColor": "red",
         "name": "Database restart",
@@ -35,7 +35,7 @@
           "uid": "${logs_datasource}"
         },
         "enable": true,
-        "expr": "{source=\"annotation\", cluster=~\".+\"} | dashboard_uid=\"\"",
+        "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\"",
         "hide": false,
         "iconColor": "green",
         "instant": false,
@@ -1516,7 +1516,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"read\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})",
+          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"read\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})",
           "instant": true,
           "legendFormat": "read ${percentile}",
           "range": false,
@@ -1589,7 +1589,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"write\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})",
+          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"write\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})",
           "instant": true,
           "legendFormat": "write ${percentile}",
           "range": false,
@@ -1662,7 +1662,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "100 * (\n    avg(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
           "instant": true,
           "legendFormat": "throughput",
           "range": false,
@@ -1735,7 +1735,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
+          "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
           "instant": true,
           "legendFormat": "gc pause overhead",
           "range": false,
@@ -1808,7 +1808,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$candidate\", keyspace!~\"system.*|sidecar_internal\"})\n  - avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})\n) / avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})",
+          "expr": "100 * (\n    avg(cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", keyspace!~\"system.*|sidecar_internal\"})\n  - avg(cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})\n) / avg(cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})",
           "instant": true,
           "legendFormat": "sstables per read p99",
           "range": false,
@@ -1881,7 +1881,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))\n  - histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))\n) / histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
+          "expr": "100 * (\n    histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))))\n  - histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))))\n) / histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
           "instant": true,
           "legendFormat": "block io read p99",
           "range": false,
@@ -1971,7 +1971,7 @@
           "legendFormat": "CPU busy",
           "range": false,
           "refId": "A",
-          "expr": "100 * (avg(sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg(sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg(sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
+          "expr": "100 * (avg(sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg(sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg(sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
         }
       ],
       "title": "CPU busy",
@@ -2044,7 +2044,7 @@
           "legendFormat": "Disk read throughput",
           "range": false,
           "refId": "A",
-          "expr": "100 * (avg(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
+          "expr": "100 * (avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
         }
       ],
       "title": "Disk read throughput",
@@ -2117,7 +2117,7 @@
           "legendFormat": "Page cache resident",
           "range": false,
           "refId": "A",
-          "expr": "100 * (avg(sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg(sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg(sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
+          "expr": "100 * (avg(sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg(sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg(sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
         }
       ],
       "title": "Page cache resident",
@@ -2190,7 +2190,7 @@
           "legendFormat": "Disk read bytes per read request",
           "range": false,
           "refId": "A",
-          "expr": "100 * (avg((sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg((sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg((sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
+          "expr": "100 * (avg((sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))) - avg((sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})))) / avg((sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})))"
         }
       ],
       "title": "Disk read bytes per read request",
@@ -2263,7 +2263,7 @@
           "legendFormat": "page cache hit ratio",
           "range": false,
           "refId": "A",
-          "expr": "(avg((1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"})))) - (avg((1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))"
+          "expr": "(avg((1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"})))) - (avg((1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))))"
         }
       ],
       "title": "Page cache hit ratio",
@@ -2387,7 +2387,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}}",
           "range": true,
           "refId": "A"
@@ -2398,7 +2398,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", state!=\"idle\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}}",
           "range": true,
           "refId": "B"
@@ -2525,7 +2525,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}} read",
           "range": true,
           "refId": "A"
@@ -2536,7 +2536,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}} read",
           "range": true,
           "refId": "B"
@@ -2547,7 +2547,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}} write",
           "range": true,
           "refId": "C"
@@ -2558,7 +2558,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}} write",
           "range": true,
           "refId": "D"
@@ -2685,7 +2685,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}}",
           "range": true,
           "refId": "A"
@@ -2696,7 +2696,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "histogram_quantile(0.99, sum by (host_name, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}}",
           "range": true,
           "refId": "B"
@@ -2823,7 +2823,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}}",
           "range": true,
           "refId": "A"
@@ -2834,7 +2834,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (system_memory_usage_bytes{state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", state=\"cached\", host_name=~\"$host\"}) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}}",
           "range": true,
           "refId": "B"
@@ -2961,7 +2961,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}}",
           "range": true,
           "refId": "A"
@@ -2972,7 +2972,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(sum by (host_name) (rate(system_disk_io_bytes_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval]))) / (sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}}",
           "range": true,
           "refId": "B"
@@ -3099,7 +3099,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}} read",
           "range": true,
           "refId": "A"
@@ -3110,7 +3110,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", direction=\"read\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}} read",
           "range": true,
           "refId": "B"
@@ -3121,7 +3121,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}} write",
           "range": true,
           "refId": "C"
@@ -3132,7 +3132,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(system_disk_operations_total{direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", direction=\"write\", device=~\"nvme[1-9].*\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}} write",
           "range": true,
           "refId": "D"
@@ -3261,7 +3261,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "(1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}}",
           "range": true,
           "refId": "A"
@@ -3272,7 +3272,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "(1 - sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) / sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval]))) * 100 and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}}",
           "range": true,
           "refId": "B"
@@ -3399,7 +3399,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}} access",
           "range": true,
           "refId": "A"
@@ -3410,7 +3410,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"cache_access\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}} access",
           "range": true,
           "refId": "B"
@@ -3421,7 +3421,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "legendFormat": "baseline {{host_name}} miss",
           "range": true,
           "refId": "C"
@@ -3432,7 +3432,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"page_add_lru\", host_name=~\"$host\"}[$__rate_interval])) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "legendFormat": "candidate {{host_name}} miss",
           "range": true,
           "refId": "D"
@@ -3531,7 +3531,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (cassandra_build, host_name) (jvm_memory_limit_bytes{job=\"cassandra\", jvm_memory_type=\"heap\"})",
+          "expr": "max by (cassandra_build, host_name) (jvm_memory_limit_bytes{cluster=~\"$cluster\", job=\"cassandra\", jvm_memory_type=\"heap\"})",
           "format": "table",
           "instant": true,
           "range": false,
@@ -3623,7 +3623,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (cassandra_build, jvm_gc_name) (rate(jvm_gc_duration_seconds_count{job=\"cassandra\"}[$__rate_interval]))",
+          "expr": "sum by (cassandra_build, jvm_gc_name) (rate(jvm_gc_duration_seconds_count{cluster=~\"$cluster\", job=\"cassandra\"}[$__rate_interval]))",
           "format": "table",
           "instant": true,
           "range": false,
@@ -3746,7 +3746,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))\n/ min(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))\n/ min(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
           "instant": true,
           "legendFormat": "baseline",
           "range": false,
@@ -3758,7 +3758,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n/ min(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
+          "expr": "max(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n/ min(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
           "instant": true,
           "legendFormat": "candidate",
           "range": false,
@@ -3827,7 +3827,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count(count by (host_name) (cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
+          "expr": "count(count by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))",
           "instant": true,
           "legendFormat": "baseline",
           "range": false,
@@ -3839,7 +3839,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count(count by (host_name) (cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
+          "expr": "count(count by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))",
           "instant": true,
           "legendFormat": "candidate",
           "range": false,
@@ -3936,7 +3936,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (host_name, cassandra_build) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline|$candidate\", host_name=~\"$host\", cassandra_operation=\"read\"}) / ${latency_unit}",
+          "expr": "avg by (host_name, cassandra_build) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline|$candidate\", host_name=~\"$host\", cassandra_operation=\"read\"}) / ${latency_unit}",
           "legendFormat": "{{host_name}} ({{cassandra_build}})",
           "range": true,
           "refId": "A"
@@ -4032,7 +4032,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name, cassandra_build) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline|$candidate\", host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by (host_name, cassandra_build) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline|$candidate\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} ({{cassandra_build}})",
           "range": true,
           "refId": "A"
@@ -4212,7 +4212,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"}) / ${latency_unit}",
+          "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"}) / ${latency_unit}",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4223,7 +4223,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"read\"}) / ${latency_unit}",
+          "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"read\"}) / ${latency_unit}",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4234,7 +4234,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"read\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})",
+          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"read\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"read\"})",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -4401,7 +4401,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"}) / ${latency_unit}",
+          "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"}) / ${latency_unit}",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4412,7 +4412,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"write\"}) / ${latency_unit}",
+          "expr": "avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"write\"}) / ${latency_unit}",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4423,7 +4423,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"write\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})",
+          "expr": "100 * (\n    avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", cassandra_operation=\"write\"})\n  - avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})\n) / avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", cassandra_operation=\"write\"})",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -4603,7 +4603,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4614,7 +4614,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4625,7 +4625,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "100 * (\n    avg(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -4788,7 +4788,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4799,7 +4799,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4810,7 +4810,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n- avg(sum by (host_name) (rate(cassandra_messages_dropped_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n- avg(sum by (host_name) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "delta (candidate - baseline)",
           "range": true,
           "refId": "C"
@@ -4973,7 +4973,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4984,7 +4984,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4995,7 +4995,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n- avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))\n- avg(sum by (host_name) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "delta (candidate - baseline)",
           "range": true,
           "refId": "C"
@@ -5175,7 +5175,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_storage_hints_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_storage_hints_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -5186,7 +5186,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(cassandra_storage_hints_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(cassandra_storage_hints_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -5197,7 +5197,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_storage_hints_in_progress{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
+          "expr": "avg(cassandra_storage_hints_in_progress{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})",
           "legendFormat": "baseline in flight",
           "range": true,
           "refId": "C"
@@ -5208,7 +5208,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_storage_hints_in_progress{job=\"cassandra\", cassandra_build=~\"$candidate\"})",
+          "expr": "avg(cassandra_storage_hints_in_progress{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"})",
           "legendFormat": "candidate in flight",
           "range": true,
           "refId": "D"
@@ -5384,7 +5384,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
+          "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -5395,7 +5395,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
+          "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -5406,7 +5406,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
+          "expr": "100 * (\n    avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n  - avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))\n) / avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -5606,7 +5606,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_memory_type=\"heap\"}))",
+          "expr": "avg(sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_memory_type=\"heap\"}))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -5617,7 +5617,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_memory_type=\"heap\"}))",
+          "expr": "avg(sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_memory_type=\"heap\"}))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -5628,7 +5628,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(max by (host_name) (jvm_memory_limit_bytes{job=\"cassandra\", cassandra_build=~\"$baseline|$candidate\", jvm_memory_type=\"heap\"}))",
+          "expr": "avg(max by (host_name) (jvm_memory_limit_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline|$candidate\", jvm_memory_type=\"heap\"}))",
           "legendFormat": "heap ceiling",
           "range": true,
           "refId": "C"
@@ -5639,7 +5639,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_memory_type=\"heap\"}))\n  - avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_memory_type=\"heap\"}))\n) / avg(sum by (host_name) (jvm_memory_used_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_memory_type=\"heap\"}))",
+          "expr": "100 * (\n    avg(sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", jvm_memory_type=\"heap\"}))\n  - avg(sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_memory_type=\"heap\"}))\n) / avg(sum by (host_name) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", jvm_memory_type=\"heap\"}))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "D"
@@ -5819,7 +5819,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})",
+          "expr": "avg(cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -5830,7 +5830,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$candidate\", keyspace!~\"system.*|sidecar_internal\"})",
+          "expr": "avg(cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", keyspace!~\"system.*|sidecar_internal\"})",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -5841,7 +5841,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$candidate\", keyspace!~\"system.*|sidecar_internal\"})\n  - avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})\n) / avg(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})",
+          "expr": "100 * (\n    avg(cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\", keyspace!~\"system.*|sidecar_internal\"})\n  - avg(cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})\n) / avg(cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\", keyspace!~\"system.*|sidecar_internal\"})",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -6004,7 +6004,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_compaction_tasks_pending{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
+          "expr": "avg(cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -6015,7 +6015,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_compaction_tasks_pending{job=\"cassandra\", cassandra_build=~\"$candidate\"})",
+          "expr": "avg(cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"})",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -6026,7 +6026,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_compaction_tasks_pending{job=\"cassandra\", cassandra_build=~\"$candidate\"})\n- avg(cassandra_compaction_tasks_pending{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
+          "expr": "avg(cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"})\n- avg(cassandra_compaction_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})",
           "legendFormat": "delta (candidate - baseline)",
           "range": true,
           "refId": "C"
@@ -6193,7 +6193,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval]))",
+          "expr": "avg(rate(cassandra_compaction_tasks_completed_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval]))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -6204,7 +6204,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval]))",
+          "expr": "avg(rate(cassandra_compaction_tasks_completed_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval]))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -6215,7 +6215,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval]))\n  - avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval]))\n) / avg(rate(cassandra_compaction_tasks_completed_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval]))",
+          "expr": "100 * (\n    avg(rate(cassandra_compaction_tasks_completed_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}[$__rate_interval]))\n  - avg(rate(cassandra_compaction_tasks_completed_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval]))\n) / avg(rate(cassandra_compaction_tasks_completed_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}[$__rate_interval]))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -6382,7 +6382,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
+          "expr": "avg(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -6393,7 +6393,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\"})",
+          "expr": "avg(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"})",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -6404,7 +6404,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$candidate\"})\n  - avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\"})\n) / avg(cassandra_storage_load_bytes{job=\"cassandra\", cassandra_build=~\"$baseline\"})",
+          "expr": "100 * (\n    avg(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"})\n  - avg(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})\n) / avg(cassandra_storage_load_bytes{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"})",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -6584,7 +6584,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -6595,7 +6595,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -6606,7 +6606,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))\n  - histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))\n) / histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
+          "expr": "100 * (\n    histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))))\n  - histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))))\n) / histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -6770,7 +6770,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_writes\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
+          "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"cache_writes\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
           "legendFormat": "baseline cache writes",
           "range": true,
           "refId": "A"
@@ -6781,7 +6781,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_writes\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))",
+          "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"cache_writes\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))))",
           "legendFormat": "candidate cache writes",
           "range": true,
           "refId": "B"
@@ -6792,7 +6792,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_mark_dirties\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
+          "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"page_mark_dirties\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$baseline\"}))))",
           "legendFormat": "baseline dirty pages",
           "range": true,
           "refId": "C"
@@ -6803,7 +6803,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_mark_dirties\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{job=\"cassandra\", cassandra_build=~\"$candidate\"}))))",
+          "expr": "avg(sum by (host_name) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", operation=\"page_mark_dirties\"}[$__rate_interval]) and on (host_name) (count by (host_name) (cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", cassandra_build=~\"$candidate\"}))))",
           "legendFormat": "candidate dirty pages",
           "range": true,
           "refId": "D"
@@ -6912,7 +6912,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", host_name=~\"$host\", cassandra_operation=~\"read|write\"})) / ${latency_unit}",
+          "expr": "topk(10, avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", cassandra_operation=~\"read|write\"})) / ${latency_unit}",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7008,7 +7008,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by (${groupby}) (rate(cassandra_client_request_count_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "topk(10, sum by (${groupby}) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7104,7 +7104,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by (${groupby}) (rate(cassandra_client_request_error_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "topk(10, sum by (${groupby}) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7200,7 +7200,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by (${groupby}) (rate(cassandra_messages_dropped_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "topk(10, sum by (${groupby}) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7296,7 +7296,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by (${groupby}) (cassandra_thread_pool_tasks_pending{job=\"cassandra\", host_name=~\"$host\"}))",
+          "expr": "topk(10, sum by (${groupby}) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7392,7 +7392,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by (${groupby}) (rate(cassandra_thread_pool_tasks_blocked_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "topk(10, sum by (${groupby}) (rate(cassandra_thread_pool_tasks_blocked_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7488,7 +7488,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, avg by (${groupby}) (cassandra_table_sstables_per_read_p99{job=\"cassandra\", host_name=~\"$host\"}))",
+          "expr": "topk(10, avg by (${groupby}) (cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7584,7 +7584,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by (${groupby}) (cassandra_table_disk_space_live_bytes{job=\"cassandra\", host_name=~\"$host\"}))",
+          "expr": "topk(10, sum by (${groupby}) (cassandra_table_disk_space_live_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}))",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7680,7 +7680,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, 100 * sum by (${groupby}) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
+          "expr": "topk(10, 100 * sum by (${groupby}) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7776,7 +7776,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by (${groupby}) (jvm_memory_used_bytes{job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))",
+          "expr": "topk(10, sum by (${groupby}) (jvm_memory_used_bytes{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\", jvm_memory_type=\"heap\"}))",
           "legendFormat": "{{${groupby}}}",
           "range": true,
           "refId": "A"
@@ -7826,6 +7826,32 @@
         "type": "datasource"
       },
       {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
         "current": {
           "selected": false,
           "text": "",
@@ -7835,7 +7861,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_client_request_count_total, cassandra_build)",
+        "definition": "label_values(cassandra_client_request_count_total{cluster=~\"$cluster\"}, cassandra_build)",
         "description": "The reference build. Read from the cassandra_build label, which each node derives from the target of its own current symlink, so it carries the commit sha and follows a per-node version change.",
         "hide": 0,
         "includeAll": false,
@@ -7845,7 +7871,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_client_request_count_total, cassandra_build)",
+          "query": "label_values(cassandra_client_request_count_total{cluster=~\"$cluster\"}, cassandra_build)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -7864,7 +7890,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_client_request_count_total, cassandra_build)",
+        "definition": "label_values(cassandra_client_request_count_total{cluster=~\"$cluster\"}, cassandra_build)",
         "description": "The build under test. The two groups do not have to hold the same number of nodes; every panel averages rather than sums.",
         "hide": 0,
         "includeAll": false,
@@ -7874,7 +7900,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_client_request_count_total, cassandra_build)",
+          "query": "label_values(cassandra_client_request_count_total{cluster=~\"$cluster\"}, cassandra_build)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -7897,7 +7923,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_storage_load_bytes, host_name)",
+        "definition": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
         "description": "Drill-down. Narrows the per-node panels and the whole Slice and dice section to chosen nodes. Leave it on All for the normal build against build view.",
         "hide": 0,
         "includeAll": true,
@@ -7907,7 +7933,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_storage_load_bytes, host_name)",
+          "query": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

@@ -19,7 +19,7 @@
           "uid": "${metrics_datasource}"
         },
         "enable": true,
-        "expr": "resets(jvm_cpu_time_seconds_total{job=\"cassandra\"}[$__interval]) > 0",
+        "expr": "resets(jvm_cpu_time_seconds_total{cluster=~\"$cluster\", job=\"cassandra\"}[$__interval]) > 0",
         "hide": false,
         "iconColor": "red",
         "name": "Database restart",
@@ -159,7 +159,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "selects{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}",
+          "expr": "selects{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}",
           "legendFormat": "client {{job_name}}",
           "range": true,
           "refId": "A"
@@ -170,7 +170,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"} / ${latency_unit}",
+          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "server {{host_name}}",
           "range": true,
           "refId": "B"
@@ -266,7 +266,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "mutations{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}",
+          "expr": "mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}",
           "legendFormat": "client {{job_name}}",
           "range": true,
           "refId": "A"
@@ -277,7 +277,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", host_name=~\"$host\"} / ${latency_unit}",
+          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "server {{host_name}}",
           "range": true,
           "refId": "B"
@@ -386,7 +386,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(avg(selects{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg(cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"})) / ${latency_unit}",
+          "expr": "(avg(selects{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"})) / ${latency_unit}",
           "legendFormat": "read delta",
           "range": true,
           "refId": "A"
@@ -482,7 +482,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(avg(mutations{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg(cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", host_name=~\"$host\"})) / ${latency_unit}",
+          "expr": "(avg(mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"})) / ${latency_unit}",
           "legendFormat": "write delta",
           "range": true,
           "refId": "A"
@@ -591,7 +591,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(scalar(avg(selects{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"})) * 1000000 - cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"}) / ${latency_unit}",
+          "expr": "(scalar(avg(selects{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"})) * 1000000 - cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -687,7 +687,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(scalar(avg(mutations{job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"})) * 1000000 - cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", host_name=~\"$host\"}) / ${latency_unit}",
+          "expr": "(scalar(avg(mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"})) * 1000000 - cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -795,7 +795,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(selects_count{job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
+          "expr": "sum(rate(selects_count{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
           "legendFormat": "client selects/s",
           "range": true,
           "refId": "A"
@@ -806,7 +806,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(cassandra_client_request_count_total{cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum(rate(cassandra_client_request_count_total{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "server reads/s",
           "range": true,
           "refId": "B"
@@ -901,7 +901,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(mutations_count{job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
+          "expr": "sum(rate(mutations_count{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
           "legendFormat": "client mutations/s",
           "range": true,
           "refId": "A"
@@ -912,7 +912,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(cassandra_client_request_count_total{cassandra_operation=\"write\", host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum(rate(cassandra_client_request_count_total{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "server writes/s",
           "range": true,
           "refId": "B"
@@ -1020,7 +1020,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (job_name) (rate(errors_total{job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
+          "expr": "sum by (job_name) (rate(errors_total{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval]))",
           "legendFormat": "{{job_name}}",
           "range": true,
           "refId": "A"
@@ -1115,7 +1115,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (cassandra_operation, cassandra_status) (rate(cassandra_client_request_error_total{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by (cassandra_operation, cassandra_status) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cassandra_operation}} {{cassandra_status}}",
           "range": true,
           "refId": "A"
@@ -1224,7 +1224,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{host_name=~\"$host\"}) / ${latency_unit}",
+          "expr": "avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -1319,7 +1319,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (${groupby}) (rate(cassandra_client_request_count_total{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by (${groupby}) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -1353,6 +1353,32 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       },
       {
         "current": {
@@ -1485,7 +1511,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_storage_load_bytes, host_name)",
+        "definition": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
         "description": "Database nodes. Derived from a Cassandra-only metric, so All expands to the database nodes and never widens a panel to the load generator or the control node.",
         "hide": 0,
         "includeAll": true,
@@ -1495,7 +1521,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_storage_load_bytes, host_name)",
+          "query": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1518,7 +1544,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(mutations{job=\"cassandra-easy-stress\"}, job_name)",
+        "definition": "label_values(mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\"}, job_name)",
         "description": "Which stress workload the client side reads. Every running cassandra-easy-stress process publishes its own job_name. Two workloads with different shapes produce different client latency, so narrow this to one workload before you trust a delta.",
         "hide": 0,
         "includeAll": true,
@@ -1528,7 +1554,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(mutations{job=\"cassandra-easy-stress\"}, job_name)",
+          "query": "label_values(mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\"}, job_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

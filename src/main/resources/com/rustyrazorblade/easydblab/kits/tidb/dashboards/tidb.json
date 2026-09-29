@@ -51,7 +51,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 0, "y": 1 },
       "id": 2,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tidb_server_connections)", "legendFormat": "Connections", "refId": "A" }],
+      "targets": [{ "expr": "sum(tidb_server_connections{cluster=~\"$cluster\"})", "legendFormat": "Connections", "refId": "A" }],
       "title": "Active Connections",
       "type": "stat"
     },
@@ -69,7 +69,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 4, "y": 1 },
       "id": 3,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"region_count\"}", "legendFormat": "Regions", "refId": "A" }],
+      "targets": [{ "expr": "pd_cluster_status{cluster=~\"$cluster\", type=\"region_count\"}", "legendFormat": "Regions", "refId": "A" }],
       "title": "Region Count",
       "type": "stat"
     },
@@ -87,7 +87,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 8, "y": 1 },
       "id": 4,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"store_up_count\"}", "legendFormat": "Stores Up", "refId": "A" }],
+      "targets": [{ "expr": "pd_cluster_status{cluster=~\"$cluster\", type=\"store_up_count\"}", "legendFormat": "Stores Up", "refId": "A" }],
       "title": "Stores Up",
       "type": "stat"
     },
@@ -105,7 +105,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 12, "y": 1 },
       "id": 5,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"store_down_count\"}", "legendFormat": "Stores Down", "refId": "A" }],
+      "targets": [{ "expr": "pd_cluster_status{cluster=~\"$cluster\", type=\"store_down_count\"}", "legendFormat": "Stores Down", "refId": "A" }],
       "title": "Stores Down",
       "type": "stat"
     },
@@ -123,7 +123,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 16, "y": 1 },
       "id": 6,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "100 * pd_cluster_status{type=\"storage_size\"} / pd_cluster_status{type=\"storage_capacity\"}", "legendFormat": "Storage Used %", "refId": "A" }],
+      "targets": [{ "expr": "100 * pd_cluster_status{cluster=~\"$cluster\", type=\"storage_size\"} / pd_cluster_status{cluster=~\"$cluster\", type=\"storage_capacity\"}", "legendFormat": "Storage Used %", "refId": "A" }],
       "title": "Storage Used %",
       "type": "stat"
     },
@@ -141,7 +141,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 20, "y": 1 },
       "id": 7,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tidb_ddl_waiting_jobs)", "legendFormat": "Waiting DDL Jobs", "refId": "A" }],
+      "targets": [{ "expr": "sum(tidb_ddl_waiting_jobs{cluster=~\"$cluster\"})", "legendFormat": "Waiting DDL Jobs", "refId": "A" }],
       "title": "DDL Waiting Jobs",
       "type": "stat"
     },
@@ -163,7 +163,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 9 },
       "id": 9,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_executor_statement_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tidb_executor_statement_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "Statement Rate by Type",
       "type": "timeseries"
     },
@@ -177,7 +177,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 9 },
       "id": 10,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_server_execute_error_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tidb_server_execute_error_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "Execution Error Rate",
       "type": "timeseries"
     },
@@ -191,7 +191,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 16 },
       "id": 11,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum(tidb_server_connections)", "legendFormat": "Connections", "refId": "A" }],
+      "targets": [{ "expr": "sum(tidb_server_connections{cluster=~\"$cluster\"})", "legendFormat": "Connections", "refId": "A" }],
       "title": "Active Connections Over Time",
       "type": "timeseries"
     },
@@ -205,7 +205,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 16 },
       "id": 12,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_server_critical_error_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tidb_server_critical_error_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "Critical Error Rate",
       "type": "timeseries"
     },
@@ -220,8 +220,8 @@
       "id": 35,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "histogram_quantile(0.99, sum by (le, instance) (rate(tidb_server_handle_query_duration_seconds_bucket[5m])))", "legendFormat": "p99 {{instance}}", "refId": "A" },
-        { "expr": "histogram_quantile(0.50, sum by (le, instance) (rate(tidb_server_handle_query_duration_seconds_bucket[5m])))", "legendFormat": "p50 {{instance}}", "refId": "B" }
+        { "expr": "histogram_quantile(0.99, sum by (le, instance) (rate(tidb_server_handle_query_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])))", "legendFormat": "p99 {{instance}}", "refId": "A" },
+        { "expr": "histogram_quantile(0.50, sum by (le, instance) (rate(tidb_server_handle_query_duration_seconds_bucket{cluster=~\"$cluster\"}[5m])))", "legendFormat": "p50 {{instance}}", "refId": "B" }
       ],
       "title": "Query Latency (p50/p99)",
       "type": "timeseries"
@@ -237,8 +237,8 @@
       "id": 36,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "rate(tidb_server_plan_cache_total[5m])", "legendFormat": "hits {{type}}", "refId": "A" },
-        { "expr": "rate(tidb_server_plan_cache_miss_total[5m])", "legendFormat": "misses {{type}}", "refId": "B" }
+        { "expr": "rate(tidb_server_plan_cache_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "hits {{type}}", "refId": "A" },
+        { "expr": "rate(tidb_server_plan_cache_miss_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "misses {{type}}", "refId": "B" }
       ],
       "title": "Plan Cache Hit/Miss Rate",
       "type": "timeseries"
@@ -253,7 +253,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 30 },
       "id": 37,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_server_tiflash_query_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tidb_server_tiflash_query_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "TiFlash Offload Rate",
       "type": "timeseries"
     },
@@ -267,7 +267,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 30 },
       "id": 38,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tidb_tikvclient_region_err_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tidb_tikvclient_region_err_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "TiKV Client Region Errors",
       "type": "timeseries"
     },
@@ -293,7 +293,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 0, "y": 39 },
       "id": 14,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"store_up_count\"}", "legendFormat": "Stores Up", "refId": "A" }],
+      "targets": [{ "expr": "pd_cluster_status{cluster=~\"$cluster\", type=\"store_up_count\"}", "legendFormat": "Stores Up", "refId": "A" }],
       "title": "Stores Up",
       "type": "stat"
     },
@@ -311,7 +311,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 4, "y": 39 },
       "id": 15,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"store_down_count\"}", "legendFormat": "Stores Down", "refId": "A" }],
+      "targets": [{ "expr": "pd_cluster_status{cluster=~\"$cluster\", type=\"store_down_count\"}", "legendFormat": "Stores Down", "refId": "A" }],
       "title": "Stores Down",
       "type": "stat"
     },
@@ -329,7 +329,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 8, "y": 39 },
       "id": 16,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"storage_capacity\"}", "legendFormat": "Capacity", "refId": "A" }],
+      "targets": [{ "expr": "pd_cluster_status{cluster=~\"$cluster\", type=\"storage_capacity\"}", "legendFormat": "Capacity", "refId": "A" }],
       "title": "Storage Capacity",
       "type": "stat"
     },
@@ -347,7 +347,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 12, "y": 39 },
       "id": 17,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "pd_cluster_status{type=\"storage_size\"}", "legendFormat": "Storage Used", "refId": "A" }],
+      "targets": [{ "expr": "pd_cluster_status{cluster=~\"$cluster\", type=\"storage_size\"}", "legendFormat": "Storage Used", "refId": "A" }],
       "title": "Storage Used",
       "type": "stat"
     },
@@ -361,7 +361,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 42 },
       "id": 18,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(pd_cluster_tso[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(pd_cluster_tso{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "TSO Operations Rate",
       "type": "timeseries"
     },
@@ -376,8 +376,8 @@
       "id": 19,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
-        { "expr": "pd_cluster_status{type=\"region_count\"}", "legendFormat": "Regions", "refId": "A" },
-        { "expr": "pd_cluster_status{type=\"leader_count\"}", "legendFormat": "Leaders", "refId": "B" }
+        { "expr": "pd_cluster_status{cluster=~\"$cluster\", type=\"region_count\"}", "legendFormat": "Regions", "refId": "A" },
+        { "expr": "pd_cluster_status{cluster=~\"$cluster\", type=\"leader_count\"}", "legendFormat": "Leaders", "refId": "B" }
       ],
       "title": "Region and Leader Count Over Time",
       "type": "timeseries"
@@ -392,7 +392,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 49 },
       "id": 20,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "pd_cluster_tso_gap_millionseconds", "legendFormat": "{{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "pd_cluster_tso_gap_millionseconds{cluster=~\"$cluster\"}", "legendFormat": "{{instance}}", "refId": "A" }],
       "title": "TSO Clock Skew",
       "type": "timeseries"
     },
@@ -406,7 +406,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 56 },
       "id": 39,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(pd_schedule_operators_count_total[5m])", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(pd_schedule_operators_count_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "Scheduling Operator Rate",
       "type": "timeseries"
     },
@@ -420,7 +420,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 56 },
       "id": 40,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "pd_regions_status", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "pd_regions_status{cluster=~\"$cluster\"}", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "Region Health States",
       "type": "timeseries"
     },
@@ -434,7 +434,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 63 },
       "id": 41,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "pd_checker_region_list", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "pd_checker_region_list{cluster=~\"$cluster\"}", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "Checker Region List",
       "type": "timeseries"
     },
@@ -448,7 +448,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 63 },
       "id": 42,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "pd_hotspot_status", "legendFormat": "{{type}}", "refId": "A" }],
+      "targets": [{ "expr": "pd_hotspot_status{cluster=~\"$cluster\"}", "legendFormat": "{{type}}", "refId": "A" }],
       "title": "Hotspot Status",
       "type": "timeseries"
     },
@@ -474,7 +474,7 @@
       "gridPos": { "h": 3, "w": 12, "x": 0, "y": 71 },
       "id": 22,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tikv_raftstore_leader_missing)", "legendFormat": "Missing Leaders", "refId": "A" }],
+      "targets": [{ "expr": "sum(tikv_raftstore_leader_missing{cluster=~\"$cluster\"})", "legendFormat": "Missing Leaders", "refId": "A" }],
       "title": "Missing Raft Leaders",
       "type": "stat"
     },
@@ -492,7 +492,7 @@
       "gridPos": { "h": 3, "w": 12, "x": 12, "y": 71 },
       "id": 23,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tikv_raftstore_hibernated_peer_state)", "legendFormat": "Hibernated Peers", "refId": "A" }],
+      "targets": [{ "expr": "sum(tikv_raftstore_hibernated_peer_state{cluster=~\"$cluster\"})", "legendFormat": "Hibernated Peers", "refId": "A" }],
       "title": "Hibernated Raft Peers",
       "type": "stat"
     },
@@ -506,7 +506,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 74 },
       "id": 24,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_raftstore_local_read_executed_requests_total[5m])", "legendFormat": "{{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tikv_raftstore_local_read_executed_requests_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{instance}}", "refId": "A" }],
       "title": "Local Read Rate",
       "type": "timeseries"
     },
@@ -520,7 +520,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 74 },
       "id": 25,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_raftstore_admin_cmd_total[5m])", "legendFormat": "{{type}} {{status}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tikv_raftstore_admin_cmd_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}} {{status}}", "refId": "A" }],
       "title": "Raft Admin Command Rate",
       "type": "timeseries"
     },
@@ -534,7 +534,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 81 },
       "id": 43,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tikv_engine_size_bytes", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "tikv_engine_size_bytes{cluster=~\"$cluster\"}", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
       "title": "Engine Size by Column Family",
       "type": "timeseries"
     },
@@ -548,7 +548,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 81 },
       "id": 44,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tikv_engine_pending_compaction_bytes", "legendFormat": "{{cf}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "tikv_engine_pending_compaction_bytes{cluster=~\"$cluster\"}", "legendFormat": "{{cf}} {{instance}}", "refId": "A" }],
       "title": "Pending Compaction Bytes",
       "type": "timeseries"
     },
@@ -562,7 +562,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 88 },
       "id": 45,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_engine_stall_micro_seconds_total[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tikv_engine_stall_micro_seconds_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
       "title": "Write Stall Rate (µs/s)",
       "type": "timeseries"
     },
@@ -576,7 +576,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 88 },
       "id": 46,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_engine_flow_bytes_total[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tikv_engine_flow_bytes_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
       "title": "Engine I/O Throughput",
       "type": "timeseries"
     },
@@ -590,7 +590,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 95 },
       "id": 47,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tikv_engine_num_files_at_level{level=\"0\"}", "legendFormat": "{{cf}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "tikv_engine_num_files_at_level{cluster=~\"$cluster\", level=\"0\"}", "legendFormat": "{{cf}} {{instance}}", "refId": "A" }],
       "title": "L0 SST File Count",
       "type": "timeseries"
     },
@@ -604,7 +604,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 95 },
       "id": 48,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tikv_coprocessor_scan_details_total[5m])", "legendFormat": "{{req}} {{tag}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tikv_coprocessor_scan_details_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{req}} {{tag}} {{instance}}", "refId": "A" }],
       "title": "Coprocessor Scan Rate",
       "type": "timeseries"
     },
@@ -630,7 +630,7 @@
       "gridPos": { "h": 3, "w": 24, "x": 0, "y": 103 },
       "id": 27,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "sum(tiflash_mpp_task_monitor)", "legendFormat": "Active MPP Tasks", "refId": "A" }],
+      "targets": [{ "expr": "sum(tiflash_mpp_task_monitor{cluster=~\"$cluster\"})", "legendFormat": "Active MPP Tasks", "refId": "A" }],
       "title": "Active MPP Tasks",
       "type": "stat"
     },
@@ -644,7 +644,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 106 },
       "id": 28,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "sum(tiflash_mpp_task_monitor)", "legendFormat": "Active MPP Tasks", "refId": "A" }],
+      "targets": [{ "expr": "sum(tiflash_mpp_task_monitor{cluster=~\"$cluster\"})", "legendFormat": "Active MPP Tasks", "refId": "A" }],
       "title": "MPP Task Count",
       "type": "timeseries"
     },
@@ -658,7 +658,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 106 },
       "id": 29,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tiflash_compute_request_unit_total[5m])", "legendFormat": "{{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tiflash_compute_request_unit_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{instance}}", "refId": "A" }],
       "title": "Request Unit Rate",
       "type": "timeseries"
     },
@@ -672,7 +672,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 113 },
       "id": 30,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tiflash_exchange_data_bytes_total[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tiflash_exchange_data_bytes_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
       "title": "MPP Exchange Bytes Rate",
       "type": "timeseries"
     },
@@ -686,7 +686,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 113 },
       "id": 31,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tiflash_coprocessor_request_error_total[5m])", "legendFormat": "{{reason}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tiflash_coprocessor_request_error_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{reason}} {{instance}}", "refId": "A" }],
       "title": "Coprocessor Error Rate",
       "type": "timeseries"
     },
@@ -700,7 +700,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 120 },
       "id": 32,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tiflash_process_rss_by_type_bytes", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "tiflash_process_rss_by_type_bytes{cluster=~\"$cluster\"}", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
       "title": "TiFlash Memory by Type",
       "type": "timeseries"
     },
@@ -714,7 +714,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 127 },
       "id": 49,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tiflash_storage_throughput_bytes", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "tiflash_storage_throughput_bytes{cluster=~\"$cluster\"}", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
       "title": "Storage Throughput (Bytes)",
       "type": "timeseries"
     },
@@ -728,7 +728,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 12, "y": 127 },
       "id": 50,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "tiflash_storage_throughput_rows", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "tiflash_storage_throughput_rows{cluster=~\"$cluster\"}", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
       "title": "Storage Throughput (Rows)",
       "type": "timeseries"
     },
@@ -742,7 +742,7 @@
       "gridPos": { "h": 7, "w": 12, "x": 0, "y": 134 },
       "id": 51,
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
-      "targets": [{ "expr": "rate(tiflash_raft_throughput_bytes_total[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
+      "targets": [{ "expr": "rate(tiflash_raft_throughput_bytes_total{cluster=~\"$cluster\"}[5m])", "legendFormat": "{{type}} {{instance}}", "refId": "A" }],
       "title": "Raft Replication Throughput",
       "type": "timeseries"
     },
@@ -792,7 +792,7 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "rate(traces_spanmetrics_calls_total{service_name=\"TiDB\"}[5m])",
+          "expr": "rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=\"TiDB\"}[5m])",
           "legendFormat": "{{span_name}}",
           "refId": "A"
         }
@@ -812,7 +812,7 @@
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } },
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le, span_name) (rate(traces_spanmetrics_duration_milliseconds_bucket{service_name=\"TiDB\"}[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (le, span_name) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", service_name=\"TiDB\"}[5m])))",
           "legendFormat": "{{span_name}}",
           "refId": "A"
         }

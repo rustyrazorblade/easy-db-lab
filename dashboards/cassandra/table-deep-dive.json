@@ -1258,7 +1258,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_storage_load_bytes, host_name)",
+        "definition": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
         "description": "Database nodes only. Derived from a Cassandra-only metric, so control and app nodes never appear.",
         "hide": 0,
         "includeAll": true,
@@ -1268,7 +1268,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_storage_load_bytes, host_name)",
+          "query": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1292,7 +1292,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_table_read_latency_p99_microseconds, keyspace)",
+        "definition": "label_values(cassandra_table_read_latency_p99_microseconds{cluster=~\"$cluster\"}, keyspace)",
         "description": "Keyspace filter. It defaults to the workload keyspace: without it every panel drowns in about 57 system tables.",
         "hide": 0,
         "includeAll": true,
@@ -1302,7 +1302,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_table_read_latency_p99_microseconds, keyspace)",
+          "query": "label_values(cassandra_table_read_latency_p99_microseconds{cluster=~\"$cluster\"}, keyspace)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1326,7 +1326,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_table_read_latency_p99_microseconds{keyspace=~\"$keyspace\"}, table)",
+        "definition": "label_values(cassandra_table_read_latency_p99_microseconds{cluster=~\"$cluster\", keyspace=~\"$keyspace\"}, table)",
         "description": "Tables within the selected keyspace. Select a single table to make the per-node panels readable.",
         "hide": 0,
         "includeAll": true,
@@ -1336,7 +1336,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_table_read_latency_p99_microseconds{keyspace=~\"$keyspace\"}, table)",
+          "query": "label_values(cassandra_table_read_latency_p99_microseconds{cluster=~\"$cluster\", keyspace=~\"$keyspace\"}, table)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

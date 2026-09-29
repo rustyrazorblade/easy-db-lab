@@ -102,7 +102,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(traces_spanmetrics_duration_milliseconds_count{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum(rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -175,7 +175,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (sum(rate(traces_spanmetrics_calls_total{source=\"\", host_name=~\"$host\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) or vector(0)) / sum(rate(traces_spanmetrics_calls_total{source=\"\", host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "100 * (sum(rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) or vector(0)) / sum(rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -240,7 +240,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(traces_spanmetrics_duration_milliseconds_bucket{host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -308,7 +308,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count(count by (span_name) (traces_spanmetrics_duration_milliseconds_count{host_name=~\"$host\"}))",
+          "expr": "count(count by (span_name) (traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -406,7 +406,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(traces_spanmetrics_duration_milliseconds_count{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by ($groupby) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "instant": false,
@@ -504,7 +504,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (status_code) (rate(traces_spanmetrics_calls_total{source=\"\", host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by (status_code) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{status_code}}",
           "range": true,
           "instant": false,
@@ -602,7 +602,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{span_name}} p50",
           "range": true,
           "instant": false,
@@ -614,7 +614,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.90, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.90, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{span_name}} p90",
           "range": true,
           "instant": false,
@@ -626,7 +626,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{span_name}} p99",
           "range": true,
           "instant": false,
@@ -724,7 +724,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by ($groupby, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by ($groupby, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "{{$groupby}} p99",
           "range": true,
           "instant": false,
@@ -822,7 +822,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(traces_spanmetrics_duration_milliseconds_sum{host_name=~\"$host\"}[$__rate_interval])) / sum by ($groupby) (rate(traces_spanmetrics_duration_milliseconds_count{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by ($groupby) (rate(traces_spanmetrics_duration_milliseconds_sum{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) / sum by ($groupby) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{$groupby}} mean",
           "range": true,
           "instant": false,
@@ -938,7 +938,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (span_name) (rate(traces_spanmetrics_duration_milliseconds_count{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -951,7 +951,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -964,7 +964,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (span_name) (rate(traces_spanmetrics_duration_milliseconds_sum{host_name=~\"$host\"}[$__rate_interval])) / sum by (span_name) (rate(traces_spanmetrics_duration_milliseconds_count{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by (span_name) (rate(traces_spanmetrics_duration_milliseconds_sum{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])) / sum by (span_name) (rate(traces_spanmetrics_duration_milliseconds_count{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "",
           "range": false,
           "instant": true,
@@ -1102,7 +1102,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (client, server, connection_type) (rate(traces_service_graph_request_total{source=\"\"}[$__rate_interval]))",
+          "expr": "sum by (client, server, connection_type) (rate(traces_service_graph_request_total{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))",
           "legendFormat": "{{client}} -> {{server}} ({{connection_type}})",
           "range": true,
           "instant": false,
@@ -1200,7 +1200,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_total{source=\"\", failed=\"true\"}[$__rate_interval]))",
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_total{cluster=~\"$cluster\", source=\"\", failed=\"true\"}[$__rate_interval]))",
           "legendFormat": "{{client}} -> {{server}} failed",
           "range": true,
           "instant": false,
@@ -1298,7 +1298,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_client_seconds_bucket{source=\"\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_client_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])))",
           "legendFormat": "{{client}} -> {{server}} client p99",
           "range": true,
           "instant": false,
@@ -1310,7 +1310,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{source=\"\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])))",
           "legendFormat": "{{client}} -> {{server}} server p99",
           "range": true,
           "instant": false,
@@ -1407,7 +1407,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_client_seconds_bucket{source=\"\"}[$__rate_interval]))) - histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{source=\"\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_client_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))) - histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])))",
           "legendFormat": "{{client}} -> {{server}} delta (collector)",
           "range": true,
           "instant": false,
@@ -1505,7 +1505,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_client_seconds_sum{source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_client_seconds_count{source=\"\"}[$__rate_interval]))",
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_client_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_client_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))",
           "legendFormat": "{{client}} -> {{server}} client mean",
           "range": true,
           "instant": false,
@@ -1517,7 +1517,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_server_seconds_sum{source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_server_seconds_count{source=\"\"}[$__rate_interval]))",
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_server_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_server_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))",
           "legendFormat": "{{client}} -> {{server}} server mean",
           "range": true,
           "instant": false,
@@ -1614,7 +1614,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "(sum by (client, server) (rate(traces_service_graph_request_client_seconds_sum{source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_client_seconds_count{source=\"\"}[$__rate_interval]))) - (sum by (client, server) (rate(traces_service_graph_request_server_seconds_sum{source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_server_seconds_count{source=\"\"}[$__rate_interval])))",
+          "expr": "(sum by (client, server) (rate(traces_service_graph_request_client_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_client_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval]))) - (sum by (client, server) (rate(traces_service_graph_request_server_seconds_sum{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])) / sum by (client, server) (rate(traces_service_graph_request_server_seconds_count{cluster=~\"$cluster\", source=\"\"}[$__rate_interval])))",
           "legendFormat": "{{client}} -> {{server}} mean delta",
           "range": true,
           "instant": false,
@@ -1712,7 +1712,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_edges_total[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_edges_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} edges built/s",
           "range": true,
           "instant": false,
@@ -1724,7 +1724,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_expired_edges_total[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_expired_edges_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} expired edges/s",
           "range": true,
           "instant": false,
@@ -1736,7 +1736,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_dropped_spans_total[$__rate_interval])) or 0 * sum by (host_name) (rate(otelcol_connector_servicegraph_edges_total[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(otelcol_connector_servicegraph_dropped_spans_total{cluster=~\"$cluster\"}[$__rate_interval])) or 0 * sum by (host_name) (rate(otelcol_connector_servicegraph_edges_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} dropped spans/s",
           "range": true,
           "instant": false,
@@ -1847,7 +1847,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_distributor_spans_received_total[$__rate_interval]))",
+          "expr": "sum(rate(tempo_distributor_spans_received_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "distributor received",
           "range": true,
           "instant": false,
@@ -1859,7 +1859,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_receiver_accepted_spans_total[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(otelcol_receiver_accepted_spans_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} collector accepted (fed to connectors)",
           "range": true,
           "instant": false,
@@ -1871,7 +1871,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_live_store_traces_created_total[$__rate_interval]))",
+          "expr": "sum(rate(tempo_live_store_traces_created_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "traces created",
           "range": true,
           "instant": false,
@@ -1969,7 +1969,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_discarded_spans_total[$__rate_interval]))",
+          "expr": "sum(rate(tempo_discarded_spans_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "discarded",
           "range": true,
           "instant": false,
@@ -1981,7 +1981,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_receiver_refused_spans[$__rate_interval]))",
+          "expr": "sum(rate(tempo_receiver_refused_spans{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "refused",
           "range": true,
           "instant": false,
@@ -1993,7 +1993,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(otelcol_receiver_refused_spans_total[$__rate_interval])) + sum by (host_name) (rate(otelcol_receiver_failed_spans_total[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(otelcol_receiver_refused_spans_total{cluster=~\"$cluster\"}[$__rate_interval])) + sum by (host_name) (rate(otelcol_receiver_failed_spans_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{host_name}} collector refused/failed",
           "range": true,
           "instant": false,
@@ -2005,7 +2005,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(tempo_distributor_attributes_truncated_total[$__rate_interval]))",
+          "expr": "sum(rate(tempo_distributor_attributes_truncated_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "attributes truncated",
           "range": true,
           "instant": false,
@@ -2103,7 +2103,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (host_name) ({__name__=~\"traces_spanmetrics_.+\"})",
+          "expr": "count by (host_name) ({cluster=~\"$cluster\", __name__=~\"traces_spanmetrics_.+\"})",
           "legendFormat": "{{host_name}} span_metrics",
           "range": true,
           "instant": false,
@@ -2115,7 +2115,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count by (host_name) ({__name__=~\"traces_service_graph_.+\"})",
+          "expr": "count by (host_name) ({cluster=~\"$cluster\", __name__=~\"traces_service_graph_.+\"})",
           "legendFormat": "{{host_name}} service_graph",
           "range": true,
           "instant": false,
@@ -2213,7 +2213,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(tempo_live_store_live_traces)",
+          "expr": "sum(tempo_live_store_live_traces{cluster=~\"$cluster\"})",
           "legendFormat": "live traces",
           "range": true,
           "instant": false,
@@ -2225,7 +2225,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(tempo_live_store_complete_queue_length)",
+          "expr": "sum(tempo_live_store_complete_queue_length{cluster=~\"$cluster\"})",
           "legendFormat": "WAL blocks awaiting completion",
           "range": true,
           "instant": false,
@@ -2267,6 +2267,32 @@
         "type": "datasource"
       },
       {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
         "current": {
           "selected": true,
           "text": [
@@ -2280,7 +2306,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(traces_spanmetrics_calls_total, host_name)",
+        "definition": "label_values(traces_spanmetrics_calls_total{cluster=~\"$cluster\"}, host_name)",
         "description": "Derived from the collector spanmetrics family, so only nodes that emit spans appear. All expands to the explicit list; allValue is deliberately unset. Tempo-generator panels ignore this variable because that family has no host_name.",
         "hide": 0,
         "includeAll": true,
@@ -2290,7 +2316,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(traces_spanmetrics_calls_total, host_name)",
+          "query": "label_values(traces_spanmetrics_calls_total{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

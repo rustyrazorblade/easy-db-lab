@@ -1084,7 +1084,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_storage_load_bytes, host_name)",
+        "definition": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
         "description": "Database nodes only. Derived from a Cassandra-only metric, so control and app nodes never appear.",
         "hide": 0,
         "includeAll": true,
@@ -1094,7 +1094,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_storage_load_bytes, host_name)",
+          "query": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1118,7 +1118,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_table_memtable_heap_size_bytes, keyspace)",
+        "definition": "label_values(cassandra_table_memtable_heap_size_bytes{cluster=~\"$cluster\"}, keyspace)",
         "description": "Applies to the memtable row only; the commitlog families carry no keyspace label. Defaults to the workload keyspace because selecting All puts roughly 57 system tables on every memtable panel.",
         "hide": 0,
         "includeAll": true,
@@ -1128,7 +1128,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_table_memtable_heap_size_bytes, keyspace)",
+          "query": "label_values(cassandra_table_memtable_heap_size_bytes{cluster=~\"$cluster\"}, keyspace)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -1152,7 +1152,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_table_memtable_heap_size_bytes{keyspace=~\"$keyspace\"}, table)",
+        "definition": "label_values(cassandra_table_memtable_heap_size_bytes{cluster=~\"$cluster\", keyspace=~\"$keyspace\"}, table)",
         "description": "Tables within the selected keyspaces. Applies to the memtable row only.",
         "hide": 0,
         "includeAll": true,
@@ -1162,7 +1162,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_table_memtable_heap_size_bytes{keyspace=~\"$keyspace\"}, table)",
+          "query": "label_values(cassandra_table_memtable_heap_size_bytes{cluster=~\"$cluster\", keyspace=~\"$keyspace\"}, table)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

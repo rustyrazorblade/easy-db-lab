@@ -3564,7 +3564,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (cluster, direction) (rate(system_disk_io_bytes_total{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by (cluster, direction) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "{{cluster}} {{direction}}",
           "refId": "A"
         }
@@ -3637,7 +3637,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"read\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "read p99 {{cluster}}",
           "refId": "A"
         },
@@ -3646,7 +3646,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"write\", host_name=~\"$host\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, cluster) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", operation=\"write\", host_name=~\"$host\"}[$__rate_interval])))",
           "legendFormat": "write p99 {{cluster}}",
           "refId": "B"
         }

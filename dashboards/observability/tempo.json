@@ -85,7 +85,7 @@
         "includeAll": true,
         "query": {
           "qryType": 1,
-          "query": "label_values(traces_spanmetrics_calls_total, service_name)",
+          "query": "label_values(traces_spanmetrics_calls_total{cluster=~\"$cluster\"}, service_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "sort": 1
@@ -169,7 +169,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (service_name) (rate(traces_spanmetrics_calls_total{service_name=~\"$service\"}[$__rate_interval]))",
+          "expr": "sum by (service_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}}"
         }
       ],
@@ -238,7 +238,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (service_name) (rate(traces_spanmetrics_calls_total{service_name=~\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval]))",
+          "expr": "sum by (service_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=~\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}}"
         }
       ],
@@ -303,7 +303,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "histogram_quantile(0.99, sum by (service_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{service_name=~\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (service_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval])))",
           "legendFormat": "{{service_name}} p99"
         }
       ],
@@ -368,7 +368,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "histogram_quantile(0.50, sum by (service_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{service_name=~\"$service\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (service_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval])))",
           "legendFormat": "{{service_name}} p50"
         }
       ],
@@ -428,7 +428,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (span_name, service_name) (rate(traces_spanmetrics_calls_total{service_name=~\"$service\"}[$__rate_interval]))",
+          "expr": "sum by (span_name, service_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}}: {{span_name}}"
         }
       ],
@@ -503,7 +503,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (client, server) (rate(traces_service_graph_request_total[$__rate_interval]))",
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_total{cluster=~\"$cluster\"}[$__rate_interval]))",
           "legendFormat": "{{client}} \u2192 {{server}}"
         }
       ],
@@ -563,7 +563,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{client}} \u2192 {{server}} p99"
         }
       ],
@@ -807,7 +807,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (service_name, span_name) (rate(traces_spanmetrics_calls_total{status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval]))",
+          "expr": "sum by (service_name, span_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}}: {{span_name}}"
         }
       ],
@@ -867,7 +867,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "histogram_quantile(0.99, sum by (service_name, span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (service_name, span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\"}[$__rate_interval])))",
           "legendFormat": "{{service_name}}: {{span_name}}"
         }
       ],

@@ -57,7 +57,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_tps{kit=~\"$kit\"}",
+          "expr": "sysbench_tps{cluster=~\"$cluster\", kit=~\"$kit\"}",
           "legendFormat": "{{kit}}",
           "refId": "A"
         }
@@ -98,7 +98,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_qps{kit=~\"$kit\"}",
+          "expr": "sysbench_qps{cluster=~\"$cluster\", kit=~\"$kit\"}",
           "legendFormat": "{{kit}}",
           "refId": "A"
         }
@@ -146,19 +146,19 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_lat_p50_ms{kit=~\"$kit\"}",
+          "expr": "sysbench_lat_p50_ms{cluster=~\"$cluster\", kit=~\"$kit\"}",
           "legendFormat": "p50 {{kit}}",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_lat_p95_ms{kit=~\"$kit\"}",
+          "expr": "sysbench_lat_p95_ms{cluster=~\"$cluster\", kit=~\"$kit\"}",
           "legendFormat": "p95 {{kit}}",
           "refId": "B"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_lat_p99_ms{kit=~\"$kit\"}",
+          "expr": "sysbench_lat_p99_ms{cluster=~\"$cluster\", kit=~\"$kit\"}",
           "legendFormat": "p99 {{kit}}",
           "refId": "C"
         }
@@ -202,7 +202,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "sysbench_errors_per_second{kit=~\"$kit\"}",
+          "expr": "sysbench_errors_per_second{cluster=~\"$cluster\", kit=~\"$kit\"}",
           "legendFormat": "{{kit}}",
           "refId": "A"
         }
@@ -230,9 +230,35 @@
         "type": "datasource"
       },
       {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-        "definition": "label_values(sysbench_tps, kit)",
+        "definition": "label_values(sysbench_tps{cluster=~\"$cluster\"}, kit)",
         "hide": 0,
         "includeAll": true,
         "label": "Kit",
@@ -240,7 +266,7 @@
         "name": "kit",
         "options": [],
         "query": {
-          "query": "label_values(sysbench_tps, kit)",
+          "query": "label_values(sysbench_tps{cluster=~\"$cluster\"}, kit)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,

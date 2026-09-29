@@ -19,7 +19,7 @@
           "uid": "${metrics_datasource}"
         },
         "enable": true,
-        "expr": "resets(jvm_cpu_time_seconds_total{job=\"cassandra\"}[$__interval]) > 0",
+        "expr": "resets(jvm_cpu_time_seconds_total{cluster=~\"$cluster\", job=\"cassandra\"}[$__interval]) > 0",
         "hide": false,
         "iconColor": "red",
         "name": "Database restart",
@@ -189,7 +189,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_compaction_tasks_pending{host_name=~\"$host\"}",
+          "expr": "cassandra_compaction_tasks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}",
           "legendFormat": "backlog {{host_name}}",
           "range": true,
           "refId": "A"
@@ -200,7 +200,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "rate(cassandra_compaction_tasks_completed_total{host_name=~\"$host\"}[$__rate_interval])",
+          "expr": "rate(cassandra_compaction_tasks_completed_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])",
           "legendFormat": "completed/s {{host_name}}",
           "range": true,
           "refId": "B"
@@ -295,7 +295,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, cassandra_table_compaction_pending{host_name=~\"$host\"} > 0)",
+          "expr": "topk(10, cassandra_table_compaction_pending{cluster=~\"$cluster\", host_name=~\"$host\"} > 0)",
           "legendFormat": "{{host_name}} {{keyspace}}.{{table}}",
           "range": true,
           "refId": "A"
@@ -405,7 +405,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_compaction_progress_completed_bytes{host_name=~\"$host\"} / (cassandra_compaction_progress_size_bytes{host_name=~\"$host\"} > 0)",
+          "expr": "cassandra_compaction_progress_completed_bytes{cluster=~\"$cluster\", host_name=~\"$host\"} / (cassandra_compaction_progress_size_bytes{cluster=~\"$cluster\", host_name=~\"$host\"} > 0)",
           "legendFormat": "{{host_name}} {{cassandra_keyspace}}.{{cassandra_table}} ({{cassandra_compaction_task_type}})",
           "range": true,
           "refId": "A"
@@ -500,7 +500,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_compaction_progress_size_bytes{host_name=~\"$host\"} - cassandra_compaction_progress_completed_bytes{host_name=~\"$host\"}",
+          "expr": "cassandra_compaction_progress_size_bytes{cluster=~\"$cluster\", host_name=~\"$host\"} - cassandra_compaction_progress_completed_bytes{cluster=~\"$cluster\", host_name=~\"$host\"}",
           "legendFormat": "{{host_name}} {{cassandra_keyspace}}.{{cassandra_table}}",
           "range": true,
           "refId": "A"
@@ -608,7 +608,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, cassandra_table_sstable_count_live{host_name=~\"$host\"} > 0)",
+          "expr": "topk(10, cassandra_table_sstable_count_live{cluster=~\"$cluster\", host_name=~\"$host\"} > 0)",
           "legendFormat": "{{host_name}} {{keyspace}}.{{table}}",
           "range": true,
           "refId": "A"
@@ -703,7 +703,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (${groupby}) (cassandra_table_sstable_count_live{host_name=~\"$host\"})",
+          "expr": "sum by (${groupby}) (cassandra_table_sstable_count_live{cluster=~\"$cluster\", host_name=~\"$host\"})",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -811,7 +811,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (keyspace, table) (cassandra_table_sstables_per_read_p50{host_name=~\"$host\"}) > 0",
+          "expr": "max by (keyspace, table) (cassandra_table_sstables_per_read_p50{cluster=~\"$cluster\", host_name=~\"$host\"}) > 0",
           "legendFormat": "p50 {{keyspace}}.{{table}}",
           "range": true,
           "refId": "A"
@@ -822,7 +822,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (keyspace, table) (cassandra_table_sstables_per_read_p99{host_name=~\"$host\"}) > 0",
+          "expr": "max by (keyspace, table) (cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", host_name=~\"$host\"}) > 0",
           "legendFormat": "p99 {{keyspace}}.{{table}}",
           "range": true,
           "refId": "B"
@@ -833,7 +833,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (keyspace, table) (cassandra_table_sstables_per_read_max{host_name=~\"$host\"}) > 0",
+          "expr": "max by (keyspace, table) (cassandra_table_sstables_per_read_max{cluster=~\"$cluster\", host_name=~\"$host\"}) > 0",
           "legendFormat": "max {{keyspace}}.{{table}}",
           "range": true,
           "refId": "C"
@@ -928,7 +928,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, cassandra_table_sstables_per_read_p99{host_name=~\"$host\"} > 0)",
+          "expr": "topk(10, cassandra_table_sstables_per_read_p99{cluster=~\"$cluster\", host_name=~\"$host\"} > 0)",
           "legendFormat": "{{host_name}} {{keyspace}}.{{table}}",
           "range": true,
           "refId": "A"
@@ -1038,7 +1038,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "bottomk(10, cassandra_table_disk_space_live_bytes{host_name=~\"$host\"} / (cassandra_table_disk_space_total_bytes{host_name=~\"$host\"} > 0))",
+          "expr": "bottomk(10, cassandra_table_disk_space_live_bytes{cluster=~\"$cluster\", host_name=~\"$host\"} / (cassandra_table_disk_space_total_bytes{cluster=~\"$cluster\", host_name=~\"$host\"} > 0))",
           "legendFormat": "{{host_name}} {{keyspace}}.{{table}}",
           "range": true,
           "refId": "A"
@@ -1133,7 +1133,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "topk(10, cassandra_table_disk_space_total_bytes{host_name=~\"$host\"} > 0)",
+          "expr": "topk(10, cassandra_table_disk_space_total_bytes{cluster=~\"$cluster\", host_name=~\"$host\"} > 0)",
           "legendFormat": "{{host_name}} {{keyspace}}.{{table}}",
           "range": true,
           "refId": "A"
@@ -1241,7 +1241,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_storage_load_bytes{host_name=~\"$host\"}",
+          "expr": "cassandra_storage_load_bytes{cluster=~\"$cluster\", host_name=~\"$host\"}",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -1336,7 +1336,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "deriv(cassandra_storage_load_bytes{host_name=~\"$host\"}[15m])",
+          "expr": "deriv(cassandra_storage_load_bytes{cluster=~\"$cluster\", host_name=~\"$host\"}[15m])",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -1431,7 +1431,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (host_name) (system_filesystem_usage_bytes{state=\"free\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"}) / clamp_min(max by (host_name) (deriv(cassandra_storage_load_bytes{host_name=~\"$host\"}[15m])), 1)",
+          "expr": "max by (host_name) (system_filesystem_usage_bytes{cluster=~\"$cluster\", state=\"free\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"}) / clamp_min(max by (host_name) (deriv(cassandra_storage_load_bytes{cluster=~\"$cluster\", host_name=~\"$host\"}[15m])), 1)",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -1541,7 +1541,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * sum by (host_name, mountpoint) (system_filesystem_usage_bytes{state=\"used\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"}) / sum by (host_name, mountpoint) (system_filesystem_usage_bytes{host_name=~\"$host\", mountpoint=~\"$mountpoint\"})",
+          "expr": "100 * sum by (host_name, mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", state=\"used\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"}) / sum by (host_name, mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"})",
           "legendFormat": "{{host_name}} {{mountpoint}}",
           "range": true,
           "refId": "A"
@@ -1636,7 +1636,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name, mountpoint) (system_filesystem_usage_bytes{state=\"free\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"})",
+          "expr": "sum by (host_name, mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", state=\"free\", host_name=~\"$host\", mountpoint=~\"$mountpoint\"})",
           "legendFormat": "{{host_name}} {{mountpoint}}",
           "range": true,
           "refId": "A"
@@ -1745,7 +1745,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"} / ${latency_unit}",
+          "expr": "cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"} / ${latency_unit}",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -1841,7 +1841,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", host_name=~\"$host\"}) / ${latency_unit}",
+          "expr": "avg by (${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"}) / ${latency_unit}",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -1951,7 +1951,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "cassandra_streaming_active{job=\"cassandra\", host_name=~\"$host\"}",
+          "expr": "cassandra_streaming_active{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -2047,7 +2047,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "rate(cassandra_streaming_incoming_bytes_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
+          "expr": "rate(cassandra_streaming_incoming_bytes_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} incoming",
           "range": true,
           "refId": "A"
@@ -2058,7 +2058,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "rate(cassandra_streaming_outgoing_bytes_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
+          "expr": "rate(cassandra_streaming_outgoing_bytes_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
           "legendFormat": "{{host_name}} outgoing",
           "range": true,
           "refId": "B"
@@ -2154,7 +2154,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "rate(cassandra_streaming_repair_outgoing_bytes_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
+          "expr": "rate(cassandra_streaming_repair_outgoing_bytes_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -2250,7 +2250,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "rate(cassandra_streaming_repair_sstables_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
+          "expr": "rate(cassandra_streaming_repair_sstables_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -2346,7 +2346,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "rate(cassandra_repair_retries_total{job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
+          "expr": "rate(cassandra_repair_retries_total{cluster=~\"$cluster\", job=\"cassandra\", host_name=~\"$host\"}[$__rate_interval])",
           "legendFormat": "{{host_name}}",
           "range": true,
           "refId": "A"
@@ -2487,7 +2487,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(cassandra_compaction_bytes_compacted_total{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(cassandra_compaction_bytes_compacted_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "compacted/s {{host_name}}",
           "range": true,
           "refId": "A"
@@ -2498,7 +2498,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{host_name=~\"$host\"}[$__rate_interval]))",
+          "expr": "sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
           "legendFormat": "allocated/s {{host_name}}",
           "range": true,
           "refId": "B"
@@ -2564,7 +2564,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (host_name) (increase(jvm_memory_allocation_bytes_sum{host_name=~\"$host\"}[$__range])) / sum by (host_name) (increase(cassandra_compaction_bytes_compacted_total{host_name=~\"$host\"}[$__range]))",
+          "expr": "sum by (host_name) (increase(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range])) / sum by (host_name) (increase(cassandra_compaction_bytes_compacted_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range]))",
           "legendFormat": "{{host_name}}",
           "instant": true,
           "range": false,
@@ -2596,6 +2596,32 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       },
       {
         "current": {
@@ -2679,7 +2705,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_storage_load_bytes, host_name)",
+        "definition": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
         "description": "Database nodes. Derived from a Cassandra-only metric, so All expands to the database nodes and never widens a panel to the load generator or the control node.",
         "hide": 0,
         "includeAll": true,
@@ -2689,7 +2715,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_storage_load_bytes, host_name)",
+          "query": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -2712,7 +2738,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(system_filesystem_usage_bytes, mountpoint)",
+        "definition": "label_values(system_filesystem_usage_bytes{cluster=~\"$cluster\"}, mountpoint)",
         "description": "Filesystems to show. All includes the root and boot partitions as well as the data mount. The headroom panel takes the largest filesystem per node, which is the data mount on any normal layout; narrow this variable if it is not.",
         "hide": 0,
         "includeAll": true,
@@ -2722,7 +2748,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(system_filesystem_usage_bytes, mountpoint)",
+          "query": "label_values(system_filesystem_usage_bytes{cluster=~\"$cluster\"}, mountpoint)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

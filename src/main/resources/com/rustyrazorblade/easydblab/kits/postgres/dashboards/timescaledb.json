@@ -16,21 +16,21 @@
     {
       "title": "PostgreSQL Overview",
       "type": "link",
-      "url": "/d/postgres-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}",
+      "url": "/d/postgres-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     },
     {
       "title": "DuckDB Analytics",
       "type": "link",
-      "url": "/d/postgres-duckdb?from=${__from}&to=${__to}&${metrics_datasource:queryparam}",
+      "url": "/d/postgres-duckdb?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     },
     {
       "title": "PostGIS Geospatial",
       "type": "link",
-      "url": "/d/postgres-postgis?from=${__from}&to=${__to}&${metrics_datasource:queryparam}",
+      "url": "/d/postgres-postgis?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     }
@@ -72,16 +72,42 @@
         "type": "datasource"
       },
       {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-        "definition": "label_values(cnpg_collector_up{job=\"postgres\",k8s_app_instance=\"postgres-timescaledb\"}, instance)",
+        "definition": "label_values(cnpg_collector_up{cluster=~\"$cluster\", job=\"postgres\",k8s_app_instance=\"postgres-timescaledb\"}, instance)",
         "hide": 0,
         "includeAll": false,
         "label": "Instance",
         "multi": false,
         "name": "instance",
         "options": [],
-        "query": { "query": "label_values(cnpg_collector_up{job=\"postgres\",k8s_app_instance=\"postgres-timescaledb\"}, instance)", "refId": "StandardVariableQuery" },
+        "query": { "query": "label_values(cnpg_collector_up{cluster=~\"$cluster\", job=\"postgres\",k8s_app_instance=\"postgres-timescaledb\"}, instance)", "refId": "StandardVariableQuery" },
         "refresh": 2,
         "regex": "",
         "sort": 1,
@@ -152,7 +178,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "instant": true,
           "legendFormat": "__auto"
         }
@@ -207,7 +233,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",instance=\"$instance\"}[2m])",
+          "expr": "rate(cnpg_collector_wal_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m])",
           "instant": true,
           "legendFormat": "__auto"
         }
@@ -270,7 +296,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])), 1)",
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])), 1)",
           "instant": true,
           "legendFormat": "__auto"
         }
@@ -325,7 +351,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "max(cnpg_pg_database_size_bytes{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"})",
+          "expr": "max(cnpg_pg_database_size_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"})",
           "instant": true,
           "legendFormat": "__auto"
         }
@@ -371,7 +397,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",instance=\"$instance\"}[2m])",
+          "expr": "rate(cnpg_collector_wal_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m])",
           "legendFormat": "WAL bytes/s"
         }
       ]
@@ -416,7 +442,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "legendFormat": "commits/s"
         },
         {
@@ -424,7 +450,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "legendFormat": "rollbacks/s"
         }
       ]
@@ -482,7 +508,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), 1)",
+          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), 1)",
           "legendFormat": "hit ratio"
         }
       ]
@@ -527,7 +553,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_pg_stat_checkpointer_buffers_written_total{job=\"postgres\",instance=\"$instance\"}[2m])",
+          "expr": "rate(cnpg_pg_stat_checkpointer_buffers_written_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m])",
           "legendFormat": "buffers written/s"
         },
         {
@@ -535,7 +561,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{job=\"postgres\",instance=\"$instance\"}[2m])",
+          "expr": "rate(cnpg_pg_stat_bgwriter_buffers_clean_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m])",
           "legendFormat": "bgwriter clean/s"
         }
       ]
@@ -593,7 +619,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_inserted_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "legendFormat": "inserts/s"
         },
         {
@@ -601,7 +627,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_updated_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_updated_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "legendFormat": "updates/s"
         },
         {
@@ -609,7 +635,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted_total{job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
+          "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))",
           "legendFormat": "deletes/s"
         }
       ]

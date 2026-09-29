@@ -19,7 +19,7 @@
           "uid": "${metrics_datasource}"
         },
         "enable": true,
-        "expr": "resets(jvm_cpu_time_seconds_total{job=\"cassandra\"}[$__interval]) > 0",
+        "expr": "resets(jvm_cpu_time_seconds_total{cluster=~\"$cluster\", job=\"cassandra\"}[$__interval]) > 0",
         "hide": false,
         "iconColor": "red",
         "name": "Database restart",
@@ -331,6 +331,32 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       },
       {
         "current": {

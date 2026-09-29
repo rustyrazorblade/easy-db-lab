@@ -725,7 +725,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "editorMode": "code",
-          "expr": "max by (cassandra_build, cassandra_operation) (cassandra_client_request_latency_${percentile}_microseconds{host_name=~\"$host\", cassandra_build=~\"$build\"}) / 1000",
+          "expr": "max by (cassandra_build, cassandra_operation) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", host_name=~\"$host\", cassandra_build=~\"$build\"}) / 1000",
           "legendFormat": "{{cassandra_build}} {{cassandra_operation}}",
           "range": true,
           "refId": "A"
@@ -763,7 +763,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "editorMode": "code",
-          "expr": "sum by (message_type) (rate(cassandra_messages_dropped_total{host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval])) > 0",
+          "expr": "sum by (message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval])) > 0",
           "legendFormat": "{{message_type}}",
           "range": true,
           "refId": "A"
@@ -802,7 +802,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
           "editorMode": "code",
-          "expr": "100 * sum by (cassandra_build, host_name) (rate(jvm_gc_duration_seconds_sum{jvm_gc_name!~\".*Cycles\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval]))",
+          "expr": "100 * sum by (cassandra_build, host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", jvm_gc_name!~\".*Cycles\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval]))",
           "legendFormat": "{{cassandra_build}} {{host_name}}",
           "range": true,
           "refId": "A"
@@ -901,7 +901,7 @@
       {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-        "definition": "label_values(cassandra_storage_load_bytes, cassandra_build)",
+        "definition": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, cassandra_build)",
         "description": "Cassandra build. The same label exists on the metrics and on the log records, so this filters both.",
         "hide": 0,
         "includeAll": true,
@@ -911,7 +911,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_storage_load_bytes, cassandra_build)",
+          "query": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, cassandra_build)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
@@ -923,7 +923,7 @@
       {
         "current": {},
         "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-        "definition": "label_values(cassandra_storage_load_bytes, host_name)",
+        "definition": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
         "description": "Database nodes only. No allValue is set on purpose, so All expands to the real node list instead of a wildcard.",
         "hide": 0,
         "includeAll": true,
@@ -933,7 +933,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_storage_load_bytes, host_name)",
+          "query": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

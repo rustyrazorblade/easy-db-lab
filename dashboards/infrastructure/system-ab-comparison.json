@@ -19,7 +19,7 @@
           "uid": "${metrics_datasource}"
         },
         "enable": true,
-        "expr": "resets(system_cpu_time_seconds_total[$__interval]) > 0",
+        "expr": "resets(system_cpu_time_seconds_total{cluster=~\"$cluster\"}[$__interval]) > 0",
         "hide": false,
         "iconColor": "orange",
         "name": "Host reboot",
@@ -35,7 +35,7 @@
           "uid": "${logs_datasource}"
         },
         "enable": true,
-        "expr": "{source=\"annotation\", cluster=~\".+\"} | dashboard_uid=\"\"",
+        "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\"",
         "hide": false,
         "iconColor": "green",
         "instant": false,
@@ -61,7 +61,7 @@
       "title": "Cassandra A/B Comparison",
       "tooltip": "The database side of the comparison, on a Cassandra cluster",
       "type": "link",
-      "url": "/d/ab-comparison/a-b-comparison?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${baseline_cluster:queryparam}&${candidate_cluster:queryparam}&${doc_tenant:queryparam}"
+      "url": "/d/ab-comparison/a-b-comparison?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}&${logs_datasource:queryparam}&${baseline_cluster:queryparam}&${candidate_cluster:queryparam}&${doc_tenant:queryparam}"
     }
   ],
   "liveNow": false,
@@ -992,7 +992,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (100 * (1 - sum(rate(system_cpu_time_seconds_total{host_name=~\"$candidate\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{host_name=~\"$candidate\"}[$__rate_interval]))))\n  - (100 * (1 - sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\"}[$__rate_interval]))))\n) / (100 * (1 - sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\"}[$__rate_interval]))))\n  - (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval]))))\n) / (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": false,
           "refId": "A",
@@ -1065,7 +1065,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (sum(system_cpu_load_average_1m{host_name=~\"$candidate\"}) / scalar(sum(system_cpu_logical_count{host_name=~\"$candidate\"})))\n  - (sum(system_cpu_load_average_1m{host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{host_name=~\"$baseline\"})))\n) / (sum(system_cpu_load_average_1m{host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{host_name=~\"$baseline\"})))",
+          "expr": "100 * (\n    (sum(system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$candidate\"}) / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$candidate\"})))\n  - (sum(system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$baseline\"})))\n) / (sum(system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$baseline\"})))",
           "legendFormat": "delta %",
           "range": false,
           "refId": "A",
@@ -1138,7 +1138,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(sum by (host_name) (rate(system_disk_io_bytes_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(system_disk_io_bytes_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(system_disk_io_bytes_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": false,
           "refId": "A",
@@ -1211,7 +1211,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": false,
           "refId": "A",
@@ -1284,7 +1284,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": false,
           "refId": "A",
@@ -1357,7 +1357,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": false,
           "refId": "A",
@@ -1472,7 +1472,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (host_name) (system_cpu_logical_count)",
+          "expr": "max by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})",
           "legendFormat": "",
           "range": false,
           "refId": "A",
@@ -1485,7 +1485,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (host_name) (sum by (host_name) (system_memory_usage_bytes))",
+          "expr": "max by (host_name) (sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\"}))",
           "legendFormat": "",
           "range": false,
           "refId": "B",
@@ -1498,7 +1498,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (host_name, cassandra_build) ((group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))",
+          "expr": "max by (host_name, cassandra_build) ((group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "",
           "range": false,
           "refId": "C",
@@ -1591,7 +1591,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count(group by (host_name) (system_cpu_time_seconds_total{host_name=~\"$baseline\"}))",
+          "expr": "count(group by (host_name) (system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\"}))",
           "legendFormat": "baseline",
           "range": false,
           "refId": "A",
@@ -1603,7 +1603,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "count(group by (host_name) (system_cpu_time_seconds_total{host_name=~\"$candidate\"}))",
+          "expr": "count(group by (host_name) (system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\"}))",
           "legendFormat": "candidate",
           "range": false,
           "refId": "B",
@@ -1841,7 +1841,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -1852,7 +1852,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{host_name=~\"$candidate\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{host_name=~\"$candidate\"}[$__rate_interval])))",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -1863,7 +1863,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (100 * (1 - sum(rate(system_cpu_time_seconds_total{host_name=~\"$candidate\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{host_name=~\"$candidate\"}[$__rate_interval]))))\n  - (100 * (1 - sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\"}[$__rate_interval]))))\n) / (100 * (1 - sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{host_name=~\"$baseline\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\"}[$__rate_interval]))))\n  - (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval]))))\n) / (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"idle\"}[$__rate_interval]))\n          / sum(rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -1958,7 +1958,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * sum by (state) (rate(system_cpu_time_seconds_total{host_name=~\"$baseline\", state=~\"user|system|nice|softirq|interrupt|steal|wait\"}[$__rate_interval]))\n      / scalar(sum(system_cpu_logical_count{host_name=~\"$baseline\"}))",
+          "expr": "100 * sum by (state) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", state=~\"user|system|nice|softirq|interrupt|steal|wait\"}[$__rate_interval]))\n      / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$baseline\"}))",
           "legendFormat": "baseline {{state}}",
           "range": true,
           "refId": "A"
@@ -1969,7 +1969,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * sum by (state) (rate(system_cpu_time_seconds_total{host_name=~\"$candidate\", state=~\"user|system|nice|softirq|interrupt|steal|wait\"}[$__rate_interval]))\n      / scalar(sum(system_cpu_logical_count{host_name=~\"$candidate\"}))",
+          "expr": "100 * sum by (state) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", state=~\"user|system|nice|softirq|interrupt|steal|wait\"}[$__rate_interval]))\n      / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$candidate\"}))",
           "legendFormat": "candidate {{state}}",
           "range": true,
           "refId": "B"
@@ -2137,7 +2137,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(system_cpu_load_average_1m{host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{host_name=~\"$baseline\"}))",
+          "expr": "sum(system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$baseline\"}))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -2148,7 +2148,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum(system_cpu_load_average_1m{host_name=~\"$candidate\"}) / scalar(sum(system_cpu_logical_count{host_name=~\"$candidate\"}))",
+          "expr": "sum(system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$candidate\"}) / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$candidate\"}))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -2159,7 +2159,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (sum(system_cpu_load_average_1m{host_name=~\"$candidate\"}) / scalar(sum(system_cpu_logical_count{host_name=~\"$candidate\"})))\n  - (sum(system_cpu_load_average_1m{host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{host_name=~\"$baseline\"})))\n) / (sum(system_cpu_load_average_1m{host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{host_name=~\"$baseline\"})))",
+          "expr": "100 * (\n    (sum(system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$candidate\"}) / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$candidate\"})))\n  - (sum(system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$baseline\"})))\n) / (sum(system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$baseline\"}) / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$baseline\"})))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -2254,7 +2254,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * sum by (state) (rate(system_cpu_time_seconds_total{host_name=~\"$baseline\", state=~\"steal|wait\"}[$__rate_interval]))\n      / scalar(sum(system_cpu_logical_count{host_name=~\"$baseline\"}))",
+          "expr": "100 * sum by (state) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", state=~\"steal|wait\"}[$__rate_interval]))\n      / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$baseline\"}))",
           "legendFormat": "baseline {{state}}",
           "range": true,
           "refId": "A"
@@ -2265,7 +2265,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * sum by (state) (rate(system_cpu_time_seconds_total{host_name=~\"$candidate\", state=~\"steal|wait\"}[$__rate_interval]))\n      / scalar(sum(system_cpu_logical_count{host_name=~\"$candidate\"}))",
+          "expr": "100 * sum by (state) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", state=~\"steal|wait\"}[$__rate_interval]))\n      / scalar(sum(system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$candidate\"}))",
           "legendFormat": "candidate {{state}}",
           "range": true,
           "refId": "B"
@@ -2373,7 +2373,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (state) (system_memory_usage_bytes{host_name=~\"$baseline\"})",
+          "expr": "avg by (state) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\"})",
           "legendFormat": "{{state}}",
           "range": true,
           "refId": "A"
@@ -2468,7 +2468,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (state) (system_memory_usage_bytes{host_name=~\"$candidate\"})",
+          "expr": "avg by (state) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$candidate\"})",
           "legendFormat": "{{state}}",
           "range": true,
           "refId": "A"
@@ -2635,7 +2635,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(system_memory_usage_bytes{host_name=~\"$baseline\", state=\"used\"})",
+          "expr": "avg(system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"used\"})",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -2646,7 +2646,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(system_memory_usage_bytes{host_name=~\"$candidate\", state=\"used\"})",
+          "expr": "avg(system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$candidate\", state=\"used\"})",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -2657,7 +2657,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(system_memory_usage_bytes{host_name=~\"$candidate\", state=\"used\"}))\n  - (avg(system_memory_usage_bytes{host_name=~\"$baseline\", state=\"used\"}))\n) / (avg(system_memory_usage_bytes{host_name=~\"$baseline\", state=\"used\"}))",
+          "expr": "100 * (\n    (avg(system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$candidate\", state=\"used\"}))\n  - (avg(system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"used\"}))\n) / (avg(system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"used\"}))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -2824,7 +2824,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (system_memory_usage_bytes{host_name=~\"$baseline\", state=~\"cached|buffered\"}))",
+          "expr": "avg(sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\", state=~\"cached|buffered\"}))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -2835,7 +2835,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (system_memory_usage_bytes{host_name=~\"$candidate\", state=~\"cached|buffered\"}))",
+          "expr": "avg(sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$candidate\", state=~\"cached|buffered\"}))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -2846,7 +2846,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(sum by (host_name) (system_memory_usage_bytes{host_name=~\"$candidate\", state=~\"cached|buffered\"})))\n  - (avg(sum by (host_name) (system_memory_usage_bytes{host_name=~\"$baseline\", state=~\"cached|buffered\"})))\n) / (avg(sum by (host_name) (system_memory_usage_bytes{host_name=~\"$baseline\", state=~\"cached|buffered\"})))",
+          "expr": "100 * (\n    (avg(sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$candidate\", state=~\"cached|buffered\"})))\n  - (avg(sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\", state=~\"cached|buffered\"})))\n) / (avg(sum by (host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\", state=~\"cached|buffered\"})))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -3013,7 +3013,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$baseline\", operation=\"cache_writes\"}[$__rate_interval]))",
+          "expr": "avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"cache_writes\"}[$__rate_interval]))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -3024,7 +3024,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$candidate\", operation=\"cache_writes\"}[$__rate_interval]))",
+          "expr": "avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"cache_writes\"}[$__rate_interval]))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -3035,7 +3035,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$candidate\", operation=\"cache_writes\"}[$__rate_interval])))\n  - (avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$baseline\", operation=\"cache_writes\"}[$__rate_interval])))\n) / (avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$baseline\", operation=\"cache_writes\"}[$__rate_interval])))",
+          "expr": "100 * (\n    (avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"cache_writes\"}[$__rate_interval])))\n  - (avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"cache_writes\"}[$__rate_interval])))\n) / (avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"cache_writes\"}[$__rate_interval])))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -3202,7 +3202,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$baseline\", operation=\"page_mark_dirties\"}[$__rate_interval]))",
+          "expr": "avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"page_mark_dirties\"}[$__rate_interval]))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -3213,7 +3213,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$candidate\", operation=\"page_mark_dirties\"}[$__rate_interval]))",
+          "expr": "avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"page_mark_dirties\"}[$__rate_interval]))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -3224,7 +3224,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$candidate\", operation=\"page_mark_dirties\"}[$__rate_interval])))\n  - (avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$baseline\", operation=\"page_mark_dirties\"}[$__rate_interval])))\n) / (avg(rate(ebpf_exporter_page_cache_ops_total{host_name=~\"$baseline\", operation=\"page_mark_dirties\"}[$__rate_interval])))",
+          "expr": "100 * (\n    (avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"page_mark_dirties\"}[$__rate_interval])))\n  - (avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"page_mark_dirties\"}[$__rate_interval])))\n) / (avg(rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"page_mark_dirties\"}[$__rate_interval])))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -3391,7 +3391,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{host_name=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -3402,7 +3402,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{host_name=~\"$candidate\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$candidate\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -3413,7 +3413,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{host_name=~\"$candidate\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{host_name=~\"$baseline\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{host_name=~\"$baseline\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$candidate\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -3508,7 +3508,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (arena) (rate(jvm_memory_allocation_bytes_sum{host_name=~\"$baseline\"}[$__rate_interval]))",
+          "expr": "avg by (arena) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval]))",
           "legendFormat": "baseline {{arena}}",
           "range": true,
           "refId": "A"
@@ -3519,7 +3519,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (arena) (rate(jvm_memory_allocation_bytes_sum{host_name=~\"$candidate\"}[$__rate_interval]))",
+          "expr": "avg by (arena) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$candidate\"}[$__rate_interval]))",
           "legendFormat": "candidate {{arena}}",
           "range": true,
           "refId": "B"
@@ -3627,7 +3627,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_io_bytes_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"read\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"read\"}[$__rate_interval])))",
           "legendFormat": "baseline read",
           "range": true,
           "refId": "A"
@@ -3638,7 +3638,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_io_bytes_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"write\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"write\"}[$__rate_interval])))",
           "legendFormat": "baseline write",
           "range": true,
           "refId": "B"
@@ -3649,7 +3649,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_io_bytes_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"read\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"read\"}[$__rate_interval])))",
           "legendFormat": "candidate read",
           "range": true,
           "refId": "C"
@@ -3660,7 +3660,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_io_bytes_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"write\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"write\"}[$__rate_interval])))",
           "legendFormat": "candidate write",
           "range": true,
           "refId": "D"
@@ -3755,7 +3755,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"read\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"read\"}[$__rate_interval])))",
           "legendFormat": "baseline read",
           "range": true,
           "refId": "A"
@@ -3766,7 +3766,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"write\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"write\"}[$__rate_interval])))",
           "legendFormat": "baseline write",
           "range": true,
           "refId": "B"
@@ -3777,7 +3777,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"read\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"read\"}[$__rate_interval])))",
           "legendFormat": "candidate read",
           "range": true,
           "refId": "C"
@@ -3788,7 +3788,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"write\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\", direction=\"write\"}[$__rate_interval])))",
           "legendFormat": "candidate write",
           "range": true,
           "refId": "D"
@@ -3955,7 +3955,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -3966,7 +3966,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -3977,7 +3977,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -4144,7 +4144,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4155,7 +4155,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4166,7 +4166,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -4333,7 +4333,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4344,7 +4344,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4355,7 +4355,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"read\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"read\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -4522,7 +4522,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4533,7 +4533,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4544,7 +4544,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$candidate\", operation=\"write\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$baseline\", operation=\"write\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -4713,7 +4713,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
+          "expr": "100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4724,7 +4724,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
+          "expr": "100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4735,7 +4735,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (100 * avg(max by (host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -4903,7 +4903,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (system_disk_pending_operations{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}))",
+          "expr": "avg(sum by (host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -4914,7 +4914,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (system_disk_pending_operations{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}))",
+          "expr": "avg(sum by (host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -4925,7 +4925,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(sum by (host_name) (system_disk_pending_operations{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"})))\n  - (avg(sum by (host_name) (system_disk_pending_operations{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"})))\n) / (avg(sum by (host_name) (system_disk_pending_operations{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"})))",
+          "expr": "100 * (\n    (avg(sum by (host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"})))\n  - (avg(sum by (host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"})))\n) / (avg(sum by (host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"})))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -5093,7 +5093,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
+          "expr": "1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -5104,7 +5104,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
+          "expr": "1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -5115,7 +5115,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (1000 * avg(sum by (host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))\n         / sum by (host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -5282,7 +5282,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_merged_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -5293,7 +5293,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_disk_merged_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -5304,7 +5304,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(sum by (host_name) (rate(system_disk_merged_total{host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(system_disk_merged_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(system_disk_merged_total{host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (avg(sum by (host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -5414,7 +5414,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * avg by (mountpoint) (system_filesystem_usage_bytes{host_name=~\"$baseline\", state=\"used\"})\n      / avg by (mountpoint) (sum by (host_name, mountpoint) (system_filesystem_usage_bytes{host_name=~\"$baseline\"}))",
+          "expr": "100 * avg by (mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"used\"})\n      / avg by (mountpoint) (sum by (host_name, mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\"}))",
           "legendFormat": "baseline {{mountpoint}}",
           "range": true,
           "refId": "A"
@@ -5425,7 +5425,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * avg by (mountpoint) (system_filesystem_usage_bytes{host_name=~\"$candidate\", state=\"used\"})\n      / avg by (mountpoint) (sum by (host_name, mountpoint) (system_filesystem_usage_bytes{host_name=~\"$candidate\"}))",
+          "expr": "100 * avg by (mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$candidate\", state=\"used\"})\n      / avg by (mountpoint) (sum by (host_name, mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$candidate\"}))",
           "legendFormat": "candidate {{mountpoint}}",
           "range": true,
           "refId": "B"
@@ -5520,7 +5520,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (mountpoint) (system_filesystem_usage_bytes{host_name=~\"$baseline\", state=\"free\"})",
+          "expr": "avg by (mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$baseline\", state=\"free\"})",
           "legendFormat": "baseline {{mountpoint}}",
           "range": true,
           "refId": "A"
@@ -5531,7 +5531,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (mountpoint) (system_filesystem_usage_bytes{host_name=~\"$candidate\", state=\"free\"})",
+          "expr": "avg by (mountpoint) (system_filesystem_usage_bytes{cluster=~\"$cluster\", host_name=~\"$candidate\", state=\"free\"})",
           "legendFormat": "candidate {{mountpoint}}",
           "range": true,
           "refId": "B"
@@ -5626,7 +5626,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_paging_operations_total{host_name=~\"$baseline\", direction=\"page_in\"}[$__rate_interval]))) / 4",
+          "expr": "avg(sum by (host_name) (rate(system_paging_operations_total{cluster=~\"$cluster\", host_name=~\"$baseline\", direction=\"page_in\"}[$__rate_interval]))) / 4",
           "legendFormat": "baseline in",
           "range": true,
           "refId": "A"
@@ -5637,7 +5637,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_paging_operations_total{host_name=~\"$baseline\", direction=\"page_out\"}[$__rate_interval]))) / 4",
+          "expr": "avg(sum by (host_name) (rate(system_paging_operations_total{cluster=~\"$cluster\", host_name=~\"$baseline\", direction=\"page_out\"}[$__rate_interval]))) / 4",
           "legendFormat": "baseline out",
           "range": true,
           "refId": "B"
@@ -5648,7 +5648,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_paging_operations_total{host_name=~\"$candidate\", direction=\"page_in\"}[$__rate_interval]))) / 4",
+          "expr": "avg(sum by (host_name) (rate(system_paging_operations_total{cluster=~\"$cluster\", host_name=~\"$candidate\", direction=\"page_in\"}[$__rate_interval]))) / 4",
           "legendFormat": "candidate in",
           "range": true,
           "refId": "C"
@@ -5659,7 +5659,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_paging_operations_total{host_name=~\"$candidate\", direction=\"page_out\"}[$__rate_interval]))) / 4",
+          "expr": "avg(sum by (host_name) (rate(system_paging_operations_total{cluster=~\"$cluster\", host_name=~\"$candidate\", direction=\"page_out\"}[$__rate_interval]))) / 4",
           "legendFormat": "candidate out",
           "range": true,
           "refId": "D"
@@ -5754,7 +5754,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_paging_faults_total{host_name=~\"$baseline\", type=\"major\"}[$__rate_interval]))) / 4096",
+          "expr": "avg(sum by (host_name) (rate(system_paging_faults_total{cluster=~\"$cluster\", host_name=~\"$baseline\", type=\"major\"}[$__rate_interval]))) / 4096",
           "legendFormat": "baseline major",
           "range": true,
           "refId": "A"
@@ -5765,7 +5765,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_paging_faults_total{host_name=~\"$baseline\", type=\"minor\"}[$__rate_interval]))) / 4096",
+          "expr": "avg(sum by (host_name) (rate(system_paging_faults_total{cluster=~\"$cluster\", host_name=~\"$baseline\", type=\"minor\"}[$__rate_interval]))) / 4096",
           "legendFormat": "baseline minor",
           "range": true,
           "refId": "B"
@@ -5776,7 +5776,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_paging_faults_total{host_name=~\"$candidate\", type=\"major\"}[$__rate_interval]))) / 4096",
+          "expr": "avg(sum by (host_name) (rate(system_paging_faults_total{cluster=~\"$cluster\", host_name=~\"$candidate\", type=\"major\"}[$__rate_interval]))) / 4096",
           "legendFormat": "candidate major",
           "range": true,
           "refId": "C"
@@ -5787,7 +5787,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_paging_faults_total{host_name=~\"$candidate\", type=\"minor\"}[$__rate_interval]))) / 4096",
+          "expr": "avg(sum by (host_name) (rate(system_paging_faults_total{cluster=~\"$cluster\", host_name=~\"$candidate\", type=\"minor\"}[$__rate_interval]))) / 4096",
           "legendFormat": "candidate minor",
           "range": true,
           "refId": "D"
@@ -5895,7 +5895,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_io_bytes_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"receive\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"receive\"}[$__rate_interval])))",
           "legendFormat": "baseline receive",
           "range": true,
           "refId": "A"
@@ -5906,7 +5906,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_io_bytes_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"transmit\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"transmit\"}[$__rate_interval])))",
           "legendFormat": "baseline transmit",
           "range": true,
           "refId": "B"
@@ -5917,7 +5917,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_io_bytes_total{host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"receive\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"receive\"}[$__rate_interval])))",
           "legendFormat": "candidate receive",
           "range": true,
           "refId": "C"
@@ -5928,7 +5928,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_io_bytes_total{host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"transmit\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"transmit\"}[$__rate_interval])))",
           "legendFormat": "candidate transmit",
           "range": true,
           "refId": "D"
@@ -6023,7 +6023,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_packets_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"receive\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_packets_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"receive\"}[$__rate_interval])))",
           "legendFormat": "baseline receive",
           "range": true,
           "refId": "A"
@@ -6034,7 +6034,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_packets_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"transmit\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_packets_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"transmit\"}[$__rate_interval])))",
           "legendFormat": "baseline transmit",
           "range": true,
           "refId": "B"
@@ -6045,7 +6045,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_packets_total{host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"receive\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_packets_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"receive\"}[$__rate_interval])))",
           "legendFormat": "candidate receive",
           "range": true,
           "refId": "C"
@@ -6056,7 +6056,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_packets_total{host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"transmit\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_packets_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", direction=\"transmit\"}[$__rate_interval])))",
           "legendFormat": "candidate transmit",
           "range": true,
           "refId": "D"
@@ -6223,7 +6223,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_errors_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -6234,7 +6234,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_errors_total{host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -6245,7 +6245,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(sum by (host_name) (rate(system_network_errors_total{host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(system_network_errors_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(system_network_errors_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (avg(sum by (host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -6412,7 +6412,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_dropped_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval])))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -6423,7 +6423,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(sum by (host_name) (rate(system_network_dropped_total{host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval])))",
+          "expr": "avg(sum by (host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval])))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -6434,7 +6434,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(sum by (host_name) (rate(system_network_dropped_total{host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(system_network_dropped_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(system_network_dropped_total{host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))",
+          "expr": "100 * (\n    (avg(sum by (host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$candidate\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))\n  - (avg(sum by (host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))\n) / (avg(sum by (host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$baseline\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]))))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -6542,7 +6542,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (status) (system_processes_count{host_name=~\"$baseline\"})",
+          "expr": "avg by (status) (system_processes_count{cluster=~\"$cluster\", host_name=~\"$baseline\"})",
           "legendFormat": "baseline {{status}}",
           "range": true,
           "refId": "A"
@@ -6553,7 +6553,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg by (status) (system_processes_count{host_name=~\"$candidate\"})",
+          "expr": "avg by (status) (system_processes_count{cluster=~\"$cluster\", host_name=~\"$candidate\"})",
           "legendFormat": "candidate {{status}}",
           "range": true,
           "refId": "B"
@@ -6721,7 +6721,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(system_processes_created_total{host_name=~\"$baseline\"}[$__rate_interval]))",
+          "expr": "avg(rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval]))",
           "legendFormat": "baseline",
           "range": true,
           "refId": "A"
@@ -6732,7 +6732,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "avg(rate(system_processes_created_total{host_name=~\"$candidate\"}[$__rate_interval]))",
+          "expr": "avg(rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$candidate\"}[$__rate_interval]))",
           "legendFormat": "candidate",
           "range": true,
           "refId": "B"
@@ -6743,7 +6743,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (\n    (avg(rate(system_processes_created_total{host_name=~\"$candidate\"}[$__rate_interval])))\n  - (avg(rate(system_processes_created_total{host_name=~\"$baseline\"}[$__rate_interval])))\n) / (avg(rate(system_processes_created_total{host_name=~\"$baseline\"}[$__rate_interval])))",
+          "expr": "100 * (\n    (avg(rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$candidate\"}[$__rate_interval])))\n  - (avg(rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval])))\n) / (avg(rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$baseline\"}[$__rate_interval])))",
           "legendFormat": "delta %",
           "range": true,
           "refId": "C"
@@ -6851,7 +6851,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * (1 - sum by ($groupby) (rate(system_cpu_time_seconds_total{state=\"idle\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))\n         / sum by ($groupby) (rate(system_cpu_time_seconds_total[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes)))))",
+          "expr": "100 * (1 - sum by ($groupby) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", state=\"idle\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))\n         / sum by ($groupby) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -6946,7 +6946,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (system_memory_usage_bytes * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))",
+          "expr": "sum by ($groupby) (system_memory_usage_bytes{cluster=~\"$cluster\"} * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7041,7 +7041,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(system_disk_io_bytes_total{device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))",
+          "expr": "sum by ($groupby) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7136,7 +7136,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * max by ($groupby) (rate(system_disk_io_time_seconds_total{device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))",
+          "expr": "100 * max by ($groupby) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7231,7 +7231,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, $groupby) (rate(ebpf_exporter_bio_latency_seconds_bucket[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes)))))",
+          "expr": "histogram_quantile(0.99, sum by (le, $groupby) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7326,7 +7326,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.99, sum by (le, $groupby) (rate(ebpf_exporter_xfs_latency_seconds_bucket[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes)))))",
+          "expr": "histogram_quantile(0.99, sum by (le, $groupby) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7421,7 +7421,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(system_network_io_bytes_total{device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))",
+          "expr": "sum by ($groupby) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7516,7 +7516,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(ebpf_exporter_page_cache_ops_total[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))",
+          "expr": "sum by ($groupby) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7611,7 +7611,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "100 * sum by ($groupby) (system_filesystem_usage_bytes{state=\"used\"} * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))\n      / sum by ($groupby) (system_filesystem_usage_bytes * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))",
+          "expr": "100 * sum by ($groupby) (system_filesystem_usage_bytes{cluster=~\"$cluster\", state=\"used\"} * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))\n      / sum by ($groupby) (system_filesystem_usage_bytes{cluster=~\"$cluster\"} * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7706,7 +7706,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by ($groupby) (rate(jvm_memory_allocation_bytes_sum[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes)\n   or (group by (host_name) (system_cpu_logical_count)\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes))))",
+          "expr": "sum by ($groupby) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\"}[$__rate_interval]) * on(host_name) group_left(cassandra_build) (group by (host_name, cassandra_build) (cassandra_storage_load_bytes{cluster=~\"$cluster\"})\n   or (group by (host_name) (system_cpu_logical_count{cluster=~\"$cluster\"})\n       unless on(host_name) group by (host_name) (cassandra_storage_load_bytes{cluster=~\"$cluster\"}))))",
           "legendFormat": "{{$groupby}}",
           "range": true,
           "refId": "A"
@@ -7757,6 +7757,32 @@
         "type": "datasource"
       },
       {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
         "current": {
           "selected": false,
           "text": "",
@@ -7766,7 +7792,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(system_cpu_time_seconds_total, host_name)",
+        "definition": "label_values(system_cpu_time_seconds_total{cluster=~\"$cluster\"}, host_name)",
         "description": "The hosts to measure against. Any host reporting host metrics can be chosen, whatever it runs.",
         "hide": 0,
         "includeAll": false,
@@ -7776,7 +7802,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(system_cpu_time_seconds_total, host_name)",
+          "query": "label_values(system_cpu_time_seconds_total{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,
@@ -7795,7 +7821,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(system_cpu_time_seconds_total, host_name)",
+        "definition": "label_values(system_cpu_time_seconds_total{cluster=~\"$cluster\"}, host_name)",
         "description": "The hosts under test. The two sets do not have to be the same size; every panel averages per host or forms a ratio rather than summing.",
         "hide": 0,
         "includeAll": false,
@@ -7805,7 +7831,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(system_cpu_time_seconds_total, host_name)",
+          "query": "label_values(system_cpu_time_seconds_total{cluster=~\"$cluster\"}, host_name)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 1,

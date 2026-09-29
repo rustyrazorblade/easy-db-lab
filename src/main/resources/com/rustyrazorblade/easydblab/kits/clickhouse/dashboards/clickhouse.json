@@ -29291,7 +29291,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(up, cluster)",
+        "definition": "label_values(up{cluster=~\"$cluster\"}, cluster)",
         "hide": 0,
         "includeAll": true,
         "label": "Keeper Cluster",
@@ -29299,7 +29299,7 @@
         "name": "KeeperCluster",
         "options": [],
         "query": {
-          "query": "label_values(up, cluster)",
+          "query": "label_values(up{cluster=~\"$cluster\"}, cluster)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
@@ -29315,7 +29315,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(ClickHouseAsyncMetrics_KeeperZnodeCount{cluster=~\"$KeeperCluster\"}, instance)",
+        "definition": "label_values(ClickHouseAsyncMetrics_KeeperZnodeCount{cluster=~\"$cluster\", cluster=~\"$KeeperCluster\"}, instance)",
         "hide": 0,
         "includeAll": true,
         "label": "Keeper Instance",
@@ -29323,7 +29323,7 @@
         "name": "KeeperInstance",
         "options": [],
         "query": {
-          "query": "label_values(ClickHouseAsyncMetrics_KeeperZnodeCount{cluster=~\"$KeeperCluster\"}, instance)",
+          "query": "label_values(ClickHouseAsyncMetrics_KeeperZnodeCount{cluster=~\"$cluster\", cluster=~\"$KeeperCluster\"}, instance)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,

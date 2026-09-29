@@ -52,15 +52,15 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(jvm_thread_count{job=\"neo4j\"}, cluster)",
+        "definition": "label_values(up, cluster)",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Cluster",
-        "multi": false,
+        "multi": true,
         "name": "cluster",
         "options": [],
         "query": {
-          "query": "label_values(jvm_thread_count{job=\"neo4j\"}, cluster)",
+          "query": "label_values(up, cluster)",
           "refId": "A"
         },
         "refresh": 2,

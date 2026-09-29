@@ -66,7 +66,7 @@
         "includeAll": true,
         "query": {
           "qryType": 1,
-          "query": "label_values(traces_spanmetrics_calls_total, cluster)",
+          "query": "label_values(up, cluster)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "sort": 1

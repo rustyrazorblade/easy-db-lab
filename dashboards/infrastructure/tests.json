@@ -476,7 +476,7 @@
     ]
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-180d",
     "to": "now"
   },
   "timepicker": {},

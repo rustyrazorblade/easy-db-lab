@@ -52,15 +52,15 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(memcached_up{job=\"memcached\"}, cluster)",
+        "definition": "label_values(up, cluster)",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Cluster",
-        "multi": false,
+        "multi": true,
         "name": "cluster",
         "options": [],
         "query": {
-          "query": "label_values(memcached_up{job=\"memcached\"}, cluster)",
+          "query": "label_values(up, cluster)",
           "refId": "A"
         },
         "refresh": 2,

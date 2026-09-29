@@ -28,11 +28,11 @@
         "name": "cluster",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-        "definition": "label_values(TotalNodes, cluster)",
-        "query": "label_values(TotalNodes, cluster)",
+        "definition": "label_values(up, cluster)",
+        "query": "label_values(up, cluster)",
         "refresh": 2,
-        "includeAll": false,
-        "multi": false,
+        "includeAll": true,
+        "multi": true,
         "sort": 1
       }
     ]

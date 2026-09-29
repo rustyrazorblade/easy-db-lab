@@ -4845,7 +4845,7 @@
         "multi": true,
         "name": "cluster",
         "options": [],
-        "query": "label_values(cassandra_storage_load_bytes, cluster)",
+        "query": "label_values(up, cluster)",
         "refresh": 2,
         "regex": "",
         "sort": 0,

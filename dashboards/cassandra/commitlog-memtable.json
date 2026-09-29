@@ -1051,7 +1051,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(cassandra_storage_load_bytes, cluster)",
+        "definition": "label_values(up, cluster)",
         "description": "Cluster scoping. Every panel filters on this so a second cluster writing to the same metrics store cannot blend into the graphs.",
         "hide": 0,
         "includeAll": true,
@@ -1061,7 +1061,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(cassandra_storage_load_bytes, cluster)",
+          "query": "label_values(up, cluster)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

@@ -1177,7 +1177,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(up{job=\"cilium-agent\"}, cluster)",
+        "definition": "label_values(up, cluster)",
         "hide": 0,
         "includeAll": true,
         "allValue": ".*",
@@ -1187,7 +1187,7 @@
         "options": [],
         "query": {
           "qryType": 1,
-          "query": "label_values(up{job=\"cilium-agent\"}, cluster)",
+          "query": "label_values(up, cluster)",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

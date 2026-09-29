@@ -22,14 +22,14 @@
       {
         "current": {},
         "datasource": {"type": "prometheus", "uid": "${metrics_datasource}"},
-        "definition": "label_values(kafka_brokers, cluster)",
+        "definition": "label_values(up, cluster)",
         "hide": 0,
-        "includeAll": false,
+        "includeAll": true,
         "label": "Cluster",
-        "multi": false,
+        "multi": true,
         "name": "cluster",
         "options": [],
-        "query": {"query": "label_values(kafka_brokers, cluster)", "refId": "A"},
+        "query": {"query": "label_values(up, cluster)", "refId": "A"},
         "refresh": 2,
         "sort": 1,
         "type": "query"

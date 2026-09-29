@@ -283,6 +283,27 @@ processors:
       resource_attributes:
         host.name:
           enabled: true
+  # An EMR node's collector sends its own host.name (and node_role spark-master or spark-worker)
+  # over OTLP to this collector. resource_detection overwrites host.name with this node's, which is
+  # right for a JVM in a pod (it reports the pod's name) and wrong for EMR: every Spark master and
+  # worker arrived as host_name="control0", collided with the real control node, and made the
+  # host-joined panels fail with "found duplicate series". metrics/otlp sets the EMR host aside
+  # before resource_detection and puts it back after.
+  transform/keep_emr_host:
+    # Fail fast: since the rename the transform processor ignores statement errors by default.
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["easydblab.emr_host_name"], attributes["host.name"]) where IsMatch(attributes["node_role"], "^spark-(master|worker)$")
+  transform/restore_emr_host:
+    # Fail fast: since the rename the transform processor ignores statement errors by default.
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["host.name"], attributes["easydblab.emr_host_name"]) where attributes["easydblab.emr_host_name"] != nil
+          - delete_key(attributes, "easydblab.emr_host_name")
   # Copy k8s.app.instance resource attribute to a log-level service attribute so
   # container logs share the same service field as journald logs.
   transform/add_service:
@@ -629,10 +650,12 @@ service:
       exporters: [prometheus_remote_write]
     # OTLP metrics — the Cassandra JVM agent, the stress sidecar, Spark nodes. resource/cluster
     # stamps the cluster label to match local metrics; resource/drop_sdk_metadata removes the SDK's
-    # default resource, which would otherwise ride along as fifteen labels per series.
+    # default resource, which would otherwise ride along as fifteen labels per series. The EMR
+    # nodes' host.name survives resource_detection through transform/keep_emr_host and
+    # transform/restore_emr_host.
     metrics/otlp:
       receivers: [otlp]
-      processors: [resource/cluster, resource_detection, resource/drop_sdk_metadata, batch]
+      processors: [resource/cluster, transform/keep_emr_host, resource_detection, transform/restore_emr_host, resource/drop_sdk_metadata, batch]
       exporters: [prometheus_remote_write]
     # Host log files: system logs, tool-runner output and the Cassandra JVM GC log. Cassandra's
     # application logs are not here; they arrive once, over OTLP, in logs/otlp.

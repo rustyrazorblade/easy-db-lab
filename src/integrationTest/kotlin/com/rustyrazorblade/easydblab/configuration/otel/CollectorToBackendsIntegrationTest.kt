@@ -57,6 +57,8 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         val POLL: Duration = Duration.ofSeconds(2)
         const val LOG_LINES = 20
         const val COMPONENT_ID_LENGTH = 30
+        const val CONTROL_HOST = "control0"
+        const val EMR_HOST = "ip-10-0-0-5"
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -133,6 +135,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
             .withCopyToContainer(Transferable.of(""), "${OtelManifestBuilder.HOST_ROOT_MOUNT_PATH}/.keep")
             .withCopyToContainer(Transferable.of("placeholder"), "$SA_DIR/token")
             .withCopyToContainer(Transferable.of("default"), "$SA_DIR/namespace")
+            .withCreateContainerCmdModifier { it.withHostName(CONTROL_HOST) }
             .withEnv("HOSTNAME", "node0")
             .withEnv("CLUSTER_NAME", CLUSTER)
             .withEnv("TENANT", TENANT)
@@ -155,6 +158,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
                 .replace("__CONTROL_NODE_IP__", bridgeAddress(control))
                 .replace("__NODE_ROLE__", "spark-master")
         return GenericContainer("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}")
+            .withCreateContainerCmdModifier { it.withHostName(EMR_HOST) }
             .withCopyToContainer(Transferable.of(config), "/etc/otel-collector-config.yaml")
             .withCommand("--config=/etc/otel-collector-config.yaml")
             .withExposedPorts(Constants.K8s.OTEL_HTTP_PORT, Constants.K8s.OTEL_HEALTH_PORT)
@@ -293,5 +297,43 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
         assertThat(labelsOf(step, "stream")).containsEntry("cluster", CLUSTER).containsEntry("source", "emr")
         assertThat(lokiStreams(loki, LogQl.logsQuery(CLUSTER, source = "emr"))).isNotEmpty()
         assertThat(lokiStreams(loki, LogQl.sparkStep(CLUSTER, "OtherJob"))).isEmpty()
+    }
+
+    /**
+     * An EMR node's metrics keep the EMR node's host name through the cluster's collector, while
+     * an OTLP producer on a cluster node (a JVM in a pod reports its pod name) is still stamped
+     * with the node's. Before, every Spark master and worker arrived as `host_name="control0"`,
+     * collided with the real control node and failed System Overview's Filesystem Usage with
+     * "found duplicate series".
+     */
+    @Test
+    fun `an EMR node's metrics keep its host name, and a cluster producer's get the node's`() {
+        val (mimir, loki) = startBackends()
+        val control = startCollector(mimir, loki)
+        val emr = startEmrCollector(control)
+        val nanos = System.currentTimeMillis() * 1_000_000
+
+        fun probe(
+            name: String,
+            hostName: String,
+        ) = """
+            {"resourceMetrics":[{"resource":{"attributes":[{"key":"host.name","value":{"stringValue":"$hostName"}}]},
+             "scopeMetrics":[{"metrics":[{"name":"$name","gauge":{"dataPoints":[{"asDouble":1,"timeUnixNano":"$nanos"}]}}]}]}]}
+            """.trimIndent()
+        post(emr, "/v1/metrics", probe("edl_emr_host_probe", "set-by-the-spark-jvm"))
+        post(control, "/v1/metrics", probe("edl_pod_host_probe", "stress-pod-7d9f"))
+
+        val mimirUrl = ObservabilityBackends.baseUrl(mimir, Constants.K8s.MIMIR_HTTP_PORT)
+
+        fun series(name: String) =
+            await(control) {
+                results(ObservabilityBackends.get("$mimirUrl/prometheus/api/v1/query?query=$name", TENANT).body()).firstOrNull()
+            }
+        assertThat(labelsOf(series("edl_emr_host_probe"), "metric"))
+            .containsEntry("host_name", EMR_HOST)
+            .containsEntry("node_role", "spark-master")
+            .containsEntry("cluster", CLUSTER)
+            .doesNotContainKey("easydblab_emr_host_name")
+        assertThat(labelsOf(series("edl_pod_host_probe"), "metric")).containsEntry("host_name", CONTROL_HOST)
     }
 }

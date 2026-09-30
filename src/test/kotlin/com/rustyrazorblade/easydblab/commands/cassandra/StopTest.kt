@@ -105,7 +105,7 @@ class StopTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a stop of some db nodes leaves the sidecar DaemonSet running for the others`() {
+    fun `a stop of some db nodes leaves the sidecar, the running workload and the kit hooks to the nodes still running`() {
         val command = Stop()
         command.hosts.hostList = "db0"
         command.execute()
@@ -113,16 +113,20 @@ class StopTest : BaseKoinTest() {
         verify(mockCassandraService).stop(testCassandraHost.toHost())
         verify(mockCassandraService, never()).stop(secondCassandraHost.toHost())
         verify(mockSidecarService, never()).undeploy(any())
+        verify(mockClusterStateManager, never()).removeRunningWorkload(any())
+        verify(mockKitHookExecutor, never()).firePostKitStop(any())
         assertThat(outputHandler.messages.joinToString("\n")).contains("cassandra-sidecar keeps running").contains("db1")
     }
 
     @Test
-    fun `a stop that names every db node removes the sidecar DaemonSet`() {
+    fun `a stop that names every db node removes the sidecar, clears the running workload and fires the stop hooks`() {
         val command = Stop()
         command.hosts.hostList = "db0,db1"
         command.execute()
 
         verify(mockSidecarService).undeploy(testControlHost)
+        verify(mockClusterStateManager).removeRunningWorkload("cassandra")
+        verify(mockKitHookExecutor).firePostKitStop("cassandra")
     }
 
     @Test

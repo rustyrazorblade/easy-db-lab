@@ -85,6 +85,7 @@ class CompactorTaskIntegrationTest {
         val STARTUP: Duration = Duration.ofMinutes(3)
         val COMPACTION: Duration = Duration.ofMinutes(8)
         val POLL: Duration = Duration.ofSeconds(3)
+        val READY_REQUEST_TIMEOUT: Duration = Duration.ofSeconds(5)
         const val FIRST_LEVEL_WAIT_OFF = "-compactor.first-level-compaction-wait-period=0"
         val HTTP_PORT_FLAG = Regex("""-server\.http-listen-port=(\d+)""")
     }
@@ -244,8 +245,17 @@ class CompactorTaskIntegrationTest {
     ): Int {
         val deadline = System.nanoTime() + within.toNanos()
         var status = -1
+        // Each look has its own timeout. The shared client has none, so one look sent before the
+        // container listened could hang on Docker's port proxy past the deadline, and no later look ran.
+        val request =
+            HttpRequest
+                .newBuilder(URI(url))
+                .header(Constants.Observability.TENANT_HEADER, TENANT)
+                .timeout(READY_REQUEST_TIMEOUT)
+                .GET()
+                .build()
         while (status != 200 && System.nanoTime() < deadline) {
-            status = runCatching { ObservabilityBackends.get(url, TENANT).statusCode() }.getOrDefault(-1)
+            status = runCatching { ObservabilityBackends.send(request).statusCode() }.getOrDefault(-1)
             if (status != 200) Thread.sleep(POLL.toMillis())
         }
         return status

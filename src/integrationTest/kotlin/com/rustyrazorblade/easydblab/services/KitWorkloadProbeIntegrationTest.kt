@@ -13,6 +13,8 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.fabric8.kubernetes.client.dsl.base.PatchContext
+import io.fabric8.kubernetes.client.dsl.base.PatchType
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -211,7 +213,9 @@ class KitWorkloadProbeIntegrationTest {
             .pods()
             .inNamespace("default")
             .withName("draining-0")
-            .edit { pod -> pod.apply { metadata.finalizers = emptyList() } }
+            // A JSON patch, not edit(): the kubelet updates the terminating pod's status, and edit()
+            // sends the resourceVersion it read, so it fails with 409 Conflict when that races.
+            .patch(PatchContext.of(PatchType.JSON), """[{"op": "remove", "path": "/metadata/finalizers"}]""")
 
         awaitGone("draining")
     }

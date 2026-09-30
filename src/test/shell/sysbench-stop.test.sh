@@ -37,6 +37,8 @@ setup() {
 printf '%s\n' "\$*" >> "${WORK}/kubectl.calls"
 case " \$* " in
   *" get pod "*) printf '%s' "\${STUB_PHASE}" ;;
+  *" logs "*) echo "FATAL: stub cleanup log" ;;
+  *" describe pod "*) echo "Events: stub ErrImagePull" ;;
   *" wait "*) [ "\${STUB_PHASE}" = Succeeded ] || { echo "error: timed out waiting for the condition" >&2; exit 1; } ;;
 esac
 exit 0
@@ -64,7 +66,19 @@ test_a_gone_target_still_stops_and_removes_the_cleanup_pod() {
   setup
   run_script Failed || { fail "stop exited non-zero with the target gone: $(cat "${WORK}/out.txt")"; return; }
   deletes_cleanup_pods || fail "the failed cleanup pod was left: $(cat "${WORK}/kubectl.calls")"
-  grep -q 'tables were left' "${WORK}/out.txt" || fail "stop did not say the tables were left: $(cat "${WORK}/out.txt")"
+  grep -q 'cleanup ended Failed; the sbtest tables were left' "${WORK}/out.txt" || fail "stop did not say the tables were left: $(cat "${WORK}/out.txt")"
+  grep -q 'FATAL: stub cleanup log' "${WORK}/out.txt" || fail "stop did not print the failed cleanup pod's log: $(cat "${WORK}/out.txt")"
+  [ "$(grep -n 'logs ' "${WORK}/kubectl.calls" | head -1 | cut -d: -f1)" -lt "$(grep -n 'role=sysbench-cleanup' "${WORK}/kubectl.calls" | tail -1 | cut -d: -f1)" ] ||
+    fail "the log was not read before the pod was deleted: $(cat "${WORK}/kubectl.calls")"
+}
+
+test_a_cleanup_pod_that_never_starts_is_described_and_removed() {
+  tests_run=$((tests_run + 1))
+  setup
+  run_script Pending || { fail "stop exited non-zero with the cleanup pod pending: $(cat "${WORK}/out.txt")"; return; }
+  deletes_cleanup_pods || fail "the pending cleanup pod was left: $(cat "${WORK}/kubectl.calls")"
+  grep -q 'Events: stub ErrImagePull' "${WORK}/out.txt" || fail "stop did not describe the pending pod: $(cat "${WORK}/out.txt")"
+  grep -q 'cleanup ended Pending; the sbtest tables were left' "${WORK}/out.txt" || fail "no neutral message: $(cat "${WORK}/out.txt")"
 }
 
 test_a_live_target_drops_the_tables_and_removes_the_cleanup_pod() {
@@ -77,6 +91,7 @@ test_a_live_target_drops_the_tables_and_removes_the_cleanup_pod() {
 
 test_a_gone_target_still_stops_and_removes_the_cleanup_pod
 test_a_live_target_drops_the_tables_and_removes_the_cleanup_pod
+test_a_cleanup_pod_that_never_starts_is_described_and_removed
 
 echo "${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

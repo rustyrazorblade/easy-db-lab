@@ -52,11 +52,21 @@ for _ in $(seq 1 60); do
   sleep 5
 done
 
+# A cleanup that did not succeed says why before its pod goes: the pod's log when it ran (a gone
+# target, wrong credentials, a missing database), its events when it never started (an image pull).
+if [ "${PHASE}" != "Succeeded" ]; then
+  if [ "${PHASE}" = "Failed" ]; then
+    kubectl --kubeconfig="${KUBECONFIG}" logs "${CLEANUP_POD}" >&2 || true
+  else
+    kubectl --kubeconfig="${KUBECONFIG}" describe pod "${CLEANUP_POD}" >&2 || true
+  fi
+fi
+
 kubectl --kubeconfig="${KUBECONFIG}" delete pods \
   -l "${CLEANUP_LABELS}" --ignore-not-found
 
 if [ "${PHASE}" = "Succeeded" ]; then
   echo "Sysbench stopped and data cleaned up."
 else
-  echo "Sysbench stopped. The target database did not answer (cleanup ${PHASE:-did not finish}), so its sbtest tables were left." >&2
+  echo "Sysbench stopped. The cleanup ended ${PHASE:-without a phase}; the sbtest tables were left." >&2
 fi

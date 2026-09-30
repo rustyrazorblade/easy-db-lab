@@ -3531,7 +3531,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (cluster, cassandra_build, host_name) (jvm_memory_limit_bytes{cluster=~\"$cluster\", job=\"cassandra\", jvm_memory_type=\"heap\"})",
+          "expr": "label_replace(max by (cluster, cassandra_build, host_name) (jvm_memory_limit_bytes{cluster=~\"$cluster\", job=\"cassandra\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "range": false,
@@ -3625,7 +3625,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "sum by (cluster, cassandra_build, jvm_gc_name) (rate(jvm_gc_duration_seconds_count{cluster=~\"$cluster\", job=\"cassandra\"}[$__rate_interval]))",
+          "expr": "label_replace(sum by (cluster, cassandra_build, jvm_gc_name) (rate(jvm_gc_duration_seconds_count{cluster=~\"$cluster\", job=\"cassandra\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "range": false,

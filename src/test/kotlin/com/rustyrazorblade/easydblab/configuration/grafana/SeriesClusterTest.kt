@@ -176,6 +176,10 @@ class SeriesClusterTest {
             "cluster_name is not shown as Cluster",
         )
         assertThat(SeriesClusterGuards.tableProblems(parse("""{"type": "table", "targets": [{"expr": "up"}]}"""))).isEmpty()
+        val hidden = """[{"id": "organize", "options": {"excludeByName": {"cluster": true}}}]"""
+        assertThat(
+            SeriesClusterGuards.tableProblems(parse("""{"type": "table", "targets": [{"expr": "up"}], "transformations": $hidden}""")),
+        ).containsExactly("the cluster is hidden, but no query writes cluster_name")
     }
 
     @Test

@@ -213,9 +213,13 @@ object SeriesClusterGuards {
     fun tableProblems(panel: JsonObject): List<String> {
         if (panel.string("type") != TABLE) return emptyList()
         val targets = targets(panel)
-        if (targets.none { shortName.containsMatchIn(it.string("expr")) }) return emptyList()
         val options = transformations(panel).firstOrNull { it.string("id") == "organize" }?.get("options") as? JsonObject
         val excluded = (options?.get("excludeByName") as? JsonObject).orEmpty()
+        if (targets.none { shortName.containsMatchIn(it.string("expr")) }) {
+            // Hiding the long cluster with no short one written leaves the table with no Cluster column.
+            val hidesCluster = listOf(CLUSTER, "$CLUSTER 1").any { excluded.string(it) == "true" }
+            return listOfNotNull("the cluster is hidden, but no query writes cluster_name".takeIf { hidesCluster })
+        }
         val renamed = (options?.get("renameByName") as? JsonObject).orEmpty()
         val numbered = transformations(panel).any { it.string("id") in numberingTransformations }
         val frames = if (numbered && targets.size > 1) 1..targets.size else null

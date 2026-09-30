@@ -213,6 +213,15 @@ object SeriesClusterGuards {
     fun tableProblems(panel: JsonObject): List<String> {
         if (panel.string("type") != TABLE) return emptyList()
         val targets = targets(panel)
+
+        // Prometheus time-series frames carry their labels on the field, not as columns: combined,
+        // their values stack in one column and no row says which cluster or measure it holds.
+        fun isPrometheus(target: JsonObject) = ((target["datasource"] ?: panel["datasource"]) as? JsonObject)?.string("type") != "loki"
+        val timeSeries =
+            targets
+                .filter { targets.size > 1 && isPrometheus(it) && it.string("expr").isNotEmpty() && it.string("format") != "table" }
+                .map { "target ${it.string("refId")} is a time series, so its labels are no columns" }
+        if (timeSeries.isNotEmpty()) return timeSeries
         val options = transformations(panel).firstOrNull { it.string("id") == "organize" }?.get("options") as? JsonObject
         val excluded = (options?.get("excludeByName") as? JsonObject).orEmpty()
         if (targets.none { shortName.containsMatchIn(it.string("expr")) }) {

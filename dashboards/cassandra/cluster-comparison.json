@@ -1468,6 +1468,7 @@
           "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_count_total{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "Write ops/s",
           "refId": "A",
+          "format": "table",
           "instant": true
         },
         {
@@ -1475,6 +1476,7 @@
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "Write latency",
           "refId": "B",
+          "format": "table",
           "instant": true
         },
         {
@@ -1482,6 +1484,7 @@
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cassandra_operation=\"read\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "Read latency",
           "refId": "C",
+          "format": "table",
           "instant": true
         },
         {
@@ -1489,13 +1492,14 @@
           "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "Error rate",
           "refId": "D",
+          "format": "table",
           "instant": true
         }
       ],
       "title": "Cluster Summary",
       "transformations": [
         {"id": "merge", "options": {}},
-        {"id": "organize", "options": {"excludeByName": {"cluster": true}, "renameByName": {"cluster_name": "Cluster"}}}
+        {"id": "organize", "options": {"excludeByName": {"Time": true, "cluster": true}, "indexByName": {"cluster_name": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4}, "renameByName": {"cluster_name": "Cluster", "Value #A": "Write ops/s", "Value #B": "Write latency", "Value #C": "Read latency", "Value #D": "Error rate"}}}
       ],
       "type": "table"
     },
@@ -2199,6 +2203,7 @@
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_p50_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "p50",
           "refId": "A",
+          "format": "table",
           "instant": true
         },
         {
@@ -2206,6 +2211,7 @@
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_p99_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "p99",
           "refId": "B",
+          "format": "table",
           "instant": true
         },
         {
@@ -2213,6 +2219,7 @@
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_p999_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "p999",
           "refId": "C",
+          "format": "table",
           "instant": true
         },
         {
@@ -2220,13 +2227,14 @@
           "expr": "label_replace(max by (cluster) (cassandra_client_request_latency_max_microseconds{cassandra_operation=\"write\", cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "max",
           "refId": "D",
+          "format": "table",
           "instant": true
         }
       ],
       "title": "Latency Percentile Ladder (slowest node per cluster, ${latency_unit:text})",
       "transformations": [
         {"id": "merge", "options": {}},
-        {"id": "organize", "options": {"excludeByName": {"cluster": true}, "renameByName": {"cluster_name": "Cluster"}}}
+        {"id": "organize", "options": {"excludeByName": {"Time": true, "cluster": true}, "indexByName": {"cluster_name": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4}, "renameByName": {"cluster_name": "Cluster", "Value #A": "p50", "Value #B": "p99", "Value #C": "p999", "Value #D": "max"}}}
       ],
       "type": "table"
     },

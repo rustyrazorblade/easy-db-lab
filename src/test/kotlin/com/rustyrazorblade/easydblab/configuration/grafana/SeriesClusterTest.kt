@@ -180,6 +180,13 @@ class SeriesClusterTest {
         assertThat(
             SeriesClusterGuards.tableProblems(parse("""{"type": "table", "targets": [{"expr": "up"}], "transformations": $hidden}""")),
         ).containsExactly("the cluster is hidden, but no query writes cluster_name")
+        val merged = """[{"id": "merge", "options": {}}]"""
+        val twoSeries = """[{"refId": "A", "expr": "a"}, {"refId": "B", "expr": "b"}]"""
+        assertThat(SeriesClusterGuards.tableProblems(parse("""{"type": "table", "targets": $twoSeries, "transformations": $merged}""")))
+            .containsExactly(
+                "target A is a time series, so its labels are no columns",
+                "target B is a time series, so its labels are no columns",
+            )
     }
 
     @Test
@@ -221,7 +228,7 @@ class SeriesClusterTest {
             val renamed = """"renameByName": {"cluster_name 1": "Cluster"}"""
             val organize = """{"id": "organize", "options": {"excludeByName": {$excluded}, $renamed}}"""
             val join = """{"id": "seriesToColumns", "options": {"byField": "cluster_instance"}}"""
-            val list = List(targets) { """{"expr": $expr}""" }.joinToString(", ")
+            val list = List(targets) { """{"expr": $expr, "format": "table"}""" }.joinToString(", ")
             return parse("""{"type": "table", "targets": [$list], "transformations": [$join, $organize]}""")
         }
 

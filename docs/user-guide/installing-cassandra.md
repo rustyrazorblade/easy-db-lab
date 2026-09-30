@@ -171,6 +171,8 @@ curl http://<cassandra-node-ip>:9043/api/v1/__health
 
 ### Sidecar Management
 
+`cassandra start` deploys the sidecar to every db node, and `cassandra stop` removes it.  A stop limited with `--hosts` to some db nodes leaves the sidecar in place, because the other nodes still run the database.
+
 The sidecar is managed via systemd:
 
 ```bash

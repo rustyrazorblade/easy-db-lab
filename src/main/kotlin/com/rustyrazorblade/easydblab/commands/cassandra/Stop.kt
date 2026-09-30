@@ -43,7 +43,14 @@ class Stop : PicoBaseCommand() {
             cassandraService.stop(host.toHost()).getOrThrow()
         }
 
-        stopSidecar()
+        // The sidecar is one DaemonSet on every db node, so it goes only when every db node stops.
+        val stopped = hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList).toSet()
+        val running = clusterState.hosts[ServerType.Cassandra].orEmpty().filterNot { it in stopped }
+        if (running.isEmpty()) {
+            stopSidecar()
+        } else {
+            eventBus.emit(Event.Cassandra.SidecarKept(running.map { it.alias }))
+        }
         clusterStateManager.removeRunningWorkload("cassandra")
         kitHookExecutor.firePostKitStop("cassandra")
     }

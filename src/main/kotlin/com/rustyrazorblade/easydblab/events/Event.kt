@@ -126,6 +126,16 @@ sealed interface Event {
             override fun toDisplayString(): String = "cassandra-sidecar shutdown completed on Cassandra nodes"
         }
 
+        /** A stop of some db nodes left the sidecar DaemonSet in place for the [runningHosts] that still run the database. */
+        @Serializable
+        @SerialName("Cassandra.SidecarKept")
+        data class SidecarKept(
+            val runningHosts: List<String>,
+        ) : Cassandra {
+            override fun toDisplayString(): String =
+                "cassandra-sidecar keeps running: ${runningHosts.joinToString(", ")} still run the database"
+        }
+
         @Serializable
         @SerialName("Cassandra.RestartingAllNodes")
         data object RestartingAllNodes : Cassandra {

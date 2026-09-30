@@ -40,6 +40,9 @@ object SeriesClusterGuards {
     private val labelLists = setOf("by", "without", "on", "ignoring", "group_left", "group_right")
     private val grouping = setOf("by", "without")
     private val legendCluster = Regex("""\{\{\s*cluster_name\s*}}""")
+    private val rawCluster = Regex("""\{\{\s*cluster\s*}}""")
+    private val clusterNameFormat =
+        Regex("""label_format\s+cluster_name\s*=\s*`\{\{\s*regexReplaceAll\s+"([^"]*)"\s+\.cluster\s+"([^"]*)"\s*}}`""")
     private val shortName = Regex(""""cluster_name"\s*,\s*"\$1"\s*,\s*"cluster"""")
     private val clusterVariable = Regex("""cluster\s*=~?\s*"\$\{?cluster\b""")
     private val sideVariable = Regex("""\$\{?(baseline_cluster|candidate_cluster)\b""")
@@ -189,7 +192,7 @@ object SeriesClusterGuards {
         return when {
             logLines || query.language == Language.PROFILES || query.panelType == TABLE -> emptyList()
             !legendCluster.containsMatchIn(legend) -> listOf("legend '$legend' does not show the cluster by its short name")
-            "cluster_name" in legend && !shortName.containsMatchIn(query.text) ->
+            "cluster_name" in legend && !writesClusterName(query.text) ->
                 listOf("legend '$legend' reads cluster_name, which the query does not write")
             else -> emptyList()
         }
@@ -265,19 +268,26 @@ object SeriesClusterGuards {
             }
 
     /**
-     * The short name each `label_replace` of [query] that writes `cluster_name` from `cluster` gives
-     * two clusters that share a name, one list per write. PromQL anchors the regex, and a
-     * regex that does not match writes no label, which reads as an empty name.
+     * The short name each `cluster_name` write of [query] gives two clusters that share a name, one
+     * list per write. PromQL's `label_replace` anchors its regex, and a regex that does not match
+     * writes no label, which reads as an empty name; LogQL's `regexReplaceAll` does not anchor.
      */
     fun shortNames(query: String): List<List<String>> =
-        clusterNameWrites(query).map { call ->
-            val regex = runCatching { Regex(call.args[REGEX]) }.getOrNull()
+        clusterNameWrites(query).map { write ->
+            val regex = runCatching { Regex(write.regex) }.getOrNull()
             sameNamed.map { cluster ->
-                regex
-                    ?.matchEntire(cluster)
-                    ?.let { match ->
-                        call.args[2].replace(Regex("""\$(\d+)""")) { match.groupValues.getOrElse(it.groupValues[1].toInt()) { "" } }
-                    }.orEmpty()
+                val match = if (write.anchored) regex?.matchEntire(cluster) else regex?.find(cluster)
+                val name =
+                    match?.let {
+                        write.replacement.replace(
+                            Regex("""\$(\d+)"""),
+                        ) { ref -> it.groupValues.getOrElse(ref.groupValues[1].toInt()) { "" } }
+                    }
+                when {
+                    match == null && write.anchored -> ""
+                    match == null -> cluster
+                    else -> cluster.replaceRange(match.range, name.orEmpty())
+                }
             }
         }
 
@@ -287,14 +297,43 @@ object SeriesClusterGuards {
      * characters of the id: `(.+-[0-9a-f]{8})-[0-9a-f]{4}-...`.
      */
     fun sharedShortName(query: String): List<String> =
-        clusterNameWrites(query).zip(shortNames(query)).mapNotNull { (call, names) ->
-            "cluster_name from '${call.args[REGEX]}' names two clusters called test '${names.first()}'".takeIf {
+        clusterNameWrites(query).zip(shortNames(query)).mapNotNull { (write, names) ->
+            "cluster_name from '${write.regex}' names two clusters called test '${names.first()}'".takeIf {
                 names.distinct().size == 1
             }
         }
 
-    private fun clusterNameWrites(query: String): List<LabelCall> =
-        labelCalls(query).filter { !it.join && it.args.size > REGEX && it.args[1] == CLUSTER_NAME && it.args[SOURCES] == CLUSTER }
+    /** Whether [query] writes `cluster_name` from `cluster`, with PromQL's `label_replace` or LogQL's `label_format`. */
+    private fun writesClusterName(query: String): Boolean = shortName.containsMatchIn(query) || clusterNameFormat.containsMatchIn(query)
+
+    /** A write of `cluster_name` from `cluster`: the [regex], what replaces its match, and whether the regex is anchored. */
+    private data class ShortNameWrite(
+        val regex: String,
+        val replacement: String,
+        val anchored: Boolean,
+    )
+
+    private fun clusterNameWrites(query: String): List<ShortNameWrite> =
+        labelCalls(query)
+            .filter { !it.join && it.args.size > REGEX && it.args[1] == CLUSTER_NAME && it.args[SOURCES] == CLUSTER }
+            .map { ShortNameWrite(it.args[REGEX], it.args[2], anchored = true) } +
+            clusterNameFormat.findAll(query).map { ShortNameWrite(it.groupValues[1], it.groupValues[2], anchored = false) }
+
+    /**
+     * Why an annotation's title hides the cluster's short name: a raw `{{cluster}}` shows the whole
+     * `<name>-<uuid>`, and `{{cluster_name}}` needs the query to write it. [title] is the
+     * annotation's `titleFormat`, and [query] its `expr`.
+     */
+    fun annotationTitleProblems(
+        title: String,
+        query: String,
+    ): List<String> =
+        when {
+            rawCluster.containsMatchIn(title) -> listOf("title '$title' shows the whole cluster, not its short name")
+            legendCluster.containsMatchIn(title) && !writesClusterName(query) ->
+                listOf("title '$title' reads cluster_name, which the query does not write")
+            else -> emptyList()
+        }
 
     /** A `label_join` or `label_replace` call, with its arguments unquoted. */
     private data class LabelCall(

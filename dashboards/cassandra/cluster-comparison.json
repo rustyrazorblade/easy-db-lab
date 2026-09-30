@@ -7,14 +7,14 @@
           "uid": "${logs_datasource}"
         },
         "enable": true,
-        "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\"",
+        "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\" | label_format cluster_name=`{{regexReplaceAll \"^(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$\" .cluster \"$1\"}}`",
         "hide": false,
         "iconColor": "green",
         "instant": false,
         "name": "easy-db-lab markers",
         "tagKeys": "tags",
         "textFormat": "",
-        "titleFormat": "{{cluster}}"
+        "titleFormat": "{{cluster_name}}"
       }
     ]
   },

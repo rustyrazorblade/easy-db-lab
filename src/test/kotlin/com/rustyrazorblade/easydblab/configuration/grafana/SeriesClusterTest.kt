@@ -270,6 +270,39 @@ class SeriesClusterTest {
     }
 
     @Test
+    fun `an annotation title shows the short cluster name that its query writes`() {
+        val stream = """{source="annotation", cluster=~"${'$'}{cluster:regex}"}"""
+        val formatted =
+            "$stream | label_format cluster_name=`{{regexReplaceAll \"^(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$\" .cluster \"${'$'}1\"}}`"
+
+        assertThat(SeriesClusterGuards.annotationTitleProblems("{{cluster}}", formatted))
+            .containsExactly("title '{{cluster}}' shows the whole cluster, not its short name")
+        assertThat(SeriesClusterGuards.annotationTitleProblems("{{cluster_name}}", stream))
+            .containsExactly("title '{{cluster_name}}' reads cluster_name, which the query does not write")
+        assertThat(SeriesClusterGuards.annotationTitleProblems("{{cluster_name}}", formatted)).isEmpty()
+        assertThat(SeriesClusterGuards.shortNames(formatted)).containsExactly(listOf("test-1a2b3c4d", "test-5e6f7a8b"))
+    }
+
+    @Test
+    fun `every annotation title shows the cluster by its short name`() {
+        val problems =
+            DashboardFiles.all().flatMap { file ->
+                ((parse(file.readText())["annotations"] as? JsonObject)?.get("list") as? JsonArray)
+                    .orEmpty()
+                    .filterIsInstance<JsonObject>()
+                    .flatMap { annotation ->
+                        val format = (annotation["titleFormat"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                        val query = (annotation["expr"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                        SeriesClusterGuards.annotationTitleProblems(format, query).map {
+                            "${file.path} annotation '${(annotation["name"] as? JsonPrimitive)?.contentOrNull}': $it"
+                        }
+                    }
+            }
+
+        assertThat(problems).isEmpty()
+    }
+
+    @Test
     fun `every short cluster name keeps two clusters of one name apart`() {
         val problems =
             DashboardFiles.all().flatMap { file ->

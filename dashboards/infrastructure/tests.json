@@ -360,7 +360,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "label_values(up, cluster)",
+        "definition": "query_result(count by (cluster) (last_over_time(up[$lookback])))",
         "description": "The selected test, whose documents the Documents panel shows. A row's Show documents link selects it.",
         "hide": 0,
         "includeAll": false,
@@ -369,12 +369,12 @@
         "name": "cluster",
         "options": [],
         "query": {
-          "qryType": 1,
-          "query": "label_values(up, cluster)",
+          "qryType": 3,
+          "query": "query_result(count by (cluster) (last_over_time(up[$lookback])))",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
-        "regex": "",
+        "regex": "/cluster=\"([^\"]+)\"/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
@@ -476,7 +476,7 @@
     ]
   },
   "time": {
-    "from": "now-180d",
+    "from": "now-24h",
     "to": "now"
   },
   "timepicker": {},

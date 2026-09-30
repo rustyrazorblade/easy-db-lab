@@ -15,8 +15,8 @@ import java.io.File
 /**
  * Every `cluster` variable lists the clusters of the tenant the Metrics picker selects the same way:
  * `label_values(up, cluster)` on `${metrics_datasource}`, multi-select with "All". The Tests dashboard
- * selects one test, so its `cluster` is single-select; it lists over its default time range, which
- * therefore equals the default `lookback` of its test listing.
+ * selects one test, so its `cluster` is single-select, and it lists the clusters over `lookback`, as
+ * its test listing does, so a 24-hour default range still offers every test.
  */
 class ClusterVariableTest {
     private val clusterQuery = "label_values(up, cluster)"
@@ -50,7 +50,7 @@ class ClusterVariableTest {
 
     @Test
     fun `every cluster variable reads the metrics picker with label_values of up`() {
-        val clusters = clusterVariables()
+        val clusters = clusterVariables().filterNot { (_, pair) -> pair.first.string("uid") == TESTS_UID }
         assertThat(clusters).isNotEmpty()
 
         val wrong =
@@ -81,21 +81,23 @@ class ClusterVariableTest {
         assertThat(wrong).isEmpty()
     }
 
+    /**
+     * The Tests dashboard opens on the last 24 hours: at 180 days Grafana sent the markers annotation
+     * as 180 one-day Loki requests in a row. Its listing and its `cluster` variable both read over
+     * `lookback`, so the short range still lists and offers every test.
+     */
     @Test
-    fun `the Tests dashboard selects one test and lists over its default lookback`() {
+    fun `the Tests dashboard opens on 24 hours and selects one test from those within lookback`() {
         val tests = parse(File("dashboards/infrastructure/tests.json"))
-        val variables = variables(tests).associateBy { it.string("name") }
-        val cluster = variables.getValue("cluster")
-        val lookback =
-            variables
-                .getValue("lookback")
-                .getValue("current")
-                .jsonObject
-                .string("value")
+        val cluster = variables(tests).single { it.string("name") == "cluster" }
 
         assertThat(cluster.string("multi")).isEqualTo("false")
         assertThat(cluster.string("includeAll")).isEqualTo("false")
-        assertThat(tests.getValue("time").jsonObject.string("from")).isEqualTo("now-$lookback")
+        assertThat(cluster["datasource"]?.jsonObject?.string("uid")).isEqualTo("\${metrics_datasource}")
+        assertThat(queryOf(cluster)).isEqualTo(TESTS_CLUSTER_QUERY)
+        assertThat(cluster.string("definition")).isEqualTo(TESTS_CLUSTER_QUERY)
+        assertThat(cluster.string("regex")).isEqualTo(TESTS_CLUSTER_REGEX)
+        assertThat(tests.getValue("time").jsonObject.string("from")).isEqualTo("now-24h")
         assertThat(tests.getValue("time").jsonObject.string("to")).isEqualTo("now")
     }
 
@@ -125,5 +127,7 @@ class ClusterVariableTest {
 
     private companion object {
         const val TESTS_UID = "tests"
+        const val TESTS_CLUSTER_QUERY = "query_result(count by (cluster) (last_over_time(up[\$lookback])))"
+        const val TESTS_CLUSTER_REGEX = """/cluster="([^"]+)"/"""
     }
 }

@@ -21,7 +21,7 @@ A dashboard with a `cluster` variable opens on the current cluster, so it shows 
 
 ### Tests
 
-The **Tests** dashboard (Infrastructure folder) lists every test (cluster) of the tenant the Metrics picker selects, with its start, end and duration: its first and last `up` sample within **Lookback** (default 180 days).  The dashboard opens on the same 180 days.  Torn-down clusters are listed too. Click a cluster for:
+The **Tests** dashboard (Infrastructure folder) lists every test (cluster) of the tenant the Metrics picker selects, with its start, end and duration: its first and last `up` sample within **Lookback** (default 180 days).  The dashboard opens on the last 24 hours; the list and the **Test** picker still cover the whole **Lookback**.  Torn-down clusters are listed too. Click a cluster for:
 
 - **System Overview** or **Cassandra Overview**, opened on that test's window;
 - **Compare with the current cluster**, which opens Cluster Comparison with that test as the baseline and the current cluster as the candidate;

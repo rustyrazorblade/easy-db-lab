@@ -476,7 +476,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} / on (cluster, host_name) system_cpu_logical_count{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(max by (cluster, host_name) (system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) / on (cluster, host_name) max by (cluster, host_name) (system_cpu_logical_count{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }

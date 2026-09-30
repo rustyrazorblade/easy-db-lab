@@ -99,6 +99,8 @@ class MimirManifestBuilderTest : BaseKoinTest() {
             ).describedAs(cache).isEqualTo(memcached)
         }
         assertThat(scalarAt(yaml, "frontend", "cache_results")).isEqualTo("true")
+        // At the 7-day default a result cached while the compactor lagged kept its gap for days.
+        assertThat(scalarAt(yaml, "limits", "results_cache_ttl")).isEqualTo("1h")
         assertThat(scalarAt(yaml, "frontend", "results_cache", "backend")).isEqualTo("memcached")
         assertThat(scalarAt(yaml, "frontend", "results_cache", "memcached", "addresses")).isEqualTo(memcached)
         assertThat(scalarAt(yaml, "blocks_storage", "s3", "http", "idle_conn_timeout")).isEqualTo("10m")

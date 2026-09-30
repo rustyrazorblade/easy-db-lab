@@ -48,8 +48,8 @@ object SeriesClusterGuards {
     private val sideVariable = Regex("""\$\{?(baseline_cluster|candidate_cluster)\b""")
     private val labelFunction = Regex("""\blabel_(join|replace)\s*\(""")
     private val vectorFallback = Regex("""\bor\s+vector\s*\(""")
-    private val joinTransformations = setOf("seriesToColumns", "joinByField")
-    private val numberingTransformations = joinTransformations + "concatenate"
+    private val joinTransformations = setOf("seriesToColumns", "joinByField", "concatenate")
+    private val numberingTransformations = joinTransformations
 
     /**
      * The queries that read one cluster, or every cluster, on purpose: the variables that list
@@ -234,7 +234,7 @@ object SeriesClusterGuards {
     }
 
     /**
-     * Each join of a [panel] (`seriesToColumns` or `joinByField`) whose key does not hold the
+     * Each join of a [panel] (`seriesToColumns`, `joinByField`, or `concatenate`, which pairs rows by position and has no key) whose key does not hold the
      * cluster. Every cluster names its hosts and pods the same way, so a join on `instance` alone
      * puts one cluster's row beside another's. The key is a label that joins the cluster to the
      * instance, such as `cluster_instance`. Every target writes it with `label_join` or

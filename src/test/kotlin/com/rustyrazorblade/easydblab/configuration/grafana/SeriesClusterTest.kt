@@ -235,6 +235,8 @@ class SeriesClusterTest {
             .containsExactly("seriesToColumns joins on 'instance', which does not hold the cluster")
         assertThat(SeriesClusterGuards.joinProblems(joined("cluster_instance"))).isEmpty()
         assertThat(SeriesClusterGuards.joinProblems(parse("""{"transformations": [{"id": "merge", "options": {}}]}"""))).isEmpty()
+        assertThat(SeriesClusterGuards.joinProblems(parse("""{"transformations": [{"id": "concatenate", "options": {}}]}""")))
+            .containsExactly("concatenate joins on '', which does not hold the cluster")
     }
 
     @Test

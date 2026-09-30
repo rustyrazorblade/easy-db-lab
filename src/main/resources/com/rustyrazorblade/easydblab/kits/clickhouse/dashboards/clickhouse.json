@@ -900,7 +900,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(ClickHouseAsyncMetrics_DiskAvailable{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(  label_replace(ClickHouseAsyncMetrics_DiskAvailable{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance_disk\", \"/\", \"cluster\", \"instance\", \"disk\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -915,7 +915,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(ClickHouseAsyncMetrics_DiskUsed{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(  label_replace(ClickHouseAsyncMetrics_DiskUsed{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance_disk\", \"/\", \"cluster\", \"instance\", \"disk\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -930,7 +930,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(ClickHouseAsyncMetrics_DiskTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(  label_replace(ClickHouseAsyncMetrics_DiskTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance_disk\", \"/\", \"cluster\", \"instance\", \"disk\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -945,7 +945,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "  label_replace(ClickHouseAsyncMetrics_DiskUnreserved{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_join(  label_replace(ClickHouseAsyncMetrics_DiskUnreserved{cluster=~\"$cluster\", instance=~\"($Instance)\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\"), \"cluster_instance_disk\", \"/\", \"cluster\", \"instance\", \"disk\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -960,7 +960,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "label_replace((\n  ClickHouseAsyncMetrics_DiskTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"}\n  -\n  ClickHouseAsyncMetrics_DiskAvailable{cluster=~\"$cluster\", instance=~\"($Instance)\"}\n)\n/\nClickHouseAsyncMetrics_DiskTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"}\n* 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")\n",
+          "expr": "label_join(label_replace((\n  ClickHouseAsyncMetrics_DiskTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"}\n  -\n  ClickHouseAsyncMetrics_DiskAvailable{cluster=~\"$cluster\", instance=~\"($Instance)\"}\n)\n/\nClickHouseAsyncMetrics_DiskTotal{cluster=~\"$cluster\", instance=~\"($Instance)\"}\n* 100, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")\n, \"cluster_instance_disk\", \"/\", \"cluster\", \"instance\", \"disk\")",
           "format": "table",
           "hide": false,
           "instant": true,
@@ -972,17 +972,21 @@
       "title": "Disk Space Usage",
       "transformations": [
         {
-          "id": "concatenate",
+          "id": "seriesToColumns",
           "options": {
-            "frameNameLabel": "frame",
-            "frameNameMode": "field"
+            "byField": "cluster_instance_disk"
           }
         },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
-              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Time 5": true,
+              "cluster_instance_disk": true,
               "Value #C": false,
               "__name__ 1": true,
               "__name__ 2": true,

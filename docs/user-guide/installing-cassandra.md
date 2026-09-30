@@ -171,21 +171,26 @@ curl http://<cassandra-node-ip>:9043/api/v1/__health
 
 ### Sidecar Management
 
-`cassandra start` deploys the sidecar to every db node, and `cassandra stop` removes it.  A stop limited with `--hosts` to some db nodes leaves the sidecar in place, because the other nodes still run the database.
+The sidecar runs in K3s as the `cassandra-sidecar` DaemonSet, with one pod on each db node.  Each pod uses the host network, so the sidecar answers on the node's own IP.
 
-The sidecar is managed via systemd:
+`cassandra start` deploys the sidecar to every db node, and `cassandra stop` removes it.  A stop limited with `--hosts` to some db nodes leaves the sidecar in place, because the other nodes still run the database.  `cassandra restart` restarts the database, then restarts the sidecar pods one at a time.
+
+Use `kubectl` from the cluster workspace after `source env.sh` (see [Kubernetes](kubernetes.md)):
 
 ```bash
-# Check status
-ssh db0 sudo systemctl status cassandra-sidecar
+# See the sidecar pods and the node each one runs on
+kubectl get pods -l app.kubernetes.io/name=cassandra-sidecar -o wide
 
-# Restart
-ssh db0 sudo systemctl restart cassandra-sidecar
+# Read the sidecar logs
+kubectl logs -l app.kubernetes.io/name=cassandra-sidecar --tail=100
+
+# Restart the sidecar on every db node
+kubectl rollout restart daemonset/cassandra-sidecar
 ```
 
 ### Sidecar Configuration
 
-Configuration is located at `/etc/cassandra-sidecar/cassandra-sidecar.yaml` on each node. Key settings:
+The configuration is in the `cassandra-sidecar-config` ConfigMap.  When a pod starts, it writes the configuration to `/conf/sidecar.yaml` in the pod, with the node's IP filled in.  Key settings:
 
 - Cassandra connection details
 - Data directory paths

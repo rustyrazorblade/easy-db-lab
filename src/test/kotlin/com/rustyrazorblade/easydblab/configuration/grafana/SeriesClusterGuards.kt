@@ -42,6 +42,10 @@ object SeriesClusterGuards {
     private val legendCluster = Regex("""\{\{\s*cluster_name\s*}}""")
     private val rawCluster = Regex("""\{\{\s*cluster\s*}}""")
     private val hostName = Regex("""\{\{\s*host_name\s*}}""")
+    private val labelKeepingFirst = setOf("label_join", "sort", "sort_desc", "sort_by_label", "sort_by_label_desc")
+    private val labelKeepingSecond = setOf("topk", "bottomk")
+    private val byClause = Regex("""\bby\s*\(([^)]*)\)""")
+    private val zeroFallback = Regex("""\bor\s+0\s*\*\s*[a-z_]+\s+by\s*\(([^)]*)\)""")
     private val clusterNameFormat =
         Regex("""label_format\s+cluster_name\s*=\s*`\{\{\s*regexReplaceAll\s+"([^"]*)"\s+\.cluster\s+"([^"]*)"\s*}}`""")
     private val shortName = Regex(""""cluster_name"\s*,\s*"\$1"\s*,\s*"cluster"""")
@@ -306,7 +310,34 @@ object SeriesClusterGuards {
         }
 
     /** Whether [query] writes `cluster_name` from `cluster`, with PromQL's `label_replace` or LogQL's `label_format`. */
-    private fun writesClusterName(query: String): Boolean = shortName.containsMatchIn(query) || clusterNameFormat.containsMatchIn(query)
+    private fun writesClusterName(query: String): Boolean = outermostClusterName(query) || clusterNameFormat.containsMatchIn(query)
+
+    /**
+     * Whether PromQL [query]'s result carries the `cluster_name` its `label_replace` writes: the write
+     * is the outermost call, or sits only under calls that keep every label (another label write, a
+     * sort, `topk`, `bottomk`). An aggregation over it, or a binary operation with it on one side,
+     * drops the label.
+     */
+    private fun outermostClusterName(query: String): Boolean {
+        val text = query.trim()
+        if (text.startsWith("(")) {
+            return ClusterFilterGuards.skipGroup(text, 0, '(', ')') == text.length &&
+                outermostClusterName(text.substring(1, text.length - 1))
+        }
+        if (text.isEmpty() || !ClusterFilterGuards.startsIdentifier(text[0])) return false
+        val nameEnd = ClusterFilterGuards.identifierEnd(text, 0)
+        val open = ClusterFilterGuards.skipWhile(text, nameEnd) { it.isWhitespace() }
+        if (text.getOrNull(open) != '(' || ClusterFilterGuards.skipGroup(text, open, '(', ')') != text.length) return false
+        val args = arguments(text.substring(open + 1, text.length - 1))
+        val unquoted = args.map { it.trim().removeSurrounding("\"") }
+        return when (text.substring(0, nameEnd)) {
+            "label_replace" ->
+                (unquoted.getOrNull(1) == CLUSTER_NAME && unquoted.getOrNull(SOURCES) == CLUSTER) || outermostClusterName(args.first())
+            in labelKeepingFirst -> outermostClusterName(args.first())
+            in labelKeepingSecond -> args.size > 1 && outermostClusterName(args[1])
+            else -> false
+        }
+    }
 
     /** A write of `cluster_name` from `cluster`: the [regex], what replaces its match, and whether the regex is anchored. */
     private data class ShortNameWrite(
@@ -390,11 +421,34 @@ object SeriesClusterGuards {
      */
     fun clusterlessZero(query: String): List<String> {
         val byCluster = clauses(query).any { it is Clause.LabelList && it.keyword == "by" && CLUSTER in it.labels }
-        return vectorFallback
+        val vectors =
+            vectorFallback
+                .findAll(query)
+                .filter { byCluster }
+                .map { "or vector(...) supplies a zero with no cluster" }
+                .toList()
+        return vectors + mismatchedZeros(query)
+    }
+
+    /**
+     * Each `or 0 * <agg> by (...)` of [query] whose grouping differs from the value it stands in for,
+     * the nearest `by (...)` before the `or`: a zero grouped by fewer labels matches none of the
+     * value's series, and one grouped by more adds series the value never has.
+     */
+    private fun mismatchedZeros(query: String): List<String> {
+        fun labels(list: String) = list.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val groupings = byClause.findAll(query).toList()
+        return zeroFallback
             .findAll(query)
-            .filter { byCluster }
-            .map { "or vector(...) supplies a zero with no cluster" }
-            .toList()
+            .mapNotNull { zero ->
+                val value = groupings.lastOrNull { it.range.last < zero.range.first } ?: return@mapNotNull null
+                val valueLabels = labels(value.groupValues[1])
+                val zeroLabels = labels(zero.groupValues[1])
+                "or 0 * ... by (${zeroLabels.joinToString(
+                    ", ",
+                )}) groups differently from the value's by (${valueLabels.joinToString(", ")})"
+                    .takeUnless { valueLabels.toSet() == zeroLabels.toSet() }
+            }.toList()
     }
 
     private fun joins(panel: JsonObject): List<JsonObject> = transformations(panel).filter { it.string("id") in joinTransformations }

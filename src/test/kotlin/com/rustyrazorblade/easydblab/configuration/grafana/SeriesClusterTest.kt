@@ -339,6 +339,24 @@ class SeriesClusterTest {
     }
 
     @Test
+    fun `a zero taken from a series grouped differently from the value is reported`() {
+        assertThat(SeriesClusterGuards.clusterlessZero("sum by (cluster, host_name) (a) or 0 * sum by (cluster) (b)"))
+            .containsExactly("or 0 * ... by (cluster) groups differently from the value's by (cluster, host_name)")
+        assertThat(SeriesClusterGuards.clusterlessZero("sum by (cluster, host_name) (a) or 0 * sum by (host_name, cluster) (b)")).isEmpty()
+    }
+
+    @Test
+    fun `a cluster_name that an aggregation or one side of an operation drops does not reach the legend`() {
+        fun legend(query: String) = SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, query, "{{cluster_name}}"))
+        val unwritten = listOf("legend '{{cluster_name}}' reads cluster_name, which the query does not write")
+
+        assertThat(legend("sum by (cluster) ($short)")).isEqualTo(unwritten)
+        assertThat(legend("$short / on (cluster) b")).isEqualTo(unwritten)
+        assertThat(legend("""label_join($short, "k", "/", "cluster", "instance")""")).isEmpty()
+        assertThat(legend("sort_desc($short)")).isEmpty()
+    }
+
+    @Test
     fun `no dashboard query that groups by cluster takes its zero from vector`() {
         val problems =
             DashboardFiles.all().flatMap { file ->

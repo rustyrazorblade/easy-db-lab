@@ -247,7 +247,7 @@ Every cluster names its hosts the same way, so a PromQL vector match that pairs 
 
 ### Requirement: Series keep their cluster
 
-Every PromQL and LogQL aggregation on a dashboard with a `cluster` variable SHALL keep `cluster`: `by (host_name)` becomes `by (cluster, host_name)`, and an aggregation with no grouping becomes `by (cluster)`.  Every legend on those series SHALL show the cluster, as `{{cluster_name}}`, the short name that the query's `label_replace` takes from `<name>-<uuid>`: the name and the first 8 characters of the id, for example `test-1a2b3c4d`, so two clusters with one name still differ.  A legend never shows the raw `{{cluster}}`; table panels show the short name in a Cluster column.  These queries are exempt: the variables that list clusters, the Tests dashboard's listing, the comparison views' baseline and candidate run queries, and the AWS/S3 queries that count the shared bucket once.  A unit test SHALL check every core and kit dashboard.
+Every PromQL and LogQL aggregation on a dashboard with a `cluster` variable SHALL keep `cluster`: `by (host_name)` becomes `by (cluster, host_name)`, and an aggregation with no grouping becomes `by (cluster)`.  Every legend on those series SHALL show the cluster, as `{{cluster_name}}`, the short name that the query's `label_replace` takes from `<name>-<uuid>`: the name and the first 8 characters of the id, for example `test-1a2b3c4d`, so two clusters with one name still differ.  A legend never shows the raw `{{cluster}}`; table panels show the short name in a Cluster column.  These queries are exempt: the variables that list clusters, the Tests dashboard's listing, the comparison views' baseline and candidate run queries, and the AWS/S3 queries that count the shared bucket once.  The comparison views' run queries are exempt only from the grouping rule: their legends and panel titles SHALL name each run by its short name, for example `baseline test-1a2b3c4d`, never by the full `<name>-<uuid>`.  A unit test SHALL check every core and kit dashboard.
 
 #### Scenario: Two clusters selected
 
@@ -263,3 +263,8 @@ Every PromQL and LogQL aggregation on a dashboard with a `cluster` variable SHAL
 
 - **WHEN** a panel target's legend does not show `{{cluster_name}}`, shows the raw `{{cluster}}`, or reads `{{cluster_name}}` from a query that does not write it
 - **THEN** the unit test fails and names the file, the panel and the legend
+
+#### Scenario: A comparison run is named by its short name
+
+- **WHEN** an operator compares a baseline and a candidate run on a comparison dashboard
+- **THEN** each run's legends and panel titles show the run's short name, such as `baseline test-1a2b3c4d`, and never the full cluster id

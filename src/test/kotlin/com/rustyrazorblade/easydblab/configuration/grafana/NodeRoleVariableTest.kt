@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test
  * A variable that lists `node_role` values has an All that matches every node, those without a
  * `node_role` too.
  *
- * Only the EMR nodes' collector stamps `node_role`; the cluster's own hosts carry none. Without an
+ * Before the collector derived `node_role` from the host name, only the EMR nodes carried it. Without an
  * `allValue`, Grafana's All is the regex of the listed values, `(spark-master|spark-worker)` once EMR
  * ran in the time range, and every query filtered by it loses the cluster's own nodes. `.*` also
  * matches a series without the label.

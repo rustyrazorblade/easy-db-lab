@@ -40,17 +40,17 @@ The following instrumentation applies to cluster nodes (Cassandra, stress, Spark
 
 ### Node Role Labeling
 
-The OTel Collector (0.161.0) on cluster nodes uses the `k8s_attributes` processor to read the K8s node label `type` and set it as the `node_role` resource attribute. This label is used by Grafana dashboards (e.g., System Overview) for hostname and service filtering.
+The OTel Collector (0.161.0) on cluster nodes sets the `node_role` resource attribute of host metrics and host log files from the node's host name: `db<N>` is `db`, `app<N>` is `app`, and `control<N>` is `control` (`transform/node_role_from_host`). A `node_role` that is already set is kept. This label is used by Grafana dashboards (e.g., System Overview) for hostname and service filtering.
 
 | Node Type | K8s Label | `node_role` Value | Source |
 |-----------|-----------|-------------------|--------|
-| Cassandra host metrics | `type=db` | `db` | K3s agent config |
+| Cassandra host metrics | N/A | `db` | Host name `db<N>` |
 | Cassandra JVM | N/A | `db` | `otel.resource.attributes` in `cassandra.in.sh` |
-| Stress | `type=app` | `app` | K3s agent config |
-| Control | `type=control` | `control` | `Up` command node labeling |
+| Stress host metrics | N/A | `app` | Host name `app<N>` |
+| Control host metrics | N/A | `control` | Host name `control<N>` |
 | Spark/EMR | N/A | `spark` | EMR OTel Collector `resource/role` processor |
 
-The `k8s_attributes` processor runs in the `metrics/local` and `logs/local` pipelines only. Metrics arriving over OTLP take the `metrics/otlp` pipeline, which does not run it, so each OTLP source sets `node_role` itself: the Cassandra JVM agent and the stress sidecar declare it as a resource attribute, and Spark nodes set it in their own collector.
+The host-name rule runs in the `metrics/local` and `logs/local` pipelines only. Host metrics and host log files carry no pod, so the `k8s_attributes` processor could never find the node's `type` label for them; it now runs only on container logs (`logs/containers`), where it adds the pod's labels and the node's `type` as `node_role`. Metrics arriving over OTLP take the `metrics/otlp` pipeline, which runs neither, so each OTLP source sets `node_role` itself: the Cassandra JVM agent and the stress sidecar declare it as a resource attribute, and Spark nodes set it in their own collector.
 
 The processor requires RBAC access to the K8s API. The OTel Collector DaemonSet runs with a dedicated ServiceAccount (`otel-collector`) that has read-only access to pods and nodes.
 

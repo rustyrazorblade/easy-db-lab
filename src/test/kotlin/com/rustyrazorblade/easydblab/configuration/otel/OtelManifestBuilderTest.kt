@@ -129,6 +129,25 @@ class OtelManifestBuilderTest : BaseKoinTest() {
     }
 
     /**
+     * Host metrics and host log files carry no pod, so k8s_attributes never found the node's `type`
+     * label for them and the cluster's own hosts reached the store with no node_role. The role now
+     * comes from the host name that resource_detection stamps; container logs still take theirs from
+     * the pod's node.
+     */
+    @Test
+    fun `host metrics and host logs take node_role from the host name`() {
+        val yaml = yamlFrom(builder.buildConfigMap(emptyList()))
+
+        listOf("metrics/local", "logs/local").forEach { name ->
+            assertThat(listAt(yaml, "service", "pipelines", name, "processors"))
+                .describedAs(name)
+                .containsSubsequence("resource_detection", "transform/node_role_from_host")
+                .doesNotContain("k8s_attributes")
+        }
+        assertThat(listAt(yaml, "service", "pipelines", "logs/containers", "processors")).contains("k8s_attributes")
+    }
+
+    /**
      * The service_graph connector emits its metrics on an empty resource. Every node runs a
      * collector, and each counts the database edges of its own spans (a database edge is complete
      * from one client span), so without the collector's host.name the db nodes wrote one series

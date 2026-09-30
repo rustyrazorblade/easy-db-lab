@@ -266,6 +266,19 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
             }
         assertThat(labelsOf(series, "metric")).containsEntry("cluster", CLUSTER)
 
+        // The collector's own scrape rides metrics/local, as host metrics do; its host is control0.
+        val local =
+            await(collector) {
+                results(
+                    ObservabilityBackends
+                        .get(
+                            "$mimirUrl/prometheus/api/v1/query?query=otelcol_process_runtime_alloc_bytes_total",
+                            TENANT,
+                        ).body(),
+                ).firstOrNull()
+            }
+        assertThat(labelsOf(local, "metric")).containsEntry("host_name", CONTROL_HOST).containsEntry("node_role", "control")
+
         val lokiUrl = ObservabilityBackends.baseUrl(loki, Constants.K8s.LOKI_HTTP_PORT)
         val query = URLEncoder.encode("{cluster=\"$CLUSTER\"}", Charsets.UTF_8)
         val stream =

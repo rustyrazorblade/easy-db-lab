@@ -14,6 +14,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.io.File
 
 /**
  * Every cluster runs its own YACE, and each labels what it finds with its own cluster. When YACE
@@ -51,6 +52,41 @@ class YaceManifestBuilderTest : BaseKoinTest() {
         map: YamlMap,
         key: String,
     ): String = checkNotNull(map.get<YamlScalar>(key)) { "no $key in $map" }.content
+
+    /**
+     * The series YACE writes for [type]'s job: `aws_<namespace>_<metric>_<statistic>`, with the
+     * metric name split at each lower-to-upper case change and every other character made `_`.
+     */
+    private fun gathered(type: String): Set<String> {
+        val yaml = checkNotNull(YaceManifestBuilder(getKoin().get()).buildConfigMap().data["yace-config.yaml"])
+        val discovery = checkNotNull((Yaml.default.parseToYamlNode(yaml) as YamlMap).get<YamlMap>("discovery"))
+        val job = checkNotNull(discovery.get<YamlList>("jobs")).items.map { it as YamlMap }.single { scalar(it, "type") == type }
+        val prefix = "aws_" + type.substringAfter("/").lowercase()
+
+        fun prom(name: String) = name.replace(Regex("([a-z0-9])([A-Z])"), "$1_$2").replace(Regex("[^A-Za-z0-9]"), "_").lowercase()
+        return checkNotNull(job.get<YamlList>("metrics"))
+            .items
+            .map { it as YamlMap }
+            .flatMap { metric ->
+                checkNotNull(metric.get<YamlList>("statistics")).items.map { stat ->
+                    "${prefix}_${prom(scalar(metric, "name"))}_${(stat as YamlScalar).content.lowercase()}"
+                }
+            }.toSet()
+    }
+
+    /** OpenSearch panels read p99 latencies, request sums and used space; YACE once gathered only averages. */
+    @Test
+    fun `every OpenSearch series a dashboard reads is one YACE gathers`() {
+        val read =
+            File("dashboards")
+                .walkTopDown()
+                .filter { it.extension == "json" }
+                .flatMap { Regex("""aws_es_\w+""").findAll(it.readText()).map { match -> match.value } }
+                .toSet()
+
+        assertThat(read).isNotEmpty()
+        assertThat(gathered("AWS/ES")).containsAll(read)
+    }
 
     @Test
     fun `the instance, volume and OpenSearch jobs discover only this cluster's resources`() {

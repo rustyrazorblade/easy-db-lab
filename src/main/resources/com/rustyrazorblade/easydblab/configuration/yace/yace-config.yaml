@@ -118,13 +118,25 @@ discovery:
           statistics: [Maximum]
         - name: FreeStorageSpace
           statistics: [Minimum]
+        # The OpenSearch dashboard reads the p99 latencies and the per-minute sums of the rates.
         - name: SearchLatency
-          statistics: [Average]
+          statistics: [Average, p99]
         - name: SearchRate
-          statistics: [Average]
+          statistics: [Average, Sum]
         - name: IndexingLatency
-          statistics: [Average]
+          statistics: [Average, p99]
         - name: IndexingRate
-          statistics: [Average]
+          statistics: [Average, Sum]
         - name: Nodes
           statistics: [Average]
+        - name: ClusterUsedSpace
+          statistics: [Maximum]
+        # Requests by HTTP status class, for the dashboard's status-code panel.
+        - name: 2xx
+          statistics: [Sum]
+        - name: 3xx
+          statistics: [Sum]
+        - name: 4xx
+          statistics: [Sum]
+        - name: 5xx
+          statistics: [Sum]

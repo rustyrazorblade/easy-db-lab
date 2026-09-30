@@ -173,7 +173,7 @@ curl http://<cassandra-node-ip>:9043/api/v1/__health
 
 The sidecar runs in K3s as the `cassandra-sidecar` DaemonSet, with one pod on each db node.  Each pod uses the host network, so the sidecar answers on the node's own IP.
 
-`cassandra start` deploys the sidecar to every db node, and `cassandra stop` removes it.  A stop limited with `--hosts` to some db nodes leaves the sidecar in place, because the other nodes still run the database.  `cassandra restart` restarts the database, then restarts the sidecar pods one at a time.
+`cassandra start` deploys the sidecar to every db node, and `cassandra stop` removes it.  A stop limited with `--hosts` leaves the sidecar in place while any other db node still runs the database; the stop that leaves no db node running removes it.  `cassandra restart` restarts the database, then restarts the sidecar pods one at a time.
 
 Use `kubectl` from the cluster workspace after `source env.sh` (see [Kubernetes](kubernetes.md)):
 

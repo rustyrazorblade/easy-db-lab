@@ -18,14 +18,20 @@ import picocli.CommandLine.Mixin
 // @McpCommand - disabled for now like the original
 
 /**
- * Stop cassandra on all nodes via service command.
+ * Stops the database on the selected db nodes (all of them by default) via its service command.
+ *
+ * The sidecar DaemonSet, the running-workload record and the kit stop hooks belong to the whole
+ * database, so they end only once the database runs on no db node, whatever earlier stops did.
  */
 @RequireProfileSetup
 @RequireSSHKey
 @RequiresProxy
 @Command(
     name = "stop",
-    description = ["Stop cassandra on all nodes via service command"],
+    description = [
+        "Stop the database on the selected nodes (all nodes by default).",
+        "The sidecar is removed only when every db node is stopped.",
+    ],
 )
 class Stop : PicoBaseCommand() {
     private val cassandraService: CassandraService by inject()
@@ -43,10 +49,14 @@ class Stop : PicoBaseCommand() {
             cassandraService.stop(host.toHost()).getOrThrow()
         }
 
-        // The sidecar, the running workload and the kit stop hooks belong to the whole database,
-        // so they end only when every db node stops.
+        // The sidecar, the running workload and the kit stop hooks belong to the whole database, so
+        // they end only when no db node runs it: this stop's nodes, and any a previous stop left down.
         val stopped = hostOperationsService.filteredHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList).toSet()
-        val running = clusterState.hosts[ServerType.Cassandra].orEmpty().filterNot { it in stopped }
+        val running =
+            clusterState.hosts[ServerType.Cassandra]
+                .orEmpty()
+                .filterNot { it in stopped }
+                .filter { cassandraService.isRunning(it.toHost()).getOrThrow() }
         if (running.isEmpty()) {
             stopSidecar()
             clusterStateManager.removeRunningWorkload("cassandra")

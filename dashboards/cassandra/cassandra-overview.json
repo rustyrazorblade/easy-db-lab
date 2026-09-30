@@ -614,8 +614,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (cluster, pool) (cassandra_thread_pool_tasks_active{cluster=~\"$cluster\", host_name=~\"$host\"})",
-          "legendFormat": "{{pool}} \u2014 {{cluster}}",
+          "expr": "label_replace(sum by (cluster, pool) (cassandra_thread_pool_tasks_active{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{pool}}",
           "refId": "A"
         }
       ],
@@ -716,8 +716,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "100 * (1 - sum by(host_name, cluster) (rate(system_cpu_time_seconds_total{state=\"idle\", host_name=~\"$host\", cluster=~\"$cluster\"}[1m])) / sum by(host_name, cluster) (rate(system_cpu_time_seconds_total{host_name=~\"$host\", cluster=~\"$cluster\"}[1m])))",
-          "legendFormat": "{{host_name}} \u2014 {{cluster}}",
+          "expr": "label_replace(100 * (1 - sum by(host_name, cluster) (rate(system_cpu_time_seconds_total{state=\"idle\", host_name=~\"$host\", cluster=~\"$cluster\"}[1m])) / sum by(host_name, cluster) (rate(system_cpu_time_seconds_total{host_name=~\"$host\", cluster=~\"$cluster\"}[1m]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
       ],
@@ -1471,8 +1471,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (cluster) (cassandra_table_disk_space_live_bytes{cluster=~\"$cluster\", host_name=~\"$host\"})",
-          "legendFormat": "Live space - {{cluster}}",
+          "expr": "label_replace(sum by (cluster) (cassandra_table_disk_space_live_bytes{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Live space",
           "refId": "A"
         },
         {
@@ -1480,8 +1480,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (cluster) (cassandra_table_disk_space_total_bytes{cluster=~\"$cluster\", host_name=~\"$host\"})",
-          "legendFormat": "Total space - {{cluster}}",
+          "expr": "label_replace(sum by (cluster) (cassandra_table_disk_space_total_bytes{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} Total space",
           "refId": "B"
         }
       ],
@@ -1872,8 +1872,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "topk by (cluster) (5, sum by (cluster, pool) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}))",
-          "legendFormat": "{{pool}} \u2014 {{cluster}}",
+          "expr": "label_replace(topk by (cluster) (5, sum by (cluster, pool) (cassandra_thread_pool_tasks_pending{cluster=~\"$cluster\", host_name=~\"$host\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{pool}}",
           "refId": "A"
         }
       ],
@@ -1962,8 +1962,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "sum by (cluster, pool) (rate(cassandra_thread_pool_tasks_blocked_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))",
-          "legendFormat": "{{pool}} \u2014 {{cluster}}",
+          "expr": "label_replace(sum by (cluster, pool) (rate(cassandra_thread_pool_tasks_blocked_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{pool}}",
           "refId": "A"
         }
       ],
@@ -2052,8 +2052,8 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "topk by (cluster) (10, sum by (cluster, message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])))",
-          "legendFormat": "{{message_type}} \u2014 {{cluster}}",
+          "expr": "label_replace(topk by (cluster) (10, sum by (cluster, message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{message_type}}",
           "refId": "A"
         }
       ],

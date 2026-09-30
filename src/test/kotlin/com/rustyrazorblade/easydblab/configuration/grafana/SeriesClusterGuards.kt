@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 import com.rustyrazorblade.easydblab.configuration.grafana.ClusterFilterGuards.Language
 import com.rustyrazorblade.easydblab.configuration.grafana.ClusterFilterGuards.Query
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -12,8 +13,9 @@ import kotlinx.serialization.json.contentOrNull
  *
  * Every cluster names its hosts the same way, so an aggregation that drops `cluster` adds `db0` of
  * one cluster to `db0` of another, and a legend without the cluster leaves two lines that cannot be
- * told apart. Every aggregation keeps `cluster`, and every legend shows it: as `{{cluster_name}}`,
- * the short name the query's `label_replace` cuts from `<name>-<uuid>`, or as `{{cluster}}`.
+ * told apart. Every aggregation keeps `cluster`, and every legend shows it as `{{cluster_name}}`,
+ * the short name the query's `label_replace` cuts from `<name>-<uuid>`. A raw `{{cluster}}` shows
+ * the whole `<name>-<uuid>`, so it does not count.
  *
  * A few queries read one cluster, or every cluster, on purpose and are [exempt].
  */
@@ -37,10 +39,14 @@ object SeriesClusterGuards {
         )
     private val labelLists = setOf("by", "without", "on", "ignoring", "group_left", "group_right")
     private val grouping = setOf("by", "without")
-    private val legendCluster = Regex("""\{\{\s*(cluster|cluster_name)\s*}}""")
+    private val legendCluster = Regex("""\{\{\s*cluster_name\s*}}""")
     private val shortName = Regex(""""cluster_name"\s*,\s*"\$1"\s*,\s*"cluster"""")
     private val clusterVariable = Regex("""cluster\s*=~?\s*"\$\{?cluster\b""")
     private val sideVariable = Regex("""\$\{?(baseline_cluster|candidate_cluster)\b""")
+    private val labelFunction = Regex("""\blabel_(join|replace)\s*\(""")
+    private val vectorFallback = Regex("""\bor\s+vector\s*\(""")
+    private val joinTransformations = setOf("seriesToColumns", "joinByField")
+    private val numberingTransformations = joinTransformations + "concatenate"
 
     /**
      * The queries that read one cluster, or every cluster, on purpose: the variables that list
@@ -182,7 +188,7 @@ object SeriesClusterGuards {
         val logLines = query.language == Language.LOGQL && query.text.trim().startsWith("{")
         return when {
             logLines || query.language == Language.PROFILES || query.panelType == TABLE -> emptyList()
-            !legendCluster.containsMatchIn(legend) -> listOf("legend '$legend' does not show the cluster")
+            !legendCluster.containsMatchIn(legend) -> listOf("legend '$legend' does not show the cluster by its short name")
             "cluster_name" in legend && !shortName.containsMatchIn(query.text) ->
                 listOf("legend '$legend' reads cluster_name, which the query does not write")
             else -> emptyList()
@@ -191,44 +197,126 @@ object SeriesClusterGuards {
 
     /**
      * Why a table [panel] whose queries write `cluster_name` does not show the cluster as one short
-     * column: its `organize` must hide the long `cluster` column (`cluster`, or `cluster 1` once a
-     * join numbers the frames) and name the `cluster_name` column "Cluster".
+     * column: its `organize` must hide the long `cluster` column and name the `cluster_name` column
+     * "Cluster". A join or a concatenation of N targets numbers each frame's columns, so it must hide `cluster 1` to
+     * `cluster N` and `cluster_name 2` to `cluster_name N`, and name `cluster_name 1` "Cluster".
      */
     fun tableProblems(panel: JsonObject): List<String> {
-        if ((panel["type"] as? JsonPrimitive)?.contentOrNull != TABLE) return emptyList()
-        val targets = (panel["targets"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
-        if (targets.none { shortName.containsMatchIn((it["expr"] as? JsonPrimitive)?.contentOrNull.orEmpty()) }) return emptyList()
-        val organize =
-            (panel["transformations"] as? JsonArray)
-                .orEmpty()
-                .filterIsInstance<JsonObject>()
-                .firstOrNull { (it["id"] as? JsonPrimitive)?.contentOrNull == "organize" }
-        val options = organize?.get("options") as? JsonObject
+        if (panel.string("type") != TABLE) return emptyList()
+        val targets = targets(panel)
+        if (targets.none { shortName.containsMatchIn(it.string("expr")) }) return emptyList()
+        val options = transformations(panel).firstOrNull { it.string("id") == "organize" }?.get("options") as? JsonObject
         val excluded = (options?.get("excludeByName") as? JsonObject).orEmpty()
         val renamed = (options?.get("renameByName") as? JsonObject).orEmpty()
-        val hidden = listOf(CLUSTER, "$CLUSTER 1").any { (excluded[it] as? JsonPrimitive)?.contentOrNull == "true" }
-        val shown = listOf("cluster_name", "cluster_name 1").any { (renamed[it] as? JsonPrimitive)?.contentOrNull == "Cluster" }
+        val numbered = transformations(panel).any { it.string("id") in numberingTransformations }
+        val frames = if (numbered && targets.size > 1) 1..targets.size else null
+
+        fun column(
+            label: String,
+            frame: Int,
+        ) = if (frames == null) label else "$label $frame"
+
+        fun isHidden(column: String) = excluded.string(column) == "true"
+        val each = frames ?: 1..1
         return listOfNotNull(
-            "the long cluster column is not hidden".takeUnless { hidden },
-            "cluster_name is not shown as Cluster".takeUnless { shown },
-        )
+            "the long cluster column is not hidden".takeUnless { each.all { isHidden(column(CLUSTER, it)) } },
+            "cluster_name is not shown as Cluster".takeUnless { renamed.string(column(CLUSTER_NAME, 1)) == "Cluster" },
+        ) +
+            each
+                .drop(1)
+                .map { column(CLUSTER_NAME, it) }
+                .filterNot(::isHidden)
+                .map { "$it is not hidden" }
     }
 
     /**
      * Each join of a [panel] (`seriesToColumns` or `joinByField`) whose key does not hold the
      * cluster. Every cluster names its hosts and pods the same way, so a join on `instance` alone
-     * puts one cluster's row beside another's; the key is a label that joins the cluster to the
-     * instance, such as `cluster_instance`.
+     * puts one cluster's row beside another's. The key is a label that joins the cluster to the
+     * instance, such as `cluster_instance`. Every target writes it with `label_join` or
+     * `label_replace`, and builds it from the long `cluster`, because two clusters can share a
+     * short `cluster_name`.
      */
     fun joinProblems(panel: JsonObject): List<String> =
-        (panel["transformations"] as? JsonArray)
-            .orEmpty()
-            .filterIsInstance<JsonObject>()
-            .filter { (it["id"] as? JsonPrimitive)?.contentOrNull in setOf("seriesToColumns", "joinByField") }
-            .mapNotNull { join ->
-                val key = ((join["options"] as? JsonObject)?.get("byField") as? JsonPrimitive)?.contentOrNull.orEmpty()
-                "${(join["id"] as JsonPrimitive).content} joins on '$key', which does not hold the cluster".takeUnless { CLUSTER in key }
+        joins(panel).flatMap { join ->
+            val id = join.string("id")
+            val key = (join["options"] as? JsonObject)?.string("byField").orEmpty()
+            listOfNotNull("$id joins on '$key', which does not hold the cluster".takeUnless { CLUSTER in key }) +
+                targets(panel).mapNotNull { target ->
+                    val sources = labelWrites(target.string("expr"))[key]
+                    val refId = target.string("refId")
+                    when {
+                        sources == null -> "$id: target $refId does not write '$key'"
+                        CLUSTER !in sources -> "$id: target $refId builds '$key' from $sources, not from cluster"
+                        else -> null
+                    }
+                }
+        }
+
+    /**
+     * The labels [query] writes with `label_join` or `label_replace`, each with the labels it is
+     * built from. When a query writes one label twice, the last write counts.
+     */
+    private fun labelWrites(query: String): Map<String, List<String>> =
+        labelFunction
+            .findAll(query)
+            .mapNotNull { match ->
+                val open = match.range.last
+                val args =
+                    arguments(query.substring(open + 1, ClusterFilterGuards.skipGroup(query, open, '(', ')') - 1))
+                        .map { it.trim().removeSurrounding("\"") }
+                when {
+                    args.size <= SOURCES -> null
+                    match.groupValues[1] == "join" -> args[1] to args.drop(SOURCES)
+                    else -> args[1] to listOf(args[SOURCES])
+                }
+            }.toMap()
+
+    /** The top-level, comma-separated arguments of a call whose argument list is [text]. */
+    private fun arguments(text: String): List<String> {
+        val args = mutableListOf<String>()
+        var start = 0
+        var i = 0
+        while (i < text.length) {
+            val c = text[i]
+            if (c == ',') {
+                args += text.substring(start, i)
+                start = i + 1
             }
+            i =
+                when {
+                    ClusterFilterGuards.isQuote(c) -> ClusterFilterGuards.skipString(text, i)
+                    c == '(' -> ClusterFilterGuards.skipGroup(text, i, '(', ')')
+                    c == '{' -> ClusterFilterGuards.skipGroup(text, i, '{', '}')
+                    c == '[' -> ClusterFilterGuards.skipGroup(text, i, '[', ']')
+                    else -> i + 1
+                }
+        }
+        return args + text.substring(start)
+    }
+
+    /**
+     * Each `or vector(...)` of a [query] that groups by `cluster`. `vector(0)` has no labels, so it
+     * supplies no zero for a cluster that has no series, and it adds a zero that has no cluster.
+     * Take the zero from a series that has the cluster: `or 0 * sum by (cluster) (<total>)`.
+     */
+    fun clusterlessZero(query: String): List<String> {
+        val byCluster = clauses(query).any { it is Clause.LabelList && it.keyword == "by" && CLUSTER in it.labels }
+        return vectorFallback
+            .findAll(query)
+            .filter { byCluster }
+            .map { "or vector(...) supplies a zero with no cluster" }
+            .toList()
+    }
+
+    private fun joins(panel: JsonObject): List<JsonObject> = transformations(panel).filter { it.string("id") in joinTransformations }
+
+    private fun transformations(panel: JsonObject): List<JsonObject> =
+        (panel["transformations"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+
+    private fun targets(panel: JsonObject): List<JsonObject> = (panel["targets"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+
+    private fun Map<String, JsonElement>.string(key: String): String = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
 
     /**
      * Each field override of a series panel that matched a legend before the cluster was put in
@@ -261,5 +349,9 @@ object SeriesClusterGuards {
     }
 
     private const val CLUSTER = "cluster"
+    private const val CLUSTER_NAME = "cluster_name"
+
+    /** The index of the first source label in `label_join(v, dst, sep, src...)` and `label_replace(v, dst, repl, src, re)`. */
+    private const val SOURCES = 3
     private const val TABLE = "table"
 }

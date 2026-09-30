@@ -175,7 +175,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (sum by (cluster) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) or vector(0)) / sum by (cluster) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (sum by (cluster) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) or 0 * sum by (cluster) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\"}[$__rate_interval]))) / sum by (cluster) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", source=\"\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,

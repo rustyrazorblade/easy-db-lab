@@ -64,7 +64,8 @@ class SeriesClusterTest {
     fun `a legend must show the cluster, and a short name must be written by the query`() {
         assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, "x", "{{host_name}}"))).hasSize(1)
         assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, "x", ""))).hasSize(1)
-        assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, "x", "{{cluster}} {{host_name}}"))).isEmpty()
+        assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, short, "{{cluster}} {{host_name}}")))
+            .containsExactly("legend '{{cluster}} {{host_name}}' does not show the cluster by its short name")
         assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, "x", "{{cluster_name}} {{host_name}}")))
             .containsExactly("legend '{{cluster_name}} {{host_name}}' reads cluster_name, which the query does not write")
         assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, short, "{{cluster_name}}"))).isEmpty()
@@ -162,10 +163,12 @@ class SeriesClusterTest {
         ) = """[{"id": "organize", "options": {"excludeByName": {"$hidden": true}, "renameByName": {"$renamed": "Cluster"}}}]"""
 
         val shown = organize("cluster", "cluster_name")
-        val joined = organize("cluster 1", "cluster_name 1")
 
         assertThat(SeriesClusterGuards.tableProblems(table(shown))).isEmpty()
-        assertThat(SeriesClusterGuards.tableProblems(table(joined))).isEmpty()
+        assertThat(SeriesClusterGuards.tableProblems(table(organize("cluster 1", "cluster_name 1")))).containsExactly(
+            "the long cluster column is not hidden",
+            "cluster_name is not shown as Cluster",
+        )
         assertThat(SeriesClusterGuards.tableProblems(table("""[{"id": "merge", "options": {}}]"""))).containsExactly(
             "the long cluster column is not hidden",
             "cluster_name is not shown as Cluster",
@@ -201,6 +204,27 @@ class SeriesClusterTest {
     }
 
     @Test
+    fun `a table joined over its targets hides every frame's long cluster and every later frame's short one`() {
+        val expr = Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(short))
+
+        fun joined(
+            targets: Int,
+            hidden: List<String>,
+        ): JsonObject {
+            val excluded = hidden.joinToString(", ") { "\"$it\": true" }
+            val renamed = """"renameByName": {"cluster_name 1": "Cluster"}"""
+            val organize = """{"id": "organize", "options": {"excludeByName": {$excluded}, $renamed}}"""
+            val join = """{"id": "seriesToColumns", "options": {"byField": "cluster_instance"}}"""
+            val list = List(targets) { """{"expr": $expr}""" }.joinToString(", ")
+            return parse("""{"type": "table", "targets": [$list], "transformations": [$join, $organize]}""")
+        }
+
+        assertThat(SeriesClusterGuards.tableProblems(joined(2, listOf("cluster 1", "cluster 2", "cluster_name 2")))).isEmpty()
+        assertThat(SeriesClusterGuards.tableProblems(joined(2, listOf("cluster 1"))))
+            .containsExactly("the long cluster column is not hidden", "cluster_name 2 is not hidden")
+    }
+
+    @Test
     fun `a join on a key without the cluster is reported`() {
         fun joined(byField: String) =
             parse("""{"type": "table", "transformations": [{"id": "seriesToColumns", "options": {"byField": "$byField"}}]}""")
@@ -209,6 +233,48 @@ class SeriesClusterTest {
             .containsExactly("seriesToColumns joins on 'instance', which does not hold the cluster")
         assertThat(SeriesClusterGuards.joinProblems(joined("cluster_instance"))).isEmpty()
         assertThat(SeriesClusterGuards.joinProblems(parse("""{"transformations": [{"id": "merge", "options": {}}]}"""))).isEmpty()
+    }
+
+    @Test
+    fun `every target of a join writes the key, and writes it from the long cluster`() {
+        fun target(
+            refId: String,
+            expr: String,
+        ) = """{"refId": "$refId", "expr": ${Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(expr))}}"""
+
+        fun joined(vararg targets: String) =
+            parse(
+                """{"type": "table", "targets": [${targets.joinToString(", ")}], """ +
+                    """"transformations": [{"id": "joinByField", "options": {"byField": "cluster_instance"}}]}""",
+            )
+        val full = target("A", """label_join(label_replace(a, "x", "y", "z", "w"), "cluster_instance", "/", "cluster", "instance")""")
+        val shortKey = target("B", """label_join($short, "cluster_instance", "/", "cluster_name", "instance")""")
+
+        assertThat(SeriesClusterGuards.joinProblems(joined(full))).isEmpty()
+        assertThat(SeriesClusterGuards.joinProblems(joined(full, target("C", "up"))))
+            .containsExactly("joinByField: target C does not write 'cluster_instance'")
+        assertThat(SeriesClusterGuards.joinProblems(joined(full, shortKey)))
+            .containsExactly("joinByField: target B builds 'cluster_instance' from [cluster_name, instance], not from cluster")
+    }
+
+    @Test
+    fun `a zero that has no cluster is reported in a query that groups by cluster`() {
+        assertThat(SeriesClusterGuards.clusterlessZero("sum by (cluster) (a) or vector(0)"))
+            .containsExactly("or vector(...) supplies a zero with no cluster")
+        assertThat(SeriesClusterGuards.clusterlessZero("sum by (cluster) (a) or 0 * sum by (cluster) (b)")).isEmpty()
+        assertThat(SeriesClusterGuards.clusterlessZero("query_result(vector(1) > vector(2) or vector(2))")).isEmpty()
+    }
+
+    @Test
+    fun `no dashboard query that groups by cluster takes its zero from vector`() {
+        val problems =
+            DashboardFiles.all().flatMap { file ->
+                ClusterFilterGuards
+                    .queries(parse(file.readText()))
+                    .flatMap { query -> SeriesClusterGuards.clusterlessZero(query.text).map { "${file.path} ${query.where}: $it" } }
+            }
+
+        assertThat(problems).isEmpty()
     }
 
     @Test

@@ -8,6 +8,8 @@
 #
 # Queries are not sharded, and readers stop opening a block the compactor merged away soon after its
 # deletion mark (issue 988): on this one process both made dashboard loads several times faster.
+# The store-gateway's index, chunks and metadata and the query-frontend's results are cached in the
+# memcached sidecar on 127.0.0.1:11211, and S3 connections stay open for reuse (issue 988).
 #
 # Dollar-brace values are read from the environment (-config.expand-env=true); the Deployment sets
 # them from the cluster-config ConfigMap. Never write a dollar-brace in a comment here: the expansion
@@ -39,6 +41,12 @@ blocks_storage:
     bucket_name: ${S3_BUCKET}
     endpoint: s3.${AWS_REGION}.amazonaws.com
     region: ${AWS_REGION}
+    # Keep S3 connections open and reuse them: with the defaults 23% of Mimir's CPU went to new TLS
+    # handshakes with S3 (issue 988). 0 is no limit on idle connections in total.
+    http:
+      idle_conn_timeout: 10m
+      max_idle_connections: 0
+      max_idle_connections_per_host: 1000
   tsdb:
     # The head, its WAL and every local block live on the control node's disk (a hostPath), so a
     # pod restart replays the WAL and keeps the blocks.
@@ -72,6 +80,20 @@ blocks_storage:
     # from ~180 to ~46 (issue 988). They only choose what queries read; the compactor owns deletion.
     ignore_deletion_mark_delay: 10m
     ignore_deletion_mark_while_querying_delay: 5m
+    # The store-gateway caches what it reads from S3 in the memcached sidecar, so a dashboard refresh
+    # reads index headers, chunks and bucket metadata from memory instead of S3 again (issue 988).
+    index_cache:
+      backend: memcached
+      memcached:
+        addresses: 127.0.0.1:11211
+    chunks_cache:
+      backend: memcached
+      memcached:
+        addresses: 127.0.0.1:11211
+    metadata_cache:
+      backend: memcached
+      memcached:
+        addresses: 127.0.0.1:11211
     bucket_index:
       # About 10 years: a stopped compactor leaves the index stale, and that must never fail a query.
       # A tenant with no bucket index returns no stored data rather than an error.
@@ -120,6 +142,14 @@ memberlist:
 frontend:
   # The query-scheduler runs in this process.
   scheduler_address: 127.0.0.1:9097
+  # Query results are cached in the memcached sidecar, so a refresh reuses the parts of a range it
+  # already answered (issue 988). The query engine's range vector splitting cache stays off: Mimir
+  # 3.2.1 refuses to start with it.
+  cache_results: true
+  results_cache:
+    backend: memcached
+    memcached:
+      addresses: 127.0.0.1:11211
 
 frontend_worker:
   scheduler_address: 127.0.0.1:9097

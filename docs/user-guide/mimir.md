@@ -12,7 +12,7 @@ Every series carries a `cluster` label (`<name>-<clusterId>`), so clusters that 
 
 Mimir 3.2.1 runs as one process on the control node:
 
-- **Ports**: 9009 (HTTP), 9097 (gRPC), 7947 (memberlist, loopback only)
+- **Ports**: 9009 (HTTP), 9097 (gRPC), 7947 (memberlist, loopback only), 11211 (memcached, loopback only)
 - **Local data**: `/mnt/db1/mimir` on the control node (the write-ahead log, the last 15 minutes of blocks, and the store-gateway's index headers)
 - **Object storage**: `s3://<account-bucket>/mimir/<tenant>/`
 - **Tenancy**: native multi-tenancy; the tenant is the cluster's observability tenant
@@ -24,6 +24,8 @@ Mimir cuts a one-minute block and ships it within seconds, so a sample is in S3 
 Queries read the ingester and, through the store-gateway, every tenant's blocks in S3. The store-gateway finds blocks through each tenant's bucket index, which the [account compactor](compactor.md) rewrites every minute, and it syncs every minute. The ingester keeps local blocks for 15 minutes; older data is read from S3. At 15 minutes a query opens far fewer one-minute local blocks than it did at 2 hours, and the local copies it drops are already in S3. A block the compactor merged away is no longer read 10 minutes after its deletion mark (5 minutes for a running query), so a read opens the merged block instead of its many 1-minute sources.
 
 Mimir queues up to 5000 queries per tenant (`query_scheduler.max_outstanding_requests_per_tenant`; the default is 100). One load of the heaviest dashboard sends about 150 queries, and the query frontend splits each by day and runs as many as 14 parts at once. Queries are not sharded: on one Mimir process, sharding split each query into about 20 parts and made a dashboard load several times slower. With the default, a full dashboard load filled the queue and Mimir refused the rest with HTTP 429, so panels showed errors. The limit of 5000 holds two full loads of that dashboard at once.
+
+A memcached sidecar in the Mimir pod (2 GB, on the control node's loopback, port 11211) holds Mimir's caches. The store-gateway caches the index, chunks and bucket metadata it reads from S3, and the query frontend caches query results. So a dashboard refresh reads from memory what the last load already read from S3. Mimir also keeps its S3 connections open and reuses them, instead of opening a new TLS connection for each read. The caches only hold copies; a restart empties them, and nothing is lost.
 
 A tenant that has no bucket index yet returns no stored data rather than an error. A stale bucket index is accepted for about 10 years, so metrics queries still succeed while the compactor is stopped; blocks shipped after it stopped become readable once it runs again.
 

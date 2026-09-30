@@ -365,6 +365,12 @@ object Constants {
         /** Mimir's gossip listener, bound to loopback; Pyroscope holds the default 7946. */
         const val MIMIR_MEMBERLIST_PORT = 7947
 
+        /** The memcached sidecar in the Mimir pod, on the control node's loopback: Mimir's caches. */
+        const val MIMIR_MEMCACHED_PORT = 11211
+
+        /** The memcached sidecar's image, a released version. */
+        const val MIMIR_MEMCACHED_IMAGE = "memcached:1.6.34-alpine"
+
         /** Loki's `app.kubernetes.io/name` label and Service name; the collector finds its pod by it. */
         const val LOKI_APP_LABEL = "loki"
 

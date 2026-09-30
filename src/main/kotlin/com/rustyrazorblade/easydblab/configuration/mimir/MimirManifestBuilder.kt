@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
+import io.fabric8.kubernetes.api.model.Container
+import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.Service
@@ -21,10 +23,10 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * Mimir runs monolithic (distributor, ingester, querier, query-frontend, query-scheduler,
  * store-gateway) with no compactor. It ships every block to `mimir/<tenant>/` in the account bucket
  * and answers queries from its ingester and, through the store-gateway, from every tenant's blocks
- * in S3; nothing in a cluster can compact or delete metrics. The TSDB (head, WAL and the last 2
- * hours of local blocks) and the store-gateway's sync directory live on the hostPath
+ * in S3; nothing in a cluster can compact or delete metrics. The TSDB (head, WAL and the last 15
+ * minutes of local blocks) and the store-gateway's sync directory live on the hostPath
  * [DATA_HOST_PATH], so a pod restart replays the WAL; the long grace period gives a graceful stop
- * time to compact and ship the head.
+ * time to compact and ship the head. A memcached sidecar holds Mimir's caches.
  *
  * `mimir.yaml` is a classpath resource read with `-config.expand-env=true`: the bucket, region and
  * storage prefix come from the cluster-config ConfigMap ([ClusterConfigData]) as env vars.
@@ -60,6 +62,17 @@ class MimirManifestBuilder(
         private const val LIVENESS_PERIOD = 15
         private const val READINESS_INITIAL_DELAY = 5
         private const val READINESS_PERIOD = 10
+
+        private const val MEMCACHED_CONTAINER = "memcached"
+
+        /**
+         * 2 GB: a cold System Overview load at 24h reads about 615 MB from S3 (chunks, series and
+         * postings), and the control node had about 7.3 GB available (issue 988).
+         */
+        private const val MEMCACHED_MEMORY_MB = "2048"
+        private const val MEMCACHED_MAX_ITEM_SIZE = "1m"
+        private const val MEMCACHED_MAX_CONNECTIONS = "4096"
+        private const val MEMCACHED_THREADS = "4"
     }
 
     /**
@@ -196,6 +209,7 @@ class MimirManifestBuilder(
             .withPeriodSeconds(READINESS_PERIOD)
             .endReadinessProbe()
             .endContainer()
+            .addToContainers(buildMemcachedContainer())
             .addNewVolume()
             .withName("config")
             .withConfigMap(ConfigMapVolumeSourceBuilder().withName(CONFIGMAP_NAME).build())
@@ -211,5 +225,35 @@ class MimirManifestBuilder(
             .endSpec()
             .endTemplate()
             .endSpec()
+            .build()
+
+    /**
+     * The memcached sidecar that holds Mimir's caches (`mimir.yaml`: the store-gateway's index,
+     * chunks and metadata caches and the query-frontend's results cache). The pod shares the control
+     * node's network, so memcached listens on loopback only. It follows the Mimir container, so
+     * `kubectl logs` and `exec` default to Mimir.
+     */
+    private fun buildMemcachedContainer(): Container =
+        ContainerBuilder()
+            .withName(MEMCACHED_CONTAINER)
+            .withImage(Constants.K8s.MIMIR_MEMCACHED_IMAGE)
+            .withArgs(
+                "-m",
+                MEMCACHED_MEMORY_MB,
+                "-I",
+                MEMCACHED_MAX_ITEM_SIZE,
+                "-c",
+                MEMCACHED_MAX_CONNECTIONS,
+                "-t",
+                MEMCACHED_THREADS,
+                "-l",
+                "127.0.0.1",
+                "-p",
+                "${Constants.K8s.MIMIR_MEMCACHED_PORT}",
+            ).addNewPort()
+            .withName(MEMCACHED_CONTAINER)
+            .withContainerPort(Constants.K8s.MIMIR_MEMCACHED_PORT)
+            .withProtocol("TCP")
+            .endPort()
             .build()
 }

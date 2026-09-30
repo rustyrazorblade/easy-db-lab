@@ -83,6 +83,56 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "ignore_deletion_mark_while_querying_delay")).isEqualTo("5m")
     }
 
+    /**
+     * Measured on qa971f (issue 988): without caches every dashboard refresh read the same index,
+     * chunks and results from S3 again, and 23% of Mimir's CPU went to new TLS connections to S3.
+     */
+    @Test
+    fun `the store-gateway and the query-frontend cache in the memcached sidecar, and S3 connections are reused`() {
+        val yaml = config()
+        val memcached = "127.0.0.1:${Constants.K8s.MIMIR_MEMCACHED_PORT}"
+
+        listOf("index_cache", "chunks_cache", "metadata_cache").forEach { cache ->
+            assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", cache, "backend")).describedAs(cache).isEqualTo("memcached")
+            assertThat(
+                scalarAt(yaml, "blocks_storage", "bucket_store", cache, "memcached", "addresses"),
+            ).describedAs(cache).isEqualTo(memcached)
+        }
+        assertThat(scalarAt(yaml, "frontend", "cache_results")).isEqualTo("true")
+        assertThat(scalarAt(yaml, "frontend", "results_cache", "backend")).isEqualTo("memcached")
+        assertThat(scalarAt(yaml, "frontend", "results_cache", "memcached", "addresses")).isEqualTo(memcached)
+        assertThat(scalarAt(yaml, "blocks_storage", "s3", "http", "idle_conn_timeout")).isEqualTo("10m")
+        assertThat(scalarAt(yaml, "blocks_storage", "s3", "http", "max_idle_connections")).isEqualTo("0")
+        assertThat(scalarAt(yaml, "blocks_storage", "s3", "http", "max_idle_connections_per_host")).isEqualTo("1000")
+        // Mimir 3.2.1 refuses to start with the query engine's range vector splitting cache.
+        assertThat(yaml).doesNotContain("range_vector_splitting")
+    }
+
+    @Test
+    fun `a memcached sidecar listens on the control node's loopback, after the Mimir container`() {
+        val pod = pod()
+        val memcached = pod.containers.single { it.name == "memcached" }
+
+        assertThat(pod.containers.first().name).isEqualTo(Constants.K8s.MIMIR_APP_LABEL)
+        assertThat(memcached.image).isEqualTo("memcached:1.6.34-alpine")
+        assertThat(memcached.args).containsExactly(
+            "-m",
+            "2048",
+            "-I",
+            "1m",
+            "-c",
+            "4096",
+            "-t",
+            "4",
+            "-l",
+            "127.0.0.1",
+            "-p",
+            "${Constants.K8s.MIMIR_MEMCACHED_PORT}",
+        )
+        assertThat(memcached.resources?.limits.orEmpty()).isEmpty()
+        assertThat(memcached.resources?.requests.orEmpty()).isEmpty()
+    }
+
     @Test
     fun `queries read the ingester and the whole store, and local blocks are kept for 15 minutes`() {
         val yaml = config()

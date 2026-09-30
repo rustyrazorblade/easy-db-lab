@@ -23,6 +23,7 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | 9009 | Mimir HTTP (metrics storage; Prometheus API under `/prometheus`) |
 | 9097 | Mimir gRPC |
 | 7947 | Mimir memberlist (loopback only) |
+| 11211 | Mimir's memcached caches (loopback only, in the Mimir pod) |
 | 3100 | Loki HTTP (log storage) |
 | 9098 | Loki gRPC |
 | 3200 | Tempo (trace storage) |

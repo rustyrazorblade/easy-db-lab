@@ -109,7 +109,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
@@ -207,7 +207,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_table_write_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_table_write_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
@@ -332,7 +332,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
@@ -344,7 +344,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(topk by (cluster) (1, cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(topk by (cluster) (1, cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} worst: {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
@@ -478,7 +478,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", cassandra_operation=\"read\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", cassandra_operation=\"read\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} coordinator read",
           "range": true,
@@ -490,7 +490,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(max by (cluster, host_name) (cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(max by (cluster, host_name) (cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} local table read",
           "range": true,
@@ -587,7 +587,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(max by (cluster, host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", cassandra_operation=\"read\"}) / ${latency_unit} - max by (cluster, host_name) (cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(max by (cluster, host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", cassandra_operation=\"read\"}) / ${latency_unit} - max by (cluster, host_name) (cassandra_table_read_latency_${percentile}_microseconds{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} approx overhead",
           "range": true,
@@ -698,7 +698,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_table_tombstones_scanned_${percentile}{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_table_tombstones_scanned_${percentile}{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
@@ -796,7 +796,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_table_sstables_per_read_p50{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_table_sstables_per_read_p50{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}} p50",
           "range": true,
@@ -808,7 +808,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_table_sstables_per_read_p99{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}} p99",
           "range": true,
@@ -820,7 +820,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_table_sstables_per_read_max{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_table_sstables_per_read_max{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}} max",
           "range": true,
@@ -918,7 +918,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_table_bloom_filter_false_ratio{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_table_bloom_filter_false_ratio{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
@@ -1016,7 +1016,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_table_bloom_filter_false_positives{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_table_bloom_filter_false_positives{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,
@@ -1114,7 +1114,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(rate(cassandra_table_speculative_retries_total{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(cassandra_table_speculative_retries_total{job=\"cassandra\", cluster=~\"$cluster\", host_name=~\"$host\", keyspace=~\"$keyspace\", table=~\"$table\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": false,
           "legendFormat": "{{cluster_name}} {{host_name}} {{keyspace}}.{{table}}",
           "range": true,

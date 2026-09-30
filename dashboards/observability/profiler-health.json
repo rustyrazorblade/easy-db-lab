@@ -101,7 +101,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -165,7 +165,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (edl_jfr_session_attached{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (edl_jfr_session_attached{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -233,7 +233,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace((sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}) - (sum by (cluster) (edl_jfr_session_attached{cluster=~\"$cluster\", host_name=~\"$host\"}) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"})) - (sum by (cluster) (edl_jfr_recording_stopped_at_bound{cluster=~\"$cluster\", host_name=~\"$host\"}) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}))) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace((sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}) - (sum by (cluster) (edl_jfr_session_attached{cluster=~\"$cluster\", host_name=~\"$host\"}) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"})) - (sum by (cluster) (edl_jfr_recording_stopped_at_bound{cluster=~\"$cluster\", host_name=~\"$host\"}) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}))) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -301,7 +301,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (edl_jfr_config_unreadable{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (edl_jfr_config_unreadable{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -374,7 +374,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(max by (cluster) (time() - (edl_jfr_ship_last_success_timestamp_seconds{cluster=~\"$cluster\", host_name=~\"$host\"} > 0)), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(max by (cluster) (time() - (edl_jfr_ship_last_success_timestamp_seconds{cluster=~\"$cluster\", host_name=~\"$host\"} > 0)), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -446,7 +446,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(max by (cluster) (edl_jfr_chunks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(max by (cluster) (edl_jfr_chunks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -510,7 +510,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (edl_jfr_bytes_on_disk{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (edl_jfr_bytes_on_disk{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -579,7 +579,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (edl_jfr_recording_stopped_at_bound{cluster=~\"$cluster\", host_name=~\"$host\"}) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (edl_jfr_recording_stopped_at_bound{cluster=~\"$cluster\", host_name=~\"$host\"}) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -648,7 +648,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (increase(edl_jfr_attach_failures_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range])) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (increase(edl_jfr_attach_failures_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range])) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -717,7 +717,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (increase(edl_jfr_attach_skipped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range])) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (increase(edl_jfr_attach_skipped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range])) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -786,7 +786,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (increase(edl_jfr_ship_failures_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range])) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (increase(edl_jfr_ship_failures_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range])) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -855,7 +855,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (increase(edl_jfr_ship_rejected_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range])) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (increase(edl_jfr_ship_rejected_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__range])) or 0 * sum by (cluster) (edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}}",
           "range": false,
           "instant": true,
@@ -967,7 +967,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(edl_jfr_profiling_desired{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} desired",
           "range": true,
           "instant": false,
@@ -979,7 +979,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(edl_jfr_session_attached{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(edl_jfr_session_attached{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} attached",
           "range": true,
           "instant": false,
@@ -1078,7 +1078,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_attach_failures_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_attach_failures_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}} failures/s",
           "range": true,
           "instant": false,
@@ -1090,7 +1090,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_attach_skipped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_attach_skipped_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}} skips/s",
           "range": true,
           "instant": false,
@@ -1102,7 +1102,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_attach_deferred_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_attach_deferred_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}} deferrals/s",
           "range": true,
           "instant": false,
@@ -1114,7 +1114,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_session_starts_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_session_starts_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}} session starts/s",
           "range": true,
           "instant": false,
@@ -1225,7 +1225,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(time() - (edl_jfr_ship_last_success_timestamp_seconds{cluster=~\"$cluster\", host_name=~\"$host\"} > 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(time() - (edl_jfr_ship_last_success_timestamp_seconds{cluster=~\"$cluster\", host_name=~\"$host\"} > 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
@@ -1324,7 +1324,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_ship_failures_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_ship_failures_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}} failures/s",
           "range": true,
           "instant": false,
@@ -1336,7 +1336,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_ship_rejected_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_ship_rejected_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}} rejections/s",
           "range": true,
           "instant": false,
@@ -1434,7 +1434,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(edl_jfr_chunks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(edl_jfr_chunks_pending{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
@@ -1532,7 +1532,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(edl_jfr_bytes_on_disk{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(edl_jfr_bytes_on_disk{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "instant": false,
@@ -1675,7 +1675,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_pruned_for_age_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_pruned_for_age_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}} for age (normal)",
           "range": true,
           "instant": false,
@@ -1687,7 +1687,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_pruned_for_size_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, $groupby) (rate(edl_jfr_pruned_for_size_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}} for size (pressure)",
           "range": true,
           "instant": false,
@@ -1786,7 +1786,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(edl_jfr_attach_deferred{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(edl_jfr_attach_deferred{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} attach deferred",
           "range": true,
           "instant": false,
@@ -1798,7 +1798,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(edl_jfr_ship_truncated{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(edl_jfr_ship_truncated{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} ship truncated",
           "range": true,
           "instant": false,
@@ -1810,7 +1810,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(edl_jfr_config_unreadable{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(edl_jfr_config_unreadable{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} config unreadable",
           "range": true,
           "instant": false,
@@ -1822,7 +1822,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(edl_jfr_recording_stopped_at_bound{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(edl_jfr_recording_stopped_at_bound{cluster=~\"$cluster\", host_name=~\"$host\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} stopped at size bound",
           "range": true,
           "instant": false,

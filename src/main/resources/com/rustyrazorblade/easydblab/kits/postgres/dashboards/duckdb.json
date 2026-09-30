@@ -125,7 +125,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(cnpg_pg_stat_database_temp_files_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cnpg_pg_stat_database_temp_files_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} temp files"
         }
@@ -157,7 +157,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(cnpg_pg_stat_database_temp_bytes_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cnpg_pg_stat_database_temp_bytes_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} temp bytes"
         }
@@ -189,7 +189,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_returned_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / clamp_min(sum by (cluster) (rate(cnpg_pg_stat_database_tup_fetched_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), 1), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_returned_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / clamp_min(sum by (cluster) (rate(cnpg_pg_stat_database_tup_fetched_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), 1), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} ratio"
         }
@@ -220,7 +220,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / (sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) + sum by (cluster) (rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / (sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) + sum by (cluster) (rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}}"
         }
@@ -265,13 +265,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_returned_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_returned_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} seq scan (tup_returned/s)"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_fetched_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_fetched_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "B",
           "legendFormat": "{{cluster_name}} index lookup (tup_fetched/s)"
         }
@@ -307,7 +307,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_temp_bytes_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_temp_bytes_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} temp bytes/s"
         }
@@ -335,13 +335,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} disk reads/s"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "B",
           "legendFormat": "{{cluster_name}} cache hits/s"
         }
@@ -377,13 +377,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(cnpg_pg_stat_bgwriter_buffers_clean_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(cnpg_pg_stat_bgwriter_buffers_clean_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} buffers cleaned/s"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(cnpg_pg_stat_bgwriter_buffers_alloc_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(cnpg_pg_stat_bgwriter_buffers_alloc_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "B",
           "legendFormat": "{{cluster_name}} buffers allocated/s"
         }
@@ -411,7 +411,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(max by (cluster) (cnpg_backends_max_tx_duration_seconds{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(max by (cluster) (cnpg_backends_max_tx_duration_seconds{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} max tx duration (s)"
         }
@@ -447,7 +447,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(cnpg_collector_wal_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(cnpg_collector_wal_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} WAL bytes/s"
         }
@@ -475,13 +475,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "A",
           "legendFormat": "{{cluster_name}} commits/s"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_rollback_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_rollback_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "refId": "B",
           "legendFormat": "{{cluster_name}} rollbacks/s"
         }

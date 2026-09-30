@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test
  * with `db0` of the other, and no line said which cluster it belonged to.
  */
 class SeriesClusterTest {
-    private val short = """label_replace(x, "cluster_name", "${'$'}1", "cluster", "(.+)-[0-9a-f]{8}")"""
+    private val short = """label_replace(x, "cluster_name", "${'$'}1", "cluster", "(.+-[0-9a-f]{8})-[0-9a-f]{4}")"""
 
     @Test
     fun `a grouping without the cluster is reported, and one with it is not`() {
@@ -255,6 +255,30 @@ class SeriesClusterTest {
             .containsExactly("joinByField: target C does not write 'cluster_instance'")
         assertThat(SeriesClusterGuards.joinProblems(joined(full, shortKey)))
             .containsExactly("joinByField: target B builds 'cluster_instance' from [cluster_name, instance], not from cluster")
+    }
+
+    @Test
+    fun `a short name that drops the whole id gives two clusters of one name one short name`() {
+        fun write(regex: String) = """label_replace(up, "cluster_name", "${'$'}1", "cluster", "$regex")"""
+        val uuidTail = "-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+
+        assertThat(SeriesClusterGuards.sharedShortName(write("(.+)-[0-9a-f]{8}$uuidTail")))
+            .containsExactly("cluster_name from '(.+)-[0-9a-f]{8}$uuidTail' names two clusters called test 'test'")
+        assertThat(SeriesClusterGuards.sharedShortName(write("(.+-[0-9a-f]{8})$uuidTail"))).isEmpty()
+        assertThat(SeriesClusterGuards.shortNames(write("(.+-[0-9a-f]{8})$uuidTail")))
+            .containsExactly(listOf("test-1a2b3c4d", "test-5e6f7a8b"))
+    }
+
+    @Test
+    fun `every short cluster name keeps two clusters of one name apart`() {
+        val problems =
+            DashboardFiles.all().flatMap { file ->
+                ClusterFilterGuards
+                    .queries(parse(file.readText()))
+                    .flatMap { query -> SeriesClusterGuards.sharedShortName(query.text).map { "${file.path} ${query.where}: $it" } }
+            }
+
+        assertThat(problems).isEmpty()
     }
 
     @Test

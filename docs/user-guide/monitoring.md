@@ -17,7 +17,7 @@ When running multiple environments side by side, Grafana displays the cluster na
 
 Every dashboard has a picker for each kind of data it shows: **Metrics**, **Logs** and **Traces**. Each picker lists the cluster's own tenant (the default), every tenant in the shared store by name, and one "all tenants" choice. Change the pickers to read another tenant's tests; every panel, variable, annotation and link on the dashboard follows them, and a link to another dashboard keeps them. Profiles have one datasource only, so there is no profiles picker.
 
-A dashboard with a `cluster` variable opens on the current cluster, so it shows this cluster's data with no selection by hand.  The variable lists every cluster of the tenant the Metrics picker selects.  You can select more than one cluster, or "All".  With the "all tenants" datasource in each picker and "All" in `cluster`, a dashboard shows every cluster of every tenant.
+A dashboard with a `cluster` variable opens on the current cluster, so it shows this cluster's data with no selection by hand.  The variable lists every cluster of the tenant the Metrics picker selects.  You can select more than one cluster, or "All".  With the "all tenants" datasource in each picker and "All" in `cluster`, a dashboard shows every cluster of every tenant.  Legends and tables name a cluster by its short name: its name and the first 8 characters of its id, for example `test-1a2b3c4d`.
 
 ### Tests
 
@@ -34,6 +34,8 @@ Cluster Comparison, A/B Comparison and System A/B Comparison compare two runs of
 - **Overlay**: both runs on one time axis, from a common start. The axis covers the longer run.
 - **Side by side**: each run on its own time range, at its real times.
 - **Summary and documents**: each figure over each run's whole window, the difference in percent, and both runs' documents.
+
+A/B Comparison compares builds within one cluster, so its deltas are per cluster.  To compare two clusters, use Cluster Comparison.
 
 These rows need the dashboard's relative time range (the default, ending now); an absolute range turns their own time ranges off. In the overlay, annotations sit at their real time, so they line up only with a run that did not move.
 

@@ -179,7 +179,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(100 * sum by (cluster) (jvm_memory_used_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}) / sum by (cluster) (jvm_memory_limit_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * sum by (cluster) (jvm_memory_used_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}) / sum by (cluster) (jvm_memory_limit_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} heap used",
           "refId": "A"
         }
@@ -235,7 +235,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(max by (cluster) (jvm_cpu_recent_utilization_ratio{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(max by (cluster) (jvm_cpu_recent_utilization_ratio{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} cpu",
           "refId": "A"
         }
@@ -288,7 +288,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by (cluster) (jvm_cpu_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (jvm_cpu_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} cpus",
           "refId": "A"
         }
@@ -341,7 +341,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by (cluster) (jvm_thread_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (jvm_thread_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} threads",
           "refId": "A"
         }
@@ -394,7 +394,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by (cluster) (rate(http_server_request_duration_seconds_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(http_server_request_duration_seconds_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} req/s",
           "refId": "A"
         }
@@ -447,7 +447,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(histogram_quantile(0.95, sum by(cluster, le) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.95, sum by(cluster, le) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p95",
           "refId": "A"
         }
@@ -505,17 +505,17 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_used_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_used_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} used {{host_name}}",
           "refId": "A"
         },
         {
-          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_committed_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_committed_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} committed {{host_name}}",
           "refId": "B"
         },
         {
-          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_limit_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_limit_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} limit {{host_name}}",
           "refId": "C"
         }
@@ -561,17 +561,17 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_used_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"non_heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_used_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"non_heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} used {{host_name}}",
           "refId": "A"
         },
         {
-          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_committed_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"non_heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_committed_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"non_heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} committed {{host_name}}",
           "refId": "B"
         },
         {
-          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_limit_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"non_heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (jvm_memory_limit_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_memory_type=\"non_heap\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} limit {{host_name}}",
           "refId": "C"
         }
@@ -617,7 +617,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, jvm_memory_pool_name) (jvm_memory_used_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, jvm_memory_pool_name) (jvm_memory_used_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{jvm_memory_pool_name}}",
           "refId": "A"
         }
@@ -663,7 +663,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, jvm_memory_pool_name) (jvm_memory_used_after_last_gc_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, jvm_memory_pool_name) (jvm_memory_used_after_last_gc_bytes{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{jvm_memory_pool_name}}",
           "refId": "A"
         }
@@ -721,7 +721,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, jvm_gc_name, jvm_gc_action) (rate(jvm_gc_duration_seconds_sum{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, jvm_gc_name, jvm_gc_action) (rate(jvm_gc_duration_seconds_sum{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{jvm_gc_name}} ({{jvm_gc_action}})",
           "refId": "A"
         }
@@ -767,7 +767,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, jvm_gc_name, jvm_gc_action) (rate(jvm_gc_duration_seconds_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, jvm_gc_name, jvm_gc_action) (rate(jvm_gc_duration_seconds_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{jvm_gc_name}} ({{jvm_gc_action}})",
           "refId": "A"
         }
@@ -813,7 +813,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(histogram_quantile(0.95, sum by(cluster, le, jvm_gc_name) (rate(jvm_gc_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.95, sum by(cluster, le, jvm_gc_name) (rate(jvm_gc_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{jvm_gc_name}}",
           "refId": "A"
         }
@@ -872,7 +872,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(max by(cluster, host_name) (jvm_cpu_recent_utilization_ratio{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(max by(cluster, host_name) (jvm_cpu_recent_utilization_ratio{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
@@ -918,7 +918,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, host_name) (rate(jvm_cpu_time_seconds_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (rate(jvm_cpu_time_seconds_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
@@ -964,12 +964,12 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, jvm_thread_state) (jvm_thread_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, jvm_thread_state) (jvm_thread_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{jvm_thread_state}}",
           "refId": "A"
         },
         {
-          "expr": "label_replace(sum by (cluster) (jvm_thread_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_thread_daemon=\"true\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (jvm_thread_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\", jvm_thread_daemon=\"true\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} daemon (all states)",
           "refId": "B"
         }
@@ -1015,17 +1015,17 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, host_name) (jvm_class_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (jvm_class_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} loaded {{host_name}}",
           "refId": "A"
         },
         {
-          "expr": "label_replace(sum by(cluster, host_name) (rate(jvm_class_loaded_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (rate(jvm_class_loaded_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} loads/s {{host_name}}",
           "refId": "B"
         },
         {
-          "expr": "label_replace(sum by(cluster, host_name) (rate(jvm_class_unloaded_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, host_name) (rate(jvm_class_unloaded_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} unloads/s {{host_name}}",
           "refId": "C"
         }
@@ -1083,7 +1083,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, http_request_method, http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, http_request_method, http_route, http_response_status_code) (rate(http_server_request_duration_seconds_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{http_request_method}} {{http_route}} {{http_response_status_code}}",
           "refId": "A"
         }
@@ -1129,17 +1129,17 @@
       },
       "targets": [
         {
-          "expr": "label_replace(histogram_quantile(0.5, sum by(cluster, le) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.5, sum by(cluster, le) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p50",
           "refId": "A"
         },
         {
-          "expr": "label_replace(histogram_quantile(0.95, sum by(cluster, le) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.95, sum by(cluster, le) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p95",
           "refId": "B"
         },
         {
-          "expr": "label_replace(histogram_quantile(0.99, sum by(cluster, le) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by(cluster, le) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p99",
           "refId": "C"
         }
@@ -1185,7 +1185,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(histogram_quantile(0.95, sum by(cluster, le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.95, sum by(cluster, le, http_route) (rate(http_server_request_duration_seconds_bucket{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{http_route}}",
           "refId": "A"
         }
@@ -1231,7 +1231,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, http_route) (rate(http_server_request_duration_seconds_sum{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])) / sum by(cluster, http_route) (rate(http_server_request_duration_seconds_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, http_route) (rate(http_server_request_duration_seconds_sum{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])) / sum by(cluster, http_route) (rate(http_server_request_duration_seconds_count{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{http_route}}",
           "refId": "A"
         }
@@ -1297,7 +1297,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, severity, logger) (increase(cassandra_log_records_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, severity, logger) (increase(cassandra_log_records_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{severity}} {{logger}}",
           "refId": "A",
           "instant": true,

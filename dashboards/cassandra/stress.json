@@ -103,7 +103,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(mutations_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(mutations_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{job_name}}",
           "refId": "A"
         }
@@ -193,7 +193,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(selects_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(selects_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{job_name}}",
           "refId": "A"
         }
@@ -295,7 +295,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(mutations{job=\"cassandra-easy-stress\", quantile=\"$quantile\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(mutations{job=\"cassandra-easy-stress\", quantile=\"$quantile\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{job_name}}",
           "refId": "A"
         }
@@ -385,7 +385,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(selects{job=\"cassandra-easy-stress\", quantile=\"$quantile\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(selects{job=\"cassandra-easy-stress\", quantile=\"$quantile\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{job_name}}",
           "refId": "A"
         }
@@ -475,7 +475,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(deletions{job=\"cassandra-easy-stress\", quantile=\"$quantile\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(deletions{job=\"cassandra-easy-stress\", quantile=\"$quantile\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{job_name}}",
           "refId": "A"
         }
@@ -565,7 +565,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(mutations_sum{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]) / rate(mutations_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(mutations_sum{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]) / rate(mutations_count{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{job_name}}",
           "refId": "A"
         }
@@ -667,7 +667,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(errors_total{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(errors_total{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{job_name}}",
           "refId": "A"
         }
@@ -756,7 +756,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(errors_total{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(errors_total{job=\"cassandra-easy-stress\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{job_name}}",
           "refId": "A"
         }

@@ -169,7 +169,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, service_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, service_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{service_name}}"
         }
       ],
@@ -238,7 +238,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, service_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=~\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, service_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=~\"$service\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{service_name}}"
         }
       ],
@@ -303,7 +303,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, service_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, service_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{service_name}} p99"
         }
       ],
@@ -368,7 +368,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.50, sum by (cluster, service_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.50, sum by (cluster, service_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{service_name}} p50"
         }
       ],
@@ -428,7 +428,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, span_name, service_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, span_name, service_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", service_name=~\"$service\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{service_name}}: {{span_name}}"
         }
       ],
@@ -503,7 +503,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, client, server) (rate(traces_service_graph_request_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, client, server) (rate(traces_service_graph_request_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{client}} \u2192 {{server}}"
         }
       ],
@@ -563,7 +563,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, client, server, le) (rate(traces_service_graph_request_server_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{client}} \u2192 {{server}} p99"
         }
       ],
@@ -625,7 +625,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster) (rate(tempo_distributor_traces_per_batch_count{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(tempo_distributor_traces_per_batch_count{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} traces/s"
         }
       ],
@@ -672,7 +672,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster) (rate(tempo_live_store_local_blocks_flushed_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(tempo_live_store_local_blocks_flushed_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} blocks/s"
         }
       ],
@@ -719,7 +719,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (le, cluster) (rate(tempo_query_frontend_queue_duration_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (le, cluster) (rate(tempo_query_frontend_queue_duration_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p99"
         },
         {
@@ -728,7 +728,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.50, sum by (le, cluster) (rate(tempo_query_frontend_queue_duration_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.50, sum by (le, cluster) (rate(tempo_query_frontend_queue_duration_seconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p50"
         }
       ],
@@ -807,7 +807,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, service_name, span_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, service_name, span_name) (rate(traces_spanmetrics_calls_total{cluster=~\"$cluster\", status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{service_name}}: {{span_name}}"
         }
       ],
@@ -867,7 +867,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, service_name, span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, service_name, span_name, le) (rate(traces_spanmetrics_duration_milliseconds_bucket{cluster=~\"$cluster\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{service_name}}: {{span_name}}"
         }
       ],

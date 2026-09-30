@@ -133,7 +133,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(100 * (1 - sum by(cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m])) / sum by(cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (1 - sum by(cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"idle\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m])) / sum by(cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
@@ -237,7 +237,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} 1m",
           "refId": "A"
         },
@@ -246,7 +246,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_cpu_load_average_5m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_cpu_load_average_5m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} 5m",
           "refId": "B"
         },
@@ -255,7 +255,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_cpu_load_average_15m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_cpu_load_average_15m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} 15m",
           "refId": "C"
         }
@@ -359,7 +359,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} iowait",
           "refId": "A"
         },
@@ -368,7 +368,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} steal",
           "refId": "B"
         }
@@ -476,7 +476,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} / on (cluster, host_name) system_cpu_logical_count{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_cpu_load_average_1m{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} / on (cluster, host_name) system_cpu_logical_count{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
@@ -581,7 +581,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(topk by (cluster) (10, sum by (cluster, host_name, syscall) (rate(ebpf_exporter_syscalls_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(topk by (cluster) (10, sum by (cluster, host_name, syscall) (rate(ebpf_exporter_syscalls_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{syscall}}",
           "refId": "A"
         }
@@ -686,7 +686,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name, errno) (rate(ebpf_exporter_syscall_errors_total{errno!~\"unknown:.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name, errno) (rate(ebpf_exporter_syscall_errors_total{errno!~\"unknown:.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{errno}}",
           "refId": "A"
         }
@@ -790,7 +790,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name, kind) (rate(ebpf_exporter_softirq_service_latency_seconds_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name, kind) (rate(ebpf_exporter_softirq_service_latency_seconds_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{kind}}",
           "refId": "A"
         }
@@ -894,7 +894,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name, kind) (rate(ebpf_exporter_softirq_serviced_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name, kind) (rate(ebpf_exporter_softirq_serviced_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{kind}}",
           "refId": "A"
         }
@@ -1017,7 +1017,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name, kind) (rate(ebpf_exporter_softirq_raised_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name, kind) (rate(ebpf_exporter_softirq_raised_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{kind}} raised",
           "refId": "A"
         },
@@ -1026,7 +1026,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name, kind) (rate(ebpf_exporter_softirq_serviced_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name, kind) (rate(ebpf_exporter_softirq_serviced_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{kind}} serviced",
           "refId": "B"
         }
@@ -1131,7 +1131,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(aws_ec2_cpuutilization_average{tag_Name=~\"$hostname\", cluster=~\"$cluster\", tag_Name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(aws_ec2_cpuutilization_average{tag_Name=~\"$hostname\", cluster=~\"$cluster\", tag_Name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{tag_Name}}",
           "refId": "A"
         }
@@ -1235,7 +1235,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_processes_created_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_processes_created_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
@@ -1340,7 +1340,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(jvm_cpu_recent_utilization_ratio{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(jvm_cpu_recent_utilization_ratio{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{service_name}}",
           "refId": "A"
         }
@@ -1441,7 +1441,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"user\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"user\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} user",
           "refId": "A"
         },
@@ -1450,7 +1450,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"system\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"system\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} system",
           "refId": "B"
         },
@@ -1459,7 +1459,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"softirq\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"softirq\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} softirq",
           "refId": "C"
         },
@@ -1468,7 +1468,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"interrupt\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"interrupt\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} interrupt",
           "refId": "D"
         },
@@ -1477,7 +1477,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"steal\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} steal",
           "refId": "E"
         },
@@ -1486,7 +1486,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"wait\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} wait",
           "refId": "F"
         },
@@ -1495,7 +1495,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"nice\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster) ( sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{state=\"nice\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / on (cluster, host_name) sum by (cluster, host_name) (rate(system_cpu_time_seconds_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} nice",
           "refId": "G"
         }
@@ -1611,7 +1611,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"used\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"used\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
@@ -1708,7 +1708,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"used\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"used\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} used",
           "refId": "A"
         },
@@ -1717,7 +1717,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"buffered\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"buffered\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} buffered",
           "refId": "B"
         },
@@ -1726,7 +1726,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"cached\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"cached\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} cached",
           "refId": "C"
         },
@@ -1735,7 +1735,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"free\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"free\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} free",
           "refId": "D"
         },
@@ -1744,7 +1744,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"slab_reclaimable\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"slab_reclaimable\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} slab",
           "refId": "E"
         }
@@ -1841,7 +1841,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_paging_operations_total{direction=\"page_in\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_paging_operations_total{direction=\"page_in\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} page in",
           "refId": "A"
         },
@@ -1850,7 +1850,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_paging_operations_total{direction=\"page_out\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_paging_operations_total{direction=\"page_out\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} page out",
           "refId": "B"
         }
@@ -1950,7 +1950,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace((sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) - sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))) / sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace((sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])) - sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))) / sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
@@ -2047,7 +2047,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_access\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} access",
           "refId": "A"
         },
@@ -2056,7 +2056,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_add_lru\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} miss",
           "refId": "B"
         }
@@ -2153,7 +2153,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_writes\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"cache_writes\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} cache_writes",
           "refId": "A"
         },
@@ -2162,7 +2162,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_mark_dirties\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_page_cache_ops_total{operation=\"page_mark_dirties\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} page_mark_dirties",
           "refId": "B"
         }
@@ -2291,7 +2291,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name) (rate(ebpf_exporter_shrink_node_latency_seconds_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name) (rate(ebpf_exporter_shrink_node_latency_seconds_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} p99",
           "refId": "A"
         },
@@ -2300,7 +2300,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_shrink_node_latency_seconds_count{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_shrink_node_latency_seconds_count{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} calls/s",
           "refId": "B"
         }
@@ -2398,7 +2398,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_paging_faults_total{type=\"major\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / 4096, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_paging_faults_total{type=\"major\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / 4096, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} major",
           "refId": "A"
         },
@@ -2407,7 +2407,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_paging_faults_total{type=\"minor\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / 4096, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_paging_faults_total{type=\"minor\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / 4096, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} minor",
           "refId": "B"
         }
@@ -2504,7 +2504,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"slab_reclaimable\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"slab_reclaimable\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} reclaimable",
           "refId": "A"
         },
@@ -2513,7 +2513,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"slab_unreclaimable\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"slab_unreclaimable\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} unreclaimable",
           "refId": "B"
         }
@@ -2612,7 +2612,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (increase(ebpf_exporter_oom_kills_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (increase(ebpf_exporter_oom_kills_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
@@ -2712,7 +2712,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(avg by (cluster, state) ( sum by (cluster, host_name, state) (label_replace(system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"state\", \"slab\", \"state\", \"slab_.*\")) / on (cluster, host_name) group_left sum by (cluster, host_name) (system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster, state) ( sum by (cluster, host_name, state) (label_replace(system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"state\", \"slab\", \"state\", \"slab_.*\")) / on (cluster, host_name) group_left sum by (cluster, host_name) (system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{state}}",
           "refId": "A"
         }
@@ -2828,7 +2828,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} read",
           "refId": "A"
         },
@@ -2837,7 +2837,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} write",
           "refId": "B"
         }
@@ -2935,7 +2935,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_operations_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_operations_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} read",
           "refId": "A"
         },
@@ -2944,7 +2944,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_operations_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_operations_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} write",
           "refId": "B"
         }
@@ -3047,7 +3047,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name, device) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", device!~\"loop.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name, device) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"read\", device!~\"loop.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}}",
           "refId": "A"
         }
@@ -3151,7 +3151,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name, device) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"write\", device!~\"loop.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name, device) (rate(ebpf_exporter_bio_latency_seconds_bucket{operation=\"write\", device!~\"loop.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}}",
           "refId": "A"
         }
@@ -3249,7 +3249,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(100 * system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} / ignoring(state) (system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} + ignoring(state) system_filesystem_usage_bytes{state=\"free\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} / ignoring(state) (system_filesystem_usage_bytes{state=\"used\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} + ignoring(state) system_filesystem_usage_bytes{state=\"free\", host_name=~\"$hostname\", mountpoint=~\"/mnt/.*|/\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{mountpoint}}",
           "refId": "A"
         }
@@ -3352,7 +3352,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_filesystem_usage_bytes{state=\"free\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_filesystem_usage_bytes{state=\"free\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{mountpoint}}",
           "refId": "A"
         }
@@ -3458,7 +3458,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_filesystem_inodes_usage{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} / ignoring(state) (system_filesystem_inodes_usage{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} + ignoring(state) system_filesystem_inodes_usage{state=\"free\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_filesystem_inodes_usage{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} / ignoring(state) (system_filesystem_inodes_usage{state=\"used\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"} + ignoring(state) system_filesystem_inodes_usage{state=\"free\", mountpoint=~\"/mnt/.*|/\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{mountpoint}}",
           "refId": "A"
         }
@@ -3562,7 +3562,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name, operation) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name, operation) (rate(ebpf_exporter_xfs_latency_seconds_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{operation}}",
           "refId": "A"
         }
@@ -3668,7 +3668,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_io_time_seconds_total{device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_io_time_seconds_total{device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}}",
           "refId": "A"
         }
@@ -3772,7 +3772,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_disk_pending_operations{device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_disk_pending_operations{device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}}",
           "refId": "A"
         }
@@ -3876,7 +3876,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_operation_time_seconds_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_operation_time_seconds_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} read",
           "refId": "A"
         },
@@ -3885,7 +3885,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_operation_time_seconds_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_operation_time_seconds_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} write",
           "refId": "B"
         }
@@ -3989,7 +3989,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} read",
           "refId": "A"
         },
@@ -3998,7 +3998,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]) / rate(system_disk_operations_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} write",
           "refId": "B"
         }
@@ -4102,7 +4102,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_merged_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_merged_total{direction=\"read\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} read",
           "refId": "A"
         },
@@ -4111,7 +4111,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_disk_merged_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_merged_total{direction=\"write\", device!~\"loop.*|.*p[0-9]+\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} write",
           "refId": "B"
         }
@@ -4228,7 +4228,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} rx",
           "refId": "A"
         },
@@ -4237,7 +4237,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} tx",
           "refId": "B"
         }
@@ -4335,7 +4335,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_packets_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_packets_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} rx",
           "refId": "A"
         },
@@ -4344,7 +4344,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_packets_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_packets_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} tx",
           "refId": "B"
         }
@@ -4441,7 +4441,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_errors_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_errors_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} rx errors",
           "refId": "A"
         },
@@ -4450,7 +4450,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_errors_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_errors_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} tx errors",
           "refId": "B"
         },
@@ -4459,7 +4459,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_dropped_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_dropped_total{direction=\"receive\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} rx drops",
           "refId": "C"
         },
@@ -4468,7 +4468,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(rate(system_network_dropped_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_dropped_total{direction=\"transmit\", device=~\"ens.*|eth.*\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[1m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} tx drops",
           "refId": "D"
         }
@@ -4571,7 +4571,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_network_connections{protocol=\"tcp\", state=~\"ESTABLISHED|TIME_WAIT|CLOSE_WAIT|SYN_RECV\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_network_connections{protocol=\"tcp\", state=~\"ESTABLISHED|TIME_WAIT|CLOSE_WAIT|SYN_RECV\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{state}}",
           "refId": "A"
         }
@@ -4675,7 +4675,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{main_port=\"7000\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{main_port=\"7000\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} internode (7000)",
           "refId": "A"
         },
@@ -4684,7 +4684,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{main_port=\"9042\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{main_port=\"9042\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} client (9042)",
           "refId": "B"
         },
@@ -4693,7 +4693,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{main_port!~\"7000|9042\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{main_port!~\"7000|9042\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} other",
           "refId": "C"
         }
@@ -4797,7 +4797,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(sum by (cluster, host_name, type) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, host_name, type) (rate(ebpf_exporter_tcp_retransmit_ipv4_packets_total{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{type}}",
           "refId": "A"
         }
@@ -4901,7 +4901,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name) (rate(ebpf_exporter_tcp_syn_backlog_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name) (rate(ebpf_exporter_tcp_syn_backlog_bucket{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "refId": "A"
         }
@@ -5005,7 +5005,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name) (rate(ebpf_exporter_softirq_entry_latency_seconds_bucket{kind=\"NET_RX_SOFTIRQ\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name) (rate(ebpf_exporter_softirq_entry_latency_seconds_bucket{kind=\"NET_RX_SOFTIRQ\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} raise to entry",
           "refId": "A"
         },
@@ -5014,7 +5014,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name) (rate(ebpf_exporter_softirq_service_latency_seconds_bucket{kind=\"NET_RX_SOFTIRQ\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(histogram_quantile(0.99, sum by (cluster, le, host_name) (rate(ebpf_exporter_softirq_service_latency_seconds_bucket{kind=\"NET_RX_SOFTIRQ\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} service",
           "refId": "B"
         }
@@ -5124,7 +5124,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_processes_count{status=\"running\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_processes_count{status=\"running\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} running",
           "refId": "A"
         },
@@ -5133,7 +5133,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(system_processes_count{status=\"blocked\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_processes_count{status=\"blocked\", host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} blocked",
           "refId": "B"
         }

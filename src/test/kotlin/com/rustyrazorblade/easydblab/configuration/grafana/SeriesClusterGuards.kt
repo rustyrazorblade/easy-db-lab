@@ -258,19 +258,60 @@ object SeriesClusterGuards {
      * built from. When a query writes one label twice, the last write counts.
      */
     private fun labelWrites(query: String): Map<String, List<String>> =
+        labelCalls(query)
+            .filter { it.args.size > SOURCES }
+            .associate { call ->
+                if (call.join) call.args[1] to call.args.drop(SOURCES) else call.args[1] to listOf(call.args[SOURCES])
+            }
+
+    /**
+     * The short name each `label_replace` of [query] that writes `cluster_name` from `cluster` gives
+     * two clusters that share a name, one list per write. PromQL anchors the regex, and a
+     * regex that does not match writes no label, which reads as an empty name.
+     */
+    fun shortNames(query: String): List<List<String>> =
+        clusterNameWrites(query).map { call ->
+            val regex = runCatching { Regex(call.args[REGEX]) }.getOrNull()
+            sameNamed.map { cluster ->
+                regex
+                    ?.matchEntire(cluster)
+                    ?.let { match ->
+                        call.args[2].replace(Regex("""\$(\d+)""")) { match.groupValues.getOrElse(it.groupValues[1].toInt()) { "" } }
+                    }.orEmpty()
+            }
+        }
+
+    /**
+     * Each `cluster_name` write of [query] that gives two clusters of one name one short name. Two
+     * clusters may share a name (the default is `test`), so the short name keeps the first 8
+     * characters of the id: `(.+-[0-9a-f]{8})-[0-9a-f]{4}-...`.
+     */
+    fun sharedShortName(query: String): List<String> =
+        clusterNameWrites(query).zip(shortNames(query)).mapNotNull { (call, names) ->
+            "cluster_name from '${call.args[REGEX]}' names two clusters called test '${names.first()}'".takeIf {
+                names.distinct().size == 1
+            }
+        }
+
+    private fun clusterNameWrites(query: String): List<LabelCall> =
+        labelCalls(query).filter { !it.join && it.args.size > REGEX && it.args[1] == CLUSTER_NAME && it.args[SOURCES] == CLUSTER }
+
+    /** A `label_join` or `label_replace` call, with its arguments unquoted. */
+    private data class LabelCall(
+        val join: Boolean,
+        val args: List<String>,
+    )
+
+    private fun labelCalls(query: String): List<LabelCall> =
         labelFunction
             .findAll(query)
-            .mapNotNull { match ->
+            .map { match ->
                 val open = match.range.last
                 val args =
                     arguments(query.substring(open + 1, ClusterFilterGuards.skipGroup(query, open, '(', ')') - 1))
                         .map { it.trim().removeSurrounding("\"") }
-                when {
-                    args.size <= SOURCES -> null
-                    match.groupValues[1] == "join" -> args[1] to args.drop(SOURCES)
-                    else -> args[1] to listOf(args[SOURCES])
-                }
-            }.toMap()
+                LabelCall(match.groupValues[1] == "join", args)
+            }.toList()
 
     /** The top-level, comma-separated arguments of a call whose argument list is [text]. */
     private fun arguments(text: String): List<String> {
@@ -353,5 +394,12 @@ object SeriesClusterGuards {
 
     /** The index of the first source label in `label_join(v, dst, sep, src...)` and `label_replace(v, dst, repl, src, re)`. */
     private const val SOURCES = 3
+
+    /** The index of the regex in `label_replace(v, dst, repl, src, re)`. */
+    private const val REGEX = 4
+
+    /** Two clusters that share the default name, as `<name>-<uuid>`. */
+    private val sameNamed =
+        listOf("test-1a2b3c4d-0000-4000-8000-000000000001", "test-5e6f7a8b-0000-4000-8000-000000000002")
     private const val TABLE = "table"
 }

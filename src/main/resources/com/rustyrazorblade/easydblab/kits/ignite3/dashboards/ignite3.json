@@ -74,10 +74,10 @@
       "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "targets": [
-        { "expr": "label_replace(sum by (cluster) (rate(Succeeded{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} succeeded", "refId": "A" },
-        { "expr": "label_replace(sum by (cluster) (rate(Failed{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} failed", "refId": "B" },
-        { "expr": "label_replace(sum by (cluster) (rate(Canceled{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} canceled", "refId": "C" },
-        { "expr": "label_replace(sum by (cluster) (rate(TimedOut{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} timed out", "refId": "D" }
+        { "expr": "label_replace(sum by (cluster) (rate(Succeeded{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} succeeded", "refId": "A" },
+        { "expr": "label_replace(sum by (cluster) (rate(Failed{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} failed", "refId": "B" },
+        { "expr": "label_replace(sum by (cluster) (rate(Canceled{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} canceled", "refId": "C" },
+        { "expr": "label_replace(sum by (cluster) (rate(TimedOut{cluster=~\"$cluster\", otel_scope_name=\"sql.queries\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} timed out", "refId": "D" }
       ]
     },
     {
@@ -85,15 +85,15 @@
       "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 8, "w": 6, "x": 12, "y": 6 },
       "targets": [
-        { "expr": "label_replace(sum by (cluster) (rate(Hits{cluster=~\"$cluster\", otel_scope_name=\"sql.plan.cache\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} hits", "refId": "A" },
-        { "expr": "label_replace(sum by (cluster) (rate(Misses{cluster=~\"$cluster\", otel_scope_name=\"sql.plan.cache\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} misses", "refId": "B" }
+        { "expr": "label_replace(sum by (cluster) (rate(Hits{cluster=~\"$cluster\", otel_scope_name=\"sql.plan.cache\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} hits", "refId": "A" },
+        { "expr": "label_replace(sum by (cluster) (rate(Misses{cluster=~\"$cluster\", otel_scope_name=\"sql.plan.cache\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} misses", "refId": "B" }
       ]
     },
     {
       "type": "timeseries", "title": "Open cursors",
       "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 8, "w": 6, "x": 18, "y": 6 },
-      "targets": [ { "expr": "label_replace(sum by (cluster) (OpenCursors{cluster=~\"$cluster\", otel_scope_name=\"sql.client\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} open cursors", "refId": "A" } ]
+      "targets": [ { "expr": "label_replace(sum by (cluster) (OpenCursors{cluster=~\"$cluster\", otel_scope_name=\"sql.client\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} open cursors", "refId": "A" } ]
     },
 
     { "type": "row", "title": "Transactions", "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 }, "collapsed": false },
@@ -102,8 +102,8 @@
       "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 15 },
       "targets": [
-        { "expr": "label_replace(sum by (cluster) (rate(RwCommits{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} read-write", "refId": "A" },
-        { "expr": "label_replace(sum by (cluster) (rate(RoCommits{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} read-only", "refId": "B" }
+        { "expr": "label_replace(sum by (cluster) (rate(RwCommits{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} read-write", "refId": "A" },
+        { "expr": "label_replace(sum by (cluster) (rate(RoCommits{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} read-only", "refId": "B" }
       ]
     },
     {
@@ -111,8 +111,8 @@
       "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 15 },
       "targets": [
-        { "expr": "label_replace(sum by (cluster) (rate(RwRollbacks{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} read-write", "refId": "A" },
-        { "expr": "label_replace(sum by (cluster) (rate(RoRollbacks{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} read-only", "refId": "B" }
+        { "expr": "label_replace(sum by (cluster) (rate(RwRollbacks{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} read-write", "refId": "A" },
+        { "expr": "label_replace(sum by (cluster) (rate(RoRollbacks{cluster=~\"$cluster\", otel_scope_name=\"transactions\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} read-only", "refId": "B" }
       ]
     },
 
@@ -122,9 +122,9 @@
       "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 24 },
       "targets": [
-        { "expr": "label_replace(sum by (cluster) (SessionsActive{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} active", "refId": "A" },
-        { "expr": "label_replace(sum by (cluster) (rate(SessionsAccepted{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} accepted/s", "refId": "B" },
-        { "expr": "label_replace(sum by (cluster) (rate(SessionsRejected{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} rejected/s", "refId": "C" }
+        { "expr": "label_replace(sum by (cluster) (SessionsActive{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} active", "refId": "A" },
+        { "expr": "label_replace(sum by (cluster) (rate(SessionsAccepted{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} accepted/s", "refId": "B" },
+        { "expr": "label_replace(sum by (cluster) (rate(SessionsRejected{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} rejected/s", "refId": "C" }
       ]
     },
     {
@@ -132,9 +132,9 @@
       "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 8, "w": 8, "x": 8, "y": 24 },
       "targets": [
-        { "expr": "label_replace(sum by (cluster) (RequestsActive{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} active", "refId": "A" },
-        { "expr": "label_replace(sum by (cluster) (rate(RequestsProcessed{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} processed/s", "refId": "B" },
-        { "expr": "label_replace(sum by (cluster) (rate(RequestsFailed{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} failed/s", "refId": "C" }
+        { "expr": "label_replace(sum by (cluster) (RequestsActive{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} active", "refId": "A" },
+        { "expr": "label_replace(sum by (cluster) (rate(RequestsProcessed{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} processed/s", "refId": "B" },
+        { "expr": "label_replace(sum by (cluster) (rate(RequestsFailed{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} failed/s", "refId": "C" }
       ]
     },
     {
@@ -143,8 +143,8 @@
       "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
       "fieldConfig": { "defaults": { "unit": "Bps" } },
       "targets": [
-        { "expr": "label_replace(sum by (cluster) (rate(BytesReceived{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} received", "refId": "A" },
-        { "expr": "label_replace(sum by (cluster) (rate(BytesSent{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} sent", "refId": "B" }
+        { "expr": "label_replace(sum by (cluster) (rate(BytesReceived{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} received", "refId": "A" },
+        { "expr": "label_replace(sum by (cluster) (rate(BytesSent{cluster=~\"$cluster\", otel_scope_name=\"client.handler\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} sent", "refId": "B" }
       ]
     },
 
@@ -155,8 +155,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 33 },
       "fieldConfig": { "defaults": { "unit": "bytes" } },
       "targets": [
-        { "expr": "label_replace(TotalUsedSize{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.default\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} used {{instance}}", "refId": "A" },
-        { "expr": "label_replace(TotalAllocatedSize{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.default\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} allocated {{instance}}", "refId": "B" }
+        { "expr": "label_replace(TotalUsedSize{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.default\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} used {{instance}}", "refId": "A" },
+        { "expr": "label_replace(TotalAllocatedSize{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.default\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} allocated {{instance}}", "refId": "B" }
       ]
     },
     {
@@ -165,8 +165,8 @@
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 33 },
       "fieldConfig": { "defaults": { "unit": "ms" } },
       "targets": [
-        { "expr": "label_replace(LastCheckpointDuration{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.checkpoint\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} total {{instance}}", "refId": "A" },
-        { "expr": "label_replace(LastCheckpointFsyncDuration{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.checkpoint\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} fsync {{instance}}", "refId": "B" }
+        { "expr": "label_replace(LastCheckpointDuration{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.checkpoint\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} total {{instance}}", "refId": "A" },
+        { "expr": "label_replace(LastCheckpointFsyncDuration{cluster=~\"$cluster\", otel_scope_name=\"storage.aipersist.checkpoint\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} fsync {{instance}}", "refId": "B" }
       ]
     },
 
@@ -176,8 +176,8 @@
       "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 42 },
       "targets": [
-        { "expr": "label_replace(sum by (cluster, otel_scope_name) (ActiveCount{cluster=~\"$cluster\", otel_scope_name=~\"thread.pools.*\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{otel_scope_name}}", "refId": "A" },
-        { "expr": "label_replace(sum by (cluster) ({__name__=~\"stripe_[0-9]+_ActiveCount\", cluster=~\"$cluster\", otel_scope_name=\"thread.pools.sql-executor\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} thread.pools.sql-executor", "refId": "B" }
+        { "expr": "label_replace(sum by (cluster, otel_scope_name) (ActiveCount{cluster=~\"$cluster\", otel_scope_name=~\"thread.pools.*\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{otel_scope_name}}", "refId": "A" },
+        { "expr": "label_replace(sum by (cluster) ({__name__=~\"stripe_[0-9]+_ActiveCount\", cluster=~\"$cluster\", otel_scope_name=\"thread.pools.sql-executor\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} thread.pools.sql-executor", "refId": "B" }
       ]
     },
     {
@@ -185,8 +185,8 @@
       "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 42 },
       "targets": [
-        { "expr": "label_replace(sum by (cluster, otel_scope_name) (QueueSize{cluster=~\"$cluster\", otel_scope_name=~\"thread.pools.*\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{otel_scope_name}}", "refId": "A" },
-        { "expr": "label_replace(sum by (cluster) ({__name__=~\"stripe_[0-9]+_QueueSize\", cluster=~\"$cluster\", otel_scope_name=\"thread.pools.sql-executor\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} thread.pools.sql-executor", "refId": "B" }
+        { "expr": "label_replace(sum by (cluster, otel_scope_name) (QueueSize{cluster=~\"$cluster\", otel_scope_name=~\"thread.pools.*\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} {{otel_scope_name}}", "refId": "A" },
+        { "expr": "label_replace(sum by (cluster) ({__name__=~\"stripe_[0-9]+_QueueSize\", cluster=~\"$cluster\", otel_scope_name=\"thread.pools.sql-executor\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} thread.pools.sql-executor", "refId": "B" }
       ]
     }
   ]

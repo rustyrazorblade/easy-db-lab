@@ -543,7 +543,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(aws_ebs_volume_read_ops_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(aws_ebs_volume_read_ops_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} VolumeReadOps {{dimension_VolumeId}}",
           "refId": "A"
         },
@@ -552,7 +552,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(aws_ebs_volume_write_ops_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(aws_ebs_volume_write_ops_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} VolumeWriteOps {{dimension_VolumeId}}",
           "refId": "B"
         }
@@ -655,7 +655,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(aws_ebs_volume_read_bytes_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(aws_ebs_volume_read_bytes_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} VolumeReadBytes {{dimension_VolumeId}}",
           "refId": "A"
         },
@@ -664,7 +664,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(aws_ebs_volume_write_bytes_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(aws_ebs_volume_write_bytes_sum{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} VolumeWriteBytes {{dimension_VolumeId}}",
           "refId": "B"
         }
@@ -754,7 +754,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(aws_ebs_volume_queue_length_average{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(aws_ebs_volume_queue_length_average{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} QueueLength {{dimension_VolumeId}}",
           "refId": "A"
         }
@@ -844,7 +844,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(aws_ebs_burst_balance_average{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(aws_ebs_burst_balance_average{dimension_VolumeId=~\"$volume\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} BurstBalance {{dimension_VolumeId}}",
           "refId": "A"
         }
@@ -949,7 +949,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(aws_ec2_status_check_failed_instance_maximum{dimension_InstanceId=~\"$instance\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(aws_ec2_status_check_failed_instance_maximum{dimension_InstanceId=~\"$instance\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} InstanceCheck {{dimension_InstanceId}}",
           "refId": "A"
         },
@@ -958,7 +958,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(aws_ec2_status_check_failed_system_maximum{dimension_InstanceId=~\"$instance\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(aws_ec2_status_check_failed_system_maximum{dimension_InstanceId=~\"$instance\", cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} SystemCheck {{dimension_InstanceId}}",
           "refId": "B"
         }

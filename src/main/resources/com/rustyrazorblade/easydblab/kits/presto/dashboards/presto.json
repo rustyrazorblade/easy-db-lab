@@ -26,7 +26,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(avg by (cluster, host_name) (1 - rate(system_cpu_time_seconds_total{state=\"idle\",cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster, host_name) (1 - rate(system_cpu_time_seconds_total{state=\"idle\",cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}"
         }
       ],
@@ -44,17 +44,17 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"used\",cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"used\",cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} used"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"free\",cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"free\",cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} free"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(system_memory_usage_bytes{state=\"cached\",cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_memory_usage_bytes{state=\"cached\",cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} cached"
         }
       ],
@@ -72,12 +72,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} read"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} write"
         }
       ],
@@ -95,12 +95,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"receive\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"receive\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} rx"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"transmit\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_network_io_bytes_total{direction=\"transmit\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} tx"
         }
       ],
@@ -118,17 +118,17 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(system_cpu_load_average_1m{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_cpu_load_average_1m{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} 1m"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(system_cpu_load_average_5m{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_cpu_load_average_5m{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} 5m"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(system_cpu_load_average_15m{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(system_cpu_load_average_15m{cluster=~\"$cluster\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} 15m"
         }
       ],
@@ -146,12 +146,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"read\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} read"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(system_disk_io_bytes_total{direction=\"write\",device!~\"loop.*|.*p[0-9]+\",cluster=~\"$cluster\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}} {{device}} write"
         }
       ],
@@ -177,12 +177,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_RunningQueries{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_RunningQueries{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Running"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_QueuedQueries{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_QueuedQueries{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Queued"
         }
       ],
@@ -200,17 +200,17 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_dispatcher_DispatchManager_CompletedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_dispatcher_DispatchManager_CompletedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Completed/s (1m)"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_FailedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_FailedQueries_OneMinute_Rate{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Failed/s (1m)"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(com_facebook_presto_dispatcher_DispatchManager_AbandonedQueries_TotalCount{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(com_facebook_presto_dispatcher_DispatchManager_AbandonedQueries_TotalCount{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Abandoned/s"
         }
       ],
@@ -228,7 +228,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Blocked Splits"
         }
       ],
@@ -253,17 +253,17 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P50{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P50{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p50"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P95{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P95{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p95"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P99{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_P99{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p99"
         }
       ],
@@ -281,17 +281,17 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P50{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P50{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p50"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P95{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P95{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p95"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P99{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_P99{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} p99"
         }
       ],
@@ -316,7 +316,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_Total{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_WallInputBytesRate_OneMinute_Total{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Wall Input Bytes/s (1m total)"
         }
       ],
@@ -334,7 +334,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_Total{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_QueryManager_CpuInputByteRate_AllTime_Total{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} CPU Input Bytes/s (all-time total)"
         }
       ],
@@ -359,7 +359,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_RunnerThreads{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_RunnerThreads{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Runner Threads"
         }
       ],
@@ -377,17 +377,17 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_WaitingSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_WaitingSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Waiting"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_RunningSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_RunningSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Running"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_execution_executor_TaskExecutor_BlockedSplits{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Blocked"
         }
       ],
@@ -412,12 +412,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Total Spilled"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Total Read Back"
         }
       ],
@@ -435,12 +435,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytes{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Spill Write Rate"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(com_facebook_presto_spiller_SpillerStats_TotalSpilledBytesRead{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Spill Read Rate"
         }
       ],
@@ -465,17 +465,17 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(jvm_memory_bytes_used{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(jvm_memory_bytes_used{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Heap Used"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(jvm_memory_bytes_max{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(jvm_memory_bytes_max{cluster=~\"$cluster\",job=\"presto\",area=\"heap\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Heap Max"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(jvm_memory_pool_bytes_used{cluster=~\"$cluster\",job=\"presto\",pool=\"G1 Old Gen\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(jvm_memory_pool_bytes_used{cluster=~\"$cluster\",job=\"presto\",pool=\"G1 Old Gen\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} G1 Old Gen Used"
         }
       ],
@@ -493,12 +493,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_memory_ClusterMemoryManager_ClusterUserMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_memory_ClusterMemoryManager_ClusterUserMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} User Memory Reserved"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(com_facebook_presto_memory_ClusterMemoryManager_ClusterTotalMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(com_facebook_presto_memory_ClusterMemoryManager_ClusterTotalMemoryReservation{cluster=~\"$cluster\",job=\"presto\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Total Memory Reserved"
         }
       ],
@@ -523,12 +523,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Young GC pause rate"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Old GC pause rate"
         }
       ],
@@ -546,7 +546,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(process_cpu_seconds_total{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(process_cpu_seconds_total{cluster=~\"$cluster\",job=\"presto\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} CPU usage"
         }
       ],
@@ -564,12 +564,12 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Young Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Young Gen avg pause"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
-          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(rate(jvm_gc_collection_seconds_sum{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]) / rate(jvm_gc_collection_seconds_count{cluster=~\"$cluster\",job=\"presto\",gc=\"G1 Old Generation\"}[$__rate_interval]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} Old Gen avg pause"
         }
       ],

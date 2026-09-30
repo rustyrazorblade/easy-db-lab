@@ -159,7 +159,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(selects{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(selects{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} client {{job_name}}",
           "range": true,
           "refId": "A"
@@ -170,7 +170,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} server {{host_name}}",
           "range": true,
           "refId": "B"
@@ -266,7 +266,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"} * 1000000 / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} client {{job_name}}",
           "range": true,
           "refId": "A"
@@ -277,7 +277,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"} / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} server {{host_name}}",
           "range": true,
           "refId": "B"
@@ -386,7 +386,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace((avg by (cluster) (selects{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"})) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace((avg by (cluster) (selects{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"})) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} read delta",
           "range": true,
           "refId": "A"
@@ -482,7 +482,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace((avg by (cluster) (mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"})) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace((avg by (cluster) (mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - avg by (cluster) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"})) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} write delta",
           "range": true,
           "refId": "A"
@@ -591,7 +591,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace((avg by (cluster) (selects{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - on (cluster) group_right cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace((avg by (cluster) (selects{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - on (cluster) group_right cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "refId": "A"
@@ -687,7 +687,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace((avg by (cluster) (mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - on (cluster) group_right cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace((avg by (cluster) (mutations{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\", quantile=\"$client_quantile\"}) * 1000000 - on (cluster) group_right cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{host_name}}",
           "range": true,
           "refId": "A"
@@ -795,7 +795,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (rate(selects_count{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(selects_count{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} client selects/s",
           "range": true,
           "refId": "A"
@@ -806,7 +806,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", cassandra_operation=\"read\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} server reads/s",
           "range": true,
           "refId": "B"
@@ -901,7 +901,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (rate(mutations_count{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(mutations_count{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} client mutations/s",
           "range": true,
           "refId": "A"
@@ -912,7 +912,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", cassandra_operation=\"write\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} server writes/s",
           "range": true,
           "refId": "B"
@@ -1020,7 +1020,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, job_name) (rate(errors_total{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, job_name) (rate(errors_total{cluster=~\"$cluster\", job=\"cassandra-easy-stress\", job_name=~\"$workload\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{job_name}}",
           "range": true,
           "refId": "A"
@@ -1115,7 +1115,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, cassandra_operation, cassandra_status) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, cassandra_operation, cassandra_status) (rate(cassandra_client_request_error_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{cassandra_operation}} {{cassandra_status}}",
           "range": true,
           "refId": "A"
@@ -1224,7 +1224,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(avg by (cluster, ${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster, ${groupby}) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", host_name=~\"$host\"}) / ${latency_unit}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}}",
           "range": true,
           "refId": "A"
@@ -1319,7 +1319,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(sum by (cluster, ${groupby}) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+)-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by (cluster, ${groupby}) (rate(cassandra_client_request_count_total{cluster=~\"$cluster\", host_name=~\"$host\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{$groupby}}",
           "range": true,
           "refId": "A"

@@ -3,9 +3,11 @@
 #
 # Agent selection for Cassandra nodes, sourced by cassandra.in.sh at every Cassandra startup.
 #
-# It answers two questions, and nothing else:
+# It answers these questions, and nothing else:
 #   - which Cassandra release (X.Y) is this node about to start?
+#   - which JDK major version is it about to start on?
 #   - which AxonOps agent, if any, belongs to that release?
+#   - does that JDK get the unified GC log?
 #
 # Metrics come from the OpenTelemetry Java agent, which is one jar for every release, so it needs
 # no selection and appears nowhere in here.
@@ -77,6 +79,32 @@ edl_cassandra_version_from_jar() {
     edl_is_digits "$_edl_minor" || return 1
 
     printf '%s.%s\n' "$_edl_major" "$_edl_minor"
+}
+
+# edl_java_major_version <first line of `java -version`>
+#
+# Prints the JDK major version. Returns 1 without printing anything when the line carries no
+# version string.
+#
+#   openjdk version "25" 2025-09-16        -> 25
+#   openjdk version "25.0.1" 2025-10-21    -> 25
+#   openjdk version "21.0.8" 2025-07-15    -> 21
+#   openjdk version "1.8.0_462"            -> 1
+#
+# JDK 8 reads as 1, not 8. edl_java_writes_gc_log relies on that to leave JDK 8 out.
+edl_java_major_version() {
+    _edl_java_major=$(printf '%s\n' "$1" | sed -nE 's/.*version "([0-9]+)[."].*/\1/p')
+    edl_is_digits "$_edl_java_major" || return 1
+    printf '%s\n' "$_edl_java_major"
+}
+
+# edl_java_writes_gc_log <java-major-version>
+#
+# True for JDK 17 and higher, which take the unified -Xlog:gc option cassandra.in.sh adds. An empty
+# or non-numeric version is false rather than a test error.
+edl_java_writes_gc_log() {
+    edl_is_digits "$1" || return 1
+    [ "$1" -ge 17 ]
 }
 
 # edl_axonops_agent_for <X.Y> <java-major-version>

@@ -10,10 +10,10 @@
 
 ## 3. Cassandra launch environment (`packer/cassandra/cassandra.in.sh`, POSIX sh)
 
-- [ ] 3.1 Change the Java version `sed` expression so that `version "25"` and `version "25.0.1"` both yield `25`, and `version "1.8.0_x"` still yields `1`.
-- [ ] 3.2 Change the GC log condition to `[ "$ECL_JAVA_VERSION" -ge 17 ]`.
-- [ ] 3.3 Update the comment "Every db node runs 17 or 21".
-- [ ] 3.4 Confirm the file still parses under `/bin/sh` (dash), for example with `./gradlew testCassandraAgentSelection`.
+- [x] 3.1 Change the Java version `sed` expression so that `version "25"` and `version "25.0.1"` both yield `25`, and `version "1.8.0_x"` still yields `1`.
+- [x] 3.2 Change the GC log condition to `[ "$ECL_JAVA_VERSION" -ge 17 ]`.
+- [x] 3.3 Update the comment "Every db node runs 17 or 21".
+- [x] 3.4 Confirm the file still parses under `/bin/sh` (dash), for example with `./gradlew testCassandraAgentSelection`.
 
 ## 4. Help text
 

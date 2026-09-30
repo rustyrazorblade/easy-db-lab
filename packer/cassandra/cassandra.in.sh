@@ -93,7 +93,7 @@ if [ -f "$EDL_OTEL_AGENT_JAR" ]; then
     #   does nothing at all: the java8 and java17 modules are merged into one
     #   io.opentelemetry.runtime-telemetry. Setting it looks right and ships inert.
     # - The JFR flag needs JDK 17+. Below that it is silently inert rather than an error, so a node
-    #   on an older JDK loses these metrics without saying so. Every db node runs 17 or 21.
+    #   on an older JDK loses these metrics without saying so. Every db node runs 17 or higher.
     # - jvm.memory.allocation is a HISTOGRAM, not a counter, with attribute arena=TLAB|Main. An
     #   allocation rate comes from its _sum, never a _total that does not exist.
     # - JFR recording costs the measured JVM a little continuously. This is a benchmarking rig, so
@@ -140,8 +140,16 @@ export ECL_CASSANDRA_VERSION
 # Extract Java version
 ECL_JAVA_VERSION_OUTPUT=$(java -version 2>&1 | head -n 1)
 if [ -n "$ECL_JAVA_VERSION_OUTPUT" ]; then
-    # Extract version like "17" from the output string
-    ECL_JAVA_VERSION=$(echo "$ECL_JAVA_VERSION_OUTPUT" | sed -E 's/.*version "([0-9]+)\..*".*/\1/')
+    # Extract the major version, e.g. "25" from `version "25"` or `version "25.0.1"`. An
+    # unparseable line leaves ECL_JAVA_VERSION empty rather than carrying the raw text forward.
+    ECL_JAVA_VERSION=""
+    if command -v edl_java_major_version >/dev/null 2>&1; then
+        ECL_JAVA_VERSION=$(edl_java_major_version "$ECL_JAVA_VERSION_OUTPUT") || ECL_JAVA_VERSION=""
+    fi
+    if [ -z "$ECL_JAVA_VERSION" ]; then
+        echo "ERROR: could not read a JDK major version from: $ECL_JAVA_VERSION_OUTPUT" >&2
+        echo "ERROR: the GC log will not be configured." >&2
+    fi
     export ECL_JAVA_VERSION
 else
     echo "ERROR: Could not determine Java version" >&2
@@ -180,8 +188,9 @@ fi
 
 mkdir -p "$CASSANDRA_LOG_DIR"
 
-# set logging depending on JVM version
-if [ "$ECL_JAVA_VERSION" = "17" ] || [ "$ECL_JAVA_VERSION" = "21" ]; then
+# Unified GC logging for JDK 17 and higher. JDK 8 parses as 1 and 11 is below the bound, so both
+# are left out.
+if command -v edl_java_writes_gc_log >/dev/null 2>&1 && edl_java_writes_gc_log "$ECL_JAVA_VERSION"; then
     export JVM_OPTS="$JVM_OPTS -Xlog:gc=info:file=${CASSANDRA_LOG_DIR}/gc.log:time,uptime,pid,tid,level,tags:filecount=10,filesize=1M"
 fi
 

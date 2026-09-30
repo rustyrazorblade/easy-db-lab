@@ -245,6 +245,7 @@
       "transformations": [
         { "id": "labelsToFields", "options": { "mode": "columns" } },
         { "id": "merge", "options": {} },
+        { "id": "convertFieldType", "options": { "conversions": [ { "targetField": "cassandra_build", "destinationType": "string" } ], "fields": {} } },
         { "id": "organize", "options": { "excludeByName": { "Time": true, "cluster": true }, "indexByName": {}, "renameByName": { "cluster_name": "Cluster" } } }
       ],
       "type": "table"

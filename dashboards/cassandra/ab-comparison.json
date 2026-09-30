@@ -3541,6 +3541,13 @@
       "title": "Nodes, builds and heap ceiling",
       "transformations": [
         {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [{"targetField": "cassandra_build", "destinationType": "string"}],
+            "fields": {}
+          }
+        },
+        {
           "id": "organize",
           "options": {
             "excludeByName": {
@@ -3634,6 +3641,13 @@
       ],
       "title": "Garbage collector by build",
       "transformations": [
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [{"targetField": "cassandra_build", "destinationType": "string"}],
+            "fields": {}
+          }
+        },
         {
           "id": "organize",
           "options": {

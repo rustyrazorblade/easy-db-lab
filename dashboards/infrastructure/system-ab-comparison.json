@@ -1513,6 +1513,13 @@
           "options": {}
         },
         {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [{"targetField": "cassandra_build", "destinationType": "string"}],
+            "fields": {}
+          }
+        },
+        {
           "id": "organize",
           "options": {
             "excludeByName": {

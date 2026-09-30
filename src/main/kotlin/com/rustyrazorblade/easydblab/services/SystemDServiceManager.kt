@@ -148,12 +148,14 @@ abstract class AbstractSystemDServiceManager(
             val response =
                 remoteOps.executeRemotely(
                     host,
-                    "sudo systemctl is-active $serviceName",
+                    // is-active exits non-zero for a service that is not active, and a non-zero
+                    // exit fails the remote command, so the printed state decides instead.
+                    "sudo systemctl is-active $serviceName || true",
                     output = false,
                 )
 
-            // systemctl is-active returns "active" if the service is running
-            // Any other response (inactive, failed, etc.) means it's not running normally
+            // systemctl is-active prints "active" if the service is running
+            // Any other state (inactive, failed, etc.) means it's not running normally
             val isActive = response.text.trim().equals("active", ignoreCase = true)
 
             log.debug {

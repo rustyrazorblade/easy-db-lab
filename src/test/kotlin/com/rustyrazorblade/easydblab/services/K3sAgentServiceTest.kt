@@ -368,7 +368,7 @@ class K3sAgentServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return true when k3s-agent is active`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active k3s-agent"
+        val expectedCommand = "sudo systemctl is-active k3s-agent || true"
         val activeResponse = Response(text = "active", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(activeResponse)
@@ -385,7 +385,7 @@ class K3sAgentServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return false when k3s-agent is inactive`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active k3s-agent"
+        val expectedCommand = "sudo systemctl is-active k3s-agent || true"
         val inactiveResponse = Response(text = "inactive", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(inactiveResponse)
@@ -402,7 +402,7 @@ class K3sAgentServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return false when k3s-agent is in failed state`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active k3s-agent"
+        val expectedCommand = "sudo systemctl is-active k3s-agent || true"
         val failedResponse = Response(text = "failed", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(failedResponse)
@@ -419,7 +419,7 @@ class K3sAgentServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return failure when SSH operation throws exception`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active k3s-agent"
+        val expectedCommand = "sudo systemctl is-active k3s-agent || true"
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenThrow(RuntimeException("SSH connection lost"))
 

@@ -188,7 +188,7 @@ class K3sServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return true when k3s is active`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active k3s"
+        val expectedCommand = "sudo systemctl is-active k3s || true"
         val activeResponse = Response(text = "active", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(activeResponse)
@@ -205,7 +205,7 @@ class K3sServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return false when k3s is inactive`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active k3s"
+        val expectedCommand = "sudo systemctl is-active k3s || true"
         val inactiveResponse = Response(text = "inactive", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(inactiveResponse)
@@ -222,7 +222,7 @@ class K3sServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return false when k3s is in failed state`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active k3s"
+        val expectedCommand = "sudo systemctl is-active k3s || true"
         val failedResponse = Response(text = "failed", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(failedResponse)
@@ -239,7 +239,7 @@ class K3sServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return failure when SSH operation throws exception`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active k3s"
+        val expectedCommand = "sudo systemctl is-active k3s || true"
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenThrow(RuntimeException("SSH connection lost"))
 

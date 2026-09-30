@@ -5,8 +5,8 @@
 
 ## 2. JDK switch on the node
 
-- [ ] 2.1 Add a failing case to `packer/cassandra/bin/use-cassandra.test.sh`: a `java: "25"` entry selects `java-1.25.0-openjdk`.
-- [ ] 2.2 Add the `25` branch to `packer/cassandra/bin/use-cassandra`.
+- [x] 2.1 Add a failing case to `packer/cassandra/bin/use-cassandra.test.sh`: a `java: "25"` entry selects `java-1.25.0-openjdk`.
+- [x] 2.2 Add the `25` branch to `packer/cassandra/bin/use-cassandra`.
 
 ## 3. Cassandra launch environment (`packer/cassandra/cassandra.in.sh`, POSIX sh)
 

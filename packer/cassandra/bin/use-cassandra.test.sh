@@ -169,6 +169,27 @@ else
   fail "expected current -> 4.1, got $(readlink "${CASSANDRA_INSTALL_DIR}/current")"
 fi
 
+# --- a version declared for JDK 25 selects JDK 25 -----------------------------
+# `cassandra use <v> --java 25` records 25 in the version list; this script does the switch.
+mkdir -p "${CASSANDRA_INSTALL_DIR}/6.0/conf"
+cat >"$CASSANDRA_VERSIONS" <<'YAMLFIXTURE'
+- version: "6.0"
+  java: "25"
+  python: "3.11.9"
+YAMLFIXTURE
+run_script 6.0
+if [[ "$STATUS" -eq 0 ]]; then
+  pass "a JDK 25 version exits 0"
+else
+  fail "a JDK 25 version should exit 0, got ${STATUS}: ${OUTPUT}"
+fi
+
+if grep -q "update-java-alternatives -s java-1.25.0-openjdk-amd64" "${SANDBOX}/alternatives.log" 2>/dev/null; then
+  pass "a JDK 25 version selects java-1.25.0-openjdk"
+else
+  fail "expected JDK 25 to be selected, got: $(cat "${SANDBOX}/alternatives.log" 2>/dev/null)"
+fi
+
 echo
 echo "${tests_run} tests, ${tests_failed} failed"
 [[ "$tests_failed" -eq 0 ]]

@@ -1297,7 +1297,7 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by(cluster, severity, logger) (increase(cassandra_log_records_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(sum by(cluster, severity, logger) ((last_over_time(cassandra_log_records_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__range]) unless last_over_time(cassandra_log_records_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__range] offset $__range)) or increase(cassandra_log_records_total{job=\"neo4j\", cluster=~\"$cluster.*\", host_name=~\"$host\"}[$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{severity}} {{logger}}",
           "refId": "A",
           "instant": true,

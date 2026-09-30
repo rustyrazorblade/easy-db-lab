@@ -40,11 +40,23 @@ kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
     --tables="${TABLES}" \
     "${WORKLOAD}" cleanup
 
-kubectl --kubeconfig="${KUBECONFIG}" wait \
-  --for=jsonpath='{.status.phase}'=Succeeded \
-  --timeout=300s \
-  pod/"${CLEANUP_POD}"
+# Wait for the cleanup pod to end either way. When the target database is already gone the pod
+# fails at once; waiting only for Succeeded timed out, failed stop and left the kit marked running.
+PHASE=""
+for _ in $(seq 1 60); do
+  PHASE="$(kubectl --kubeconfig="${KUBECONFIG}" get pod "${CLEANUP_POD}" \
+    -o jsonpath='{.status.phase}' 2>/dev/null || true)"
+  case "${PHASE}" in
+    Succeeded|Failed) break ;;
+  esac
+  sleep 5
+done
 
 kubectl --kubeconfig="${KUBECONFIG}" delete pods \
   -l "${CLEANUP_LABELS}" --ignore-not-found
-echo "Sysbench stopped and data cleaned up."
+
+if [ "${PHASE}" = "Succeeded" ]; then
+  echo "Sysbench stopped and data cleaned up."
+else
+  echo "Sysbench stopped. The target database did not answer (cleanup ${PHASE:-did not finish}), so its sbtest tables were left." >&2
+fi

@@ -422,6 +422,7 @@ tasks.register("testScripts") {
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
         "testSysbenchStartScript",
+        "testSysbenchStopScript",
         "testPyroscopeKitLabels",
     )
 }
@@ -442,6 +443,15 @@ tasks.register<Exec>("testSysbenchStartScript") {
     description = "Unit-test the sysbench kit start script"
     workingDir = file(".")
     commandLine = listOf("bash", "src/test/shell/sysbench-start.test.sh")
+}
+
+// Unit-test the sysbench kit's stop script: it finishes and removes its cleanup pod when the target
+// database is already gone. kubectl is stubbed.
+tasks.register<Exec>("testSysbenchStopScript") {
+    group = "Verification"
+    description = "Unit-test the sysbench kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/sysbench-stop.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,

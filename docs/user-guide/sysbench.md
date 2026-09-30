@@ -95,7 +95,8 @@ easy-db-lab sysbench-tidb stop
 ```
 
 Kills any running benchmark pod and runs sysbench cleanup, dropping the test tables from
-the target database.
+the target database. If the target database is already stopped, `stop` still finishes and
+removes its pods; it says the test tables were left.
 
 ## Rate limiting and overload testing
 

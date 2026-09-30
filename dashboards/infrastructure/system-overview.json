@@ -5270,6 +5270,7 @@
         "type": "custom"
       },
       {
+        "allValue": ".*",
         "current": {},
         "datasource": {
           "type": "prometheus",

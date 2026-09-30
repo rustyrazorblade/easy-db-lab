@@ -6,6 +6,9 @@
 # tenant's bucket index, which only the account compactor writes. No compactor runs in this process,
 # so nothing here can compact, expire, clean up or delete a block, a bucket index, or a tenant.
 #
+# Queries are not sharded, and readers stop opening a block the compactor merged away soon after its
+# deletion mark (issue 988): on this one process both made dashboard loads several times faster.
+#
 # Dollar-brace values are read from the environment (-config.expand-env=true); the Deployment sets
 # them from the cluster-config ConfigMap. Never write a dollar-brace in a comment here: the expansion
 # reads comments too, and a malformed one stops the process from starting.
@@ -60,6 +63,11 @@ blocks_storage:
     # New blocks and tenants appear in queries within a minute of the compactor's index update.
     sync_interval: 1m
     ignore_blocks_within: 0
+    # Stop reading a block the compactor merged away soon after its deletion mark, rather than for
+    # up to an hour. With the compactor's 10-minute first level this cut the tiny blocks per read
+    # from ~180 to ~46 (issue 988). They only choose what queries read; the compactor owns deletion.
+    ignore_deletion_mark_delay: 10m
+    ignore_deletion_mark_while_querying_delay: 5m
     bucket_index:
       # About 10 years: a stopped compactor leaves the index stale, and that must never fail a query.
       # A tenant with no bucket index returns no stored data rather than an error.
@@ -113,7 +121,7 @@ frontend_worker:
   scheduler_address: 127.0.0.1:9097
 
 query_scheduler:
-  # The query-frontend splits each query by day and into 16 shards, and queues up to 14 parts of it
+  # The query-frontend splits each query by day (query sharding is off), and queues up to 14 parts of it
   # at once (max_query_parallelism). The heaviest dashboard sends about 150 queries in one load, so
   # a load can queue about 2100 parts, which the 8 querier workers drain slowly. Past this limit the
   # scheduler answers 429 and the panel fails. The default of 100 fails most of such a dashboard;
@@ -123,6 +131,9 @@ query_scheduler:
 limits:
   # 0 = every query goes to the ingester, however far back.
   query_ingesters_within: 0
+  # No query sharding. On one Mimir process it split each query into ~20 parts; turning it off cut
+  # Mimir CPU per System Overview load at 1h from 238 s to 66 s (issue 988).
+  query_sharding_total_shards: 0
   # The defaults are sized for shared SaaS tenants. Past them Mimir answers the collector's remote
   # write with a 4xx and the batch is dropped, not retried, so they are set far above what a test
   # cluster sends.

@@ -53,6 +53,20 @@ class CompactorTaskDefinitionTest {
         )
     }
 
+    /**
+     * The 1-minute blocks every cluster ships are merged into 10-minute blocks first, every 5
+     * minutes, 2 minutes after they land, so a store-gateway read opens far fewer tiny blocks
+     * (issue 988).
+     */
+    @Test
+    fun `Mimir merges one-minute blocks into ten-minute blocks every five minutes`() {
+        assertThat(command(CompactorTaskDefinition.MIMIR_CONTAINER)).contains(
+            "-compactor.block-ranges=10m,2h,12h,24h",
+            "-compactor.compaction-interval=5m",
+            "-compactor.first-level-compaction-wait-period=2m",
+        )
+    }
+
     @Test
     fun `Loki compacts with retention off and deletion disabled`() {
         assertThat(command(CompactorTaskDefinition.LOKI_CONTAINER))

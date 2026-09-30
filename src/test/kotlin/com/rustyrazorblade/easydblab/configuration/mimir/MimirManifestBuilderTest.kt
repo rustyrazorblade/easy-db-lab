@@ -70,6 +70,19 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         assertThat(modules).doesNotContain("compactor", "all")
     }
 
+    /**
+     * Measured on one Mimir process (issue 988): sharding split each query into about 20 parts, and
+     * readers kept opening merged blocks' sources for up to an hour after their deletion marks.
+     */
+    @Test
+    fun `queries are not sharded and stop reading merged-away blocks soon after their deletion marks`() {
+        val yaml = config()
+
+        assertThat(scalarAt(yaml, "limits", "query_sharding_total_shards")).isEqualTo("0")
+        assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "ignore_deletion_mark_delay")).isEqualTo("10m")
+        assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "ignore_deletion_mark_while_querying_delay")).isEqualTo("5m")
+    }
+
     @Test
     fun `queries read the ingester and the whole store, and local blocks are kept for 2 hours`() {
         val yaml = config()

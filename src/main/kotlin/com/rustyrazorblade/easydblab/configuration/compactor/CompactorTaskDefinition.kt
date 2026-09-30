@@ -86,6 +86,12 @@ data class CompactorTaskDefinition(
                 // Its default of 1d deletes partial blocks no merged copy replaces; 0 disables it.
                 "-compactor.partial-block-deletion-delay=0",
                 "-compactor.blocks-retention-period=0",
+                // Merges the clusters' 1-minute blocks into 10-minute blocks first, every 5 minutes,
+                // 2 minutes after they land. With the readers' shorter deletion-mark delays this cut
+                // the tiny blocks per store-gateway read from ~180 to ~46 (issue 988). Compaction only.
+                "-compactor.block-ranges=10m,2h,12h,24h",
+                "-compactor.compaction-interval=5m",
+                "-compactor.first-level-compaction-wait-period=2m",
                 "-compactor.data-dir=/data/compactor",
                 "-compactor.ring.store=inmemory",
                 "-compactor.ring.instance-addr=127.0.0.1",

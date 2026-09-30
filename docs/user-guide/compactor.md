@@ -10,7 +10,7 @@ The service runs exactly 1 task (ARM64, 2 vCPU, 8 GiB, 100 GiB of disk). ECS nev
 
 | Container | What it does |
 |-----------|--------------|
-| `mimir-compactor` | Mimir's compactor over `mimir/`. It rewrites every tenant's bucket index every minute. |
+| `mimir-compactor` | Mimir's compactor over `mimir/`. It rewrites every tenant's bucket index every minute. Every 5 minutes it merges the clusters' 1-minute blocks, once they are 2 minutes old, into 10-minute blocks, and those into 2-hour, 12-hour and 24-hour blocks. |
 | `loki-compactor` | Loki's compactor over `loki/`. It compacts every day's index, today's included. |
 | `tempo-backend-scheduler`, `tempo-backend-worker` | Tempo's compaction over `tempo/`. Tempo 3 runs one target per process, so they are two containers. |
 | `config` | Writes the configuration files for the others, then exits. |

@@ -66,6 +66,8 @@ class SeriesClusterTest {
         assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, "x", ""))).hasSize(1)
         assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, short, "{{cluster}} {{host_name}}")))
             .containsExactly("legend '{{cluster}} {{host_name}}' does not show the cluster by its short name")
+        assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, short, "{{cluster_name}} {{cluster}}")))
+            .containsExactly("legend '{{cluster_name}} {{cluster}}' shows the whole cluster, not its short name")
         assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, "x", "{{cluster_name}} {{host_name}}")))
             .containsExactly("legend '{{cluster_name}} {{host_name}}' reads cluster_name, which the query does not write")
         assertThat(SeriesClusterGuards.legendProblems(Query("p", Language.PROMQL, short, "{{cluster_name}}"))).isEmpty()

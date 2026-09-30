@@ -192,6 +192,7 @@ object SeriesClusterGuards {
         return when {
             logLines || query.language == Language.PROFILES || query.panelType == TABLE -> emptyList()
             !legendCluster.containsMatchIn(legend) -> listOf("legend '$legend' does not show the cluster by its short name")
+            rawCluster.containsMatchIn(legend) -> listOf("legend '$legend' shows the whole cluster, not its short name")
             "cluster_name" in legend && !writesClusterName(query.text) ->
                 listOf("legend '$legend' reads cluster_name, which the query does not write")
             else -> emptyList()

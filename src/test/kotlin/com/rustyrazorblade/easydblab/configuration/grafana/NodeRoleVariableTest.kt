@@ -20,22 +20,37 @@ import org.junit.jupiter.api.Test
  */
 class NodeRoleVariableTest {
     @Test
+    fun `a node_role variable without an All of dot-star is reported, whether its query is in definition or query`() {
+        val inQuery = """{"name": "service", "query": {"query": "label_values(up, node_role)"}}"""
+        val inDefinition = """{"name": "service", "definition": "label_values(up, node_role)", "allValue": ".*"}"""
+
+        assertThat(problems(parse("""{"templating": {"list": [$inQuery]}}"""))).containsExactly("variable 'service': allValue ''")
+        assertThat(problems(parse("""{"templating": {"list": [$inDefinition]}}"""))).isEmpty()
+    }
+
+    @Test
     fun `every node_role variable's All matches a node without a node_role`() {
-        val problems =
-            DashboardFiles.all().flatMap { file ->
-                val dashboard = Json.parseToJsonElement(file.readText()).jsonObject
-                ((dashboard["templating"] as? JsonObject)?.get("list") as? JsonArray)
-                    .orEmpty()
-                    .filterIsInstance<JsonObject>()
-                    .filter { NODE_ROLE_VALUES.containsMatchIn(it.string("definition")) }
-                    .mapNotNull { variable ->
-                        "${file.path} variable '${variable.string("name")}': allValue '${variable.string("allValue")}'"
-                            .takeUnless { variable.string("allValue") == ".*" }
-                    }
-            }
+        val problems = DashboardFiles.all().flatMap { file -> problems(parse(file.readText())).map { "${file.path} $it" } }
 
         assertThat(problems).isEmpty()
     }
+
+    /** Each variable of [dashboard] that lists `node_role` values, in its `definition` or its editor `query`, with no `.*` All. */
+    private fun problems(dashboard: JsonObject): List<String> =
+        ((dashboard["templating"] as? JsonObject)?.get("list") as? JsonArray)
+            .orEmpty()
+            .filterIsInstance<JsonObject>()
+            .filter { variable ->
+                val query = (variable["query"] as? JsonObject)?.string("query") ?: variable.string("query")
+                listOf(variable.string("definition"), query).any { NODE_ROLE_VALUES.containsMatchIn(it) }
+            }.mapNotNull { variable ->
+                "variable '${variable.string("name")}': allValue '${variable.string("allValue")}'".takeUnless {
+                    variable.string("allValue") ==
+                        ".*"
+                }
+            }
+
+    private fun parse(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
 
     private fun JsonObject.string(key: String): String = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
 

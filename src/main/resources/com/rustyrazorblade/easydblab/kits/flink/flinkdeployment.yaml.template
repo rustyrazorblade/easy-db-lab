@@ -23,9 +23,9 @@ spec:
     spec:
       nodeSelector:
         type: app
-      # Spread Flink pods across app nodes. The Prometheus reporter binds hostPort 9249,
-      # so a JobManager and a TaskManager landing on the same node would collide. Anti-affinity
-      # keeps one metrics-exposing Flink pod per node where capacity allows.
+      # Spread Flink pods across app nodes where capacity allows. The metrics port is a container
+      # port only (no host port): pod discovery scrapes each pod's IP, so a JobManager and a
+      # TaskManager can share one app node.
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -41,7 +41,6 @@ spec:
           ports:
             - name: metrics
               containerPort: 9249
-              hostPort: 9249
   jobManager:
     resource:
       memory: "2048m"

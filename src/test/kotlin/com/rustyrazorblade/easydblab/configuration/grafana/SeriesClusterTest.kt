@@ -219,14 +219,16 @@ class SeriesClusterTest {
     @Test
     fun `a table joined over its targets hides every frame's long cluster and every later frame's short one`() {
         val expr = Json.encodeToString(JsonPrimitive.serializer(), JsonPrimitive(short))
+        val included = """"includeByName": {"cluster_name 1": true, "Value #A": true}"""
 
         fun joined(
             targets: Int,
             hidden: List<String>,
+            shown: String = """$included, "indexByName": {"cluster_name 1": 0, "Value #A": 1}""",
         ): JsonObject {
             val excluded = hidden.joinToString(", ") { "\"$it\": true" }
             val renamed = """"renameByName": {"cluster_name 1": "Cluster"}"""
-            val organize = """{"id": "organize", "options": {"excludeByName": {$excluded}, $renamed}}"""
+            val organize = """{"id": "organize", "options": {"excludeByName": {$excluded}, $shown, $renamed}}"""
             val join = """{"id": "seriesToColumns", "options": {"byField": "cluster_instance"}}"""
             val list = List(targets) { """{"expr": $expr, "format": "table"}""" }.joinToString(", ")
             return parse("""{"type": "table", "targets": [$list], "transformations": [$join, $organize]}""")
@@ -235,6 +237,13 @@ class SeriesClusterTest {
         assertThat(SeriesClusterGuards.tableProblems(joined(2, listOf("cluster 1", "cluster 2", "cluster_name 2")))).isEmpty()
         assertThat(SeriesClusterGuards.tableProblems(joined(2, listOf("cluster 1"))))
             .containsExactly("the long cluster column is not hidden", "cluster_name 2 is not hidden")
+
+        val all = listOf("cluster 1", "cluster 2", "cluster_name 2")
+        assertThat(SeriesClusterGuards.tableProblems(joined(2, all, """"includeByName": {}""")))
+            .containsExactly("the join shows every label of every frame; includeByName names none")
+        val valueFirst = """$included, "indexByName": {"cluster_name 1": 1, "Value #A": 0}"""
+        assertThat(SeriesClusterGuards.tableProblems(joined(2, all, valueFirst)))
+            .containsExactly("the first column is Value #A, not cluster_name 1")
     }
 
     @Test

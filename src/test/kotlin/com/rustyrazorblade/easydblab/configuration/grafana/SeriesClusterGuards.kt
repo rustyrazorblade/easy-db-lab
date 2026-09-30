@@ -248,7 +248,32 @@ object SeriesClusterGuards {
                 .drop(1)
                 .map { column(CLUSTER_NAME, it) }
                 .filterNot(::isHidden)
-                .map { "$it is not hidden" }
+                .map { "$it is not hidden" } +
+            listOfNotNull(frames?.let { joinedColumnsProblem(options) })
+    }
+
+    /**
+     * Why a table joined over several frames does not show only its chosen columns with Cluster
+     * first: every label of every frame is a column otherwise (a ClickHouse table had 182), so its
+     * `organize` names the columns it shows (`includeByName`) and puts `cluster_name 1` first.
+     */
+    private fun joinedColumnsProblem(options: JsonObject?): String? {
+        val included =
+            (options?.get("includeByName") as? JsonObject).orEmpty().filterValues {
+                (it as? JsonPrimitive)?.contentOrNull ==
+                    "true"
+            }
+        val order =
+            (options?.get("indexByName") as? JsonObject)
+                .orEmpty()
+                .filterKeys { it in included }
+                .mapValues { (_, value) -> (value as? JsonPrimitive)?.contentOrNull?.toIntOrNull() ?: Int.MAX_VALUE }
+        val first = order.minByOrNull { it.value }?.key
+        return when {
+            included.isEmpty() -> "the join shows every label of every frame; includeByName names none"
+            first != "$CLUSTER_NAME 1" -> "the first column is ${first ?: "unordered"}, not $CLUSTER_NAME 1"
+            else -> null
+        }
     }
 
     /**

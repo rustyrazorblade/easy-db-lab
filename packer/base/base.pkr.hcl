@@ -213,7 +213,7 @@ build {
     script = "install/install_otel_agent.sh"
   }
 
-  # Installs all supported JDKs (8/11/17/21 + debug symbols) for the Cassandra versions we
+  # Installs all supported JDKs (8/11/17/21/25 + debug symbols) for the Cassandra versions we
   # support. The hundreds of MB of -dbg packages come from the apt archive cache restored above.
   provisioner "shell" {
     environment_vars = [

@@ -1,7 +1,7 @@
 ## 1. Base AMI
 
-- [ ] 1.1 Add `openjdk-25-jdk openjdk-25-dbg` to `PACKAGES` in `packer/base/install/install_jdks.sh`, and list 25 in its header comment.
-- [ ] 1.2 Update the JDK comment in `packer/base/base.pkr.hcl` ("8/11/17/21" to "8/11/17/21/25").
+- [x] 1.1 Add `openjdk-25-jdk openjdk-25-dbg` to `PACKAGES` in `packer/base/install/install_jdks.sh`, and list 25 in its header comment.
+- [x] 1.2 Update the JDK comment in `packer/base/base.pkr.hcl` ("8/11/17/21" to "8/11/17/21/25").
 
 ## 2. JDK switch on the node
 

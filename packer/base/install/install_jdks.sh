@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Installs every JDK required by the Cassandra versions we support (8, 11, 17, 21) plus their
+# Installs every JDK required by the Cassandra versions we support (8, 11, 17, 21, 25) plus their
 # debug-symbol packages.
 #
 # apt's verbose output is redirected to a log file rather than streamed over SSH. This is the
@@ -22,7 +22,8 @@ trap 'echo "=== JDK install FAILED — tail of ${LOG} ==="; tail -50 "${LOG}" 2>
 PACKAGES="openjdk-8-jdk openjdk-8-dbg \
           openjdk-11-jdk openjdk-11-dbg \
           openjdk-17-jdk openjdk-17-dbg \
-          openjdk-21-jdk openjdk-21-dbg"
+          openjdk-21-jdk openjdk-21-dbg \
+          openjdk-25-jdk openjdk-25-dbg"
 
 echo "Installing JDKs (verbose output -> ${LOG} to keep the packer SSH stream quiet)..."
 sudo apt-get update >>"${LOG}" 2>&1

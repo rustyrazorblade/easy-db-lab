@@ -5,7 +5,7 @@
   "timezone": "browser",
   "schemaVersion": 39,
   "editable": true,
-  "refresh": "30s",
+  "refresh": "",
   "time": { "from": "now-30m", "to": "now" },
   "templating": {
     "list": [

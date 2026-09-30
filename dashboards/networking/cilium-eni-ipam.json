@@ -2014,7 +2014,7 @@
       "description": "Mean time to satisfy an IP allocation request since the operator started (cilium_operator_ipam_allocation_duration_seconds_sum / _count). Allocations are rare, so a rate-based quantile returns nothing most of the time."
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 39,
   "tags": [
     "cilium",

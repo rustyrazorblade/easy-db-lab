@@ -839,7 +839,7 @@
       "type": "logs"
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 38,
   "style": "dark",
   "tags": ["cassandra", "logs", "otel"],

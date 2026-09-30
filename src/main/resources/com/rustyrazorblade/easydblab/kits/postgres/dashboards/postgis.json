@@ -8,7 +8,7 @@
     "from": "now-1h",
     "to": "now"
   },
-  "refresh": "15s",
+  "refresh": "",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "liveNow": false,

@@ -877,7 +877,7 @@
       "type": "nodeGraph"
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 36,
   "style": "dark",
   "tags": ["tidb", "htap"],

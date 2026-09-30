@@ -618,7 +618,7 @@
       "type": "flamegraph"
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 38,
   "tags": ["presto", "workload"],
   "templating": {

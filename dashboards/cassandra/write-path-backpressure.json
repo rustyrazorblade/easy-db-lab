@@ -1760,7 +1760,7 @@
       "type": "stat"
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 39,
   "tags": [
     "cassandra",

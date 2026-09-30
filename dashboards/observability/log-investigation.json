@@ -118,7 +118,7 @@
       ]
     }
   ],
-  "refresh": "10s",
+  "refresh": "",
   "schemaVersion": 38,
   "style": "dark",
   "tags": [

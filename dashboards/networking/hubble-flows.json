@@ -1147,7 +1147,7 @@
       "description": "Events Hubble dropped before observing them (hubble_lost_events_total). A sustained nonzero rate means the ring buffer is too small for the flow rate."
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 39,
   "tags": [
     "cilium",

@@ -4,7 +4,7 @@
   "tags": ["flink", "kit"],
   "schemaVersion": 39,
   "time": { "from": "now-1h", "to": "now" },
-  "refresh": "30s",
+  "refresh": "",
   "templating": {
     "list": [
       {

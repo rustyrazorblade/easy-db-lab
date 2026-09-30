@@ -335,7 +335,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 39,
   "style": "dark",
   "tags": ["trino"],

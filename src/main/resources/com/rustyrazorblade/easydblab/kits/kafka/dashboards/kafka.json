@@ -3,7 +3,7 @@
   "uid": "kafka-overview",
   "schemaVersion": 38,
   "version": 1,
-  "refresh": "15s",
+  "refresh": "",
   "time": {"from": "now-1h", "to": "now"},
   "templating": {
     "list": [

@@ -1157,7 +1157,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": "5m",
+  "refresh": "",
   "schemaVersion": 38,
   "style": "dark",
   "tags": [

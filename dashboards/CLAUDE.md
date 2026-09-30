@@ -94,7 +94,7 @@ System Overview and System A/B Comparison declare `role`, a multi-select custom 
 
 ### Install-time defaults
 
-The dashboard files store no defaults, because a default names a cluster or a tenant. Every install
+The dashboard files store no defaults, because a default names a cluster or a tenant. They also save no auto-refresh (`"refresh": ""`): a saved refresh cancels every query still running at each tick, so a dashboard whose queries take longer than the interval never finishes loading. The refresh picker stays, and `DashboardRefreshTest` checks every core and kit dashboard. Every install
 path applies one pass, `DashboardDefaults` (`configuration/grafana/`): the core tree
 (`GrafanaDashboardTreeWriter`), kit dashboards on `start` (`KitRunnerCommand`), and
 `grafana install`. It sets, and changes nothing else:

@@ -211,7 +211,7 @@
       "type": "timeseries"
     }
   ],
-  "refresh": "10s",
+  "refresh": "",
   "schemaVersion": 38,
   "tags": ["sysbench", "benchmark"],
   "templating": {

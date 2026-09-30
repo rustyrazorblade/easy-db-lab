@@ -3,7 +3,7 @@
   "uid": "tempo-overview",
   "schemaVersion": 38,
   "version": 1,
-  "refresh": "30s",
+  "refresh": "",
   "time": {
     "from": "now-1h",
     "to": "now"

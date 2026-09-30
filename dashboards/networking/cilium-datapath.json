@@ -1679,7 +1679,7 @@
       "description": "Mean duration of a conntrack GC run since the agent started (cilium_datapath_conntrack_gc_duration_seconds_sum / _count). A rate-based quantile returns nothing between GC runs, so the cumulative mean is shown instead."
     }
   ],
-  "refresh": "30s",
+  "refresh": "",
   "schemaVersion": 39,
   "tags": [
     "cilium",

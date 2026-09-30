@@ -29245,7 +29245,7 @@
       "type": "row"
     }
   ],
-  "refresh": "5m",
+  "refresh": "",
   "schemaVersion": 37,
   "style": "dark",
   "tags": [

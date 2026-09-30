@@ -25,7 +25,7 @@ Usage: install-cassandra-version <version> [options]
 Options:
   --url URL           Tarball URL (.tar.gz) or git repository URL (with --branch)
   --branch BRANCH     Git branch to clone and build (requires --url)
-  --java VERSION      JDK major version used for the ant build (e.g. 8, 11, 17, 21)
+  --java VERSION      JDK major version used for the ant build (e.g. 8, 11, 17, 21, 25)
   --ant-flags FLAGS   Extra flags passed to ant (e.g. "-Duse.jdk11=true")
 USAGE
 }

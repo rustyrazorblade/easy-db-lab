@@ -60,7 +60,7 @@ class CassandraInstall : PicoBaseCommand() {
 
     @Option(
         names = ["--java", "-j"],
-        description = ["Java version to build and run this version with, e.g. 8, 11, 17, 21"],
+        description = ["Java version to build and run this version with, e.g. 8, 11, 17, 21, 25"],
     )
     var javaVersion: String = ""
 

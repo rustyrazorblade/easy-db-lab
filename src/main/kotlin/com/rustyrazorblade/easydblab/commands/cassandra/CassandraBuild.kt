@@ -44,7 +44,7 @@ class CassandraBuild : PicoBaseCommand() {
     @Option(
         names = ["--java", "-j"],
         required = true,
-        description = ["JDK major version to build with, e.g. 11, 17, 21"],
+        description = ["JDK major version to build with, e.g. 11, 17, 21, 25"],
     )
     lateinit var javaVersion: String
 

@@ -17,10 +17,10 @@
 
 ## 4. Help text
 
-- [ ] 4.1 `UseCassandra.kt`: the `--java` help lists 8, 11, 17, 21, 25.
-- [ ] 4.2 `CassandraInstall.kt` and `CassandraBuild.kt`: the `--java` examples list 25.
+- [x] 4.1 `UseCassandra.kt`: the `--java` help lists 8, 11, 17, 21, 25.
+- [x] 4.2 `CassandraInstall.kt` and `CassandraBuild.kt`: the `--java` examples list 25.
 
 ## 5. Verify
 
 - [ ] 5.1 `./gradlew testCassandraScripts` passes.
-- [ ] 5.2 Docs: update any user doc that lists the installed JDKs.
+- [x] 5.2 Docs: update any user doc that lists the installed JDKs.

@@ -42,7 +42,7 @@ class UseCassandra : PicoBaseCommand() {
 
     @Option(
         names = ["--java", "-j"],
-        description = ["Java Version Override, 8, 11 or 17 accepted"],
+        description = ["Java Version Override, 8, 11, 17, 21 or 25 accepted"],
     )
     var javaVersion = ""
 

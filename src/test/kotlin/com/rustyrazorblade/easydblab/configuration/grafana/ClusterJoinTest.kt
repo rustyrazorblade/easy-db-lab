@@ -37,6 +37,30 @@ class ClusterJoinTest {
     }
 
     @Test
+    fun `dividing one metric by itself under another value of a label never pairs, unless the label is matched away`() {
+        val size = """pd_cluster_status{cluster=~"${'$'}cluster", type="storage_size"}"""
+        val capacity = """pd_cluster_status{cluster=~"${'$'}cluster", type="storage_capacity"}"""
+
+        assertThat(ClusterJoinGuards.unmatchableSelectors("100 * $size / $capacity"))
+            .containsExactly("""pd_cluster_status{type="storage_size"} / pd_cluster_status{type="storage_capacity"} never pair""")
+        assertThat(ClusterJoinGuards.unmatchableSelectors("$size / ignoring (type) $capacity")).isEmpty()
+        assertThat(ClusterJoinGuards.unmatchableSelectors("max by (cluster) ($size) / max by (cluster) ($capacity)")).isEmpty()
+    }
+
+    @Test
+    fun `no dashboard divides one metric by itself under another label value`() {
+        val problems =
+            DashboardFiles.all().flatMap { file ->
+                ClusterFilterGuards
+                    .queries(Json.parseToJsonElement(file.readText()).jsonObject)
+                    .filter { it.language == Language.PROMQL }
+                    .flatMap { query -> ClusterJoinGuards.unmatchableSelectors(query.text).map { "${file.path} ${query.where}: $it" } }
+            }
+
+        assertThat(problems).isEmpty()
+    }
+
+    @Test
     fun `every dashboard matches hosts together with their cluster`() {
         val problems =
             DashboardFiles.all().flatMap { file ->

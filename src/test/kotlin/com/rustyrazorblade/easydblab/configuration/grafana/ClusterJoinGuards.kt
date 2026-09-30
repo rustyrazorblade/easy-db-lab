@@ -28,7 +28,29 @@ object ClusterJoinGuards {
         }
     }
 
+    /**
+     * Each one-to-one operation in [promQl] between two selectors of one metric that fix different
+     * values of one label, with no `on` or `ignoring`: every pair of series differs in that label,
+     * so the match finds no pair and the panel is always empty.
+     */
+    fun unmatchableSelectors(promQl: String): List<String> =
+        sameMetricOperation
+            .findAll(promQl)
+            .flatMap { match ->
+                val left = equalities(match.groupValues[2])
+                val right = equalities(match.groupValues[4])
+                left.keys.filter { it in right && left[it] != right[it] }.map { label ->
+                    "${match.groupValues[1]}{$label=\"${left[label]}\"} ${match.groupValues[3]} ${match.groupValues[1]}{$label=\"${right[label]}\"} never pair"
+                }
+            }.toList()
+
+    private fun equalities(matchers: String): Map<String, String> =
+        equality.findAll(matchers).associate { it.groupValues[1] to it.groupValues[2] }
+
     private fun labels(list: String): List<String> = list.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+    private val sameMetricOperation = Regex("""([A-Za-z_:][\w:]*)\{([^}]*)\}\s*([/*+-])\s*\1\{([^}]*)\}""")
+    private val equality = Regex("""\b(\w+)\s*=\s*"([^"]*)"""")
 
     private const val HOST = "host_name"
     private const val CLUSTER = "cluster"

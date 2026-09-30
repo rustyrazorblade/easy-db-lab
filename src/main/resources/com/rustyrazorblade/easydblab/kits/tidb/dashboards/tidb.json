@@ -123,7 +123,7 @@
       "gridPos": { "h": 3, "w": 4, "x": 16, "y": 1 },
       "id": 6,
       "options": { "colorMode": "background", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto" },
-      "targets": [{ "expr": "label_replace(100 * pd_cluster_status{cluster=~\"$cluster\", type=\"storage_size\"} / pd_cluster_status{cluster=~\"$cluster\", type=\"storage_capacity\"}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Storage Used %", "refId": "A" }],
+      "targets": [{ "expr": "label_replace(100 * max by (cluster) (pd_cluster_status{cluster=~\"$cluster\", type=\"storage_size\"}) / max by (cluster) (pd_cluster_status{cluster=~\"$cluster\", type=\"storage_capacity\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")", "legendFormat": "{{cluster_name}} Storage Used %", "refId": "A" }],
       "title": "Storage Used %",
       "type": "stat"
     },

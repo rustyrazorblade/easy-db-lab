@@ -94,6 +94,17 @@ blocks_storage:
       backend: memcached
       memcached:
         addresses: 127.0.0.1:11211
+      # Entries that change as new data lands are cached for 30s, under the 1m sync. At the 5m default
+      # for the bucket index the store-gateway saw new blocks only every 5 minutes, the querier's
+      # consistency check failed for them (105 of 2,186 checks on qa971f), and dashboards answered 400
+      # and 422. The tenant list (15m default) hid a tenant another cluster had just started, the
+      # tenant's block list (5m) hid its new blocks, and a meta.json looked up just before its upload
+      # stayed missing for 5m. Immutable objects (meta.json content, block index attributes, chunks
+      # lists) keep their defaults.
+      bucket_index_content_ttl: 30s
+      tenants_list_ttl: 30s
+      tenant_blocks_list_ttl: 30s
+      metafile_doesnt_exist_ttl: 30s
     bucket_index:
       # About 10 years: a stopped compactor leaves the index stale, and that must never fail a query.
       # A tenant with no bucket index returns no stored data rather than an error.

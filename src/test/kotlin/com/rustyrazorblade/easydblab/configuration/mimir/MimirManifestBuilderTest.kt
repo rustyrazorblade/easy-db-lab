@@ -104,6 +104,12 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(yaml, "blocks_storage", "s3", "http", "idle_conn_timeout")).isEqualTo("10m")
         assertThat(scalarAt(yaml, "blocks_storage", "s3", "http", "max_idle_connections")).isEqualTo("0")
         assertThat(scalarAt(yaml, "blocks_storage", "s3", "http", "max_idle_connections_per_host")).isEqualTo("1000")
+        // Entries that change as data lands expire under the 1m bucket store sync, so the store-gateway
+        // loads a new block or tenant before a query asks for it; the bucket index's 5m default failed
+        // 105 of 2,186 consistency checks on qa971f.
+        listOf("bucket_index_content_ttl", "tenants_list_ttl", "tenant_blocks_list_ttl", "metafile_doesnt_exist_ttl").forEach { ttl ->
+            assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "metadata_cache", ttl)).describedAs(ttl).isEqualTo("30s")
+        }
         // Mimir 3.2.1 refuses to start with the query engine's range vector splitting cache.
         assertThat(yaml).doesNotContain("range_vector_splitting")
     }

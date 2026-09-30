@@ -1,15 +1,20 @@
 package com.rustyrazorblade.easydblab
 
+import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.model.Bind
+import com.github.dockerjava.api.model.HostConfig
 import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
+import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
+import org.testcontainers.images.RemoteDockerImage
 import org.testcontainers.images.builder.Transferable
+import org.testcontainers.utility.DockerImageName
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -109,14 +114,17 @@ object ObservabilityBackends {
             .waitingFor(Wait.forHttp("/ready").forPort(Constants.K8s.TEMPO_PORT).withStartupTimeout(STARTUP))
             .apply { start() }
 
-    /** Starts Mimir with [config] on the Docker volume [volume], writing to [bucket]. */
+    /**
+     * Starts Mimir with [config] on the Docker volume [volume], writing to [bucket], with the memcached
+     * sidecar the cluster runs beside it ([MimirWithMemcached]).
+     */
     fun startMimir(
         config: String,
         volume: String,
         bucket: String,
         metricsPrefix: String,
     ): GenericContainer<*> =
-        GenericContainer(MimirManifestBuilder.IMAGE)
+        MimirWithMemcached()
             .withCreateContainerCmdModifier { cmd -> cmd.hostConfig?.withBinds(Bind(volume, Volume(MIMIR_DATA))) }
             .withCopyToContainer(Transferable.of(config), "/etc/mimir/mimir.yaml")
             .withEnv("S3_BUCKET", bucket)
@@ -218,5 +226,40 @@ class ContainerObservabilityHttp(
                 .build()
         val response = http.send(request, HttpResponse.BodyHandlers.ofString())
         return ObservabilityResponse(response.statusCode(), response.body())
+    }
+}
+
+/**
+ * Mimir with the memcached sidecar the cluster runs in its pod. On the control node both share the
+ * host network, and `mimir.yaml` addresses the caches at `127.0.0.1:11211`. Here memcached joins
+ * Mimir's network namespace as Mimir starts, before its readiness wait, so the rendered address
+ * reaches it unchanged. It is created with the Docker client, as CompactorTaskIntegrationTest does:
+ * Testcontainers would attach it to its host-access network, which Docker refuses for a joined
+ * namespace. It carries the session labels, so Ryuk removes it too. Stopping Mimir removes it.
+ */
+private class MimirWithMemcached : GenericContainer<MimirWithMemcached>(MimirManifestBuilder.IMAGE) {
+    private val docker = DockerClientFactory.instance().client()
+    private val memcachedIds = mutableListOf<String>()
+
+    override fun containerIsStarting(containerInfo: InspectContainerResponse) {
+        RemoteDockerImage(DockerImageName.parse(Constants.K8s.MIMIR_MEMCACHED_IMAGE)).get()
+        val id =
+            docker
+                .createContainerCmd(Constants.K8s.MIMIR_MEMCACHED_IMAGE)
+                .withCmd(MimirManifestBuilder.MEMCACHED_ARGS)
+                .withLabels(
+                    DockerClientFactory.DEFAULT_LABELS +
+                        (DockerClientFactory.TESTCONTAINERS_SESSION_ID_LABEL to DockerClientFactory.SESSION_ID),
+                ).withHostConfig(HostConfig.newHostConfig().withNetworkMode("container:${containerInfo.id}"))
+                .exec()
+                .id
+        memcachedIds += id
+        docker.startContainerCmd(id).exec()
+    }
+
+    override fun stop() {
+        memcachedIds.forEach { id -> runCatching { docker.removeContainerCmd(id).withForce(true).exec() } }
+        memcachedIds.clear()
+        super.stop()
     }
 }

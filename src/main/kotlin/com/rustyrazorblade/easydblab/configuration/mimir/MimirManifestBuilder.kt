@@ -73,6 +73,23 @@ class MimirManifestBuilder(
         private const val MEMCACHED_MAX_ITEM_SIZE = "1m"
         private const val MEMCACHED_MAX_CONNECTIONS = "4096"
         private const val MEMCACHED_THREADS = "4"
+
+        /** The memcached sidecar's arguments: listening on loopback, where `mimir.yaml` addresses its caches. */
+        val MEMCACHED_ARGS =
+            listOf(
+                "-m",
+                MEMCACHED_MEMORY_MB,
+                "-I",
+                MEMCACHED_MAX_ITEM_SIZE,
+                "-c",
+                MEMCACHED_MAX_CONNECTIONS,
+                "-t",
+                MEMCACHED_THREADS,
+                "-l",
+                "127.0.0.1",
+                "-p",
+                "${Constants.K8s.MIMIR_MEMCACHED_PORT}",
+            )
     }
 
     /**
@@ -237,20 +254,8 @@ class MimirManifestBuilder(
         ContainerBuilder()
             .withName(MEMCACHED_CONTAINER)
             .withImage(Constants.K8s.MIMIR_MEMCACHED_IMAGE)
-            .withArgs(
-                "-m",
-                MEMCACHED_MEMORY_MB,
-                "-I",
-                MEMCACHED_MAX_ITEM_SIZE,
-                "-c",
-                MEMCACHED_MAX_CONNECTIONS,
-                "-t",
-                MEMCACHED_THREADS,
-                "-l",
-                "127.0.0.1",
-                "-p",
-                "${Constants.K8s.MIMIR_MEMCACHED_PORT}",
-            ).addNewPort()
+            .withArgs(MEMCACHED_ARGS)
+            .addNewPort()
             .withName(MEMCACHED_CONTAINER)
             .withContainerPort(Constants.K8s.MIMIR_MEMCACHED_PORT)
             .withProtocol("TCP")

@@ -41,6 +41,7 @@ object SeriesClusterGuards {
     private val grouping = setOf("by", "without")
     private val legendCluster = Regex("""\{\{\s*cluster_name\s*}}""")
     private val rawCluster = Regex("""\{\{\s*cluster\s*}}""")
+    private val hostName = Regex("""\{\{\s*host_name\s*}}""")
     private val clusterNameFormat =
         Regex("""label_format\s+cluster_name\s*=\s*`\{\{\s*regexReplaceAll\s+"([^"]*)"\s+\.cluster\s+"([^"]*)"\s*}}`""")
     private val shortName = Regex(""""cluster_name"\s*,\s*"\$1"\s*,\s*"cluster"""")
@@ -322,19 +323,25 @@ object SeriesClusterGuards {
 
     /**
      * Why an annotation's title hides the cluster's short name: a raw `{{cluster}}` shows the whole
-     * `<name>-<uuid>`, and `{{cluster_name}}` needs the query to write it. [title] is the
-     * annotation's `titleFormat`, and [query] its `expr`.
+     * `<name>-<uuid>`, a host named without `{{cluster_name}}` does not say which cluster it is in,
+     * and `{{cluster_name}}` needs the query to write it. [title] is the annotation's `titleFormat`,
+     * [text] its `textFormat`, and [query] its `expr`.
      */
     fun annotationTitleProblems(
         title: String,
         query: String,
-    ): List<String> =
-        when {
-            rawCluster.containsMatchIn(title) -> listOf("title '$title' shows the whole cluster, not its short name")
-            legendCluster.containsMatchIn(title) && !writesClusterName(query) ->
-                listOf("title '$title' reads cluster_name, which the query does not write")
+        text: String = "",
+    ): List<String> {
+        val shown = listOf(title, text).filter { it.isNotBlank() }.joinToString(" / ")
+        return when {
+            rawCluster.containsMatchIn(shown) -> listOf("title '$shown' shows the whole cluster, not its short name")
+            hostName.containsMatchIn(shown) && !legendCluster.containsMatchIn(shown) ->
+                listOf("title '$shown' names a host but not its cluster")
+            legendCluster.containsMatchIn(shown) && !writesClusterName(query) ->
+                listOf("title '$shown' reads cluster_name, which the query does not write")
             else -> emptyList()
         }
+    }
 
     /** A `label_join` or `label_replace` call, with its arguments unquoted. */
     private data class LabelCall(

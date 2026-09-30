@@ -19,13 +19,13 @@
           "uid": "${metrics_datasource}"
         },
         "enable": true,
-        "expr": "resets(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__interval]) > 0",
+        "expr": "label_replace(resets(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[$__interval]) > 0, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
         "hide": false,
         "iconColor": "orange",
         "name": "Host reboot",
         "step": "60s",
         "tagKeys": "host_name",
-        "textFormat": "{{host_name}} rebooted",
+        "textFormat": "{{cluster_name}} {{host_name}} rebooted",
         "titleFormat": "Host reboot",
         "useValueForTime": false
       },

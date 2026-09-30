@@ -284,6 +284,17 @@ class SeriesClusterTest {
         assertThat(SeriesClusterGuards.annotationTitleProblems("{{cluster_name}}", stream))
             .containsExactly("title '{{cluster_name}}' reads cluster_name, which the query does not write")
         assertThat(SeriesClusterGuards.annotationTitleProblems("{{cluster_name}}", formatted)).isEmpty()
+
+        val restarts = "resets(x[1m]) > 0"
+        assertThat(SeriesClusterGuards.annotationTitleProblems("Database restart", restarts, "{{host_name}} restarted"))
+            .containsExactly("title 'Database restart / {{host_name}} restarted' names a host but not its cluster")
+        assertThat(
+            SeriesClusterGuards.annotationTitleProblems(
+                "Database restart",
+                """label_replace($restarts, "cluster_name", "${'$'}1", "cluster", "(.+-[0-9a-f]{8})-.*")""",
+                "{{cluster_name}} {{host_name}} restarted",
+            ),
+        ).isEmpty()
         assertThat(SeriesClusterGuards.shortNames(formatted)).containsExactly(listOf("test-1a2b3c4d", "test-5e6f7a8b"))
     }
 
@@ -297,7 +308,8 @@ class SeriesClusterTest {
                     .flatMap { annotation ->
                         val format = (annotation["titleFormat"] as? JsonPrimitive)?.contentOrNull.orEmpty()
                         val query = (annotation["expr"] as? JsonPrimitive)?.contentOrNull.orEmpty()
-                        SeriesClusterGuards.annotationTitleProblems(format, query).map {
+                        val text = (annotation["textFormat"] as? JsonPrimitive)?.contentOrNull.orEmpty()
+                        SeriesClusterGuards.annotationTitleProblems(format, query, text).map {
                             "${file.path} annotation '${(annotation["name"] as? JsonPrimitive)?.contentOrNull}': $it"
                         }
                     }

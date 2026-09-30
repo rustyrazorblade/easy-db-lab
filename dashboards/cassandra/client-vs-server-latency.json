@@ -19,13 +19,13 @@
           "uid": "${metrics_datasource}"
         },
         "enable": true,
-        "expr": "resets(jvm_cpu_time_seconds_total{cluster=~\"$cluster\", job=\"cassandra\"}[$__interval]) > 0",
+        "expr": "label_replace(resets(jvm_cpu_time_seconds_total{cluster=~\"$cluster\", job=\"cassandra\"}[$__interval]) > 0, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
         "hide": false,
         "iconColor": "red",
         "name": "Database restart",
         "step": "60s",
         "tagKeys": "host_name,cassandra_build",
-        "textFormat": "{{host_name}} restarted on build {{cassandra_build}}",
+        "textFormat": "{{cluster_name}} {{host_name}} restarted on build {{cassandra_build}}",
         "titleFormat": "Database restart",
         "useValueForTime": false
       }

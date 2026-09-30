@@ -42,7 +42,7 @@ Every dashboard that has a `cluster` variable SHALL make it multi-select with an
 #### Scenario: Cluster variables read the metrics picker
 
 - **WHEN** any dashboard that has a `cluster` variable is deployed via `grafana update-config`
-- **THEN** the variable SHALL query `label_values(up, cluster)` against `${metrics_datasource}`, never a fixed datasource uid
+- **THEN** the variable SHALL query `label_values(up, cluster)` against `${metrics_datasource}`, never a fixed datasource uid, except on the Tests dashboard, whose variable lists the clusters with `up` samples within `lookback` against `${metrics_datasource}`
 - **AND** the variable SHALL have `multi: true` and `includeAll: true`, except on the Tests dashboard
 
 #### Scenario: All metric panels are cluster-scoped

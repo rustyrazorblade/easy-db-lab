@@ -13,7 +13,7 @@ Every series carries a `cluster` label (`<name>-<clusterId>`), so clusters that 
 Mimir 3.2.1 runs as one process on the control node:
 
 - **Ports**: 9009 (HTTP), 9097 (gRPC), 7947 (memberlist, loopback only)
-- **Local data**: `/mnt/db1/mimir` on the control node (the write-ahead log, the last 2 hours of blocks, and the store-gateway's index headers)
+- **Local data**: `/mnt/db1/mimir` on the control node (the write-ahead log, the last 15 minutes of blocks, and the store-gateway's index headers)
 - **Object storage**: `s3://<account-bucket>/mimir/<tenant>/`
 - **Tenancy**: native multi-tenancy; the tenant is the cluster's observability tenant
 
@@ -21,7 +21,7 @@ Mimir cuts a one-minute block and ships it within seconds, so a sample is in S3 
 
 ## The read path
 
-Queries read the ingester and, through the store-gateway, every tenant's blocks in S3. The store-gateway finds blocks through each tenant's bucket index, which the [account compactor](compactor.md) rewrites every minute, and it syncs every minute. The ingester keeps local blocks for 2 hours; older data is read from S3. A block the compactor merged away is no longer read 10 minutes after its deletion mark (5 minutes for a running query), so a read opens the merged block instead of its many 1-minute sources.
+Queries read the ingester and, through the store-gateway, every tenant's blocks in S3. The store-gateway finds blocks through each tenant's bucket index, which the [account compactor](compactor.md) rewrites every minute, and it syncs every minute. The ingester keeps local blocks for 15 minutes; older data is read from S3. At 15 minutes a query opens far fewer one-minute local blocks than it did at 2 hours, and the local copies it drops are already in S3. A block the compactor merged away is no longer read 10 minutes after its deletion mark (5 minutes for a running query), so a read opens the merged block instead of its many 1-minute sources.
 
 Mimir queues up to 5000 queries per tenant (`query_scheduler.max_outstanding_requests_per_tenant`; the default is 100). One load of the heaviest dashboard sends about 150 queries, and the query frontend splits each by day and runs as many as 14 parts at once. Queries are not sharded: on one Mimir process, sharding split each query into about 20 parts and made a dashboard load several times slower. With the default, a full dashboard load filled the queue and Mimir refused the rest with HTTP 429, so panels showed errors. The limit of 5000 holds two full loads of that dashboard at once.
 

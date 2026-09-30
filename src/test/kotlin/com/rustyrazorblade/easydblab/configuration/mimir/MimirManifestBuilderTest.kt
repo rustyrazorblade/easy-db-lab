@@ -84,12 +84,12 @@ class MimirManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `queries read the ingester and the whole store, and local blocks are kept for 2 hours`() {
+    fun `queries read the ingester and the whole store, and local blocks are kept for 15 minutes`() {
         val yaml = config()
 
         assertThat(scalarAt(yaml, "limits", "query_ingesters_within")).isEqualTo("0")
         assertThat(scalarAt(yaml, "querier", "query_store_after")).isEqualTo("0")
-        assertThat(scalarAt(yaml, "blocks_storage", "tsdb", "retention_period")).isEqualTo("2h")
+        assertThat(scalarAt(yaml, "blocks_storage", "tsdb", "retention_period")).isEqualTo("15m")
         assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "sync_interval")).isEqualTo("1m")
         assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "ignore_blocks_within")).isEqualTo("0")
         // A stopped compactor leaves the bucket index stale; that must never fail a query.

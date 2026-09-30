@@ -1,7 +1,7 @@
 # Mimir on the control node: it writes to the shared store and reads the whole of it (issue 970).
 #
-# The ingester ships every block to S3 about a minute after cutting it and keeps local blocks for 2
-# hours. The store-gateway answers every query from S3 as well, for every tenant in the account
+# The ingester ships every block to S3 about a minute after cutting it and keeps local blocks for 15
+# minutes. The store-gateway answers every query from S3 as well, for every tenant in the account
 # bucket, so other clusters' and past runs' metrics are readable here. It finds blocks through each
 # tenant's bucket index, which only the account compactor writes. No compactor runs in this process,
 # so nothing here can compact, expire, clean up or delete a block, a bucket index, or a tenant.
@@ -52,9 +52,13 @@ blocks_storage:
     ship_interval: 15s
     # A head with no writes for 2 minutes is compacted, so the last partial block still ships.
     head_compaction_idle_timeout: 2m
-    # Local blocks stay for 2 hours; older ones are read from S3 through the store-gateway. Mimir
-    # requires this to exceed querier.query_store_after.
-    retention_period: 2h
+    # Local blocks stay for 15 minutes; older ones are read from S3 through the store-gateway. At 2h
+    # the ingester kept 366 one-minute blocks and a 1h query opened about 160 of them; at 15m it keeps
+    # about 46, its share of Mimir CPU fell from 36% to 10%, and a two-user System Overview load at 1h
+    # from 14.7 s to 10.6 s, with no sample lost (issue 988). Mimir requires this to exceed the block
+    # range and querier.query_store_after, and it must outlast the store-gateway finding a shipped
+    # block (15s ship + 1m bucket index + 1m sync). It removes only local copies already in S3.
+    retention_period: 15m
     # A graceful stop compacts the head into a block and ships it.
     flush_blocks_on_shutdown: true
   bucket_store:

@@ -2618,7 +2618,7 @@
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
-        "regex": "",
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"

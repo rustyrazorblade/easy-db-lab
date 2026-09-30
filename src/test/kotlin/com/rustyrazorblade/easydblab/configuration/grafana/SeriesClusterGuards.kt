@@ -238,11 +238,21 @@ object SeriesClusterGuards {
             frame: Int,
         ) = if (frames == null) label else "$label $frame"
 
-        fun isHidden(column: String) = excluded.string(column) == "true"
+        // A column that data links read (the Tests listing's links need the long cluster) stays in the
+        // frame, so a field override may hide it or name it instead of organize.
+        fun overridden(
+            column: String,
+            property: String,
+        ) = overrideValues(panel, column, property)
+
+        fun isHidden(column: String) = excluded.string(column) == "true" || "true" in overridden(column, "custom.hidden")
         val each = frames ?: 1..1
+        val shortColumn = column(CLUSTER_NAME, 1)
         return listOfNotNull(
             "the long cluster column is not hidden".takeUnless { each.all { isHidden(column(CLUSTER, it)) } },
-            "cluster_name is not shown as Cluster".takeUnless { renamed.string(column(CLUSTER_NAME, 1)) == "Cluster" },
+            "cluster_name is not shown as Cluster".takeUnless {
+                renamed.string(shortColumn) == "Cluster" || "Cluster" in overridden(shortColumn, "displayName")
+            },
         ) +
             each
                 .drop(1)
@@ -495,6 +505,22 @@ object SeriesClusterGuards {
         (panel["transformations"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
 
     private fun targets(panel: JsonObject): List<JsonObject> = (panel["targets"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
+
+    /** The values a `byName` [column] field override of [panel] sets for [property]. */
+    private fun overrideValues(
+        panel: JsonObject,
+        column: String,
+        property: String,
+    ): List<String> =
+        ((panel["fieldConfig"] as? JsonObject)?.get("overrides") as? JsonArray)
+            .orEmpty()
+            .filterIsInstance<JsonObject>()
+            .filter { override ->
+                (override["matcher"] as? JsonObject)?.let { it.string("id") == "byName" && it.string("options") == column } ==
+                    true
+            }.flatMap { override -> (override["properties"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>() }
+            .filter { it.string("id") == property }
+            .map { it.string("value") }
 
     private fun Map<String, JsonElement>.string(key: String): String = (this[key] as? JsonPrimitive)?.contentOrNull.orEmpty()
 

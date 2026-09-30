@@ -646,6 +646,7 @@
         "includeAll": true,
         "multi": true,
         "name": "cluster",
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
         "options": [],
         "query": { "query": "label_values(up, cluster)", "refId": "StandardVariableQuery" },
         "refresh": 2,

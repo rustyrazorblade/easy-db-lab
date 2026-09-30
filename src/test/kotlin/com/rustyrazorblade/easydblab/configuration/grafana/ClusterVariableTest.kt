@@ -128,6 +128,8 @@ class ClusterVariableTest {
     private companion object {
         const val TESTS_UID = "tests"
         const val TESTS_CLUSTER_QUERY = "query_result(count by (cluster) (last_over_time(up[\$lookback])))"
-        const val TESTS_CLUSTER_REGEX = """/cluster="([^"]+)"/"""
+
+        /** The option's value is the full id and its text the short name `<name>-<first 8 of id>`. */
+        const val TESTS_CLUSTER_REGEX = """/cluster="(?<value>(?<text>[^"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)"/"""
     }
 }

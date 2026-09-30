@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -70,6 +71,27 @@ class DashboardDefaultsTest {
 
         assertThat(current(out, "baseline_cluster").jsonPrimitive.content).isEqualTo("lab-abc123")
         assertThat(current(out, "candidate_cluster").jsonPrimitive.content).isEqualTo("lab-abc123")
+    }
+
+    @Test
+    fun `a cluster picker's default shows the short name and keeps the full id as its value`() {
+        val id = "lab-1a2b3c4d-aaaa-bbbb-cccc-dddddddddddd"
+        val full = context.copy(cluster = id)
+        val out =
+            DashboardDefaults.apply(
+                dashboardWith(
+                    """{"name":"cluster","type":"query","multi":true}""",
+                    """{"name":"baseline_cluster","type":"query"}""",
+                ),
+                full,
+            )
+
+        val multi = variable(out, "cluster").getValue("current").jsonObject
+        assertThat(multi.getValue("text")).isEqualTo(JsonArray(listOf(JsonPrimitive("lab-1a2b3c4d"))))
+        assertThat(multi.getValue("value")).isEqualTo(JsonArray(listOf(JsonPrimitive(id))))
+        val single = variable(out, "baseline_cluster").getValue("current").jsonObject
+        assertThat(single.getValue("text").jsonPrimitive.content).isEqualTo("lab-1a2b3c4d")
+        assertThat(single.getValue("value").jsonPrimitive.content).isEqualTo(id)
     }
 
     @Test

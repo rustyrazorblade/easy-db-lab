@@ -123,7 +123,7 @@
           },
           "editorMode": "code",
           "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval] offset ${base_offset}s)) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval] offset ${base_offset}s)))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -134,7 +134,7 @@
           },
           "editorMode": "code",
           "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval] offset ${cand_offset}s)) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval] offset ${cand_offset}s)))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -187,7 +187,7 @@
           },
           "editorMode": "code",
           "expr": "sum(system_memory_usage_bytes{cluster=\"$baseline_cluster\", state=\"used\", host_name=~\"${role:pipe}\"} offset ${base_offset}s)",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -198,7 +198,7 @@
           },
           "editorMode": "code",
           "expr": "sum(system_memory_usage_bytes{cluster=\"$candidate_cluster\", state=\"used\", host_name=~\"${role:pipe}\"} offset ${cand_offset}s)",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -251,7 +251,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval] offset ${base_offset}s))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -262,7 +262,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval] offset ${cand_offset}s))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -315,7 +315,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_network_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"ens.*|eth.*\", host_name=~\"${role:pipe}\"}[$__rate_interval] offset ${base_offset}s))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -326,7 +326,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_network_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"ens.*|eth.*\", host_name=~\"${role:pipe}\"}[$__rate_interval] offset ${cand_offset}s))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -392,7 +392,7 @@
           },
           "editorMode": "code",
           "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -446,7 +446,7 @@
           },
           "editorMode": "code",
           "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval])) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", host_name=~\"${role:pipe}\"}[$__rate_interval])))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -500,7 +500,7 @@
           },
           "editorMode": "code",
           "expr": "sum(system_memory_usage_bytes{cluster=\"$baseline_cluster\", state=\"used\", host_name=~\"${role:pipe}\"})",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -554,7 +554,7 @@
           },
           "editorMode": "code",
           "expr": "sum(system_memory_usage_bytes{cluster=\"$candidate_cluster\", state=\"used\", host_name=~\"${role:pipe}\"})",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -608,7 +608,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -662,7 +662,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -716,7 +716,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_network_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"ens.*|eth.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -770,7 +770,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_network_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"ens.*|eth.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -843,7 +843,7 @@
           "refId": "A"
         }
       ],
-      "title": "Summary: baseline ${baseline_cluster}, candidate ${candidate_cluster}",
+      "title": "Summary: baseline ${baseline_cluster:text}, candidate ${candidate_cluster:text}",
       "transformations": [
         {
           "id": "groupingToMatrix",
@@ -892,7 +892,7 @@
         "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${baseline_cluster}/index.html\" width=\"100%\" height=\"468\"></iframe>",
         "mode": "html"
       },
-      "title": "Documents: baseline ${baseline_cluster}",
+      "title": "Documents: baseline ${baseline_cluster:text}",
       "type": "text"
     },
     {
@@ -913,7 +913,7 @@
         "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${candidate_cluster}/index.html\" width=\"100%\" height=\"468\"></iframe>",
         "mode": "html"
       },
-      "title": "Documents: candidate ${candidate_cluster}",
+      "title": "Documents: candidate ${candidate_cluster:text}",
       "type": "text"
     },
     {
@@ -7786,7 +7786,7 @@
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
-        "regex": "",
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
@@ -7989,7 +7989,7 @@
         "options": [],
         "query": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])))",
         "refresh": 2,
-        "regex": "/cluster=\"([^\"]+)\"/",
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
@@ -8010,7 +8010,7 @@
         "options": [],
         "query": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])))",
         "refresh": 2,
-        "regex": "/cluster=\"([^\"]+)\"/",
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"

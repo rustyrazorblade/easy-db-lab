@@ -17,7 +17,7 @@ When running multiple environments side by side, Grafana displays the cluster na
 
 Every dashboard has a picker for each kind of data it shows: **Metrics**, **Logs** and **Traces**. Each picker lists the cluster's own tenant (the default), every tenant in the shared store by name, and one "all tenants" choice. Change the pickers to read another tenant's tests; every panel, variable, annotation and link on the dashboard follows them, and a link to another dashboard keeps them. Profiles have one datasource only, so there is no profiles picker.
 
-A dashboard with a `cluster` variable opens on the current cluster, so it shows this cluster's data with no selection by hand.  The variable lists every cluster of the tenant the Metrics picker selects.  You can select more than one cluster, or "All".  With the "all tenants" datasource in each picker and "All" in `cluster`, a dashboard shows every cluster of every tenant.  Legends and tables name a cluster by its short name: its name and the first 8 characters of its id, for example `test-1a2b3c4d`.
+A dashboard with a `cluster` variable opens on the current cluster, so it shows this cluster's data with no selection by hand.  The variable lists every cluster of the tenant the Metrics picker selects.  You can select more than one cluster, or "All".  With the "all tenants" datasource in each picker and "All" in `cluster`, a dashboard shows every cluster of every tenant.  Every place a dashboard shows a cluster names it by its short name: its name and the first 8 characters of its id, for example `test-1a2b3c4d`.  That covers the cluster pickers, legends, panel titles and tables.  The pickers still select the full id, so queries and links read the whole `<name>-<id>`.
 
 ### Tests
 

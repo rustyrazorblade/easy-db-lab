@@ -26,6 +26,7 @@
       },
       {
         "name": "cluster",
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
         "type": "query",
         "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
         "definition": "label_values(up, cluster)",

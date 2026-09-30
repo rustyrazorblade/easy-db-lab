@@ -71,6 +71,18 @@
             },
             "properties": [
               {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cluster_name"
+            },
+            "properties": [
+              {
                 "id": "displayName",
                 "value": "Cluster"
               },
@@ -161,7 +173,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * min by (cluster) (min_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s]))",
+          "expr": "label_replace(1000 * min by (cluster) (min_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -174,7 +186,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s]))",
+          "expr": "label_replace(1000 * max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -187,7 +199,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * (min by (cluster) (min_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])) - $resolution)",
+          "expr": "label_replace(1000 * (min by (cluster) (min_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])) - $resolution), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -200,7 +212,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "1000 * (max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])) + $resolution)",
+          "expr": "label_replace(1000 * (max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])) + $resolution), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -234,12 +246,13 @@
               "Time": true
             },
             "indexByName": {
-              "cluster": 0,
+              "cluster_name": 0,
               "Value #A": 1,
               "Value #B": 2,
               "Duration": 3,
               "Value #C": 4,
-              "Value #D": 5
+              "Value #D": 5,
+              "cluster": 6
             },
             "renameByName": {
               "Value #A": "Start",
@@ -297,7 +310,7 @@
         "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${cluster}/index.html\" width=\"100%\" height=\"696\"></iframe>",
         "mode": "html"
       },
-      "title": "Documents: ${cluster}",
+      "title": "Documents: ${cluster:text}",
       "type": "text"
     }
   ],
@@ -374,7 +387,7 @@
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
-        "regex": "/cluster=\"([^\"]+)\"/",
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"

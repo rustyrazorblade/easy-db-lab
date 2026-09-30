@@ -111,7 +111,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[$__rate_interval] offset ${base_offset}s))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -122,7 +122,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[$__rate_interval] offset ${cand_offset}s))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -175,7 +175,7 @@
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"read\"} offset ${base_offset}s)",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -186,7 +186,7 @@
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"read\"} offset ${cand_offset}s)",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -239,7 +239,7 @@
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"write\"} offset ${base_offset}s)",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -250,7 +250,7 @@
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"write\"} offset ${cand_offset}s)",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -303,7 +303,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[$__rate_interval] offset ${base_offset}s))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -314,7 +314,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[$__rate_interval] offset ${cand_offset}s))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -367,7 +367,7 @@
           },
           "editorMode": "code",
           "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[$__rate_interval] offset ${base_offset}s)) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[$__rate_interval] offset ${base_offset}s)))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -378,7 +378,7 @@
           },
           "editorMode": "code",
           "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[$__rate_interval] offset ${cand_offset}s)) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[$__rate_interval] offset ${cand_offset}s)))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -431,7 +431,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval] offset ${base_offset}s))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -442,7 +442,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval] offset ${cand_offset}s))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -495,7 +495,7 @@
           },
           "editorMode": "code",
           "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$baseline_cluster\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval] offset ${base_offset}s)))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         },
@@ -506,7 +506,7 @@
           },
           "editorMode": "code",
           "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$candidate_cluster\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval] offset ${cand_offset}s)))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "B"
         }
@@ -572,7 +572,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[$__rate_interval]))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -626,7 +626,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[$__rate_interval]))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -680,7 +680,7 @@
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"read\"})",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -734,7 +734,7 @@
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"read\"})",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -788,7 +788,7 @@
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$baseline_cluster\", cassandra_operation=\"write\"})",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -842,7 +842,7 @@
           },
           "editorMode": "code",
           "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$candidate_cluster\", cassandra_operation=\"write\"})",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -896,7 +896,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$baseline_cluster\"}[$__rate_interval]))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -950,7 +950,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$candidate_cluster\"}[$__rate_interval]))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -1004,7 +1004,7 @@
           },
           "editorMode": "code",
           "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\", state=\"idle\"}[$__rate_interval])) / sum(rate(system_cpu_time_seconds_total{cluster=\"$baseline_cluster\"}[$__rate_interval])))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -1058,7 +1058,7 @@
           },
           "editorMode": "code",
           "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\", state=\"idle\"}[$__rate_interval])) / sum(rate(system_cpu_time_seconds_total{cluster=\"$candidate_cluster\"}[$__rate_interval])))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -1112,7 +1112,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$baseline_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -1166,7 +1166,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$candidate_cluster\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -1220,7 +1220,7 @@
           },
           "editorMode": "code",
           "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$baseline_cluster\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
-          "legendFormat": "baseline ${baseline_cluster}",
+          "legendFormat": "baseline ${baseline_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -1274,7 +1274,7 @@
           },
           "editorMode": "code",
           "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$candidate_cluster\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
-          "legendFormat": "candidate ${candidate_cluster}",
+          "legendFormat": "candidate ${candidate_cluster:text}",
           "range": true,
           "refId": "A"
         }
@@ -1347,7 +1347,7 @@
           "refId": "A"
         }
       ],
-      "title": "Summary: baseline ${baseline_cluster}, candidate ${candidate_cluster}",
+      "title": "Summary: baseline ${baseline_cluster:text}, candidate ${candidate_cluster:text}",
       "transformations": [
         {
           "id": "groupingToMatrix",
@@ -1396,7 +1396,7 @@
         "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${baseline_cluster}/index.html\" width=\"100%\" height=\"468\"></iframe>",
         "mode": "html"
       },
-      "title": "Documents: baseline ${baseline_cluster}",
+      "title": "Documents: baseline ${baseline_cluster:text}",
       "type": "text"
     },
     {
@@ -1417,7 +1417,7 @@
         "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${candidate_cluster}/index.html\" width=\"100%\" height=\"468\"></iframe>",
         "mode": "html"
       },
-      "title": "Documents: candidate ${candidate_cluster}",
+      "title": "Documents: candidate ${candidate_cluster:text}",
       "type": "text"
     },
     {
@@ -7864,7 +7864,7 @@
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
-        "regex": "",
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
@@ -8130,7 +8130,7 @@
         "options": [],
         "query": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])))",
         "refresh": 2,
-        "regex": "/cluster=\"([^\"]+)\"/",
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
@@ -8151,7 +8151,7 @@
         "options": [],
         "query": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])))",
         "refresh": 2,
-        "regex": "/cluster=\"([^\"]+)\"/",
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"

@@ -175,6 +175,16 @@ class SeriesClusterTest {
             "the long cluster column is not hidden",
             "cluster_name is not shown as Cluster",
         )
+        // A table whose links read the long cluster keeps it in the frame and hides and names by field override.
+        val overrides =
+            """{"overrides": [{"matcher": {"id": "byName", "options": "cluster"}, "properties": [{"id": "custom.hidden", "value": true}]},""" +
+                """ {"matcher": {"id": "byName", "options": "cluster_name"}, "properties": [{"id": "displayName", "value": "Cluster"}]}]}"""
+        val merge = """[{"id": "merge", "options": {}}]"""
+        assertThat(
+            SeriesClusterGuards.tableProblems(
+                parse("""{"type": "table", "targets": [{"expr": $expr}], "transformations": $merge, "fieldConfig": $overrides}"""),
+            ),
+        ).isEmpty()
         assertThat(SeriesClusterGuards.tableProblems(parse("""{"type": "table", "targets": [{"expr": "up"}]}"""))).isEmpty()
         val hidden = """[{"id": "organize", "options": {"excludeByName": {"cluster": true}}}]"""
         assertThat(

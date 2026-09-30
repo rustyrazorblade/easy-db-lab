@@ -89,7 +89,8 @@ object DashboardDefaults {
         val type = variable.string("type")
         return when {
             type == "datasource" -> pickerDefault(variable)
-            name in CLUSTER_VARIABLES -> variable + ("current" to current(context.cluster, variable.isMulti()))
+            name in CLUSTER_VARIABLES ->
+                variable + ("current" to current(context.cluster, variable.isMulti(), text = clusterShortName(context.cluster)))
             name == DOC_TENANT_VARIABLE -> docTenant(variable, context.tenants)
             else -> variable
         }.let(::JsonObject)
@@ -130,20 +131,35 @@ object DashboardDefaults {
                 "current" to current(tenants.home, multi = false),
             )
 
+    /**
+     * A variable's selection of [value], shown as [text]. A cluster picker shows the short name and
+     * selects the full id, as its options do.
+     */
     private fun current(
         value: String,
         multi: Boolean,
+        text: String = value,
     ): JsonObject =
         buildJsonObject {
             put("selected", true)
             if (multi) {
-                put("text", buildJsonArray { add(JsonPrimitive(value)) })
+                put("text", buildJsonArray { add(JsonPrimitive(text)) })
                 put("value", buildJsonArray { add(JsonPrimitive(value)) })
             } else {
-                put("text", value)
+                put("text", text)
                 put("value", value)
             }
         }
+
+    /**
+     * The short name of the cluster [id] `<name>-<uuid>`: the name and the first 8 characters of the
+     * id, as the cluster pickers' option text and every legend show it. An id that is not a
+     * `<name>-<uuid>` is its own short name.
+     */
+    fun clusterShortName(id: String): String = SHORT_NAME.matchEntire(id)?.groupValues?.get(1) ?: id
+
+    /** The name and the first 8 characters of the id; the rest of the UUID is dropped. */
+    private val SHORT_NAME = Regex("""(.+?)-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}""")
 
     private fun replacePlaceholder(
         element: JsonElement,

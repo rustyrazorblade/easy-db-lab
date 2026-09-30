@@ -29240,7 +29240,7 @@
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,
-        "regex": "",
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
         "skipUrlSync": false,
         "sort": 0,
         "type": "query",

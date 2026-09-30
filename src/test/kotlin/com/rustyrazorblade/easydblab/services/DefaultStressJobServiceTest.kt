@@ -493,6 +493,16 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `buildJob samples the stress JVM's traces at the fixed ratio`() {
+        val javaToolOptions = javaToolOptionsOf(stressJobConfig()).split(" ")
+
+        assertThat(javaToolOptions).contains(
+            "-Dotel.traces.sampler=parentbased_traceidratio",
+            "-Dotel.traces.sampler.arg=${Constants.Stress.TRACE_SAMPLE_RATIO}",
+        )
+    }
+
+    @Test
     fun `buildJob should not export logs twice, and should keep metrics on`() {
         val javaToolOptions = javaToolOptionsOf(stressJobConfig())
 

@@ -720,6 +720,13 @@ object Constants {
         const val LABEL_VALUE = "cassandra-easy-stress"
         const val DEFAULT_CASSANDRA_PORT = 9042
         const val PROMETHEUS_PORT = 9500
+
+        /**
+         * The share of stress requests the OpenTelemetry agent traces. At 100% a stress job sent
+         * 5,000 spans/s, and Tempo used about 1.5 of the control node's 4 cores to take them in.
+         * Span-metric request rates for cassandra-easy-stress therefore read at this ratio.
+         */
+        const val TRACE_SAMPLE_RATIO = "0.01"
     }
 
     /** The flush of Loki and Mimir that `down` runs before any infrastructure is torn down. */

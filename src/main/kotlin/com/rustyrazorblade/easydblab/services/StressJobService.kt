@@ -429,6 +429,9 @@ class DefaultStressJobService(
         // every line twice. Metrics stay ON: the sidecar scrapes only cassandra-easy-stress's own
         // Prometheus counters, so the agent's JVM metrics are the only view of whether the load
         // generator itself is the bottleneck.
+        //
+        // Traces are sampled at Constants.Stress.TRACE_SAMPLE_RATIO: tracing every request sent
+        // Tempo on the control node more spans than it could take in.
         val otelResourceAttributes = buildResourceAttributes(config.jobName, config.tags)
 
         val javaToolOptions =
@@ -449,6 +452,8 @@ class DefaultStressJobService(
                 "-Dotel.exporter.otlp.endpoint=http://$controlNodeIp:${Constants.K8s.OTEL_HTTP_PORT}",
                 "-Dotel.metric.export.interval=5s",
                 "-Dotel.logs.exporter=none",
+                "-Dotel.traces.sampler=parentbased_traceidratio",
+                "-Dotel.traces.sampler.arg=${Constants.Stress.TRACE_SAMPLE_RATIO}",
             ).joinToString(" ")
 
         return ContainerBuilder()

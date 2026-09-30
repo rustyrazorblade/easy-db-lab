@@ -431,7 +431,8 @@ processors:
   # The node's role from its host name (owner decision): db<N> is db, app<N> is app, control<N> is
   # control. Host metrics and host log files carry no pod, so k8s_attributes can never find the
   # node's `type` label for them, and they reached the store with no node_role at all. A node_role
-  # that is already set, such as an EMR node's spark-master or spark-worker, is left alone.
+  # that is already set, by k8s_attributes for a scraped kit pod or by an EMR node's own collector,
+  # is left alone, so this runs after k8s_attributes.
   transform/node_role_from_host:
     # Fail fast: since the rename the transform processor ignores statement errors by default.
     error_mode: propagate
@@ -448,9 +449,11 @@ processors:
           - set(attributes["node_role"], "app") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^app[0-9]+$")
           - set(attributes["node_role"], "control") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^control[0-9]+$")
 
-  # Enriches container log records with their pod's labels and their node's `type` label (db, app)
-  # as node_role, by matching the k8s.pod.name and k8s.namespace.name resource attributes taken
-  # from the log file path. Only container logs carry a pod, so only logs/containers uses it.
+  # Enriches records that carry their pod with the pod's labels (k8s.app.instance, which the kit
+  # dashboards select on) and the node's `type` label (db, app) as node_role, by matching the
+  # k8s.pod.name and k8s.namespace.name resource attributes. Container logs take them from the log
+  # file path; the kit metrics metrics/local scrapes by pod discovery take them from the Prometheus
+  # receiver, which sets them from each target. Host metrics and host log files carry no pod.
   k8s_attributes:
     passthrough: false
     pod_association:
@@ -663,10 +666,11 @@ extensions:
 service:
   extensions: [health_check]
   pipelines:
-    # Local metrics — resource_detection stamps host.name, transform/node_role_from_host derives node_role from it
+    # Local metrics — resource_detection stamps host.name, k8s_attributes adds the pod labels of
+    # scraped kit pods, and transform/node_role_from_host derives any node_role still unset from the host
     metrics/local:
       receivers: [host_metrics, prometheus]
-      processors: [resource/cluster, resource_detection, transform/node_role_from_host, batch]
+      processors: [resource/cluster, resource_detection, k8s_attributes, transform/node_role_from_host, batch]
       exporters: [prometheus_remote_write]
     # OTLP metrics — the Cassandra JVM agent, the stress sidecar, Spark nodes. resource/cluster
     # stamps the cluster label to match local metrics; resource/drop_sdk_metadata removes the SDK's

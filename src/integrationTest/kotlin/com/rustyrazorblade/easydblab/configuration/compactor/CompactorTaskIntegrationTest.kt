@@ -297,9 +297,12 @@ class CompactorTaskIntegrationTest {
         // Four-hour-old samples across a complete two-hour range, then shipped as one-minute blocks.
         val start = (Instant.now().epochSecond - 2 * TWO_HOURS_SECONDS) / TWO_HOURS_SECONDS * TWO_HOURS_SECONDS
         write(mimirA, (0 until SAMPLE_COUNT).map { (start + it * SAMPLE_STEP_SECONDS) * 1000 })
+        // Counted at a fixed time just past the last sample, not at now: the samples start up to six
+        // hours back, so a window that ends at now slides past the first sample while the test runs.
+        val countedAt = start + SAMPLE_COUNT * SAMPLE_STEP_SECONDS
         flush(mimirA)
         val shipped = awaitStable { blockMetas().size }
-        val before = samples(mimirA)
+        val before = samples(mimirA, countedAt)
         assertThat(before).describedAs("samples Mimir A answers before compaction").isEqualTo(SAMPLE_COUNT)
 
         val mimirCompactor = container(CompactorTaskDefinition.MIMIR_CONTAINER)
@@ -324,9 +327,9 @@ class CompactorTaskIntegrationTest {
         awaitUntil(
             STARTUP,
             "Mimir B answers $before samples from the store",
-            { "answered ${samples(mimirB)}" },
-        ) { samples(mimirB) == before }
-        assertThat(samples(mimirB)).isEqualTo(before)
+            { "answered ${samples(mimirB, countedAt)}" },
+        ) { samples(mimirB, countedAt) == before }
+        assertThat(samples(mimirB, countedAt)).isEqualTo(before)
         assertThat(shipped).describedAs("one-minute blocks Mimir A shipped").isGreaterThan(1)
     }
 
@@ -401,10 +404,13 @@ class CompactorTaskIntegrationTest {
         assertThat(response.statusCode()).describedAs(response.body()).isIn(200, 204)
     }
 
-    /** The number of the probe's samples in the last six hours; 0 while Mimir cannot answer. */
-    private fun samples(mimir: GenericContainer<*>): Int {
+    /** The number of the probe's samples in the six hours up to [atSeconds]; 0 while Mimir cannot answer. */
+    private fun samples(
+        mimir: GenericContainer<*>,
+        atSeconds: Long,
+    ): Int {
         val query = URLEncoder.encode("count_over_time($METRIC[6h])", Charsets.UTF_8)
-        val response = ObservabilityBackends.get("${url(mimir)}/prometheus/api/v1/query?query=$query", TENANT)
+        val response = ObservabilityBackends.get("${url(mimir)}/prometheus/api/v1/query?query=$query&time=$atSeconds", TENANT)
         if (response.statusCode() != 200) return 0
         return Json
             .parseToJsonElement(response.body())

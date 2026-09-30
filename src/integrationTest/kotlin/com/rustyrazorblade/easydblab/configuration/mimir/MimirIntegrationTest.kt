@@ -8,6 +8,8 @@ import com.rustyrazorblade.easydblab.SharedLocalStack
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.github.resilience4j.retry.Retry
+import io.github.resilience4j.retry.RetryConfig
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -57,6 +59,9 @@ class MimirIntegrationTest : BaseKoinTest() {
         /** How soon a sample must be in S3 while the cluster keeps writing: the spec's "about 3 minutes". */
         val UPLOAD_WITHIN: Duration = Duration.ofMinutes(3).plusSeconds(30)
         val POLL: Duration = Duration.ofSeconds(2)
+
+        /** How long a written sample may take to be answered; the sample carries the host's clock, the query Docker's. */
+        val ANSWER_WITHIN: Duration = Duration.ofSeconds(30)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -168,6 +173,26 @@ class MimirIntegrationTest : BaseKoinTest() {
                     .toInt()
             }
 
+    /**
+     * The tenant's sample count once it is [expected], or the last count after [ANSWER_WITHIN]. A
+     * sample is stamped with the host's clock and the query runs at Docker's, so the count is read
+     * until it arrives rather than once at a moment.
+     */
+    private fun awaitSamples(
+        mimir: GenericContainer<*>,
+        tenant: String,
+        expected: Int,
+    ): Int {
+        val config =
+            RetryConfig
+                .custom<Int>()
+                .maxAttempts((ANSWER_WITHIN.toMillis() / POLL.toMillis()).toInt())
+                .waitDuration(POLL)
+                .retryOnResult { it != expected }
+                .build()
+        return Retry.of("mimir-samples", config).executeSupplier { samples(mimir, tenant) }
+    }
+
     private fun objectKeys(): Set<String> =
         s3
             .listObjectsV2Paginator(ListObjectsV2Request.builder().bucket(bucket).build())
@@ -249,14 +274,14 @@ class MimirIntegrationTest : BaseKoinTest() {
         // The head becomes a block, which ships under the tenant's directory, and is still read locally.
         compactHead(first)
         awaitBlock("a")
-        assertThat(samples(first, "a")).describedAs("read from the local block after head compaction").isEqualTo(1)
+        assertThat(awaitSamples(first, "a", 1)).describedAs("read from the local block after head compaction").isEqualTo(1)
 
         // A sample only in the WAL survives a kill with no shutdown at all.
         write(first, "a", "lab-a", 2.0)
         objectKeys()
         docker.killContainerCmd(first.containerId).withSignal("KILL").exec()
         val second = startMimir()
-        assertThat(samples(second, "a")).describedAs("the block and the replayed WAL, after SIGKILL").isEqualTo(2)
+        assertThat(awaitSamples(second, "a", 2)).describedAs("the block and the replayed WAL, after SIGKILL").isEqualTo(2)
 
         objectKeys()
         objectSnapshots.zipWithNext().forEach { (earlier, later) ->

@@ -2712,7 +2712,7 @@
             "type": "prometheus",
             "uid": "${metrics_datasource}"
           },
-          "expr": "label_replace(avg by (cluster, state) ( sum by (cluster, host_name, state) (label_replace(system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}, \"state\", \"slab\", \"state\", \"slab_.*\")) / on (cluster, host_name) group_left sum by (cluster, host_name) (system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg by (cluster, state) ( (sum by (cluster, host_name, state) (system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state!~\"slab_.*\"}) or label_replace(sum by (cluster, host_name) (system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=~\"slab_.*\"}), \"state\", \"slab\", \"\", \"\")) / on (cluster, host_name) group_left sum by (cluster, host_name) (system_memory_usage_bytes{host_name=~\"$hostname\", cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) ), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} {{state}}",
           "refId": "A"
         }

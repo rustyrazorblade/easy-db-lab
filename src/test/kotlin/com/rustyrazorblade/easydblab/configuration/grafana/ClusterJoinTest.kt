@@ -48,6 +48,19 @@ class ClusterJoinTest {
     }
 
     @Test
+    fun `the same metric under different label values never pairs inside functions or with an offset either`() {
+        val hit = """m{type="a"} / m{type="b"} never pair"""
+
+        assertThat(ClusterJoinGuards.unmatchableSelectors("""rate(m{type="a"}[5m]) / rate(m{type="b"}[5m])""")).containsExactly(hit)
+        assertThat(ClusterJoinGuards.unmatchableSelectors("""m{type="a"} offset 1h / m{type="b"} offset 1h""")).containsExactly(hit)
+        assertThat(
+            ClusterJoinGuards.unmatchableSelectors("""rate(m{type="a"}[5m] offset 1h) / rate(m{type="b"}[5m] offset 1h)"""),
+        ).containsExactly(hit)
+        assertThat(ClusterJoinGuards.unmatchableSelectors("""rate(m{type="a"}[5m]) / ignoring(type) rate(m{type="b"}[5m])""")).isEmpty()
+        assertThat(ClusterJoinGuards.unmatchableSelectors("""sum(rate(m{type="a"}[5m])) / sum(rate(m{type="b"}[5m]))""")).isEmpty()
+    }
+
+    @Test
     fun `no dashboard divides one metric by itself under another label value`() {
         val problems =
             DashboardFiles.all().flatMap { file ->

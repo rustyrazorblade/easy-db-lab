@@ -31,25 +31,58 @@ object ClusterJoinGuards {
     /**
      * Each one-to-one operation in [promQl] between two selectors of one metric that fix different
      * values of one label, with no `on` or `ignoring`: every pair of series differs in that label,
-     * so the match finds no pair and the panel is always empty.
+     * so the match finds no pair and the panel is always empty. Each side may sit inside functions
+     * that keep the labels (`rate`, `irate`, ...) and carry a range and an `offset`; an aggregation
+     * on either side, or an `on`/`ignoring` between them, changes what pairs, and is left alone.
      */
     fun unmatchableSelectors(promQl: String): List<String> =
         sameMetricOperation
             .findAll(promQl)
+            .filterNot { match -> functionNames(match.groupValues[1] + match.groupValues[5]).any { it in pairingChangers } }
             .flatMap { match ->
-                val left = equalities(match.groupValues[2])
-                val right = equalities(match.groupValues[4])
+                val metric = match.groupValues[2]
+                val left = equalities(match.groupValues[3])
+                val right = equalities(match.groupValues[6])
                 left.keys.filter { it in right && left[it] != right[it] }.map { label ->
-                    "${match.groupValues[1]}{$label=\"${left[label]}\"} ${match.groupValues[3]} ${match.groupValues[1]}{$label=\"${right[label]}\"} never pair"
+                    "$metric{$label=\"${left[label]}\"} ${match.groupValues[4]} $metric{$label=\"${right[label]}\"} never pair"
                 }
             }.toList()
+
+    private fun functionNames(prefix: String): List<String> =
+        Regex("""([A-Za-z_]+)\s*\(""").findAll(prefix).map { it.groupValues[1] }.toList()
 
     private fun equalities(matchers: String): Map<String, String> =
         equality.findAll(matchers).associate { it.groupValues[1] to it.groupValues[2] }
 
     private fun labels(list: String): List<String> = list.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
-    private val sameMetricOperation = Regex("""([A-Za-z_:][\w:]*)\{([^}]*)\}\s*([/*+-])\s*\1\{([^}]*)\}""")
+    /** One side: functions around a selector, with an optional range, offset and closing parentheses. */
+    private const val TAIL = """(?:\[[^\]]*\])?(?:\s+offset\s+-?\w+)?(?:\s*\))*(?:\s+offset\s+-?\w+)?"""
+    private val sameMetricOperation =
+        Regex("""((?:[A-Za-z_]+\s*\(\s*)*)([A-Za-z_:][\w:]*)\{([^}]*)\}$TAIL\s*([/*+-])\s*((?:[A-Za-z_]+\s*\(\s*)*)\2\{([^}]*)\}""")
+
+    /** Aggregations and vector-matching keywords: either changes which series pair. */
+    private val pairingChangers =
+        setOf(
+            "sum",
+            "avg",
+            "min",
+            "max",
+            "count",
+            "group",
+            "stddev",
+            "stdvar",
+            "topk",
+            "bottomk",
+            "quantile",
+            "count_values",
+            "limitk",
+            "limit_ratio",
+            "on",
+            "ignoring",
+            "group_left",
+            "group_right",
+        )
     private val equality = Regex("""\b(\w+)\s*=\s*"([^"]*)"""")
 
     private const val HOST = "host_name"

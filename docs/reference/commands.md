@@ -258,7 +258,7 @@ easy-db-lab cassandra use <version> [options]
 
 | Option | Description |
 |--------|-------------|
-| `--java` | Java version to use |
+| `--java` | Java version to use: 8, 11, 17, 21 or 25 |
 | `--hosts` | Filter to specific hosts |
 
 Versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, trunk

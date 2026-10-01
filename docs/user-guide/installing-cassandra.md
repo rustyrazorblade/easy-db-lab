@@ -66,7 +66,8 @@ easy-db-lab cassandra use 5.0 --java 11
 ```
 
 This selects the JDK the already-installed build runs under. It does not
-reinstall or rebuild anything.
+reinstall or rebuild anything. The AMI has JDK 8, 11, 17, 21 and 25 installed.
+If the JDK switch fails on a node, the command fails.
 
 ### List Available Versions
 

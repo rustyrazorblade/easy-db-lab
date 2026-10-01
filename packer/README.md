@@ -34,6 +34,9 @@ network:
 ./gradlew testCassandraInstallScript   # bin/install-cassandra-version
 ./gradlew testCassandraInstallLoop     # the bake-time version loop in install_cassandra.sh
 ./gradlew testCassandraUseScript       # bin/use-cassandra
+
+# The base AMI JDK install (base/install/install_jdks.sh); not part of testCassandraScripts
+./gradlew testBaseJdkInstall
 ```
 
 Each test lives next to its script as `<script>.test.sh` and also runs in CI

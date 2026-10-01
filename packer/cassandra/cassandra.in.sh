@@ -10,7 +10,7 @@ if [ -f "$ECL_AGENTS_LIB" ]; then
     # shellcheck disable=SC1090
     . "$ECL_AGENTS_LIB"
 else
-    echo "ERROR: $ECL_AGENTS_LIB is missing; Cassandra will start with NO AxonOps agent" >&2
+    echo "ERROR: $ECL_AGENTS_LIB is missing; Cassandra will start with NO AxonOps agent and NO GC log" >&2
 fi
 
 # edl_add_jvm_extra_opt <opt>... - append options to JVM_EXTRA_OPTS without clobbering what is

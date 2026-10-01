@@ -234,6 +234,23 @@ else
   pass "no -javaagent on JVM_OPTS"
 fi
 
+# Every edl_* function cassandra.in.sh calls must exist. It guards each call with `command -v`, so a
+# renamed function does not fail the start: the node just loses its GC log or its AxonOps agent with
+# no error. Functions cassandra.in.sh defines for itself are left out.
+in_sh_code="$(grep -v '^[[:space:]]*#' "${SCRIPT_DIR}/../cassandra.in.sh")"
+in_sh_own="$(printf '%s\n' "$in_sh_code" | sed -nE 's/^[[:space:]]*(edl_[a-z0-9_]+)[[:space:]]*\(\).*/\1/p')"
+# Anchored so a `_edl_`-prefixed variable such as _edl_opt is not read as a call.
+for fn in $(printf '%s\n' "$in_sh_code" | grep -oE '(^|[^_[:alnum:]])edl_[a-z0-9_]+' | grep -oE 'edl_[a-z0-9_]+' | sort -u); do
+  if printf '%s\n' "$in_sh_own" | grep -qx "$fn"; then
+    continue
+  fi
+  if declare -F "$fn" >/dev/null; then
+    pass "cassandra.in.sh calls ${fn}, which the library defines"
+  else
+    fail "cassandra.in.sh calls ${fn}, which edl-cassandra-agents.sh does not define"
+  fi
+done
+
 echo
 echo "${tests_run} assertions, ${tests_failed} failed"
 [[ "$tests_failed" -eq 0 ]]

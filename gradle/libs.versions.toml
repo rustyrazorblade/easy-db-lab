@@ -32,7 +32,7 @@ testcontainers = "2.0.5"
 
 # CLI and UI
 picocli = "4.7.7"
-jline = "3.30.6"
+jline = "4.4.6"
 mordant = "1.2.1"
 
 # Ktor

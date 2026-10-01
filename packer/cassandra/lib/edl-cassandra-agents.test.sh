@@ -98,14 +98,21 @@ assert_axonops() {
   fi
 }
 
-assert_axonops 3.0 8 "3.0-agent"
-assert_axonops 3.11 8 "3.11-agent"
-assert_axonops 4.0 8 "4.0-agent-jdk8"
-assert_axonops 4.0 11 "4.0-agent"
-assert_axonops 4.1 1.8 "4.1-agent-jdk8"
-assert_axonops 4.1 17 "4.1-agent"
-assert_axonops 5.0 11 "5.0-agent-jdk11"
-assert_axonops 5.0 17 "5.0-agent-jdk17"
+# The JDK argument is always what edl_java_major_version printed, never a hand-written number, so a
+# change to the parser's contract breaks these tests instead of silently picking the wrong agent.
+# JDK 8 reads as 1, and 4.0/4.1 must still get their jdk8 agent from it.
+JDK8="$(edl_java_major_version 'openjdk version "1.8.0_462"')"
+JDK11="$(edl_java_major_version 'openjdk version "11.0.28" 2025-07-15')"
+JDK17="$(edl_java_major_version 'openjdk version "17.0.16" 2025-07-15')"
+
+assert_axonops 3.0 "$JDK8" "3.0-agent"
+assert_axonops 3.11 "$JDK8" "3.11-agent"
+assert_axonops 4.0 "$JDK8" "4.0-agent-jdk8"
+assert_axonops 4.0 "$JDK11" "4.0-agent"
+assert_axonops 4.1 "$JDK8" "4.1-agent-jdk8"
+assert_axonops 4.1 "$JDK17" "4.1-agent"
+assert_axonops 5.0 "$JDK11" "5.0-agent-jdk11"
+assert_axonops 5.0 "$JDK17" "5.0-agent-jdk17"
 
 for combo in "5.0 21" "5.1 17" "6.0 21" "7.0 21"; do
   # shellcheck disable=SC2086
@@ -186,7 +193,7 @@ else
   fail "an unparseable name printed '${sh_out}' under ${POSIX_SH}"
 fi
 
-if sh_out="$("$POSIX_SH" -c '. "$1"; edl_axonops_agent_for 4.0 8' _ "${SCRIPT_DIR}/edl-cassandra-agents.sh" 2>&1)" \
+if sh_out="$("$POSIX_SH" -c '. "$1"; edl_axonops_agent_for 4.0 "$(edl_java_major_version "openjdk version \"1.8.0_462\"")"' _ "${SCRIPT_DIR}/edl-cassandra-agents.sh" 2>&1)" \
    && [[ "$sh_out" == *"4.0-agent-jdk8"* ]]; then
   pass "agent selection works under ${POSIX_SH}"
 else

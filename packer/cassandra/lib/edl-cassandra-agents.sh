@@ -111,13 +111,15 @@ edl_java_writes_gc_log() {
 #
 # Prints the AxonOps agent install directory name for that release and JDK. Returns 1 without
 # printing when AxonOps ships no agent for the combination.
+#
+# The JDK is what edl_java_major_version prints, so JDK 8 arrives as 1.
 edl_axonops_agent_for() {
     case "$1" in
         "3.0"|"3.11")
             printf '%s-agent\n' "$1"
             ;;
         "4.0"|"4.1")
-            if [ "$2" = "8" ] || [ "$2" = "1.8" ]; then
+            if [ "$2" = "1" ]; then
                 printf '%s-agent-jdk8\n' "$1"
             else
                 printf '%s-agent\n' "$1"

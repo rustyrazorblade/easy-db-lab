@@ -55,20 +55,17 @@ else
     exit 1
 fi
 
-# if java version = 8 then run update-java-alternatives -s java-1.8.0-openjdk-amd64
-if [ "$JAVA_VERSION" = "8" ]; then
-  sudo update-java-alternatives -s java-1.8.0-openjdk-$ARCH
-# if java version = 11 then run update-java-alternatives -s java-1.11.0-openjdk-amd64
-elif [ "$JAVA_VERSION" = "11" ]; then
-  sudo update-java-alternatives -s java-1.11.0-openjdk-$ARCH
-elif [ "$JAVA_VERSION" = "17" ]; then
-  sudo update-java-alternatives -s java-1.17.0-openjdk-$ARCH
-elif [ "$JAVA_VERSION" = "21" ]; then
-  sudo update-java-alternatives -s java-1.21.0-openjdk-$ARCH
-elif [ "$JAVA_VERSION" = "25" ]; then
-  sudo update-java-alternatives -s java-1.25.0-openjdk-$ARCH
-else
-  echo "Unknown java version $JAVA_VERSION"
+case "$JAVA_VERSION" in
+  8|11|17|21|25) JAVA_ALTERNATIVE="java-1.${JAVA_VERSION}.0-openjdk-$ARCH" ;;
+  *)
+    echo "Unknown java version $JAVA_VERSION"
+    exit 1
+    ;;
+esac
+
+# A failed switch leaves the node on its previous JDK, so it must fail the script.
+if ! sudo update-java-alternatives -s "$JAVA_ALTERNATIVE"; then
+  echo "Error: could not switch to JDK $JAVA_VERSION ($JAVA_ALTERNATIVE); the node is still on its previous JDK"
   exit 1
 fi
 

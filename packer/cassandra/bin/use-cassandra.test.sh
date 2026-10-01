@@ -33,10 +33,15 @@ exec "$@"
 SHIM
 
 # Record the alternatives switches so a test can assert which JDK was selected.
+# A test makes a switch fail by creating ${SANDBOX}/<tool>.fail.
 for tool in update-java-alternatives update-alternatives; do
   cat >"${BIN}/${tool}" <<SHIM
 #!/bin/bash
 echo "${tool} \$*" >> "${SANDBOX}/alternatives.log"
+if [[ -f "${SANDBOX}/${tool}.fail" ]]; then
+  echo "${tool}: no such alternative" >&2
+  exit 1
+fi
 SHIM
 done
 
@@ -188,6 +193,24 @@ if grep -q "update-java-alternatives -s java-1.25.0-openjdk-amd64" "${SANDBOX}/a
   pass "a JDK 25 version selects java-1.25.0-openjdk"
 else
   fail "expected JDK 25 to be selected, got: $(cat "${SANDBOX}/alternatives.log" 2>/dev/null)"
+fi
+
+# --- a failed JDK switch fails the script -------------------------------------
+# A wrong jinfo name leaves the node on its old JDK; exiting 0 then would hide that until Cassandra
+# misbehaves on the wrong runtime.
+touch "${SANDBOX}/update-java-alternatives.fail"
+run_script 6.0
+rm -f "${SANDBOX}/update-java-alternatives.fail"
+if [[ "$STATUS" -ne 0 ]]; then
+  pass "a failed JDK switch exits non-zero"
+else
+  fail "a failed JDK switch should exit non-zero: ${OUTPUT}"
+fi
+
+if [[ "$OUTPUT" == *"JDK 25"* ]]; then
+  pass "a failed JDK switch names the requested JDK"
+else
+  fail "expected the failure to name JDK 25, got: ${OUTPUT}"
 fi
 
 echo

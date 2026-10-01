@@ -10,11 +10,13 @@
 # quiet lets packer's keepalive hold the connection for the duration.
 #
 # Env vars (set by the Packer provisioner):
-#   ARCH  dpkg architecture suffix used in the JVM paths (e.g. amd64, arm64)
+#   ARCH             dpkg architecture suffix used in the JVM paths (e.g. amd64, arm64)
+#   JDK_INSTALL_LOG  where the apt output goes; overridable only so install_jdks.test.sh can keep it
+#                    in its sandbox
 set -euo pipefail
 
 ARCH="${ARCH:?ARCH must be set}"
-LOG=/tmp/jdk-install.log
+LOG="${JDK_INSTALL_LOG:-/tmp/jdk-install.log}"
 
 # On failure, surface the tail of the captured log (since it isn't streamed live).
 trap 'echo "=== JDK install FAILED — tail of ${LOG} ==="; tail -50 "${LOG}" 2>/dev/null || true' ERR

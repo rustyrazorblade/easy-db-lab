@@ -22,5 +22,5 @@
 
 ## 5. Verify
 
-- [ ] 5.1 `./gradlew testCassandraScripts` passes.
+- [x] 5.1 `./gradlew testCassandraScripts` passes.
 - [x] 5.2 Docs: update any user doc that lists the installed JDKs.

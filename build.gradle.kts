@@ -424,7 +424,17 @@ tasks.register("testScripts") {
         "testSysbenchStartScript",
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
+        "testBaseJdkInstall",
     )
+}
+
+// Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug
+// symbols, with Java 11 as the default. sudo, apt-get and update-java-alternatives are stubbed.
+tasks.register<Exec>("testBaseJdkInstall") {
+    group = "Verification"
+    description = "Unit-test the base AMI JDK install script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/base/install/install_jdks.test.sh")
 }
 
 // Unit-test the Pyroscope labels the presto and trino start scripts put on their profiles: the

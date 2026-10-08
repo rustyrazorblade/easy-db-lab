@@ -40,19 +40,19 @@
 
 ## 6. FerrosaDB kit files
 
-- [ ] 6.1 `kits/ferrosa/kit.yaml`: `type: db`, `collision-check: true`, runtime selector `easydblab/kit=ferrosa`, scrape metrics (job `ferrosa`, `pod-selector: app.kubernetes.io/name=ferrosa`, port 9090, `/metrics`), seven endpoints (`node-type: db`), install `platform-pvs` on db nodes, `commands: start: args:` for the seven options with the variables and defaults in design.md, `start` steps 1–6, `stop` and `uninstall` steps.
-- [ ] 6.2 `ferrosa-node.yaml.template` (top level): PVC `ferrosa-data-<i>`, Deployment `ferrosa-<i>`, ClusterIP Service `ferrosa-<i>`, per design.md "Per-pod spec".
-- [ ] 6.3 `nodeport-service.yaml.template`: seven NodePort Services selecting `easydblab/ferrosa-ordinal=0`, ports 30942, 30909, 30787, 30747, 30880, 30532, 30815.
-- [ ] 6.4 `start` shell steps: validation gate; `ferrosa-settings` / `ferrosa-env` ConfigMaps; per-pod loop; readiness wait with pull/crash/timeout errors; heap-profile build check.
-- [ ] 6.5 `README.md.template` with connection details for each endpoint.
+- [x] 6.1 `kits/ferrosa/kit.yaml`: `type: db`, `collision-check: true`, runtime selector `easydblab/kit=ferrosa`, scrape metrics (job `ferrosa`, `pod-selector: app.kubernetes.io/name=ferrosa`, port 9090, `/metrics`), seven endpoints (`node-type: db`), install `platform-pvs` on db nodes, `commands: start: args:` for the seven options with the variables and defaults in design.md, `start` steps 1–6, `stop` and `uninstall` steps.
+- [x] 6.2 `ferrosa-node.yaml.template` (top level): PVC `ferrosa-data-<i>`, Deployment `ferrosa-<i>`, ClusterIP Service `ferrosa-<i>`, per design.md "Per-pod spec".
+- [x] 6.3 `nodeport-service.yaml.template`: seven NodePort Services selecting `easydblab/ferrosa-ordinal=0`, ports 30942, 30909, 30787, 30747, 30880, 30532, 30815.
+- [x] 6.4 `start` shell steps: validation gate; `ferrosa-settings` / `ferrosa-env` ConfigMaps; per-pod loop; readiness wait with pull/crash/timeout errors; heap-profile build check.
+- [x] 6.5 `README.md.template` with connection details for each endpoint.
 
 ## 7. FerrosaDB kit tests
 
-- [ ] 7.1 `FerrosaKitTest` (extends `BuiltinKitFixture`/`BaseKoinTest`, uses `StubKubectl`, real `TemplateService`): run `start` for N=1 and N=3, parse applied YAML with fabric8, and assert Deployments/PVCs/Services, affinity, labels, no `hostPort`/`hostNetwork`, `imagePullPolicy: Always`, no `imagePullSecrets`, `terminationGracePeriodSeconds: 90`, host ids, seeds (excluding self; unset for N=1), broadcast, `FERROSA_EXPECTED_CLUSTER_SIZE` (N=3 set, N=1 unset), `publishNotReadyAddresses`, `envFrom` order, image selection (default, `--version`, `--image`), `s3` vs `local` settings, `MALLOC_CONF` with and without `--heap-sample`.
-- [ ] 7.2 `FerrosaKitTest`: every validation gate (`--image`+`--version`, bad `--storage`, `--heap-sample` alone, malformed `--env`, each per-pod `--env` key) fails with the right message and no mutating `kubectl` call.
-- [ ] 7.3 `FerrosaKitTest`: readiness wait fails naming pod and image on `ImagePullBackOff`, prints the previous log on `CrashLoopBackOff`, names non-ready pods on timeout; the heap-profile check fails naming the image when a pod log has `Invalid conf pair: prof`.
-- [ ] 7.4 Confirm the kit-wide suites pass with the new kit: `BuiltinKitNodePortTest`, `NodePortKitScrapeTest`, `PlatformPvReservationTest`, `BuiltinKitCollisionCheckTest`, `DashboardDatasourceVariablesTest`, `ClusterFilterTest`, `SeriesClusterTest`.
-- [ ] 7.5 Integration tier: apply the generated FerrosaDB manifests to K3s TestContainers and assert they are accepted.
+- [x] 7.1 `FerrosaKitTest` (extends `BuiltinKitFixture`/`BaseKoinTest`, uses `StubKubectl`, real `TemplateService`): run `start` for N=1 and N=3, parse applied YAML with fabric8, and assert Deployments/PVCs/Services, affinity, labels, no `hostPort`/`hostNetwork`, `imagePullPolicy: Always`, no `imagePullSecrets`, `terminationGracePeriodSeconds: 90`, host ids, seeds (excluding self; unset for N=1), broadcast, `FERROSA_EXPECTED_CLUSTER_SIZE` (N=3 set, N=1 unset), `publishNotReadyAddresses`, `envFrom` order, image selection (default, `--version`, `--image`), `s3` vs `local` settings, `MALLOC_CONF` with and without `--heap-sample`.
+- [x] 7.2 `FerrosaKitTest`: every validation gate (`--image`+`--version`, bad `--storage`, `--heap-sample` alone, malformed `--env`, each per-pod `--env` key) fails with the right message and no mutating `kubectl` call.
+- [x] 7.3 `FerrosaKitTest`: readiness wait fails naming pod and image on `ImagePullBackOff`, prints the previous log on `CrashLoopBackOff`, names non-ready pods on timeout; the heap-profile check fails naming the image when a pod log has `Invalid conf pair: prof`.
+- [x] 7.4 Confirm the kit-wide suites pass with the new kit: `BuiltinKitNodePortTest`, `NodePortKitScrapeTest`, `PlatformPvReservationTest`, `BuiltinKitCollisionCheckTest`, `DashboardDatasourceVariablesTest`, `ClusterFilterTest`, `SeriesClusterTest`.
+- [x] 7.5 Integration tier: apply the generated FerrosaDB manifests to K3s TestContainers and assert they are accepted.
 - [ ] 7.6 Run `./gradlew test` and `./gradlew integrationTest` in a subagent; then `./gradlew ktlintFormat ktlintCheck detekt` on JDK 21. All green.
 
 ## 8. Docs and repo guidance

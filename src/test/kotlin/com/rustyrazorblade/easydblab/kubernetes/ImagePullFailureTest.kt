@@ -52,7 +52,9 @@ class ImagePullFailureTest {
     fun `an init container that cannot pull is reported`() {
         val failure = pod(init = listOf(waiting("init", "ImagePullBackOff"))).imagePullFailure()
 
-        assertThat(failure).isEqualTo(ImagePullFailure(container = "init", image = "init-image:1", reason = "ImagePullBackOff", message = ""))
+        assertThat(
+            failure,
+        ).isEqualTo(ImagePullFailure(container = "init", image = "init-image:1", reason = "ImagePullBackOff", message = ""))
     }
 
     @Test

@@ -23,12 +23,12 @@
 
 ## 5. Node: kubelet ECR credential provider (Q9, Q18)
 
-- [ ] 5.1 Add `packer/base/install/install_ecr_credential_provider.sh`: install the pinned `ecr-credential-provider` binary for the build arch and a `CredentialProviderConfig` matching `*.dkr.ecr.*.amazonaws.com`, at the path the K3s kubelet reads. Wire it into `packer/base/base.pkr.hcl`.
-- [ ] 5.2 Packer script test (`./gradlew testPackerScript -Pscript=base/install/install_ecr_credential_provider.sh`, plus a stubbed shell unit test if the script has branching logic) asserting the binary and config are in place and the config matches the ECR host pattern.
-- [ ] 5.3 If K3s does not honor `/var/lib/rancher/credentialprovider/` by default, add `--kubelet-arg=image-credential-provider-bin-dir=...` and `--kubelet-arg=image-credential-provider-config=...` to `start_k3s_server.sh` and `start_k3s_agent.sh`. Record which mechanism was used in a script comment.
-- [ ] 5.4 Delete `services/EcrPullSecretService.kt` and `EcrPullSecretServiceTest.kt`; remove it from `ServicesModule.kt` and `TestModules.kt`. `StressJobService` and `SidecarService` (and the sidecar manifest builder) stop creating `ecr-pull-secret` and stop setting `imagePullSecrets`.
-- [ ] 5.5 Update `DefaultStressJobServiceTest` and the sidecar tests: the built job / DaemonSet has no `imagePullSecrets` and no Secret is created for an ECR image.
-- [ ] 5.6 Grep source, docs and every `CLAUDE.md` for `EcrPullSecretService`, `ecr-pull-secret` and `imagePullSecret`; remove or update every mention.
+- [x] 5.1 Add `packer/base/install/install_ecr_credential_provider.sh`: install the pinned `ecr-credential-provider` binary for the build arch and a `CredentialProviderConfig` matching `*.dkr.ecr.*.amazonaws.com`, at the path the K3s kubelet reads. Wire it into `packer/base/base.pkr.hcl`.
+- [x] 5.2 Packer script test (`./gradlew testPackerScript -Pscript=base/install/install_ecr_credential_provider.sh`, plus a stubbed shell unit test if the script has branching logic) asserting the binary and config are in place and the config matches the ECR host pattern.
+- [x] 5.3 If K3s does not honor `/var/lib/rancher/credentialprovider/` by default, add `--kubelet-arg=image-credential-provider-bin-dir=...` and `--kubelet-arg=image-credential-provider-config=...` to `start_k3s_server.sh` and `start_k3s_agent.sh`. Record which mechanism was used in a script comment.
+- [x] 5.4 Delete `services/EcrPullSecretService.kt` and `EcrPullSecretServiceTest.kt`; remove it from `ServicesModule.kt` and `TestModules.kt`. `StressJobService` and `SidecarService` (and the sidecar manifest builder) stop creating `ecr-pull-secret` and stop setting `imagePullSecrets`.
+- [x] 5.5 Update `DefaultStressJobServiceTest` and the sidecar tests: the built job / DaemonSet has no `imagePullSecrets` and no Secret is created for an ECR image.
+- [x] 5.6 Grep source, docs and every `CLAUDE.md` for `EcrPullSecretService`, `ecr-pull-secret` and `imagePullSecret`; remove or update every mention.
 
 ## 5b. Node: data on a non-root volume, checked in advance (owner requirement)
 

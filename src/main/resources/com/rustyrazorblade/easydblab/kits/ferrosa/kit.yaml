@@ -118,6 +118,16 @@ start:
         echo "ERROR: --image and --version were both given; use one of --image (a full image reference) or --version (a tag of ghcr.io/ferrosadb/ferrosa)." >&2
         exit 1
       fi
+      # Both values are substituted into the rendered manifests, so anything but an image
+      # reference or a tag is refused here rather than left to break or extend the YAML.
+      if [[ -n "${IMAGE}" && ! "${IMAGE}" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]]; then
+        echo "ERROR: --image '${IMAGE}' is not a valid image reference." >&2
+        exit 1
+      fi
+      if [[ -n "${FERROSA_TAG}" && ! "${FERROSA_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+        echo "ERROR: --version '${FERROSA_TAG}' is not a valid image tag." >&2
+        exit 1
+      fi
       case "${STORAGE_MODE}" in
         local | s3) ;;
         *)
@@ -132,7 +142,9 @@ start:
       # The kit sets these for each pod in the Deployment's env, which wins over every envFrom
       # source, so an --env line for one of them would be silently ignored.
       PER_POD_KEYS=" FERROSA_HOST_ID FERROSA_SEED FERROSA_INTERNODE_BROADCAST FERROSA_CQL_BROADCAST FERROSA_FLIGHT_BROADCAST FERROSA_CLUSTER_NAME FERROSA_EXPECTED_CLUSTER_SIZE "
-      ENV_ARGS=()
+      # A repeated key keeps its last value: the ConfigMap holds one entry for each key.
+      ENV_KEYS=()
+      ENV_LINES=()
       while IFS= read -r LINE; do
         [[ -z "${LINE}" ]] && continue
         if [[ ! "${LINE}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
@@ -144,8 +156,23 @@ start:
           echo "ERROR: --env ${KEY} cannot be set: the kit sets ${KEY} for each pod." >&2
           exit 1
         fi
-        ENV_ARGS+=("--from-literal=${LINE}")
+        FOUND=""
+        for (( K = 0; K < ${#ENV_KEYS[@]}; K++ )); do
+          if [[ "${ENV_KEYS[K]}" == "${KEY}" ]]; then
+            ENV_LINES[K]="${LINE}"
+            FOUND=1
+            break
+          fi
+        done
+        if [[ -z "${FOUND}" ]]; then
+          ENV_KEYS+=("${KEY}")
+          ENV_LINES+=("${LINE}")
+        fi
       done <<< "${EXTRA_ENV}"
+      ENV_ARGS=()
+      for LINE in ${ENV_LINES[@]+"${ENV_LINES[@]}"}; do
+        ENV_ARGS+=("--from-literal=${LINE}")
+      done
       if (( DB_NODE_COUNT < 1 )); then
         echo "ERROR: no db nodes in this cluster; FerrosaDB runs one pod on each db node." >&2
         exit 1

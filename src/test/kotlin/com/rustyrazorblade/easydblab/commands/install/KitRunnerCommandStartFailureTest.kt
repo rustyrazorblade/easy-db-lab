@@ -80,6 +80,20 @@ class KitRunnerCommandStartFailureTest : KitRunnerCommandTestBase() {
     }
 
     @Test
+    fun `a failed metrics registration still installs the dashboards and fails start once`() {
+        metrics.registerResult = Result.failure(IllegalStateException("configmap write refused"))
+        writeDashboard("overview.json")
+        writeKit(scrape, "dashboards:\n  - path: overview.json\n")
+
+        var exit = 0
+        val events = captureEvents { exit = command("mydb", "start").call() }
+
+        assertThat(events.filterIsInstance<Event.Kit.MetricsRegistrationFailed>()).hasSize(1)
+        assertThat(grafana.installed).isEqualTo(1)
+        assertThat(exit).isEqualTo(Constants.ExitCodes.ERROR)
+    }
+
+    @Test
     fun `a dashboard Grafana rejects emits an event naming the kit and the dashboard and fails start`() {
         grafana.installResult = Result.failure(IllegalStateException("HTTP 400 invalid dashboard"))
         writeDashboard("overview.json")
@@ -129,7 +143,15 @@ class KitRunnerCommandStartFailureTest : KitRunnerCommandTestBase() {
         writeDashboard("overview.json")
         writeKit(dashboardsYaml = "dashboards:\n  - path: overview.json\n")
 
-        assertThat(command("mydb", "start").call()).isEqualTo(Constants.ExitCodes.ERROR)
+        var exit = 0
+        val events = captureEvents { exit = command("mydb", "start").call() }
+
+        val skipped = events.filterIsInstance<Event.Grafana.KitDashboardsSkipped>().single()
+        assertThat(skipped.kit).isEqualTo("mydb")
+        assertThat(skipped.dashboards).containsExactly("overview.json")
+        assertThat(skipped.reason).contains("S3 Access Denied")
+        assertThat(exit).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(grafana.installed).isZero()
     }
 
     /** Returns [registerResult] from every registration. */

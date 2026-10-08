@@ -43,6 +43,7 @@ services:
       bash /packer/base/install/install_cilium_cli.sh &&
       bash /packer/base/install/configure_cilium_eni_networkd.sh &&
       bash /packer/base/install/install_otel_agent.sh &&
+      bash /packer/base/install/install_ecr_credential_provider.sh &&
       echo 'Base provisioning complete!'
       "
 

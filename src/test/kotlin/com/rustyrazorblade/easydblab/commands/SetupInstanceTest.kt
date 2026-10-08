@@ -121,22 +121,10 @@ class SetupInstanceTest : BaseKoinTest() {
         assertThat(config.tenant).isEqualTo("acme")
     }
 
-    /**
-     * instance-storage-validation: "Data disk mounted at up time". A node whose setup exits
-     * non-zero (no data disk, a failed mount) fails the command, naming the host and the reason
-     * the script printed, so `up` stops before K3s starts.
-     */
-    @Test
-    fun `a node whose setup script fails names the host and the reason and fails the command`() {
+    /** Fails `setup_instance.sh` on db1 with [failure], runs the command, and returns the event it emitted. */
+    private fun setupFailureOnDb1(failure: RemoteCommandFailedException): Event.Provision.InstanceSetupFailed {
         whenever(remoteOps.executeRemotely(argThat { alias == "db1" }, eq("sudo bash setup_instance.sh"), any(), any()))
-            .thenAnswer {
-                throw RemoteCommandFailedException(
-                    command = "sudo bash setup_instance.sh",
-                    stdout = "Checking block devices\n",
-                    stderr = "ERROR: no data disk found: no unused non-root block device\n",
-                    summary = "10.0.1.101: exit status 1",
-                )
-            }
+            .thenAnswer { throw failure }
         val events = mutableListOf<Event>()
         getKoin().get<EventBus>().addListener(
             object : EventListener {
@@ -150,10 +138,60 @@ class SetupInstanceTest : BaseKoinTest() {
 
         assertThatThrownBy { SetupInstance().execute() }.isInstanceOf(CommandFailedException::class.java)
 
-        val failed = events.filterIsInstance<Event.Provision.InstanceSetupFailed>().single()
+        return events.filterIsInstance<Event.Provision.InstanceSetupFailed>().single()
+    }
+
+    private fun setupScriptFailure(
+        stdout: String,
+        stderr: String,
+    ) = RemoteCommandFailedException(
+        command = "sudo bash setup_instance.sh",
+        stdout = stdout,
+        stderr = stderr,
+        summary = "10.0.1.101: exit status 1",
+    )
+
+    /**
+     * instance-storage-validation: "Data disk mounted at up time". A node whose setup exits
+     * non-zero (no data disk, a failed mount) fails the command, naming the host and the reason
+     * the script printed, so `up` stops before K3s starts.
+     */
+    @Test
+    fun `a node whose setup script fails names the host and the reason and fails the command`() {
+        val failed =
+            setupFailureOnDb1(
+                setupScriptFailure(
+                    stdout = "Checking block devices\n",
+                    stderr = "ERROR: no data disk found: no unused non-root block device\n",
+                ),
+            )
+
         assertThat(failed.host).isEqualTo("db1")
         assertThat(failed.reason).isEqualTo("no data disk found: no unused non-root block device")
         assertThat(failed.isError()).isTrue()
         assertThat(failed.toDisplayString()).contains("db1", "no data disk found")
+    }
+
+    @Test
+    fun `every ERROR line the script printed is in the reason, in order`() {
+        val failed =
+            setupFailureOnDb1(
+                setupScriptFailure(
+                    stdout = "ERROR: /mnt/db1 is on the root device\n",
+                    stderr = "ERROR: mount of /dev/nvme1n1 failed\nmount: wrong fs type\n",
+                ),
+            )
+
+        assertThat(failed.reason).isEqualTo("mount of /dev/nvme1n1 failed; /mnt/db1 is on the root device")
+    }
+
+    @Test
+    fun `a failure with no ERROR line reports the remote failure itself`() {
+        val failure = setupScriptFailure(stdout = "Checking block devices\n", stderr = "bash: line 3: lsblk: command not found\n")
+
+        val failed = setupFailureOnDb1(failure)
+
+        assertThat(failed.reason).isNotBlank().isEqualTo(failure.message)
+        assertThat(failed.reason).contains("exit status 1", "lsblk: command not found")
     }
 }

@@ -1,0 +1,283 @@
+name: ferrosa
+type: db
+description: FerrosaDB ring with one pod on each db node, with CQL, Bolt, graph, SPARQL, Postgres and Flight NodePorts
+version: "1.0.0"
+collision-check: true
+
+# FerrosaDB serves Prometheus text on its console port. Pod discovery finds each pod by label and
+# the collector on the pod's own node scrapes it on the pod IP, so there is one series per pod.
+# The ConfigMap start registers is easydblab-metrics-ferrosa-ferrosa.
+metrics:
+  - type: scrape
+    job: ferrosa
+    pod-selector: "app.kubernetes.io/name=ferrosa"
+    port: 9090
+    path: /metrics
+
+runtime:
+  type: pods
+  selector: "easydblab/kit=ferrosa"
+  namespace: default
+
+# Every NodePort selects the first pod (easydblab/ferrosa-ordinal=0); CQL drivers find the other
+# pods through system.peers.
+endpoints:
+  - name: "CQL"
+    node-type: db
+    port: 30942
+    type: cql
+  - name: "Console"
+    node-type: db
+    port: 30909
+    type: http
+    path: /
+  - name: "Bolt"
+    node-type: db
+    port: 30787
+    type: native
+  - name: "Graph HTTP"
+    node-type: db
+    port: 30747
+    type: http
+  - name: "SPARQL"
+    node-type: db
+    port: 30880
+    type: http
+  - name: "Postgres"
+    node-type: db
+    port: 30532
+    type: postgresql
+  - name: "Flight"
+    node-type: db
+    port: 30815
+    type: native
+
+# One local PV for each db host, data-ferrosa-<i>, pinned to db ordinal i. local-storage ignores
+# the capacity; the claim requests the same 10Ti.
+install:
+  - type: platform-pvs
+    node-type: db
+    volume-claim-template-name: data
+    storage-size: 10Ti
+
+commands:
+  start:
+    description: "Start one FerrosaDB pod on each db node"
+    args:
+      - flag: --version
+        variable: FERROSA_TAG
+        description: "Tag of ghcr.io/ferrosadb/ferrosa to run (default: nightly); not with --image"
+        type: string
+      - flag: --image
+        variable: IMAGE
+        description: "Full image reference to run instead, e.g. a custom build in your ECR; not with --version"
+        type: string
+      - flag: --storage
+        variable: STORAGE_MODE
+        description: "Where FerrosaDB keeps its data: local (the node's data disk) or s3 (the cluster data bucket under ferrosa/)"
+        type: string
+        default: "local"
+      - flag: --log-level
+        variable: LOG_LEVEL
+        description: "FerrosaDB log level (RUST_LOG)"
+        type: string
+        default: "info"
+      - flag: --heap-profile
+        variable: HEAP_PROFILE
+        description: "Turn on jemalloc heap profiling; needs a FerrosaDB profiling build"
+        type: boolean
+      - flag: --heap-sample
+        variable: HEAP_SAMPLE
+        description: "jemalloc lg_prof_sample with --heap-profile (default: 19)"
+        type: string
+      - flag: --env
+        variable: EXTRA_ENV
+        description: "KEY=VALUE setting passed to every FerrosaDB container; repeat for more. Wins over the named options"
+        type: string
+        repeatable: true
+
+start:
+  # Every check runs before anything is applied. Then the shared settings and the --env lines go
+  # into two ConfigMaps, and the packaged ferrosa-node.yaml is rendered once for each db host:
+  # its PVC, Deployment and ClusterIP Service. The pod-to-host pinning comes from the PVC, which
+  # binds the host's own PV.
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      FERROSA_TAG="${FERROSA_TAG:-}"
+      IMAGE="${IMAGE:-}"
+      STORAGE_MODE="${STORAGE_MODE:-local}"
+      LOG_LEVEL="${LOG_LEVEL:-info}"
+      HEAP_PROFILE="${HEAP_PROFILE:-false}"
+      HEAP_SAMPLE="${HEAP_SAMPLE:-}"
+      EXTRA_ENV="${EXTRA_ENV:-}"
+      DB_NODE_COUNT="${DB_NODE_COUNT:-0}"
+
+      if [[ -n "${IMAGE}" && -n "${FERROSA_TAG}" ]]; then
+        echo "ERROR: --image and --version were both given; use one of --image (a full image reference) or --version (a tag of ghcr.io/ferrosadb/ferrosa)." >&2
+        exit 1
+      fi
+      case "${STORAGE_MODE}" in
+        local | s3) ;;
+        *)
+          echo "ERROR: --storage '${STORAGE_MODE}' is not valid; use local or s3." >&2
+          exit 1
+          ;;
+      esac
+      if [[ -n "${HEAP_SAMPLE}" && "${HEAP_PROFILE}" != "true" ]]; then
+        echo "ERROR: --heap-sample needs --heap-profile." >&2
+        exit 1
+      fi
+      # The kit sets these for each pod in the Deployment's env, which wins over every envFrom
+      # source, so an --env line for one of them would be silently ignored.
+      PER_POD_KEYS=" FERROSA_HOST_ID FERROSA_SEED FERROSA_INTERNODE_BROADCAST FERROSA_CQL_BROADCAST FERROSA_FLIGHT_BROADCAST FERROSA_CLUSTER_NAME FERROSA_EXPECTED_CLUSTER_SIZE "
+      ENV_ARGS=()
+      while IFS= read -r LINE; do
+        [[ -z "${LINE}" ]] && continue
+        if [[ ! "${LINE}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+          echo "ERROR: --env '${LINE}' is not KEY=VALUE." >&2
+          exit 1
+        fi
+        KEY="${LINE%%=*}"
+        if [[ "${PER_POD_KEYS}" == *" ${KEY} "* ]]; then
+          echo "ERROR: --env ${KEY} cannot be set: the kit sets ${KEY} for each pod." >&2
+          exit 1
+        fi
+        ENV_ARGS+=("--from-literal=${LINE}")
+      done <<< "${EXTRA_ENV}"
+      if (( DB_NODE_COUNT < 1 )); then
+        echo "ERROR: no db nodes in this cluster; FerrosaDB runs one pod on each db node." >&2
+        exit 1
+      fi
+
+      IMAGE="${IMAGE:-ghcr.io/ferrosadb/ferrosa:${FERROSA_TAG:-nightly}}"
+      SETTINGS=(
+        "--from-literal=FERROSA_CQL_BIND=0.0.0.0:9042"
+        "--from-literal=FERROSA_WEB_BIND=0.0.0.0:9090"
+        "--from-literal=FERROSA_POSTGRES_BIND=0.0.0.0:5432"
+        "--from-literal=FERROSA_GRAPH_BIND=0.0.0.0:7474"
+        "--from-literal=FERROSA_BOLT_PORT=7687"
+        "--from-literal=FERROSA_SPARQL_BIND=0.0.0.0:8080"
+        "--from-literal=FERROSA_FLIGHT_BIND=0.0.0.0:8815"
+        "--from-literal=FERROSA_INTERNODE_BIND=0.0.0.0:17000"
+        "--from-literal=FERROSA_DATA_DIR=/var/lib/ferrosa"
+        "--from-literal=RUST_LOG=${LOG_LEVEL}"
+        "--from-literal=FERROSA_DATA_CENTER=${REGION}"
+        "--from-literal=FERROSA_RACK=rack1"
+      )
+      if [[ "${STORAGE_MODE}" == "s3" ]]; then
+        # No access key: FerrosaDB uses the node instance profile, and with FERROSA_S3_REQUIRED it
+        # exits instead of falling back to local storage when the bucket cannot be reached.
+        SETTINGS+=(
+          "--from-literal=FERROSA_S3_ENDPOINT=https://s3.${REGION}.amazonaws.com"
+          "--from-literal=FERROSA_S3_REGION=${REGION}"
+          "--from-literal=FERROSA_S3_BUCKET=${BUCKET_NAME}"
+          "--from-literal=FERROSA_S3_PREFIX=ferrosa/"
+          "--from-literal=FERROSA_S3_REQUIRED=true"
+        )
+      fi
+      if [[ "${HEAP_PROFILE}" == "true" ]]; then
+        SETTINGS+=("--from-literal=MALLOC_CONF=prof:true,prof_active:true,prof_final:true,prof_prefix:/var/lib/ferrosa/heap-profiles/ferrosa,lg_prof_sample:${HEAP_SAMPLE:-19}")
+      fi
+
+      kubectl create configmap ferrosa-settings --namespace default "${SETTINGS[@]}" \
+        --dry-run=client -o yaml \
+        | kubectl label --local -f - easydblab/kit=ferrosa -o yaml \
+        | kubectl apply -f -
+      kubectl create configmap ferrosa-env --namespace default ${ENV_ARGS[@]+"${ENV_ARGS[@]}"} \
+        --dry-run=client -o yaml \
+        | kubectl label --local -f - easydblab/kit=ferrosa -o yaml \
+        | kubectl apply -f -
+
+      for (( I = 0; I < DB_NODE_COUNT; I++ )); do
+        HOST_ID=$(printf '00000000-0000-0000-0000-%012x' $(( I + 1 )))
+        SEEDS=""
+        for (( J = 0; J < DB_NODE_COUNT; J++ )); do
+          (( J == I )) && continue
+          SEEDS="${SEEDS:+${SEEDS},}ferrosa-${J}.default.svc.cluster.local:17000"
+        done
+        SED=(-e "s|@ORDINAL@|${I}|g" -e "s|@IMAGE@|${IMAGE}|g" -e "s|@HOST_ID@|${HOST_ID}|g"
+          -e "s|@SEEDS@|${SEEDS}|g" -e "s|@CLUSTER_SIZE@|${DB_NODE_COUNT}|g")
+        # One db host has no seeds. Fewer than 3 hosts set no expected size: FerrosaDB's
+        # declared-topology gate needs 3 or more voters.
+        if [[ -z "${SEEDS}" ]]; then SED+=(-e '/# @IF_SEEDS@/d'); else SED+=(-e 's| *# @IF_SEEDS@||'); fi
+        if (( DB_NODE_COUNT >= 3 )); then SED+=(-e 's| *# @IF_CLUSTER_SIZE@||'); else SED+=(-e '/# @IF_CLUSTER_SIZE@/d'); fi
+        sed "${SED[@]}" ferrosa-node.yaml | kubectl apply -f -
+      done
+  - type: manifest
+    template: nodeport-service.yaml
+  # Waits for /readyz on every pod, failing at once on an image that cannot be pulled and on a
+  # crash, and then checks that --heap-profile runs on a profiling build.
+  - type: shell
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      TIMEOUT="${FERROSA_READY_TIMEOUT_SECONDS:-600}"
+      INTERVAL="${FERROSA_READY_POLL_SECONDS:-5}"
+      EXPECTED="${DB_NODE_COUNT:-0}"
+      DEADLINE=$(( SECONDS + TIMEOUT ))
+      while true; do
+        PODS=$(kubectl get pods --namespace default -l easydblab/kit=ferrosa -o json)
+        PULL=$(jq -r '.items[] | .metadata.name as $pod
+          | ((.status.initContainerStatuses // []) + (.status.containerStatuses // []))[]
+          | select((.state.waiting.reason // "") | test("^(ErrImagePull|ImagePullBackOff|InvalidImageName)$"))
+          | "\($pod)\t\(.image)\t\(.state.waiting.reason)\t\(.state.waiting.message // "")"' <<< "${PODS}" | head -n 1)
+        if [[ -n "${PULL}" ]]; then
+          IFS=$'\t' read -r POD IMG REASON MESSAGE <<< "${PULL}"
+          echo "ERROR: FerrosaDB pod ${POD} cannot pull image ${IMG} (${REASON}): ${MESSAGE}" >&2
+          exit 1
+        fi
+        CRASH=$(jq -r '.items[] | .metadata.name as $pod
+          | ((.status.initContainerStatuses // []) | map(. + {init: true})) + (.status.containerStatuses // [])
+          | .[]
+          | select(.state.waiting.reason == "CrashLoopBackOff"
+              or (.init == true and (.state.terminated.exitCode // 0) != 0))
+          | "\($pod)\t\(.name)\t\(.state.waiting.reason // .state.terminated.reason // "failed")"' <<< "${PODS}" | head -n 1)
+        if [[ -n "${CRASH}" ]]; then
+          IFS=$'\t' read -r POD CONTAINER REASON <<< "${CRASH}"
+          echo "ERROR: FerrosaDB pod ${POD} container ${CONTAINER} failed (${REASON}); the end of its previous log:" >&2
+          kubectl logs "${POD}" --namespace default -c "${CONTAINER}" --previous --tail=50 >&2 || true
+          exit 1
+        fi
+        READY=$(jq '[.items[] | select((.status.containerStatuses // []) | length > 0 and all(.ready))] | length' <<< "${PODS}")
+        if (( READY == EXPECTED )) && (( $(jq '.items | length' <<< "${PODS}") == EXPECTED )); then
+          break
+        fi
+        if (( SECONDS >= DEADLINE )); then
+          NOT_READY=$(jq -r '[.items[] | select(((.status.containerStatuses // []) | length > 0 and all(.ready)) | not) | .metadata.name] | join(", ")' <<< "${PODS}")
+          echo "ERROR: FerrosaDB pods not ready after ${TIMEOUT}s: ${NOT_READY:-none found} (${READY} of ${EXPECTED} ready)." >&2
+          exit 1
+        fi
+        sleep "${INTERVAL}"
+      done
+      echo "All ${EXPECTED} FerrosaDB pods are ready."
+
+      if [[ "${HEAP_PROFILE:-false}" == "true" ]]; then
+        # Without the profiling feature jemalloc prints this at startup and runs on unprofiled.
+        for POD in $(jq -r '.items[].metadata.name' <<< "${PODS}"); do
+          LOG=$(kubectl logs "${POD}" --namespace default -c ferrosa)
+          if grep -q 'Invalid conf pair: prof' <<< "${LOG}"; then
+            IMG=$(jq -r --arg pod "${POD}" '.items[] | select(.metadata.name == $pod) | .spec.containers[] | select(.name == "ferrosa") | .image' <<< "${PODS}")
+            echo "ERROR: --heap-profile needs a FerrosaDB profiling build; ${IMG} is not one (pod ${POD} logged 'Invalid conf pair: prof')." >&2
+            exit 1
+          fi
+        done
+      fi
+
+# Deletes the workload and keeps the claims: a deleted claim leaves its Retain PV Released, and
+# the next start could not bind it. The PVs, their data, the .heap files and any objects under
+# ferrosa/ in the data bucket stay.
+stop:
+  - type: delete
+    kinds: [deployment, replicaset, pod, service, configmap]
+    selector: easydblab/kit=ferrosa
+    namespace: default
+
+uninstall:
+  - type: delete
+    kinds: [deployment, replicaset, pod, service, configmap, pvc]
+    selector: easydblab/kit=ferrosa
+    namespace: default
+  - type: platform-pvs-delete
+    node-type: db

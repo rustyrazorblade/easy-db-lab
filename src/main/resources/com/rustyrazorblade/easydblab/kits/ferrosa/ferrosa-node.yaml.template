@@ -1,0 +1,169 @@
+# The objects of one FerrosaDB pod. The start step renders this once for each db host i: it
+# replaces @ORDINAL@ (i), @IMAGE@, @HOST_ID@, @SEEDS@ and @CLUSTER_SIZE@, and drops the lines
+# marked "# @IF_SEEDS@" (one db host) and "# @IF_CLUSTER_SIZE@" (fewer than 3 db hosts).
+#
+# The claim binds by name to db host i's platform PV (data-ferrosa-i), whose node affinity puts
+# the pod on that host.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ferrosa-data-@ORDINAL@
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+    easydblab/ferrosa-ordinal: "@ORDINAL@"
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: __STORAGE_CLASS_WFC__
+  volumeName: data-ferrosa-@ORDINAL@
+  resources:
+    requests:
+      storage: 10Ti
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ferrosa-@ORDINAL@
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+    app.kubernetes.io/name: ferrosa
+    app.kubernetes.io/instance: ferrosa
+    easydblab/ferrosa-ordinal: "@ORDINAL@"
+spec:
+  replicas: 1
+  # Two FerrosaDB processes must never share one data directory.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ferrosa
+      easydblab/ferrosa-ordinal: "@ORDINAL@"
+  template:
+    metadata:
+      labels:
+        easydblab/kit: ferrosa
+        app.kubernetes.io/name: ferrosa
+        app.kubernetes.io/instance: ferrosa
+        easydblab/ferrosa-ordinal: "@ORDINAL@"
+    spec:
+      # Service links would put FERROSA_<n>_SERVICE_HOST and friends into the environment of a
+      # process that reads its configuration from FERROSA_* variables.
+      enableServiceLinks: false
+      # FerrosaDB drains for up to 30 s on SIGTERM (memtables, internode, S3 sync), then exits so
+      # jemalloc writes its final heap profile.
+      terminationGracePeriodSeconds: 90
+      securityContext:
+        runAsUser: 10001
+        runAsGroup: 101
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: type
+                    operator: In
+                    values:
+                      - db
+      initContainers:
+        # The PV directory is created by root; the image runs as ferrosa (10001:101).
+        - name: data-dir
+          image: "@IMAGE@"
+          imagePullPolicy: Always
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          command:
+            - sh
+            - -c
+            - mkdir -p /var/lib/ferrosa /var/lib/ferrosa/heap-profiles && chown 10001:101 /var/lib/ferrosa /var/lib/ferrosa/heap-profiles
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/ferrosa
+      containers:
+        - name: ferrosa
+          image: "@IMAGE@"
+          imagePullPolicy: Always
+          # Later sources win, so an --env line beats a named option.
+          envFrom:
+            - configMapRef:
+                name: ferrosa-settings
+            - configMapRef:
+                name: ferrosa-env
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: FERROSA_HOST_ID
+              value: "@HOST_ID@"
+            - name: FERROSA_INTERNODE_BROADCAST
+              value: "ferrosa-@ORDINAL@.default.svc.cluster.local:17000"
+            - name: FERROSA_SEED # @IF_SEEDS@
+              value: "@SEEDS@" # @IF_SEEDS@
+            - name: FERROSA_CQL_BROADCAST
+              value: "$(POD_IP):9042"
+            - name: FERROSA_FLIGHT_BROADCAST
+              value: "$(POD_IP):8815"
+            - name: FERROSA_CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: cluster_name
+            - name: FERROSA_EXPECTED_CLUSTER_SIZE # @IF_CLUSTER_SIZE@
+              value: "@CLUSTER_SIZE@" # @IF_CLUSTER_SIZE@
+          ports:
+            - name: cql
+              containerPort: 9042
+            - name: console
+              containerPort: 9090
+            - name: bolt
+              containerPort: 7687
+            - name: graph
+              containerPort: 7474
+            - name: sparql
+              containerPort: 8080
+            - name: postgres
+              containerPort: 5432
+            - name: flight
+              containerPort: 8815
+            - name: internode
+              containerPort: 17000
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 9090
+            periodSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/ferrosa
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ferrosa-data-@ORDINAL@
+---
+# A stable name for pod i that peers re-resolve on every reconnect, so a restarted pod with a
+# new IP rejoins. publishNotReadyAddresses lets the ring form before any pod is ready.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ferrosa-@ORDINAL@
+  namespace: default
+  labels:
+    easydblab/kit: ferrosa
+    easydblab/ferrosa-ordinal: "@ORDINAL@"
+spec:
+  type: ClusterIP
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: ferrosa
+    easydblab/ferrosa-ordinal: "@ORDINAL@"
+  ports:
+    - name: internode
+      port: 17000
+      targetPort: 17000
+    - name: cql
+      port: 9042
+      targetPort: 9042

@@ -38,7 +38,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Emr.*` — EMR/Spark operations
 - `Event.OpenSearch.*` — OpenSearch domain management
 - `Event.S3.*` — S3 object store operations
-- `Event.Grafana.*` — Grafana dashboard deployment
+- `Event.Grafana.*` — Grafana dashboard deployment (`Grafana.KitDashboardInstallFailed` for a kit dashboard that is missing or that Grafana rejects, and `Grafana.KitDashboardsSkipped` for kit dashboards or a tenant listing that cannot be read; both fail the kit's `start`)
 - `Event.Backup.*` — Backup/restore operations
 - `Event.Registry.*` — Container registry operations
 - `Event.Tailscale.*` — Tailscale VPN operations
@@ -58,7 +58,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Ssh.*` — SSH remote command execution
 - `Event.Platform.*` — Platform substrate operations (StorageClass, PVs, info)
 - `Event.Install.*` — Kit scaffold generation
-- `Event.Kit.*` — Kit phase execution (script and step start/finish/failure, `Kit.ShellStepFailed` for a shell step that exited non-zero with its exit code and last output lines (carried as data only: the output was already streamed, so the console line does not repeat it), metrics registration, hooks, requirements, `Kit.HelmReleaseKept` when a `helm-uninstall` step keeps an operator another kit instance still uses, `Kit.CollisionDetected` when a collision-checked kit is started while already running, `Kit.StopIncomplete` when its pods outlive the wait after `stop` or `uninstall` (its `phase` field names which), and `Kit.StopUnverified` when the cluster cannot be queried during that wait) and `Kit.EndpointsAvailable`, the declared endpoints resolved to node private IPs after a successful start
+- `Event.Kit.*` — Kit phase execution (script and step start/finish/failure, `Kit.ShellStepFailed` for a shell step that exited non-zero with its exit code and last output lines (carried as data only: the output was already streamed, so the console line does not repeat it), metrics registration (`Kit.MetricsRegistrationFailed` fails the kit's `start`), hooks, requirements, `Kit.HelmReleaseKept` when a `helm-uninstall` step keeps an operator another kit instance still uses, `Kit.CollisionDetected` when a collision-checked kit is started while already running, `Kit.StopIncomplete` when its pods outlive the wait after `stop` or `uninstall` (its `phase` field names which), and `Kit.StopUnverified` when the cluster cannot be queried during that wait) and `Kit.EndpointsAvailable`, the declared endpoints resolved to node private IPs after a successful start
 - `Event.Cleanup.*` — Per-node kit cleanup progress and completion
 - `Event.Server.*` — Server lifecycle (shutdown when the cluster's VPC no longer exists)
 - `Event.Sql.*` — Shared SQL query results, used by every SQL kit command

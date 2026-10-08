@@ -2594,8 +2594,25 @@ sealed interface Event {
         }
 
         /**
+         * [kit]'s [dashboard] did not reach Grafana, for [reason]: the declared file is missing, or
+         * Grafana rejected the install. The kit's pods run, but its `start` fails.
+         */
+        @Serializable
+        @SerialName("Grafana.KitDashboardInstallFailed")
+        data class KitDashboardInstallFailed(
+            val kit: String,
+            val dashboard: String,
+            val reason: String,
+        ) : Grafana {
+            override fun toDisplayString(): String = "Failed to install the Grafana dashboard $dashboard of $kit: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * [kit]'s [dashboards] were not installed because preparing them failed, for [reason]: the
-         * tenant listing in the account bucket, or reading a dashboard file. The kit itself is running.
+         * tenant listing in the account bucket, or reading or rendering a dashboard file. The kit's
+         * pods run, but its `start` fails.
          */
         @Serializable
         @SerialName("Grafana.KitDashboardsSkipped")
@@ -5651,6 +5668,21 @@ sealed interface Event {
             // printed every failure message twice. The tail stays on the event for structured
             // consumers (MCP, Redis).
             override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1} (shell) failed with exit code $exitCode."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * [kit]'s metrics scrape ConfigMaps could not be written, for [reason], so the collector
+         * will not scrape it. The kit's pods run, but its `start` fails.
+         */
+        @Serializable
+        @SerialName("Kit.MetricsRegistrationFailed")
+        data class MetricsRegistrationFailed(
+            val kit: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] metrics registration failed: $reason"
 
             override fun isError(): Boolean = true
         }

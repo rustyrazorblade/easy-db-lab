@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.ImagePullFailedException
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
@@ -190,7 +191,8 @@ class DefaultStressJobService(
      * Polls until the job's first pod is Running or Succeeded. No pod yet, another phase, a Failed
      * pod and a failed query are all polled again; if the pod is not running within
      * [POD_READY_MAX_ATTEMPTS] looks, fails with the last look's outcome. A container that cannot
-     * pull its image fails at once with [Event.Stress.ImagePullFailed]: no retry makes it start.
+     * pull its image fails at once: it emits [Event.Stress.ImagePullFailed] and throws
+     * [ImagePullFailedException], because no retry makes it start.
      */
     private fun waitForPodRunning(
         controlHost: ClusterHost,
@@ -218,7 +220,11 @@ class DefaultStressJobService(
                     message = failure.message,
                 ),
             )
-            error("Pod ${pod.name} cannot pull image ${failure.image} (${failure.reason}): ${failure.message}")
+            throw ImagePullFailedException(
+                podName = pod.name,
+                image = failure.image,
+                message = "Pod ${pod.name} cannot pull image ${failure.image} (${failure.reason}): ${failure.message}",
+            )
         }
         check(pod.status in POD_RUNNING_PHASES) { "Pod ${pod.name} is ${pod.status}, waiting for Running" }
         eventBus.emit(Event.Stress.PodStatus(pod.name, pod.status))

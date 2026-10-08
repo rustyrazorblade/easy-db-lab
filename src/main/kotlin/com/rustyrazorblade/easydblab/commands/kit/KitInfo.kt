@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
+import com.rustyrazorblade.easydblab.services.KitCommandSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
@@ -141,6 +142,7 @@ class KitInfo : BaseInstallCommand() {
                     appendLine("Args:")
                     appendArgs(config.args)
                 }
+                appendCommandArgs(config.commands)
                 if (config.endpoints.isNotEmpty()) {
                     appendLine()
                     appendLine("Endpoints:")
@@ -162,8 +164,12 @@ class KitInfo : BaseInstallCommand() {
             }.trimEnd()
         }
 
-        private fun StringBuilder.appendArgs(args: List<KitArgSpec>) {
+        private fun StringBuilder.appendArgs(
+            args: List<KitArgSpec>,
+            indent: String = "  ",
+        ) {
             val flagWidth = args.maxOf { "${it.flag} ${it.type.name}".length }
+            val variableWidth = args.maxOf { it.variable.length }
             for (arg in args) {
                 val flagCol = "${arg.flag} ${arg.type.name}".padEnd(flagWidth)
                 val detail =
@@ -171,8 +177,21 @@ class KitInfo : BaseInstallCommand() {
                         append(arg.description)
                         if (arg.default.isNotEmpty()) append("  (default: ${arg.default})")
                         if (arg.required) append("  [required]")
+                        if (arg.repeatable) append("  [repeatable]")
                     }
-                appendLine("  $flagCol  $detail")
+                appendLine("$indent$flagCol  ${arg.variable.padEnd(variableWidth)}  $detail")
+            }
+        }
+
+        /** Lists the args of each command that declares any, grouped under the command name. */
+        private fun StringBuilder.appendCommandArgs(commands: Map<String, KitCommandSpec>) {
+            val withArgs = commands.filterValues { it.args.isNotEmpty() }.toSortedMap()
+            if (withArgs.isEmpty()) return
+            appendLine()
+            appendLine("Command args:")
+            for ((name, spec) in withArgs) {
+                appendLine("  $name:")
+                appendArgs(spec.args, indent = "    ")
             }
         }
 

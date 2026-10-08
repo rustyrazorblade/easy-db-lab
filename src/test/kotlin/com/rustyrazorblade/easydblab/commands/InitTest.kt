@@ -244,6 +244,103 @@ class InitTest : BaseKoinTest() {
         }
     }
 
+    /**
+     * Every node writes its data under `/mnt/db1`, so every node type needs a data disk
+     * (instance-storage-validation). `--ebs.type` adds an EBS volume to db nodes only, so control
+     * and app nodes need instance store.
+     */
+    @Nested
+    inner class DataDiskStorage {
+        private fun withStore(vararg typesWithStore: String) {
+            whenever(mockEc2InstanceService.describeInstanceType(any())).thenAnswer { call ->
+                InstanceTypeCapabilities(
+                    hasInstanceStore = call.getArgument<String>(0) in typesWithStore,
+                    supportedArchitectures = listOf("x86_64"),
+                )
+            }
+        }
+
+        private fun assertNothingSaved() = verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+
+        @Test
+        fun `an app instance type without instance store fails whatever the ebs type, naming the node type and instance type`() {
+            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 2
+            command.stressInstanceType = "c5.2xlarge"
+            command.ebsType = "gp3"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("app")
+                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `a control instance type without instance store fails, naming the node type and instance type`() {
+            withStore("i4i.xlarge", "c6id.2xlarge")
+            val command = Init()
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("control")
+                .hasMessageContaining(Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+                .hasMessageContaining("instance store")
+            assertNothingSaved()
+        }
+
+        @Test
+        fun `a db instance type without instance store fails without an ebs type and passes with one`() {
+            withStore("c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val noEbs = Init()
+            noEbs.clean = true
+            noEbs.instanceType = "c5.2xlarge"
+
+            assertThatThrownBy { noEbs.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("--ebs.type")
+            assertNothingSaved()
+
+            val withEbs = Init()
+            withEbs.clean = true
+            withEbs.instanceType = "c5.2xlarge"
+            withEbs.ebsType = "gp3"
+            withEbs.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.instanceType == "c5.2xlarge" })
+        }
+
+        @Test
+        fun `an app instance type is not checked when there are no app nodes`() {
+            withStore("i4i.xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 0
+            command.stressInstanceType = "c5.2xlarge"
+
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig != null })
+        }
+
+        @Test
+        fun `the default db, control and app instance types pass`() {
+            withStore("i4i.xlarge", "c6id.2xlarge", Init.DEFAULT_CONTROL_INSTANCE_TYPE)
+            val command = Init()
+            command.clean = true
+            command.stressInstances = 1
+
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.stressInstances == 1 })
+        }
+    }
+
     @Nested
     inner class ArchitectureDerivation {
         @Test

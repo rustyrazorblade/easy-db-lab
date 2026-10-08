@@ -3579,6 +3579,21 @@ sealed interface Event {
 
     @Serializable
     sealed interface Provision : Event {
+        /**
+         * Instance setup (`setup_instance.sh`) exited non-zero on [host], for [reason]: for example
+         * no data disk was found, or mounting it at `/mnt/db1` failed. `up` stops before K3s starts.
+         */
+        @Serializable
+        @SerialName("Provision.InstanceSetupFailed")
+        data class InstanceSetupFailed(
+            val host: String,
+            val reason: String,
+        ) : Provision {
+            override fun toDisplayString(): String = "Instance setup failed on $host: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Provision.ControlNodeRequired")
         data class ControlNodeRequired(

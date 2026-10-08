@@ -26,6 +26,7 @@ services/aws/
 ├── CompactorNetwork.kt        # Its VPC easy-db-lab-compactor, found or created like the packer VPC, in a Fargate zone
 ├── ClusterCensus.kt           # Tagged VPCs naming the account bucket in every region; CompactorShutdownPolicy
 ├── BucketRegion.kt            # A bucket's region from GetBucketLocation; the compactor and the Grafana documents proxy sign for it
+├── DataDiskRequirement.kt     # Every node needs a data disk: db has instance store or --ebs.type, control and app have instance store (checked by init, and by InstanceSpecFactory for db)
 └── InstanceSpecFactory.kt     # Instance spec creation
 ```
 

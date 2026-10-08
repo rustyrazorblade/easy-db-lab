@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kubernetes.ImagePullFailure
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import org.assertj.core.api.Assertions.assertThat
@@ -734,6 +735,34 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
 
         assertThat(result.exceptionOrNull()).hasMessage("Pod stress-wait-abc failed")
         verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any(), any())
+    }
+
+    @Test
+    fun `an image that cannot be pulled fails at once, naming the pod, the image and the kubelet message`() {
+        val failure =
+            ImagePullFailure(
+                container = "stress",
+                image = "123.dkr.ecr.us-west-2.amazonaws.com/stress:missing",
+                reason = "ImagePullBackOff",
+                message = "manifest unknown",
+            )
+        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(
+            Result.success(listOf(pod("Pending").copy(imagePullFailure = failure))),
+        )
+
+        val result = service().startJob(controlHost, config)
+
+        assertThat(result.exceptionOrNull())
+            .hasMessageContaining("stress-wait-abc")
+            .hasMessageContaining(failure.image)
+            .hasMessageContaining("manifest unknown")
+        val failed = events.filterIsInstance<Event.Stress.ImagePullFailed>().single()
+        assertThat(failed).isEqualTo(
+            Event.Stress.ImagePullFailed("stress-wait-abc", "stress", failure.image, "ImagePullBackOff", "manifest unknown"),
+        )
+        assertThat(failed.isError()).isTrue()
+        assertThat(events.filterIsInstance<Event.Stress.PodStatus>()).isEmpty()
+        verify(k8sService, times(1)).getPodsForJob(any(), any(), any())
     }
 
     private companion object {

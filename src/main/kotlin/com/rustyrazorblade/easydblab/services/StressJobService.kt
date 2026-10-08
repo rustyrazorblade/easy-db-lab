@@ -189,7 +189,8 @@ class DefaultStressJobService(
     /**
      * Polls until the job's first pod is Running or Succeeded. No pod yet, another phase, a Failed
      * pod and a failed query are all polled again; if the pod is not running within
-     * [POD_READY_MAX_ATTEMPTS] looks, fails with the last look's outcome.
+     * [POD_READY_MAX_ATTEMPTS] looks, fails with the last look's outcome. A container that cannot
+     * pull its image fails at once with [Event.Stress.ImagePullFailed]: no retry makes it start.
      */
     private fun waitForPodRunning(
         controlHost: ClusterHost,
@@ -200,13 +201,25 @@ class DefaultStressJobService(
                 operationName = "wait-for-stress-pod-$jobName",
                 maxAttempts = POD_READY_MAX_ATTEMPTS,
                 interval = podReadyPollInterval,
-                done = { found -> found.firstOrNull()?.status in POD_RUNNING_PHASES },
+                done = { found -> found.firstOrNull()?.let { it.status in POD_RUNNING_PHASES || it.imagePullFailure != null } ?: false },
             ) {
                 getPodsForJob(controlHost, jobName).getOrThrow().also { found ->
                     found.firstOrNull()?.let { pod -> check(pod.status != "Failed") { "Pod ${pod.name} failed" } }
                 }
             }
         val pod = pods.firstOrNull() ?: error("No pods created yet for job $jobName")
+        pod.imagePullFailure?.let { failure ->
+            eventBus.emit(
+                Event.Stress.ImagePullFailed(
+                    podName = pod.name,
+                    container = failure.container,
+                    image = failure.image,
+                    reason = failure.reason,
+                    message = failure.message,
+                ),
+            )
+            error("Pod ${pod.name} cannot pull image ${failure.image} (${failure.reason}): ${failure.message}")
+        }
         check(pod.status in POD_RUNNING_PHASES) { "Pod ${pod.name} is ${pod.status}, waiting for Running" }
         eventBus.emit(Event.Stress.PodStatus(pod.name, pod.status))
         return jobName

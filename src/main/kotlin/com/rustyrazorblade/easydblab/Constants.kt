@@ -370,6 +370,9 @@ object Constants {
         const val TEMPO_PORT = 3200
         const val PYROSCOPE_PORT = 4040
 
+        /** Container waiting reasons that mean the kubelet cannot pull the image; retrying does not fix them. */
+        val IMAGE_PULL_FAILURE_REASONS = setOf("ErrImagePull", "ImagePullBackOff", "InvalidImageName")
+
         /** Tempo's `app.kubernetes.io/name` label; the collector finds the Tempo pod by it. */
         const val TEMPO_APP_LABEL = "tempo"
 

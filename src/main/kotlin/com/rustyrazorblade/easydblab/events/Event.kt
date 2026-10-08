@@ -3384,6 +3384,26 @@ sealed interface Event {
             override fun toDisplayString(): String = "Pod $podName is $status"
         }
 
+        /**
+         * The stress job's pod [podName] cannot start: its [container] cannot pull [image]
+         * ([reason], with the kubelet's [message]). `stress start` fails at once.
+         */
+        @Serializable
+        @SerialName("Stress.ImagePullFailed")
+        data class ImagePullFailed(
+            val podName: String,
+            val container: String,
+            val image: String,
+            val reason: String,
+            val message: String,
+        ) : Stress {
+            override fun toDisplayString(): String =
+                "Pod $podName cannot pull image $image for container $container ($reason)" +
+                    message.takeIf { it.isNotBlank() }?.let { ": $it" }.orEmpty()
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Stress.JobStarted")
         data class JobStarted(

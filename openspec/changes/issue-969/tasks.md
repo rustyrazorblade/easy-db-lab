@@ -53,7 +53,7 @@
 - [x] 7.3 `FerrosaKitTest`: readiness wait fails naming pod and image on `ImagePullBackOff`, prints the previous log on `CrashLoopBackOff`, names non-ready pods on timeout; the heap-profile check fails naming the image when a pod log has `Invalid conf pair: prof`.
 - [x] 7.4 Confirm the kit-wide suites pass with the new kit: `BuiltinKitNodePortTest`, `NodePortKitScrapeTest`, `PlatformPvReservationTest`, `BuiltinKitCollisionCheckTest`, `DashboardDatasourceVariablesTest`, `ClusterFilterTest`, `SeriesClusterTest`.
 - [x] 7.5 Integration tier: apply the generated FerrosaDB manifests to K3s TestContainers and assert they are accepted.
-- [ ] 7.6 Run `./gradlew test` and `./gradlew integrationTest` in a subagent; then `./gradlew ktlintFormat ktlintCheck detekt` on JDK 21. All green.
+- [x] 7.6 Run `./gradlew test` and `./gradlew integrationTest` in a subagent; then `./gradlew ktlintFormat ktlintCheck detekt` on JDK 21. All green.
 
 ## 8. Docs and repo guidance
 

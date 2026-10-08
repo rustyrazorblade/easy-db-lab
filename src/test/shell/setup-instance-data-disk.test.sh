@@ -65,17 +65,13 @@ EOF
 #!/bin/bash
 case " \$* " in
   *" -J "*) cat "${WORK}/lsblk.json" ;;
-  *" PKNAME "*)
-    case "\$*" in
-      *nvme0n1p1*) echo nvme0n1 ;;
-    esac ;;
   *) echo "nvme0n1 disk" ;;
 esac
 EOF
   cat > "${WORK}/bin/findmnt" <<EOF
 #!/bin/bash
 target="\${!#}"
-if [ "\$target" = "/" ]; then echo /dev/nvme0n1p1; exit 0; fi
+if [ "\$target" = "/" ]; then echo "\${ROOT_SOURCE:-/dev/nvme0n1p1}"; exit 0; fi
 dev=\$(cat "${WORK}/mounted")
 [ -n "\$dev" ] && echo "\$dev"
 EOF
@@ -198,6 +194,16 @@ if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"ERROR: /mnt/db1 is mounted from /dev/nvm
   pass "/mnt/db1 on the root volume fails"
 else
   fail "/mnt/db1 on the root volume should fail, got ${STATUS}: ${OUTPUT}"
+fi
+
+# --- the root device is reported as /dev/root: the root disk is still found from lsblk ---
+setup "$(lsblk_json "${DATA_DISK}")"
+OUTPUT="$(ROOT_SOURCE=/dev/root MOUNT_ON_ROOT=1 run_mount)"
+STATUS=$?
+if [[ "$STATUS" -ne 0 && "$OUTPUT" == *"which is on the root volume"* ]]; then
+  pass "/mnt/db1 on the root volume fails when / is reported as /dev/root"
+else
+  fail "/mnt/db1 on the root volume should fail with / as /dev/root, got ${STATUS}: ${OUTPUT}"
 fi
 
 # --- a re-run on a node whose data disk is already mounted ---

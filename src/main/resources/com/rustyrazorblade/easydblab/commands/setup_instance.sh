@@ -19,17 +19,22 @@ fail() {
   exit 1
 }
 
-# The disk that holds the root file system (e.g. nvme0n1), or the root device itself when it is
-# not a partition.
+# The disk that holds the root file system (e.g. nvme0n1): the disk mounted at / or with a
+# partition mounted at /. Read from lsblk rather than from the root device's name, which can be
+# /dev/root.
 root_disk() {
-  local source parent
-  source=$(findmnt -n -o SOURCE /)
-  parent=$(lsblk -n -o PKNAME "$source" 2>/dev/null | head -n 1)
-  if [[ -n "$parent" ]]; then
-    echo "$parent"
-  else
-    basename "$source"
-  fi
+  lsblk -J -o NAME,TYPE,MOUNTPOINTS |
+    yq '.blockdevices[]
+        | select(((.mountpoints // []) + ([.children[]?.mountpoints[]?] // [])) | any_c(. == "/"))
+        | .name' |
+    head -n 1
+}
+
+# True when the device [$1] (e.g. /dev/nvme0n1p1) is the root disk [$2] or one of its partitions.
+on_root_disk() {
+  local name
+  name=$(basename "$1")
+  [[ "$name" == "$2" || "$name" =~ ^$2p?[0-9]+$ ]]
 }
 
 # The first unused data disk: a whole disk (not a partition, loop or rom device) that is not the
@@ -53,7 +58,7 @@ find_data_disk() {
 # naming the reason, when there is no data disk or the mount does not take. Never falls back to a
 # plain directory on the root volume.
 mount_data_disk() {
-  local disk name fs_type fs_uuid mounted_source mounted_disk
+  local disk name fs_type fs_uuid mounted_source
 
   if mountpoint -q "$DATA_MOUNT"; then
     # A re-run of setup on a node whose data disk is already mounted.
@@ -95,9 +100,7 @@ mount_data_disk() {
 
   mountpoint -q "$DATA_MOUNT" || fail "$DATA_MOUNT is not a mount point after mounting $disk"
   mounted_source=$(findmnt -n -o SOURCE "$DATA_MOUNT")
-  mounted_disk=$(lsblk -n -o PKNAME "$mounted_source" 2>/dev/null | head -n 1)
-  mounted_disk=${mounted_disk:-$(basename "$mounted_source")}
-  if [[ "$mounted_disk" == "$(root_disk)" ]]; then
+  if on_root_disk "$mounted_source" "$(root_disk)"; then
     fail "$DATA_MOUNT is mounted from $mounted_source, which is on the root volume"
   fi
   echo "$DATA_MOUNT is mounted from $mounted_source"

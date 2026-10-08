@@ -774,6 +774,25 @@ sealed interface Event {
 
     @Serializable
     sealed interface K3s : Event {
+        /**
+         * `up` found nodes launched from an AMI without the kubelet ECR credential provider, before
+         * starting K3s. [nodes] names them; [missingFiles] is every provider file any of them lacks.
+         */
+        @Serializable
+        @SerialName("K3s.NodeImageMissingCredentialProvider")
+        data class NodeImageMissingCredentialProvider(
+            val nodes: List<String>,
+            val missingFiles: List<String>,
+        ) : K3s {
+            override fun toDisplayString(): String =
+                "Cannot start K3s: ${nodes.joinToString(", ")} were launched from an AMI without the kubelet ECR " +
+                    "credential provider (missing ${missingFiles.joinToString(", ")}), so they cannot pull ECR images. " +
+                    "Rebuild the images with 'easy-db-lab build-image', then run 'easy-db-lab down' and 'easy-db-lab up' " +
+                    "so the nodes launch from the new AMI."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("K3s.ClusterStarting")
         data object ClusterStarting : K3s {

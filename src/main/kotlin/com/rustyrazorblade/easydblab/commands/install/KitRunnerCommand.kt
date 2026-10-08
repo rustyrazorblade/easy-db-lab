@@ -357,30 +357,11 @@ class KitRunnerCommand(
             Constants.Kit.PHASE_START -> {
                 clusterStateManager.addRunningWorkload(kitName)
                 kitHookExecutor.firePostKitStart(kitName)
-                val resolvedArgs = readResolvedArgs()
-                val metricsPortOverride = resolvedArgs["METRICS_PORT"]?.toIntOrNull()
-                // A METRICS_PORT override is an instance's own metrics NodePort, so it only
-                // applies to a static localhost job; a pod-discovered target keeps its container
-                // port. Its pod-selector names this instance through ${KIT_NAME}.
-                val scrapeTargets =
-                    config.metrics.filterIsInstance<KitMetrics.Scrape>().map { target ->
-                        when {
-                            target.podSelector.isNotBlank() ->
-                                target.copy(podSelector = withKitName(target.podSelector, kitName))
-                            metricsPortOverride != null -> target.copy(port = metricsPortOverride)
-                            else -> target
-                        }
-                    }
-                if (scrapeTargets.isNotEmpty()) {
-                    metricsRegistryService
-                        .register(
-                            controlHost = controlHost,
-                            kitName = kitName,
-                            targets = scrapeTargets,
-                        ).onFailure { e -> log.warn(e) { "Failed to register metrics for $kitName" } }
-                }
-                installDashboards(config)
+                // Both run even when the other fails, so one start reports every failure.
+                val metricsRegistered = registerMetrics(config, controlHost)
+                val dashboardsInstalled = installDashboards(config)
                 reportEndpoints(config)
+                if (!metricsRegistered || !dashboardsInstalled) processExitCode = Constants.ExitCodes.ERROR
             }
             Constants.Kit.PHASE_STOP -> releaseWorkload(controlHost)
             // Uninstalling a kit that is still running removes it just as `stop` would. Its
@@ -389,6 +370,36 @@ class KitRunnerCommand(
             // jobs and the runningKits entry would outlive the kit.
             Constants.Kit.PHASE_UNINSTALL -> if (kitName in clusterState.runningKits) releaseWorkload(controlHost)
         }
+    }
+
+    /**
+     * Writes the kit's scrape ConfigMaps. Returns false, after reporting the failure, when they
+     * could not be written; a kit with no scrape targets has nothing to register.
+     */
+    private fun registerMetrics(
+        config: KitConfig,
+        controlHost: ClusterHost,
+    ): Boolean {
+        val metricsPortOverride = readResolvedArgs()["METRICS_PORT"]?.toIntOrNull()
+        // A METRICS_PORT override is an instance's own metrics NodePort, so it only
+        // applies to a static localhost job; a pod-discovered target keeps its container
+        // port. Its pod-selector names this instance through ${KIT_NAME}.
+        val scrapeTargets =
+            config.metrics.filterIsInstance<KitMetrics.Scrape>().map { target ->
+                when {
+                    target.podSelector.isNotBlank() ->
+                        target.copy(podSelector = withKitName(target.podSelector, kitName))
+                    metricsPortOverride != null -> target.copy(port = metricsPortOverride)
+                    else -> target
+                }
+            }
+        if (scrapeTargets.isEmpty()) return true
+        return metricsRegistryService
+            .register(controlHost = controlHost, kitName = kitName, targets = scrapeTargets)
+            .onFailure { e ->
+                log.debug(e) { "Failed to register metrics for $kitName" }
+                eventBus.emit(Event.Kit.MetricsRegistrationFailed(kit = kitName, reason = e.message ?: e.javaClass.simpleName))
+            }.isSuccess
     }
 
     /**
@@ -421,41 +432,46 @@ class KitRunnerCommand(
         }.onFailure { e -> log.warn(e) { "Failed to report endpoints for $kitName" } }
     }
 
-    private fun installDashboards(config: KitConfig) {
+    /**
+     * Installs the kit's dashboards into its Grafana folder. Returns false, after reporting each
+     * failure, when any dashboard did not reach Grafana: a declared file is missing, the tenant
+     * listing or the dashboards cannot be read or rendered, or Grafana rejects one.
+     */
+    private fun installDashboards(config: KitConfig): Boolean {
         // A telemetry-redirect cluster has no local Grafana — dashboards live on the external stack.
         // Skip cleanly so a successful `start` is not turned into a failure by a missing Grafana.
         if (clusterState.initConfig?.telemetryRedirect != null) {
             log.info { "Telemetry redirect is active; skipping kit dashboard installation for $kitName." }
-            return
+            return true
         }
 
         val controlHost =
             clusterState.getControlHost() ?: run {
                 log.warn { "No control node found; skipping dashboard installation for $kitName" }
-                return
+                return true
             }
 
+        val missing = missingDeclaredDashboards(config)
+        missing.forEach { path ->
+            eventBus.emit(
+                Event.Grafana.KitDashboardInstallFailed(kitName, path, "file not found: ${File(kitDir, path).absolutePath}"),
+            )
+        }
         val files = dashboardFiles(config)
-        if (files.isEmpty()) return
+        if (files.isEmpty()) return missing.isEmpty()
         val names = files.map { it.name }
         val context =
             runCatching { installContextFactory.forCluster(clusterState, controlHost) }.getOrElse { e ->
                 eventBus.emit(
                     Event.Grafana.KitDashboardsSkipped(kitName, names, "listing the tenants in the account bucket failed: ${e.message}"),
                 )
-                return
+                return false
             }
         val rendered =
             runCatching {
                 val elsewhere =
                     uidsInstalledElsewhere(config.dashboards, instanceExtension(config)) { ref ->
-                        val file = File(kitDir, ref.path)
-                        if (file.isFile) {
-                            file.readText()
-                        } else {
-                            log.warn { "Dashboard file not found: ${file.absolutePath}" }
-                            null
-                        }
+                        File(kitDir, ref.path).takeIf { it.isFile }?.readText()
                     }
                 KitDashboardInstance(
                     kitName = kitName,
@@ -466,18 +482,29 @@ class KitRunnerCommand(
                     .map { DashboardDefaults.apply(Json.parseToJsonElement(it).jsonObject, context) }
             }.getOrElse { e ->
                 eventBus.emit(Event.Grafana.KitDashboardsSkipped(kitName, names, "reading the dashboards failed: ${e.message}"))
-                return
+                return false
             }
-        files.zip(rendered).forEach { (file, dashboard) ->
-            grafanaClient
-                .installDashboard(dashboard = dashboard, controlHost = controlHost, folderName = kitName)
-                .onFailure { log.warn(it) { "Failed to install dashboard ${file.name}" } }
-        }
+        val rejected =
+            files.zip(rendered).count { (file, dashboard) ->
+                grafanaClient
+                    .installDashboard(dashboard = dashboard, controlHost = controlHost, folderName = kitName)
+                    .onFailure { e ->
+                        eventBus.emit(
+                            Event.Grafana.KitDashboardInstallFailed(kitName, file.name, e.message ?: e.javaClass.simpleName),
+                        )
+                    }.isFailure
+            }
+        return missing.isEmpty() && rejected == 0
     }
+
+    /** The paths of the kit's declared `dashboards` whose file does not exist in the kit directory. */
+    private fun missingDeclaredDashboards(config: KitConfig): List<String> =
+        config.dashboards.map { it.path }.filterNot { File(kitDir, it).isFile }
 
     /**
      * The dashboard files this instance installs: the kit's declared `dashboards` it selects (see
-     * [selectInstanceDashboards]), or, when it declares none, every JSON file in `dashboards/`.
+     * [selectInstanceDashboards]) that exist, or, when it declares none, every JSON file in
+     * `dashboards/`.
      */
     private fun dashboardFiles(config: KitConfig): List<File> {
         if (config.dashboards.isEmpty()) {
@@ -488,9 +515,7 @@ class KitRunnerCommand(
         }
         return selectInstanceDashboards(config.dashboards, instanceExtension(config))
             .map { File(kitDir, it.path) }
-            .filter { file ->
-                file.isFile.also { found -> if (!found) log.warn { "Dashboard file not found: ${file.absolutePath}" } }
-            }
+            .filter { it.isFile }
     }
 
     /** The extension this instance was created with, or empty for the plain kit. */

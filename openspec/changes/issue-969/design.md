@@ -35,7 +35,7 @@ Under `src/main/resources/com/rustyrazorblade/easydblab/kits/ferrosa/`: `kit.yam
 |---|---|---|
 | `--version` | `FERROSA_TAG` | none (script applies `nightly`) |
 | `--image` | `IMAGE` | none |
-| `--storage` | `STORAGE_MODE` | `s3` |
+| `--storage` | `STORAGE_MODE` | `local` |
 | `--log-level` | `LOG_LEVEL` | `info` |
 | `--heap-profile` | `HEAP_PROFILE` | `false` (boolean) |
 | `--heap-sample` | `HEAP_SAMPLE` | none (script applies `19`) |
@@ -110,6 +110,7 @@ Seam 1 review (2026-10-07/08):
 - **`--trace-sample-rate`.** (a, rec, chosen) drop it and move it to the traces follow-up (#995): it sets `FERROSA_TELEMETRY_SAMPLE_RATE`, which upstream reads only when `FERROSA_TELEMETRY_ENABLED=true` (`ferrosa/src/main.rs:1568`), and then only for an in-process count of sampled spans; no span is exported. (b) keep it and also set `FERROSA_TELEMETRY_ENABLED=true` — rejected. (c) keep it as written — rejected: the option would set a value FerrosaDB ignores.
 - **Dashboard read failures.** (a, rec, chosen) any failure to put a kit's dashboards into Grafana fails `start`, including unreadable dashboards or tenant listing and a missing declared file. (b) fail only when Grafana rejects a dashboard — rejected.
 - **The 12-hour ECR re-pull AC.** (a) a one-time forced re-pull in the real-cluster plan — not chosen. **(b, rec, chosen)** remove the AC and its scenarios: the credential provider stores no token, so "an ECR image pulls with no pull secret" covers a long-running cluster.
+- **`--storage` default.** The issue had `s3` as the default. **The owner changed it to `local`** at the second Seam 1 review. `s3` stays available with `--storage=s3`.
 
 ## Domain Facts
 

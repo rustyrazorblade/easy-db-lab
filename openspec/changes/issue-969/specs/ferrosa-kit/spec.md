@@ -88,17 +88,17 @@ Every client listener SHALL bind to `0.0.0.0` (the FerrosaDB default is `127.0.0
 - **THEN** the CQL, web, Postgres, graph, SPARQL, Flight and internode binds use `0.0.0.0`
 
 ### Requirement: FerrosaDB storage mode is S3 or local
-The `--storage` start option (variable `STORAGE_MODE`) SHALL accept `s3` (the default) or `local`. Both modes SHALL use `FERROSA_DATA_DIR=/var/lib/ferrosa` on the platform PV. In `s3` mode the kit SHALL set `FERROSA_S3_ENDPOINT=https://s3.<region>.amazonaws.com`, `FERROSA_S3_REGION=<region>`, `FERROSA_S3_BUCKET=<cluster data bucket>`, `FERROSA_S3_PREFIX=ferrosa/` and `FERROSA_S3_REQUIRED=true`, with no access key, so FerrosaDB uses the node instance profile and never falls back to local storage. In `local` mode the kit SHALL set none of the `FERROSA_S3_*` variables. Any other value SHALL fail `start` before it applies anything, with an error that lists `local` and `s3`. The kit SHALL NOT add a lifecycle rule, an expiry rule, or a delete step for the objects under `ferrosa/` in the data bucket, in any phase. Switching modes on an existing PV is not supported, and the kit SHALL NOT check for it.
+The `--storage` start option (variable `STORAGE_MODE`) SHALL accept `local` (the default) or `s3`. Both modes SHALL use `FERROSA_DATA_DIR=/var/lib/ferrosa` on the platform PV. In `s3` mode the kit SHALL set `FERROSA_S3_ENDPOINT=https://s3.<region>.amazonaws.com`, `FERROSA_S3_REGION=<region>`, `FERROSA_S3_BUCKET=<cluster data bucket>`, `FERROSA_S3_PREFIX=ferrosa/` and `FERROSA_S3_REQUIRED=true`, with no access key, so FerrosaDB uses the node instance profile and never falls back to local storage. In `local` mode the kit SHALL set none of the `FERROSA_S3_*` variables. Any other value SHALL fail `start` before it applies anything, with an error that lists `local` and `s3`. The kit SHALL NOT add a lifecycle rule, an expiry rule, or a delete step for the objects under `ferrosa/` in the data bucket, in any phase. Switching modes on an existing PV is not supported, and the kit SHALL NOT check for it.
 
-#### Scenario: Default storage writes to the data bucket
+#### Scenario: Default storage is local and writes nothing to S3
 - **WHEN** the owner runs `easy-db-lab ferrosa start` without `--storage` and writes rows
-- **THEN** FerrosaDB writes its data under `ferrosa/` in the cluster data bucket
-- **AND** the local PV holds only the cache
-
-#### Scenario: Local storage writes nothing to S3
-- **WHEN** the owner runs `easy-db-lab ferrosa start --storage=local` and writes rows
 - **THEN** FerrosaDB writes its data to `/var/lib/ferrosa` on the local PV
 - **AND** no `FERROSA_S3_*` variable is set and nothing is written under `ferrosa/` in the data bucket
+
+#### Scenario: S3 storage writes to the data bucket
+- **WHEN** the owner runs `easy-db-lab ferrosa start --storage=s3` and writes rows
+- **THEN** FerrosaDB writes its data under `ferrosa/` in the cluster data bucket
+- **AND** the local PV holds only the cache
 
 #### Scenario: Invalid storage value is refused
 - **WHEN** the owner gives `--storage` a value other than `local` or `s3`

@@ -19,6 +19,7 @@ import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -26,6 +27,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import picocli.CommandLine
 import java.io.File
 
 class KitRunnerCommandFactoryTest : BaseKoinTest() {
@@ -515,6 +517,12 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
+    fun `an explicit empty arg overrides its default`() {
+        assertThat(startArgValues("- flag: --log-level\n  variable: LOG_LEVEL\n  default: info", "--log-level", ""))
+            .containsEntry("LOG_LEVEL", "")
+    }
+
+    @Test
     fun `an omitted boolean arg is false and a given one is true`() {
         val arg = "- flag: --heap-profile\n  variable: HEAP_PROFILE\n  type: boolean"
 
@@ -527,6 +535,22 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         val arg = "- flag: --env\n  variable: EXTRA_ENV\n  repeatable: true"
 
         assertThat(startArgValues(arg, "--env", "A=1", "--env", "B=2")).containsEntry("EXTRA_ENV", "A=1\nB=2")
+    }
+
+    @Test
+    fun `a repeated arg in the attached form keeps a value that holds an equals sign`() {
+        val arg = "- flag: --env\n  variable: EXTRA_ENV\n  repeatable: true"
+
+        assertThat(startArgValues(arg, "--env=A=1", "--env=B=x=y")).containsEntry("EXTRA_ENV", "A=1\nB=x=y")
+    }
+
+    @Test
+    fun `a repeatable arg with no value is a parse error`() {
+        val arg = "- flag: --env\n  variable: EXTRA_ENV\n  repeatable: true"
+
+        assertThatThrownBy { startArgValues(arg, "--env") }
+            .isInstanceOf(CommandLine.MissingParameterException::class.java)
+            .hasMessageContaining("--env")
     }
 
     @Test

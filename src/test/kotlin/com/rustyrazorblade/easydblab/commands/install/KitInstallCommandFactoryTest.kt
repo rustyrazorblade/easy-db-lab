@@ -252,6 +252,16 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         assertThat((given.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("TLS", "true")
     }
 
+    @Test
+    fun `an explicit empty install arg overrides its default`() {
+        val cfg = config(arg("--suffix", "SUFFIX", default = "-prod"))
+
+        val cl = factory.build(cfg, directorySource)
+        cl.parseArgs("--suffix", "")
+
+        assertThat((cl.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("SUFFIX", "")
+    }
+
     /** kit-command-args: "Install args and command args behave the same". */
     @Test
     fun `an install arg and a command arg with the same spec record the same values`() {

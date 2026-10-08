@@ -1,9 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.services.KitArgSpec
-import picocli.CommandLine.Model.IGetter
+import picocli.CommandLine.IParameterConsumer
+import picocli.CommandLine.MissingParameterException
+import picocli.CommandLine.Model.ArgSpec
+import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Model.ISetter
 import picocli.CommandLine.Model.OptionSpec
+import java.util.Stack
 
 /**
  * Builds the picocli option for one kit arg, for both `kit install` args
@@ -12,8 +16,8 @@ import picocli.CommandLine.Model.OptionSpec
  *
  * The option writes its value into a variable map keyed by [KitArgSpec.variable]. An optional
  * arg the user did not give and that has no default is left out of the map, never recorded as
- * the string `null`. A boolean with no declared default is `false`. A repeatable arg holds
- * every given value in order, joined with a newline.
+ * the string `null`; an explicit empty value is recorded as given. A boolean with no declared
+ * default is `false`. A repeatable arg holds every given value in order, joined with a newline.
  */
 internal object KitArgOptions {
     /**
@@ -31,13 +35,11 @@ internal object KitArgOptions {
                 .paramLabel(arg.paramLabel)
                 .description(arg.description)
         if (arg.repeatable) {
-            val binding = RepeatedValues { joined -> values.record(arg.variable, joined) }
+            val binding = RepeatedValues(arg.flag) { joined -> values.record(arg.variable, joined) }
             builder
-                .type(List::class.java)
-                .auxiliaryTypes(String::class.java)
-                .arity("1")
-                .getter(binding)
+                .type(String::class.java)
                 .setter(binding)
+                .parameterConsumer(binding)
         } else {
             builder
                 .type(arg.type.toPicoCliType())
@@ -61,33 +63,54 @@ internal object KitArgOptions {
         return builder.build()
     }
 
-    /** Records [value] for [variable], or removes it when there is no value, so a reparse starts clean. */
+    /**
+     * Records [value] for [variable], or removes it when there is no value, so a reparse starts
+     * clean. An explicit empty string is a value: it overrides a non-empty default.
+     */
     private fun MutableMap<String, String>.record(
         variable: String,
         value: String?,
     ) {
-        if (value.isNullOrEmpty()) remove(variable) else put(variable, value)
+        if (value == null) remove(variable) else put(variable, value)
     }
 
     /**
-     * Holds a repeatable option's values and reports them, joined, on every change. Picocli reads
-     * the current collection through the getter before it adds a value, so without a getter every
-     * repetition would replace the last.
+     * Holds a repeatable option's values and reports them, joined, on every change.
+     *
+     * Picocli passes the initial value (null, or the default) to the setter before each parse,
+     * and hands every occurrence of [flag] to the consumer, which appends it. The first occurrence
+     * replaces a default instead of adding to it. A consumer, not a collection-typed option, is
+     * what lets this hold a typed `List<String>`: a collection option needs an `IGetter`, whose
+     * generic `<T> get(): T` cannot be implemented without an unchecked cast.
      */
     private class RepeatedValues(
+        private val flag: String,
         private val onChange: (String?) -> Unit,
-    ) : IGetter,
-        ISetter {
-        private var current: Any? = null
-
-        // Picocli's binding interfaces are generic in the value; it reads back what it last set.
-        @Suppress("UNCHECKED_CAST")
-        override fun <T> get(): T = current as T
+    ) : ISetter,
+        IParameterConsumer {
+        private var current: List<String> = emptyList()
+        private var given = false
 
         override fun <T> set(value: T): T {
-            current = value
-            onChange((value as? Collection<*>)?.joinToString("\n"))
+            current = listOfNotNull(value?.toString())
+            given = false
+            report()
             return value
         }
+
+        override fun consumeParameters(
+            args: Stack<String>,
+            argSpec: ArgSpec,
+            commandSpec: CommandSpec,
+        ) {
+            if (args.isEmpty()) {
+                throw MissingParameterException(commandSpec.commandLine(), argSpec, "Missing required parameter for option '$flag'")
+            }
+            current = (if (given) current else emptyList()) + args.pop()
+            given = true
+            report()
+        }
+
+        private fun report() = onChange(current.takeIf { it.isNotEmpty() }?.joinToString("\n"))
     }
 }

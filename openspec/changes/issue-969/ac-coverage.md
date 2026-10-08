@@ -12,8 +12,8 @@
 | AC Topology | `start` returns only after every pod is ready on `/readyz` | `ferrosa-kit: Start returns after every pod is ready` | ✅ Covered |
 | AC Topology | A pod not ready in the timeout fails `start` naming the pod | `ferrosa-kit: Readiness timeout names the pod` | ✅ Covered |
 | AC Topology | No pod on the control node or an app node | `ferrosa-kit: No pod runs off the db nodes` | ✅ Covered |
-| AC Storage | Default storage writes to `s3://<data bucket>/ferrosa/`, PV holds only the cache | `ferrosa-kit: Default storage writes to the data bucket` | ✅ Covered |
-| AC Storage | `--storage=local` writes to `/var/lib/ferrosa`, nothing to S3 | `ferrosa-kit: Local storage writes nothing to S3` | ✅ Covered |
+| AC Storage | Default storage (`local`) writes to `/var/lib/ferrosa`, nothing to S3 | `ferrosa-kit: Default storage is local and writes nothing to S3` | ✅ Covered |
+| AC Storage | `--storage=s3` writes to `s3://<data bucket>/ferrosa/`, PV holds only the cache | `ferrosa-kit: S3 storage writes to the data bucket` | ✅ Covered |
 | AC Storage | Invalid `--storage` fails before any pod, lists the two values | `ferrosa-kit: Invalid storage value is refused` | ✅ Covered |
 | AC Storage | S3 unreachable → `start` fails saying S3 access failed, no fallback | `ferrosa-kit: S3 failure fails start without fallback` | ✅ Covered |
 | AC Storage | No lifecycle/expiry rule or delete step for `ferrosa/` objects | `ferrosa-kit: No automatic deletion of FerrosaDB data` | ✅ Covered |

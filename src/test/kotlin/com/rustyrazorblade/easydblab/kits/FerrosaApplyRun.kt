@@ -46,14 +46,17 @@ class FerrosaApplyRun(
     val services: List<Service> get() = objects.filterIsInstance<Service>()
 
     /** The `--from-literal` entries of the ConfigMap named [name]. */
-    fun configMap(name: String): Map<String, String> =
+    fun configMap(name: String): Map<String, String> = literals(name).toMap()
+
+    /** Every `--from-literal` entry of the ConfigMap named [name], in order, duplicates kept. */
+    fun literals(name: String): List<Pair<String, String>> =
         stub
             .invocations()
             .single { it.startsWith("create configmap $name ") }
             .split(" ")
             .filter { it.startsWith(FROM_LITERAL) }
             .map { it.removePrefix(FROM_LITERAL) }
-            .associate { it.substringBefore("=") to it.substringAfter("=") }
+            .map { it.substringBefore("=") to it.substringAfter("=") }
 
     /** The FerrosaDB container of pod [ordinal]. */
     fun container(ordinal: Int): Container =

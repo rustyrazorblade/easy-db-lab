@@ -335,6 +335,24 @@ class FerrosaKitTest : BaseKoinTest() {
         }
 
         @Test
+        fun `a repeated --env key keeps only its last value`() {
+            val run = runApply(3, mapOf("EXTRA_ENV" to "A=1\nB=2\nA=3"))
+
+            assertThat(run.exit).describedAs(run.stub.output()).isZero()
+            assertThat(run.literals("ferrosa-env")).containsExactlyInAnyOrder("A" to "3", "B" to "2")
+        }
+
+        @Test
+        fun `an --env key that is also a named setting goes into ferrosa-env, so it wins`() {
+            val run = runApply(3, mapOf("LOG_LEVEL" to "debug", "EXTRA_ENV" to "RUST_LOG=trace"))
+
+            assertThat(run.exit).describedAs(run.stub.output()).isZero()
+            assertThat(run.literals("ferrosa-env")).containsExactly("RUST_LOG" to "trace")
+            assertThat(run.configMap("ferrosa-settings")).containsEntry("RUST_LOG", "debug")
+            assertThat(run.container(0).envFrom.map { it.configMapRef.name }).containsExactly("ferrosa-settings", "ferrosa-env")
+        }
+
+        @Test
         fun `both ConfigMaps carry the kit label that stop deletes by`() {
             val run = runApply(1)
 
@@ -395,6 +413,29 @@ class FerrosaKitTest : BaseKoinTest() {
         @Test
         fun `a malformed --env line is refused, naming the line`() {
             assertRefused(mapOf("EXTRA_ENV" to "A=1\nNOEQUALS"), "NOEQUALS")
+        }
+
+        @Test
+        fun `a cluster with no db nodes is refused`() {
+            val run = runApply(0)
+
+            assertThat(run.exit).isNotZero()
+            assertThat(run.stub.output()).contains("ERROR:", "no db nodes")
+            assertThat(run.stub.invocations()).isEmpty()
+        }
+
+        @Test
+        fun `an --image that is not an image reference is refused, naming it`() {
+            for (image in listOf("repo/img:1|evil", "repo/img:1\nkind: Secret", "-repo/img", "repo/img:1 x", "repo/\$(id)")) {
+                assertRefused(mapOf("IMAGE" to image), "--image", image.lineSequence().first())
+            }
+        }
+
+        @Test
+        fun `a --version that is not a tag is refused, naming it`() {
+            for (tag in listOf("v1|evil", "v1/x", ".v1", "v1 x", "a".repeat(129))) {
+                assertRefused(mapOf("FERROSA_TAG" to tag), "--version", tag)
+            }
         }
 
         @Test

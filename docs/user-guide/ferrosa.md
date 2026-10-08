@@ -32,12 +32,13 @@ Every option belongs to `start`, so you can change it between runs without reins
 `start` checks every option before it creates anything. It fails when:
 
 - `--image` and `--version` are both given. Use one of them.
+- `--image` is not an image reference, or `--version` is not an image tag.
 - `--storage` is not `local` or `s3`.
 - `--heap-sample` is given without `--heap-profile`.
 - An `--env` value is not `KEY=VALUE`.
 - An `--env` key is one the kit sets for each pod: `FERROSA_HOST_ID`, `FERROSA_SEED`, `FERROSA_INTERNODE_BROADCAST`, `FERROSA_CQL_BROADCAST`, `FERROSA_FLIGHT_BROADCAST`, `FERROSA_CLUSTER_NAME` or `FERROSA_EXPECTED_CLUSTER_SIZE`.
 
-An `--env` setting wins over a named option. For example, `--log-level=debug --env RUST_LOG=trace` runs with `RUST_LOG=trace`.
+An `--env` setting wins over a named option. For example, `--log-level=debug --env RUST_LOG=trace` runs with `RUST_LOG=trace`. If you give the same `--env` key more than once, the last value wins.
 
 ```bash
 easy-db-lab ferrosa start --version=v2026.10.01.1200 --log-level=debug \

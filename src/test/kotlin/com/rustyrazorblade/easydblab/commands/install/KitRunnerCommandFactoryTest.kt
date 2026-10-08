@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
@@ -494,6 +495,26 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         group.parseArgs("start", *cliArgs)
         val startCl = group.subcommands.getValue("start")
         return (startCl.commandSpec.userObject() as KitRunnerCommand).runtimeArgValues.toMap()
+    }
+
+    @Test
+    fun `a kit yaml that fails validation fails the build, naming the kit and the problem`() {
+        writeKitYaml("name: mydb\nargs:\n  - flag: --env\n    variable: EXTRA_ENV\n    repeatable: true\n")
+
+        assertThatThrownBy { factory.buildKitGroup("mydb", kitDir) }
+            .isInstanceOf(ConfigurationException::class.java)
+            .hasMessageContaining("mydb")
+            .hasMessageContaining("'--env' is a top-level install arg and cannot be repeatable")
+    }
+
+    @Test
+    fun `a kit yaml that does not parse fails the build, naming the kit and the file`() {
+        writeKitYaml("name: mydb\nstart: [\n")
+
+        assertThatThrownBy { factory.buildKitGroup("mydb", kitDir) }
+            .isInstanceOf(ConfigurationException::class.java)
+            .hasMessageContaining("mydb")
+            .hasMessageContaining(File(kitDir, Constants.Kit.CONFIG_FILE).path)
     }
 
     @Test

@@ -2,11 +2,13 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.kit.KitSqlCommand
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.SerializationException
 import picocli.CommandLine
 import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Model.OptionSpec
@@ -98,6 +100,12 @@ class KitRunnerCommandFactory {
         return commandName to CommandLine(spec)
     }
 
+    /**
+     * Reads the kit's `kit.yaml`, or an empty config when it has none.
+     *
+     * @throws ConfigurationException naming the kit, the file and the problem when the file does
+     *   not parse or fails validation, so a broken kit is reported instead of running with no options.
+     */
     private fun loadInstallConfig(
         kitName: String,
         kitDir: File,
@@ -106,11 +114,18 @@ class KitRunnerCommandFactory {
         if (!configYaml.isFile) return KitConfig(name = kitName)
         return try {
             installConfigYaml.decodeFromString(KitConfig.serializer(), configYaml.readText())
-        } catch (e: Exception) {
-            log.warn(e) { "${Constants.Kit.CONFIG_FILE} in ${kitDir.path} could not be parsed — using empty config" }
-            KitConfig(name = kitName)
+        } catch (e: SerializationException) {
+            throw invalidConfig(kitName, configYaml, e)
+        } catch (e: IllegalArgumentException) {
+            throw invalidConfig(kitName, configYaml, e)
         }
     }
+
+    private fun invalidConfig(
+        kitName: String,
+        configYaml: File,
+        cause: Exception,
+    ) = ConfigurationException("Kit '$kitName': ${configYaml.path} is invalid: ${cause.message ?: cause.javaClass.simpleName}", cause)
 
     private fun collectPhases(
         kitDir: File,

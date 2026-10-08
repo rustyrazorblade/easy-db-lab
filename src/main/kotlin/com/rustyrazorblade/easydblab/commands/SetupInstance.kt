@@ -5,6 +5,9 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
@@ -25,6 +28,19 @@ import java.time.Instant
     description = ["Runs setup_instance.sh on all Cassandra instances"],
 )
 class SetupInstance : PicoBaseCommand() {
+    private companion object {
+        /** The prefix `setup_instance.sh` puts on the line that says why it failed. */
+        const val SCRIPT_ERROR_PREFIX = "ERROR: "
+
+        /** The script's own `ERROR:` lines, or the remote failure itself when it printed none. */
+        fun setupFailureReason(e: RemoteCommandFailedException): String =
+            (e.stderr + "\n" + e.stdout)
+                .lines()
+                .filter { it.startsWith(SCRIPT_ERROR_PREFIX) }
+                .joinToString("; ") { it.removePrefix(SCRIPT_ERROR_PREFIX).trim() }
+                .ifEmpty { e.message ?: "setup_instance.sh exited non-zero" }
+    }
+
     private val hostOperationsService: HostOperationsService by inject()
     private val profilingService: CassandraProfilingService by inject()
 
@@ -100,6 +116,18 @@ class SetupInstance : PicoBaseCommand() {
             )
         }
 
+        // A non-zero setup (no data disk, a failed mount) fails the command, naming the host and the
+        // reason the script printed, so `up` stops before K3s starts.
+        fun runSetupScript(host: Host) {
+            remoteOps.upload(host, Path.of("setup_instance.sh"), "setup_instance.sh")
+            try {
+                remoteOps.executeRemotely(host, "sudo bash setup_instance.sh").text
+            } catch (e: RemoteCommandFailedException) {
+                eventBus.emit(Event.Provision.InstanceSetupFailed(host = host.alias, reason = setupFailureReason(e)))
+                throw CommandFailedException("Instance setup failed on ${host.alias}")
+            }
+        }
+
         // Get datacenter once from the first stress instance (all instances are in the same DC)
         val stressHosts = clusterState.getHosts(ServerType.Stress)
         val datacenter =
@@ -123,8 +151,7 @@ class SetupInstance : PicoBaseCommand() {
             setup(h)
             setupStressSystemdEnv(h, cassandraHost, datacenter)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
-            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
-            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            runSetupScript(h)
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "") { host ->
             val h = host.toHost()
@@ -132,15 +159,13 @@ class SetupInstance : PicoBaseCommand() {
             writeJmxRules(h)
             seedProfilingConfig(h, controlNodeIp, clusterName)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
-            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
-            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            runSetupScript(h)
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") { host ->
             val h = host.toHost()
             setup(h)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
-            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
-            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            runSetupScript(h)
         }
     }
 }

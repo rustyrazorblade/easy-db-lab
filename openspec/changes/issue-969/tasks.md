@@ -32,11 +32,11 @@
 
 ## 5b. Node: data on a non-root volume, checked in advance (owner requirement)
 
-- [ ] 5b.1 Tests first: `init` fails, naming the node type and instance type, when the control or app instance type has no instance store (whatever `--ebs.type` is); the default db, control and app instance types pass; the existing db rules (instance store, or `--ebs.type` not `NONE`) are unchanged. Use the existing `DescribeInstanceTypes` path.
-- [ ] 5b.2 Implement the `init` validation for control and app instance types alongside the existing db check.
-- [ ] 5b.3 `setup_instance.sh`: find the data disk among every unused non-root block device (not only `nvme0n1`, `nvme1n1`, `xvdb`), format and mount it at `/mnt/db1`; exit non-zero with a message naming the reason when no data disk is found, when the mount fails, or when `/mnt/db1` is not a mount point of a non-root device afterwards. Never fall back to a plain `/mnt/db1` directory on root.
-- [ ] 5b.4 A stubbed shell unit test for `setup_instance.sh` (no Docker, same style as `testCassandraScripts`/`testBaseJdkInstall`, wired into Gradle): disk found and mounted; no disk → non-zero; mount fails → non-zero; data disk named `nvme2n1` → found.
-- [ ] 5b.5 `SetupInstance` (and `up`): a non-zero setup on any node fails `up` with an error naming the host and the reason, before K3s starts. Test it.
+- [x] 5b.1 Tests first: `init` fails, naming the node type and instance type, when the control or app instance type has no instance store (whatever `--ebs.type` is); the default db, control and app instance types pass; the existing db rules (instance store, or `--ebs.type` not `NONE`) are unchanged. Use the existing `DescribeInstanceTypes` path.
+- [x] 5b.2 Implement the `init` validation for control and app instance types alongside the existing db check.
+- [x] 5b.3 `setup_instance.sh`: find the data disk among every unused non-root block device (not only `nvme0n1`, `nvme1n1`, `xvdb`), format and mount it at `/mnt/db1`; exit non-zero with a message naming the reason when no data disk is found, when the mount fails, or when `/mnt/db1` is not a mount point of a non-root device afterwards. Never fall back to a plain `/mnt/db1` directory on root.
+- [x] 5b.4 A stubbed shell unit test for `setup_instance.sh` (no Docker, same style as `testCassandraScripts`/`testBaseJdkInstall`, wired into Gradle): disk found and mounted; no disk → non-zero; mount fails → non-zero; data disk named `nvme2n1` → found.
+- [x] 5b.5 `SetupInstance` (and `up`): a non-zero setup on any node fails `up` with an error naming the host and the reason, before K3s starts. Test it.
 
 ## 6. FerrosaDB kit files
 

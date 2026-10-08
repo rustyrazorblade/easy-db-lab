@@ -21,11 +21,11 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
-import com.rustyrazorblade.easydblab.services.EcrCredentialProviderNodeCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.EcrCredentialProviderNodeCheck
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.K3sClusterService

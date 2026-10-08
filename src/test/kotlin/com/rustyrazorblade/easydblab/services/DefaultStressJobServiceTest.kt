@@ -22,6 +22,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -36,7 +37,6 @@ import java.time.Duration
 class DefaultStressJobServiceTest : BaseKoinTest() {
     private lateinit var service: DefaultStressJobService
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockEcrPullSecrets: EcrPullSecretService
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -77,9 +77,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         mockK8sService = getKoin().get()
-        // The default stress image is public, so no pull secret is involved.
-        mockEcrPullSecrets = mock()
-        whenever(mockEcrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
         val clusterStateManager: ClusterStateManager = getKoin().get()
         service =
             DefaultStressJobService(
@@ -88,8 +85,33 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
                 getKoin().get(),
-                mockEcrPullSecrets,
             )
+    }
+
+    /**
+     * An ECR stress image pulls through the node's kubelet ECR credential provider (stress-testing:
+     * "Custom ECR stress image pulls with no pull secret"), so the job carries no pull secret and
+     * building it creates no Secret.
+     */
+    @Test
+    fun `an ECR stress image gets no image pull secret and no Secret`() {
+        val job =
+            service.buildJob(
+                StressJobConfig(
+                    jobName = "stress-ecr",
+                    image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/stress:dev",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
+            )
+
+        assertThat(job.spec.template.spec.imagePullSecrets).isEmpty()
+        assertThat(
+            job.spec.template.spec.containers
+                .single { it.name == "stress" }
+                .image,
+        ).isEqualTo("123456789012.dkr.ecr.us-west-2.amazonaws.com/stress:dev")
+        verify(mockK8sService, never()).applyResource(any(), any())
     }
 
     @Test
@@ -644,14 +666,11 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
                     },
                 )
             }
-        val ecrPullSecrets: EcrPullSecretService = mock()
-        whenever(ecrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
         return DefaultStressJobService(
             k8sService = k8sService,
             clusterStateManager = getKoin().get(),
             eventBus = eventBus,
             templateService = getKoin().get(),
-            ecrPullSecrets = ecrPullSecrets,
             podReadyPollInterval = Duration.ZERO,
         )
     }

@@ -438,6 +438,8 @@ Use `--sidecar-image` to test a fork or specific version:
 easy-db-lab cassandra start --sidecar-image ghcr.io/myfork/cassandra-sidecar:my-branch
 ```
 
+An image in your account's ECR (`<account>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>`) works the same way. Every node runs the kubelet ECR credential provider from the base AMI, so the node pulls the image with its instance role. easy-db-lab creates no image pull secret, and the pull keeps working on a cluster that runs for days.
+
 ### cassandra stop
 
 Stop Cassandra on all nodes.
@@ -586,6 +588,8 @@ easy-db-lab cassandra stress start [options]
 ```
 
 **Aliases:** `run`
+
+`--image` runs a custom stress image. An image in your account's ECR (`<account>.dkr.ecr.<region>.amazonaws.com/<repo>:<tag>`) pulls through the kubelet ECR credential provider that every node runs, with the node's instance role. easy-db-lab creates no image pull secret.
 
 ### cassandra stress stop
 

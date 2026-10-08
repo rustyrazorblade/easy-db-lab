@@ -425,7 +425,18 @@ tasks.register("testScripts") {
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
+        "testEcrCredentialProviderInstall",
     )
+}
+
+// Unit-test the base AMI's kubelet ECR credential provider install: the binary for the build
+// architecture and a config matching the ECR hosts, where K3s reads them, and a refused checksum
+// mismatch. sudo, curl and sha256sum are stubbed.
+tasks.register<Exec>("testEcrCredentialProviderInstall") {
+    group = "Verification"
+    description = "Unit-test the base AMI kubelet ECR credential provider install script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/base/install/install_ecr_credential_provider.test.sh")
 }
 
 // Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug

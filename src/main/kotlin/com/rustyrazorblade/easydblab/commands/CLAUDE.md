@@ -238,8 +238,8 @@ Commands should delegate to these services:
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |
-| `AccountBucketSetup` | The bucket step of `up` (`services.aws`): account and data buckets, role and bucket policies, then `CompactorService.ensureRunning` |
-| `ProvisioningPreflight` | The checks `up` runs before provisioning: a control node, a well-formed telemetry redirect, and a connected local Tailscale client on a Tailscale cluster |
+| `AccountBucketSetup` | The bucket step of `up` (`services.aws`): account and data buckets, the instance role's inline policies (`S3Access` + `SessionManagerInstance`, via `AWSResourceSetupService` and `InstanceRolePolicies`) and the bucket policy, then `CompactorService.ensureRunning` |
+| `ProvisioningPreflight` | The checks `up` runs before provisioning: a control node, a well-formed telemetry redirect, a connected local Tailscale client on a Tailscale cluster, and the AWS CLI plus Session Manager plugin (`LocalSsmTooling`) when the profile's SSH transport is `ssm` |
 | `CompactorService` | The account compactor (`services.aws`): `ensureRunning` on `up`, `stopIfLastCluster` after a successful `down`, `stop` and `status` for `observability compactor` |
 | `TeardownBackupService` | The pre-teardown save `down` runs once, never retried (`TeardownFlushService`: Phase A mirror and collector stop, Phase B flushes, Tempo drain, profiles report and annotations backup in parallel; each flush only flushes and waits, no verify checks); records logs and metrics in `ClusterState.tailFlush` the moment each succeeds, through one writer, and a save of every signal as complete (`saveCompletedAt`), which a re-run of `down` skips whole; `unsavedSignals(state)` is what `down --force` lists before the prompt |
 | `TailscaleService` | Tailscale VPN setup on cluster nodes |

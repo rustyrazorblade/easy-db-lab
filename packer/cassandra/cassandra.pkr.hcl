@@ -41,6 +41,13 @@ variable "ssh_private_key_file" {
   default = ""
 }
 
+# "session_manager" when the profile tunnels SSH over SSM Session Manager (its `ssm` SSH transport),
+# so the build needs no inbound port 22 from this machine. Empty keeps Packer's default interface.
+variable "ssh_interface" {
+  type    = string
+  default = ""
+}
+
 
 locals {
   timestamp = regex_replace(timestamp(), "[- TZ:]", "")
@@ -69,6 +76,8 @@ source "amazon-ebs" "ubuntu" {
   ssh_username         = "ubuntu"
   ssh_keypair_name     = var.ssh_keypair_name
   ssh_private_key_file = var.ssh_private_key_file
+  # null leaves the argument unset, so direct-transport builds keep Packer's own default.
+  ssh_interface        = var.ssh_interface != "" ? var.ssh_interface : null
 
   # Use permanent VPC infrastructure created by PackerInfrastructureService
   vpc_filter {

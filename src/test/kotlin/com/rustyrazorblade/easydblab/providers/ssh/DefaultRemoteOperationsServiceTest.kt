@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
 import io.github.resilience4j.retry.RetryConfig
+import org.apache.sshd.common.SshException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -26,6 +27,8 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.IOException
+import java.time.Duration
 
 class DefaultRemoteOperationsServiceTest :
     BaseKoinTest(),
@@ -215,6 +218,52 @@ class DefaultRemoteOperationsServiceTest :
         assertThat(service.executeRemotely(host, command).text).isEqualTo("1")
         verify(mockSSHClient, times(3)).executeRemoteCommand(eq(command), any(), any())
     }
+
+    /**
+     * MINA reports a refused or timed-out connection as SshException, a checked IOException that
+     * resilience4j's plain decorators never see. The service must still retry it.
+     */
+    @Test
+    fun `a connection that fails with SshException is retried`() {
+        val command = "echo 1"
+        var attempts = 0
+        doAnswer {
+            attempts++
+            if (attempts < 3) throw SshException("Connection refused") else Response("1")
+        }.whenever(mockSSHClient).executeRemoteCommand(eq(command), any(), any())
+
+        assertThat(fastRetryService().executeRemotely(host, command).text).isEqualTo("1")
+        assertThat(attempts).isEqualTo(3)
+        // Each failed attempt discards the connection and its path, so the retry cannot reuse a
+        // stuck SSM forward.
+        verify(mockSSHConnectionProvider, times(2)).discard(host)
+    }
+
+    /** Any other IOException, an SFTP "no such file" for example, will not clear on a retry. */
+    @Test
+    fun `an IOException that is not an ssh connection failure fails at once`(
+        @TempDir localDir: File,
+    ) {
+        val local = File(localDir, "out.txt").toPath()
+        var attempts = 0
+        doAnswer {
+            attempts++
+            throw IOException("No such file: /etc/cassandra_versions.yaml")
+        }.whenever(mockSSHClient).downloadFile(any(), any())
+
+        assertThatThrownBy { fastRetryService().download(host, "/etc/cassandra_versions.yaml", local) }
+            .isInstanceOf(IOException::class.java)
+            .hasMessageContaining("No such file")
+        assertThat(attempts).isEqualTo(1)
+        verify(mockSSHConnectionProvider, never()).discard(any())
+    }
+
+    /** The production retry policy with a 1ms wait, so retries run without the 2s production pause. */
+    private fun fastRetryService() =
+        DefaultRemoteOperationsService(
+            getKoin().get<SSHConnectionProvider>(),
+            RetryConfig.from<Any>(DefaultRemoteOperationsService.defaultRetryConfig).waitDuration(Duration.ofMillis(1)).build(),
+        )
 
     /** Stubs the staging command to return a fixed path and every other command to succeed silently. */
     private fun stubStaging(): String {

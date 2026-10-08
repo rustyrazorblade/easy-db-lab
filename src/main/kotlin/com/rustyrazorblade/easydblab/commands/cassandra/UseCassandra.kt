@@ -58,7 +58,7 @@ class UseCassandra : PicoBaseCommand() {
 
         val cassandraHosts = state.getHosts(ServerType.Cassandra)
         eventBus.emit(
-            Event.Cassandra.UsingVersion(version, cassandraHosts.size, "$hosts"),
+            Event.Cassandra.UsingVersion(version, cassandraHosts.size, hosts.hostList),
         )
 
         hostOperationsService.withHosts(state.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.K3sDiagnostics.withClusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
+import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
@@ -55,7 +56,7 @@ class KitWorkloadProbeIntegrationTest {
         @Container
         @JvmStatic
         val k3s: K3sContainer =
-            K3sContainer(DockerImageName.parse("rancher/k3s:v1.30.6-k3s1"))
+            K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
                 .withPrivilegedMode(true)
                 .withCreateContainerCmdModifier { cmd ->
                     cmd.hostConfig!!

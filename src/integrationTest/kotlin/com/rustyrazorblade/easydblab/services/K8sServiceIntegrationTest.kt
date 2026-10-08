@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
+import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -76,7 +77,7 @@ class K8sServiceIntegrationTest {
         @Container
         @JvmStatic
         val k3s: K3sContainer =
-            K3sContainer(DockerImageName.parse("rancher/k3s:v1.30.6-k3s1"))
+            K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
                 .withPrivilegedMode(true)
                 .withCreateContainerCmdModifier { cmd ->
                     cmd.hostConfig!!

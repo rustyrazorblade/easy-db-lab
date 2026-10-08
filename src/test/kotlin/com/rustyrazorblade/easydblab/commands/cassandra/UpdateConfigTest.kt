@@ -99,4 +99,19 @@ class UpdateConfigTest : BaseKoinTest() {
         val output = outputHandler.messages.joinToString("\n")
         assertThat(output).contains("Uploading cassandra.patch.yaml")
     }
+
+    /** Hosts are named by alias, as an operator knows them, never as the internal Host object. */
+    @Test
+    fun `progress output names each host by its alias`() {
+        UpdateConfig().execute()
+
+        val output = outputHandler.messages.joinToString("\n")
+        assertThat(output).contains(
+            "Uploading cassandra.patch.yaml to db0",
+            "Patching db0",
+            "Created temporary directory /tmp/easydblab.12345 on db0",
+            "Configuration updated for db0",
+        )
+        assertThat(output).doesNotContain("Host(", "i-db0", "54.1.2.3")
+    }
 }

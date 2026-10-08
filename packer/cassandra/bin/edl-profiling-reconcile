@@ -255,6 +255,11 @@ duration_seconds() {
 # 4xx as permanent, and every chunk that cluster ever produces is renamed .rejected and never
 # retried: total, silent loss on a 60s timer. Under LC_ALL=C the same loop walks bytes and produces
 # `caf%C3%A9`, which is correct UTF-8 percent-encoding.
+#
+# The `& 255` mask is the other half. `printf %d "'$character"` is the byte value only on a shell that
+# reads it as an unsigned char. The bash 5 on the nodes does; macOS's bash 3.2 reads it through a signed
+# C char, so every byte at or above 0x80 comes back negative and prints as `%FFFFFFFFFFFFFFC3`
+# instead of `%C3`. Masking to one byte gives the same, correct answer on both.
 urlencode() {
   local LC_ALL=C
   local raw="$1" encoded="" index character
@@ -262,7 +267,7 @@ urlencode() {
     character="${raw:index:1}"
     case "$character" in
       [a-zA-Z0-9.~_-]) encoded+="$character" ;;
-      *) encoded+="$(printf '%%%02X' "'$character")" ;;
+      *) encoded+="$(printf '%%%02X' "$(($(printf '%d' "'$character") & 255))")" ;;
     esac
   done
   printf '%s' "$encoded"

@@ -72,6 +72,9 @@ internal fun isLocalPortBindFailure(transcript: List<String>): Boolean = transcr
  * tunnel, which breaks direct AWS access on corporate networks.
  *
  * The process is killed at cluster teardown by the `Down` command via `cleanupSocks5Proxy()`.
+ *
+ * @param verifyAttempts how many times a fresh tunnel is probed before it counts as failed; the
+ *   SSH route supplies it, because a tunnel over SSM Session Manager takes far longer to come up
  */
 class ProcessSocksProxyService(
     private val context: Context,
@@ -79,9 +82,9 @@ class ProcessSocksProxyService(
     private val verifyDelay: Duration = Duration.ofMillis(VERIFY_DELAY_MS),
     private val processLauncher: SshProcessLauncher = DefaultSshProcessLauncher,
     private val portSelector: LocalPortSelector = LoopbackPortSelector(),
+    private val verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
 ) : SocksProxyService {
     companion object {
-        private const val VERIFY_RETRIES = 10
         private const val VERIFY_DELAY_MS = 500L
         private const val VERIFY_CONNECT_TIMEOUT_MS = 1000
         private const val SSH_ERROR_TAIL_LINES = 15
@@ -383,7 +386,7 @@ class ProcessSocksProxyService(
         }
 
     /**
-     * Verifies the tunnel is reachable end-to-end for up to [VERIFY_RETRIES] * [VERIFY_DELAY_MS],
+     * Verifies the tunnel is reachable end-to-end for up to [verifyAttempts] * [verifyDelay],
      * bailing out the instant the ssh [process] dies rather than polling a corpse for the full
      * window.
      *
@@ -405,7 +408,7 @@ class ProcessSocksProxyService(
         targetPrivateIp: String,
         logFile: File,
     ) {
-        repeat(VERIFY_RETRIES) { attempt ->
+        repeat(verifyAttempts) { attempt ->
             // A dead ssh (e.g. a changed host key kills it in ~50ms) will never open the tunnel;
             // stop immediately instead of waiting out the remaining attempts.
             if (!process.isAlive) {
@@ -415,8 +418,8 @@ class ProcessSocksProxyService(
                 log.debug { "SOCKS5 tunnel reachable end-to-end on port $port (attempt ${attempt + 1})" }
                 return
             }
-            log.debug { "SOCKS5 tunnel not reachable yet (attempt ${attempt + 1}/$VERIFY_RETRIES)" }
-            if (attempt < VERIFY_RETRIES - 1) {
+            log.debug { "SOCKS5 tunnel not reachable yet (attempt ${attempt + 1}/$verifyAttempts)" }
+            if (attempt < verifyAttempts - 1) {
                 Thread.sleep(verifyDelay.toMillis())
             }
         }

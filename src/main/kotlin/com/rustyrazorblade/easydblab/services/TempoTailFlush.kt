@@ -4,9 +4,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
-import io.github.resilience4j.retry.Retry
 import java.time.Duration
 import java.time.Instant
 
@@ -131,8 +130,7 @@ class TempoTailFlush(
     ): Pair<T, Boolean> {
         val remaining = Duration.between(Instant.now(), deadline)
         val attempts = (remaining.toMillis() / pollInterval.toMillis().coerceAtLeast(1)).toInt().coerceAtLeast(1) + 1
-        val config = RetryUtil.createPollUntilRetryConfig<Pair<T, Boolean>>(attempts, pollInterval, { it.second }, deadline)
-        return Retry.decorateSupplier(Retry.of(name, config), look).get()
+        return pollUntil(name, attempts, pollInterval, deadline, done = { it.second }, poll = look)
     }
 
     private fun read(): Reading {

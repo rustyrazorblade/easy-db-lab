@@ -10,10 +10,10 @@ import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
+import org.apache.sshd.common.SshException
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
-import java.io.IOException
 import java.nio.file.Path
 import java.time.Duration
 
@@ -40,10 +40,12 @@ class DefaultRemoteOperationsService(
          * - Max 3 attempts
          * - 2 second initial wait
          * - Exponential backoff (1.5x multiplier)
-         * - Retries on IOException and RuntimeException — transient transport faults. Note that
-         *   resilience4j's `decorateSupplier`/`decorateRunnable` only ever catch RuntimeException,
-         *   so in practice a checked IOException propagates on the first attempt
-         *   (see DefaultRemoteOperationsServiceTest)
+         * - Retries SshException, how MINA reports a refused, timed-out or dropped connection, and
+         *   RuntimeException, which includes SsmForwardNotReadyException from the `ssm` transport.
+         *   SshException is checked, so every operation is decorated with resilience4j's checked
+         *   decorators; the plain ones catch only RuntimeException and would never see it
+         * - Fails fast on any other IOException, such as an SFTP "no such file", which a retry
+         *   cannot fix
          * - Never retries a command that ran and exited non-zero: that is a deterministic failure
          *   of the command itself, and re-running it would just repeat the work (a failed Cassandra
          *   build three times over) while hiding the real error behind the delay
@@ -53,12 +55,31 @@ class DefaultRemoteOperationsService(
                 .custom<Any>()
                 .maxAttempts(3)
                 .waitDuration(Duration.ofMillis(2000))
-                .retryExceptions(IOException::class.java, RuntimeException::class.java)
+                .retryExceptions(SshException::class.java, RuntimeException::class.java)
                 .ignoreExceptions(RemoteCommandFailedException::class.java)
                 .build()
     }
 
     private val retry = Retry.of("ssh-operations", retryConfig)
+
+    /**
+     * Runs [operation] against [host] under [retry], with the checked decorator so SshException is
+     * retried too. An SshException also discards the host's connection and path first, so the
+     * retry dials a fresh one instead of a stuck SSM forward.
+     */
+    private fun <T> withRetry(
+        host: Host,
+        operation: () -> T,
+    ): T =
+        Retry
+            .decorateCheckedSupplier(retry) {
+                try {
+                    operation()
+                } catch (e: SshException) {
+                    connectionProvider.discard(host)
+                    throw e
+                }
+            }.get()
 
     override fun executeRemotely(
         host: Host,
@@ -69,10 +90,7 @@ class DefaultRemoteOperationsService(
         log.debug {
             "Executing command on ${host.alias}: ${if (secret) "[REDACTED]" else redactUrlCredentials(command)}"
         }
-        return Retry
-            .decorateSupplier(retry) {
-                connectionProvider.getConnection(host).executeRemoteCommand(command, output, secret)
-            }.get()
+        return withRetry(host) { connectionProvider.getConnection(host).executeRemoteCommand(command, output, secret) }
     }
 
     override fun upload(
@@ -81,10 +99,9 @@ class DefaultRemoteOperationsService(
         remote: String,
     ) {
         log.info { "Uploading $local to ${host.alias}:$remote" }
-        Retry
-            .decorateRunnable(retry) {
-                connectionProvider.getConnection(host).uploadFile(local, remote)
-            }.run()
+        withRetry(host) {
+            connectionProvider.getConnection(host).uploadFile(local, remote)
+        }
     }
 
     override fun uploadDirectory(
@@ -94,10 +111,9 @@ class DefaultRemoteOperationsService(
     ) {
         log.info { "Uploading directory $localDir to ${host.alias}:$remoteDir" }
         eventBus.emit(Event.Ssh.UploadingDirectory(localDir.toString(), remoteDir))
-        Retry
-            .decorateRunnable(retry) {
-                connectionProvider.getConnection(host).uploadDirectory(localDir, remoteDir)
-            }.run()
+        withRetry(host) {
+            connectionProvider.getConnection(host).uploadDirectory(localDir, remoteDir)
+        }
     }
 
     override fun uploadDirectory(
@@ -157,10 +173,9 @@ class DefaultRemoteOperationsService(
         local: Path,
     ) {
         log.info { "Downloading ${host.alias}:$remote to $local" }
-        Retry
-            .decorateRunnable(retry) {
-                connectionProvider.getConnection(host).downloadFile(remote, local)
-            }.run()
+        withRetry(host) {
+            connectionProvider.getConnection(host).downloadFile(remote, local)
+        }
     }
 
     override fun downloadDirectory(
@@ -174,15 +189,14 @@ class DefaultRemoteOperationsService(
             "Downloading directory ${host.alias}:$remoteDir to $localDir " +
                 "(include: $includeFilters, exclude: $excludeFilters)"
         }
-        Retry
-            .decorateRunnable(retry) {
-                connectionProvider.getConnection(host).downloadDirectory(
-                    remoteDir,
-                    localDir,
-                    includeFilters,
-                    excludeFilters,
-                )
-            }.run()
+        withRetry(host) {
+            connectionProvider.getConnection(host).downloadDirectory(
+                remoteDir,
+                localDir,
+                includeFilters,
+                excludeFilters,
+            )
+        }
     }
 
     override fun getRemoteVersion(

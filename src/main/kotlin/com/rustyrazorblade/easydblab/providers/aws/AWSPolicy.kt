@@ -239,6 +239,40 @@ sealed class AWSPolicy {
         }
 
         /**
+         * What the SSM agent on an instance needs to register with Systems Manager and serve
+         * Session Manager sessions, and nothing more: AWS's documented minimal Session Manager
+         * instance policy, without the KMS statement, since sessions are not KMS-encrypted. It
+         * replaces the managed `AmazonSSMManagedInstanceCore`, which also grants Parameter Store
+         * reads on every parameter in the account. `ec2messages:*` is left out because SSM Agent
+         * 3.3.40.0 and later uses `ssmmessages:*` instead.
+         *
+         * Every cluster and AMI-builder instance carries it, whichever SSH transport the operator's
+         * profile selects, so any node can be reached over Session Manager.
+         */
+        data object SessionManagerInstance : Inline() {
+            override fun toJson() =
+                IamPolicyDocument(
+                    statement =
+                        listOf(
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                action =
+                                    IamPolicyAction.multiple(
+                                        listOf(
+                                            "ssm:UpdateInstanceInformation",
+                                            "ssmmessages:CreateControlChannel",
+                                            "ssmmessages:CreateDataChannel",
+                                            "ssmmessages:OpenControlChannel",
+                                            "ssmmessages:OpenDataChannel",
+                                        ),
+                                    ),
+                                resource = IamPolicyResource.single("*"),
+                            ),
+                        ),
+                ).toJson()
+        }
+
+        /**
          * The account compactor's task role policy: list the easy-db-lab buckets, and get, put and
          * delete objects under the roots it compacts. It has no access to `grafana/` or
          * `pyroscope/`. The compactor removes a source object only after it wrote a merged copy.

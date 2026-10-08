@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.DockerException
+import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.RetryConfig
 import org.apache.sshd.common.SshException
@@ -172,8 +173,12 @@ object RetryUtil {
      *
      * Docker operations (start, inspect, remove containers):
      * - Standard retry count (3 attempts)
-     * - Retries on IOException (network/socket issues)
-     * - Retries on DockerException (API errors)
+     * - Retries on IOException (network/socket issues). docker-java's HTTP transport wraps a socket
+     *   error in a bare RuntimeException; callers unwrap it (see ContainerExecutor) and run the
+     *   call with resilience4j's checked decorators, which are the only ones that see an IOException
+     * - Retries on DockerException (API errors), except docker-java's 404 NotFoundException: the
+     *   container or image does not exist, and no retry makes it appear
+     * - Fails fast on everything else
      *
      * Exponential backoff: 1s, 2s, 4s
      *
@@ -196,6 +201,8 @@ object RetryUtil {
                         log.warn { "Docker error - will retry: ${throwable.message}" }
                         true
                     }
+                    // A 404: the container or image does not exist, and no retry makes it appear.
+                    is com.github.dockerjava.api.exception.NotFoundException -> false
                     is com.github.dockerjava.api.exception.DockerException -> {
                         log.warn { "Docker API error - will retry: ${throwable.message}" }
                         true
@@ -234,28 +241,35 @@ object RetryUtil {
      * - High retry count (30 attempts) to accommodate boot time
      * - Fixed 10-second delay between attempts (not exponential)
      * - Total wait time: approximately 5 minutes
-     * - Retries on SshException (connection refused, timeout)
-     * - Retries on IOException (network errors)
+     * - Retries on SshException: MINA reports a refused or timed-out connection, and a failed
+     *   key exchange or auth while the node is still booting, as SshException
+     * - Retries on SsmForwardNotReadyException: under the `ssm` SSH transport, a fresh node's SSM
+     *   agent has not registered yet (`TargetNotConnected`)
+     * - Fails fast on every other exception, any other IOException included: it will not clear by
+     *   waiting
      *
-     * Fixed interval: 10 seconds between attempts
+     * SshException is checked, so the caller must decorate with resilience4j's
+     * `decorateCheckedRunnable`/`decorateCheckedSupplier`; the plain decorators catch only
+     * RuntimeException and would never see it.
      *
+     * @param interval the fixed wait between attempts; tests pass a short one
      * @return RetryConfig configured for SSH connection operations
      */
-    fun createSshConnectionRetryConfig(): RetryConfig =
+    fun createSshConnectionRetryConfig(
+        interval: Duration = Duration.ofMillis(Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS),
+    ): RetryConfig =
         RetryConfig
             .custom<Unit>()
             .maxAttempts(Constants.Retry.MAX_SSH_CONNECTION_RETRIES)
-            .intervalFunction { _ ->
-                // Fixed 10-second delay for SSH boot-up waiting
-                Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS
-            }.retryOnException { throwable ->
+            .intervalFunction { _ -> interval.toMillis() }
+            .retryOnException { throwable ->
                 when (throwable) {
-                    is SshException -> {
-                        log.debug { "SSH not ready - will retry: ${throwable.message}" }
+                    is SsmForwardNotReadyException -> {
+                        log.debug { "SSM port forward not ready - will retry: ${throwable.message}" }
                         true
                     }
-                    is IOException -> {
-                        log.debug { "IO error during SSH connection - will retry: ${throwable.message}" }
+                    is SshException -> {
+                        log.debug { "SSH not ready - will retry: ${throwable.message}" }
                         true
                     }
                     else -> false
@@ -454,9 +468,11 @@ object RetryUtil {
      *
      * - A result for which [done] is false is retried, [interval] apart, up to [maxAttempts]
      *   looks; after the last look that result is returned, not thrown
-     * - Any exception from a look is treated as transient (a dropped API call, a SOCKS hiccup
-     *   during a wait that lasts minutes) and retried within the same budget; the poll fails
-     *   only when the last look throws
+     * - Any exception from a look but an interrupt is treated as transient (a dropped API call, a
+     *   SOCKS hiccup during a wait that lasts minutes) and retried within the same budget; the poll
+     *   fails only when the last look throws. That includes checked ones such as OkHttp's
+     *   IOException, so run it with resilience4j's checked decorators, as [pollUntil] does
+     * - An InterruptedException ends the poll at once: the thread was asked to stop
      *
      * - When [deadline] is set, nothing is retried once it has passed, so the wait is bounded by the
      *   wall clock rather than by how long each look takes
@@ -479,7 +495,7 @@ object RetryUtil {
             .maxAttempts(maxAttempts)
             .intervalFunction { _ -> interval.toMillis() }
             .retryOnResult { result -> !done(result) && beforeDeadline() }
-            .retryOnException { beforeDeadline() }
+            .retryOnException { it !is InterruptedException && beforeDeadline() }
             .build()
     }
 }

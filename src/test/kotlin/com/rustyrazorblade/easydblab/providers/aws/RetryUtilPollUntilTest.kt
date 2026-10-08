@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.providers.aws
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.io.IOException
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicInteger
@@ -49,6 +50,33 @@ class RetryUtilPollUntilTest {
 
         assertThat(result).isEqualTo("ready")
         assertThat(looks.get()).isEqualTo(2)
+    }
+
+    /**
+     * A look over HTTP fails with OkHttp's checked IOException when the SOCKS tunnel drops for a
+     * moment. resilience4j's plain decorator never sees a checked exception, so this is the case
+     * that proves the poll is decorated to retry it.
+     */
+    @Test
+    fun `a look that throws a checked IOException is retried within the budget`() {
+        val result = poll(maxAttempts = 3, results = listOf({ throw IOException("connection reset") }, { "ready" }))
+
+        assertThat(result).isEqualTo("ready")
+        assertThat(looks.get()).isEqualTo(2)
+    }
+
+    /** An interrupt asks the thread to stop, so it ends the poll at once and stays visible to the caller. */
+    @Test
+    fun `an interrupted look fails at once and keeps the interrupt`() {
+        try {
+            assertThatThrownBy {
+                poll(maxAttempts = 5, results = listOf({ throw InterruptedException("stop") }, { "ready" }))
+            }.isInstanceOf(InterruptedException::class.java)
+            assertThat(looks.get()).isEqualTo(1)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
     }
 
     @Test

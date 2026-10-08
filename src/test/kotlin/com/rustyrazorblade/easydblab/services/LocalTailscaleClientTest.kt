@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 import java.time.Duration
 
 /**
- * Tests for [DefaultLocalTailscaleClient] and [DefaultTailscaleCliRunner].
+ * Tests for [DefaultLocalTailscaleClient].
  *
  * The distinction these cover is the one the operator-facing message rests on: a machine without
  * Tailscale installed is a different fault, with a different remedy, from a machine that has it
@@ -16,7 +16,7 @@ import java.time.Duration
 class LocalTailscaleClientTest {
     private val commands = mutableListOf<List<String>>()
 
-    private fun clientReturning(result: TailscaleCliResult): DefaultLocalTailscaleClient =
+    private fun clientReturning(result: LocalCliResult): DefaultLocalTailscaleClient =
         DefaultLocalTailscaleClient(
             runner = { command, _ ->
                 commands.add(command)
@@ -28,7 +28,7 @@ class LocalTailscaleClientTest {
     private fun completed(
         stdout: String,
         exitCode: Int = 0,
-    ) = TailscaleCliResult.Completed(exitCode = exitCode, stdout = stdout)
+    ) = LocalCliResult.Completed(exitCode = exitCode, stdout = stdout)
 
     @Test
     fun `reports connected when the CLI reports a Running backend`() {
@@ -46,7 +46,7 @@ class LocalTailscaleClientTest {
 
     @Test
     fun `reports not installed when the binary is absent, never merely disconnected`() {
-        val client = clientReturning(TailscaleCliResult.BinaryNotFound)
+        val client = clientReturning(LocalCliResult.BinaryNotFound)
 
         assertThat(client.state()).isEqualTo(LocalTailscaleState.NotInstalled)
     }
@@ -67,7 +67,7 @@ class LocalTailscaleClientTest {
 
     @Test
     fun `treats a hung CLI as disconnected`() {
-        val client = clientReturning(TailscaleCliResult.TimedOut)
+        val client = clientReturning(LocalCliResult.TimedOut)
 
         assertThat(client.state()).isEqualTo(LocalTailscaleState.Disconnected(Constants.Tailscale.BACKEND_STATE_TIMED_OUT))
     }
@@ -77,33 +77,5 @@ class LocalTailscaleClientTest {
         clientReturning(completed("""{"BackendState":"Running"}""")).state()
 
         assertThat(commands).singleElement().isEqualTo(listOf("tailscale", "status", "--json", "--peers=false"))
-    }
-
-    // =========================================================================
-    // The production runner: telling a missing binary apart from a live one
-    // =========================================================================
-
-    @Test
-    fun `the production runner reports BinaryNotFound when the executable is not on PATH`() {
-        val result = DefaultTailscaleCliRunner.run(listOf("easy-db-lab-no-such-binary"), Duration.ofSeconds(5))
-
-        assertThat(result).isEqualTo(TailscaleCliResult.BinaryNotFound)
-    }
-
-    @Test
-    fun `the production runner captures stdout and the exit code of a real process`() {
-        val result = DefaultTailscaleCliRunner.run(listOf("echo", """{"BackendState":"Running"}"""), Duration.ofSeconds(5))
-
-        assertThat(result).isInstanceOf(TailscaleCliResult.Completed::class.java)
-        val completed = result as TailscaleCliResult.Completed
-        assertThat(completed.exitCode).isZero()
-        assertThat(completed.stdout.trim()).isEqualTo("""{"BackendState":"Running"}""")
-    }
-
-    @Test
-    fun `the production runner kills a process that outlives the timeout`() {
-        val result = DefaultTailscaleCliRunner.run(listOf("sleep", "30"), Duration.ofMillis(200))
-
-        assertThat(result).isEqualTo(TailscaleCliResult.TimedOut)
     }
 }

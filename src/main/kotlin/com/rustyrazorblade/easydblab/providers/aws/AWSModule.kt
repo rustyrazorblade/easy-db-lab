@@ -204,10 +204,13 @@ val awsModule =
         }
 
         // Provide AWSResourceSetupService as singleton
+        single { InstanceRolePolicies(get()) }
+
         single {
             AWSResourceSetupService(
                 get<AWS>(),
                 get<EventBus>(),
+                get<InstanceRolePolicies>(),
             )
         }
 
@@ -268,5 +271,5 @@ val awsModule =
         single { ClusterCensus(get(), get()) }
         single<CompactorService> { DefaultCompactorService(get(), get(), get(), get(), get(), get()) }
         factory { BucketRegion(get()) }
-        factory { AccountBucketSetup(get(), get(), get(), get(), get()) }
+        factory { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }
     }

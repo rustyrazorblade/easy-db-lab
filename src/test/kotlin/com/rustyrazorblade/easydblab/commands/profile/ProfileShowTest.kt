@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.profile
 
+import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -131,6 +132,18 @@ class ProfileShowTest {
         val report = reportFor(user(tailscaleClientSecret = "   "))
 
         assertThat(report).containsPattern("Tailscale\\s+DISABLED")
+    }
+
+    @Test
+    fun `SSH transport reads direct for a profile that never chose one`() {
+        assertThat(reportFor(user())).containsPattern("SSH\\s+direct")
+    }
+
+    @Test
+    fun `SSH transport reads ssm once the profile selects it`() {
+        val report = reportFor(user().apply { sshTransport = SshTransport.Ssm })
+
+        assertThat(report).containsPattern("SSH\\s+ssm")
     }
 
     @Test

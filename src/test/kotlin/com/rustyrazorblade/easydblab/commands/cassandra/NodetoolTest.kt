@@ -61,6 +61,8 @@ class NodetoolTest : BaseKoinTest() {
      */
     private val connectionProvider =
         object : SSHConnectionProvider {
+            override fun discard(host: Host) = Unit
+
             override fun getConnection(host: Host): ISSHClient {
                 val session = mock<ClientSession>()
                 whenever(session.executeRemoteCommand(any(), any(), any(), any<Charset>())).thenAnswer { invocation ->

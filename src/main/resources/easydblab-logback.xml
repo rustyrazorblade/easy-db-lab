@@ -45,6 +45,31 @@
     -->
     <logger name="org.apache.sshd" level="INFO" />
 
+    <!--
+      HTTP wire and header logging writes requests and responses verbatim: the SSO bearer token
+      (x-amz-sso_bearer_token), Authorization headers, the role credentials the SSO portal returns,
+      and the account ID in query strings. These loggers carry nothing else (okhttp3.OkHttpClient is
+      where OkHttp's HttpLoggingInterceptor writes by default), so they are off at
+      every level; each library's other debug logging is kept. Add any new HTTP client's wire or
+      header logger here (LogbackConfigurationTest checks the list).
+    -->
+    <logger name="org.apache.http.wire" level="OFF" />
+    <logger name="org.apache.http.headers" level="OFF" />
+    <logger name="org.apache.hc.client5.http.wire" level="OFF" />
+    <logger name="org.apache.hc.client5.http.headers" level="OFF" />
+    <logger name="org.apache.hc.core5.http2.frame" level="OFF" />
+    <logger name="software.amazon.awssdk.request" level="OFF" />
+    <!-- The SigV4 signers log the canonical request, which carries the x-amz-security-token value. -->
+    <logger name="software.amazon.awssdk.http.auth.aws.internal.signer" level="OFF" />
+    <logger name="software.amazon.awssdk.auth.signer" level="OFF" />
+    <!-- Request lines carry the query string, such as the SSO credentials call's account_id. -->
+    <logger name="org.apache.hc.client5.http.impl.classic.MainClientExec" level="OFF" />
+    <logger name="org.apache.hc.client5.http.impl.async.HttpAsyncMainClientExec" level="OFF" />
+    <logger name="org.apache.http.impl.execchain.MainClientExec" level="OFF" />
+    <logger name="okhttp3.OkHttpClient" level="OFF" />
+    <logger name="io.fabric8.kubernetes.client.http.HttpLoggingInterceptor" level="OFF" />
+    <logger name="io.netty.handler.logging" level="OFF" />
+
     <root level="DEBUG">
         <appender-ref ref="INFO_FILE" />
         <appender-ref ref="DEBUG_FILE" />

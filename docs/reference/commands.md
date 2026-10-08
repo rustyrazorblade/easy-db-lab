@@ -36,6 +36,7 @@ easy-db-lab profile show
 Reads only the profile directory, so it runs from anywhere — no cluster workspace needed. Secret
 values are never printed: AxonOps and Tailscale are reported as `ENABLED` or `DISABLED`, and the
 AWS access key and secret are not shown at all.
+The SSH transport (`direct` or `ssm`) is shown as-is.
 
 The profile reported is the one named by `EASY_DB_LAB_PROFILE`, or `default` when that is unset:
 
@@ -58,6 +59,7 @@ Guides you through:
 
 - Email and AWS credentials collection
 - AWS credential validation
+- SSH transport selection (`direct` or `ssm`; see [SSH over SSM Session Manager](../user-guide/network-connectivity.md#ssh-over-ssm-session-manager))
 - Key pair generation
 - IAM role creation
 - Packer VPC infrastructure setup
@@ -411,6 +413,10 @@ easy-db-lab cassandra download-config [options]
 | Option | Description |
 |--------|-------------|
 | `--version` | Version to download config for |
+
+The files land in a directory named for the version (for example `5.0/`) in the workspace. An
+existing directory is never overwritten: the command reports that it already exists and skips the
+download. Delete the directory to download it again.
 
 ### cassandra start
 

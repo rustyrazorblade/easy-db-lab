@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
 import com.rustyrazorblade.easydblab.services.ResourceManager
 import org.koin.dsl.module
 
@@ -26,7 +27,9 @@ val proxyModule =
         // SOCKS proxy service - singleton to share state across requests.
         // Uses ProcessSocksProxyService which launches a detached OS process that
         // persists across JVM restarts and is reused via .socks5-proxy-state.
-        single<SocksProxyService> { ProcessSocksProxyService(get(), get()) }
+        single<SocksProxyService> {
+            ProcessSocksProxyService(get(), get(), verifyAttempts = get<SshRoute>().tunnelVerifyAttempts)
+        }
 
         // Proxy availability holder - singleton so DefaultCommandExecutor and the command it
         // executes share the same instance within a process.

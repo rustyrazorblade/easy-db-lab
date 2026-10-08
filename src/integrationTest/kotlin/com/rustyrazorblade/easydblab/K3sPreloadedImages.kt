@@ -18,7 +18,7 @@ import org.testcontainers.utility.DockerImageName
  * present before the first pod is scheduled. The host pulls each image at most once and caches it.
  */
 object K3sPreloadedImages {
-    /** The sandbox image K3s v1.30 starts every pod with. */
+    /** The sandbox image K3s starts every pod with ([SharedK3s.K3S_IMAGE] configures containerd with it). */
     const val PAUSE_IMAGE = "rancher/mirrored-pause:3.6"
 
     private const val AIRGAP_DIR = "/var/lib/rancher/k3s/agent/images"

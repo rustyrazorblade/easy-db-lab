@@ -16,6 +16,72 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RECONCILE="${SCRIPT_DIR}/edl-profiling-reconcile"
 
+# --- timeout -------------------------------------------------------------------
+
+# The reconciler time-boxes `asprof metrics` with GNU `timeout`, and so does this file's own
+# listener check. The nodes and CI have coreutils; a stock macOS machine has no `timeout` at all,
+# and without one the reconciler's call fails with 127 before the stub ever runs. That does not
+# just fail the metrics test: it makes the wedged-JVM test pass without exercising anything.
+#
+# So when there is no `timeout` on PATH, this harness puts one there for the length of the run. It
+# is perl because perl ships with macOS, and it does what GNU timeout does for the way it is used
+# here: it becomes its own process group, runs the command, and on expiry sends TERM to the command
+# and then to the group, so a hung stub's `sleep` dies too, and exits 124. Otherwise it exits with
+# the command's status, or 128+N if a signal killed the command. Where a real `timeout` exists the
+# shim is never written, so CI and the nodes test against coreutils.
+TIMEOUT_SHIM_DIR=""
+if ! command -v timeout >/dev/null 2>&1; then
+  TIMEOUT_SHIM_DIR="$(mktemp -d)"
+  trap 'rm -rf "$TIMEOUT_SHIM_DIR"' EXIT
+  cat >"$TIMEOUT_SHIM_DIR/timeout" <<'SHIM'
+#!/usr/bin/perl
+use strict;
+use warnings;
+use POSIX ();
+use Time::HiRes ();
+
+my $duration = shift @ARGV;
+my %unit = (s => 1, m => 60, h => 3600, d => 86400);
+if (!defined $duration || $duration !~ /^(\d+(?:\.\d+)?)([smhd]?)$/ || !@ARGV) {
+  print STDERR "usage: timeout DURATION COMMAND [ARG]...\n";
+  exit 125;
+}
+my $seconds = $1 * $unit{$2 || 's'};
+
+setpgrp(0, 0);
+my $child = fork();
+if (!defined $child) {
+  print STDERR "timeout: fork failed: $!\n";
+  exit 125;
+}
+if ($child == 0) {
+  exec { $ARGV[0] } @ARGV;
+  print STDERR "timeout: failed to run command '$ARGV[0]': $!\n";
+  POSIX::_exit($!{ENOENT} ? 127 : 126);
+}
+
+my $timed_out = 0;
+my $signal_group = sub {
+  my ($signal) = @_;
+  kill $signal, $child;
+  local $SIG{$signal} = 'IGNORE';
+  kill $signal, -$$;
+};
+$SIG{ALRM} = sub { $timed_out = 1; $signal_group->('TERM'); };
+$SIG{$_} = do { my $s = $_; sub { $signal_group->($s); } } for qw(TERM INT HUP);
+Time::HiRes::alarm($seconds) if $seconds > 0;
+
+waitpid($child, 0);
+my $status = $?;
+exit 124 if $timed_out;
+exit 128 + ($status & 127) if $status & 127;
+exit $status >> 8;
+SHIM
+  chmod +x "$TIMEOUT_SHIM_DIR/timeout"
+  PATH="$TIMEOUT_SHIM_DIR:$PATH"
+  export PATH
+fi
+
 tests_run=0
 tests_failed=0
 
@@ -1246,6 +1312,26 @@ test_a_directory_exactly_at_the_byte_ceiling_is_left_alone() {
   teardown
 }
 
+# The wedged-JVM test below asserts an absence: the profiler's numbers are missing because the call
+# was cut off. A `timeout` that never fires, or one that is not there at all, gives the same absence
+# for the wrong reason. So the `timeout` this run uses is pinned first: the real coreutils one on
+# Linux, or the harness's shim on a machine without it.
+test_the_timeout_on_path_behaves_like_gnu_timeout() {
+  local started elapsed
+  started=$SECONDS
+  timeout 1 sleep 10
+  assert_eq "a command that outlives its time box exits 124" "124" "$?"
+  elapsed=$((SECONDS - started))
+  if ((elapsed <= 4)); then
+    ok "and is cut off at the box, not when it finishes"
+  else
+    fail "and is cut off at the box, not when it finishes" "took ${elapsed}s for a 1s box"
+  fi
+  timeout 5 sh -c 'exit 3'
+  assert_eq "a command that finishes in time keeps its own exit status" "3" "$?"
+  assert_eq "and its output" "inside" "$(timeout 5 echo inside)"
+}
+
 # The persistence path must not be able to block on the condition it exists to survive.
 #
 # `finish` is what the TERM handler calls, and it runs write_metrics before write_effective_state.
@@ -1613,8 +1699,16 @@ test_the_readiness_probe_answers_for_the_native_transport() {
     return
   fi
 
+  if ! command -v nc >/dev/null 2>&1; then
+    fail "a native transport on a non-loopback address is ready" \
+      "nc is not installed, and it is what this test listens with"
+    return
+  fi
+
   # -k keeps the listener up after a connection completes, so the check below does not consume it.
-  nc -k -l "$address" "$port" >/dev/null 2>&1 &
+  local nc_errors
+  nc_errors="$(mktemp)"
+  nc -k -l "$address" "$port" >/dev/null 2>"$nc_errors" &
   listener=$!
 
   # Waited for by connecting to the address it is bound to, which shares no code with the socket-table
@@ -1623,10 +1717,17 @@ test_the_readiness_probe_answers_for_the_native_transport() {
   until timeout 1 bash -c "exec 3<>/dev/tcp/${address}/${port}" 2>/dev/null; do
     waited=$((waited + 1))
     if ((waited > 20)); then
-      fail "a native transport on a non-loopback address is ready" \
-        "could not open a listener on ${address}:${port}; is nc installed?"
+      # Three different failures land here, and the message has to say which one this was.
+      local why
+      if ! kill -0 "$listener" 2>/dev/null; then
+        why="nc exited instead of listening on ${address}:${port}: $(cat "$nc_errors")"
+      else
+        why="nc is running, but nothing accepted a connection on ${address}:${port} in 20 attempts"
+      fi
+      fail "a native transport on a non-loopback address is ready" "$why"
       kill "$listener" 2>/dev/null
       wait "$listener" 2>/dev/null
+      rm -f "$nc_errors"
       return
     fi
     sleep 0.1
@@ -1645,6 +1746,7 @@ test_the_readiness_probe_answers_for_the_native_transport() {
 
   kill "$listener" 2>/dev/null
   wait "$listener" 2>/dev/null
+  rm -f "$nc_errors"
 }
 
 # The bug this gate exists for killed a database on a live cluster.
@@ -2062,6 +2164,7 @@ test_unshipped_and_rejected_chunks_survive_past_both_bounds
 test_byte_ceiling_prunes_oldest_first
 test_a_chunk_exactly_on_the_age_cutoff_is_kept
 test_a_directory_exactly_at_the_byte_ceiling_is_left_alone
+test_the_timeout_on_path_behaves_like_gnu_timeout
 test_a_wedged_jvm_cannot_block_the_persistence_path
 test_recording_stops_at_the_size_bound
 test_recording_stops_at_the_size_bound_even_when_the_config_is_unreadable

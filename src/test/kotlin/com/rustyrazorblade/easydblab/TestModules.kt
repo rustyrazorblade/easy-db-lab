@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
@@ -149,6 +150,7 @@ object TestModules {
             // Using real AWS class with mocked clients ensures the service logic
             // is tested while preventing actual AWS API calls
             single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
+            single { InstanceRolePolicies(get()) }
 
             // Mock AWSClientFactory that returns the injected AWS service
             single<AWSClientFactory> {
@@ -266,6 +268,8 @@ object TestModules {
             single<SSHConnectionProvider> {
                 object : SSHConnectionProvider {
                     private val mockClient = MockSSHClient()
+
+                    override fun discard(host: Host) = Unit
 
                     override fun getConnection(host: Host): ISSHClient = mockClient
 

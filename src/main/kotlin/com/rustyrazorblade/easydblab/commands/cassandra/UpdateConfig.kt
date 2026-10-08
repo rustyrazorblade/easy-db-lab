@@ -50,7 +50,7 @@ class UpdateConfig : PicoBaseCommand() {
         // upload the patch file
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val it = host.toHost()
-            eventBus.emit(Event.Cassandra.ConfigFileUploading(file, "$it"))
+            eventBus.emit(Event.Cassandra.ConfigFileUploading(file, it.alias))
 
             val yaml =
                 context.yaml.readTree(
@@ -64,7 +64,7 @@ class UpdateConfig : PicoBaseCommand() {
                 .put("rpc_address", it.private)
                 .put("broadcast_rpc_address", it.private)
 
-            eventBus.emit(Event.Cassandra.ConfigPatching("$it"))
+            eventBus.emit(Event.Cassandra.ConfigPatching(it.alias))
             val tmp = Files.createTempFile("easydblab", "yaml")
             context.yaml.writeValue(tmp.toFile(), yaml)
 
@@ -90,7 +90,7 @@ class UpdateConfig : PicoBaseCommand() {
             // Create a temporary directory on the remote filesystem using mktemp
             val tempDir =
                 remoteOps.executeRemotely(it, "mktemp -d -t easydblab.XXXXXX").text.trim()
-            eventBus.emit(Event.Cassandra.TempDirCreated(tempDir, "$it"))
+            eventBus.emit(Event.Cassandra.TempDirCreated(tempDir, it.alias))
 
             // Upload files to the temporary directory first
             eventBus.emit(Event.Cassandra.ConfigFilesUploading(tempDir))
@@ -100,7 +100,7 @@ class UpdateConfig : PicoBaseCommand() {
             remoteOps.executeRemotely(it, "sudo mkdir -p ${resolvedVersion.conf}").text
 
             // Copy files from temp directory to the final location
-            eventBus.emit(Event.Cassandra.ConfigFilesCopying("$it", resolvedVersion.conf))
+            eventBus.emit(Event.Cassandra.ConfigFilesCopying(it.alias, resolvedVersion.conf))
             remoteOps.executeRemotely(it, "sudo cp -R $tempDir/* ${resolvedVersion.conf}/").text
 
             // Change ownership of all files
@@ -113,7 +113,7 @@ class UpdateConfig : PicoBaseCommand() {
             // Clean up the temporary directory
             remoteOps.executeRemotely(it, "rm -rf $tempDir").text
 
-            eventBus.emit(Event.Cassandra.ConfigUpdated("$it"))
+            eventBus.emit(Event.Cassandra.ConfigUpdated(it.alias))
         }
 
         if (restart) {

@@ -9,7 +9,13 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
+import com.rustyrazorblade.easydblab.providers.ssm.SsmCliCredentials
+import com.rustyrazorblade.easydblab.providers.ssm.SsmSessionCommandBuilder
+import com.rustyrazorblade.easydblab.providers.ssm.SsmSshRoute
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -54,8 +60,26 @@ class ClusterConfigurationServiceTest {
             DefaultClusterConfigurationService(
                 userConfigProvider,
                 eventBus,
+                DirectSshRoute(22),
             )
     }
+
+    private val ssmRoute =
+        SsmSshRoute(
+            SsmSessionCommandBuilder(
+                "us-west-2",
+                { SsmCliCredentials.NamedProfile("lab-profile") },
+                sshProxyWrapper = { "/profiles/lab/edl-ssm-proxy" },
+            ),
+            22,
+            { },
+        )
+
+    /** A service whose hosts are routed over SSM, as under a profile with the `ssm` transport. */
+    private val ssmService by lazy { DefaultClusterConfigurationService(userConfigProvider, eventBus, ssmRoute) }
+
+    @AfterEach
+    fun closeRoute() = ssmRoute.close()
 
     @Nested
     inner class WriteAllConfigurationFiles {
@@ -129,6 +153,81 @@ class ClusterConfigurationServiceTest {
             val content = envFile.readText()
             assertThat(content).contains("CLUSTER_NAME=\"test-cluster-cluster-123\"")
         }
+
+        @Test
+        fun `an ssm route sends every host through its own SSM session`() {
+            val clusterState =
+                createClusterState(
+                    controlHosts = listOf(ClusterHost("2.2.2.2", "10.0.0.2", "control0", "us-west-2a", "i-control")),
+                )
+
+            ssmService.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
+
+            val lines = File(tempDir.toFile(), "sshConfig").readLines()
+            assertThat(hostBlock(lines, "db0")).containsExactly("Host db0", " Hostname 1.1.1.1", proxyLine("i-12345"))
+            assertThat(hostBlock(lines, "control0")).contains(proxyLine("i-control"))
+        }
+
+        @Test
+        fun `an ssm route keeps idle sessions alive with keepalives that apply to every host`() {
+            ssmService.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
+
+            val lines = File(tempDir.toFile(), "sshConfig").readLines()
+            val firstHost = lines.indexOfFirst { it.startsWith("Host ") }
+            // Global, so before any Host block: Session Manager drops a session after 20 idle minutes.
+            assertThat(lines.subList(0, firstHost)).contains("ServerAliveInterval 30", "ServerAliveCountMax 3")
+        }
+
+        /** Keepalives start only after auth, so a session that passes no data needs its own bound. */
+        @Test
+        fun `an ssm route bounds the wait for the server's banner for every host`() {
+            ssmService.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
+
+            val lines = File(tempDir.toFile(), "sshConfig").readLines()
+            val firstHost = lines.indexOfFirst { it.startsWith("Host ") }
+            assertThat(lines.subList(0, firstHost)).contains("ConnectTimeout 30")
+        }
+
+        @Test
+        fun `the env sh fallback config routes hosts the same way as sshConfig`() {
+            ssmService.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
+
+            assertThat(File(tempDir.toFile(), "env.sh").readLines()).contains(proxyLine("i-12345"))
+        }
+
+        @Test
+        fun `a direct route leaves hosts without a ProxyCommand`() {
+            service.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
+
+            assertThat(File(tempDir.toFile(), "sshConfig").readText()).doesNotContain("ProxyCommand")
+            assertThat(File(tempDir.toFile(), "sshConfig").readText()).doesNotContain("ServerAlive")
+            assertThat(File(tempDir.toFile(), "sshConfig").readText()).doesNotContain("ConnectTimeout")
+            assertThat(File(tempDir.toFile(), "env.sh").readText()).doesNotContain("ProxyCommand")
+        }
+
+        @Test
+        fun `an ssm route refuses a host with no instance ID and writes no sshConfig`() {
+            val clusterState =
+                createClusterState(
+                    cassandraHosts = listOf(ClusterHost("1.1.1.1", "10.0.0.1", "db0", "us-west-2a", instanceId = "")),
+                )
+
+            assertThatThrownBy {
+                ssmService.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
+            }.isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("db0")
+            assertThat(File(tempDir.toFile(), "sshConfig")).doesNotExist()
+        }
+
+        private fun proxyLine(instanceId: String) =
+            " ProxyCommand /profiles/lab/edl-ssm-proxy aws ssm start-session --target $instanceId --document-name AWS-StartSSHSession " +
+                "--parameters portNumber=%p --region us-west-2 --profile lab-profile"
+
+        /** The lines of one `Host` block, from its `Host` line up to the blank line that ends it. */
+        private fun hostBlock(
+            lines: List<String>,
+            alias: String,
+        ): List<String> = lines.dropWhile { it != "Host $alias" }.takeWhile { it.isNotBlank() }
     }
 
     @Nested

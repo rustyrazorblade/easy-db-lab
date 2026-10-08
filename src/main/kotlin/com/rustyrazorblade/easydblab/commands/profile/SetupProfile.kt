@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.SetupProfileException
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.Policy
+import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
@@ -65,13 +66,30 @@ class SetupProfile : PicoBaseCommand() {
         eventBus.emit(Event.Setup.ProfileAlreadyConfigured(context.profile))
         eventBus.emit(Event.Setup.UpdatePrompt)
 
-        // Load existing config as User object
-        val userConfig = userConfigProvider.getUserConfig()
+        val userConfig = loadExistingUser(existingConfig)
 
         // Collect optional info, allowing updates
         collectAndSaveOptionalInfoWithUpdate(existingConfig, userConfig)
 
         eventBus.emit(Event.Setup.ConfigurationUpdated)
+    }
+
+    /**
+     * The saved profile as a [User]. A saved SSH transport this version cannot read would make the
+     * normal load fail, so in that case the User is rebuilt from the raw values with the default
+     * transport, the bad value is reported, and the update prompts that follow ask for it again.
+     */
+    private fun loadExistingUser(existingConfig: Map<String, Any>): User {
+        val unreadable =
+            existingConfig[SSH_TRANSPORT_KEY]?.toString()?.takeIf { SshTransport.parse(it) == null }
+                ?: return userConfigProvider.getUserConfig()
+
+        eventBus.emit(Event.Setup.InvalidSshTransport(unreadable, SshTransport.entries.map { it.configValue }))
+        val raw = { key: String -> (existingConfig[key] as? String).orEmpty() }
+        return createInitialUserConfig(
+            CoreCredentials(raw("email"), raw("region"), raw("awsProfile"), raw("awsAccessKey"), raw("awsSecret")),
+            existingConfig,
+        )
     }
 
     /**
@@ -138,6 +156,9 @@ class SetupProfile : PicoBaseCommand() {
     companion object {
         /** Maximum number of credential validation attempts before giving up. */
         const val MAX_CREDENTIAL_RETRIES = 3
+
+        /** The profile file's key for [User.sshTransport]. */
+        private const val SSH_TRANSPORT_KEY = "sshTransport"
     }
 
     /**
@@ -287,6 +308,8 @@ class SetupProfile : PicoBaseCommand() {
         userConfig.tailscaleClientId = tailscaleClientId
         userConfig.tailscaleClientSecret = tailscaleClientSecret
 
+        userConfig.sshTransport = existingSshTransport(existingConfig) ?: promptForSshTransport(SshTransport.Direct)
+
         userConfigProvider.saveUserConfig(userConfig)
         eventBus.emit(Event.Setup.ConfigurationSaved)
     }
@@ -328,9 +351,33 @@ class SetupProfile : PicoBaseCommand() {
                 secret = true,
             )
 
+        userConfig.sshTransport = promptForSshTransport(userConfig.sshTransport)
+
         userConfigProvider.saveUserConfig(userConfig)
         eventBus.emit(Event.Setup.ConfigSectionSaved)
     }
+
+    /**
+     * Asks how SSH should reach cluster nodes, re-asking until the answer is a known transport.
+     * Empty input keeps [current]. The value is not secret, so unlike [promptForUpdate] it is
+     * shown unmasked.
+     */
+    private fun promptForSshTransport(current: SshTransport): SshTransport {
+        eventBus.emit(Event.Setup.SshTransportConfigHeader)
+        val choices = SshTransport.entries.map { it.configValue }
+        val question = "SSH transport (${choices.joinToString(", ")})? [${current.configValue}]"
+
+        while (true) {
+            val answer = prompter.prompt(question, "")
+            if (answer.isBlank()) return current
+            SshTransport.parse(answer)?.let { return it }
+            eventBus.emit(Event.Setup.InvalidSshTransport(answer, choices))
+        }
+    }
+
+    /** The transport already saved in [existingConfig], or null when absent or unrecognized. */
+    private fun existingSshTransport(existingConfig: Map<String, Any>): SshTransport? =
+        (existingConfig[SSH_TRANSPORT_KEY] as? String)?.let { SshTransport.parse(it) }
 
     /**
      * Prompts for a field update, showing masked current value.

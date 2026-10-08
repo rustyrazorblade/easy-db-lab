@@ -27,7 +27,14 @@ data class ClusterHost(
     val instanceId: String = "",
 ) {
     /** Converts to the legacy [Host] type used by SSH/remote operations. */
-    fun toHost(): Host = Host(public = publicIp, private = privateIp, alias = alias, availabilityZone = availabilityZone)
+    fun toHost(): Host =
+        Host(
+            public = publicIp,
+            private = privateIp,
+            alias = alias,
+            availabilityZone = availabilityZone,
+            instanceId = instanceId,
+        )
 }
 
 /**

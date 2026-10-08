@@ -23,6 +23,7 @@ class DefaultKitHookExecutor(
     private val eventBus: EventBus,
     private val maxAttempts: Int = MAX_HOOK_ATTEMPTS,
     private val backoffBaseMs: Long = HOOK_BACKOFF_BASE_MS,
+    private val startProcess: (ProcessBuilder) -> Process = { it.start() },
 ) : KitHookExecutor {
     override fun firePostKitStart(triggeringKit: String) {
         val clusterState = clusterStateManager.load()
@@ -95,15 +96,25 @@ class DefaultKitHookExecutor(
             "Hook script path '${hook.script}' in kit '$declaringKit' escapes the kit directory"
         }
 
+        // A missing or non-executable script will not fix itself, so it fails at once and no
+        // process is started. Only what can be transient reaches the retry below.
+        unrunnableReason(scriptFile)?.let { reason ->
+            eventBus.emit(Event.Kit.HookFailed(kit = declaringKit, hook = hook.script, reason = reason))
+            return
+        }
+
+        // Checked, so a script that exists and is executable but fails to start (a checked
+        // IOException such as "Text file busy") is retried like a non-zero exit. The policy
+        // retries everything but an interrupt.
         runCatching {
             Retry
-                .decorateSupplier(retry) {
+                .decorateCheckedSupplier(retry) {
                     val process =
                         ProcessBuilder(scriptFile.absolutePath)
                             .directory(context.workingDirectory)
                             .inheritIO()
                             .also { pb -> pb.environment().putAll(envVars) }
-                            .start()
+                            .let(startProcess)
                     try {
                         val exitCode = process.waitFor()
                         if (exitCode != 0) throw RuntimeException("hook script exited with code $exitCode")
@@ -112,6 +123,7 @@ class DefaultKitHookExecutor(
                     }
                 }.get()
         }.onFailure { e ->
+            if (e is InterruptedException) Thread.currentThread().interrupt()
             val cause = e.cause ?: e
             eventBus.emit(
                 Event.Kit.HookFailed(
@@ -122,6 +134,14 @@ class DefaultKitHookExecutor(
             )
         }
     }
+
+    /** Why [scriptFile] cannot be run at all, or null when it is a regular, executable file. */
+    private fun unrunnableReason(scriptFile: File): String? =
+        when {
+            !scriptFile.isFile -> "hook script not found: ${scriptFile.path}"
+            !scriptFile.canExecute() -> "hook script is not executable: ${scriptFile.path}"
+            else -> null
+        }
 
     companion object {
         private val log = KotlinLogging.logger {}

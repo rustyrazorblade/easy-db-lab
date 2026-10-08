@@ -85,12 +85,14 @@ class ProcessSocksProxyServiceUnitTest {
         launcher: SshProcessLauncher =
             SshProcessLauncher { _, _ -> error("ssh launch not expected in this test") },
         portSelector: LocalPortSelector = LocalPortSelector { DEFAULT_TEST_PORT },
+        verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
     ) = ProcessSocksProxyService(
         Context.forCli(tempDir).copy(workingDirectory = tempDir),
         probe,
         verifyDelay = VERIFY_DELAY,
         processLauncher = launcher,
         portSelector = portSelector,
+        verifyAttempts = verifyAttempts,
     )
 
     /** The `-D` port each launched ssh command was handed, in launch order. */
@@ -355,6 +357,22 @@ class ProcessSocksProxyServiceUnitTest {
             service(probe = probe).verifyTunnelReachable(process, port = 1080, targetPrivateIp = "10.0.1.5", logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("SOCKS5 proxy")
+        verify(probe, times(Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS)).isReachable(1080, "10.0.1.5", SSH_PORT)
+    }
+
+    @Test
+    fun `verify loop probes for the attempt budget the SSH route supplies`() {
+        // The ssm transport's slower tunnel set-up gets a longer budget; a direct tunnel keeps its short one.
+        val process = aliveProcess()
+        val probe = mock<TunnelReachabilityProbe>()
+        whenever(probe.isReachable(any<Int>(), any<String>(), any<Int>())).thenReturn(false)
+
+        assertThatThrownBy {
+            service(probe = probe, verifyAttempts = Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)
+                .verifyTunnelReachable(process, port = 1080, targetPrivateIp = "10.0.1.5", logFile = logFile())
+        }.isInstanceOf(IllegalStateException::class.java)
+
+        verify(probe, times(Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)).isReachable(1080, "10.0.1.5", SSH_PORT)
     }
 
     @Test

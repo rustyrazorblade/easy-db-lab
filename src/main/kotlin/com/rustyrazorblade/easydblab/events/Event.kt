@@ -204,6 +204,25 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `cassandra download-config` left the workspace's config directory for a version as it was,
+         * because it already exists, so nothing was downloaded.
+         *
+         * @property directory the existing directory, relative to the workspace (for example `5.0`)
+         */
+        @Serializable
+        @SerialName("Cassandra.ConfigDownloadSkipped")
+        data class ConfigDownloadSkipped(
+            val directory: String,
+        ) : Cassandra {
+            override fun toDisplayString(): String = "Config directory $directory already exists; skipping the download"
+        }
+
+        /**
+         * `cassandra use` is switching hosts to [version].
+         *
+         * @property hostsFilter the `--hosts` filter as given; blank means every db host
+         */
         @Serializable
         @SerialName("Cassandra.UsingVersion")
         data class UsingVersion(
@@ -211,7 +230,8 @@ sealed interface Event {
             val hostCount: Int,
             val hostsFilter: String,
         ) : Cassandra {
-            override fun toDisplayString(): String = "Using version $version on $hostCount hosts, filter: $hostsFilter"
+            override fun toDisplayString(): String =
+                "Using version $version on $hostCount hosts, filter: ${hostsFilter.ifBlank { "all hosts" }}"
         }
 
         @Serializable
@@ -3180,6 +3200,21 @@ sealed interface Event {
             override fun toDisplayString(): String = "EC2 role ready: $roleName"
         }
 
+        /**
+         * An existing instance role lacked inline policies in its current set, and they were put on it.
+         *
+         * @property roleName the role that was upgraded
+         * @property policyNames the inline policies it was missing
+         */
+        @Serializable
+        @SerialName("AwsSetup.InstanceRolePoliciesAdded")
+        data class InstanceRolePoliciesAdded(
+            val roleName: String,
+            val policyNames: List<String>,
+        ) : AwsSetup {
+            override fun toDisplayString(): String = "Added IAM policies to $roleName: ${policyNames.joinToString(", ")}"
+        }
+
         @Serializable
         @SerialName("AwsSetup.EmrServiceRoleReady")
         data class EmrServiceRoleReady(
@@ -3694,12 +3729,22 @@ sealed interface Event {
             override fun toDisplayString(): String = "Waiting for SSH to come up.."
         }
 
+        /**
+         * `up`'s SSH readiness check failed and will run again.
+         *
+         * @property attempt how many attempts have failed so far
+         * @property lastError the message of the failure that triggered this retry, so an
+         *   operator can tell a node still booting from a fault that will never clear
+         */
         @Serializable
         @SerialName("Provision.SshRetrying")
         data class SshRetrying(
             val attempt: Int,
+            val lastError: String? = null,
         ) : Provision {
-            override fun toDisplayString(): String = "SSH still not up yet, waiting... (attempt $attempt)"
+            override fun toDisplayString(): String =
+                "SSH still not up yet, waiting... (attempt $attempt)" +
+                    lastError?.let { ": ${it.lineSequence().first()}" }.orEmpty()
         }
 
         @Serializable
@@ -4551,6 +4596,33 @@ sealed interface Event {
             override fun toDisplayString(): String = "Pulling: $current / $total"
         }
 
+        /**
+         * A container image is being built locally, which happens the first time an image the tool
+         * derives from a packaged Dockerfile is needed (the SSM-capable Packer image).
+         *
+         * @property imageTag the tag the built image will carry
+         */
+        @Serializable
+        @SerialName("Docker.ImageBuilding")
+        data class ImageBuilding(
+            val imageTag: String,
+        ) : Docker {
+            override fun toDisplayString(): String = "Building image $imageTag (first use only; this can take a minute)..."
+        }
+
+        /**
+         * A locally built container image is ready.
+         *
+         * @property imageTag the tag the built image carries
+         */
+        @Serializable
+        @SerialName("Docker.ImageBuilt")
+        data class ImageBuilt(
+            val imageTag: String,
+        ) : Docker {
+            override fun toDisplayString(): String = "Built image $imageTag"
+        }
+
         @Serializable
         @SerialName("Docker.ExecutionWorkDir")
         data class ExecutionWorkDir(
@@ -5030,6 +5102,38 @@ sealed interface Event {
                 """.trimMargin()
         }
 
+        /** Introduces the SSH transport prompt in `profile setup`, explaining the two choices. */
+        @Serializable
+        @SerialName("Setup.SshTransportConfigHeader")
+        data object SshTransportConfigHeader : Setup {
+            override fun toDisplayString(): String =
+                """
+                |
+                |--- SSH Transport ---
+                |direct: connect to each node's public IP on port 22 (default)
+                |ssm:    tunnel SSH through AWS SSM Session Manager, for networks that block or
+                |        re-route outbound port 22. Needs the AWS CLI and session-manager-plugin.
+                """.trimMargin()
+        }
+
+        /**
+         * An SSH transport value, typed at the setup prompt or saved in the profile, is not one this
+         * version knows.
+         *
+         * @property value the rejected value
+         * @property choices the values that are accepted
+         */
+        @Serializable
+        @SerialName("Setup.InvalidSshTransport")
+        data class InvalidSshTransport(
+            val value: String,
+            val choices: List<String>,
+        ) : Setup {
+            override fun toDisplayString(): String = "'$value' is not an SSH transport. Choose one of: ${choices.joinToString(", ")}"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.ConfigSectionSaved")
         data object ConfigSectionSaved : Setup {
@@ -5328,6 +5432,60 @@ sealed interface Event {
             val remoteDir: String,
         ) : Ssh {
             override fun toDisplayString(): String = "Uploading directory $localDir to $remoteDir"
+        }
+
+        /**
+         * The profile's SSH transport is `ssm`, but programs it needs cannot run on this machine.
+         *
+         * @param faults one per tool: not installed, exited non-zero, or timed out
+         */
+        @Serializable
+        @SerialName("Ssh.SsmToolsMissing")
+        data class SsmToolsMissing(
+            val faults: List<ToolFault>,
+        ) : Ssh {
+            /** How a tool's `--version` check failed. */
+            @Serializable
+            enum class Reason {
+                NotFound,
+                Failed,
+                TimedOut,
+            }
+
+            /**
+             * One tool that cannot run.
+             *
+             * @property executable the program checked
+             * @property reason how its check failed
+             * @property exitCode its exit code, when it ran and failed
+             * @property output what it printed, when it ran and failed
+             * @property timeoutSeconds how long it was given, when it hung
+             * @property installHint how to install it, only when it is not on PATH
+             */
+            @Serializable
+            data class ToolFault(
+                val executable: String,
+                val reason: Reason,
+                val exitCode: Int? = null,
+                val output: String? = null,
+                val timeoutSeconds: Long? = null,
+                val installHint: String? = null,
+            ) {
+                /** One line saying what happened and, for a missing tool, how to install it. */
+                fun describe(): String =
+                    when (reason) {
+                        Reason.NotFound -> "not found on PATH. Install it: $installHint"
+                        Reason.Failed ->
+                            "'$executable --version' exited $exitCode: ${output.orEmpty().trim().ifEmpty { "(no output)" }}"
+                        Reason.TimedOut -> "'$executable --version' did not finish within ${timeoutSeconds}s"
+                    }
+            }
+
+            override fun toDisplayString(): String =
+                "This profile tunnels SSH over SSM Session Manager, but these tools cannot run on this machine:\n" +
+                    faults.joinToString("\n") { "  ${it.executable}: ${it.describe()}" }
+
+            override fun isError(): Boolean = true
         }
     }
 

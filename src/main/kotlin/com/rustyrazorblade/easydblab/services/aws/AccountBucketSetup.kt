@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
@@ -19,6 +18,7 @@ class AccountBucketSetup(
     private val clusterStateManager: ClusterStateManager,
     private val compactorService: CompactorService,
     private val eventBus: EventBus,
+    private val awsResourceSetup: AWSResourceSetupService,
 ) {
     private companion object {
         private val log = KotlinLogging.logger {}
@@ -80,14 +80,15 @@ class AccountBucketSetup(
     }
 
     /**
-     * Re-applies the S3Access inline policy and the account bucket policy, so existing roles and
-     * the bucket carry the latest permissions and delete denies. Both are idempotent: PutRolePolicy
-     * and PutBucketPolicy overwrite what is there.
+     * Re-applies the instance role's inline policies (S3Access and SessionManagerInstance) and the
+     * account bucket policy, so a role created by an older version and the bucket carry the latest
+     * permissions and delete denies. Both are idempotent: PutRolePolicy and PutBucketPolicy leave
+     * the same end state however often they run.
      */
     private fun reapplyPolicies(bucket: String) {
         eventBus.emit(Event.Provision.IamUpdating)
-        s3BucketService.attachS3Policy(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
+        awsResourceSetup.reapplyInstanceRolePolicies()
         s3BucketService.putBucketPolicy(bucket)
-        log.debug { "S3 policy re-applied successfully" }
+        log.debug { "Instance role and bucket policies re-applied successfully" }
     }
 }

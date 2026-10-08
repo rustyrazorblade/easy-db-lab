@@ -21,6 +21,7 @@ import org.koin.test.get
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
 
@@ -242,6 +243,115 @@ class KitHookExecutorTest : BaseKoinTest() {
         assertThat(failures[0].kit).isEqualTo("presto")
         assertThat(failures[0].hook).isEqualTo("bin/update-catalogs.sh")
     }
+
+    /**
+     * Starting a hook script can fail with a checked IOException, for example "Text file busy"
+     * right after the script was written. The hook retry is meant to cover every failure but an
+     * interrupt, so that start must be retried, not reported on the first attempt.
+     */
+    @Test
+    fun `a hook script that fails to start is retried and then runs`() {
+        val outputFile = File(workingDir, "retried.txt")
+        writeHookKit("""echo ran > "${outputFile.absolutePath}"""")
+        var launches = 0
+        val retrying =
+            executorStarting { builder ->
+                launches++
+                if (launches == 1) throw IOException("Cannot run program: error=26, Text file busy")
+                builder.start()
+            }
+
+        retrying.firePostKitStart("cassandra")
+
+        assertThat(launches).isEqualTo(2)
+        assertThat(outputFile).exists()
+        assertThat(capturedEvents.filterIsInstance<Event.Kit.HookFailed>()).isEmpty()
+    }
+
+    /** A missing script will not appear by waiting, so it is reported at once and nothing is started. */
+    @Test
+    fun `a missing hook script fails at once without starting a process`() {
+        val kitDir = writeHookKit("")
+        var launches = 0
+        val executor =
+            executorStarting {
+                launches++
+                it.start()
+            }
+
+        executor.firePostKitStart("cassandra")
+
+        assertThat(launches).isZero()
+        val script = File(kitDir, "bin/update-catalogs.sh").canonicalPath
+        assertThat(capturedEvents.filterIsInstance<Event.Kit.HookFailed>().map { it.reason })
+            .containsExactly("hook script not found: $script")
+    }
+
+    /** Nor will a missing execute bit: it is reported at once and nothing is started. */
+    @Test
+    fun `a hook script without the execute bit fails at once without starting a process`() {
+        val kitDir = writeHookKit("true")
+        val script = File(kitDir, "bin/update-catalogs.sh")
+        Files.setPosixFilePermissions(script.toPath(), setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE))
+        var launches = 0
+        val executor =
+            executorStarting {
+                launches++
+                it.start()
+            }
+
+        executor.firePostKitStart("cassandra")
+
+        assertThat(launches).isZero()
+        assertThat(capturedEvents.filterIsInstance<Event.Kit.HookFailed>().map { it.reason })
+            .containsExactly("hook script is not executable: ${script.canonicalPath}")
+    }
+
+    /** An interrupt asks the thread to stop: the hook is not run again, and the interrupt survives. */
+    @Test
+    fun `an interrupted hook is not retried and keeps the interrupt`() {
+        writeHookKit("true")
+        var launches = 0
+        val interrupted =
+            executorStarting {
+                launches++
+                throw InterruptedException("stop")
+            }
+
+        try {
+            interrupted.firePostKitStart("cassandra")
+
+            assertThat(launches).isEqualTo(1)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+            assertThat(capturedEvents.filterIsInstance<Event.Kit.HookFailed>()).hasSize(1)
+        } finally {
+            Thread.interrupted()
+        }
+    }
+
+    private fun writeHookKit(hookScript: String) =
+        writeKit(
+            name = "presto",
+            yaml =
+                """
+                name: presto
+                hooks:
+                  post-workload-start:
+                    script: bin/update-catalogs.sh
+                """.trimIndent(),
+            hookScript = hookScript,
+        )
+
+    /** An executor that allows three attempts with no backoff, starting each hook through [startProcess]. */
+    private fun executorStarting(startProcess: (ProcessBuilder) -> Process) =
+        DefaultKitHookExecutor(
+            context = get(),
+            clusterStateManager = mockClusterStateManager,
+            eventBus = eventBus,
+            maxAttempts = 3,
+            backoffBaseMs = 0L,
+            startProcess = startProcess,
+        )
 
     @Test
     fun `hook skipped when declaring kit is not in running kits`() {

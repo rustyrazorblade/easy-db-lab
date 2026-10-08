@@ -523,7 +523,7 @@ class AWS(
                         PutRolePolicyRequest
                             .builder()
                             .roleName(roleName)
-                            .policyName("S3Access")
+                            .policyName(Constants.AWS.InlinePolicies.S3_ACCESS)
                             .policyDocument(s3Policy)
                             .build()
 

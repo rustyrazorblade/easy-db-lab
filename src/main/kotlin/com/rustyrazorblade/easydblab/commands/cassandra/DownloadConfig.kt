@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
 import io.github.oshai.kotlinlogging.KotlinLogging
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
@@ -39,12 +40,18 @@ class DownloadConfig : PicoBaseCommand() {
         logger.info {
             "Original version: $version.  Resolved version: ${resolvedVersion.versionString}. "
         }
-        val localDir = resolvedVersion.localDir.toFile()
+        // Resolved against the workspace, where every other command looks for it, not the JVM's cwd.
+        val localDir =
+            context.workingDirectory
+                .toPath()
+                .resolve(resolvedVersion.localDir)
+                .toFile()
 
-        // Don't overwrite.
-        // Future enhancement: Add --force flag to overwrite and support
-        // node-specific configurations
-        if (!localDir.exists()) {
+        // Never overwrite: the directory may hold the operator's own edits. Say so, because
+        // otherwise the command finishes silently having changed nothing.
+        if (localDir.exists()) {
+            eventBus.emit(Event.Cassandra.ConfigDownloadSkipped(resolvedVersion.localDir.toString()))
+        } else {
             localDir.mkdirs()
 
             remoteOps.downloadDirectory(

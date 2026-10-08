@@ -25,6 +25,13 @@ import java.util.concurrent.TimeUnit
  * resources (PersistentVolumes, node paths) keeps its own container.
  */
 object SharedK3s {
+    /**
+     * The K3s image every K3s integration test starts. It must match `K3S_VERSION` in
+     * `packer/base/install/install_k3s.sh`, so the tests run the Kubernetes release the clusters
+     * run; the Docker tag writes K3s's `+` as `-`.
+     */
+    const val K3S_IMAGE = "rancher/k3s:v1.35.1-k3s1"
+
     /** Pod image preloaded into the cluster, so a test's pods never pull from a registry. */
     const val BUSYBOX_IMAGE = "busybox:1.36"
 
@@ -34,7 +41,7 @@ object SharedK3s {
     private const val NAMESPACE_READY_TIMEOUT_SECONDS = 60L
 
     private val container: K3sContainer by lazy {
-        K3sContainer(DockerImageName.parse("rancher/k3s:v1.30.6-k3s1"))
+        K3sContainer(DockerImageName.parse(K3S_IMAGE))
             .withPrivilegedMode(true)
             .withCreateContainerCmdModifier { cmd ->
                 cmd.hostConfig!!

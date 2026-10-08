@@ -44,6 +44,8 @@ data class User(
     var tailscaleTag: String = Constants.Tailscale.DEFAULT_DEVICE_TAG,
     // Profile-level S3 bucket for shared resources (AMIs, base images, etc.)
     var s3Bucket: String = "",
+    // How SSH reaches cluster nodes from this machine: directly, or tunneled over SSM Session Manager
+    var sshTransport: SshTransport = SshTransport.Direct,
 ) {
     /**
      * Returns true when Tailscale credentials are configured in this profile.

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.io.IOException
 import java.time.Duration
 
 /**
@@ -74,6 +75,32 @@ class TempoTailFlushTest {
 
         assertThat(drain(http)).isEqualTo(SignalReport.Traces)
         assertThat(http.calls).hasSize(4)
+    }
+
+    /** A dropped connection to Tempo during the drain is a checked IOException; the drain must ride it out. */
+    @Test
+    fun `a metrics read that fails with an IOException is retried`() {
+        val recorded = RecordingObservabilityHttp(metrics(created = 7), metrics(created = 7))
+        var failures = 1
+        val http =
+            object : ObservabilityHttp by recorded {
+                override fun get(
+                    port: Int,
+                    pathAndQuery: String,
+                    timeout: Duration,
+                ): ObservabilityResponse {
+                    if (failures-- > 0) throw IOException("unexpected end of stream")
+                    return recorded.get(port, pathAndQuery, timeout)
+                }
+            }
+        walListing("blocks/acme/01HDONE/meta.json\nblocks/acme/01HDONE/flushed")
+
+        val report =
+            TempoTailFlush(http, remoteOps, FlushTimeouts(tempoDrain = Duration.ofSeconds(5)), pollInterval = Duration.ofMillis(10))
+                .flush(control, state, FlushProgress(FlushStep.TEMPO_LIVE_TRACES, "tempo"))
+
+        assertThat(report).isEqualTo(SignalReport.Traces)
+        assertThat(recorded.calls).hasSize(2)
     }
 
     @Test

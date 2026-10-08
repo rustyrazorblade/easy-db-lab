@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.containers
 
 import com.github.dockerjava.api.model.AccessMode
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.Containers
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.Docker
 import com.rustyrazorblade.easydblab.VolumeMapping
@@ -10,6 +9,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.BuildArgsMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.CassandraVersion
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -34,6 +34,7 @@ class Packer(
     var directory: String,
 ) : KoinComponent {
     private val docker: Docker by inject { parametersOf(context) }
+    private val packerImage: PackerImage by inject { parametersOf(docker) }
     private val eventBus: EventBus by inject()
     private val credentialsProvider: AwsCredentialsProvider by inject()
     private val user: User by inject()
@@ -52,6 +53,48 @@ class Packer(
 
     companion object {
         private const val PACKER_TIMEOUT_MINUTES = 60L
+
+        /**
+         * The `packer build` arguments for one AMI build.
+         *
+         * Under the `ssm` SSH transport Packer reaches the builder through Session Manager instead of
+         * the instance's public IP, so a network that blocks outbound port 22 can still build AMIs.
+         *
+         * @param releaseVersion the version to stamp a release build with, or null for a timestamped build
+         */
+        internal fun buildCommand(
+            name: String,
+            region: String,
+            arch: Arch,
+            user: User,
+            releaseVersion: String?,
+        ): List<String> =
+            buildList {
+                add("build")
+                // Always keep the instance on failure so we can capture diagnostics from it
+                // before deciding whether to tear it down (see handleBuildFailure).
+                add("-on-error=abort")
+                addVar("region", region)
+                addVar("arch", arch.type)
+                addVar("s3_bucket", user.s3Bucket)
+                // Build with the user's own AWS keypair so an instance left up via --keep-on-error
+                // can be SSH'd into with ${profileDir}/secret.pem.
+                addVar("ssh_keypair_name", user.keyName)
+                addVar("ssh_private_key_file", Constants.Paths.SSH_KEY_MOUNT)
+                if (user.sshTransport == SshTransport.Ssm) {
+                    addVar("ssh_interface", Constants.Packer.SESSION_MANAGER_INTERFACE)
+                }
+                releaseVersion?.let { addVar("release_version", it) }
+                add(name)
+            }
+
+        private fun MutableList<String>.addVar(
+            key: String,
+            value: String,
+        ) {
+            add("-var")
+            add("$key=$value")
+        }
     }
 
     // todo include the region defined in the profile
@@ -74,46 +117,20 @@ class Packer(
 
         val keepUp = keepOnError || keepOnErrorFromEnv()
 
-        val command =
-            mutableListOf(
-                "build",
-                // Always keep the instance on failure so we can capture diagnostics from it
-                // before deciding whether to tear it down (see handleBuildFailure).
-                "-on-error=abort",
-            )
-
         require(user.keyName.isNotEmpty() && secretKeyFile.exists()) {
             "AWS keypair not configured (key: '${user.keyName}', file: ${secretKeyFile.absolutePath}). Run profile setup first."
         }
 
-        command.addAll(
-            listOf(
-                "-var",
-                "region=$region",
-                "-var",
-                "arch=${arch.type}",
-                "-var",
-                "s3_bucket=${user.s3Bucket}",
-                // Build with the user's own AWS keypair so an instance left up via --keep-on-error
-                // can be SSH'd into with ${profileDir}/secret.pem.
-                "-var",
-                "ssh_keypair_name=${user.keyName}",
-                "-var",
-                "ssh_private_key_file=${Constants.Paths.SSH_KEY_MOUNT}",
-            ),
-        )
-
-        if (isRelease) {
-            // When passing the release flag,
-            // we use the release version as the image version.
-            // We also make the AMI public.
-            release = true
-            command.addAll(
-                arrayOf("-var", "release_version=${context.version}"),
+        // A release build uses the release version as the image version and makes the AMI public.
+        release = isRelease
+        val command =
+            buildCommand(
+                name = name,
+                region = region,
+                arch = arch,
+                user = user,
+                releaseVersion = if (isRelease) context.version.toString() else null,
             )
-        }
-
-        command.add(name)
 
         // refactor to exit with status 1 if the Result is failure
         // Spread operator is required to pass array to vararg parameter
@@ -161,7 +178,7 @@ class Packer(
 
         val ip = runCatching { ec2InstanceService.describeInstances(listOf(instanceId)).firstOrNull()?.publicIp }.getOrNull()
         if (!ip.isNullOrBlank()) {
-            captureAndPrintDiagnostics(ip)
+            captureAndPrintDiagnostics(ip, instanceId)
         }
 
         if (keepUp) {
@@ -184,14 +201,17 @@ class Packer(
      * SSHes into the kept build instance and prints the most useful failure diagnostics.
      * Best-effort: if the instance is unreachable, prints manual SSH instructions instead.
      */
-    private fun captureAndPrintDiagnostics(ip: String) {
+    private fun captureAndPrintDiagnostics(
+        ip: String,
+        instanceId: String,
+    ) {
         val cmd =
             "echo '--- df / ---'; df -h /; " +
                 "echo '--- /tmp/jdk-install.log (tail) ---'; tail -60 /tmp/jdk-install.log 2>/dev/null; " +
                 "echo '--- /var/log/apt/term.log (tail) ---'; sudo tail -100 /var/log/apt/term.log 2>/dev/null; " +
                 "echo '--- dmesg (tail) ---'; sudo dmesg 2>/dev/null | tail -40"
         runCatching {
-            val host = Host(public = ip, private = "", alias = "packer-build", availabilityZone = "")
+            val host = Host(public = ip, private = "", alias = "packer-build", availabilityZone = "", instanceId = instanceId)
             val response = remoteOps.executeRemotely(host, cmd, output = false)
             println("==== build instance diagnostics ($ip) ====")
             println(response.text)
@@ -205,7 +225,8 @@ class Packer(
     private fun execute(vararg commands: String): Result<String> {
         require(commands.isNotEmpty()) { "Commands cannot be empty" }
 
-        docker.pullImage(Containers.PACKER)
+        // Resolved first, so a failed image build stops before Packer launches any instance.
+        val image = packerImage.ensure(user.sshTransport)
 
         val args = commands.toMutableList()
 
@@ -252,7 +273,7 @@ class Packer(
             // Mount the user's private key so packer authenticates with their keypair
             .addVolume(
                 VolumeMapping(secretKeyFile.absolutePath, Constants.Paths.SSH_KEY_MOUNT, AccessMode.ro),
-            ).addEnv("${Constants.Packer.AWS_CREDENTIALS_ENV}=$creds")
-            .runContainer(Containers.PACKER, args, containerWorkingDir, packerTimeout)
+            ).addEnv("${Constants.AWS.SHARED_CREDENTIALS_FILE_ENV}=$creds")
+            .runContainer(image, args, containerWorkingDir, packerTimeout)
     }
 }

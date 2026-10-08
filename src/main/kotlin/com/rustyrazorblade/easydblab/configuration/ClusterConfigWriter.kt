@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.Constants
 import java.io.BufferedWriter
 
 /**
@@ -15,11 +16,14 @@ object ClusterConfigWriter {
      * @param writer BufferedWriter to write SSH config to
      * @param identityFile Path to the SSH identity file
      * @param hosts Map of server types to their hosts
+     * @param proxyCommands the `ProxyCommand` for each host alias that has one; a host without an
+     *   entry is dialed at its public IP directly
      */
     fun writeSshConfig(
         writer: BufferedWriter,
         identityFile: String,
         hosts: Map<ServerType, List<ClusterHost>>,
+        proxyCommands: Map<String, String> = emptyMap(),
     ) {
         // write standard stuff first
         writer.appendLine("StrictHostKeyChecking=no")
@@ -31,12 +35,25 @@ object ClusterConfigWriter {
         writer.appendLine("UserKnownHostsFile=/dev/null")
         writer.appendLine("User ubuntu")
         writer.appendLine("IdentityFile $identityFile")
+        if (proxyCommands.isNotEmpty()) {
+            // Session Manager ends a session after 20 idle minutes, which silently kills a quiet
+            // long-lived connection such as the SOCKS tunnel. Keepalives count as traffic, so
+            // they hold the session open, and they make ssh exit promptly if it is dropped anyway.
+            writer.appendLine("ServerAliveInterval ${Constants.Ssm.SSH_KEEPALIVE_INTERVAL_SECONDS}")
+            writer.appendLine("ServerAliveCountMax ${Constants.Ssm.SSH_KEEPALIVE_COUNT_MAX}")
+            // Keepalives start only after authentication, so a session whose plugin connects but
+            // passes no data would hang ssh forever. ConnectTimeout bounds the wait for the server's
+            // banner, ProxyCommand included (checked on OpenSSH 9.6 and 10.3).
+            writer.appendLine("ConnectTimeout ${Constants.Ssm.SSH_CONNECT_TIMEOUT_SECONDS}")
+        }
 
         // get each server type and get the hosts for type and add it to the sshConfig.
         ServerType.entries.forEach { serverType ->
             hosts[serverType]?.forEach { host ->
                 writer.appendLine("Host ${host.alias}")
                 writer.appendLine(" Hostname ${host.publicIp}")
+                // After Hostname, never before it: env.sh reads Hostname with `grep -A 1 "^Host <alias>"`.
+                proxyCommands[host.alias]?.let { writer.appendLine(" ProxyCommand $it") }
                 writer.appendLine()
             }
         }
@@ -50,11 +67,14 @@ object ClusterConfigWriter {
      * @param writer BufferedWriter to write environment file to
      * @param hosts Map of server types to their hosts
      * @param clusterName Name of the cluster for prompt customization
+     * @param proxyCommands the same per-host `ProxyCommand`s as the cluster's `sshConfig`, so the
+     *   fallback config this file writes when `sshConfig` is missing routes hosts the same way
      */
     fun writeEnvironmentFile(
         writer: BufferedWriter,
         hosts: Map<ServerType, List<ClusterHost>>,
         clusterName: String,
+        proxyCommands: Map<String, String> = emptyMap(),
     ) {
         // write the initial SSH aliases
         writer.appendLine("#!/bin/bash")
@@ -116,7 +136,7 @@ object ClusterConfigWriter {
         writer.appendLine("  fi")
         writer.appendLine("  echo \"Writing \$SSH_CONFIG\"")
         writer.appendLine("  tee \$SSH_CONFIG <<- EOF")
-        writeSshConfig(writer, "\$identity_file", hosts)
+        writeSshConfig(writer, "\$identity_file", hosts, proxyCommands)
         writer.appendLine("EOF")
         writer.appendLine("fi")
         writer.flush()

@@ -108,11 +108,6 @@ class AwsS3BucketService(
     ): String? = aws.findS3BucketByTag(tagKey, tagValue)
 
     /**
-     * Attaches an inline S3 access policy to an IAM role.
-     */
-    fun attachS3Policy(roleName: String) = aws.attachS3Policy(roleName)
-
-    /**
      * Finds all per-cluster data buckets (easy-db-lab-data-*) tagged with easy_cass_lab.
      */
     fun findDataBuckets(): List<String> = aws.findDataBuckets()

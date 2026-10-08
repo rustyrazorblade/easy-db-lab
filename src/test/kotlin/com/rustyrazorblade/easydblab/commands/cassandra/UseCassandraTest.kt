@@ -99,6 +99,28 @@ class UseCassandraTest : BaseKoinTest() {
         assertThat(output).contains("Using version 4.1")
     }
 
+    /** The host filter is reported as typed, not as the internal mixin object. */
+    @Test
+    fun `the version announcement reports the host filter`() {
+        val command = UseCassandra()
+        command.version = "4.1"
+        command.hosts.hostList = "db0"
+        command.execute()
+
+        val output = outputHandler.messages.joinToString("\n")
+        assertThat(output).contains("Using version 4.1 on 1 hosts, filter: db0")
+        assertThat(output).doesNotContain("HostsMixin", "Host(", "i-db0")
+    }
+
+    @Test
+    fun `without a host filter the announcement says all hosts`() {
+        val command = UseCassandra()
+        command.version = "4.1"
+        command.execute()
+
+        assertThat(outputHandler.messages.joinToString("\n")).contains("Using version 4.1 on 1 hosts, filter: all hosts")
+    }
+
     @Test
     fun `execute updates version in cluster state`() {
         val command = UseCassandra()

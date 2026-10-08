@@ -159,7 +159,17 @@ object Constants {
     // Packer configuration
     object Packer {
         const val CASSANDRA_VERSIONS_FILE = "cassandra_versions.yaml"
-        const val AWS_CREDENTIALS_ENV = "AWS_SHARED_CREDENTIALS_FILE"
+
+        // Packer's communicator interface for reaching the builder over SSM Session Manager
+        const val SESSION_MANAGER_INTERFACE = "session_manager"
+
+        // The Packer image used under the `ssm` SSH transport: built locally from SSM_DOCKERFILE_RESOURCE.
+        // "localhost/" keeps the name identical under Docker and Podman, which prefixes local builds with it.
+        const val SSM_IMAGE_NAME = "localhost/easy-db-lab/packer-ssm"
+        const val SSM_DOCKERFILE_RESOURCE = "/com/rustyrazorblade/easydblab/containers/packer-ssm.Dockerfile"
+
+        // Hex characters of the Dockerfile's SHA-256 used as the SSM image tag
+        const val SSM_IMAGE_TAG_LENGTH = 12
     }
 
     // Event Bus configuration
@@ -181,6 +191,16 @@ object Constants {
     // AWS configuration
     object AWS {
         const val DEFAULT_CREDENTIALS_NAME = "awscredentials"
+
+        // The shared-credentials file the tool writes holds one profile under this name; the AWS CLI
+        // (Packer, SSM sessions) is pointed at the file with SHARED_CREDENTIALS_FILE_ENV.
+        const val CREDENTIALS_FILE_PROFILE = "default"
+        const val SHARED_CREDENTIALS_FILE_ENV = "AWS_SHARED_CREDENTIALS_FILE"
+
+        // Where the AWS CLI reads its config file. Static-key SSM sessions point it at
+        // NO_CONFIG_FILE, which the CLI reads as no file at all, so ~/.aws/config cannot apply.
+        const val CONFIG_FILE_ENV = "AWS_CONFIG_FILE"
+        const val NO_CONFIG_FILE = "/dev/null"
         const val SSH_KEY_ENV = "EASY_DB_LAB_SSH_KEY"
 
         // AMI configuration
@@ -195,6 +215,12 @@ object Constants {
             const val EC2_INSTANCE_ROLE = "EasyDBLabEC2Role"
             const val EMR_SERVICE_ROLE = "EasyDBLabEMRServiceRole"
             const val EMR_EC2_ROLE = "EasyDBLabEMREC2Role"
+        }
+
+        // Inline policy names on the EC2 instance role
+        object InlinePolicies {
+            const val S3_ACCESS = "S3Access"
+            const val SESSION_MANAGER = "SessionManagerInstance"
         }
     }
 
@@ -899,6 +925,21 @@ object Constants {
 
         /** Pause between those attempts, long enough for the winning ssh to hold its port. */
         const val PORT_BIND_RETRY_INTERVAL_MS = 100L
+
+        /**
+         * How many times, 500ms apart, a fresh SOCKS tunnel is probed before it counts as failed,
+         * when ssh dials the node directly: about 5s, and a direct tunnel is up in well under one.
+         */
+        const val DIRECT_TUNNEL_VERIFY_ATTEMPTS = 10
+
+        /**
+         * The same budget under the `ssm` SSH transport: about 30s. ssh first waits on
+         * `aws ssm start-session` (CLI start-up, the StartSession call, the plugin's WebSocket) and
+         * then runs key exchange and auth through it, which takes several seconds. The loop returns
+         * on the first success and stops the moment ssh dies, so the longer budget costs time only
+         * when a live ssh never produces a tunnel.
+         */
+        const val SSM_TUNNEL_VERIFY_ATTEMPTS = 60
     }
 
     // Tailscale VPN configuration
@@ -956,6 +997,85 @@ object Constants {
 
         /** Stand-in `BackendState` for a `tailscale status` that never returned. */
         const val BACKEND_STATE_TIMED_OUT = "timed out"
+    }
+
+    // AWS Systems Manager Session Manager, used as the SSH transport when a profile selects `ssm`
+    object Ssm {
+        /** The AWS CLI executable. Session Manager sessions are started through it. */
+        const val AWS_CLI = "aws"
+
+        /** The Session Manager plugin the AWS CLI hands each session to. */
+        const val SESSION_MANAGER_PLUGIN = "session-manager-plugin"
+
+        /** AWS-owned document that bridges a session's stdin/stdout to a port on the instance. */
+        const val SSH_SESSION_DOCUMENT = "AWS-StartSSHSession"
+
+        /** AWS-owned document that forwards a local port to a port on the instance. */
+        const val PORT_FORWARD_DOCUMENT = "AWS-StartPortForwardingSession"
+
+        /**
+         * How long SSH key exchange and authentication may take through an SSM port forward. A
+         * healthy one takes about 1-1.5s over the loopback forward; a forward that accepts TCP and
+         * then carries nothing would otherwise hold each attempt for MINA's 120s default.
+         */
+        const val SSH_AUTH_TIMEOUT_SECONDS = 30L
+
+        /**
+         * OpenSSH's ConnectTimeout in the `ssm` sshConfig, matching [SSH_AUTH_TIMEOUT_SECONDS]. With a
+         * ProxyCommand it bounds the wait for the server's banner (verified on OpenSSH 9.6 and
+         * 10.3); it does not bound key exchange once the banner has arrived.
+         */
+        const val SSH_CONNECT_TIMEOUT_SECONDS = 30
+
+        /** Prefix of the line the AWS CLI prints with a new session's ID, which TerminateSession needs. */
+        const val SESSION_ID_MARKER = "Starting session with SessionId: "
+
+        /**
+         * How long stopping forwards waits, in total, for their TerminateSession calls (they run in
+         * parallel), and the SSM client's overall API call timeout. 20s because HTTPS to SSO and
+         * SSM can take 5-8s on a slow network, and an unended session stays open for Session
+         * Manager's 20-minute idle timeout. Still bounded, so a call that never answers cannot hold
+         * up the JVM shutdown hook for longer than this.
+         */
+        const val TERMINATE_SESSION_TIMEOUT_SECONDS = 20L
+
+        /**
+         * The SSM client's timeout for one TerminateSession attempt. Below the 20s total so the
+         * SDK's retries (three attempts in its standard mode) fit inside it, instead of one slow
+         * attempt using the whole budget.
+         */
+        const val TERMINATE_SESSION_ATTEMPT_TIMEOUT_SECONDS = 6L
+
+        /** Line the Session Manager plugin prints once a port-forward listener is accepting connections. */
+        const val PORT_FORWARD_READY_MARKER = "Waiting for connections"
+
+        /** Address a port-forwarding session listens on. */
+        const val LOCAL_FORWARD_ADDRESS = "127.0.0.1"
+
+        /** How long a port-forwarding session gets to report ready before it is killed. */
+        const val PORT_FORWARD_READY_TIMEOUT_SECONDS = 60L
+
+        /** How long a forwarding process gets to exit after SIGTERM before it is killed outright. */
+        const val PROCESS_STOP_GRACE_SECONDS = 5L
+
+        /** How long a local `--version` check of the AWS CLI or the plugin may run. */
+        const val TOOL_CHECK_TIMEOUT_SECONDS = 10L
+
+        /** Most recent plugin output lines kept for error messages. */
+        const val TRANSCRIPT_MAX_LINES = 50
+
+        /** ssh keepalive interval for hosts reached over SSM, well inside Session Manager's 20-minute idle timeout. */
+        const val SSH_KEEPALIVE_INTERVAL_SECONDS = 30
+
+        /** Unanswered keepalives before ssh gives up on a dropped session (about 90s at the interval above). */
+        const val SSH_KEEPALIVE_COUNT_MAX = 3
+
+        const val AWS_CLI_INSTALL_HINT =
+            "brew install awscli (or https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)"
+
+        const val PLUGIN_INSTALL_HINT =
+            "brew install --cask session-manager-plugin " +
+                "(or https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)"
     }
 
     // Container Registry configuration

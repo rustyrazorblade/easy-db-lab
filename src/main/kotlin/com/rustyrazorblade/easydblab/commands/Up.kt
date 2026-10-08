@@ -78,6 +78,8 @@ import kotlin.random.Random
  * @param tailnetRetryInterval How long to wait between probes of the control node over the
  *   tailnet while the subnet route comes up. Defaults to [TAILNET_RETRY_INTERVAL]; tests inject
  *   [java.time.Duration.ZERO] to run every attempt instantly.
+ * @param sshRetryInterval How long to wait between SSH readiness attempts. Defaults to
+ *   [Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS]; tests inject a short interval.
  */
 @McpCommand
 @RequireProfileSetup
@@ -91,6 +93,7 @@ class Up(
     private val sshStartupDelay: Duration = SSH_STARTUP_DELAY,
     private val tailnetRetryInterval: Duration = TAILNET_RETRY_INTERVAL,
     private val random: Random = Random.Default,
+    private val sshRetryInterval: Duration = Duration.ofMillis(Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS),
 ) : PicoBaseCommand() {
     private val userConfig: User by inject()
     private val accountBucketSetup: AccountBucketSetup by inject()
@@ -587,16 +590,18 @@ class Up(
         eventBus.emit(Event.Provision.SshWaiting)
         Thread.sleep(sshStartupDelay.toMillis())
 
-        val retryConfig = RetryUtil.createSshConnectionRetryConfig()
+        val retryConfig = RetryUtil.createSshConnectionRetryConfig(sshRetryInterval)
         val retry =
             Retry.of("ssh-connection", retryConfig).also {
                 it.eventPublisher.onRetry { event ->
-                    eventBus.emit(Event.Provision.SshRetrying(event.numberOfRetryAttempts))
+                    eventBus.emit(Event.Provision.SshRetrying(event.numberOfRetryAttempts, event.lastThrowable?.message))
                 }
             }
 
+        // Checked, because MINA's SshException (a refused connection while sshd starts) is a
+        // checked IOException that the plain decorateRunnable never sees.
         Retry
-            .decorateRunnable(retry) {
+            .decorateCheckedRunnable(retry) {
                 // The control node is never what `--hosts` scopes — that filter targets db/app
                 // nodes for scale-out. Applying it here would make `up --hosts db2` filter the
                 // control check down to zero hosts (HostOperationsService.withHosts silently

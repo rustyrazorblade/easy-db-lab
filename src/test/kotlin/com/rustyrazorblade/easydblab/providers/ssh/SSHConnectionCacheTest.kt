@@ -42,6 +42,45 @@ class SSHConnectionCacheTest {
         assertThat(clients.toSet()).hasSize(1)
     }
 
+    /**
+     * Connecting to one host must never wait on another. Each connect here blocks until every
+     * host's connect has started, so the test only finishes if all of them run at once; a cache
+     * that connects inside a shared map lock deadlocks until the latch times out.
+     */
+    @Test
+    fun `connections to different hosts are opened concurrently`() {
+        val hosts = (0 until 12).map { Host(public = "54.0.0.$it", private = "10.0.0.$it", alias = "db$it", availabilityZone = "a") }
+        val allConnecting = CountDownLatch(hosts.size)
+        val cache =
+            SSHConnectionCache {
+                allConnecting.countDown()
+                check(allConnecting.await(10, TimeUnit.SECONDS)) { "connects to different hosts did not overlap" }
+                MockSSHClient()
+            }
+        val pool = Executors.newFixedThreadPool(hosts.size)
+
+        val clients =
+            pool.use { executor ->
+                hosts.map { h -> executor.submit<ISSHClient> { cache.get(h) } }.map { it.get(30, TimeUnit.SECONDS) }
+            }
+
+        assertThat(clients.toSet()).hasSize(hosts.size)
+    }
+
+    @Test
+    fun `a dropped connection is closed and the next request opens a new one`() {
+        val first = mock<ISSHClient>().also { whenever(it.isSessionOpen()).thenReturn(true) }
+        val second = MockSSHClient()
+        val connections = ArrayDeque(listOf(first, second))
+        val cache = SSHConnectionCache { connections.removeFirst() }
+        cache.get(host)
+
+        cache.drop(host)
+
+        verify(first).close()
+        assertThat(cache.get(host)).isSameAs(second)
+    }
+
     @Test
     fun `a closed session is closed and replaced by a new connection`() {
         val stale = mock<ISSHClient>().also { whenever(it.isSessionOpen()).thenReturn(false) }

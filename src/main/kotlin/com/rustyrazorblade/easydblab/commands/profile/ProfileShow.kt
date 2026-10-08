@@ -120,6 +120,7 @@ class ProfileShow : PicoBaseCommand() {
             |
             |  AxonOps     ${flag(user.isAxonOpsEnabled())}
             |  Tailscale   ${flag(user.isTailscaleEnabled())}
+            |  SSH         ${user.sshTransport.configValue}
             """.trimMargin()
 
         private fun flag(enabled: Boolean): String = if (enabled) "ENABLED" else "DISABLED"

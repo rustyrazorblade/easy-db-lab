@@ -72,22 +72,20 @@ class KitInfo : BaseInstallCommand() {
         ): List<Pair<String, String>> {
             val result = mutableListOf<Pair<String, String>>()
 
-            // Known lifecycle phases from config declarations or bin scripts
-            val phases = listOf("start", "stop", "backup", "restore", "uninstall", "status")
-            for (phase in phases) {
-                val present =
-                    when (phase) {
-                        "start" -> config.start.isNotEmpty() || phase in scriptCommandNames
-                        "stop" -> config.stop.isNotEmpty() || phase in scriptCommandNames
-                        "backup" -> config.backup.isNotEmpty() || phase in scriptCommandNames
-                        "restore" -> config.restore.isNotEmpty() || phase in scriptCommandNames
-                        "uninstall" -> config.uninstall.isNotEmpty() || phase in scriptCommandNames
-                        // status is provided by the kit runner for every installed kit
-                        "status" -> true
-                        else -> phase in scriptCommandNames
-                    }
-                if (present) result.add(phase to (phaseDescriptions[phase] ?: "(script)"))
+            // Known lifecycle phases from config declarations or bin scripts, in this order
+            val declaredSteps =
+                listOf(
+                    "start" to config.start,
+                    "stop" to config.stop,
+                    "backup" to config.backup,
+                    "restore" to config.restore,
+                    "uninstall" to config.uninstall,
+                )
+            for ((phase, steps) in declaredSteps) {
+                if (steps.isNotEmpty() || phase in scriptCommandNames) result.add(phase to (phaseDescriptions[phase] ?: "(script)"))
             }
+            // status is provided by the kit runner for every installed kit
+            result.add("status" to (phaseDescriptions["status"] ?: "(script)"))
 
             // Remaining script commands not covered by the known phases above
             val covered = result.map { it.first }.toSet()

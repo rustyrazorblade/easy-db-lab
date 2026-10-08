@@ -166,7 +166,7 @@ Scripts are run by `KitRunnerCommand` with cluster state variables injected as e
 variables. Dashboard JSON files in `<kit>/dashboards/` are installed into Grafana
 automatically after a successful `start`.
 
-If the tenant listing or a dashboard file cannot be read, `start` does not fail.  It emits `Event.Grafana.KitDashboardsSkipped`, which names the kit, its dashboards and the reason, and the kit keeps running.
+If a kit dashboard does not reach Grafana, `start` fails (exits non-zero) for every kit, and the kit's pods keep running. A missing declared dashboard file, or a dashboard Grafana rejects, emits `Event.Grafana.KitDashboardInstallFailed` (kit, dashboard, reason). A tenant listing or dashboard files that cannot be read or rendered emit `Event.Grafana.KitDashboardsSkipped` (kit, dashboards, reason). A failed metrics registration likewise emits `Event.Kit.MetricsRegistrationFailed` and fails `start`.
 
 ## Annotations
 

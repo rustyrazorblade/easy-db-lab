@@ -80,7 +80,7 @@ restore:  []   # steps to run on `easy-db-lab <name> restore <backup-name>`
 | Phase | Trigger | What happens after success |
 |-------|---------|----------------------------|
 | `install` | `easy-db-lab kit install <name>` | Kit directory written to working dir |
-| `start` | `easy-db-lab <name> start` | Metrics registered, dashboards installed, hooks fired |
+| `start` | `easy-db-lab <name> start` | Metrics registered, dashboards installed, hooks fired. A failed metrics registration or dashboard install fails `start` |
 | `stop` | `easy-db-lab <name> stop` | Waits for the runtime's pods to go, metrics deregistered, kit dropped from `runningKits`, hooks fired |
 | `uninstall` | `easy-db-lab <name> uninstall` or `kit uninstall <name>` | Kit directory deleted from working dir. A kit still running has its `stop` phase run first, stop wait included; if that fails, the uninstall fails without running its steps. After the uninstall steps the kit is released as `stop` releases it (metrics deregistered, dropped from `runningKits`, hooks fired) |
 | `backup` | `easy-db-lab <name> backup <name>` | `BACKUP_NAME` env var set to first argument |
@@ -283,6 +283,46 @@ All scripts and shell steps receive the following environment variables:
 Args declared in `kit.yaml` under `args:` are also injected using their `variable` name. For
 example, `--workers` with `variable: WORKERS` becomes `$WORKERS`.
 
+### Command args
+
+Install args (`args:`) are given once, at `kit install`, and stored in `resolved-args.env`. A kit
+can also declare options for one command, including a lifecycle phase such as `start`, under
+`commands:`. A command arg applies to that run only, so it can change between runs without a
+reinstall, and it wins over an install arg with the same variable.
+
+```yaml
+commands:
+  start:
+    description: "Start the workload"
+    args:
+      - flag: --log-level
+        variable: LOG_LEVEL
+        type: string
+        default: "info"
+      - flag: --heap-profile
+        variable: HEAP_PROFILE
+        type: boolean
+      - flag: --env
+        variable: EXTRA_ENV
+        type: string
+        repeatable: true
+```
+
+Install args and command args are parsed the same way:
+
+- An optional arg that is not given and has no default is not set at all; the script sees no
+  variable, not the string `null`. Use `${VAR:-}` under `set -u`.
+- A boolean arg is `false` when its flag is not given and `true` when it is.
+- A string command arg can set `repeatable: true`. The flag can then be given any number of
+  times, and the variable holds every value in order, one per line. Read it with
+  `while IFS= read -r line; do ...; done <<< "${EXTRA_ENV}"`. A repeatable arg that is not given
+  is not set. `repeatable` is refused on a non-string arg, and on an install arg, because
+  `resolved-args.env` stores one `KEY=VALUE` per line; the kit then fails to load with an error
+  that names the arg.
+
+`kit info <kit>` lists the install args and then each command's args under the command name,
+with the flag, variable, description, default, and a `[repeatable]` marker.
+
 ### Addressing per-node services (e.g. the Cassandra Sidecar)
 
 Some cluster services run as a **`hostNetwork` DaemonSet — one instance per db node**, addressable
@@ -358,6 +398,9 @@ genuinely absent.
 **Never mount an `emptyDir` over a directory the image already populates** — it hides what the
 image staged there. (We hit a crash copying the Flink reporter jar from an assumed path that
 did not exist, while the `emptyDir` overlay masked the real pre-staged plugin dir.)
+
+If writing the ConfigMaps fails, `start` emits `Kit.MetricsRegistrationFailed`, naming the kit
+and the failure, and exits non-zero. The kit's pods still run.
 
 Registration creates one K8s ConfigMap per scrape entry, named `easydblab-metrics-<kit>-<job>` and
 labelled `easydblab.com/workload-metrics=true`. `OtelSyncService` reads these ConfigMaps and
@@ -502,6 +545,12 @@ After a successful `start`, easy-db-lab installs dashboards into Grafana via the
 
 **Auto-discovery** (default): any `.json` files in `dashboards/` are installed automatically.
 Files are installed in alphabetical order into a Grafana folder named after the kit.
+
+If a dashboard does not reach Grafana, `start` exits non-zero, for every kit. A declared
+dashboard file that is missing, or one that Grafana rejects, emits
+`Grafana.KitDashboardInstallFailed`, naming the kit, the dashboard and the reason. Dashboards or
+a tenant listing that cannot be read or rendered emit `Grafana.KitDashboardsSkipped`, naming the
+kit, its dashboards and the reason. The kit's pods still run.
 
 **Explicit list** (optional): declare dashboard paths in `kit.yaml` to control selection or
 order:

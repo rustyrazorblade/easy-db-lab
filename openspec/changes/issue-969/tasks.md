@@ -57,11 +57,11 @@
 
 ## 8. Docs and repo guidance
 
-- [ ] 8.1 `docs/user-guide/ferrosa.md` and a `docs/SUMMARY.md` entry, covering every item in the ferrosa-kit docs requirement, including the TOML override, the `sh` init-container need, and db-node contention.
-- [ ] 8.2 `docs/reference/ports.md` (seven NodePorts), `docs/user-guide/kits.md` (ferrosa listed).
-- [ ] 8.3 `docs/development/kits.md`: repeatable args, unset optional args are not set, `kit info` lists command args, `start` fails on metrics registration or dashboard failure.
-- [ ] 8.4 The docs for stress and sidecar custom images: ECR images pull through the node credential provider with no pull secret.
-- [ ] 8.5 Root `CLAUDE.md`: the metrics ConfigMap is `easydblab-metrics-<kit>-<job>`; `docs/user-guide/platform-substrate.md:221` likewise. `commands/CLAUDE.md`: dashboard failures (including `KitDashboardsSkipped`) now fail `start`.
+- [x] 8.1 `docs/user-guide/ferrosa.md` and a `docs/SUMMARY.md` entry, covering every item in the ferrosa-kit docs requirement, including the TOML override, the `sh` init-container need, and db-node contention.
+- [x] 8.2 `docs/reference/ports.md` (seven NodePorts), `docs/user-guide/kits.md` (ferrosa listed).
+- [x] 8.3 `docs/development/kits.md`: repeatable args, unset optional args are not set, `kit info` lists command args, `start` fails on metrics registration or dashboard failure.
+- [x] 8.4 The docs for stress and sidecar custom images: ECR images pull through the node credential provider with no pull secret.
+- [x] 8.5 Root `CLAUDE.md`: the metrics ConfigMap is `easydblab-metrics-<kit>-<job>`; `docs/user-guide/platform-substrate.md:221` likewise. `commands/CLAUDE.md`: dashboard failures (including `KitDashboardsSkipped`) now fail `start`.
 
 ## 9. AMIs
 

@@ -1,25 +1,25 @@
 ## 1. Engine: kit args (E1, E2)
 
-- [ ] 1.1 Regression tests first (unit tier): `KitRunnerCommandFactory` records no value for an unset optional arg with no default (today it stores `"null"`, `KitRunnerCommandFactory.kt:192`); a boolean command arg is `false` when omitted and `true` when given; an arg with a default still injects the default; sysbench and kafka command args produce the same environment as before.
-- [ ] 1.2 Add `KitArgSpec.repeatable` (default `false`) in `services/KitConfig.kt`. `KitConfig` load rejects `repeatable: true` on a top-level `args:` entry and on a non-string arg, with an error that names the arg. Tests for both rejections.
-- [ ] 1.3 Add one shared arg-option builder (e.g. `commands/install/KitArgOptions.kt`, with class KDoc) that builds picocli `OptionSpec`s: no value recorded for an unmatched optional arg, booleans default `false`, repeatable string args as an accumulating `List<String>` joined with `\n`. Use it from `KitInstallCommandFactory` and `KitRunnerCommandFactory`; remove the duplicated option code.
-- [ ] 1.4 Factory tests: `--env A=1 --env B=2` yields `A=1\nB=2`; one value yields that value; an unset repeatable arg is not recorded; install and command args with the same spec behave the same.
-- [ ] 1.5 `./gradlew detekt` on JDK 21 shows no new findings in the touched files; fix any with extraction.
+- [x] 1.1 Regression tests first (unit tier): `KitRunnerCommandFactory` records no value for an unset optional arg with no default (today it stores `"null"`, `KitRunnerCommandFactory.kt:192`); a boolean command arg is `false` when omitted and `true` when given; an arg with a default still injects the default; sysbench and kafka command args produce the same environment as before.
+- [x] 1.2 Add `KitArgSpec.repeatable` (default `false`) in `services/KitConfig.kt`. `KitConfig` load rejects `repeatable: true` on a top-level `args:` entry and on a non-string arg, with an error that names the arg. Tests for both rejections.
+- [x] 1.3 Add one shared arg-option builder (e.g. `commands/install/KitArgOptions.kt`, with class KDoc) that builds picocli `OptionSpec`s: no value recorded for an unmatched optional arg, booleans default `false`, repeatable string args as an accumulating `List<String>` joined with `\n`. Use it from `KitInstallCommandFactory` and `KitRunnerCommandFactory`; remove the duplicated option code.
+- [x] 1.4 Factory tests: `--env A=1 --env B=2` yields `A=1\nB=2`; one value yields that value; an unset repeatable arg is not recorded; install and command args with the same spec behave the same.
+- [x] 1.5 `./gradlew detekt` on JDK 21 shows no new findings in the touched files; fix any with extraction.
 
 ## 2. Engine: `kit info` command args (Q19)
 
-- [ ] 2.1 Test: `KitInfo` output for a kit with `commands: start: args:` lists each arg under `start` with flag, variable, description, default, and a repeatable marker.
-- [ ] 2.2 Implement in `commands/kit/KitInfo.kt` (extract a helper rather than grow the builder method).
+- [x] 2.1 Test: `KitInfo` output for a kit with `commands: start: args:` lists each arg under `start` with flag, variable, description, default, and a repeatable marker.
+- [x] 2.2 Implement in `commands/kit/KitInfo.kt` (extract a helper rather than grow the builder method).
 
 ## 3. Engine: `start` fails on metrics or dashboard failures (Q20)
 
-- [ ] 3.1 Add typed events in `events/Event.kt` (e.g. `Event.Kit.MetricsRegistrationFailed(kit, reason)` and `Event.Grafana.KitDashboardInstallFailed(kit, dashboard, reason)`) with console rendering and serialization registration per `events/CLAUDE.md`.
-- [ ] 3.2 Tests (fake `MetricsRegistryService` / Grafana client, not Mockito-stubbed `Result`): a failed registration emits the event and `start` exits non-zero; a rejected dashboard install emits the event and `start` exits non-zero; an unreadable dashboard tree (`KitDashboardsSkipped` path) and a missing declared dashboard file fail `start` non-zero.
-- [ ] 3.3 Implement in `commands/install/KitRunnerCommand.kt` (replace the `log.warn` at `:374-380` and `:473-476`).
+- [x] 3.1 Add typed events in `events/Event.kt` (e.g. `Event.Kit.MetricsRegistrationFailed(kit, reason)` and `Event.Grafana.KitDashboardInstallFailed(kit, dashboard, reason)`) with console rendering and serialization registration per `events/CLAUDE.md`.
+- [x] 3.2 Tests (fake `MetricsRegistryService` / Grafana client, not Mockito-stubbed `Result`): a failed registration emits the event and `start` exits non-zero; a rejected dashboard install emits the event and `start` exits non-zero; an unreadable dashboard tree (`KitDashboardsSkipped` path) and a missing declared dashboard file fail `start` non-zero.
+- [x] 3.3 Implement in `commands/install/KitRunnerCommand.kt` (replace the `log.warn` at `:374-380` and `:473-476`).
 
 ## 4. Test helper
 
-- [ ] 4.1 Move `StubKubectl` out of `Neo4jKitTest.kt` into its own test file with class KDoc; add canned replies for `kubectl get` (pod status JSON, logs). `Neo4jKitTest` still passes.
+- [x] 4.1 Move `StubKubectl` out of `Neo4jKitTest.kt` into its own test file with class KDoc; add canned replies for `kubectl get` (pod status JSON, logs). `Neo4jKitTest` still passes.
 
 ## 5. Node: kubelet ECR credential provider (Q9, Q18)
 

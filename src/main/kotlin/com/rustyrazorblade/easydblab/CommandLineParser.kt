@@ -310,7 +310,9 @@ class CommandLineParser : KoinComponent {
                     }
                     commandLine.addSubcommand(kitName, kitGroup)
                 } catch (e: Exception) {
+                    // The kit is left out so every other command still runs, and the user is told why.
                     log.debug(e) { "Failed to register kit subcommand for $kitName" }
+                    eventBus.emit(Event.Kit.RegistrationFailed(kit = kitName, reason = e.message ?: e.javaClass.simpleName))
                 }
             }
     }

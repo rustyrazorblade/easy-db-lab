@@ -5702,6 +5702,21 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * The workspace kit [kit] has no subcommands, for [reason]: typically a `kit.yaml` that
+         * does not parse or fails validation. Its commands are not registered.
+         */
+        @Serializable
+        @SerialName("Kit.RegistrationFailed")
+        data class RegistrationFailed(
+            val kit: String,
+            val reason: String,
+        ) : Kit {
+            override fun toDisplayString(): String = "[$kit] kit commands are not available: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Kit.MetricsRegistered")
         data class MetricsRegistered(

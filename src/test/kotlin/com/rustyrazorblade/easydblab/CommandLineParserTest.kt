@@ -2,6 +2,10 @@ package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.HelpTopicService
@@ -92,6 +96,30 @@ class CommandLineParserTest : BaseKoinTest() {
 
         assertThat(profileGroup.commandSpec.userObject()).isInstanceOf(Profile::class.java)
         assertThat(profileGroup.subcommands.keys).contains("show", "setup")
+    }
+
+    @Test
+    fun `a workspace kit whose kit yaml is invalid reports why its commands are missing`() {
+        val kitDir = File(context.workingDirectory, "broken").also { it.mkdirs() }
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: broken\nstart: [\n")
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        val commandLine = CommandLineParser().commandLine
+
+        val failed = events.filterIsInstance<Event.Kit.RegistrationFailed>().single()
+        assertThat(failed.kit).isEqualTo("broken")
+        assertThat(failed.reason).contains(Constants.Kit.CONFIG_FILE, "broken")
+        assertThat(failed.isError()).isTrue()
+        assertThat(commandLine.subcommands).doesNotContainKey("broken").containsKey("status")
     }
 
     @Test

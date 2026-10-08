@@ -34,6 +34,7 @@ import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.LocalSsmTooling
 import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
+import com.rustyrazorblade.easydblab.services.NodeImagePreflight
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -176,6 +177,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
             single { CiliumNodeImageCheck(get()) }
             single { EcrCredentialProviderNodeCheck(get()) }
+            single { NodeImagePreflight(get(), get(), get()) }
             single { AWSResourceSetupService(get(), get(), get()) }
             single { ProvisioningPreflight(get(), get(), get(), get()) }
             single { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }

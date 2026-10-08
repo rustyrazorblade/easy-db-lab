@@ -21,10 +21,6 @@ import kotlinx.serialization.Serializable
  *
  * The type discriminator for serialization is derived from the class name.
  */
-private const val BACKUP_TABLE_SEPARATOR_LENGTH = 104
-private const val BACKUP_TABLE_HEADER_FORMAT = "%-17s  %-55s  %10s  %15s"
-private const val BACKUP_TABLE_ROW_FORMAT = "%-17s  %-55s  %10d  %15s"
-
 @Serializable
 sealed interface Event {
     /**

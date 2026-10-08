@@ -42,7 +42,7 @@ class KitRunnerCommandFactory {
         phases.sorted().forEach { phaseName ->
             groupCL.addSubcommand(phaseName, buildPhaseCommand(kitName, kitDir, phaseName, installConfig))
         }
-        groupCL.addSubcommand("status", buildStatusCommand(kitName, kitDir, installConfig))
+        groupCL.addSubcommand("status", buildStatusCommand(kitName, installConfig))
 
         buildCapabilityCommands(kitName, installConfig).forEach { (name, cmdLine) ->
             if (name !in groupCL.subcommands.keys) {
@@ -190,7 +190,6 @@ class KitRunnerCommandFactory {
 
     fun buildStatusCommand(
         kitName: String,
-        kitDir: File,
         installConfig: KitConfig,
     ): CommandLine {
         val command = KitStatusCommand(kitName, installConfig)

@@ -68,6 +68,7 @@ val servicesModule =
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
         factory { EcrCredentialProviderNodeCheck(get()) }
+        factory { NodeImagePreflight(get(), get(), get()) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies

@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.kit.KitSqlCommand
-import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
@@ -10,7 +9,6 @@ import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.github.oshai.kotlinlogging.KotlinLogging
 import picocli.CommandLine
 import picocli.CommandLine.Model.CommandSpec
-import picocli.CommandLine.Model.ISetter
 import picocli.CommandLine.Model.OptionSpec
 import java.io.File
 import java.util.concurrent.Callable
@@ -164,7 +162,7 @@ class KitRunnerCommandFactory {
         } else {
             spec.mixinStandardHelpOptions(true)
         }
-        commandSpec?.args?.forEach { arg -> spec.add(argOptionSpec(arg, command)) }
+        commandSpec?.args?.forEach { arg -> spec.add(KitArgOptions.optionSpec(arg, arg.default, command.runtimeArgValues)) }
         return CommandLine(spec)
     }
 
@@ -173,37 +171,6 @@ class KitRunnerCommandFactory {
         val spec = CommandLine.Model.CommandSpec.forAnnotatedObject(command, CommandLine.defaultFactory())
         spec.mixinStandardHelpOptions(true)
         return CommandLine(spec)
-    }
-
-    private fun argOptionSpec(
-        arg: KitArgSpec,
-        command: KitRunnerCommand,
-    ): OptionSpec {
-        val picoType = arg.type.toPicoCliType()
-        val builder =
-            OptionSpec
-                .builder(arg.flag)
-                .type(picoType)
-                .paramLabel(arg.paramLabel)
-                .description(arg.description)
-                .setter(
-                    object : ISetter {
-                        override fun <T> set(value: T): T {
-                            command.runtimeArgValues[arg.variable] = "$value"
-                            return value
-                        }
-                    },
-                )
-        if (arg.default.isNotEmpty()) {
-            // Only pass to PicoCLI when fully resolved — PicoCLI expands ${...} as property
-            // lookups and returns null for unknown keys, corrupting the help text.
-            if (!arg.default.contains("\${")) {
-                builder.defaultValue(arg.default)
-            }
-        } else if (arg.required) {
-            builder.required(true)
-        }
-        return builder.build()
     }
 
     fun buildStatusCommand(

@@ -1398,6 +1398,72 @@ class KitConfigTest {
             KitArgSpec.ArgType.STRING,
         )
     }
+
+    /**
+     * A repeatable arg joins its values with a newline, and `resolved-args.env` stores one
+     * `KEY=VALUE` per line, so only a string command arg may repeat.
+     */
+    @Nested
+    inner class RepeatableArgs {
+        @Test
+        fun `a repeatable string command arg loads`() {
+            val config =
+                parse(
+                    """
+                    name: mydb
+                    commands:
+                      start:
+                        args:
+                          - flag: --env
+                            variable: EXTRA_ENV
+                            repeatable: true
+                    """.trimIndent(),
+                )
+
+            assertThat(
+                config.commands
+                    .getValue("start")
+                    .args
+                    .single()
+                    .repeatable,
+            ).isTrue()
+        }
+
+        @Test
+        fun `a repeatable top-level install arg is rejected, naming the arg`() {
+            assertThatThrownBy {
+                parse(
+                    """
+                    name: mydb
+                    args:
+                      - flag: --env
+                        variable: EXTRA_ENV
+                        repeatable: true
+                    """.trimIndent(),
+                )
+            }.hasMessageContaining("--env")
+        }
+
+        @Test
+        fun `a repeatable int or boolean arg is rejected, naming the arg`() {
+            for (type in listOf("int", "boolean")) {
+                assertThatThrownBy {
+                    parse(
+                        """
+                        name: mydb
+                        commands:
+                          start:
+                            args:
+                              - flag: --count
+                                variable: COUNT
+                                type: $type
+                                repeatable: true
+                        """.trimIndent(),
+                    )
+                }.describedAs(type).hasMessageContaining("--count")
+            }
+        }
+    }
 }
 
 /**

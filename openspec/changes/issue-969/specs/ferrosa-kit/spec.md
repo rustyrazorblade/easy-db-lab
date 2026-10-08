@@ -17,6 +17,11 @@ The system SHALL provide a built-in kit named `ferrosa` (`type: db`) that runs F
 - **WHEN** the rendered FerrosaDB manifests are inspected
 - **THEN** no container declares a `hostPort` and no pod sets `hostNetwork: true`
 
+#### Scenario: Data lands on the node's data disk, not the root volume
+- **WHEN** `start` completes and FerrosaDB has written rows
+- **THEN** in each pod, `/var/lib/ferrosa` is the mount of the PVC `ferrosa-data-<i>`, not the container's own file system
+- **AND** on each db node, `/mnt/db1/ferrosa` holds FerrosaDB's data files and heap-profile directory, and `findmnt -T /mnt/db1/ferrosa` reports the data-disk device, not the root volume's device
+
 #### Scenario: A second start on a running kit is refused
 - **WHEN** FerrosaDB is running and the owner runs `easy-db-lab ferrosa start` again
 - **THEN** `start` fails with a `Kit.CollisionDetected` event before any start step runs

@@ -13,6 +13,7 @@ easy-db-lab cannot run FerrosaDB, a Rust reimplementation of Cassandra that serv
 - **`kit info` lists command args:** each `commands.<phase>.args` list under its command name, not only the top-level install args.
 - **`start` fails on metrics or dashboard failures, for every kit:** a failed metrics registration or a failed dashboard install emits a typed event and `start` exits non-zero; today both only log a warning.
 - **ECR pulls through the kubelet credential provider (node):** the base AMI installs `ecr-credential-provider` and its config, and every K3s kubelet uses it. **`EcrPullSecretService` is removed**; the stress and sidecar paths stop creating `ecr-pull-secret` and stop setting `imagePullSecrets`. Requires a base and Cassandra AMI rebake.
+- **Data on a non-root volume, checked in advance (node):** `init` requires instance store on the control and app instance types too (db keeps instance store or `--ebs.type`). `setup_instance.sh` finds the data disk on any non-root device name, mounts it at `/mnt/db1`, and fails `up`, naming the host, if there is no disk, the mount fails, or `/mnt/db1` is not a non-root mount. Today it silently puts `/mnt/db1` on the 20 GB root volume.
 - **Test helper:** `StubKubectl` moves out of `Neo4jKitTest.kt` into its own test file and gains canned `kubectl get` replies.
 - **Docs and repo guidance:** `docs/user-guide/ferrosa.md` + `docs/SUMMARY.md`, `docs/reference/ports.md`, `docs/user-guide/kits.md`, `docs/development/kits.md` (repeatable args, `kit info` command args, start failure on metrics/dashboard), the stress and sidecar custom-image docs (ECR through the node provider), root `CLAUDE.md` (metrics ConfigMap name is `easydblab-metrics-<kit>-<job>`), `commands/CLAUDE.md` (dashboard failures now fail `start`).
 
@@ -26,6 +27,7 @@ easy-db-lab cannot run FerrosaDB, a Rust reimplementation of Cassandra that serv
 - `kit-metrics-declaration`: ConfigMap name corrected to `easydblab-metrics-<kit>-<job>`; a failed registration fails `start` with a typed event.
 - `typed-install-steps`: a failed kit dashboard install fails `start` with a typed event.
 - `ami-building`: kubelet ECR credential provider on every node; no pull secrets.
+- `instance-storage-validation`: every node type needs a data disk at `init`; `up` fails if `/mnt/db1` is not mounted on a non-root device.
 - `stress-testing`: custom ECR stress images pull through the node provider, with no pull secret.
 - `containerized-sidecar`: custom ECR sidecar images pull through the node provider, with no pull secret.
 

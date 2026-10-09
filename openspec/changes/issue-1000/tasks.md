@@ -56,10 +56,10 @@
 
 ## 8. up, down, clean, and VPC restore
 
-- [ ] 8.1 `up` (`ClusterConfigurationService.writeSshAndEnvironmentFiles`) writes `EDL_TAILSCALE_ACTIVE` from cluster state and installs the wrappers, on SOCKS and Tailscale clusters. Test the Tailscale path.
-- [ ] 8.2 `CommandExecutor.ensureProxyRunning` writes `EDL_TAILSCALE_ACTIVE` on its early-return branches where state is known. Test it.
-- [ ] 8.3 `Down.cleanupSocks5Proxy` removes `EDL_SOCKS_PORT`. Test it.
-- [ ] 8.4 VPC restore in `CommandExecutor` writes the env file and the wrappers. Test it.
+- [x] 8.1 `up` (`ClusterConfigurationService.writeSshAndEnvironmentFiles`) writes `EDL_TAILSCALE_ACTIVE` from cluster state and installs the wrappers, on SOCKS and Tailscale clusters. Test the Tailscale path.
+- [x] 8.2 `CommandExecutor.ensureProxyRunning` writes `EDL_TAILSCALE_ACTIVE` on its early-return branches where state is known. Test it.
+- [x] 8.3 `Down.cleanupSocks5Proxy` removes `EDL_SOCKS_PORT`. Test it.
+- [x] 8.4 VPC restore in `CommandExecutor` writes the env file and the wrappers. Test it.
 - [x] 8.5 `Clean` deletes the env file, the six wrappers, and the marker by name, and removes `bin/` only if empty. Test both the empty and the foreign-file cases.
 
 ## 9. env.sh

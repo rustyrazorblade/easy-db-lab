@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -13,6 +14,8 @@ import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import com.rustyrazorblade.easydblab.providers.ssm.SsmCliCredentials
 import com.rustyrazorblade.easydblab.providers.ssm.SsmSessionCommandBuilder
 import com.rustyrazorblade.easydblab.providers.ssm.SsmSshRoute
+import com.rustyrazorblade.easydblab.proxy.ProxyEnv
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -113,6 +116,27 @@ class ClusterConfigurationServiceTest {
 
     @Nested
     inner class WriteSshAndEnvironmentFiles {
+        @Test
+        fun `on a Tailscale cluster it writes the wrappers and an env file that says Tailscale and has no port`() {
+            val clusterState = createClusterState().copy(tailscaleActive = true)
+
+            service.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
+
+            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = true, socksPort = null))
+            val bin = File(tempDir.toFile(), Constants.ToolWrappers.DIRECTORY)
+            assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.MARKER)
+        }
+
+        @Test
+        fun `on a SOCKS cluster it records that the cluster is not Tailscale and keeps a recorded port`() {
+            ProxyEnvFile(tempDir.toFile()).recordPort(41234)
+
+            service.writeSshAndEnvironmentFiles(tempDir, createClusterState().copy(tailscaleActive = false), createUserConfig())
+
+            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = 41234))
+            assertThat(File(tempDir.toFile(), "${Constants.ToolWrappers.DIRECTORY}/kubectl").canExecute()).isTrue()
+        }
+
         @Test
         fun `should create sshConfig file`() {
             val clusterState = createClusterState()

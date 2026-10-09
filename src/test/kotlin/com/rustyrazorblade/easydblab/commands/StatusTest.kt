@@ -23,6 +23,8 @@ import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
@@ -523,7 +525,7 @@ class StatusTest : BaseKoinTest() {
                     ),
                 resourceManager = mockResourceManager,
                 eventBus = getKoin().get(),
-                socksProxyService = mockSocksProxyService,
+                proxyPreflight = ProxyPreflight(mockClusterStateManager, mockSocksProxyService, ProxyEnvFile(context.workingDirectory)),
                 proxyAvailability = proxyAvailability,
                 profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run here") },
             )

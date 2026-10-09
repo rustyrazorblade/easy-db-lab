@@ -2,19 +2,34 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ProxyEnv
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.ResourceLock
+import org.koin.core.module.Module
+import org.koin.dsl.module
 import java.io.File
 import java.util.concurrent.TimeUnit
 
 class DownTest : BaseKoinTest() {
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                single { ProxyEnvFile(get<Context>().workingDirectory) }
+                single<SocksProxyService> { ProcessSocksProxyService(get(), { _, _, _ -> false }, envFile = get()) }
+            },
+        )
+
     @BeforeEach
     @AfterEach
     fun clearProxyProperty() {
@@ -99,6 +114,19 @@ class DownTest : BaseKoinTest() {
         } finally {
             tunnel.destroyForcibly()
         }
+    }
+
+    @Test
+    fun `cleanupSocks5Proxy removes the port from the proxy env file and keeps the Tailscale flag`() {
+        val envFile =
+            ProxyEnvFile(context.workingDirectory).apply {
+                recordTailscale(active = false)
+                recordPort(41234)
+            }
+
+        Down().cleanupSocks5Proxy()
+
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
     }
 
     @Test

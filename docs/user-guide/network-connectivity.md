@@ -264,6 +264,8 @@ easy-db-lab stop-socks    # Stop the tunnel; the cluster keeps running
 `easy-db-lab down` stops the tunnel too. After `stop-socks`, wrapped tools fail with the
 `start-socks` message until a CLI command or `start-socks` starts the tunnel again.
 
+If the tunnel process does not end, `stop-socks` prints its PID and exits non-zero.  The PID and port stay recorded.  Stop the process with `kill <pid>`, then run `easy-db-lab stop-socks` again.  `down` goes on with the teardown in that case and prints the same PID.
+
 ### Host Key Verification
 
 The `sshConfig` generated for your cluster sets `UserKnownHostsFile=/dev/null` alongside

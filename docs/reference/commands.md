@@ -247,6 +247,8 @@ Wrapped tools then fail with a pointer to `start-socks` until the tunnel starts 
 easy-db-lab stop-socks
 ```
 
+If the tunnel process does not end after `stop-socks` asks and then forces it to, `stop-socks` prints its PID and exits non-zero.  The PID and port stay recorded, so stop the process with `kill <pid>` and run `stop-socks` again.  If no tunnel runs, `stop-socks` says so and succeeds.
+
 ### hosts
 
 List all hosts in the cluster.

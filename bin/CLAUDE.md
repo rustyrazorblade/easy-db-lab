@@ -4,36 +4,15 @@
 
 The local-development CLI entrypoint. It does **not** launch the JVM itself — it delegates to the Gradle-generated start script (`build/install/easy-db-lab/bin/easy-db-lab`), which is the single source of truth for the classpath, the OTel java agent, and `easydblab.apphome`/`easydblab.version` (#727). Build it first with `./gradlew installDist`. This wrapper only layers on dev-only conveniences: `.env` loading (gitignored; shell env always wins), a log directory (`EASY_DB_LAB_LOG_DIR`, defaults to `./logs`), and passing extra JVM options through the generated script's `EASY_DB_LAB_OPTS` hook.
 
-## test
+## Other scripts
 
-Single entrypoint for all integration tests.
+- `create-release` — cuts a release of the main repo with `gh`; nothing happens until the release is confirmed.
+- `diagnose-error` — decodes an AWS "encoded authorization failure" message (`aws sts decode-authorization-message`).
+- `set-policies` — creates the managed easy-db-lab IAM policies and attaches them to a user, group or role.
+- `export-workload-metrics` (with `metrics-catalog.jq` and `export-workload-metrics.test.sh`) — exports a running kit's metric series to `metrics-catalog.json`; see `docs/development/kits.md`.
+- `setup-spark-cluster`, `spark-bulk-write`, `test-local-bulk-writer`, `test-spark-bulk-writer-s3-iam` — Spark bulk-writer helpers. `test-spark-bulk-writer-s3-iam` provisions a cluster; run it by hand only.
 
-```
-bin/test [-p] [-t] [--no-build] <test-name>
-```
-
-Handles all common infrastructure: logging, build, cluster provisioning, `easy-db-lab up`, sourcing `env.sh`, and optional teardown on exit. Then delegates to `bin/tests/<test-name>` for the test-specific steps.
-
-**When to use this:** Use the `/run-test` skill — it handles provisioning decisions, surfaces the `Follow:` line, monitors progress, and reports results. Do not call `bin/test` directly unless the user explicitly asks.
-
-When running this script, it prints a `Follow:` line near the top of its output with the exact `tail -f -n 100 <logfile>` command. **Always surface that line to the user** so they can open a second terminal and follow along.
-
-**Never pass `-t` (teardown) unless the user explicitly asks.** Leave the cluster running on failure so they can debug. When the user says "shut it down", run `easy-db-lab down --yes`.
-
-Flags: `-p`/`--provision` (init + up a fresh cluster first), `-t`/`--teardown` (destroy cluster on exit), `--no-build` (skip `./gradlew installDist`).
-
-Log files are written to `logs/test-<name>-YYYYMMDD-HHMMSS.log`.
-
-## tests/
-
-Individual test scripts. Each handles only its own test steps — no provisioning logic. The `step` helper function is exported by `bin/test` and available in all test scripts.
-
-### tests/presto
-
-Installs Cassandra 5 and Presto on a cluster and verifies Presto is running.
-
-```
-bin/test presto           # run against an already-up cluster
-bin/test -p presto        # provision a fresh cluster first
-bin/test -p -t presto     # provision, test, then tear down
-```
+There is no test runner in `bin/`. Lab test plans run through the `/easy-db-lab:plan` and
+`/easy-db-lab:run` skills, and branch verification through `/agent-test`, each in its own workspace
+under `clusters/`. The repository root can never be a workspace: `init` refuses a directory that
+already has a `bin/`.

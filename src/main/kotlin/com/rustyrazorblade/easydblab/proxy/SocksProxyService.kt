@@ -74,9 +74,10 @@ interface SocksProxyService {
     /**
      * Stops the recorded tunnel without touching the cluster: ends its process, deletes the proxy
      * state file, unpublishes the port, and removes the port from the proxy env file. The env file
-     * keeps its Tailscale flag.
+     * keeps its Tailscale flag. A recorded PID that now belongs to another process is not signaled.
+     * When the tunnel process will not end, its state file and port stay recorded.
      *
-     * @return the PID of the tunnel process that was stopped, or null when none was running
+     * @return how the attempt ended
      */
-    fun stop(): Int?
+    fun stop(): TunnelStopResult
 }

@@ -4186,6 +4186,18 @@ sealed interface Event {
             override fun toDisplayString(): String = "Stopped SOCKS5 proxy (PID: $pid)"
         }
 
+        /** `down` asked, then forced, the tunnel process [pid] to end, and it still runs. Its PID stays recorded. */
+        @Serializable
+        @SerialName("Teardown.Socks5ProxyStopFailed")
+        data class Socks5ProxyStopFailed(
+            val pid: Int,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "Error: the SOCKS5 proxy (PID: $pid) did not stop. It is still recorded; stop it with 'kill $pid'."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Teardown.ClusterStateMarkedDown")
         data object ClusterStateMarkedDown : Teardown {
@@ -6050,6 +6062,22 @@ sealed interface Event {
         ) : Proxy {
             override fun toDisplayString(): String =
                 "Stopped the SOCKS5 tunnel [PID $pid]. Wrapped tools fail until 'easy-db-lab start-socks' starts it again."
+        }
+
+        /**
+         * `stop-socks` asked, then forced, the tunnel process [pid] to end, and it still runs. Its
+         * PID and port stay recorded.
+         */
+        @Serializable
+        @SerialName("Proxy.TunnelStopFailed")
+        data class TunnelStopFailed(
+            val pid: Int,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                "Error: the SOCKS5 tunnel [PID $pid] did not stop. It is still recorded; stop it with 'kill $pid' " +
+                    "and run 'easy-db-lab stop-socks' again."
+
+            override fun isError(): Boolean = true
         }
 
         /** `stop-socks` found no running tunnel; any recorded port was removed from the env file. */

@@ -48,6 +48,9 @@ class ProcessSocksProxyServiceUnitTest {
 
         /** Port the default fake selector hands out; nothing ever binds it. */
         const val DEFAULT_TEST_PORT = 1080
+
+        /** Port a recorded tunnel listens on in the stop tests; nothing binds it. */
+        const val STOP_PORT = 41234
     }
 
     @TempDir
@@ -84,6 +87,7 @@ class ProcessSocksProxyServiceUnitTest {
             SshProcessLauncher { _, _ -> error("ssh launch not expected in this test") },
         portSelector: LocalPortSelector = LocalPortSelector { DEFAULT_TEST_PORT },
         verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
+        tunnelProcesses: TunnelProcessControl = TunnelProcessControl(),
     ) = ProcessSocksProxyService(
         Context.forCli(tempDir).copy(workingDirectory = tempDir),
         probe,
@@ -91,7 +95,23 @@ class ProcessSocksProxyServiceUnitTest {
         processLauncher = launcher,
         portSelector = portSelector,
         verifyAttempts = verifyAttempts,
+        tunnelProcesses = tunnelProcesses,
     )
+
+    /** A service whose process lookup sees only [process]. */
+    private fun serviceSeeing(process: FakeTunnelProcess?) =
+        service(
+            tunnelProcesses =
+                TunnelProcessControl(lookup = { pid -> process?.takeIf { it.pid == pid }?.handle }, stopWait = Duration.ofMillis(50)),
+        )
+
+    private fun stateFile() = File(tempDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
+
+    private fun recordedEnv() =
+        ProxyEnvFile(tempDir).apply {
+            recordTailscale(active = false)
+            recordPort(STOP_PORT)
+        }
 
     /** The `-D` port each launched ssh command was handed, in launch order. */
     private fun dynamicForwardPorts(launched: List<List<String>>): List<Int> = launched.map { it[it.indexOf("-D") + 1].toInt() }
@@ -358,6 +378,75 @@ class ProcessSocksProxyServiceUnitTest {
         }
         assertThat(json.decodeFromString<Socks5ProxyStateFile>(stateFile.readText()).port).isEqualTo(41234)
         assertThat(tempDir.list()).noneMatch { it.endsWith(".tmp") }
+    }
+
+    @Test
+    fun `stop ends the recorded tunnel and removes the state file and the port`() {
+        writeStateFile(pid = FAKE_PID.toInt(), port = STOP_PORT)
+        val envFile = recordedEnv()
+        val tunnel = FakeTunnelProcess.sshTunnel(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+
+        val result = serviceSeeing(tunnel).stop()
+
+        assertThat(result).isEqualTo(TunnelStopResult.Stopped(FAKE_PID.toInt()))
+        assertThat(stateFile()).doesNotExist()
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
+    }
+
+    @Test
+    fun `stop with a dead PID reports no tunnel and removes the state file and the port`() {
+        writeStateFile(pid = FAKE_PID.toInt(), port = STOP_PORT)
+        val envFile = recordedEnv()
+
+        val result = serviceSeeing(null).stop()
+
+        assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
+        assertThat(stateFile()).doesNotExist()
+        assertThat(envFile.read().socksPort).isNull()
+    }
+
+    @Test
+    fun `stop never signals a recorded PID that another program now holds`() {
+        writeStateFile(pid = FAKE_PID.toInt(), port = STOP_PORT)
+        val envFile = recordedEnv()
+        val other = FakeTunnelProcess(FAKE_PID, "/usr/bin/python3", listOf("server.py"))
+
+        val result = serviceSeeing(other).stop()
+
+        assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
+        assertThat(other.signals).isZero()
+        assertThat(stateFile()).doesNotExist()
+        assertThat(envFile.read().socksPort).isNull()
+    }
+
+    @Test
+    fun `a tunnel that will not stop keeps its state file and its port`() {
+        writeStateFile(pid = FAKE_PID.toInt(), port = STOP_PORT)
+        val envFile = recordedEnv()
+        val hung = FakeTunnelProcess.sshTunnel(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath, endsOnSignal = false)
+
+        val result = serviceSeeing(hung).stop()
+
+        assertThat(result).isEqualTo(TunnelStopResult.StopFailed(FAKE_PID.toInt()))
+        assertThat(stateFile()).exists()
+        assertThat(envFile.read().socksPort).isEqualTo(STOP_PORT)
+    }
+
+    @Test
+    fun `stop with a corrupt state file removes it and the port`() {
+        stateFile().writeText("{ not json")
+        val envFile = recordedEnv()
+
+        val result = serviceSeeing(null).stop()
+
+        assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
+        assertThat(stateFile()).doesNotExist()
+        assertThat(envFile.read().socksPort).isNull()
+    }
+
+    @Test
+    fun `stop with nothing recorded reports no tunnel`() {
+        assertThat(serviceSeeing(null).stop()).isEqualTo(TunnelStopResult.NotRunning)
     }
 
     @Test

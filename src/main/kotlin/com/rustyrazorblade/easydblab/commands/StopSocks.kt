@@ -1,7 +1,9 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.TunnelStopResult
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 
@@ -18,7 +20,13 @@ class StopSocks : PicoBaseCommand() {
     private val socksProxyService: SocksProxyService by inject()
 
     override fun execute() {
-        val stoppedPid = socksProxyService.stop()
-        eventBus.emit(stoppedPid?.let { Event.Proxy.TunnelStopped(it) } ?: Event.Proxy.NoTunnelRunning)
+        when (val result = socksProxyService.stop()) {
+            is TunnelStopResult.Stopped -> eventBus.emit(Event.Proxy.TunnelStopped(result.pid))
+            TunnelStopResult.NotRunning -> eventBus.emit(Event.Proxy.NoTunnelRunning)
+            is TunnelStopResult.StopFailed -> {
+                eventBus.emit(Event.Proxy.TunnelStopFailed(result.pid))
+                throw CommandFailedException("the SOCKS5 tunnel process ${result.pid} did not stop")
+            }
+        }
     }
 }

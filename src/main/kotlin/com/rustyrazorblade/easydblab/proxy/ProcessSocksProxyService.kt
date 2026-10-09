@@ -89,6 +89,7 @@ class ProcessSocksProxyService(
     private val portSelector: LocalPortSelector = LoopbackPortSelector(),
     private val verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
     private val envFile: ProxyEnvFile = ProxyEnvFile(context.workingDirectory),
+    private val tunnelProcesses: TunnelProcessControl = TunnelProcessControl(),
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_DELAY_MS = 500L
@@ -158,23 +159,23 @@ class ProcessSocksProxyService(
 
     override fun getState(): SocksProxyState? = lock.withLock { state }
 
-    override fun stop(): Int? =
+    override fun stop(): TunnelStopResult =
         lock.withLock {
-            System.clearProperty(Constants.Proxy.PORT_PROPERTY)
-            envFile.removePort()
             val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
-            val recordedPid = readStateFile(stateFile)?.pid ?: pid.takeIf { it > 0 }
-            stateFile.delete()
-            state = null
-            pid = 0
-            recordedPid?.takeIf { terminate(it) }
+            val result = readStateFile(stateFile)?.let { tunnelProcesses.stop(it) } ?: TunnelStopResult.NotRunning
+            when (result) {
+                // The process still runs, so its PID and port stay recorded for the next attempt.
+                is TunnelStopResult.StopFailed -> Unit
+                is TunnelStopResult.Stopped, TunnelStopResult.NotRunning -> {
+                    System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+                    envFile.removePort()
+                    stateFile.delete()
+                    state = null
+                    pid = 0
+                }
+            }
+            result
         }
-
-    /** Asks the process [processPid] to end, the way `kill` does; false when it is not running. */
-    private fun terminate(processPid: Int): Boolean =
-        processPid > 0 &&
-            processPid.toLong() != ProcessHandle.current().pid() &&
-            ProcessHandle.of(processPid.toLong()).map { it.destroy() }.orElse(false)
 
     /** The recorded proxy state, or null when the file is missing or cannot be read. */
     private fun readStateFile(stateFile: File): Socks5ProxyStateFile? =

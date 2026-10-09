@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.TunnelStopResult
 import com.rustyrazorblade.easydblab.services.BackendState
 import com.rustyrazorblade.easydblab.services.TailFlushFailed
 import com.rustyrazorblade.easydblab.services.TailSignal
@@ -547,7 +548,12 @@ class Down : PicoBaseCommand() {
      * `Server`/`Repl`, tests), orphaning the tunnel process at teardown.
      */
     internal fun cleanupSocks5Proxy() {
-        socksProxyService.stop()?.let { pid -> eventBus.emit(Event.Teardown.Socks5ProxyStopped(pid)) }
+        when (val result = socksProxyService.stop()) {
+            is TunnelStopResult.Stopped -> eventBus.emit(Event.Teardown.Socks5ProxyStopped(result.pid))
+            TunnelStopResult.NotRunning -> Unit
+            // The teardown goes on; the tunnel's PID stays recorded so it can still be found and stopped.
+            is TunnelStopResult.StopFailed -> eventBus.emit(Event.Teardown.Socks5ProxyStopFailed(result.pid))
+        }
     }
 
     /**

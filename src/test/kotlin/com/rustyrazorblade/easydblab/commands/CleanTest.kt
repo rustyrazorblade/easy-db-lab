@@ -1,6 +1,9 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.koin.test.get
@@ -130,5 +133,34 @@ class CleanTest : BaseKoinTest() {
         clean.execute()
 
         assertThat(sshConfig).doesNotExist()
+    }
+
+    @Test
+    fun `clean deletes the proxy env file`() {
+        val envFile = ProxyEnvFile(context.workingDirectory).apply { recordTailscale(active = false) }
+
+        get<Clean>().execute()
+
+        assertThat(envFile.file).doesNotExist()
+    }
+
+    @Test
+    fun `clean removes the wrappers, the marker and the then empty bin`() {
+        ToolWrapperInstaller().install(context.workingDirectory)
+
+        get<Clean>().execute()
+
+        assertThat(File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY)).doesNotExist()
+    }
+
+    @Test
+    fun `clean keeps a file in bin it did not write, and bin with it`() {
+        ToolWrapperInstaller().install(context.workingDirectory)
+        val bin = File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY)
+        File(bin, "my-script").writeText("#!/bin/sh\n")
+
+        get<Clean>().execute()
+
+        assertThat(bin.list()).containsExactly("my-script")
     }
 }

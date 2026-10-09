@@ -44,9 +44,9 @@
 
 ## 6. init refusal
 
-- [ ] 6.1 Add a typed event for the `bin/` refusal (per `events/CLAUDE.md`, not `Event.Message`/`Event.Error`).
-- [ ] 6.2 Write failing tests: `init` in a directory with a `bin/` directory fails and writes nothing; the same with a `bin` file; `init --clean` in a workspace whose `bin/` holds only wrappers and the marker succeeds; `init --clean` with a foreign file in `bin/` fails.
-- [ ] 6.3 Implement the check in `Init` (after the cleanup when `--clean` is set).
+- [x] 6.1 Add a typed event for the `bin/` refusal (per `events/CLAUDE.md`, not `Event.Message`/`Event.Error`).
+- [x] 6.2 Write failing tests: `init` in a directory with a `bin/` directory fails and writes nothing; the same with a `bin` file; `init --clean` in a workspace whose `bin/` holds only wrappers and the marker succeeds; `init --clean` with a foreign file in `bin/` fails.
+- [x] 6.3 Implement the check in `Init` (after the cleanup when `--clean` is set).
 
 ## 7. start-socks and stop-socks
 
@@ -60,7 +60,7 @@
 - [ ] 8.2 `CommandExecutor.ensureProxyRunning` writes `EDL_TAILSCALE_ACTIVE` on its early-return branches where state is known. Test it.
 - [ ] 8.3 `Down.cleanupSocks5Proxy` removes `EDL_SOCKS_PORT`. Test it.
 - [ ] 8.4 VPC restore in `CommandExecutor` writes the env file and the wrappers. Test it.
-- [ ] 8.5 `Clean` deletes the env file, the six wrappers, and the marker by name, and removes `bin/` only if empty. Test both the empty and the foreign-file cases.
+- [x] 8.5 `Clean` deletes the env file, the six wrappers, and the marker by name, and removes `bin/` only if empty. Test both the empty and the foreign-file cases.
 
 ## 9. env.sh
 

@@ -5248,6 +5248,24 @@ sealed interface Event {
                 }
         }
 
+        /**
+         * `init` refused [directory] because it already has a `bin/` (a file or a directory). The
+         * workspace `bin/` belongs to easy-db-lab's tool wrappers, so a source checkout or a project
+         * directory cannot be a workspace. Nothing was written.
+         */
+        @Serializable
+        @SerialName("Setup.WorkspaceHasBinDirectory")
+        data class WorkspaceHasBinDirectory(
+            val directory: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Error: $directory already has a bin/. easy-db-lab needs bin/ for its tool wrappers " +
+                    "(kubectl, helm, cilium, curl, skopeo, k9s), so this directory cannot be a workspace. " +
+                    "Use a new, empty directory as the workspace, for example under clusters/."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {

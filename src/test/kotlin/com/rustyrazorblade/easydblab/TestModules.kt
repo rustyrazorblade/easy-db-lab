@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.EcrPullSecretService
@@ -95,6 +96,9 @@ object TestModules {
                 val context = get<Context>()
                 UserConfigProvider(context.profileDir)
             }
+
+            // Real: it only writes and removes the packaged tool wrappers in a workspace's bin/.
+            single { ToolWrapperInstaller() }
         }
     }
 

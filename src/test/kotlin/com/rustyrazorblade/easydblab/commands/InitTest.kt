@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
@@ -22,6 +25,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -57,6 +61,62 @@ class InitTest : BaseKoinTest() {
         File("setup_instance.sh").delete()
         File("cassandra").deleteRecursively()
         File("k8s").deleteRecursively()
+    }
+
+    /** The workspace `bin/` belongs to the tool wrappers, so `init` refuses a directory that already has one. */
+    @Nested
+    inner class BinDirectory {
+        private val bin: File get() = File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY)
+
+        @Test
+        fun `a directory with a bin directory is refused and nothing is written`() {
+            bin.mkdirs()
+            val before = context.workingDirectory.list().orEmpty().toList()
+
+            assertThatThrownBy { Init().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertRefusedAndUntouched(before)
+        }
+
+        @Test
+        fun `a directory with a bin file is refused and nothing is written`() {
+            bin.writeText("not a directory")
+            val before = context.workingDirectory.list().orEmpty().toList()
+
+            assertThatThrownBy { Init().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertRefusedAndUntouched(before)
+        }
+
+        @Test
+        fun `init --clean in a workspace whose bin holds only the wrappers and the marker succeeds`() {
+            ToolWrapperInstaller().install(context.workingDirectory)
+            val command = Init().apply { clean = true }
+
+            command.execute()
+
+            assertThat(bin).doesNotExist()
+            verify(mockClusterStateManager).save(any())
+        }
+
+        @Test
+        fun `init --clean with a foreign file in bin is refused`() {
+            ToolWrapperInstaller().install(context.workingDirectory)
+            File(bin, "my-script").writeText("#!/bin/sh\n")
+            val command = Init().apply { clean = true }
+
+            assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertThat(File(bin, "my-script")).exists()
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        private fun assertRefusedAndUntouched(entriesBefore: List<String>) {
+            assertThat(context.workingDirectory.list()).containsExactlyInAnyOrderElementsOf(entriesBefore)
+            assertThat(File("setup_instance.sh")).doesNotExist()
+            verify(mockClusterStateManager, never()).save(any())
+            assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("already has a bin/").contains("new, empty directory")
+        }
     }
 
     @Nested

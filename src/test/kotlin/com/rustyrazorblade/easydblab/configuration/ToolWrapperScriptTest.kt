@@ -115,8 +115,21 @@ internal class ToolWrapperScriptTest {
     fun `with no real binary on PATH the wrapper exits 127 with a message naming the tool`() {
         socksCluster(port = 41234)
         File(realBin, "skopeo").delete()
+        // No system directory on PATH: a CI runner may have a real skopeo in /usr/bin (GitHub's
+        // ubuntu-latest does), which the wrapper would rightly run. Only the utility the wrapper
+        // itself needs is offered, from a directory of its own.
+        val utilities =
+            File(root, "utilities").apply {
+                mkdirs()
+                Files.createSymbolicLink(File(this, "dirname").toPath(), systemExecutable("dirname").toPath())
+            }
 
-        val result = run("skopeo inspect docker://x")
+        val result =
+            run(
+                "skopeo inspect docker://x",
+                path = listOf(File(workspace, Constants.ToolWrappers.DIRECTORY), realBin, utilities),
+                systemPath = emptyList(),
+            )
 
         assertThat(result.exitCode).isEqualTo(NOT_FOUND)
         assertThat(result.stderr).contains("skopeo")
@@ -289,11 +302,12 @@ internal class ToolWrapperScriptTest {
         env: Map<String, String> = emptyMap(),
         stdin: String = "",
         path: List<File> = listOf(File(workspace, Constants.ToolWrappers.DIRECTORY), realBin),
+        systemPath: List<String> = SYSTEM_PATH,
     ): Result {
         val builder = ProcessBuilder("/bin/sh", "-c", command).directory(root)
         builder.environment().apply {
             clear()
-            put("PATH", (path.map { it.absolutePath } + SYSTEM_PATH).joinToString(File.pathSeparator))
+            put("PATH", (path.map { it.absolutePath } + systemPath).joinToString(File.pathSeparator))
             put("STUB_PRINT_ENV", "1")
             putAll(env)
         }
@@ -304,6 +318,10 @@ internal class ToolWrapperScriptTest {
         assertThat(process.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).withFailMessage("$command did not finish").isTrue()
         return Result(process.exitValue(), stdout, stderr)
     }
+
+    /** The system copy of [name]; the test needs it to exist. */
+    private fun systemExecutable(name: String): File =
+        requireNotNull(SYSTEM_PATH.map { File(it, name) }.firstOrNull { it.canExecute() }) { "no $name in $SYSTEM_PATH" }
 
     /** What one run printed: the stubs' lines on stdout, the wrapper's messages on stderr. */
     private data class Result(

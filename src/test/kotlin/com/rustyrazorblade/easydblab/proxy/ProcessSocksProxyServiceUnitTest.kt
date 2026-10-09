@@ -99,11 +99,17 @@ class ProcessSocksProxyServiceUnitTest {
     )
 
     /** A service whose process lookup sees only [process]. */
-    private fun serviceSeeing(process: FakeTunnelProcess?) =
-        service(
-            tunnelProcesses =
-                TunnelProcessControl(lookup = { pid -> process?.takeIf { it.pid == pid }?.handle }, stopWait = Duration.ofMillis(50)),
-        )
+    private fun serviceSeeing(
+        process: FakeTunnelProcess?,
+        probe: TunnelReachabilityProbe = TunnelReachabilityProbe { _, _, _ -> false },
+        launcher: SshProcessLauncher = SshProcessLauncher { _, _ -> error("ssh launch not expected in this test") },
+    ) = service(
+        probe = probe,
+        launcher = launcher,
+        portSelector = { STOP_PORT },
+        tunnelProcesses =
+            TunnelProcessControl(lookup = { pid -> process?.takeIf { it.pid == pid }?.handle }, stopWait = Duration.ofMillis(50)),
+    )
 
     private fun stateFile() = File(tempDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
 
@@ -479,6 +485,20 @@ class ProcessSocksProxyServiceUnitTest {
     fun `a superseded record whose PID is gone is ignored`() {
         // The lookup sees no process at all; nothing to signal, and nothing throws.
         serviceSeeing(null).terminateStaleProxy(staleRecord())
+    }
+
+    @Test
+    fun `stop with a corrupt state file still stops the tunnel this process started`() {
+        val tunnel = FakeTunnelProcess.sshTunnel(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val svc = serviceSeeing(tunnel, probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() })
+        svc.ensureRunning(testHost)
+        stateFile().writeText("{ not json")
+
+        val result = svc.stop()
+
+        assertThat(result).isEqualTo(TunnelStopResult.Stopped(FAKE_PID.toInt()))
+        assertThat(tunnel.handle.isAlive).isFalse()
+        assertThat(stateFile()).doesNotExist()
     }
 
     @Test

@@ -162,7 +162,10 @@ class ProcessSocksProxyService(
     override fun stop(): TunnelStopResult =
         lock.withLock {
             val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
-            val result = readStateFile(stateFile)?.let { tunnelProcesses.stop(it) } ?: TunnelStopResult.NotRunning
+            // A state file that cannot be read does not mean no tunnel: one this process started is
+            // still known in memory, and goes through the same verified stop.
+            val recorded = readStateFile(stateFile) ?: inMemoryRecord()
+            val result = recorded?.let { tunnelProcesses.stop(it) } ?: TunnelStopResult.NotRunning
             when (result) {
                 // The process still runs, so its PID and port stay recorded for the next attempt.
                 is TunnelStopResult.StopFailed -> Unit
@@ -176,6 +179,21 @@ class ProcessSocksProxyService(
             }
             result
         }
+
+    /** The tunnel this process started or reused, as the state file would record it; null when there is none. */
+    private fun inMemoryRecord(): Socks5ProxyStateFile? {
+        val current = state ?: return null
+        if (pid <= 0) return null
+        return Socks5ProxyStateFile(
+            pid = pid,
+            port = current.localPort,
+            controlHost = current.gatewayHost.alias,
+            controlIP = current.gatewayHost.privateIp,
+            clusterName = context.workingDirectory.name,
+            startTime = current.startTime.toString(),
+            sshConfig = File(context.workingDirectory, "sshConfig").absolutePath,
+        )
+    }
 
     /** The recorded proxy state, or null when the file is missing or cannot be read. */
     private fun readStateFile(stateFile: File): Socks5ProxyStateFile? =

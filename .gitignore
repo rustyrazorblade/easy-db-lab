@@ -25,7 +25,6 @@ build/
 /terraform.tfvars
 /terraform.tfstate.backup
 /logs/
-sshConfig
 /scripts
 /authorized_keys
 
@@ -105,7 +104,6 @@ local.properties
 # End of https://www.gitignore.io/api/eclipse
 src/main/resources/com/rustyrazorblade/easycasslab/instances/importers/instances.json
 /prometheus.yml
-/env.sh
 /artifacts
 easy-cass-lab.ipr
 easy-cass-lab.iws
@@ -124,7 +122,6 @@ disk_setup.sh
 /setup_instance.sh
 /cassandra-jmx-rules.yaml
 cassandra_versions_extra.yaml
-state.json
 /cassandra_versions.yaml
 axonops-dashboards.json
 axonops-workbench.json
@@ -145,8 +142,6 @@ easy-cass-mcp.json
 .aider*
 .mcp.json
 /stress
-/kubeconfig
-/.socks5-proxy-state
 CLAUDE.local.md
 /k8s
 /restore

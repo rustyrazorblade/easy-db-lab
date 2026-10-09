@@ -71,10 +71,10 @@
 
 ## 10. Repo cleanup
 
-- [ ] 10.1 Delete `bin/end-to-end-test`, `bin/e2e-pr`, `bin/debug-log-pipeline`, `bin/test-spark-bulk-writer`, and `bin/submit-direct-bulk-writer`.
-- [ ] 10.2 Delete `docs/development/end-to-end-testing.md` and its `docs/SUMMARY.md` entry. Update references in `.claude/skills/cluster-ops/SKILL.md`, `.claude/skills/agent-test/SKILL.md`, `.claude/skills/agent-test/README.md`, `.claude/skills/create-kit/SKILL.md`, `docs/development/overview.md`, and `.env.example`.
-- [ ] 10.3 Remove the root `.gitignore` entries `sshConfig`, `/env.sh`, `state.json`, `/kubeconfig`, and `/.socks5-proxy-state`.
-- [ ] 10.4 Grep the repo's shell scripts and resources to confirm none parses JSON to read proxy state.
+- [x] 10.1 Delete `bin/end-to-end-test`, `bin/e2e-pr`, `bin/debug-log-pipeline`, `bin/test-spark-bulk-writer`, and `bin/submit-direct-bulk-writer`.
+- [x] 10.2 Delete `docs/development/end-to-end-testing.md` and its `docs/SUMMARY.md` entry. Update references in `.claude/skills/cluster-ops/SKILL.md`, `.claude/skills/agent-test/SKILL.md`, `.claude/skills/agent-test/README.md`, `.claude/skills/create-kit/SKILL.md`, `docs/development/overview.md`, and `.env.example`.
+- [x] 10.3 Remove the root `.gitignore` entries `sshConfig`, `/env.sh`, `state.json`, `/kubeconfig`, and `/.socks5-proxy-state`.
+- [x] 10.4 Grep the repo's shell scripts and resources to confirm none parses JSON to read proxy state.
 
 ## 11. Docs and CLAUDE.md files
 

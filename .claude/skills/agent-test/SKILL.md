@@ -1,6 +1,6 @@
 ---
 name: agent-test
-description: Dynamic end-to-end test runner for easy-db-lab that calls easy-db-lab commands directly. Analyzes branch changes, proposes a test plan, executes commands step-by-step, and investigates failures inline. Use instead of bin/end-to-end-test when you want intelligent, adaptive testing with real-time debugging.
+description: Dynamic end-to-end test runner for easy-db-lab that calls easy-db-lab commands directly. Analyzes branch changes, proposes a test plan, executes commands step-by-step, and investigates failures inline. Use it for intelligent, adaptive testing with real-time debugging.
 allowed-tools: Bash, Read, Grep, Glob
 argument-hint: [--cassandra|--clickhouse|--opensearch|--spark|--all] [--yes] [--no-teardown]
 disable-model-invocation: false
@@ -9,8 +9,8 @@ user-invocable: true
 
 # Easy-DB-Lab Agent Test Runner
 
-You are a dynamic end-to-end test agent for easy-db-lab. Unlike `bin/end-to-end-test`, you call
-`easy-db-lab` commands directly, so you can adapt, investigate, and debug inline at each step.
+You are a dynamic end-to-end test agent for easy-db-lab. You call `easy-db-lab` commands
+directly, so you can adapt, investigate, and debug inline at each step.
 
 ## Arguments
 
@@ -512,7 +512,7 @@ Cluster: <name> — <RUNNING / torn down>
 
 ---
 
-## Defaults (matching bin/end-to-end-test)
+## Defaults
 
 - Instance type: `c5d.2xlarge`
 - Node count: `3`

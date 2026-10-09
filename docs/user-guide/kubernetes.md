@@ -22,7 +22,10 @@ kubectl get nodes
 kubectl get pods -A
 ```
 
-The kubeconfig is downloaded to your working directory and kubectl is configured to use the SOCKS5 proxy for connectivity.
+The kubeconfig is downloaded to your working directory. `source env.sh` puts the workspace's
+`bin/` first on your `PATH`, and the `kubectl` there is a wrapper that reaches the cluster through
+the SOCKS5 tunnel, or directly on a Tailscale cluster. See
+[Tool Wrappers](network-connectivity.md#tool-wrappers).
 
 ### k9s
 
@@ -33,7 +36,7 @@ source env.sh
 k9s
 ```
 
-k9s is pre-configured to use the correct kubeconfig and proxy settings.
+k9s uses the workspace kubeconfig and, like `kubectl`, runs through the workspace wrapper.
 
 ## Port Forwarding
 
@@ -41,28 +44,30 @@ easy-db-lab uses a SOCKS5 proxy for accessing the private Kubernetes cluster.
 
 ### Starting the Proxy
 
-The proxy starts automatically when you source the environment:
+Any `easy-db-lab` command that needs the cluster starts the tunnel on its own. `source env.sh`
+does not start it. To start it for your shell or a browser:
 
 ```bash
-source env.sh
+easy-db-lab start-socks
 ```
 
 ### Manual Proxy Control
 
 ```bash
-# Start the SOCKS5 proxy
-start-socks5
+# Start the SOCKS5 tunnel, or reuse the running one, and print its port
+easy-db-lab start-socks
 
-# Check proxy status
+# Check the recorded port (after source env.sh)
 socks5-status
 
-# Stop the proxy
-stop-socks5
+# Stop the tunnel; the cluster keeps running
+easy-db-lab stop-socks
 ```
 
 ### Running Commands Through the Proxy
 
-Commands like kubectl and k9s automatically use the proxy. For other commands:
+`kubectl`, `helm`, `cilium`, `curl`, `skopeo` and `k9s` use the tunnel through the workspace
+wrappers. For other commands:
 
 ```bash
 # Route any command through the proxy

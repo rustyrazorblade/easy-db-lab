@@ -137,8 +137,10 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
 - **OpenSSH paths** (the SOCKS tunnel, every `env.sh` helper) use `sshConfig`.
   `ClusterConfigurationService` writes `route.proxyCommand(host)` into each `Host` block (and
   into the fallback config `env.sh` writes when `sshConfig` is missing). Under `ssm` that is
-  `aws ssm start-session --document-name AWS-StartSSHSession`. The `Hostname` line must stay
-  directly after `Host`, because `env.sh` reads it with `grep -A 1`.
+  `aws ssm start-session --document-name AWS-StartSSHSession`. Each `Hostname` line still
+  directly follows its `Host` line. Nothing reads the file that way any more (the old `env.sh`
+  `start-socks5` read it with `grep -A 1`; the CLI now manages the tunnel), but the order is
+  harmless and the `ssm-ssh-transport` spec scenario still names it.
   Under `ssm` the config also carries global `ServerAliveInterval`/`ServerAliveCountMax`, because
   Session Manager drops a session after 20 idle minutes and a quiet SOCKS tunnel would otherwise die,
   and `ConnectTimeout 30` (`Constants.Ssm.SSH_CONNECT_TIMEOUT_SECONDS`), because keepalives start only

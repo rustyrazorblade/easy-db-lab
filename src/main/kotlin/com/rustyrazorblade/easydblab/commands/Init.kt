@@ -349,8 +349,8 @@ class Init : PicoBaseCommand() {
 
         if (clean) {
             eventBus.emit(Event.Setup.CleaningExistingConfig)
-            // Execute Clean immediately with full lifecycle
-            commandExecutor.execute { Clean() }
+            // Execute Clean immediately with full lifecycle; a failed clean fails init.
+            runNested(commandExecutor, Clean())
         } else {
             checkExistingFiles()
         }

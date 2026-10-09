@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -8,12 +9,16 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -58,8 +63,21 @@ class UpdateConfigTest : BaseKoinTest() {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { hostOperationsService }
                 single<RemoteOperationsService> { mock<RemoteOperationsService>().also { mockRemoteOps = it } }
+                single<CommandExecutor> {
+                    object : CommandExecutor {
+                        override fun <T : PicoCommand> execute(commandFactory: () -> T): Int {
+                            commandFactory()
+                            return restartExitCode
+                        }
+
+                        override fun <T : PicoCommand> schedule(commandFactory: () -> T) = Unit
+                    }
+                }
             },
         )
+
+    /** The exit code the executor gives the nested restart. */
+    private var restartExitCode = 0
 
     @BeforeEach
     fun setupMocks() {
@@ -113,5 +131,22 @@ class UpdateConfigTest : BaseKoinTest() {
             "Configuration updated for db0",
         )
         assertThat(output).doesNotContain("Host(", "i-db0", "54.1.2.3")
+    }
+
+    @Test
+    fun `a failed restart fails update-config`() {
+        restartExitCode = Constants.ExitCodes.ERROR
+        val command = UpdateConfig()
+        command.restart = true
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+    }
+
+    @Test
+    fun `a restart that succeeds leaves update-config successful`() {
+        val command = UpdateConfig()
+        command.restart = true
+
+        command.execute()
     }
 }

@@ -5,9 +5,11 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
@@ -41,8 +43,18 @@ class InitTest : BaseKoinTest() {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { mockEc2InstanceService }
                 single { TemplateService(get(), get()) }
+                single<CommandExecutor> {
+                    object : CommandExecutor {
+                        override fun <T : PicoCommand> execute(commandFactory: () -> T): Int = nestedFailure ?: commandFactory().call()
+
+                        override fun <T : PicoCommand> schedule(commandFactory: () -> T) = Unit
+                    }
+                }
             },
         )
+
+    /** When set, the exit code every nested command reports instead of running. */
+    private var nestedFailure: Int? = null
 
     @BeforeEach
     fun setupMocks() {
@@ -137,6 +149,17 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager, never()).save(any())
             assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("already has a bin/").contains("new, empty directory")
         }
+    }
+
+    @Test
+    fun `a failed clean fails init before any state is saved`() {
+        nestedFailure = Constants.ExitCodes.ERROR
+        val command = Init()
+        command.clean = true
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        verify(mockClusterStateManager, never()).save(any())
     }
 
     @Nested
@@ -344,7 +367,7 @@ class InitTest : BaseKoinTest() {
             }
         }
 
-        private fun assertNothingSaved() = verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        private fun assertNothingSaved() = verify(mockClusterStateManager, never()).save(any())
 
         @Test
         fun `an app instance type without instance store fails whatever the ebs type, naming the node type and instance type`() {
@@ -557,7 +580,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("^[a-z][a-z0-9_-]{0,62}$")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
 
         /** A Loki tenant named `index` would put its chunks under Loki's index path. */
@@ -570,7 +593,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("'index' is reserved")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 
@@ -608,7 +631,7 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 
@@ -670,7 +693,7 @@ class InitTest : BaseKoinTest() {
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining("traces")
 
-            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+            verify(mockClusterStateManager, never()).save(any())
         }
     }
 

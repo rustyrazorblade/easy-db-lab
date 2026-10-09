@@ -72,12 +72,10 @@ class UseCassandra : PicoBaseCommand() {
 
         clusterStateManager.save(state)
 
-        commandExecutor.execute { DownloadConfig() }
+        runNested(commandExecutor, DownloadConfig())
 
         // make sure we only apply to the filtered hosts
-        commandExecutor.execute {
-            UpdateConfig().apply { this.hosts = this@UseCassandra.hosts }
-        }
+        runNested(commandExecutor, UpdateConfig().apply { this.hosts = this@UseCassandra.hosts })
 
         eventBus.emit(Event.Cassandra.ConfigUpdateHint(version))
     }

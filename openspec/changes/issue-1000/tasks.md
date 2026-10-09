@@ -50,9 +50,9 @@
 
 ## 7. start-socks and stop-socks
 
-- [ ] 7.1 Add typed events for tunnel started/reused (with the port), tunnel stopped, and "no tunnel needed on Tailscale".
-- [ ] 7.2 Write failing tests: `start-socks` starts or reuses the tunnel, records the port, and emits the port; on Tailscale it starts nothing; `stop-socks` stops the tunnel and removes the port while leaving `EDL_TAILSCALE_ACTIVE`.
-- [ ] 7.3 Implement both top-level commands through `ProcessSocksProxyService`, register them, and add them to help.
+- [x] 7.1 Add typed events for tunnel started/reused (with the port), tunnel stopped, and "no tunnel needed on Tailscale".
+- [x] 7.2 Write failing tests: `start-socks` starts or reuses the tunnel, records the port, and emits the port; on Tailscale it starts nothing; `stop-socks` stops the tunnel and removes the port while leaving `EDL_TAILSCALE_ACTIVE`.
+- [x] 7.3 Implement both top-level commands through `ProcessSocksProxyService`, register them, and add them to help.
 
 ## 8. up, down, clean, and VPC restore
 

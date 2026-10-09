@@ -5999,6 +5999,68 @@ sealed interface Event {
     }
 
     /**
+     * The SOCKS5 tunnel that `start-socks` and `stop-socks` manage outside of `up` and `down`. The
+     * tool wrappers and `env.sh` read its port from the workspace's proxy env file.
+     */
+    @Serializable
+    sealed interface Proxy : Event {
+        /**
+         * The tunnel runs on local [port] and the env file records it; [reused] is true when an
+         * already running, verified tunnel was kept rather than a new one started.
+         */
+        @Serializable
+        @SerialName("Proxy.TunnelReady")
+        data class TunnelReady(
+            val port: Int,
+            val reused: Boolean,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                """
+                |SOCKS5 tunnel ${if (reused) "already running" else "started"} on localhost:$port.
+                |kubectl, helm, cilium, curl, skopeo and k9s from this workspace's bin/ use it.
+                |To browse cluster web UIs, set your browser's SOCKS v5 proxy to host localhost, port $port.
+                """.trimMargin()
+        }
+
+        /** The cluster reaches its nodes over Tailscale, so no tunnel was started. */
+        @Serializable
+        @SerialName("Proxy.TunnelNotNeeded")
+        data object TunnelNotNeeded : Proxy {
+            override fun toDisplayString(): String =
+                "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+        }
+
+        /** No tunnel could be started because the workspace has no running cluster. */
+        @Serializable
+        @SerialName("Proxy.NoRunningCluster")
+        data class NoRunningCluster(
+            val workspace: String,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                "Error: $workspace has no running cluster to open a SOCKS5 tunnel to. Run 'easy-db-lab up' first."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** `stop-socks` stopped the tunnel process [pid] and removed its port from the env file. */
+        @Serializable
+        @SerialName("Proxy.TunnelStopped")
+        data class TunnelStopped(
+            val pid: Int,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                "Stopped the SOCKS5 tunnel [PID $pid]. Wrapped tools fail until 'easy-db-lab start-socks' starts it again."
+        }
+
+        /** `stop-socks` found no running tunnel; any recorded port was removed from the env file. */
+        @Serializable
+        @SerialName("Proxy.NoTunnelRunning")
+        data object NoTunnelRunning : Proxy {
+            override fun toDisplayString(): String = "No SOCKS5 tunnel was running."
+        }
+    }
+
+    /**
      * Test documents: the markdown files `report upload` stores in a test's folder, `reports/<tenant>/<name>-<id>/`,
      * with an HTML copy of each and one `index.html` that holds them all.
      */

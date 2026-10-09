@@ -9,12 +9,13 @@ import java.time.Instant
  * @property localPort The local port the proxy listens on
  * @property gatewayHost Full host info for the SSH gateway
  * @property startTime When the proxy was started
- * @property connectionCount Tracks usage in server mode
+ * @property reused True when an already running, verified tunnel was kept instead of a new one started
  */
 data class SocksProxyState(
     val localPort: Int,
     val gatewayHost: ClusterHost,
     val startTime: Instant,
+    val reused: Boolean = false,
 )
 
 /**
@@ -69,4 +70,13 @@ interface SocksProxyService {
      * @return The configured local port
      */
     fun getLocalPort(): Int
+
+    /**
+     * Stops the recorded tunnel without touching the cluster: ends its process, deletes the proxy
+     * state file, unpublishes the port, and removes the port from the proxy env file. The env file
+     * keeps its Tailscale flag.
+     *
+     * @return the PID of the tunnel process that was stopped, or null when none was running
+     */
+    fun stop(): Int?
 }

@@ -112,7 +112,7 @@ class ProcessSocksProxyService(
             if (current != null && isAlive(pid) && isPortAccepting(current.localPort)) {
                 log.debug { "SOCKS5 proxy already running in-memory on port ${current.localPort} [PID $pid]" }
                 envFile.recordPort(current.localPort)
-                return@withLock current
+                return@withLock current.copy(reused = true)
             }
 
             // Try to reuse from state file
@@ -125,7 +125,7 @@ class ProcessSocksProxyService(
                     val loaded = json.decodeFromString<Socks5ProxyStateFile>(stateFile.readText())
                     if (isValidProxy(loaded, gatewayHost, sshConfigPath)) {
                         log.info { "Reusing existing SOCKS5 proxy on port ${loaded.port} [PID ${loaded.pid}]" }
-                        val reused = buildProxyState(loaded.port, gatewayHost)
+                        val reused = buildProxyState(loaded.port, gatewayHost).copy(reused = true)
                         state = reused
                         pid = loaded.pid
                         applySystemProperties(loaded.port)
@@ -157,6 +157,32 @@ class ProcessSocksProxyService(
         }
 
     override fun getState(): SocksProxyState? = lock.withLock { state }
+
+    override fun stop(): Int? =
+        lock.withLock {
+            System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+            envFile.removePort()
+            val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
+            val recordedPid = readStateFile(stateFile)?.pid ?: pid.takeIf { it > 0 }
+            stateFile.delete()
+            state = null
+            pid = 0
+            recordedPid?.takeIf { terminate(it) }
+        }
+
+    /** Asks the process [processPid] to end, the way `kill` does; false when it is not running. */
+    private fun terminate(processPid: Int): Boolean =
+        processPid > 0 &&
+            processPid.toLong() != ProcessHandle.current().pid() &&
+            ProcessHandle.of(processPid.toLong()).map { it.destroy() }.orElse(false)
+
+    /** The recorded proxy state, or null when the file is missing or cannot be read. */
+    private fun readStateFile(stateFile: File): Socks5ProxyStateFile? =
+        stateFile.takeIf { it.exists() }?.let { file ->
+            runCatching { json.decodeFromString<Socks5ProxyStateFile>(file.readText()) }
+                .onFailure { e -> log.warn(e) { "Could not read the SOCKS5 proxy state file ${file.absolutePath}" } }
+                .getOrNull()
+        }
 
     override fun getLocalPort(): Int =
         lock.withLock {

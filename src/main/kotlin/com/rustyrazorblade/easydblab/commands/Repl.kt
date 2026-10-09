@@ -61,6 +61,8 @@ import java.util.function.Supplier
         Init::class,
         SetupInstance::class,
         Up::class,
+        StartSocks::class,
+        StopSocks::class,
         // Parent command groups
         Spark::class,
         Cassandra::class,

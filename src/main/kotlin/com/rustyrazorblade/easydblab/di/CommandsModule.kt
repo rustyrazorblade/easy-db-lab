@@ -16,7 +16,9 @@ import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
+import com.rustyrazorblade.easydblab.commands.StartSocks
 import com.rustyrazorblade.easydblab.commands.Status
+import com.rustyrazorblade.easydblab.commands.StopSocks
 import com.rustyrazorblade.easydblab.commands.Up
 import com.rustyrazorblade.easydblab.commands.UploadAuthorizedKeys
 import com.rustyrazorblade.easydblab.commands.Version
@@ -86,6 +88,8 @@ val commandsModule =
         factory { ProfileShow() }
         factory { SetupProfile() }
         factory { ShowIamPolicies() }
+        factory { StartSocks() }
+        factory { StopSocks() }
         factory { Status() }
         factory { Up() }
         factory { UploadAuthorizedKeys() }

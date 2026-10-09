@@ -6,10 +6,10 @@
 
 ## 2. Proxy env file and atomic proxy state
 
-- [ ] 2.1 Write failing tests for the proxy env file writer: writes only `EDL_TAILSCALE_ACTIVE` and `EDL_SOCKS_PORT`; updating one key keeps the other; removing the port keeps the Tailscale flag; the write is a temp file plus rename; the file sources cleanly in `/bin/sh`.
-- [ ] 2.2 Implement the writer (one class owns `.socks5-proxy.env`), register it in Koin, and add its file name and keys to `Constants`.
-- [ ] 2.3 Write a failing test that `.socks5-proxy-state` is written by temp file plus rename, then make `ProcessSocksProxyService` write it atomically.
-- [ ] 2.4 `ProcessSocksProxyService` writes `EDL_SOCKS_PORT` only after the tunnel is verified, on start and on reuse. Test both paths and the stale-PID restart on a new port.
+- [x] 2.1 Write failing tests for the proxy env file writer: writes only `EDL_TAILSCALE_ACTIVE` and `EDL_SOCKS_PORT`; updating one key keeps the other; removing the port keeps the Tailscale flag; the write is a temp file plus rename; the file sources cleanly in `/bin/sh`.
+- [x] 2.2 Implement the writer (one class owns `.socks5-proxy.env`), register it in Koin, and add its file name and keys to `Constants`.
+- [x] 2.3 Write a failing test that `.socks5-proxy-state` is written by temp file plus rename, then make `ProcessSocksProxyService` write it atomically.
+- [x] 2.4 `ProcessSocksProxyService` writes `EDL_SOCKS_PORT` only after the tunnel is verified, on start and on reuse. Test both paths and the stale-PID restart on a new port.
 
 ## 3. Wrapper script and its shell tests
 

@@ -1,8 +1,6 @@
 package com.rustyrazorblade.easydblab
 
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 
 /**
  * A script packaged in the distribution that the CLI writes to disk as an executable file.
@@ -31,15 +29,8 @@ class PackagedExecutable(
      */
     fun writeTo(target: File): Boolean {
         if (isWrittenTo(target)) return false
-        val directory = target.absoluteFile.parentFile
-        directory.mkdirs()
-        val staged = Files.createTempFile(directory.toPath(), ".${target.name}.", ".tmp").toFile()
-        try {
-            staged.writeText(content)
+        target.writeTextAtomically(content) { staged ->
             check(makeExecutable(staged)) { "Could not make ${staged.path} executable" }
-            Files.move(staged.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-        } finally {
-            staged.delete()
         }
         return true
     }

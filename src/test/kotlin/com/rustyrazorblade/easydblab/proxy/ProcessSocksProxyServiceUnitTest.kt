@@ -308,6 +308,61 @@ class ProcessSocksProxyServiceUnitTest {
     }
 
     @Test
+    fun `a verified start records its port in the proxy env file and keeps the Tailscale flag`() {
+        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+
+        service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }, portSelector = { 41234 })
+            .ensureRunning(testHost)
+
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = 41234))
+    }
+
+    @Test
+    fun `a stale PID is replaced by a tunnel on a new port, and the env file records the new port`() {
+        writeStateFile(pid = -1, port = 1080)
+        val envFile = ProxyEnvFile(tempDir).apply { recordPort(1080) }
+
+        service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }, portSelector = { 41234 })
+            .ensureRunning(testHost)
+
+        assertThat(envFile.read().socksPort).isEqualTo(41234)
+        val recorded =
+            json.decodeFromString<Socks5ProxyStateFile>(File(tempDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE).readText())
+        assertThat(recorded.port).isEqualTo(41234)
+    }
+
+    @Test
+    fun `a failed start leaves no port in the env file`() {
+        writeStateFile(pid = -1, port = 1080)
+        val envFile =
+            ProxyEnvFile(tempDir).apply {
+                recordTailscale(active = false)
+                recordPort(1080)
+            }
+
+        assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }).ensureRunning(testHost) }
+            .isInstanceOf(IllegalStateException::class.java)
+
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
+    }
+
+    @Test
+    fun `the proxy state file is replaced by rename, so a reader of the old file still sees all of it`() {
+        writeStateFile(pid = -1, port = 1080)
+        val stateFile = File(tempDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
+        val before = stateFile.readText()
+
+        stateFile.inputStream().use { oldReader ->
+            service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }, portSelector = { 41234 })
+                .ensureRunning(testHost)
+
+            assertThat(String(oldReader.readAllBytes())).isEqualTo(before)
+        }
+        assertThat(json.decodeFromString<Socks5ProxyStateFile>(stateFile.readText()).port).isEqualTo(41234)
+        assertThat(tempDir.list()).noneMatch { it.endsWith(".tmp") }
+    }
+
+    @Test
     fun `isLocalPortBindFailure recognizes ssh's dynamic-forward bind errors`() {
         assertThat(isLocalPortBindFailure(listOf("bind [127.0.0.1]:1080: Address already in use"))).isTrue()
         assertThat(isLocalPortBindFailure(listOf("channel_setup_fwd_listener_tcpip: cannot listen to port: 1080"))).isTrue()

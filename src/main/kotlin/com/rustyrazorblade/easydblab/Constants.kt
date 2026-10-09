@@ -908,6 +908,19 @@ object Constants {
         const val PORT_PROPERTY = "easydblab.socks5Port"
 
         /**
+         * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
+         * tool wrappers in `bin/` and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE] and
+         * [ENV_SOCKS_PORT], one `KEY=value` line each, so no shell code ever parses JSON.
+         */
+        const val ENV_FILE = ".socks5-proxy.env"
+
+        /** The env file key that says whether the cluster reaches its nodes over Tailscale (`true`/`false`). */
+        const val ENV_TAILSCALE_ACTIVE = "EDL_TAILSCALE_ACTIVE"
+
+        /** The env file key that holds the verified tunnel's local port; absent while no tunnel is recorded. */
+        const val ENV_SOCKS_PORT = "EDL_SOCKS_PORT"
+
+        /**
          * Filename of the SOCKS5 proxy's `ssh -v` transcript. It lives under the workspace
          * `logs/` directory (alongside `logs/info.log`), overwritten on each proxy start so the
          * tail is always exactly the most recent attempt. Read back on verification failure to

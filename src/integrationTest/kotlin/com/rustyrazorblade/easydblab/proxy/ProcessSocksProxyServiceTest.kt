@@ -139,6 +139,20 @@ class ProcessSocksProxyServiceTest {
     }
 
     @Test
+    fun `reusing a verified proxy records its port in the env file and keeps the Tailscale flag`() {
+        val livePid = ProcessHandle.current().pid().toInt()
+        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+        ServerSocket(0).use { socket ->
+            val port = socket.localPort
+            writeStateFile(pid = livePid, port = port)
+
+            service().ensureRunning(testHost)
+
+            assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = port))
+        }
+    }
+
+    @Test
     fun `publishes the proxy port property but never the global socksProxyHost when reusing a valid proxy`() {
         val livePid = ProcessHandle.current().pid().toInt()
         ServerSocket(0).use { socket ->

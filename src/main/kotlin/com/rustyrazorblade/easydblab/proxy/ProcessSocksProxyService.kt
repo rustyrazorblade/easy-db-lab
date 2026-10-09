@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.writeTextAtomically
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import kotlinx.serialization.encodeToString
@@ -71,6 +72,10 @@ internal fun isLocalPortBindFailure(transcript: List<String>): Boolean = transcr
  * properties — those would make java.net route every socket (including the AWS SDK / S3) through the
  * tunnel, which breaks direct AWS access on corporate networks.
  *
+ * Each verified start or reuse also records the port in the workspace's [ProxyEnvFile], which is
+ * where the shell-side tool wrappers read it; a start removes the old port first, so a failed start
+ * leaves none recorded. The state file is replaced atomically, so a reader never sees a partial one.
+ *
  * The process is killed at cluster teardown by the `Down` command via `cleanupSocks5Proxy()`.
  *
  * @param verifyAttempts how many times a fresh tunnel is probed before it counts as failed; the
@@ -83,6 +88,7 @@ class ProcessSocksProxyService(
     private val processLauncher: SshProcessLauncher = DefaultSshProcessLauncher,
     private val portSelector: LocalPortSelector = LoopbackPortSelector(),
     private val verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
+    private val envFile: ProxyEnvFile = ProxyEnvFile(context.workingDirectory),
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_DELAY_MS = 500L
@@ -105,6 +111,7 @@ class ProcessSocksProxyService(
             val current = state
             if (current != null && isAlive(pid) && isPortAccepting(current.localPort)) {
                 log.debug { "SOCKS5 proxy already running in-memory on port ${current.localPort} [PID $pid]" }
+                envFile.recordPort(current.localPort)
                 return@withLock current
             }
 
@@ -122,6 +129,7 @@ class ProcessSocksProxyService(
                         state = reused
                         pid = loaded.pid
                         applySystemProperties(loaded.port)
+                        envFile.recordPort(loaded.port)
                         return@withLock reused
                     } else {
                         log.info { "Stale SOCKS5 proxy state, starting fresh" }
@@ -198,6 +206,9 @@ class ProcessSocksProxyService(
         // NO_PROXY (direct) instead of routing through a dead tunnel port. The new port is
         // republished by applySystemProperties() only after the proxy is verified.
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        // The same for shell-side tools: a wrapper must never route through the port of a tunnel
+        // that is being replaced, so the env file records no port until the new one is verified.
+        envFile.removePort()
 
         // ProcessBuilder's redirect will NOT create parent dirs; without this, ssh's stderr is
         // silently discarded and the transcript we rely on for diagnosis would be lost.
@@ -230,10 +241,11 @@ class ProcessSocksProxyService(
                 startTime = Instant.now().toString(),
                 sshConfig = sshConfigPath,
             )
-        stateFile.writeText(json.encodeToString(fileState))
+        stateFile.writeTextAtomically(json.encodeToString(fileState))
         log.debug { "Proxy state written to ${stateFile.absolutePath}" }
 
         applySystemProperties(port)
+        envFile.recordPort(port)
 
         val proxyState = buildProxyState(port, gatewayHost)
         state = proxyState

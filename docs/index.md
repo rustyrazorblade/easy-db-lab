@@ -18,7 +18,7 @@ If you're looking for tools to help manage Cassandra in *production* environment
 
 ### Database Support
 
-- **[Apache Cassandra](user-guide/installing-cassandra.md)**: Versions 3.0, 3.11, 4.0, 4.1, 5.0, and trunk builds. Includes custom build support, Cassandra Sidecar, and integration with cassandra-easy-stress for benchmarking.
+- **[Apache Cassandra](user-guide/installing-cassandra.md)**: Released versions and branch builds that ship in the AMI, plus custom builds from a local source tree. Includes Cassandra Sidecar and integration with cassandra-easy-stress for benchmarking.
 - **[ClickHouse](user-guide/clickhouse.md)**: Sharded clusters with configurable replication, distributed tables, and S3-tiered storage.
 - **[TiDB](user-guide/tidb.md)**: MySQL-compatible HTAP clusters deployed via the TiDB Operator, with TiKV row storage for OLTP and TiFlash columnar storage for analytics.
 - **[Trino](user-guide/install-trino.md)**: Distributed SQL query engine with federation support for querying across data sources.

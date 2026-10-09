@@ -1,8 +1,8 @@
 ## 1. PackagedExecutable and the SsmProxyWrapper migration
 
-- [ ] 1.1 Write failing tests for `PackagedExecutable` (root package, beside `ShellQuoting.kt`): writes content and sets it executable; leaves a file with matching content untouched; replaces changed content; stages to a unique temp file in the target directory and renames it into place; fails when `setExecutable` returns false.
-- [ ] 1.2 Implement `PackagedExecutable`.
-- [ ] 1.3 Move `providers/ssm/SsmProxyWrapper.kt` onto `PackagedExecutable`, removing its fixed `.tmp` file name. Run the existing SSM wrapper tests (including `SsmProxyWrapperScriptTest`) and confirm they pass.
+- [x] 1.1 Write failing tests for `PackagedExecutable` (root package, beside `ShellQuoting.kt`): writes content and sets it executable; leaves a file with matching content untouched; replaces changed content; stages to a unique temp file in the target directory and renames it into place; fails when `setExecutable` returns false.
+- [x] 1.2 Implement `PackagedExecutable`.
+- [x] 1.3 Move `providers/ssm/SsmProxyWrapper.kt` onto `PackagedExecutable`, removing its fixed `.tmp` file name. Run the existing SSM wrapper tests (including `SsmProxyWrapperScriptTest`) and confirm they pass.
 
 ## 2. Proxy env file and atomic proxy state
 

@@ -566,6 +566,34 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a repeatable arg's default stands alone, and given values replace it`() {
+        val arg = "- flag: --env\n  variable: EXTRA_ENV\n  repeatable: true\n  default: X=0"
+
+        assertThat(startArgValues(arg)).containsEntry("EXTRA_ENV", "X=0")
+        assertThat(startArgValues(arg, "--env", "A=1", "--env", "B=2")).containsEntry("EXTRA_ENV", "A=1\nB=2")
+    }
+
+    @Test
+    fun `a second parse of the same command keeps no value from the first`() {
+        writeKitYaml(
+            "name: mydb\ncommands:\n  start:\n    args:\n" +
+                "      - flag: --env\n        variable: EXTRA_ENV\n        repeatable: true\n        default: X=0\n" +
+                "start:\n  - type: shell\n    script: echo start\n",
+        )
+        val group = factory.buildKitGroup("mydb", kitDir)
+        val start =
+            group.subcommands
+                .getValue("start")
+                .commandSpec
+                .userObject() as KitRunnerCommand
+
+        group.parseArgs("start", "--env", "A=1")
+        assertThat(start.runtimeArgValues).containsEntry("EXTRA_ENV", "A=1")
+        group.parseArgs("start")
+        assertThat(start.runtimeArgValues).containsEntry("EXTRA_ENV", "X=0")
+    }
+
+    @Test
     fun `a repeatable arg with no value is a parse error`() {
         val arg = "- flag: --env\n  variable: EXTRA_ENV\n  repeatable: true"
 

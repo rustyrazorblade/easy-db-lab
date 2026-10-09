@@ -75,7 +75,12 @@ internal class KitProcessEnvironmentTest {
 
         val process = environment.applyTo(builder, workspace, emptyMap()).start()
 
-        assertThat(process.inputStream.bufferedReader().readText().trim()).isEqualTo(File(bin, "kubectl").absolutePath)
+        assertThat(
+            process.inputStream
+                .bufferedReader()
+                .readText()
+                .trim(),
+        ).isEqualTo(File(bin, "kubectl").absolutePath)
         assertThat(process.waitFor()).isZero()
     }
 }

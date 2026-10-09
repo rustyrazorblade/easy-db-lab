@@ -88,7 +88,7 @@
 
 ## 12. Build checks
 
-- [ ] 12.1 `./gradlew ktlintFormat`, then `./gradlew test` and `./gradlew detekt` on JDK 21 (run in a subagent). Fix findings with code, never with `@Suppress` or baselines.
+- [x] 12.1 `./gradlew ktlintFormat`, then `./gradlew test` and `./gradlew detekt` on JDK 21 (run in a subagent). Fix findings with code, never with `@Suppress` or baselines.
 - [ ] 12.2 `./gradlew integrationTest` (run in a subagent). Raise any TestContainers failure to the owner.
 
 ## 13. Real-cluster verification (required)

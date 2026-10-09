@@ -228,7 +228,12 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             val result =
                 execute(
-                    steps = listOf(InstallStep.Shell("echo \"\$KUBECONFIG\" > ${outFile.absolutePath}\necho \"\$PATH\" >> ${outFile.absolutePath}")),
+                    steps =
+                        listOf(
+                            InstallStep.Shell(
+                                "echo \"\$KUBECONFIG\" > ${outFile.absolutePath}\necho \"\$PATH\" >> ${outFile.absolutePath}",
+                            ),
+                        ),
                     variables = mapOf("KUBECONFIG" to "kubeconfig"),
                     kitDir = kitDir,
                     phase = phase,

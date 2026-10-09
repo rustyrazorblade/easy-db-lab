@@ -151,6 +151,25 @@ internal class ToolWrapperScriptTest {
     }
 
     @Test
+    fun `a CDPATH in the environment does not send a relative call to another workspace`() {
+        socksCluster(port = 41234)
+        val decoy = workspace("decoy")
+        ProxyEnvFile(decoy).apply {
+            recordTailscale(active = false)
+            recordPort(45678)
+        }
+
+        val result =
+            run(
+                "cd '${workspace.absolutePath}' && bin/kubectl get ns",
+                env = mapOf("CDPATH" to decoy.absolutePath),
+            )
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.stdout).contains("HTTPS_PROXY=socks5://localhost:41234")
+    }
+
+    @Test
     fun `arguments with spaces, stdin and a non-zero exit code pass through`() {
         socksCluster(port = 41234)
 

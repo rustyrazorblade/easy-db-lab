@@ -1,8 +1,8 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
-import org.assertj.core.api.Assertions.assertThat
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any

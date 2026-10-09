@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 /**
@@ -34,7 +35,10 @@ internal class EnvShSourcingTest {
 
     @Test
     fun `kubectl resolves to the workspace wrapper and none of the six tools is a function`() {
-        val result = bash("source ./env.sh >/dev/null; type -P kubectl; for t in $tools; do declare -F \"${'$'}t\" && echo \"function: ${'$'}t\"; done; true")
+        val result =
+            bash(
+                "source ./env.sh >/dev/null; type -P kubectl; for t in $tools; do declare -F \"${'$'}t\" && echo \"function: ${'$'}t\"; done; true",
+            )
 
         assertThat(result.stdout.lines().first()).isEqualTo(File(workspace, "bin/kubectl").canonicalPath)
         assertThat(result.stdout).doesNotContain("function:")
@@ -44,7 +48,8 @@ internal class EnvShSourcingTest {
     fun `the old proxy functions and aliases are gone`() {
         val result =
             bash(
-                "source ./env.sh >/dev/null; for f in start-socks5 stop-socks5; do declare -F \"${'$'}f\" && echo \"defined: ${'$'}f\"; done; " +
+                "source ./env.sh >/dev/null; " +
+                    "for f in start-socks5 stop-socks5; do declare -F \"${'$'}f\" && echo \"defined: ${'$'}f\"; done; " +
                     "for a in socks5-start socks5-stop; do alias \"${'$'}a\" 2>/dev/null && echo \"defined: ${'$'}a\"; done; true",
             )
 
@@ -55,10 +60,18 @@ internal class EnvShSourcingTest {
     fun `re-sourcing removes the functions an older env sh defined`() {
         val oldFunctions = Constants.ToolWrappers.TOOLS.joinToString("\n") { "$it() { echo old-$it; }" }
 
-        val result = bash("$oldFunctions\nsource ./env.sh >/dev/null; for t in $tools; do declare -F \"${'$'}t\" && echo \"function: ${'$'}t\"; done; type -P helm")
+        val result =
+            bash(
+                "$oldFunctions\nsource ./env.sh >/dev/null; for t in $tools; do declare -F \"${'$'}t\" && echo \"function: ${'$'}t\"; done; type -P helm",
+            )
 
         assertThat(result.stdout).doesNotContain("function:")
-        assertThat(result.stdout.trim().lines().last()).isEqualTo(File(workspace, "bin/helm").canonicalPath)
+        assertThat(
+            result.stdout
+                .trim()
+                .lines()
+                .last(),
+        ).isEqualTo(File(workspace, "bin/helm").canonicalPath)
     }
 
     @Test
@@ -66,9 +79,34 @@ internal class EnvShSourcingTest {
         val result = bash("set -e\nsource ./env.sh >/dev/null\nsource ./env.sh >/dev/null\necho \"PATH=${'$'}PATH\"")
 
         assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
-        val path = result.stdout.lines().single { it.startsWith("PATH=") }.removePrefix("PATH=").split(":")
+        val path =
+            result.stdout
+                .lines()
+                .single { it.startsWith("PATH=") }
+                .removePrefix("PATH=")
+                .split(":")
         assertThat(path.first()).isEqualTo(File(workspace, "bin").canonicalPath)
         assertThat(path.count { it == File(workspace, "bin").canonicalPath }).isEqualTo(1)
+    }
+
+    @Test
+    fun `sourcing by a relative path with CDPATH set still finds this workspace`() {
+        // `self` reaches this workspace through a relative path; CDPATH names a decoy that has a
+        // `self` of its own, which a plain `cd self` would pick instead.
+        Files.createSymbolicLink(File(workspace, "self").toPath(), workspace.toPath())
+        val decoy = File(workspace, "decoy").apply { File(this, "self").mkdirs() }
+
+        val result =
+            ProcessBuilder("/bin/bash", "-c", "source self/env.sh >/dev/null; type -P kubectl")
+                .directory(workspace)
+                .also { it.environment()["CDPATH"] = decoy.absolutePath }
+                .start()
+        // The decoy has no sshConfig, so an env.sh that landed there would prompt for a key.
+        result.outputStream.close()
+        val stdout = result.inputStream.bufferedReader().readText()
+        assertThat(result.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+
+        assertThat(File(stdout.trim()).canonicalPath).isEqualTo(File(workspace, "bin/kubectl").canonicalPath)
     }
 
     @Test

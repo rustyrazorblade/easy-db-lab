@@ -143,7 +143,11 @@ internal class ProxyEnvFileTest {
 
     private fun sh(script: String): String {
         val process = ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true).start()
-        val output = process.inputStream.bufferedReader().readText().trim()
+        val output =
+            process.inputStream
+                .bufferedReader()
+                .readText()
+                .trim()
         assertThat(process.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
         assertThat(process.exitValue()).withFailMessage(output).isZero()
         return output

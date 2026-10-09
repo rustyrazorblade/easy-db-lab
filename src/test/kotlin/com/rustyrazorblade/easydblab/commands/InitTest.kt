@@ -71,7 +71,11 @@ class InitTest : BaseKoinTest() {
         @Test
         fun `a directory with a bin directory is refused and nothing is written`() {
             bin.mkdirs()
-            val before = context.workingDirectory.list().orEmpty().toList()
+            val before =
+                context.workingDirectory
+                    .list()
+                    .orEmpty()
+                    .toList()
 
             assertThatThrownBy { Init().execute() }.isInstanceOf(CommandFailedException::class.java)
 
@@ -81,7 +85,11 @@ class InitTest : BaseKoinTest() {
         @Test
         fun `a directory with a bin file is refused and nothing is written`() {
             bin.writeText("not a directory")
-            val before = context.workingDirectory.list().orEmpty().toList()
+            val before =
+                context.workingDirectory
+                    .list()
+                    .orEmpty()
+                    .toList()
 
             assertThatThrownBy { Init().execute() }.isInstanceOf(CommandFailedException::class.java)
 

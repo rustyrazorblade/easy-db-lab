@@ -16,7 +16,9 @@
 # It must stay POSIX sh: it runs under dash on Linux and under /bin/sh on macOS.
 
 tool=${0##*/}
-bin_dir=$(cd "$(dirname "$0")" && pwd -P) || exit 1
+# CDPATH is cleared in the subshell only: with it set, cd could resolve a relative bin/ to another
+# directory and print that directory too.
+bin_dir=$(unset CDPATH; cd -- "$(dirname -- "$0")" && pwd -P) || exit 1
 workspace=$(dirname "$bin_dir")
 marker=.easy-db-lab-tool-wrappers
 

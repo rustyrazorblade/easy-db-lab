@@ -296,7 +296,10 @@ class KitInstallCommandTest : BaseKoinTest() {
             KitConfig(
                 name = "envcheck",
                 type = null,
-                install = listOf(InstallStep.Shell("echo \"\$KUBECONFIG\" > '${seen.absolutePath}'\necho \"\$PATH\" >> '${seen.absolutePath}'")),
+                install =
+                    listOf(
+                        InstallStep.Shell("echo \"\$KUBECONFIG\" > '${seen.absolutePath}'\necho \"\$PATH\" >> '${seen.absolutePath}'"),
+                    ),
             )
 
         val exitCode = (factory.build(config, source).commandSpec.userObject() as KitInstallCommand).call()

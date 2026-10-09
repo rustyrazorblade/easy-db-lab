@@ -6,11 +6,12 @@ NC_BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Determine the cluster directory (where this script is located)
-# Works in both bash and zsh, and when sourced from a different directory
+# Works in both bash and zsh, and when sourced from a different directory. CDPATH is cleared in
+# the subshell only: with it set, cd could resolve a relative path to another directory.
 if [ -n "${ZSH_VERSION:-}" ]; then
-    CLUSTER_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
+    CLUSTER_DIR="$(unset CDPATH; cd "$(dirname "${(%):-%x}")" && pwd)"
 else
-    CLUSTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    CLUSTER_DIR="$(unset CDPATH; cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
 echo -e "${YELLOW_BOLD}[WARNING]${YELLOW} We are creating aliases which override these commands:${NC}"

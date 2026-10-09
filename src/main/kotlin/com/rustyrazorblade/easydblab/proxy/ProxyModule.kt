@@ -15,6 +15,7 @@ private const val PROBE_CONNECT_TIMEOUT_MS = 1000
  * - [TunnelReachabilityProbe] as a singleton — the real SOCKS-based end-to-end tunnel check
  * - [SocksProxyService] as a singleton — manages the detached SSH proxy process
  * - [ProxyEnvFile] as a singleton — the workspace's proxy state for shell-side tools
+ * - [ToolWrapperInstaller] as a singleton — writes the shell-side tool wrappers
  * - [HttpClientFactory] for creating OkHttp clients (proxy routing via JVM system properties)
  * - [ProxyAvailability] as a singleton — lets a `@RequiresProxy(tolerateFailure = true)`
  *   command (currently only `Status`) observe a proxy establishment failure the executor
@@ -35,6 +36,9 @@ val proxyModule =
 
         // The workspace's sourceable proxy state for the shell-side tool wrappers and env.sh.
         single { ProxyEnvFile(get<Context>().workingDirectory) }
+
+        // Writes the kubectl/helm/cilium/curl/skopeo/k9s wrappers into a workspace's bin/.
+        single { ToolWrapperInstaller() }
 
         // Proxy availability holder - singleton so DefaultCommandExecutor and the command it
         // executes share the same instance within a process.

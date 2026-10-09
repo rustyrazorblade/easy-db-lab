@@ -30,8 +30,8 @@
 
 ## 4. ToolWrapperInstaller
 
-- [ ] 4.1 Write failing tests: writes six executable wrappers and the marker; a second run changes nothing; a changed wrapper is rewritten; `bin/kubectl` without the marker fails with a message naming the file and writes nothing; works when the source checkout is absent (resources come from the classpath).
-- [ ] 4.2 Implement `ToolWrapperInstaller` on top of `PackagedExecutable`, with the six names and the marker name in `Constants`.
+- [x] 4.1 Write failing tests: writes six executable wrappers and the marker; a second run changes nothing; a changed wrapper is rewritten; `bin/kubectl` without the marker fails with a message naming the file and writes nothing; works when the source checkout is absent (resources come from the classpath).
+- [x] 4.2 Implement `ToolWrapperInstaller` on top of `PackagedExecutable`, with the six names and the marker name in `Constants`.
 
 ## 5. Kit process launch and resolver removal
 

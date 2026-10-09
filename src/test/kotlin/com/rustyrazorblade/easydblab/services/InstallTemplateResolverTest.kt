@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.TestContextFactory
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -46,6 +47,31 @@ class InstallTemplateResolverTest : BaseKoinTest() {
         val details = resolver.listAvailableTemplateDetails().associateBy { it.name }
         assertThat(details["memcached"]?.description).contains("memcached")
         assertThat(details["neo4j"]?.description).contains("Neo4j")
+    }
+
+    @Test
+    fun `kit list details mark a template whose kit yaml does not parse, naming the file and the cause`() {
+        val dir = createProfileTemplate("broken")
+        File(dir, Constants.Kit.CONFIG_FILE).writeText("name: broken\nargs:\n  - flag: --env\n    variable: E\n    repeatable: true\n")
+
+        val details = resolver.listAvailableTemplateDetails().associateBy { it.name }
+
+        assertThat(details.getValue("broken").problem)
+            .contains(File(dir, Constants.Kit.CONFIG_FILE).path)
+            .contains("'--env' is a top-level install arg and cannot be repeatable")
+        assertThat(details.getValue("ferrosa").problem).isEmpty()
+        assertThat(details.getValue("ferrosa").description).isNotEmpty()
+    }
+
+    @Test
+    fun `loading a kit yaml that does not parse fails, naming the kit and the file`() {
+        val dir = createProfileTemplate("broken")
+        File(dir, Constants.Kit.CONFIG_FILE).writeText("name: broken\nstart: [\n")
+
+        assertThatThrownBy { resolver.loadInstallConfig(resolver.resolve("broken")) }
+            .isInstanceOf(ConfigurationException::class.java)
+            .hasMessageContaining("broken")
+            .hasMessageContaining(File(dir, Constants.Kit.CONFIG_FILE).path)
     }
 
     @Test

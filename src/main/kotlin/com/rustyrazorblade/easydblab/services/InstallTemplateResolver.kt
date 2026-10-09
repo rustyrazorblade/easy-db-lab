@@ -3,7 +3,9 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import io.github.classgraph.ClassGraph
+import kotlinx.serialization.SerializationException
 import java.io.File
 import java.nio.file.Path
 
@@ -89,18 +91,17 @@ class InstallTemplateResolver(
 
     /**
      * Returns install config metadata for all discoverable templates, sorted by name.
-     * Templates without a `config.yaml` fall back to a minimal config with just the name.
+     * Templates without a `kit.yaml` fall back to a minimal config with just the name. A template
+     * whose `kit.yaml` does not parse or fails validation is listed with its [problem][Event.Install.TemplateDetail.problem].
      */
     fun listAvailableTemplateDetails(): List<Event.Install.TemplateDetail> =
         listAvailableTemplates().map { name ->
-            val config =
-                runCatching { loadInstallConfig(resolve(name)) }.getOrNull()
-                    ?: KitConfig(name = name)
-            Event.Install.TemplateDetail(
-                name = config.name,
-                version = config.version,
-                description = config.description,
-            )
+            try {
+                val config = loadInstallConfig(resolve(name)) ?: KitConfig(name = name)
+                Event.Install.TemplateDetail(name = config.name, version = config.version, description = config.description)
+            } catch (e: ConfigurationException) {
+                Event.Install.TemplateDetail(name = name, version = "", description = "", problem = e.message.orEmpty())
+            }
         }
 
     /**
@@ -164,9 +165,34 @@ class InstallTemplateResolver(
             }
         }
 
-    fun loadInstallConfig(source: TemplateSource): KitConfig? =
-        readInstallYamlContent(source)
-            ?.let { installConfigYaml.decodeFromString(KitConfig.serializer(), it) }
+    /**
+     * Parses the `kit.yaml` of [source], or returns null when it has none.
+     *
+     * @throws ConfigurationException naming the kit, the file and the cause when the file does
+     *   not parse or fails validation
+     */
+    fun loadInstallConfig(source: TemplateSource): KitConfig? {
+        val yaml = readInstallYamlContent(source) ?: return null
+        return try {
+            installConfigYaml.decodeFromString(KitConfig.serializer(), yaml)
+        } catch (e: SerializationException) {
+            throw invalidConfig(source, e)
+        } catch (e: IllegalArgumentException) {
+            throw invalidConfig(source, e)
+        }
+    }
+
+    private fun invalidConfig(
+        source: TemplateSource,
+        cause: Exception,
+    ): ConfigurationException {
+        val (name, path) =
+            when (source) {
+                is TemplateSource.Directory -> source.dir.name to File(source.dir, Constants.Kit.CONFIG_FILE).path
+                is TemplateSource.Builtin -> source.name to "built-in $builtinResourceBase/${source.name}/${Constants.Kit.CONFIG_FILE}"
+            }
+        return ConfigurationException("Kit '$name': $path is invalid: ${cause.message ?: cause.javaClass.simpleName}", cause)
+    }
 
     /**
      * Lists all `.template` files in a template source as [TemplateEntry] objects.

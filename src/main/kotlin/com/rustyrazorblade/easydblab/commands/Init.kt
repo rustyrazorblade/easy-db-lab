@@ -429,7 +429,7 @@ class Init : PicoBaseCommand() {
         if (clean) {
             eventBus.emit(Event.Setup.CleaningExistingConfig)
             // Execute Clean immediately with full lifecycle
-            commandExecutor.execute { Clean() }
+            runNested(commandExecutor, Clean())
         }
 
         val state =

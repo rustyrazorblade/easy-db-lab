@@ -551,14 +551,20 @@ class SetupProfile : PicoBaseCommand() {
         try {
             eventBus.emit(Event.Setup.AmiBuildStarting(archType.type))
 
-            commandExecutor.execute {
-                BuildImage().apply {
-                    buildArgs.arch = archType
-                    buildArgs.region = userConfig.region
+            val exitCode =
+                commandExecutor.execute {
+                    BuildImage().apply {
+                        buildArgs.arch = archType
+                        buildArgs.region = userConfig.region
+                    }
                 }
-            }
 
-            eventBus.emit(Event.Setup.AmiBuildSuccess)
+            // The executor reports a failed build by its exit code, not by throwing.
+            if (exitCode == 0) {
+                eventBus.emit(Event.Setup.AmiBuildSuccess)
+            } else {
+                eventBus.emit(Event.Setup.AmiBuildFailed("build-image exited with code $exitCode", archType.type, userConfig.region))
+            }
         } catch (buildError: Exception) {
             eventBus.emit(Event.Setup.AmiBuildFailed(buildError.message ?: "unknown error", archType.type, userConfig.region))
         }

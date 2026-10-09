@@ -293,4 +293,6 @@ When the command has already told the user what went wrong through its own typed
 error, a per-host failure), throw `kernel/CommandFailedException` after emitting it. The executor
 returns the error exit code and does not print the failure a second time. Any other exception is
 reported as `Command.ExecutionError` with its cause chain.
+
+A command that runs another command through `CommandExecutor.execute` gets an exit code back, not an exception: the executor has already printed the nested failure. Never ignore that exit code. Use `PicoBaseCommand.runNested(executor, command)`, which emits `Event.Command.NestedCommandFailed` and throws `CommandFailedException` on a non-zero exit. `build-image` checks each phase the same way and emits `Event.Ami.BuildPhaseFailed`.
 See [`events/CLAUDE.md`](../events/CLAUDE.md) for the event hierarchy and how to add new events.

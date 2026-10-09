@@ -1,10 +1,14 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
@@ -37,8 +41,18 @@ class InitTest : BaseKoinTest() {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { mockEc2InstanceService }
                 single { TemplateService(get(), get()) }
+                single<CommandExecutor> {
+                    object : CommandExecutor {
+                        override fun <T : PicoCommand> execute(commandFactory: () -> T): Int = nestedFailure ?: commandFactory().call()
+
+                        override fun <T : PicoCommand> schedule(commandFactory: () -> T) = Unit
+                    }
+                }
             },
         )
+
+    /** When set, the exit code every nested command reports instead of running. */
+    private var nestedFailure: Int? = null
 
     @BeforeEach
     fun setupMocks() {
@@ -57,6 +71,17 @@ class InitTest : BaseKoinTest() {
         File("setup_instance.sh").delete()
         File("cassandra").deleteRecursively()
         File("k8s").deleteRecursively()
+    }
+
+    @Test
+    fun `a failed clean fails init before any state is saved`() {
+        nestedFailure = Constants.ExitCodes.ERROR
+        val command = Init()
+        command.clean = true
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
     }
 
     @Nested

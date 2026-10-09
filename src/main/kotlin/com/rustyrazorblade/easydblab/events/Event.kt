@@ -3905,6 +3905,22 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * [command] stopped because the [nested] command it runs exited with [exitCode]. The
+         * nested command's own error, printed just before this, gives the cause.
+         */
+        @Serializable
+        @SerialName("Command.NestedCommandFailed")
+        data class NestedCommandFailed(
+            val command: String,
+            val nested: String,
+            val exitCode: Int,
+        ) : Command {
+            override fun toDisplayString(): String = "$command failed: $nested exited with code $exitCode; its error is shown above."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Command.RetryInstruction")
         data object RetryInstruction : Command {

@@ -568,6 +568,19 @@ class FerrosaKitTest : BaseKoinTest() {
     inner class ClientAccess {
         private fun nodePortServices(): List<Service> = kit.render("nodeport-service.yaml.template").filterIsInstance<Service>()
 
+        /** ferrosa-kit: "Scaffolded README shows the endpoints". */
+        @Test
+        fun `the scaffolded README lists every declared endpoint's NodePort and resolves every variable`() {
+            val readme = kit.renderText("README.md.template")
+            val ports = kit.config.endpoints.map { it.port }
+
+            assertThat(ports).hasSize(7)
+            for (port in ports) {
+                assertThat(readme).describedAs("NodePort $port").containsPattern("\\|\\s*$port\\s*\\|")
+            }
+            assertThat(readme).doesNotContainPattern("__[A-Z0-9_]+__")
+        }
+
         @Test
         fun `seven NodePorts select the first pod and forward to its container ports`() {
             val services = nodePortServices()

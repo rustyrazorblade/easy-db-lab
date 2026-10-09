@@ -129,16 +129,16 @@ done
 
 ## Load with cassandra-easy-stress
 
-Run cassandra-easy-stress against the first pod's Service name. The stress pod uses the cluster's DNS, so it resolves the name:
+Run cassandra-easy-stress against the first pod's Service name. The stress pod uses the cluster's DNS, so it resolves the name. Put `--` before the cassandra-easy-stress arguments, so that easy-db-lab passes `-d` and `--host` through to it:
 
 ```bash
-easy-db-lab cassandra stress start KeyValue -d 10m --host ferrosa-0.default.svc.cluster.local
+easy-db-lab cassandra stress start -- KeyValue -d 10m --host ferrosa-0.default.svc.cluster.local
 ```
 
 ## Metrics, logs, profiles and the dashboard
 
 - **Metrics:** the collector on each pod's own node scrapes FerrosaDB's `/metrics` on port 9090, so there is one series for each pod, with `job="ferrosa"`. `start` registers the scrape as the ConfigMap `easydblab-metrics-ferrosa-ferrosa`, and `stop` removes it.
-- **Logs:** FerrosaDB's stdout reaches Loki through the container log collection. Select the pods with `{k8s_pod_name=~"ferrosa-.*"}`.
+- **Logs:** FerrosaDB's stdout reaches Loki through the container log collection. Select the FerrosaDB pods with `{k8s_pod_name=~"ferrosa-[0-9]+-.*"}`. Each pod is named `ferrosa-<i>-<hash>-<hash>`, and the ordinal keeps out other pods whose names start with `ferrosa-`, such as a stress job's.
 - **Profiles:** the eBPF profiler sends CPU profiles of the FerrosaDB pods to Pyroscope. Function names resolve fully only on a profiling build.
 - **Dashboard:** `start` installs the FerrosaDB dashboard into the Grafana folder `ferrosa`.
 

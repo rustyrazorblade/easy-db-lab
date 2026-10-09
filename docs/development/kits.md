@@ -26,7 +26,7 @@ Everything for a kit lives in `src/main/resources/com/rustyrazorblade/easydblab/
 
 ## kit.yaml Reference
 
-If an installed kit's `kit.yaml` does not parse or fails validation, the kit has no commands. Every command prints an error that names the kit, the file and the problem, and the other commands still run.
+If a kit's `kit.yaml` does not parse or fails validation, the kit has no commands: an installed kit gets no `<kit>` commands, and a kit in your profile or a kit source gets no `kit install <kit>`. Every command prints an error that names the kit, the file and the problem, and the other commands still run. `kit list` shows the kit as `invalid:` with the file and the cause.
 
 ```yaml
 name: myworkload

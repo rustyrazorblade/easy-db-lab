@@ -5624,11 +5624,16 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * One installable kit as `kit list` shows it. [problem] says why its `kit.yaml` could not
+         * be read (the file and the cause), and is empty for a kit that loads.
+         */
         @Serializable
         data class TemplateDetail(
             val name: String,
             val version: String,
             val description: String,
+            val problem: String = "",
         )
 
         // =========================================================================

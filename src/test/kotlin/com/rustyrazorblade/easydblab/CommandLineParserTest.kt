@@ -123,6 +123,34 @@ class CommandLineParserTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a profile kit whose kit yaml is invalid does not stop the CLI and reports why it cannot be installed`() {
+        val dir = File(File(context.profileDir, "kits"), "broken").also { it.mkdirs() }
+        File(dir, Constants.Kit.CONFIG_FILE).writeText("name: broken\nstart: [\n")
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        val commandLine = CommandLineParser().commandLine
+
+        val failed = events.filterIsInstance<Event.Kit.RegistrationFailed>().single()
+        assertThat(failed.kit).isEqualTo("broken")
+        assertThat(failed.reason).contains(File(dir, Constants.Kit.CONFIG_FILE).path)
+        val install =
+            commandLine.subcommands
+                .getValue("kit")
+                .subcommands
+                .getValue("install")
+        assertThat(install.subcommands).doesNotContainKey("broken").containsKey("ferrosa")
+    }
+
+    @Test
     fun `root usage includes a footer pointing to the help topic system`() {
         CommandLineParser().eval(arrayOf("--help"))
 

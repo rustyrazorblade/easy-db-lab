@@ -43,6 +43,7 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.exceptions.ConfigurationException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
@@ -278,7 +279,14 @@ class CommandLineParser : KoinComponent {
                 } catch (e: Exception) {
                     continue
                 }
-            val config = resolver.loadInstallConfig(source) ?: continue
+            val config =
+                try {
+                    resolver.loadInstallConfig(source) ?: continue
+                } catch (e: ConfigurationException) {
+                    // The kit cannot be installed, but every other command still runs.
+                    eventBus.emit(Event.Kit.RegistrationFailed(kit = name, reason = e.message ?: e.javaClass.simpleName))
+                    continue
+                }
             if (name !in installCL.subcommands.keys) {
                 installCL.addSubcommand(name, factory.build(config, source))
             }

@@ -160,7 +160,7 @@ virtualenvs have one too. Each qualifying directory becomes a top-level subcomma
 `WorkspaceKitScanner` is the single source of truth for that rule, and the `=== KITS ===` section
 of `status` reads the same service, so both apply one discovery rule. Registration drops a
 discovered kit after the scan when its name collides with a core command, or when
-`buildKitGroup` throws, so `status` may list a kit that has no subcommand. A `kit.yaml` that does not parse or fails validation makes `buildKitGroup` throw a `ConfigurationException` naming the kit, the file and the problem; registration then emits `Event.Kit.RegistrationFailed` (kit, reason) and every other command still runs.
+`buildKitGroup` throws, so `status` may list a kit that has no subcommand. A `kit.yaml` that does not parse or fails validation makes `buildKitGroup` throw a `ConfigurationException` naming the kit, the file and the problem; registration then emits `Event.Kit.RegistrationFailed` (kit, reason) and every other command still runs. The same holds for an installable kit (profile, kit source or built-in): `InstallTemplateResolver.loadInstallConfig` throws the `ConfigurationException`, `registerDynamicInstallSubcommands` emits `Kit.RegistrationFailed` and registers no `kit install <kit>`, and `kit list` shows the kit as `invalid:` with the file and the cause.
 
 Scripts are run by `KitRunnerCommand` with cluster state variables injected as environment
 variables. Dashboard JSON files in `<kit>/dashboards/` are installed into Grafana

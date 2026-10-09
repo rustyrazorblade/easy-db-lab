@@ -98,4 +98,22 @@ internal class ClusterConfigWriterTest {
         val hostBlockCount = Regex("(?m)^Host ").findAll(config).count()
         assertThat(hostBlockCount).isEqualTo(expectedPairs.size)
     }
+
+    @Test
+    fun `env sh reads proxy state only from the env file and puts the workspace bin first on PATH`() {
+        val stringWriter = StringWriter()
+        BufferedWriter(stringWriter).use { writer ->
+            ClusterConfigWriter.writeEnvironmentFile(
+                writer,
+                mapOf(ServerType.Control to listOf(ClusterHost("54.1.1.1", "10.0.0.1", "control0", "us-west-2a"))),
+                "lab",
+            )
+        }
+        val envSh = stringWriter.toString()
+
+        assertThat(envSh).doesNotContain("jq").doesNotContain(".socks5-proxy-state")
+        assertThat(envSh).contains("export PATH=\"\$CLUSTER_DIR/bin:\$PATH\"")
+        assertThat(envSh).contains("\$CLUSTER_DIR/.socks5-proxy.env")
+        assertThat(envSh).doesNotContainPattern("(?m)^(kubectl|helm|cilium|curl|skopeo|k9s)\\(\\)")
+    }
 }

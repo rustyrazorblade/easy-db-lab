@@ -64,9 +64,9 @@
 
 ## 9. env.sh
 
-- [ ] 9.1 Write a bash test that sources the generated `env.sh` from a temp workspace and checks that `type -P kubectl` is `<workspace>/bin/kubectl`, that none of the six names is a function, that `start-socks5`/`stop-socks5`/`socks5-start`/`socks5-stop` are not defined, that re-sourcing after defining the old functions removes them, and that sourcing works under `set -e`.
-- [ ] 9.2 Edit `configuration/env.sh`: guarded `unset -f` of the six names, then `export PATH="$CLUSTER_DIR/bin:$PATH"`; remove the six functions, `start-socks5`, `stop-socks5`, their aliases, and `is-tailscale-connected` once unused; `_socks5_port` sources the env file (no `jq`, no 1080); `with-proxy` fails with the `start-socks` message when no port is recorded and runs directly on Tailscale; keep `socks5-status`; update help text.
-- [ ] 9.3 Add a Kotlin test on the `env.sh` content written by `ClusterConfigWriter` (no `jq`, no `.socks5-proxy-state` read, `bin` on `PATH`).
+- [x] 9.1 Write a bash test that sources the generated `env.sh` from a temp workspace and checks that `type -P kubectl` is `<workspace>/bin/kubectl`, that none of the six names is a function, that `start-socks5`/`stop-socks5`/`socks5-start`/`socks5-stop` are not defined, that re-sourcing after defining the old functions removes them, and that sourcing works under `set -e`.
+- [x] 9.2 Edit `configuration/env.sh`: guarded `unset -f` of the six names, then `export PATH="$CLUSTER_DIR/bin:$PATH"`; remove the six functions, `start-socks5`, `stop-socks5`, their aliases, and `is-tailscale-connected` once unused; `_socks5_port` sources the env file (no `jq`, no 1080); `with-proxy` fails with the `start-socks` message when no port is recorded and runs directly on Tailscale; keep `socks5-status`; update help text.
+- [x] 9.3 Add a Kotlin test on the `env.sh` content written by `ClusterConfigWriter` (no `jq`, no `.socks5-proxy-state` read, `bin` on `PATH`).
 - [ ] 9.4 Check by hand in zsh on the owner's laptop: `source env.sh` twice gives no `unset -f` noise and `kubectl` resolves to the wrapper.
 
 ## 10. Repo cleanup

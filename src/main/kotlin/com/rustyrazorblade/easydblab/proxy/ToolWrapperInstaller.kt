@@ -17,9 +17,12 @@ import java.io.File
  * writing anything rather than overwriting their file.
  *
  * @param wrapper the packaged wrapper script, read from the distribution's classpath
+ * @param afterMarkerFoundMissing runs right after an install finds no marker; a test uses it to
+ *   let another install finish in that window
  */
 class ToolWrapperInstaller(
     private val wrapper: PackagedExecutable = PackagedExecutable.fromResource(Constants.ToolWrappers.RESOURCE),
+    private val afterMarkerFoundMissing: () -> Unit = {},
 ) {
     /**
      * Writes the marker and the six wrappers into [workspace]'s `bin/`, leaving any copy that is
@@ -31,8 +34,11 @@ class ToolWrapperInstaller(
         val bin = binOf(workspace)
         val marker = File(bin, Constants.ToolWrappers.MARKER)
         if (!marker.exists()) {
+            afterMarkerFoundMissing()
             val foreign = wrapperFiles(bin).filter { it.exists() }
-            check(foreign.isEmpty()) {
+            // Another process may have installed the wrappers since the marker was missing. It
+            // writes the marker before any wrapper, so a wrapper it wrote is seen with its marker.
+            check(foreign.isEmpty() || marker.exists()) {
                 "${foreign.joinToString { it.path }} already exists and was not written by easy-db-lab. " +
                     "easy-db-lab writes its tool wrappers into ${bin.path}; use a new, empty directory as the workspace."
             }
@@ -45,10 +51,12 @@ class ToolWrapperInstaller(
 
     /**
      * Deletes the six wrappers and the marker from [workspace]'s `bin/`, by name, and then `bin/`
-     * itself if nothing else is left in it.
+     * itself if nothing else is left in it. A `bin/` without the marker is not easy-db-lab's, so
+     * nothing in it is touched.
      */
     fun remove(workspace: File) {
         val bin = binOf(workspace)
+        if (!File(bin, Constants.ToolWrappers.MARKER).exists()) return
         (wrapperFiles(bin) + File(bin, Constants.ToolWrappers.MARKER)).forEach { it.delete() }
         if (bin.isDirectory && bin.list().orEmpty().isEmpty()) bin.delete()
     }

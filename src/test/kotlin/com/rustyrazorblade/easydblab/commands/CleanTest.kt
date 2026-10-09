@@ -154,6 +154,16 @@ class CleanTest : BaseKoinTest() {
     }
 
     @Test
+    fun `clean leaves a bin without the marker alone`() {
+        val bin = File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY).apply { mkdirs() }
+        val own = File(bin, "kubectl").apply { writeText("#!/bin/sh\necho mine\n") }
+
+        get<Clean>().execute()
+
+        assertThat(own).hasContent("#!/bin/sh\necho mine\n")
+    }
+
+    @Test
     fun `clean keeps a file in bin it did not write, and bin with it`() {
         ToolWrapperInstaller().install(context.workingDirectory)
         val bin = File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY)

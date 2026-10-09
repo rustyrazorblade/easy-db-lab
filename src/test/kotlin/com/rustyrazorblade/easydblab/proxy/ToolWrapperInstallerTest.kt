@@ -96,6 +96,25 @@ internal class ToolWrapperInstallerTest {
     }
 
     @Test
+    fun `remove leaves a bin without the marker alone, tool names included`() {
+        bin.mkdirs()
+        val own = File(bin, "kubectl").apply { writeText("#!/bin/sh\necho mine\n") }
+
+        installer.remove(workspace)
+
+        assertThat(own).hasContent("#!/bin/sh\necho mine\n")
+    }
+
+    @Test
+    fun `an install that another process completes after it found no marker still succeeds`() {
+        val racing = ToolWrapperInstaller(afterMarkerFoundMissing = { ToolWrapperInstaller().install(workspace) })
+
+        racing.install(workspace)
+
+        assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.MARKER)
+    }
+
+    @Test
     fun `remove in a workspace with no bin does nothing`() {
         installer.remove(workspace)
 

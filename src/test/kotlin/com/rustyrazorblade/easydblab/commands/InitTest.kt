@@ -108,6 +108,18 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
+        fun `init --clean keeps a kubectl of its own in a bin without the marker, and is refused`() {
+            bin.mkdirs()
+            val own = File(bin, "kubectl").apply { writeText("#!/bin/sh\necho mine\n") }
+            val command = Init().apply { clean = true }
+
+            assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertThat(own).hasContent("#!/bin/sh\necho mine\n")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
         fun `init --clean with a foreign file in bin is refused`() {
             ToolWrapperInstaller().install(context.workingDirectory)
             File(bin, "my-script").writeText("#!/bin/sh\n")

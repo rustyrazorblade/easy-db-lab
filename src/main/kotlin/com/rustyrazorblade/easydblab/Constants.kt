@@ -1091,6 +1091,26 @@ object Constants {
                 "(or https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)"
     }
 
+    /**
+     * The workspace tool wrappers: one packaged POSIX script written into `<workspace>/bin/` once per
+     * wrapped tool. Each copy picks its tool from its own file name and routes it through the SOCKS
+     * tunnel recorded in [Proxy.ENV_FILE], so kit shell steps, hooks and `env.sh` shells all reach the
+     * cluster the same way.
+     */
+    object ToolWrappers {
+        /** The workspace directory the wrappers are written to. */
+        const val DIRECTORY = "bin"
+
+        /** The marker file that says a `bin/` directory holds easy-db-lab's wrappers. */
+        const val MARKER = ".easy-db-lab-tool-wrappers"
+
+        /** The packaged wrapper script. */
+        const val RESOURCE = "/com/rustyrazorblade/easydblab/configuration/tool-wrapper.sh"
+
+        /** The tools that get a wrapper, which are also the wrapper file names. */
+        val TOOLS = listOf("kubectl", "helm", "cilium", "curl", "skopeo", "k9s")
+    }
+
     // Container Registry configuration
     object Registry {
         /** Default registry port */

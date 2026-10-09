@@ -13,7 +13,7 @@
 
 ## 3. Wrapper script and its shell tests
 
-- [ ] 3.1 Write the unit-tier JUnit test (`src/test`) that copies the packaged wrapper under the six names into a temp workspace `bin/` with a marker, puts stub binaries later on `PATH`, and runs them through real `/bin/sh`. Cases, all failing first:
+- [x] 3.1 Write the unit-tier JUnit test (`src/test`) that copies the packaged wrapper under the six names into a temp workspace `bin/` with a marker, puts stub binaries later on `PATH`, and runs them through real `/bin/sh`. Cases, all failing first:
   - each tool's proxy variables, upper and lower case;
   - hostile inherited `NO_PROXY`/`no_proxy`/`http_proxy`/`ALL_PROXY` are replaced;
   - Tailscale leaves the environment byte-for-byte unchanged;
@@ -26,7 +26,7 @@
   - indirect calls through `env`, `xargs`, `sh -c`, and a nested script go through the wrapper (no `timeout`, which macOS lacks);
   - an unwrapped `aws` stub run by the same step sees no proxy variables;
   - inherited `EDL_TAILSCALE_ACTIVE`/`EDL_SOCKS_PORT` are ignored.
-- [ ] 3.2 Write `src/main/resources/com/rustyrazorblade/easydblab/configuration/tool-wrapper.sh` (POSIX `#!/bin/sh`, dispatch on `${0##*/}`, workspace from `pwd -P`, marker-skipping `PATH` search, `-ef "$0"` check, source the env file, `exec`). Make every case in 3.1 pass under dash and macOS `/bin/sh`.
+- [x] 3.2 Write `src/main/resources/com/rustyrazorblade/easydblab/configuration/tool-wrapper.sh` (POSIX `#!/bin/sh`, dispatch on `${0##*/}`, workspace from `pwd -P`, marker-skipping `PATH` search, `-ef "$0"` check, source the env file, `exec`). Make every case in 3.1 pass under dash and macOS `/bin/sh`.
 
 ## 4. ToolWrapperInstaller
 

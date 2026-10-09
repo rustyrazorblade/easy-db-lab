@@ -631,8 +631,14 @@ object Constants {
          */
         const val STALE_AFTER_SECONDS = 5 * RECONCILE_INTERVAL_SECONDS
 
-        /** JFR rotation interval handed to `asprof --loop`. */
-        const val DEFAULT_LOOP_INTERVAL = "1m"
+        /**
+         * JFR rotation interval handed to `asprof --loop`.
+         *
+         * Each rotation is one Pyroscope upload. On a test cluster, Pyroscope rejected 60-second
+         * chunks of the seeded CPU, allocation and lock events, so no profile reached it; 15-second
+         * chunks are accepted. Mirrors `FALLBACK_LOOP_INTERVAL` in `edl-profiling-reconcile`.
+         */
+        const val DEFAULT_LOOP_INTERVAL = "15s"
 
         /** Age bound on shipped chunks, in minutes. Unshipped and rejected chunks are never pruned. */
         const val DEFAULT_RETENTION_MINUTES = 60

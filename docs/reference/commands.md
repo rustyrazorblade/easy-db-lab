@@ -504,7 +504,7 @@ easy-db-lab cassandra profile start --hosts db0,db1 -- -e cpu --alloc 512k
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--loop` | `1m` | JFR rotation interval |
+| `--loop` | `15s` | JFR rotation interval |
 | `--retention` | `60` | Minutes of profile data to keep on each node |
 | `--max-bytes` | `2147483648` | Byte ceiling for each node's profile directory |
 | `--hosts` | all | Comma-separated host aliases |

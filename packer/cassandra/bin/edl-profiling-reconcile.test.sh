@@ -994,7 +994,7 @@ test_shipped_chunks_stay_retrievable_and_are_never_reshipped() {
 # edl_jfr_chunks_pending is what the shipper could have shipped and did not, so it must apply the
 # shipper's whole rule — including the grace window, not just the open-chunk exclusion.
 #
-# With the default `--loop 1m` against a 60s timer, the chunk that rotated most recently is *always*
+# With a `--loop 1m` rotation against a 60s timer, the chunk that rotated most recently is *always*
 # inside the grace window when metrics are written. Counting it left the gauge at 1 on a perfectly
 # healthy node, and the docs tell an operator that any non-zero value is a real backlog — so an alert
 # written from that table fires permanently, everywhere, forever. The earlier open-chunk fix moved

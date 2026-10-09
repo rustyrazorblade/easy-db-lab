@@ -161,14 +161,13 @@ Wait for confirmation before proceeding.
 ### Pre-flight
 
 ```bash
-# Check SOCKS5 proxy port is free
-lsof -Pi :1080 -sTCP:LISTEN -t 2>/dev/null && echo "PORT_BUSY" || echo "PORT_FREE"
-
 # Export AWS profile
 export AWS_PROFILE=sandbox-admin
 ```
 
-If port 1080 is busy, tell user to check: `lsof -Pi :1080` or `source env.sh && stop-socks5`
+The SOCKS5 tunnel picks a free port on its own, so no port check is needed. Inside the test
+workspace, `easy-db-lab stop-socks` stops a tunnel and `socks5-status` (after `source env.sh`)
+shows its port.
 
 Kill any stale server processes:
 ```bash

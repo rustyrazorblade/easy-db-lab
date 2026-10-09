@@ -62,13 +62,11 @@ class ProcessSocksProxyServiceTest {
     @BeforeEach
     fun setUp() {
         File(tempDir, "sshConfig").writeText("Host control0\n  Hostname 10.0.1.5\n")
-        System.clearProperty("socksProxyHost")
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
     }
 
     @AfterEach
     fun tearDown() {
-        System.clearProperty("socksProxyHost")
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
     }
 

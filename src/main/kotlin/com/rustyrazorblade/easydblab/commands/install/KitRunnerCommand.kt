@@ -16,7 +16,7 @@ import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.KitMetrics
 import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
-import com.rustyrazorblade.easydblab.services.KubeconfigProxyResolver
+import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TemplateVariables
@@ -36,12 +36,19 @@ import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+/**
+ * Runs one phase of an installed kit (`easy-db-lab <kit> <phase>`): its typed steps, or else its
+ * `bin/` script, with the cluster state variables in the environment.
+ *
+ * Shell steps, phase scripts and the hooks it fires run through [KitProcessEnvironment], so they get
+ * the workspace tool wrappers and the absolute workspace kubeconfig. It is `@RequiresProxy`, so the
+ * executor verifies or restarts the tunnel, and records its port, before the first step runs.
+ */
 @RequiresProxy
 class KitRunnerCommand(
     private val kitName: String,
     private val kitDir: File,
     private val phaseName: String,
-    private val kubeconfigProxyResolver: KubeconfigProxyResolver = KubeconfigProxyResolver(),
 ) : PicoBaseCommand() {
     @CommandLine.Option(
         names = ["--name"],
@@ -56,7 +63,9 @@ class KitRunnerCommand(
     private val metricsRegistryService: MetricsRegistryService by inject()
     private val kitHookExecutor: KitHookExecutor by inject()
     private val kitEndpointResolver: KitEndpointResolver by inject()
-    private val workspaceKubeconfig = File(kitDir.parentFile, Constants.K3s.LOCAL_KUBECONFIG)
+    private val kitProcessEnvironment: KitProcessEnvironment by inject()
+    private val workspace = kitDir.absoluteFile.parentFile
+    private val workspaceKubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG)
     private val workloadProbe: KitWorkloadProbe by inject { parametersOf(workspaceKubeconfig.path) }
 
     private var processExitCode: Int = 0
@@ -69,31 +78,25 @@ class KitRunnerCommand(
             return
         }
 
-        // Resolve the kubeconfig that local kubectl/helm shell steps will use. On a SOCKS-only
-        // cluster this yields a temp copy carrying a `proxy-url` so those binaries route through
-        // the tunnel; on Tailscale/no-proxy it returns the workspace kubeconfig unchanged. The
-        // temp file (if any) is deleted when the block exits, on both success and failure.
-        kubeconfigProxyResolver.resolve(workspaceKubeconfig).use { resolvedKubeconfig ->
-            val augmentedEnv = buildAugmentedEnv(config, resolvedKubeconfig.path)
-            val kitConfig = config ?: KitConfig(name = kitName)
+        val augmentedEnv = buildAugmentedEnv(config)
+        val kitConfig = config ?: KitConfig(name = kitName)
 
-            if (stopsBeforeUninstall(kitConfig)) {
-                processExitCode = runPhase(Constants.Kit.PHASE_STOP, kitConfig, augmentedEnv)
-                if (processExitCode != 0) return
-            }
+        if (stopsBeforeUninstall(kitConfig)) {
+            processExitCode = runPhase(Constants.Kit.PHASE_STOP, kitConfig, augmentedEnv)
+            if (processExitCode != 0) return
+        }
 
-            when {
-                hasPhase(kitConfig, phaseName) -> {
-                    processExitCode = runPhase(phaseName, kitConfig, augmentedEnv)
-                    if (processExitCode == 0) completePhase(kitConfig)
-                }
-                // Without an uninstall phase, a running kit is still released (see handlePostPhase).
-                phaseName == Constants.Kit.PHASE_UNINSTALL -> {
-                    removeKitDirectory()
-                    completePhase(kitConfig)
-                }
-                else -> error("No typed phase or script found for '$phaseName' in kit '$kitName'")
+        when {
+            hasPhase(kitConfig, phaseName) -> {
+                processExitCode = runPhase(phaseName, kitConfig, augmentedEnv)
+                if (processExitCode == 0) completePhase(kitConfig)
             }
+            // Without an uninstall phase, a running kit is still released (see handlePostPhase).
+            phaseName == Constants.Kit.PHASE_UNINSTALL -> {
+                removeKitDirectory()
+                completePhase(kitConfig)
+            }
+            else -> error("No typed phase or script found for '$phaseName' in kit '$kitName'")
         }
     }
 
@@ -141,10 +144,7 @@ class KitRunnerCommand(
         }
     }
 
-    private fun buildAugmentedEnv(
-        config: KitConfig?,
-        kubeconfigPath: File,
-    ): Map<String, String> {
+    private fun buildAugmentedEnv(config: KitConfig?): Map<String, String> {
         val argDefaults = config?.args?.associate { it.variable to it.default }.orEmpty()
         // Read installed arg values written by kit install, overriding the kit defaults.
         // This ensures phases like platform-pvs use the actual installed STORAGE_SIZE
@@ -157,9 +157,10 @@ class KitRunnerCommand(
                 .from(state = clusterState, kitName = kitName, storageSize = storageSize)
                 .toMap()
         // Shell steps run from kitDir (e.g. clickhouse/), so a relative KUBECONFIG would resolve
-        // to clickhouse/kubeconfig which doesn't exist. Use the absolute path of the kubeconfig
-        // resolved for this command (the SOCKS-proxied temp copy when a tunnel is published).
-        val absoluteKubeconfig = kubeconfigPath.absolutePath
+        // to clickhouse/kubeconfig which doesn't exist. Typed steps interpolate ${KUBECONFIG} from
+        // these variables too, so they carry the absolute workspace kubeconfig; KitProcessEnvironment
+        // sets the same path again for every process it launches.
+        val absoluteKubeconfig = workspaceKubeconfig.absolutePath
         // Apply in order: argDefaults → resolvedArgs → cluster state (base) → KUBECONFIG → BACKUP_NAME.
         // argDefaults first so cluster-state values in base take precedence over kit defaults;
         // resolvedArgs overlays defaults with user-specified install-time values.
@@ -271,6 +272,7 @@ class KitRunnerCommand(
                         clusterState = clusterState,
                         variables = envVars,
                         kitDir = kitDir,
+                        workspaceDir = workspace,
                     ),
             ).fold(
                 onSuccess = { 0 },
@@ -342,10 +344,8 @@ class KitRunnerCommand(
         scriptFile: File,
         envVars: Map<String, String>,
     ): Int =
-        ProcessBuilder(scriptFile.absolutePath)
-            .directory(context.workingDirectory)
-            .inheritIO()
-            .also { pb -> pb.environment().putAll(envVars) }
+        kitProcessEnvironment
+            .applyTo(ProcessBuilder(scriptFile.absolutePath).directory(context.workingDirectory).inheritIO(), workspace, envVars)
             .start()
             .waitFor()
 

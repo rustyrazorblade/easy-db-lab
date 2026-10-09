@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
@@ -82,6 +83,7 @@ class KitInstallCommandTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         workingDir = get<Context>().workingDirectory
+        File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         whenever(mockResolver.listTemplateFiles(org.mockito.kotlin.any())).thenReturn(emptyList())
         whenever(mockResolver.readInstallYamlContent(org.mockito.kotlin.any())).thenReturn(null)
@@ -285,6 +287,66 @@ class KitInstallCommandTest : BaseKoinTest() {
 
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
         assertThat(File(workingDir, "broken")).doesNotExist()
+    }
+
+    @Test
+    fun `an install shell step gets the absolute workspace kubeconfig and the workspace bin first on PATH`() {
+        val seen = File(workingDir, "seen.txt")
+        val config =
+            KitConfig(
+                name = "envcheck",
+                type = null,
+                install = listOf(InstallStep.Shell("echo \"\$KUBECONFIG\" > '${seen.absolutePath}'\necho \"\$PATH\" >> '${seen.absolutePath}'")),
+            )
+
+        val exitCode = (factory.build(config, source).commandSpec.userObject() as KitInstallCommand).call()
+
+        assertThat(exitCode).isZero()
+        val (kubeconfig, path) = seen.readLines()
+        assertThat(kubeconfig).isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+        assertThat(path.split(File.pathSeparator).first()).isEqualTo(File(workingDir, Constants.ToolWrappers.DIRECTORY).absolutePath)
+    }
+
+    /**
+     * The bug this change fixes: an install shell step got the relative `KUBECONFIG=kubeconfig`,
+     * which resolved against the kit directory, where there is none. The stub `kubectl`, after the
+     * wrappers on `PATH`, fails unless the kubeconfig it is handed exists and it was reached
+     * through the wrapper with the recorded tunnel port.
+     */
+    @Test
+    fun `kubectl get ns in an install shell step succeeds, so kit install exits 0`() {
+        ProxyEnvFile(workingDir).apply {
+            recordTailscale(active = false)
+            recordPort(41234)
+        }
+        val stubs =
+            File(tempDir, "real-bin").apply {
+                mkdirs()
+                File(this, "kubectl").apply {
+                    writeText(
+                        """
+                        |#!/bin/sh
+                        |[ -f "${'$'}KUBECONFIG" ] || { echo "no kubeconfig at ${'$'}KUBECONFIG" >&2; exit 1; }
+                        |[ "${'$'}HTTPS_PROXY" = socks5://localhost:41234 ] || { echo "not through the tunnel" >&2; exit 1; }
+                        |echo "default Active"
+                        |
+                        """.trimMargin(),
+                    )
+                    setExecutable(true)
+                }
+            }
+        val config =
+            KitConfig(
+                name = "needs-kubectl",
+                type = null,
+                // The stub goes right after the wrappers, ahead of any kubectl installed on this machine.
+                install = listOf(InstallStep.Shell("PATH=\"\${PATH%%:*}:${stubs.absolutePath}:\$PATH\" kubectl get ns")),
+            )
+
+        val exitCode = (factory.build(config, source).commandSpec.userObject() as KitInstallCommand).call()
+
+        assertThat(exitCode).isZero()
+        assertThat(File(workingDir, "needs-kubectl")).isDirectory()
     }
 
     private fun resolvedArgs(kitDir: String): Map<String, String> =

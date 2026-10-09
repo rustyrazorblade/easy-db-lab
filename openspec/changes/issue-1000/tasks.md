@@ -35,12 +35,12 @@
 
 ## 5. Kit process launch and resolver removal
 
-- [ ] 5.1 Write failing tests for `KitProcessEnvironment.applyTo(builder, workspace, variables)`: `PATH` starts with `<workspace>/bin` followed by the builder's inherited `PATH`; `KUBECONFIG` is the absolute workspace kubeconfig and overrides a relative `KUBECONFIG` in `variables`; a missing kubeconfig fails before the process starts; the wrappers exist afterwards.
-- [ ] 5.2 Implement `KitProcessEnvironment`.
-- [ ] 5.3 Add `workspaceDir` to `StepExecutionContext`. Use `KitProcessEnvironment` in `WorkloadStepExecutor.runShellStep`, `KitRunnerCommand.executeScript`, and `KitHookExecutor`. Add tests on the environments built by `WorkloadStepExecutor` (install and phase), `KitInstallCommand`, `KitRunnerCommand`, and `KitHookExecutor`: absolute existing `KUBECONFIG` and `<workspace>/bin` first on `PATH`.
-- [ ] 5.4 Add a test that a kit install shell step running `kubectl get ns` against a stub `kubectl` that checks `KUBECONFIG` exists succeeds, so `kit install` exits 0.
-- [ ] 5.5 Delete `services/KubeconfigProxyResolver.kt` and its test, and remove its use from `KitRunnerCommand` and Koin. Confirm no temporary kubeconfig is created. Leave the relative `KUBECONFIG` in `TemplateVariables` for the presto and trino templates.
-- [ ] 5.6 Grep the tree to confirm nothing sets, clears, or reads and restores `socksProxyHost`/`socksProxyPort`.
+- [x] 5.1 Write failing tests for `KitProcessEnvironment.applyTo(builder, workspace, variables)`: `PATH` starts with `<workspace>/bin` followed by the builder's inherited `PATH`; `KUBECONFIG` is the absolute workspace kubeconfig and overrides a relative `KUBECONFIG` in `variables`; a missing kubeconfig fails before the process starts; the wrappers exist afterwards.
+- [x] 5.2 Implement `KitProcessEnvironment`.
+- [x] 5.3 Add `workspaceDir` to `StepExecutionContext`. Use `KitProcessEnvironment` in `WorkloadStepExecutor.runShellStep`, `KitRunnerCommand.executeScript`, and `KitHookExecutor`. Add tests on the environments built by `WorkloadStepExecutor` (install and phase), `KitInstallCommand`, `KitRunnerCommand`, and `KitHookExecutor`: absolute existing `KUBECONFIG` and `<workspace>/bin` first on `PATH`.
+- [x] 5.4 Add a test that a kit install shell step running `kubectl get ns` against a stub `kubectl` that checks `KUBECONFIG` exists succeeds, so `kit install` exits 0.
+- [x] 5.5 Delete `services/KubeconfigProxyResolver.kt` and its test, and remove its use from `KitRunnerCommand` and Koin. Confirm no temporary kubeconfig is created. Leave the relative `KUBECONFIG` in `TemplateVariables` for the presto and trino templates.
+- [x] 5.6 Grep the tree to confirm nothing sets, clears, or reads and restores `socksProxyHost`/`socksProxyPort`.
 
 ## 6. init refusal
 

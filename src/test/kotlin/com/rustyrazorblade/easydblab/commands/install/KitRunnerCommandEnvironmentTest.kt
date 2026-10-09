@@ -2,14 +2,18 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
+import com.rustyrazorblade.easydblab.services.StepExecutionContext
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
-import org.koin.test.get
-import org.mockito.kotlin.times
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.verify
 import java.io.File
 
 /**
  * The environment a kit phase runs in: TARGET_* variables from a kit-ref target, the layering
- * of runtime args over install-time args and cluster state, and the KUBECONFIG shell steps use.
+ * of runtime args over install-time args and cluster state, and the KUBECONFIG and PATH that
+ * phase scripts and typed steps get from KitProcessEnvironment.
  */
 class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
     @Test
@@ -126,44 +130,34 @@ class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
         assertThat(outputFile.readText().trim()).isEmpty()
     }
 
-    private fun writeWorkspaceKubeconfig() {
-        File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).writeText(
-            """
-            apiVersion: v1
-            kind: Config
-            clusters:
-              - name: default
-                cluster:
-                  server: https://10.0.0.1:6443
-            contexts:
-              - name: default
-                context:
-                  cluster: default
-                  user: default
-            current-context: default
-            users:
-              - name: default
-                user:
-                  token: abc123
-            """.trimIndent() + "\n",
-        )
-    }
-
     @Test
-    fun `shell step KUBECONFIG points at a proxied temp kubeconfig when a SOCKS port is published`() {
-        writeWorkspaceKubeconfig()
-        val kubeconfigCopy = File(workingDir, "kubeconfig-seen.txt")
-        val kubeconfigPathFile = File(workingDir, "kubeconfig-path.txt")
-        // Capture both the path kubectl would use and the content it would read, while the
-        // temp kubeconfig still exists (it is deleted when the command finishes).
+    fun `a phase script gets the absolute workspace kubeconfig and the workspace bin first on PATH`() {
+        val seen = File(workingDir, "seen.txt")
         writeScript(
             "mydb",
             "start",
             """
-            echo "${'$'}KUBECONFIG" > "${kubeconfigPathFile.absolutePath}"
-            cat "${'$'}KUBECONFIG" > "${kubeconfigCopy.absolutePath}"
+            echo "${'$'}KUBECONFIG" > "${seen.absolutePath}"
+            echo "${'$'}PATH" >> "${seen.absolutePath}"
+            command -v kubectl >> "${seen.absolutePath}"
             """.trimIndent(),
         )
+
+        val exitCode = command("mydb", "start").call()
+
+        assertThat(exitCode).isZero()
+        val (kubeconfig, path, kubectl) = seen.readLines()
+        assertThat(kubeconfig).isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+        assertThat(File(kubeconfig)).isFile()
+        assertThat(path.split(File.pathSeparator).first()).isEqualTo(File(workingDir, Constants.ToolWrappers.DIRECTORY).absolutePath)
+        assertThat(kubectl).isEqualTo(File(workingDir, "${Constants.ToolWrappers.DIRECTORY}/kubectl").absolutePath)
+    }
+
+    @Test
+    fun `a published SOCKS port does not make a temporary kubeconfig`() {
+        val workspaceKubeconfig = File(workingDir, Constants.K3s.LOCAL_KUBECONFIG)
+        val seen = File(workingDir, "seen.txt")
+        writeScript("mydb", "start", """echo "${'$'}KUBECONFIG" > "${seen.absolutePath}"""")
 
         try {
             System.setProperty(Constants.Proxy.PORT_PROPERTY, "1080")
@@ -172,29 +166,39 @@ class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
             System.clearProperty(Constants.Proxy.PORT_PROPERTY)
         }
 
-        // KUBECONFIG points at the resolver's temp copy, not the workspace kubeconfig.
-        val kubeconfigPathUsed = kubeconfigPathFile.readText().trim()
-        assertThat(File(kubeconfigPathUsed).name).startsWith("edl-kubeconfig-proxy-")
-        // That temp kubeconfig routes kubectl/helm through the published SOCKS port.
-        assertThat(kubeconfigCopy.readText()).contains("proxy-url").contains("socks5://127.0.0.1:1080")
-        // The canonical workspace kubeconfig is never patched in place (fabric8 reads it).
-        assertThat(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).readText()).doesNotContain("proxy-url")
+        assertThat(seen.readText().trim()).isEqualTo(workspaceKubeconfig.absolutePath)
+        assertThat(workspaceKubeconfig).hasContent(WORKSPACE_KUBECONFIG)
     }
 
     @Test
-    fun `shell step KUBECONFIG points at the workspace kubeconfig when no SOCKS port is published`() {
-        writeWorkspaceKubeconfig()
-        val kubeconfigPathFile = File(workingDir, "kubeconfig-path.txt")
-        writeScript(
+    fun `a phase script does not start when the workspace kubeconfig is missing`() {
+        File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).delete()
+        val ran = File(workingDir, "ran.txt")
+        writeScript("mydb", "start", """touch "${ran.absolutePath}"""")
+
+        assertThatThrownBy { command("mydb", "start").call() }
+            .hasMessageContaining(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+
+        assertThat(ran).doesNotExist()
+    }
+
+    @Test
+    fun `typed phase steps get the workspace and the absolute kubeconfig`() {
+        writeKitYaml(
             "mydb",
-            "start",
-            """echo "${'$'}KUBECONFIG" > "${kubeconfigPathFile.absolutePath}"""",
+            """
+            name: mydb
+            start:
+              - type: shell
+                script: "true"
+            """.trimIndent(),
         )
 
-        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
         command("mydb", "start").call()
 
-        assertThat(kubeconfigPathFile.readText().trim())
-            .isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+        val captor = argumentCaptor<StepExecutionContext>()
+        verify(mockWorkloadStepExecutor).execute(any(), any(), captor.capture())
+        assertThat(captor.firstValue.workspaceDir.absoluteFile).isEqualTo(workingDir.absoluteFile)
+        assertThat(captor.firstValue.variables["KUBECONFIG"]).isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
     }
 }

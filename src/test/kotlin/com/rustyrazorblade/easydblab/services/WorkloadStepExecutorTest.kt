@@ -15,6 +15,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
@@ -81,16 +83,22 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 remoteOps = get(),
                 eventBus = get<EventBus>(),
             )
+        workspace.mkdirs()
+        File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
     }
+
+    /** The cluster workspace the steps run in; it holds the kubeconfig every shell step needs. */
+    private val workspace: File get() = File(tempDir, "workspace")
 
     private fun execute(
         steps: List<InstallStep>,
         variables: Map<String, String> = emptyMap(),
         kitDir: File = tempDir,
+        phase: String = "start",
     ): Result<Unit> =
         executor.execute(
             steps = steps,
-            phase = "start",
+            phase = phase,
             context =
                 StepExecutionContext(
                     kitName = "testdb",
@@ -98,6 +106,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                     clusterState = clusterState,
                     variables = variables,
                     kitDir = kitDir,
+                    workspaceDir = workspace,
                 ),
         )
 
@@ -209,6 +218,39 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 )
             assertThat(result.isSuccess).isTrue()
             assertThat(outFile.readText().trim()).isEqualTo("hello-from-test")
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = [Constants.Kit.PHASE_INSTALL, Constants.Kit.PHASE_START])
+        fun `runs with the absolute workspace kubeconfig and the workspace bin first on PATH`(phase: String) {
+            val outFile = File(tempDir, "env-check.txt")
+            val kitDir = File(workspace, "testdb").apply { mkdirs() }
+
+            val result =
+                execute(
+                    steps = listOf(InstallStep.Shell("echo \"\$KUBECONFIG\" > ${outFile.absolutePath}\necho \"\$PATH\" >> ${outFile.absolutePath}")),
+                    variables = mapOf("KUBECONFIG" to "kubeconfig"),
+                    kitDir = kitDir,
+                    phase = phase,
+                )
+
+            assertThat(result.isSuccess).withFailMessage(result.toString()).isTrue()
+            val (kubeconfig, path) = outFile.readLines()
+            assertThat(kubeconfig).isEqualTo(File(workspace, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+            assertThat(File(kubeconfig)).isFile()
+            assertThat(path.split(File.pathSeparator).first()).isEqualTo(File(workspace, Constants.ToolWrappers.DIRECTORY).absolutePath)
+            assertThat(path.split(File.pathSeparator).drop(1).joinToString(File.pathSeparator)).isEqualTo(System.getenv("PATH"))
+        }
+
+        @Test
+        fun `fails naming the kubeconfig and does not run the script when the workspace has none`() {
+            val kubeconfig = File(workspace, Constants.K3s.LOCAL_KUBECONFIG).apply { delete() }
+            val ran = File(tempDir, "ran.txt")
+
+            val failure = execute(listOf(InstallStep.Shell("touch ${ran.absolutePath}"))).exceptionOrNull()
+
+            assertThat(failure).hasMessageContaining(kubeconfig.absolutePath)
+            assertThat(ran).doesNotExist()
         }
     }
 

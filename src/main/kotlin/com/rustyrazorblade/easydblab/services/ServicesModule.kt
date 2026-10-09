@@ -118,8 +118,9 @@ val servicesModule =
         single<OkHttpClient> { get<HttpClientFactory>().createClient() }
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
+        factoryOf(::KitProcessEnvironment)
         factoryOf(::WorkloadStepExecutor)
-        factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get()) }
+        factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         // Takes the workspace kubeconfig path, which the Fabric8-backed KubernetesService needs.
         factory { (kubeconfigPath: String) -> KitWorkloadProbe(get { parametersOf(kubeconfigPath) }, get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class

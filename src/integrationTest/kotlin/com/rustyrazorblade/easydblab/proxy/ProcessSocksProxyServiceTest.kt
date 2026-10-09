@@ -308,6 +308,28 @@ class ProcessSocksProxyServiceTest {
     }
 
     @Test
+    fun `a second call reuses the in-memory tunnel and records its port again`() {
+        // The first call fills the in-memory state through a genuine reuse; the second takes the
+        // in-memory fast path. Removing the port in between models a stop-socks of an old tunnel
+        // or a deleted env file: the fast path must record the port again.
+        val livePid = ProcessHandle.current().pid().toInt()
+        val svc = service()
+        val envFile = ProxyEnvFile(tempDir)
+        ServerSocket(0).use { socket ->
+            val port = socket.localPort
+            writeStateFile(pid = livePid, port = port)
+            svc.ensureRunning(testHost)
+            envFile.removePort()
+
+            val second = svc.ensureRunning(testHost)
+
+            assertThat(second.reused).isTrue()
+            assertThat(second.localPort).isEqualTo(port)
+            assertThat(envFile.read().socksPort).isEqualTo(port)
+        }
+    }
+
+    @Test
     fun `an in-memory port that dies between calls is re-validated, not trusted, on the next call`() {
         // Populate in-memory state via a genuine reuse (real listening socket), then close the
         // listener so the recorded port stops accepting while the recorded PID (this JVM) stays

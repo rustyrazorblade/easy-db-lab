@@ -4415,6 +4415,22 @@ sealed interface Event {
 
     @Serializable
     sealed interface Ami : Event {
+        /**
+         * `build-image` stopped because its [phase] (`build-base` or `build-cassandra`) exited
+         * with [exitCode]. The phase's own error, printed just before this, gives the cause.
+         */
+        @Serializable
+        @SerialName("Ami.BuildPhaseFailed")
+        data class BuildPhaseFailed(
+            val phase: String,
+            val exitCode: Int,
+        ) : Ami {
+            override fun toDisplayString(): String =
+                "build-image failed: the $phase phase exited with code $exitCode; its error is shown above."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Ami.PruningStarting")
         data class PruningStarting(

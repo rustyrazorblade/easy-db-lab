@@ -237,14 +237,18 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `execute extracts resource files`() {
+        fun `execute extracts resource files into the workspace, not the process working directory`() {
             val command = Init()
             command.clean = true
             command.execute()
 
             val output = outputHandler.messages.joinToString("\n")
             assertThat(output).contains("Writing setup_instance.sh")
-            assertThat(File("setup_instance.sh")).exists()
+            assertThat(File(context.workingDirectory, "setup_instance.sh")).exists()
+            assertThat(File(context.workingDirectory, Constants.Cassandra.JMX_RULES_FILE)).exists()
+            // The test JVM runs in the source checkout, which is never the workspace.
+            assertThat(File("setup_instance.sh")).doesNotExist()
+            assertThat(File(Constants.Cassandra.JMX_RULES_FILE)).doesNotExist()
         }
 
         @Test

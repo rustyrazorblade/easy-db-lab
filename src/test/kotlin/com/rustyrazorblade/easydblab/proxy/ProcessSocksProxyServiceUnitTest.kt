@@ -444,6 +444,43 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(envFile.read().socksPort).isNull()
     }
 
+    /** The record a superseded tunnel left: what ensureRunning has just found not reusable (issue #741). */
+    private fun staleRecord() =
+        Socks5ProxyStateFile(
+            pid = FAKE_PID.toInt(),
+            port = STOP_PORT,
+            controlHost = "control0",
+            controlIP = testHost.privateIp,
+            clusterName = tempDir.name,
+            startTime = Instant.now().toString(),
+            sshConfig = File(tempDir, "sshConfig").absolutePath,
+        )
+
+    @Test
+    fun `a superseded tunnel that is still our ssh is terminated before its record is overwritten`() {
+        val zombie = FakeTunnelProcess.sshTunnel(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+
+        serviceSeeing(zombie).terminateStaleProxy(staleRecord())
+
+        assertThat(zombie.handle.isAlive).isFalse()
+    }
+
+    @Test
+    fun `a superseded record whose PID another program now holds signals nothing`() {
+        val other = FakeTunnelProcess(FAKE_PID, "/usr/bin/python3", listOf("server.py"))
+
+        serviceSeeing(other).terminateStaleProxy(staleRecord())
+
+        assertThat(other.signals).isZero()
+        assertThat(other.handle.isAlive).isTrue()
+    }
+
+    @Test
+    fun `a superseded record whose PID is gone is ignored`() {
+        // The lookup sees no process at all; nothing to signal, and nothing throws.
+        serviceSeeing(null).terminateStaleProxy(staleRecord())
+    }
+
     @Test
     fun `stop with nothing recorded reports no tunnel`() {
         assertThat(serviceSeeing(null).stop()).isEqualTo(TunnelStopResult.NotRunning)

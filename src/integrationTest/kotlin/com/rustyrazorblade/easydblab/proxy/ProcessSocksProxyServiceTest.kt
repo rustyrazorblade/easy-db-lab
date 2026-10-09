@@ -21,7 +21,6 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.time.Duration
 import java.time.Instant
-import java.util.concurrent.TimeUnit
 
 /**
  * Integration-tier tests for [ProcessSocksProxyService] that genuinely require real socket I/O: the
@@ -284,26 +283,23 @@ class ProcessSocksProxyServiceTest {
     }
 
     @Test
-    fun `a superseded zombie tunnel process is killed when a replacement is started`() {
-        // A real, killable stand-in for a zombie ssh tunnel: the process is alive, but its recorded
-        // `-D` port is not listening, so isValidProxy() rejects it and a replacement is started.
-        // Before the fix, startNewProxy() overwrote the state file with the new PID and this one was
-        // never killed — it leaked and survived `down` (issue #741).
-        val zombie = ProcessBuilder("sleep", "60").start()
+    fun `a superseded record whose PID a non-ssh process now holds is not killed when a replacement is started`() {
+        // The recorded PID is alive but its `-D` port is not listening, so the record is not reused
+        // and a replacement is started. A superseded tunnel is killed before its record is
+        // overwritten (issue #741), but only when the PID is still that ssh tunnel: here the OS has
+        // given the PID to another program, a real `sleep`, which must survive.
+        val other = ProcessBuilder("sleep", "60").start()
         try {
             val deadPort = reserveFreePort() // recorded but nothing is listening on it
-            writeStateFile(pid = zombie.pid().toInt(), port = deadPort)
+            writeStateFile(pid = other.pid().toInt(), port = deadPort)
 
-            // The fresh start fails fast (fake dead launcher); we only care that the stale zombie
-            // was reaped on the way through.
+            // The fresh start fails fast (fake dead launcher); we only care what happened to the PID.
             assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }).ensureRunning(testHost) }
                 .isInstanceOf(IllegalStateException::class.java)
 
-            assertThat(zombie.waitFor(5, TimeUnit.SECONDS))
-                .withFailMessage("the superseded zombie tunnel process should have been killed")
-                .isTrue()
+            assertThat(other.isAlive).withFailMessage("a PID that is no longer the tunnel must not be killed").isTrue()
         } finally {
-            zombie.destroyForcibly()
+            other.destroyForcibly()
         }
     }
 

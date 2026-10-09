@@ -139,7 +139,7 @@ class ProcessSocksProxyService(
                         // file with a new PID, so this one becomes unrecorded and `Down` could
                         // never find it. Kill it now, before it is forgotten, or it leaks and
                         // survives teardown (issue #741).
-                        terminateStaleProxy(loaded.pid)
+                        terminateStaleProxy(loaded)
                     }
                 } catch (e: Exception) {
                     log.warn(e) { "Failed to read proxy state file, starting fresh" }
@@ -383,32 +383,25 @@ class ProcessSocksProxyService(
     }
 
     /**
-     * Force-kills a superseded proxy `ssh` process so it does not leak.
+     * Ends a superseded proxy `ssh` process so it does not leak.
      *
      * Called when a recorded proxy is being replaced rather than reused (e.g. a zombie tunnel:
      * PID alive but its `-D` port stopped accepting). Once [startNewProxy] overwrites the state
-     * file, [stalePid] is the last reference to that process — `Down` reads only the current state
-     * file, so an un-killed stale PID survives even `easy-db-lab down`.
+     * file, [stale] is the last record of that process — `Down` reads only the current state
+     * file, so an un-stopped stale tunnel survives even `easy-db-lab down` (issue #741).
      *
-     * Best-effort by design: killing the stale tunnel must never break starting its replacement, so
-     * any failure (including the JVM refusing to destroy its own process, should the PID ever match
-     * this one) is logged, not thrown. A no-op if the PID is non-positive, already gone, or this JVM.
+     * The PID is signaled only when it is still that tunnel, by the same check `stop()` uses
+     * ([TunnelProcessControl]): the OS may have given a dead tunnel's PID to another program.
+     * Stopping it never blocks starting its replacement: a tunnel that will not end is logged.
      *
-     * Internal (not private) purely so a test can drive it against a real spawned process without
-     * exercising the whole [ensureRunning] state-file path.
+     * Internal (not private) purely so a test can drive it without exercising the whole
+     * [ensureRunning] state-file path.
      */
-    @Suppress("TooGenericExceptionCaught")
-    internal fun terminateStaleProxy(stalePid: Int) {
-        if (stalePid <= 0 || stalePid.toLong() == ProcessHandle.current().pid()) {
-            return
-        }
-        ProcessHandle.of(stalePid.toLong()).ifPresent { handle ->
-            log.info { "Terminating superseded SOCKS5 proxy process [PID $stalePid]" }
-            try {
-                handle.destroyForcibly()
-            } catch (e: Exception) {
-                log.warn(e) { "Failed to kill superseded SOCKS5 proxy process [PID $stalePid]" }
-            }
+    internal fun terminateStaleProxy(stale: Socks5ProxyStateFile) {
+        when (val result = tunnelProcesses.stop(stale)) {
+            is TunnelStopResult.Stopped -> log.info { "Terminated superseded SOCKS5 proxy process [PID ${result.pid}]" }
+            TunnelStopResult.NotRunning -> log.debug { "Superseded SOCKS5 proxy [PID ${stale.pid}] is no longer running" }
+            is TunnelStopResult.StopFailed -> log.warn { "Superseded SOCKS5 proxy process [PID ${result.pid}] did not stop" }
         }
     }
 

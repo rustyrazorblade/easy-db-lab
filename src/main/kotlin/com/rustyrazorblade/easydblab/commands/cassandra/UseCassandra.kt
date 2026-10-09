@@ -19,14 +19,14 @@ import picocli.CommandLine.Parameters
 import kotlin.system.exitProcess
 
 /**
- * Use a Cassandra version (3.0, 3.11, 4.0, 4.1).
+ * Switch the active Cassandra version.
  */
 @McpCommand
 @RequireProfileSetup
 @TriggerBackup
 @Command(
     name = "use",
-    description = ["Use a Cassandra version (3.0, 3.11, 4.0, 4.1)"],
+    description = ["Switch the active Cassandra version"],
 )
 class UseCassandra : PicoBaseCommand() {
     private val hostOperationsService: HostOperationsService by inject()

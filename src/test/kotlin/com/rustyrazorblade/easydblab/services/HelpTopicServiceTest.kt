@@ -59,6 +59,7 @@ class HelpTopicServiceTest {
             "observability",
             "spark",
             "cassandra",
+            "cassandra-builds",
         )
 
         service.findAll().forEach { topic ->

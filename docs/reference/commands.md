@@ -252,7 +252,7 @@ All Cassandra commands are available under the `cassandra` subcommand group.
 
 ### cassandra use
 
-Select a Cassandra version.
+Switch the active Cassandra version.
 
 ```bash
 easy-db-lab cassandra use <version> [options]
@@ -263,7 +263,8 @@ easy-db-lab cassandra use <version> [options]
 | `--java` | Java version to use: 8, 11, 17, 21 or 25 |
 | `--hosts` | Filter to specific hosts |
 
-Versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, trunk
+The version can be any installed version, including a build published by `cassandra build`.
+Run `cassandra list` to see them.
 
 Fails if the version is not installed on a targeted node — install it first with
 `cassandra install`.
@@ -705,10 +706,11 @@ easy-db-lab help provisioning
 ```
 
 The seed topics are `provisioning`, `kits`, `stress-testing`, `profiles`, `connecting`, `querying`,
-`observability`, `spark`, and `cassandra` (the `cassandra` topic covers database lifecycle, version
-selection, and configuration on a running cluster). Topics are packaged markdown files, so `help`
-works from a Homebrew install with no source checkout. An unknown topic prints an error that names
-the bad topic, lists the valid ones, and exits non-zero.
+`observability`, `spark`, `cassandra`, and `cassandra-builds`. The `cassandra` topic covers database
+lifecycle, version selection, and configuration on a running cluster. The `cassandra-builds` topic
+shows how to build a local Cassandra source tree and run it on a cluster. Topics are packaged
+markdown files, so `help` works from a Homebrew install with no source checkout. An unknown topic
+prints an error that names the bad topic, lists the valid ones, and exits non-zero.
 
 The standard `-h`/`--help` output points here too: the root usage carries a footer directing you to
 `help`, and each subcommand that maps to a topic names the related `help <topic>`.

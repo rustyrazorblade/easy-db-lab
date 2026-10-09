@@ -15,6 +15,7 @@ Version management:
 - `easy-db-lab cassandra list` — available versions (pre-baked in AMI + installable on demand).
 - `easy-db-lab cassandra install <version>` — downloads tarball, installs on all db nodes. Examples: `5.0.2`, `5.0-beta1`, `trunk`.
 - `easy-db-lab cassandra use <version>` — switches active version. Must already be installed.
+- To build a local source tree and run it on a cluster, see the `cassandra-builds` topic.
 
 Config (patch-file workflow on a running cluster):
 1. `easy-db-lab cassandra write-config` — generate an override-only patch file. Set tokens with `-t N`.
@@ -37,4 +38,4 @@ Pull current config:
 Load:
 - See `stress-testing` topic for `cassandra stress` workloads.
 
-Related: `stress-testing`, `provisioning`.
+Related: `stress-testing`, `provisioning`, `cassandra-builds`.

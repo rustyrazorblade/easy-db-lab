@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.proxy
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.jupiter.api.Test
-import java.net.ConnectException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -40,17 +39,20 @@ class SocksTcpBridgeTest {
     }
 
     @Test
-    fun `close stops the listener so subsequent connects are refused`() {
+    fun `close stops the listener and releases its port`() {
         val bridge = SocksTcpBridge(socksPort = deadPort(), targetHost = "10.0.0.1", targetPort = 5432)
         bridge.start()
         val port = bridge.localPort
 
         bridge.close()
 
-        Socket().use { client ->
-            assertThatCode {
-                client.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 500)
-            }.isInstanceOf(ConnectException::class.java)
+        // Binding the port proves the listener let it go. A connect cannot prove it: the port is
+        // in the ephemeral range, and on Linux a client handed that same port as its source port
+        // connects to itself (TCP simultaneous open), which CI hit as a "successful" connect.
+        ServerSocket().use { probe ->
+            probe.reuseAddress = false
+            assertThatCode { probe.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), port)) }
+                .doesNotThrowAnyException()
         }
     }
 

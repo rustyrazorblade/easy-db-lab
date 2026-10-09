@@ -28,7 +28,7 @@ object DataDiskRequirement {
         when (serverType) {
             ServerType.Cassandra ->
                 require(hasInstanceStore || ebsConfigured) {
-                    "Instance type $instanceType has no local instance store. " +
+                    "The ${serverType.serverType} instance type $instanceType has no local instance store. " +
                         "You must specify --ebs.type (e.g., --ebs.type gp3) to attach an EBS volume for data storage."
                 }
             ServerType.Stress, ServerType.Control ->

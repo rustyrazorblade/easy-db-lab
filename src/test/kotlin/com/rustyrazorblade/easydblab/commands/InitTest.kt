@@ -386,7 +386,8 @@ class InitTest : BaseKoinTest() {
 
             assertThatThrownBy { noEbs.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessageContaining("c5.2xlarge")
+                .hasMessageContaining("The db instance type c5.2xlarge")
+                .hasMessageContaining("instance store")
                 .hasMessageContaining("--ebs.type")
             assertNothingSaved()
 

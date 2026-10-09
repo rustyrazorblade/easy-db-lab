@@ -123,6 +123,60 @@ class KitRunnerCommandStartFailureTest : KitRunnerCommandTestBase() {
         assertThat(exit).isEqualTo(Constants.ExitCodes.ERROR)
     }
 
+    /**
+     * Writes a two-extension kit instance `postgres-duckdb` whose declared dashboards are a shared
+     * one and one for each extension, with only the files in [present] on disk.
+     */
+    private fun writeExtensionInstance(vararg present: String) {
+        val dir = File(workingDir, "postgres-duckdb/dashboards").also { it.mkdirs() }
+        present.forEach { File(dir, it).writeText("""{"uid":"${it.removeSuffix(".json")}"}""") }
+        writeKitYaml(
+            "postgres-duckdb",
+            """
+            name: postgres
+            args:
+              - flag: --extension
+                variable: EXTENSION
+                type: extension
+                default: ""
+            dashboards:
+              - path: dashboards/postgres.json
+              - path: dashboards/duckdb.json
+                extension: duckdb
+              - path: dashboards/postgis.json
+                extension: postgis
+            start:
+              - type: shell
+                script: echo hello
+            """.trimIndent(),
+        )
+        writeResolvedArgs("postgres-duckdb", mapOf("EXTENSION" to "duckdb"))
+    }
+
+    @Test
+    fun `another extension's dashboard file that is missing does not fail start`() {
+        writeExtensionInstance("postgres.json", "duckdb.json")
+
+        var exit = -1
+        val events = captureEvents { exit = command("postgres-duckdb", "start").call() }
+
+        assertThat(events.filterIsInstance<Event.Grafana.KitDashboardInstallFailed>()).isEmpty()
+        assertThat(grafana.installed).isEqualTo(2)
+        assertThat(exit).isEqualTo(0)
+    }
+
+    @Test
+    fun `this instance's own extension dashboard file that is missing fails start`() {
+        writeExtensionInstance("postgres.json", "postgis.json")
+
+        var exit = 0
+        val events = captureEvents { exit = command("postgres-duckdb", "start").call() }
+
+        assertThat(events.filterIsInstance<Event.Grafana.KitDashboardInstallFailed>().map { it.dashboard })
+            .containsExactly("dashboards/duckdb.json")
+        assertThat(exit).isEqualTo(Constants.ExitCodes.ERROR)
+    }
+
     @Test
     fun `dashboards that cannot be read fail start`() {
         File(File(workingDir, "mydb").also { it.mkdirs() }, "overview.json").writeText("not json")

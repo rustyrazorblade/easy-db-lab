@@ -497,9 +497,15 @@ class KitRunnerCommand(
         return missing.isEmpty() && rejected == 0
     }
 
-    /** The paths of the kit's declared `dashboards` whose file does not exist in the kit directory. */
+    /**
+     * The paths of the declared `dashboards` this instance installs (see [selectInstanceDashboards])
+     * whose file does not exist in the kit directory. Another extension's dashboard is not this
+     * instance's to install, so its file may be absent.
+     */
     private fun missingDeclaredDashboards(config: KitConfig): List<String> =
-        config.dashboards.map { it.path }.filterNot { File(kitDir, it).isFile }
+        selectInstanceDashboards(config.dashboards, instanceExtension(config))
+            .map { it.path }
+            .filterNot { File(kitDir, it).isFile }
 
     /**
      * The dashboard files this instance installs: the kit's declared `dashboards` it selects (see

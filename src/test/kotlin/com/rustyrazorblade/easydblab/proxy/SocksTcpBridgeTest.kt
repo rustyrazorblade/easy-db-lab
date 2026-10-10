@@ -42,18 +42,17 @@ class SocksTcpBridgeTest {
     fun `close stops the listener and releases its port`() {
         val bridge = SocksTcpBridge(socksPort = deadPort(), targetHost = "10.0.0.1", targetPort = 5432)
         bridge.start()
-        val port = bridge.localPort
+        val acceptor =
+            Thread.getAllStackTraces().keys.single { it.name == "socks-bridge-acceptor-${bridge.localPort}" }
 
         bridge.close()
 
-        // Binding the port proves the listener let it go. A connect cannot prove it: the port is
-        // in the ephemeral range, and on Linux a client handed that same port as its source port
-        // connects to itself (TCP simultaneous open), which CI hit as a "successful" connect.
-        ServerSocket().use { probe ->
-            probe.reuseAddress = false
-            assertThatCode { probe.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), port)) }
-                .doesNotThrowAnyException()
-        }
+        // The acceptor blocks in accept() until the listening socket is closed, so its exit
+        // proves close() closed the listener, which is what frees the port. The test watches
+        // the bridge's own thread, not the port number: another process on a shared runner can
+        // take a freed ephemeral port, and a client on Linux can connect to itself on it.
+        acceptor.join(ACCEPTOR_EXIT_TIMEOUT_MS)
+        assertThat(acceptor.isAlive).isFalse()
     }
 
     @Test
@@ -99,5 +98,9 @@ class SocksTcpBridgeTest {
                 assertThat(firstByte).isEqualTo(-1)
             }
         }
+    }
+
+    private companion object {
+        const val ACCEPTOR_EXIT_TIMEOUT_MS = 5_000L
     }
 }

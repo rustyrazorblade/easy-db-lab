@@ -266,6 +266,35 @@ Each wrapper MUST pick its tool from its own file name and MUST run the first ex
 - **THEN** the real binary gets the same arguments and stdin
 - **AND** the wrapper exits with the real binary's exit code
 
+### Requirement: Wrappers use the workspace kubeconfig
+
+The `kubectl`, `helm`, `cilium`, and `k9s` wrappers MUST always set `KUBECONFIG` to the absolute path of `<workspace>/kubeconfig` for the call they run, on SOCKS and Tailscale clusters alike. They MUST override any inherited `KUBECONFIG`, because a wrapper reaches only its own workspace's cluster and no other kubeconfig can work through it. If `<workspace>/kubeconfig` does not exist, the wrapper MUST fail with exit code 1 and a message that names the missing file, and MUST NOT run the real binary. The `curl` and `skopeo` wrappers MUST NOT set or change `KUBECONFIG`.
+
+#### Scenario: A bare wrapper call works with no setup
+
+- **GIVEN** a running cluster and a shell that has not sourced `env.sh` and has no `KUBECONFIG` set
+- **WHEN** the user runs `<workspace>/bin/kubectl get ns`
+- **THEN** `kubectl` uses `<workspace>/kubeconfig` and succeeds
+
+#### Scenario: An inherited KUBECONFIG is overridden
+
+- **GIVEN** a shell that exports `KUBECONFIG=~/.kube/config`
+- **WHEN** a `kubectl`, `helm`, `cilium`, or `k9s` wrapper runs
+- **THEN** the real binary runs with `KUBECONFIG` set to the absolute `<workspace>/kubeconfig`
+
+#### Scenario: Missing workspace kubeconfig
+
+- **GIVEN** a workspace with no `kubeconfig` file
+- **WHEN** a `kubectl`, `helm`, `cilium`, or `k9s` wrapper runs
+- **THEN** it exits 1 with a message that names the missing `<workspace>/kubeconfig`
+- **AND** the real binary does not run
+
+#### Scenario: curl and skopeo leave KUBECONFIG alone
+
+- **GIVEN** an inherited `KUBECONFIG` value
+- **WHEN** the `curl` or `skopeo` wrapper runs
+- **THEN** the real binary sees the inherited `KUBECONFIG` unchanged
+
 ### Requirement: Wrappers route through the tunnel on a SOCKS cluster
 
 On every call, each wrapper MUST ignore inherited `EDL_TAILSCALE_ACTIVE` and `EDL_SOCKS_PORT` values and source the workspace's proxy env file. When `EDL_TAILSCALE_ACTIVE` is not `true` and a port is recorded, the wrapper MUST clear every inherited proxy variable (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, upper and lower case) and set its own, in both cases, for its own call only:
@@ -322,13 +351,13 @@ When no port is recorded, the wrapper MUST fail with exit code 1 and a message t
 
 ### Requirement: Wrappers connect directly on a Tailscale cluster
 
-When the env file holds `EDL_TAILSCALE_ACTIVE=true`, each wrapper MUST run the real binary with the environment unchanged.
+When the env file holds `EDL_TAILSCALE_ACTIVE=true`, each wrapper MUST run the real binary with the environment unchanged, except that the `kubectl`, `helm`, `cilium`, and `k9s` wrappers set `KUBECONFIG` as the "Wrappers use the workspace kubeconfig" requirement states. No proxy variable is set or cleared.
 
 #### Scenario: Tailscale cluster
 
 - **GIVEN** a cluster with `tailscaleActive: true`
 - **WHEN** a wrapped tool runs in a kit shell step or in a shell that sourced `env.sh`
-- **THEN** the real binary runs with the same environment the wrapper received
+- **THEN** the real binary runs with the same environment the wrapper received, apart from `KUBECONFIG` for the four Kubernetes tools
 - **AND** it connects directly
 
 #### Scenario: env.sh right after a Tailscale up

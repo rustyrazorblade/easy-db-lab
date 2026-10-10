@@ -20,6 +20,7 @@
 | AC 18 | `init` in a directory with `bin/` fails clearly and writes nothing | `cluster-lifecycle: init refuses a directory that already has bin/`; `cluster-lifecycle: init refuses the source checkout` | ✅ Covered |
 | AC 19 | The `ssm` transport works the same as `ssh` | `networking: SSM transport`; `networking: Direct transport` | ✅ Covered |
 | AC 20 | No code or script parses JSON in shell to read proxy state | `networking: No shell code parses JSON for proxy state`; `networking: Shell tools read the port from the env file` | ✅ Covered |
+| Owner redirect | The Kubernetes tool wrappers always use the workspace kubeconfig, so a bare `<workspace>/bin/kubectl` works with no setup | `networking: A bare wrapper call works with no setup`; `networking: An inherited KUBECONFIG is overridden`; `networking: Missing workspace kubeconfig`; `networking: curl and skopeo leave KUBECONFIG alone`; `networking: Tailscale cluster` | ✅ Covered |
 | Risk | Wrapped tools send all traffic through the tunnel; unwrapped tools, `aws` included, go direct | `networking: Unwrapped tools in a shell step get no proxy settings` (requirement text of "SOCKS Proxy Routes Only Cluster-Internal Traffic" states wrapped tools tunnel all traffic) | ✅ Covered |
 | Risk | Scripts that bypass `PATH` are not covered | `networking: Calls that bypass PATH are not wrapped` | ✅ Covered |
 | Risk | macOS lacks `timeout` | — | ⚠️ Excluded — test-harness concern, not behavior; unit tests use `env`/`xargs`/`sh -c` (task 3.1) and the real-cluster run exercises `timeout` (task 13.1) |

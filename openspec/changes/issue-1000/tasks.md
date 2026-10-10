@@ -27,6 +27,7 @@
   - an unwrapped `aws` stub run by the same step sees no proxy variables;
   - inherited `EDL_TAILSCALE_ACTIVE`/`EDL_SOCKS_PORT` are ignored.
 - [x] 3.2 Write `src/main/resources/com/rustyrazorblade/easydblab/configuration/tool-wrapper.sh` (POSIX `#!/bin/sh`, dispatch on `${0##*/}`, workspace from `pwd -P`, marker-skipping `PATH` search, `-ef "$0"` check, source the env file, `exec`). Make every case in 3.1 pass under dash and macOS `/bin/sh`.
+- [ ] 3.3 Owner redirect after the first real-cluster run: the `kubectl`, `helm`, `cilium`, and `k9s` wrappers always set `KUBECONFIG` to the absolute `<workspace>/kubeconfig`, overriding any inherited value, on SOCKS and Tailscale clusters; a missing workspace kubeconfig exits 1 with a message naming the file and does not run the real binary; `curl` and `skopeo` leave `KUBECONFIG` unchanged. Write the failing `ToolWrapperScriptTest` cases first (bare call with no `KUBECONFIG`, inherited `KUBECONFIG` overridden, missing kubeconfig, Tailscale still sets it, `curl`/`skopeo` unchanged), then change the wrapper. Update `docs/user-guide/network-connectivity.md` and `docs/development/kits.md` to say a bare `<workspace>/bin/kubectl` works with no setup. Re-run 13.4 on the live cluster with a bare `<workspace>/bin/kubectl get ns` and an exported `KUBECONFIG=~/.kube/config`.
 
 ## 4. ToolWrapperInstaller
 

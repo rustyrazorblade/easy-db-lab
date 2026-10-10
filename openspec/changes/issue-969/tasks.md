@@ -46,6 +46,8 @@
 - [x] 6.4 `start` shell steps: validation gate; `ferrosa-settings` / `ferrosa-env` ConfigMaps; per-pod loop; readiness wait with pull/crash/timeout errors; heap-profile build check.
 - [x] 6.5 `README.md.template` with connection details for each endpoint.
 
+- [ ] 6.6 Replace each per-host Deployment in `ferrosa-node.yaml.template` with a StatefulSet `ferrosa-<i>` (`replicas: 1`, `serviceName: ferrosa-<i>`, the existing PVC `ferrosa-data-<i>` as a plain pod volume, same labels, selector, affinity, init container, env and probes). Update `stop`/`uninstall` kinds (statefulset instead of deployment/replicaset), the readiness wait and heap check (pod `ferrosa-<i>-0`), the docs (`docs/user-guide/ferrosa.md`, README template: pod names, `kubectl` examples, the Loki selector), and the test plan's `deploy/ferrosa-$i` references and pod-name patterns. Update `FerrosaKitTest` (N StatefulSets, no Deployment, plain PVC volume, serviceName) and `FerrosaKitIntegrationTest` first, red, then green.
+
 ## 7. FerrosaDB kit tests
 
 - [x] 7.1 `FerrosaKitTest` (extends `BuiltinKitFixture`/`BaseKoinTest`, uses `StubKubectl`, real `TemplateService`): run `start` for N=1 and N=3, parse applied YAML with fabric8, and assert Deployments/PVCs/Services, affinity, labels, no `hostPort`/`hostNetwork`, `imagePullPolicy: Always`, no `imagePullSecrets`, `terminationGracePeriodSeconds: 90`, host ids, seeds (excluding self; unset for N=1), broadcast, `FERROSA_EXPECTED_CLUSTER_SIZE` (N=3 set, N=1 unset), `publishNotReadyAddresses`, `envFrom` order, image selection (default, `--version`, `--image`), `s3` vs `local` settings, `MALLOC_CONF` with and without `--heap-sample`.

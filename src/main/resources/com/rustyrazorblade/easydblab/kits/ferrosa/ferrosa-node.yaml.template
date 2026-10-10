@@ -3,7 +3,8 @@
 # marked "# @IF_SEEDS@" (one db host) and "# @IF_CLUSTER_SIZE@" (fewer than 3 db hosts).
 #
 # The claim binds by name to db host i's platform PV (data-ferrosa-i), whose node affinity puts
-# the pod on that host.
+# the pod on that host. The StatefulSet mounts that claim as a plain volume, so its one pod,
+# ferrosa-i-0, uses the host's own PV and not a claim the StatefulSet would create.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -22,7 +23,7 @@ spec:
       storage: 10Ti
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: ferrosa-@ORDINAL@
   namespace: default
@@ -32,10 +33,11 @@ metadata:
     app.kubernetes.io/instance: ferrosa
     easydblab/ferrosa-ordinal: "@ORDINAL@"
 spec:
+  # Two FerrosaDB processes must never share one data directory. A StatefulSet starts the
+  # replacement for a deleted or evicted pod only after the old pod has ended; a Deployment
+  # starts it at once, while the old pod still drains on the same PV.
   replicas: 1
-  # Two FerrosaDB processes must never share one data directory.
-  strategy:
-    type: Recreate
+  serviceName: ferrosa-@ORDINAL@
   selector:
     matchLabels:
       app.kubernetes.io/name: ferrosa

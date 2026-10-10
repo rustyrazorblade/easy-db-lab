@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 /**
- * Sends the objects the FerrosaDB kit's `start` would apply — each db host's PVC, Deployment and
+ * Sends the objects the FerrosaDB kit's `start` would apply — each db host's PVC, StatefulSet and
  * ClusterIP Service for a 3-node ring, and the seven NodePort Services — to a real K3s API server
  * as a server-side dry run with strict field validation. The API server must accept every object:
  * a value its validation refuses (a port out of range, a label or name it does not allow, a missing
@@ -37,7 +37,7 @@ class FerrosaKitIntegrationTest : BaseKoinTest() {
         val objects = startObjects()
 
         assertThat(objects.map { "${it.kind}/${it.metadata.name}" })
-            .contains("Deployment/ferrosa-2", "PersistentVolumeClaim/ferrosa-data-2", "Service/ferrosa-2", "Service/ferrosa-cql-nodeport")
+            .contains("StatefulSet/ferrosa-2", "PersistentVolumeClaim/ferrosa-data-2", "Service/ferrosa-2", "Service/ferrosa-cql-nodeport")
         SharedK3s.client().use { client ->
             for (obj in objects) {
                 assertThatCode {

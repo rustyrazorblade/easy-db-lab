@@ -18,7 +18,7 @@ Only 3 or more db nodes is the tested topology.
 
 ## Endpoints
 
-Every endpoint answers on the private IP of every db node and reaches the first pod (`ferrosa-0`). Authentication is off.
+Every endpoint answers on the private IP of every db node and reaches the first pod (`ferrosa-0-0`). Authentication is off.
 
 | Endpoint | NodePort | Connect with |
 |---|---|---|
@@ -30,7 +30,7 @@ Every endpoint answers on the private IP of every db node and reaches the first 
 | Postgres wire stub | 30532 | `psql -h <db-node-ip> -p 30532` |
 | Arrow Flight | 30815 | `grpc://<db-node-ip>:30815` |
 
-Inside the cluster, pod `i` is also `ferrosa-<i>.default.svc.cluster.local` (CQL 9042).
+Pod `i` is `ferrosa-<i>-0`, in StatefulSet `ferrosa-<i>`. Inside the cluster it is also `ferrosa-<i>.default.svc.cluster.local` (CQL 9042).
 
 ## Data
 

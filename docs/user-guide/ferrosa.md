@@ -13,7 +13,7 @@ easy-db-lab kit install ferrosa
 easy-db-lab ferrosa start
 ```
 
-`install` creates one local persistent volume on each db node's data disk (`/mnt/db1/ferrosa`). `start` creates, for each db node `i`, a Deployment `ferrosa-<i>` with 1 replica, a claim `ferrosa-data-<i>` bound to that node's volume, and a Service `ferrosa-<i>`. It returns when every pod answers ready on `/readyz`.
+`install` creates one local persistent volume on each db node's data disk (`/mnt/db1/ferrosa`). `start` creates, for each db node `i`, a StatefulSet `ferrosa-<i>` with 1 replica, a claim `ferrosa-data-<i>` bound to that node's volume, and a Service `ferrosa-<i>`. The pod on db node `i` is `ferrosa-<i>-0`. If you delete it, or it is evicted, its replacement starts only after it has ended, so two FerrosaDB processes never use the same data directory. It returns when every pod answers ready on `/readyz`.
 
 ## Start Options
 
@@ -55,7 +55,7 @@ Switching `--storage` on an existing volume is not supported, and the kit does n
 
 ## Endpoints
 
-Every client listener of the first pod (`ferrosa-0`) is published on a NodePort of every node. `ferrosa start`, `ferrosa status` and `kit info ferrosa` list each one at every db node's private IP.
+Every client listener of the first pod (`ferrosa-0-0`) is published on a NodePort of every node. `ferrosa start`, `ferrosa status` and `kit info ferrosa` list each one at every db node's private IP.
 
 | Name | NodePort | Pod port | Type |
 |------|----------|----------|------|
@@ -67,7 +67,7 @@ Every client listener of the first pod (`ferrosa-0`) is published on a NodePort 
 | Postgres wire stub | 30532 | 5432 | `postgresql` |
 | Arrow Flight | 30815 | 8815 | `native` |
 
-Internode traffic (port 17000) has no NodePort. Inside the cluster, pod `i` is `ferrosa-<i>.default.svc.cluster.local`, with CQL on 9042.
+Internode traffic (port 17000) has no NodePort. Inside the cluster, pod `ferrosa-<i>-0` is `ferrosa-<i>.default.svc.cluster.local`, with CQL on 9042.
 
 ## Connecting with CQL
 
@@ -138,7 +138,7 @@ easy-db-lab cassandra stress start -- KeyValue -d 10m --host ferrosa-0.default.s
 ## Metrics, logs, profiles and the dashboard
 
 - **Metrics:** the collector on each pod's own node scrapes FerrosaDB's `/metrics` on port 9090, so there is one series for each pod, with `job="ferrosa"`. `start` registers the scrape as the ConfigMap `easydblab-metrics-ferrosa-ferrosa`, and `stop` removes it.
-- **Logs:** FerrosaDB's stdout reaches Loki through the container log collection. Select the FerrosaDB pods with `{k8s_pod_name=~"ferrosa-[0-9]+-.*"}`. Each pod is named `ferrosa-<i>-<hash>-<hash>`, and the ordinal keeps out other pods whose names start with `ferrosa-`, such as a stress job's.
+- **Logs:** FerrosaDB's stdout reaches Loki through the container log collection. Select the FerrosaDB pods with `{k8s_pod_name=~"ferrosa-[0-9]+-0"}`. Each pod is named `ferrosa-<i>-0`, and the pattern keeps out other pods whose names start with `ferrosa-`, such as a stress job's.
 - **Profiles:** the eBPF profiler sends CPU profiles of the FerrosaDB pods to Pyroscope. Function names resolve fully only on a profiling build.
 - **Dashboard:** `start` installs the FerrosaDB dashboard into the Grafana folder `ferrosa`.
 
@@ -151,7 +151,7 @@ The FerrosaDB pods run on the db nodes. If Cassandra or another kit also runs on
 ## Lifecycle
 
 ```bash
-# Deletes the Deployments, ReplicaSets, pods, Services and ConfigMaps labelled easydblab/kit=ferrosa.
+# Deletes the StatefulSets, pods, Services and ConfigMaps labelled easydblab/kit=ferrosa.
 # The claims, the volumes and their data (including .heap files), and the objects under ferrosa/
 # in the data bucket stay, so start works again straight away.
 easy-db-lab ferrosa stop

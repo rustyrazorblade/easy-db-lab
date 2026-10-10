@@ -6,6 +6,7 @@ import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaim
 import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.apps.Deployment
+import io.fabric8.kubernetes.api.model.apps.StatefulSet
 import java.io.File
 
 /**
@@ -39,7 +40,11 @@ class FerrosaApplyRun(
     /** Every object piped to `kubectl apply -f -`. */
     val objects: List<HasMetadata> by lazy { stub.stdinOf("apply -f -").flatMap { parseManifests(it) } }
 
-    val deployments: List<Deployment> get() = objects.filterIsInstance<Deployment>().sortedBy { it.metadata.name }
+    /** The StatefulSets, one for each db host, by name. */
+    val statefulSets: List<StatefulSet> get() = objects.filterIsInstance<StatefulSet>().sortedBy { it.metadata.name }
+
+    /** Any Deployments; FerrosaDB runs none. */
+    val deployments: List<Deployment> get() = objects.filterIsInstance<Deployment>()
 
     val claims: List<PersistentVolumeClaim> get() = objects.filterIsInstance<PersistentVolumeClaim>()
 
@@ -60,7 +65,7 @@ class FerrosaApplyRun(
 
     /** The FerrosaDB container of pod [ordinal]. */
     fun container(ordinal: Int): Container =
-        deployments
+        statefulSets
             .single { it.metadata.name == "ferrosa-$ordinal" }
             .spec.template.spec.containers
             .single { it.name == "ferrosa" }

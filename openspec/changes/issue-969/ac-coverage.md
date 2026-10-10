@@ -6,7 +6,7 @@
 | AC Image | Missing image or tag fails `start` naming image and tag | `ferrosa-kit: Missing image or tag fails start` | ✅ Covered |
 | AC Image | `--image` with `--version` fails before any pod, says to use one | `ferrosa-kit: Image and version together are refused` | ✅ Covered |
 | AC Image | `cassandra stress` or the sidecar pulls a custom ECR image with no pull secret | `stress-testing: Custom ECR stress image pulls with no pull secret`, `containerized-sidecar: Custom ECR sidecar image pulls with no pull secret` | ✅ Covered |
-| AC Topology | N db hosts → N Deployments of 1 replica, one pod per db host, each on its own host's PV | `ferrosa-kit: One Deployment and one pod for each db host` | ✅ Covered |
+| AC Topology | N db hosts → N StatefulSets of 1 replica, one pod per db host, each on its own host's PV | `ferrosa-kit: One StatefulSet and one pod for each db host` | ✅ Covered |
 | AC Topology | 3+ db hosts → all N pods in one cluster | `ferrosa-kit: Three or more pods form one cluster` | ✅ Covered |
 | AC Topology | A restarted pod with a new IP rejoins; others reach it by Service name | `ferrosa-kit: A restarted pod rejoins` | ✅ Covered |
 | AC Topology | `start` returns only after every pod is ready on `/readyz` | `ferrosa-kit: Start returns after every pod is ready` | ✅ Covered |
@@ -40,7 +40,7 @@
 | AC Observability | Dashboard in Grafana folder `ferrosa`, every panel shows data during the stress run | `ferrosa-kit: Dashboard installed and showing data during a load` | ✅ Covered |
 | AC Observability | Every metric name in the dashboard and `METRICS.md` is in `metrics-catalog.json` | `ferrosa-kit: Every metric name is in the catalog` | ✅ Covered (reviewer check, no automated test, by owner decision Q22) |
 | AC Observability | A failed metrics registration or dashboard install in any kit's `start` emits a typed event and exits non-zero | `kit-metrics-declaration: Failed metrics registration fails start`, `typed-install-steps: Grafana rejects a dashboard`, `typed-install-steps: Dashboards cannot be read` | ✅ Covered |
-| AC Stop | `stop` removes Deployments, pods, Services; PVs, data and `.heap` files remain | `ferrosa-kit: Stop removes the workload and keeps the data` | ✅ Covered |
+| AC Stop | `stop` removes StatefulSets, pods, Services; PVs, data and `.heap` files remain | `ferrosa-kit: Stop removes the workload and keeps the data` | ✅ Covered |
 | AC Stop | `stop` after `--storage=s3` keeps the `ferrosa/` objects | `ferrosa-kit: Stop keeps the S3 data` | ✅ Covered |
 | AC Stop | `start` after `stop` succeeds with no manual cleanup | `ferrosa-kit: Start again after stop` | ✅ Covered |
 | AC Docs | `docs/user-guide/ferrosa.md` covers every option, ports, CQL, ECR flow, stress, observability, tested topology, mode switching, copying `.heap` files | `ferrosa-kit: User guide covers the kit` | ✅ Covered |
@@ -58,3 +58,4 @@
 | Risk | Critic 9: dashboard failures were documented as warnings | `typed-install-steps: Dashboards cannot be read`, `typed-install-steps: Grafana rejects a dashboard` | ✅ Covered (task 8.5 updates `commands/CLAUDE.md`) |
 | Owner requirement | Data is written to a non-root volume; a missing data disk is known in advance | `instance-storage-validation: Control or app instance type without instance store`, `instance-storage-validation: Default instance types pass`, `instance-storage-validation: Data disk mounted on every node`, `instance-storage-validation: No data disk found`, `instance-storage-validation: Mount fails`, `instance-storage-validation: Data disk with a device name outside the first three` | ✅ Covered |
 | Owner requirement | FerrosaDB data lands on the data disk under `/mnt/db1/ferrosa`, not root | `ferrosa-kit: Data lands on the node's data disk, not the root volume` | ✅ Covered |
+| Owner decision | One FerrosaDB pod per data directory: a deleted pod's replacement waits for the old pod | `ferrosa-kit: One StatefulSet and one pod for each db host`, `ferrosa-kit: A deleted pod's replacement waits for the old pod` | ✅ Covered |

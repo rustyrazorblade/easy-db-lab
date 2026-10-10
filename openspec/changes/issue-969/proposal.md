@@ -45,7 +45,7 @@ easy-db-lab cannot run FerrosaDB, a Rust reimplementation of Cassandra that serv
 - The control-node image registry.
 - Shipping `.heap` files to Pyroscope (separate issue).
 - The OpenTelemetry Java agent (FerrosaDB is not a JVM).
-- A count or replicas option, and a StatefulSet topology.
+- A count or replicas option, and one StatefulSet scaled to more than one replica. (Each db host gets its own single-replica StatefulSet, so a deleted pod's replacement waits for the old pod and two FerrosaDB processes never share a data directory.)
 - S3 lifecycle or expiry rules, or any automatic deletion of FerrosaDB data or heap-profile files.
 - Backup and restore phases.
 - Bench kit targeting (`kit-ref` args) beyond the endpoint declarations.

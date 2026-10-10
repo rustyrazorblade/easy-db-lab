@@ -1,13 +1,18 @@
 ## ADDED Requirements
 
 ### Requirement: FerrosaDB kit runs one pod on each db host
-The system SHALL provide a built-in kit named `ferrosa` (`type: db`) that runs FerrosaDB on the db nodes. `install` SHALL create one platform PV for each db host with `platform-pvs` (`data-ferrosa-<i>`, pinned to db ordinal `i`). `start` SHALL create one Deployment (`ferrosa-<i>`, `replicas: 1`, strategy `Recreate`) and one PVC (`ferrosa-data-<i>`, bound by `volumeName: data-ferrosa-<i>`) for each db host `i` in `0..DB_NODE_COUNT-1`, so the pod count always equals the db host count. The kit SHALL have no count or replicas option and SHALL NOT use a StatefulSet. Each pod SHALL require node affinity `type In [db]` and SHALL NOT use `hostPort` or `hostNetwork`. Each pod SHALL carry the labels `easydblab/kit=ferrosa`, `app.kubernetes.io/name=ferrosa`, `app.kubernetes.io/instance=ferrosa` and `easydblab/ferrosa-ordinal=<i>`. `kit.yaml` SHALL set `collision-check: true` and a `runtime` pods selector of `easydblab/kit=ferrosa`.
+The system SHALL provide a built-in kit named `ferrosa` (`type: db`) that runs FerrosaDB on the db nodes. `install` SHALL create one platform PV for each db host with `platform-pvs` (`data-ferrosa-<i>`, pinned to db ordinal `i`). `start` SHALL create one StatefulSet (`ferrosa-<i>`, `replicas: 1`, `serviceName: ferrosa-<i>`, so its one pod is `ferrosa-<i>-0`) and one PVC (`ferrosa-data-<i>`, bound by `volumeName: data-ferrosa-<i>`, referenced as a plain pod volume, not a `volumeClaimTemplate`) for each db host `i` in `0..DB_NODE_COUNT-1`, so the pod count always equals the db host count. A StatefulSet creates the replacement for a deleted pod only after the old pod has fully ended, so two FerrosaDB processes never share one data directory. The kit SHALL have no count or replicas option, SHALL NOT use one StatefulSet with more than one replica, and SHALL NOT use a Deployment for FerrosaDB. Each pod SHALL require node affinity `type In [db]` and SHALL NOT use `hostPort` or `hostNetwork`. Each pod SHALL carry the labels `easydblab/kit=ferrosa`, `app.kubernetes.io/name=ferrosa`, `app.kubernetes.io/instance=ferrosa` and `easydblab/ferrosa-ordinal=<i>`. `kit.yaml` SHALL set `collision-check: true` and a `runtime` pods selector of `easydblab/kit=ferrosa`.
 
-#### Scenario: One Deployment and one pod for each db host
+#### Scenario: One StatefulSet and one pod for each db host
 - **WHEN** the cluster has N db hosts and the owner runs `easy-db-lab ferrosa start`
-- **THEN** there are N Deployments named `ferrosa-0` to `ferrosa-<N-1>`, each with 1 replica
+- **THEN** there are N StatefulSets named `ferrosa-0` to `ferrosa-<N-1>`, each with 1 replica, and no FerrosaDB Deployment
 - **AND** exactly one FerrosaDB pod runs on each db host
 - **AND** pod `i` mounts the PVC bound to `data-ferrosa-<i>`, the platform PV of db host `i`
+
+#### Scenario: A deleted pod's replacement waits for the old pod
+- **WHEN** a running FerrosaDB pod `ferrosa-<i>-0` is deleted
+- **THEN** its replacement starts only after the old pod has ended
+- **AND** at no time do two FerrosaDB pods for the same db host run, so two FerrosaDB processes never use the same data directory
 
 #### Scenario: No pod runs off the db nodes
 - **WHEN** the kit runs on a cluster with a control node and app nodes
@@ -47,7 +52,7 @@ The default image SHALL be `ghcr.io/ferrosadb/ferrosa:nightly`. The `--version` 
 - **THEN** `start` fails before it creates any Kubernetes object, with an error that says to use one of `--image` or `--version`
 
 #### Scenario: Each start pulls the image again
-- **WHEN** the rendered Deployments are inspected
+- **WHEN** the rendered StatefulSets are inspected
 - **THEN** every FerrosaDB container and init container has `imagePullPolicy: Always`
 - **AND** no pod spec has `imagePullSecrets`
 
@@ -221,15 +226,15 @@ Each FerrosaDB container SHALL have a readiness probe `httpGet /readyz` on port 
 - **THEN** `start` fails with an error that names that pod
 
 #### Scenario: Drain is not cut short
-- **WHEN** the rendered Deployments are inspected
+- **WHEN** the rendered StatefulSets are inspected
 - **THEN** each pod has `terminationGracePeriodSeconds: 90`
 
 ### Requirement: FerrosaDB stop keeps the data
-`stop` SHALL delete the kit's Deployments, ReplicaSets, pods, Services and ConfigMaps by the selector `easydblab/kit=ferrosa`, and SHALL keep the PVCs, the platform PVs and their data, including the `.heap` files, and the objects under `ferrosa/` in the data bucket. `uninstall` SHALL do the same, delete the PVCs, and then run `platform-pvs-delete`. `start` after `stop` SHALL succeed with no manual cleanup.
+`stop` SHALL delete the kit's StatefulSets, pods, Services and ConfigMaps by the selector `easydblab/kit=ferrosa`, and SHALL keep the PVCs, the platform PVs and their data, including the `.heap` files, and the objects under `ferrosa/` in the data bucket. `uninstall` SHALL do the same, delete the PVCs, and then run `platform-pvs-delete`. `start` after `stop` SHALL succeed with no manual cleanup.
 
 #### Scenario: Stop removes the workload and keeps the data
 - **WHEN** the owner runs `easy-db-lab ferrosa stop`
-- **THEN** no FerrosaDB Deployment, pod, or Service remains
+- **THEN** no FerrosaDB StatefulSet, pod, or Service remains
 - **AND** the platform PVs and the data on them, including the `.heap` files, are still there
 
 #### Scenario: Stop keeps the S3 data

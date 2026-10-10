@@ -164,7 +164,7 @@ readonly SHIP_MAX_CHUNKS_PER_PASS=6
 # nothing usable. Mirrors Constants.Profiling.DEFAULT_LOOP_INTERVAL / DEFAULT_RETENTION_MINUTES /
 # DEFAULT_MAX_BYTES. Shipping and pruning continue under these rather than stopping, because a
 # directory that nothing prunes fills /mnt/db1 and takes the database down with it.
-readonly FALLBACK_LOOP_INTERVAL=1m
+readonly FALLBACK_LOOP_INTERVAL=15s
 readonly FALLBACK_RETENTION_MINUTES=60
 readonly FALLBACK_MAX_BYTES=2147483648
 
@@ -356,7 +356,7 @@ count_matching() {
 # Both of ship_chunks' exclusions are applied, because either one alone leaves the gauge pinned above
 # zero on a healthy node. While a session is live the newest unshipped file is the open one, which no
 # pass will ever ship until it rotates. And no pass ships a file younger than one rotation plus the
-# grace margin — so with the default `--loop 1m` against a 60s timer, the chunk that rotated most
+# grace margin — so with the default `--loop 15s` against a 60s timer, the chunk that rotated most
 # recently is always inside that window when this runs. Counting either made an alert on `> 0` a
 # permanent false positive on every node.
 count_pending() {

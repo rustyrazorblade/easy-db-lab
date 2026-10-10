@@ -99,7 +99,7 @@ commands:
 start:
   # Every check runs before anything is applied. Then the shared settings and the --env lines go
   # into two ConfigMaps, and the packaged ferrosa-node.yaml is rendered once for each db host:
-  # its PVC, Deployment and ClusterIP Service. The pod-to-host pinning comes from the PVC, which
+  # its PVC, StatefulSet and ClusterIP Service. The pod-to-host pinning comes from the PVC, which
   # binds the host's own PV.
   - type: shell
     script: |
@@ -139,7 +139,7 @@ start:
         echo "ERROR: --heap-sample needs --heap-profile." >&2
         exit 1
       fi
-      # The kit sets these for each pod in the Deployment's env, which wins over every envFrom
+      # The kit sets these for each pod in the StatefulSet's env, which wins over every envFrom
       # source, so an --env line for one of them would be silently ignored.
       PER_POD_KEYS=" FERROSA_HOST_ID FERROSA_SEED FERROSA_INTERNODE_BROADCAST FERROSA_CQL_BROADCAST FERROSA_FLIGHT_BROADCAST FERROSA_CLUSTER_NAME FERROSA_EXPECTED_CLUSTER_SIZE "
       # A repeated key keeps its last value: the ConfigMap holds one entry for each key.
@@ -297,13 +297,13 @@ start:
 # ferrosa/ in the data bucket stay.
 stop:
   - type: delete
-    kinds: [deployment, replicaset, pod, service, configmap]
+    kinds: [statefulset, pod, service, configmap]
     selector: easydblab/kit=ferrosa
     namespace: default
 
 uninstall:
   - type: delete
-    kinds: [deployment, replicaset, pod, service, configmap, pvc]
+    kinds: [statefulset, pod, service, configmap, pvc]
     selector: easydblab/kit=ferrosa
     namespace: default
   - type: platform-pvs-delete

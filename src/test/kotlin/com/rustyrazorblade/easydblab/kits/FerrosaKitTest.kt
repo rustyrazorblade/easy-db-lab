@@ -17,7 +17,7 @@ import java.io.File
 
 /**
  * Checks the built-in FerrosaDB kit (ferrosa-kit spec): it runs the `start` shell steps against a
- * stub `kubectl` and parses what they would apply with fabric8 — one Deployment, PVC and Service
+ * stub `kubectl` and parses what they would apply with fabric8 — one StatefulSet, PVC and Service
  * for each db host, the ring settings, image selection, storage modes and heap profiling — plus
  * every validation gate, the readiness wait's failure reports, and the kit's cross-file contracts.
  */
@@ -51,14 +51,19 @@ class FerrosaKitTest : BaseKoinTest() {
     @Nested
     inner class Topology {
         @Test
-        fun `one Deployment, claim and Service for each db host`() {
+        fun `one single-replica StatefulSet, claim and Service for each db host, and no Deployment`() {
             val run = runApply(3)
 
             assertThat(run.exit).describedAs(run.stub.output()).isZero()
-            assertThat(run.deployments.map { it.metadata.name }).containsExactly("ferrosa-0", "ferrosa-1", "ferrosa-2")
-            assertThat(run.deployments).allSatisfy { deployment ->
-                assertThat(deployment.spec.replicas).isEqualTo(1)
-                assertThat(deployment.spec.strategy.type).isEqualTo("Recreate")
+            assertThat(run.deployments).isEmpty()
+            assertThat(run.statefulSets.map { it.metadata.name }).containsExactly("ferrosa-0", "ferrosa-1", "ferrosa-2")
+            assertThat(run.statefulSets).allSatisfy { set ->
+                assertThat(set.spec.replicas).isEqualTo(1)
+                // serviceName ferrosa-<i> names the one pod ferrosa-<i>-0.
+                assertThat(set.spec.serviceName).isEqualTo(set.metadata.name)
+                // The claim is the host's own PVC, bound to its platform PV, not a template the
+                // StatefulSet would create.
+                assertThat(set.spec.volumeClaimTemplates).isEmpty()
             }
             assertThat(run.claims.map { it.metadata.name to it.spec.volumeName })
                 .containsExactlyInAnyOrder(
@@ -80,7 +85,7 @@ class FerrosaKitTest : BaseKoinTest() {
             assertThat(pvs.nodeType).isEqualTo("db")
             for (i in 0..2) {
                 val pod =
-                    run.deployments
+                    run.statefulSets
                         .single { it.metadata.name == "ferrosa-$i" }
                         .spec.template.spec
                 val claim =
@@ -107,8 +112,8 @@ class FerrosaKitTest : BaseKoinTest() {
         fun `pods run only on db nodes, with no host networking and the kit labels`() {
             val run = runApply(3)
 
-            assertThat(run.deployments).allSatisfy { deployment ->
-                val pod = deployment.spec.template.spec
+            assertThat(run.statefulSets).allSatisfy { set ->
+                val pod = set.spec.template.spec
                 val terms = pod.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution.nodeSelectorTerms
                 assertThat(terms.flatMap { it.matchExpressions }).anySatisfy { expr ->
                     assertThat(expr.key).isEqualTo("type")
@@ -123,7 +128,7 @@ class FerrosaKitTest : BaseKoinTest() {
             }
             for (i in 0..2) {
                 assertThat(
-                    run.deployments[i]
+                    run.statefulSets[i]
                         .spec.template.metadata.labels,
                 ).containsAllEntriesOf(
                     mapOf(
@@ -140,8 +145,8 @@ class FerrosaKitTest : BaseKoinTest() {
         fun `every container pulls the image on each start, with no pull secret, and the drain is not cut short`() {
             val run = runApply(3)
 
-            assertThat(run.deployments).allSatisfy { deployment ->
-                val pod = deployment.spec.template.spec
+            assertThat(run.statefulSets).allSatisfy { set ->
+                val pod = set.spec.template.spec
                 assertThat(pod.imagePullSecrets).isEmpty()
                 assertThat(pod.terminationGracePeriodSeconds).isEqualTo(90L)
                 assertThat(pod.containers + pod.initContainers).allSatisfy { assertThat(it.imagePullPolicy).isEqualTo("Always") }
@@ -152,7 +157,7 @@ class FerrosaKitTest : BaseKoinTest() {
         fun `the init container creates the data and heap directories as root and chowns them non-recursively`() {
             val pod =
                 runApply(1)
-                    .deployments
+                    .statefulSets
                     .single()
                     .spec.template.spec
             val init = pod.initContainers.single()
@@ -267,7 +272,7 @@ class FerrosaKitTest : BaseKoinTest() {
     @Nested
     inner class Image {
         private fun images(run: FerrosaApplyRun): Set<String> =
-            run.deployments
+            run.statefulSets
                 .flatMap { d ->
                     (d.spec.template.spec.containers + d.spec.template.spec.initContainers).map { it.image }
                 }.toSet()
@@ -490,8 +495,8 @@ class FerrosaKitTest : BaseKoinTest() {
             val stub = newStub()
             stub.reply(
                 "get pods",
-                pods(pod("ferrosa-0", ready = false), pod("ferrosa-1"), pod("ferrosa-2")),
-                pods(pod("ferrosa-0"), pod("ferrosa-1"), pod("ferrosa-2")),
+                pods(pod("ferrosa-0-0", ready = false), pod("ferrosa-1-0"), pod("ferrosa-2-0")),
+                pods(pod("ferrosa-0-0"), pod("ferrosa-1-0"), pod("ferrosa-2-0")),
             )
 
             assertThat(runReadiness(stub, timeoutSeconds = 30)).describedAs(stub.output()).isZero()
@@ -501,7 +506,7 @@ class FerrosaKitTest : BaseKoinTest() {
         fun `a missing image or tag fails at once, naming the pod and the full image`() {
             val stub = newStub()
             val image = "ghcr.io/ferrosadb/ferrosa:no-such-tag"
-            stub.reply("get pods", pods(pod("ferrosa-0"), pod("ferrosa-1", ready = false, waiting = "ImagePullBackOff", image = image)))
+            stub.reply("get pods", pods(pod("ferrosa-0-0"), pod("ferrosa-1-0", ready = false, waiting = "ImagePullBackOff", image = image)))
 
             val exit = runReadiness(stub, timeoutSeconds = 600)
 
@@ -512,20 +517,20 @@ class FerrosaKitTest : BaseKoinTest() {
         @Test
         fun `a crash fails and prints the end of the previous log`() {
             val stub = newStub()
-            stub.reply("get pods", pods(pod("ferrosa-0", ready = false, waiting = "CrashLoopBackOff")))
-            stub.reply("logs ferrosa-0", "S3 access failed and FERROSA_S3_REQUIRED is set: access denied\n")
+            stub.reply("get pods", pods(pod("ferrosa-0-0", ready = false, waiting = "CrashLoopBackOff")))
+            stub.reply("logs ferrosa-0-0", "S3 access failed and FERROSA_S3_REQUIRED is set: access denied\n")
 
             val exit = runReadiness(stub, timeoutSeconds = 600)
 
             assertThat(exit).isNotZero()
-            assertThat(stub.output()).contains("ERROR:", "ferrosa-0", "S3 access failed and FERROSA_S3_REQUIRED is set")
-            assertThat(stub.invocations()).anySatisfy { assertThat(it).startsWith("logs ferrosa-0").contains("--previous", "-c ferrosa") }
+            assertThat(stub.output()).contains("ERROR:", "ferrosa-0-0", "S3 access failed and FERROSA_S3_REQUIRED is set")
+            assertThat(stub.invocations()).anySatisfy { assertThat(it).startsWith("logs ferrosa-0-0").contains("--previous", "-c ferrosa") }
         }
 
         @Test
         fun `a failed init container fails and prints its previous log`() {
             val stub = newStub()
-            stub.reply("get pods", pods(pod("ferrosa-2", ready = false, initTerminatedExit = 1)))
+            stub.reply("get pods", pods(pod("ferrosa-2-0", ready = false, initTerminatedExit = 1)))
             stub.reply("logs ferrosa-2", "sh: not found\n")
 
             assertThat(runReadiness(stub, timeoutSeconds = 600)).isNotZero()
@@ -535,17 +540,17 @@ class FerrosaKitTest : BaseKoinTest() {
         @Test
         fun `a timeout names every pod that is not ready`() {
             val stub = newStub()
-            stub.reply("get pods", pods(pod("ferrosa-0"), pod("ferrosa-1", ready = false), pod("ferrosa-2", ready = false)))
+            stub.reply("get pods", pods(pod("ferrosa-0-0"), pod("ferrosa-1-0", ready = false), pod("ferrosa-2-0", ready = false)))
 
             assertThat(runReadiness(stub)).isNotZero()
-            assertThat(stub.output()).contains("ERROR:", "ferrosa-1, ferrosa-2").doesNotContain("ferrosa-0,")
+            assertThat(stub.output()).contains("ERROR:", "ferrosa-1-0, ferrosa-2-0").doesNotContain("ferrosa-0-0,")
         }
 
         @Test
         fun `heap profiling on a non-profiling build fails, naming the image`() {
             val stub = newStub()
-            stub.reply("get pods", pods(pod("ferrosa-0")))
-            stub.reply("logs ferrosa-0", "<jemalloc>: Invalid conf pair: prof:true\nstarted\n")
+            stub.reply("get pods", pods(pod("ferrosa-0-0")))
+            stub.reply("logs ferrosa-0-0", "<jemalloc>: Invalid conf pair: prof:true\nstarted\n")
 
             val exit = runReadiness(stub, dbNodes = 1, args = mapOf("HEAP_PROFILE" to "true"))
 
@@ -556,11 +561,11 @@ class FerrosaKitTest : BaseKoinTest() {
         @Test
         fun `heap profiling on a profiling build passes, and no heap check runs without it`() {
             val stub = newStub()
-            stub.reply("get pods", pods(pod("ferrosa-0")))
-            stub.reply("logs ferrosa-0", "started\n")
+            stub.reply("get pods", pods(pod("ferrosa-0-0")))
+            stub.reply("logs ferrosa-0-0", "started\n")
 
             assertThat(runReadiness(stub, dbNodes = 1, args = mapOf("HEAP_PROFILE" to "true"))).isZero()
-            assertThat(runReadiness(newStub().also { it.reply("get pods", pods(pod("ferrosa-0"))) }, dbNodes = 1)).isZero()
+            assertThat(runReadiness(newStub().also { it.reply("get pods", pods(pod("ferrosa-0-0"))) }, dbNodes = 1)).isZero()
         }
     }
 
@@ -634,7 +639,7 @@ class FerrosaKitTest : BaseKoinTest() {
                 kit.config.metrics
                     .filterIsInstance<KitMetrics.Scrape>()
                     .single()
-            val labels = runApply(3).deployments.map { it.spec.template.metadata.labels }
+            val labels = runApply(3).statefulSets.map { it.spec.template.metadata.labels }
 
             assertThat(scrape.job).isEqualTo("ferrosa")
             assertThat(scrape.port).isEqualTo(9090)
@@ -663,7 +668,7 @@ class FerrosaKitTest : BaseKoinTest() {
     inner class Lifecycle {
         @Test
         fun `stop deletes the workload and keeps the claims, and uninstall deletes the claims and PVs`() {
-            assertThat(labelDelete(kit.config.stop).kinds).containsExactly("deployment", "replicaset", "pod", "service", "configmap")
+            assertThat(labelDelete(kit.config.stop).kinds).containsExactly("statefulset", "pod", "service", "configmap")
             assertThat(labelDelete(kit.config.stop).selector).isEqualTo(KIT_SELECTOR)
             assertThat(labelDelete(kit.config.uninstall).kinds).contains("pvc")
             assertThat(kit.config.uninstall.last()).isInstanceOf(InstallStep.PlatformPvsDelete::class.java)

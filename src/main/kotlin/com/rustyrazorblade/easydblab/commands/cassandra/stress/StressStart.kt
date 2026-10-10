@@ -7,6 +7,8 @@ import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.exceptions.ImagePullFailedException
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.StressJobConfig
 import com.rustyrazorblade.easydblab.services.StressJobService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -108,7 +110,11 @@ class StressStart : PicoBaseCommand() {
                         promPort = promPort,
                     ),
             ).getOrElse { e ->
-                error("Failed to create job: ${e.message}")
+                when (e) {
+                    // The service already reported the pod, the image and the kubelet's message.
+                    is ImagePullFailedException -> throw CommandFailedException("Stress job $fullJobName did not start")
+                    else -> error("Failed to create job: ${e.message}")
+                }
             }
 
         eventBus.emit(

@@ -356,6 +356,15 @@ object Constants {
         const val LOCAL_KUBECONFIG = "kubeconfig"
         const val NODE_TOKEN_PATH = "/var/lib/rancher/k3s/server/node-token"
         const val DEFAULT_SERVER_URL = "https://127.0.0.1:6443"
+
+        // The kubelet ECR credential provider packer/base/install/install_ecr_credential_provider.sh
+        // bakes into the base AMI, where K3s finds it by default. A node launched from an older AMI
+        // lacks it and cannot pull ECR images. `up` checks for it before K3s starts.
+        val ECR_CREDENTIAL_PROVIDER_FILES =
+            listOf(
+                "/var/lib/rancher/credentialprovider/bin/ecr-credential-provider",
+                "/var/lib/rancher/credentialprovider/config.yaml",
+            )
     }
 
     // K8s observability configuration
@@ -369,6 +378,9 @@ object Constants {
         const val REGISTRY_PORT = 5000
         const val TEMPO_PORT = 3200
         const val PYROSCOPE_PORT = 4040
+
+        /** Container waiting reasons that mean the kubelet cannot pull the image; retrying does not fix them. */
+        val IMAGE_PULL_FAILURE_REASONS = setOf("ErrImagePull", "ImagePullBackOff", "InvalidImageName")
 
         /** Tempo's `app.kubernetes.io/name` label; the collector finds the Tempo pod by it. */
         const val TEMPO_APP_LABEL = "tempo"

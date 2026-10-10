@@ -4,7 +4,7 @@ A kit is a self-contained package of configuration and scripts that installs, st
 and optionally backs up a workload on your cluster. Each kit defines its full lifecycle in a
 `kit.yaml` file using typed steps — no Kubernetes YAML wrangling required.
 
-easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, memcached, Neo4j, sysbench). You can
+easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, memcached, Neo4j, [FerrosaDB](ferrosa.md), sysbench). You can
 also create your own kits for any workload you want to benchmark or test.
 
 ## Discovering kits

@@ -21,6 +21,8 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import picocli.CommandLine
+import picocli.CommandLine.Model.CommandSpec
 import java.io.File
 
 class KitInstallCommandFactoryTest : BaseKoinTest() {
@@ -235,5 +237,52 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         val command = cl.commandSpec.userObject() as KitInstallCommand
         cl.parseArgs("--extension", "duckdb")
         assertThat(command.argValues["EXTENSION"]).isEqualTo("duckdb")
+    }
+
+    @Test
+    fun `an omitted boolean install arg is false and a given one is true`() {
+        val cfg = config(arg("--tls", "TLS", KitArgSpec.ArgType.BOOLEAN))
+
+        val omitted = factory.build(cfg, directorySource)
+        omitted.parseArgs()
+        val given = factory.build(cfg, directorySource)
+        given.parseArgs("--tls")
+
+        assertThat((omitted.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("TLS", "false")
+        assertThat((given.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("TLS", "true")
+    }
+
+    @Test
+    fun `an explicit empty install arg overrides its default`() {
+        val cfg = config(arg("--suffix", "SUFFIX", default = "-prod"))
+
+        val cl = factory.build(cfg, directorySource)
+        cl.parseArgs("--suffix", "")
+
+        assertThat((cl.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("SUFFIX", "")
+    }
+
+    /** kit-command-args: "Install args and command args behave the same". */
+    @Test
+    fun `an install arg and a command arg with the same spec record the same values`() {
+        val specs =
+            listOf(
+                arg("--image", "IMAGE"),
+                arg("--level", "LEVEL", default = "info"),
+                arg("--count", "COUNT", KitArgSpec.ArgType.INT, default = "3"),
+                arg("--tls", "TLS", KitArgSpec.ArgType.BOOLEAN),
+            )
+        for (cliArgs in listOf(emptyArray(), arrayOf("--image", "x:1", "--level", "debug", "--count", "5", "--tls"))) {
+            val install = factory.build(config(*specs.toTypedArray()), directorySource)
+            install.parseArgs(*cliArgs)
+            val commandArgValues = mutableMapOf<String, String>()
+            val commandSpec = CommandSpec.create()
+            specs.forEach { commandSpec.addOption(KitArgOptions.optionSpec(it, it.default, commandArgValues)) }
+            CommandLine(commandSpec).parseArgs(*cliArgs)
+
+            assertThat((install.commandSpec.userObject() as KitInstallCommand).argValues)
+                .describedAs(cliArgs.joinToString(" "))
+                .isEqualTo(commandArgValues)
+        }
     }
 }

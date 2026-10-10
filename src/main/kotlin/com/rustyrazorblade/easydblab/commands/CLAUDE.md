@@ -160,13 +160,13 @@ virtualenvs have one too. Each qualifying directory becomes a top-level subcomma
 `WorkspaceKitScanner` is the single source of truth for that rule, and the `=== KITS ===` section
 of `status` reads the same service, so both apply one discovery rule. Registration drops a
 discovered kit after the scan when its name collides with a core command, or when
-`buildKitGroup` throws, so `status` may list a kit that has no subcommand.
+`buildKitGroup` throws, so `status` may list a kit that has no subcommand. A `kit.yaml` that does not parse or fails validation makes `buildKitGroup` throw a `ConfigurationException` naming the kit, the file and the problem; registration then emits `Event.Kit.RegistrationFailed` (kit, reason) and every other command still runs. The same holds for an installable kit (profile, kit source or built-in): `InstallTemplateResolver.loadInstallConfig` throws the `ConfigurationException`, `registerDynamicInstallSubcommands` emits `Kit.RegistrationFailed` and registers no `kit install <kit>`, and `kit list` shows the kit as `invalid:` with the file and the cause.
 
 Scripts are run by `KitRunnerCommand` with cluster state variables injected as environment
 variables. Dashboard JSON files in `<kit>/dashboards/` are installed into Grafana
 automatically after a successful `start`.
 
-If the tenant listing or a dashboard file cannot be read, `start` does not fail.  It emits `Event.Grafana.KitDashboardsSkipped`, which names the kit, its dashboards and the reason, and the kit keeps running.
+If a kit dashboard does not reach Grafana, `start` fails (exits non-zero) for every kit, and the kit's pods keep running. A missing declared dashboard file, or a dashboard Grafana rejects, emits `Event.Grafana.KitDashboardInstallFailed` (kit, dashboard, reason). A tenant listing or dashboard files that cannot be read or rendered emit `Event.Grafana.KitDashboardsSkipped` (kit, dashboards, reason). A failed metrics registration likewise emits `Event.Kit.MetricsRegistrationFailed` and fails `start`.
 
 ## Annotations
 
@@ -240,6 +240,7 @@ Commands should delegate to these services:
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |
 | `AccountBucketSetup` | The bucket step of `up` (`services.aws`): account and data buckets, the instance role's inline policies (`S3Access` + `SessionManagerInstance`, via `AWSResourceSetupService` and `InstanceRolePolicies`) and the bucket policy, then `CompactorService.ensureRunning` |
 | `ProvisioningPreflight` | The checks `up` runs before provisioning: a control node, a well-formed telemetry redirect, a connected local Tailscale client on a Tailscale cluster, and the AWS CLI plus Session Manager plugin (`LocalSsmTooling`) when the profile's SSH transport is `ssm` |
+| `NodeImagePreflight` | The node-image checks `up` runs before K3s starts: the kubelet ECR credential provider on every node, and the Cilium node fixes on a Cilium cluster |
 | `CompactorService` | The account compactor (`services.aws`): `ensureRunning` on `up`, `stopIfLastCluster` after a successful `down`, `stop` and `status` for `observability compactor` |
 | `TeardownBackupService` | The pre-teardown save `down` runs once, never retried (`TeardownFlushService`: Phase A mirror and collector stop, Phase B flushes, Tempo drain, profiles report and annotations backup in parallel; each flush only flushes and waits, no verify checks); records logs and metrics in `ClusterState.tailFlush` the moment each succeeds, through one writer, and a save of every signal as complete (`saveCompletedAt`), which a re-run of `down` skips whole; `unsavedSignals(state)` is what `down --force` lists before the prompt |
 | `TailscaleService` | Tailscale VPN setup on cluster nodes |
@@ -292,4 +293,6 @@ When the command has already told the user what went wrong through its own typed
 error, a per-host failure), throw `kernel/CommandFailedException` after emitting it. The executor
 returns the error exit code and does not print the failure a second time. Any other exception is
 reported as `Command.ExecutionError` with its cause chain.
+
+A command that runs another command through `CommandExecutor.execute` gets an exit code back, not an exception: the executor has already printed the nested failure. Never ignore that exit code. Use `PicoBaseCommand.runNested(executor, command)`, which emits `Event.Command.NestedCommandFailed` and throws `CommandFailedException` on a non-zero exit. `build-image` checks each phase the same way and emits `Event.Ami.BuildPhaseFailed`.
 See [`events/CLAUDE.md`](../events/CLAUDE.md) for the event hierarchy and how to add new events.

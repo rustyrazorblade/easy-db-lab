@@ -34,6 +34,11 @@ class KitList : BaseInstallCommand() {
                     buildString {
                         append("  ")
                         append(t.name.padEnd(nameWidth))
+                        if (t.problem.isNotEmpty()) {
+                            append("  invalid: ")
+                            append(t.problem)
+                            return@buildString
+                        }
                         if (versionWidth > 0) {
                             append("  ")
                             append(t.version.padEnd(versionWidth))

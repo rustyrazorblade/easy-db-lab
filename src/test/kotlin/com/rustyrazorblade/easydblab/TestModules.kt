@@ -20,7 +20,6 @@ import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
-import com.rustyrazorblade.easydblab.services.EcrPullSecretService
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
@@ -33,7 +32,6 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
-import software.amazon.awssdk.services.ecr.EcrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
@@ -197,8 +195,6 @@ object TestModules {
 
             // Real, over a mocked ECR client and K8s service: tests that exercise a custom image
             // assert on the secret this actually builds, so a mock here would verify nothing.
-            single { mock<EcrClient>() }
-            single { EcrPullSecretService(get(), get()) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

@@ -143,7 +143,6 @@ awssdk-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awssdk" }
 awssdk-sts = { module = "software.amazon.awssdk:sts", version.ref = "awssdk" }
 awssdk-opensearch = { module = "software.amazon.awssdk:opensearch", version.ref = "awssdk" }
 awssdk-regions = { module = "software.amazon.awssdk:regions", version.ref = "awssdk" }
-awssdk-ecr = { module = "software.amazon.awssdk:ecr", version.ref = "awssdk" }
 awssdk-sso = { module = "software.amazon.awssdk:sso", version.ref = "awssdk" }
 awssdk-ssooidc = { module = "software.amazon.awssdk:ssooidc", version.ref = "awssdk" }
 awssdk-ecs = { module = "software.amazon.awssdk:ecs", version.ref = "awssdk" }
@@ -223,7 +222,7 @@ koin = ["koin-core"]
 koin-test = ["koin-test", "koin-test-junit5"]
 
 # AWS SDK bundle
-awssdk = ["awssdk-ec2", "awssdk-iam", "awssdk-emr", "awssdk-s3", "awssdk-sts", "awssdk-opensearch", "awssdk-ecr", "awssdk-sso", "awssdk-ssooidc", "awssdk-ecs", "awssdk-cloudwatchlogs", "awssdk-ssm"]
+awssdk = ["awssdk-ec2", "awssdk-iam", "awssdk-emr", "awssdk-s3", "awssdk-sts", "awssdk-opensearch", "awssdk-sso", "awssdk-ssooidc", "awssdk-ecs", "awssdk-cloudwatchlogs", "awssdk-ssm"]
 
 # Docker bundle
 docker = ["docker-java", "docker-java-transport-httpclient5"]

@@ -187,6 +187,15 @@ build {
     script = "install/install_k3s.sh"
   }
 
+  # kubelet ECR credential provider: every K3s kubelet pulls from the account's ECR with the
+  # instance role, no pull secret (K3s finds it at /var/lib/rancher/credentialprovider)
+  provisioner "shell" {
+    environment_vars = [
+      "ARCH=${var.arch}",
+    ]
+    script = "install/install_ecr_credential_provider.sh"
+  }
+
   # install tailscale (disabled, not auto-started)
   provisioner "shell" {
     script = "install/install_tailscale.sh"

@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kubernetes.ImagePullFailure
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import org.assertj.core.api.Assertions.assertThat
@@ -22,6 +23,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -36,7 +38,6 @@ import java.time.Duration
 class DefaultStressJobServiceTest : BaseKoinTest() {
     private lateinit var service: DefaultStressJobService
     private lateinit var mockK8sService: K8sService
-    private lateinit var mockEcrPullSecrets: EcrPullSecretService
 
     override fun additionalTestModules(): List<Module> =
         listOf(
@@ -77,9 +78,6 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         mockK8sService = getKoin().get()
-        // The default stress image is public, so no pull secret is involved.
-        mockEcrPullSecrets = mock()
-        whenever(mockEcrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
         val clusterStateManager: ClusterStateManager = getKoin().get()
         service =
             DefaultStressJobService(
@@ -88,8 +86,33 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
                 getKoin().get(),
-                mockEcrPullSecrets,
             )
+    }
+
+    /**
+     * An ECR stress image pulls through the node's kubelet ECR credential provider (stress-testing:
+     * "Custom ECR stress image pulls with no pull secret"), so the job carries no pull secret and
+     * building it creates no Secret.
+     */
+    @Test
+    fun `an ECR stress image gets no image pull secret and no Secret`() {
+        val job =
+            service.buildJob(
+                StressJobConfig(
+                    jobName = "stress-ecr",
+                    image = "123456789012.dkr.ecr.us-west-2.amazonaws.com/stress:dev",
+                    contactPoints = "10.0.1.6",
+                    args = listOf("run", "KeyValue"),
+                ),
+            )
+
+        assertThat(job.spec.template.spec.imagePullSecrets).isEmpty()
+        assertThat(
+            job.spec.template.spec.containers
+                .single { it.name == "stress" }
+                .image,
+        ).isEqualTo("123456789012.dkr.ecr.us-west-2.amazonaws.com/stress:dev")
+        verify(mockK8sService, never()).applyResource(any(), any())
     }
 
     @Test
@@ -644,14 +667,11 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
                     },
                 )
             }
-        val ecrPullSecrets: EcrPullSecretService = mock()
-        whenever(ecrPullSecrets.ensureFor(any(), any(), any())).thenReturn("")
         return DefaultStressJobService(
             k8sService = k8sService,
             clusterStateManager = getKoin().get(),
             eventBus = eventBus,
             templateService = getKoin().get(),
-            ecrPullSecrets = ecrPullSecrets,
             podReadyPollInterval = Duration.ZERO,
         )
     }
@@ -715,6 +735,34 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
 
         assertThat(result.exceptionOrNull()).hasMessage("Pod stress-wait-abc failed")
         verify(k8sService, times(POD_READY_MAX_ATTEMPTS)).getPodsForJob(any(), any(), any())
+    }
+
+    @Test
+    fun `an image that cannot be pulled fails at once, naming the pod, the image and the kubelet message`() {
+        val failure =
+            ImagePullFailure(
+                container = "stress",
+                image = "123.dkr.ecr.us-west-2.amazonaws.com/stress:missing",
+                reason = "ImagePullBackOff",
+                message = "manifest unknown",
+            )
+        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(
+            Result.success(listOf(pod("Pending").copy(imagePullFailure = failure))),
+        )
+
+        val result = service().startJob(controlHost, config)
+
+        assertThat(result.exceptionOrNull())
+            .hasMessageContaining("stress-wait-abc")
+            .hasMessageContaining(failure.image)
+            .hasMessageContaining("manifest unknown")
+        val failed = events.filterIsInstance<Event.Stress.ImagePullFailed>().single()
+        assertThat(failed).isEqualTo(
+            Event.Stress.ImagePullFailed("stress-wait-abc", "stress", failure.image, "ImagePullBackOff", "manifest unknown"),
+        )
+        assertThat(failed.isError()).isTrue()
+        assertThat(events.filterIsInstance<Event.Stress.PodStatus>()).isEmpty()
+        verify(k8sService, times(1)).getPodsForJob(any(), any(), any())
     }
 
     private companion object {

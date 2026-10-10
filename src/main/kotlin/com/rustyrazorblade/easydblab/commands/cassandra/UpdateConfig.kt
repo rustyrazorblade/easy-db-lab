@@ -117,9 +117,7 @@ class UpdateConfig : PicoBaseCommand() {
         }
 
         if (restart) {
-            commandExecutor.execute {
-                Restart().apply { this.hosts = this@UpdateConfig.hosts }
-            }
+            runNested(commandExecutor, Restart().apply { this.hosts = this@UpdateConfig.hosts })
         }
     }
 }

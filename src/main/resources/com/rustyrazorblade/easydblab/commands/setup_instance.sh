@@ -6,25 +6,109 @@
 
 export READAHEAD=8
 
-DISK=""
-
-for VOL in nvme0n1 nvme1n1 xvdb; do
-  export VOL
-  echo "Checking $VOL"
-  TMP=$(lsblk -o NAME,MOUNTPOINTS -J | yq '.blockdevices[] | select(.name == env(VOL)) | has("children")')
-  echo $TMP
-
-  if [[ "${TMP}" == "false" ]]; then
-    DISK="/dev/$VOL"
-    break
-  fi
-done
-
-echo "Using disk: $DISK"
+# Every node writes its data here: databases and kit PVs, the observability backends, the K3s
+# data directory and pod logs. It must be the data disk, never the 20 GB root volume.
+DATA_MOUNT=/mnt/db1
 
 ## END CONFIGURATION ###
 ###########################
 
+# Prints why setup failed, prefixed ERROR: (SetupInstance reports that line), and exits non-zero.
+fail() {
+  echo "ERROR: $*" >&2
+  exit 1
+}
+
+# The disk that holds the root file system (e.g. nvme0n1): the disk mounted at / or with a
+# partition mounted at /. Read from lsblk rather than from the root device's name, which can be
+# /dev/root.
+root_disk() {
+  lsblk -J -o NAME,TYPE,MOUNTPOINTS |
+    yq '.blockdevices[]
+        | select(((.mountpoints // []) + ([.children[]?.mountpoints[]?] // [])) | any_c(. == "/"))
+        | .name' |
+    head -n 1
+}
+
+# True when the device [$1] (e.g. /dev/nvme0n1p1) is the root disk [$2] or one of its partitions.
+on_root_disk() {
+  local name
+  name=$(basename "$1")
+  [[ "$name" == "$2" || "$name" =~ ^$2p?[0-9]+$ ]]
+}
+
+# The first unused data disk: a whole disk (not a partition, loop or rom device) that is not the
+# root disk, has no partitions and nothing mounted. Instance store and EBS data volumes both
+# qualify, whatever their device name (nvme1n1, nvme2n1, xvdb, ...).
+find_data_disk() {
+  local root
+  root=$(root_disk)
+  lsblk -J -o NAME,TYPE,MOUNTPOINTS |
+    ROOT_DISK="$root" yq '.blockdevices[]
+        | select(.type == "disk")
+        | select(.name != env(ROOT_DISK))
+        | select(has("children") | not)
+        | select(((.mountpoints // []) | map(select(. != null)) | length) == 0)
+        | .name' |
+    head -n 1
+}
+
+# Finds the data disk, formats it if it has no file system, mounts it at $DATA_MOUNT, persists the
+# mount in /etc/fstab, and checks that $DATA_MOUNT is a mount point of a non-root device. Fails,
+# naming the reason, when there is no data disk or the mount does not take. Never falls back to a
+# plain directory on the root volume.
+mount_data_disk() {
+  local disk name fs_type fs_uuid mounted_source
+
+  if mountpoint -q "$DATA_MOUNT"; then
+    # A re-run of setup on a node whose data disk is already mounted.
+    disk=$(findmnt -n -o SOURCE "$DATA_MOUNT")
+    echo "$DATA_MOUNT is already mounted from $disk"
+  else
+    name=$(find_data_disk)
+    if [[ -z "$name" || "$name" == "null" ]]; then
+      fail "no data disk found: no unused non-root block device to mount at $DATA_MOUNT (lsblk: $(lsblk -n -o NAME,TYPE,MOUNTPOINTS | tr '\n' ' '))"
+    fi
+    disk="/dev/$name"
+    echo "Using disk: $disk"
+
+    fs_type=$(sudo blkid -o value -s TYPE "$disk")
+    if [[ -z "$fs_type" ]]; then
+      echo "No file system found on $disk. Formatting with XFS."
+      sudo mkfs.xfs "$disk" || fail "formatting $disk with XFS failed"
+    else
+      echo "File system found on $disk. Not formatting."
+    fi
+
+    sudo mkdir -p "$DATA_MOUNT"
+    sudo mount "$disk" "$DATA_MOUNT" || fail "mounting $disk at $DATA_MOUNT failed"
+
+    # Persist the mount so it is restored on every boot; without it k3s (whose data dir is a
+    # symlink onto /mnt/db1) crash-loops after a reboot with "extracting data: no such file or
+    # directory". Device names can change across reboots, so key the entry on the file system
+    # UUID. 'nofail' keeps the node bootable if a stop/terminate wiped the instance store, and
+    # 'x-systemd.device-timeout' avoids a long boot hang in that case.
+    fs_uuid=$(sudo blkid -o value -s UUID "$disk")
+    if [[ -n "$fs_uuid" ]]; then
+      # Remove any previous entry (e.g. a stale device path) before adding the current one.
+      sudo sed -i "\#[[:space:]]$DATA_MOUNT[[:space:]]#d" /etc/fstab
+      echo "UUID=$fs_uuid $DATA_MOUNT xfs defaults,nofail,x-systemd.device-timeout=10s 0 2" | sudo tee -a /etc/fstab
+      # Pick up the fstab-generated mnt-db1.mount unit so services can order against it.
+      sudo systemctl daemon-reload
+    fi
+  fi
+
+  mountpoint -q "$DATA_MOUNT" || fail "$DATA_MOUNT is not a mount point after mounting $disk"
+  mounted_source=$(findmnt -n -o SOURCE "$DATA_MOUNT")
+  if on_root_disk "$mounted_source" "$(root_disk)"; then
+    fail "$DATA_MOUNT is mounted from $mounted_source, which is on the root volume"
+  fi
+  echo "$DATA_MOUNT is mounted from $mounted_source"
+
+  sudo blockdev --setra "$READAHEAD" "$mounted_source"
+}
+
+main() {
 ###### SYSTEM SETTINGS // OS TUNINGS #####
 
 sudo sysctl kernel.perf_event_paranoid=1
@@ -51,50 +135,7 @@ sudo swapoff --all
 sudo sysctl -p /etc/sysctl.d/60-cassandra.conf
 ########
 
-sudo mkdir -p /mnt/db1
-
-if [[ -n "$DISK" ]]; then
-  FS_TYPE=$(sudo blkid -o value -s TYPE $DISK )
-
-  if [ -z "$FS_TYPE" ]; then
-    echo "No file system found on $DISK. Formatting with XFS."
-    sudo mkfs.xfs $DISK
-  else
-    echo "File system found on $DISK. Not formatting."
-  fi
-
-  sudo mount | grep $DISK
-
-  if [ $? -eq 0 ]; then
-      echo "$1 is mounted already."
-  else
-      echo "$1 is not mounted yet, mounting."
-      sudo mount $DISK /mnt/db1
-  fi
-
-  # Persist the mount so /mnt/db1 is restored automatically on every boot.
-  # Without this the NVMe is mounted only at provision time; after any reboot
-  # the mount is gone and k3s (whose data dir is a symlink onto /mnt/db1)
-  # crash-loops with "extracting data: no such file or directory".
-  #
-  # Instance-store NVMe device names (nvme0n1/nvme1n1/xvdb) can change across
-  # reboots, so key the fstab entry on the stable XFS filesystem UUID rather
-  # than the device path. 'nofail' keeps the node bootable if the instance
-  # store was wiped (a stop/terminate erases instance-store, unlike a reboot)
-  # and the filesystem no longer exists; 'x-systemd.device-timeout' avoids a
-  # long boot hang in that case.
-  FS_UUID=$(sudo blkid -o value -s UUID "$DISK")
-  if [[ -n "$FS_UUID" ]]; then
-    FSTAB_ENTRY="UUID=$FS_UUID /mnt/db1 xfs defaults,nofail,x-systemd.device-timeout=10s 0 2"
-    # Remove any previous /mnt/db1 entry (e.g. a stale device path) before adding the current one.
-    sudo sed -i '\#[[:space:]]/mnt/db1[[:space:]]#d' /etc/fstab
-    echo "$FSTAB_ENTRY" | sudo tee -a /etc/fstab
-    # Pick up the fstab-generated mnt-db1.mount unit so services can order against it.
-    sudo systemctl daemon-reload
-  fi
-
-  sudo blockdev --setra $READAHEAD $DISK
-fi
+mount_data_disk
 
 # Create database-specific subdirectories
 sudo mkdir -p /mnt/db1/cassandra
@@ -138,3 +179,9 @@ fi
 
 # enable cap_perfmon for all JVMs to allow for off-cpu profiling
 sudo find /usr/lib/jvm/ -type f -name 'java' -exec setcap "cap_perfmon,cap_sys_ptrace,cap_syslog=ep" {} \;
+}
+
+# Sourcing the script (its unit test does) defines the functions without running setup.
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

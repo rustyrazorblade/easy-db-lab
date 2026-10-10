@@ -55,7 +55,16 @@ class BuiltinKitFixture(
     fun render(
         templateFile: String,
         args: Map<String, String> = emptyMap(),
-    ): List<HasMetadata> {
+    ): List<HasMetadata> = parseManifests(renderText(templateFile, args))
+
+    /**
+     * Renders [templateFile] to text as `kit install` writes it into the kit directory, failing on
+     * any placeholder left unresolved.
+     */
+    fun renderText(
+        templateFile: String,
+        args: Map<String, String> = emptyMap(),
+    ): String {
         val unresolved = mutableListOf<String>()
         val rendered =
             templateService.renderKitTemplate(
@@ -65,9 +74,6 @@ class BuiltinKitFixture(
             ) { unresolved.addAll(it) }
         check(unresolved.isEmpty()) { "Unresolved variables in $templateFile: $unresolved" }
         return rendered
-            .split(DOCUMENT_SEPARATOR)
-            .filter { it.isNotBlank() }
-            .map { Serialization.unmarshal(it, HasMetadata::class.java) }
     }
 
     /** Reads a file from the kit's resource directory. */
@@ -86,9 +92,17 @@ class BuiltinKitFixture(
     private companion object {
         const val RESOURCE_BASE = "com/rustyrazorblade/easydblab/kits"
         const val KIT_YAML = "kit.yaml"
-        val DOCUMENT_SEPARATOR = Regex("(?m)^---\\s*$")
     }
 }
+
+private val DOCUMENT_SEPARATOR = Regex("(?m)^---\\s*$")
+
+/** Parses every non-blank YAML document in [yaml] into a fabric8 object. */
+fun parseManifests(yaml: String): List<HasMetadata> =
+    yaml
+        .split(DOCUMENT_SEPARATOR)
+        .filter { doc -> doc.lines().any { it.isNotBlank() && !it.trimStart().startsWith("#") } }
+        .map { Serialization.unmarshal(it, HasMetadata::class.java) }
 
 /**
  * Parses a comma-separated `key=value` label selector, the form kits use for a scrape

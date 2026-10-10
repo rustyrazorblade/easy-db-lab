@@ -752,6 +752,33 @@ class SetupProfileTest : BaseKoinTest() {
             assertThat(output).contains("Failed to build AMI")
             assertThat(output).contains("You can manually build the AMI")
         }
+
+        /** The executor reports a failed build by its exit code; it does not throw. */
+        @Test
+        fun `a build-image that exits non-zero is reported as a failed build, not a success`() {
+            whenever(mockAmiValidator.validateAMI(any(), any(), anyOrNull()))
+                .thenThrow(AMIValidationException.NoAMIFound("easy-db-lab*", Arch.AMD64))
+            whenever(mockCommandExecutor.execute<BuildImage>(any())).thenReturn(1)
+            testPrompter =
+                TestPrompter(
+                    mapOf(
+                        "email" to "user@test.com",
+                        "region" to "us-west-2",
+                        "AWS Profile" to "",
+                        "AWS Access Key" to "AKIATEST123",
+                        "AWS Secret" to "secretkey123",
+                        "IAM policies" to "N",
+                        "Press Enter" to "",
+                    ),
+                )
+            setupTestModule()
+
+            SetupProfile().execute()
+
+            val output = bufferedOutput.messages.joinToString("\n")
+            assertThat(output).contains("Failed to build AMI: build-image exited with code 1")
+            assertThat(output).doesNotContain("AMI build completed successfully")
+        }
     }
 
     @Nested

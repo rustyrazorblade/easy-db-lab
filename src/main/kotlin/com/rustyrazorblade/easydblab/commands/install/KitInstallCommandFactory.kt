@@ -71,41 +71,9 @@ class KitInstallCommandFactory(
         command: KitInstallCommand,
     ): OptionSpec {
         val resolvedDefault = resolveDefault(arg.default, templateVars)
-        val picoType = arg.type.toPicoCliType()
-
-        val builder =
-            OptionSpec
-                .builder(arg.flag)
-                .type(picoType)
-                .paramLabel(arg.paramLabel)
-                .description(arg.description)
-                .setter(
-                    object : ISetter {
-                        override fun <T> set(value: T): T {
-                            // PicoCLI invokes this setter with null to initialise an unmatched
-                            // option that has no default (e.g. an optional `--extension`). Skip it:
-                            // stringifying null would record the literal "null" in argValues, which
-                            // then passes `isNotBlank()` downstream and is treated as a real value
-                            // (e.g. looked up as the extension alias "null"). Only record a value
-                            // the user actually supplied.
-                            value?.let { command.argValues[arg.variable] = it.toString() }
-                            return value
-                        }
-                    },
-                )
-
-        if (resolvedDefault.isNotEmpty()) {
-            command.resolvedDefaults[arg.variable] = resolvedDefault
-            // Only pass to PicoCLI when fully resolved — PicoCLI expands ${...} as property
-            // lookups and returns null for unknown keys, corrupting the help text.
-            if (!resolvedDefault.contains("\${")) {
-                builder.defaultValue(resolvedDefault)
-            }
-        } else if (arg.required) {
-            builder.required(true)
-        }
-
-        return builder.build()
+        // A default that still holds ${...} is not handed to picocli, so execute() applies it.
+        if (resolvedDefault.isNotEmpty()) command.resolvedDefaults[arg.variable] = resolvedDefault
+        return KitArgOptions.optionSpec(arg, resolvedDefault, command.argValues)
     }
 
     private fun resolveDefault(

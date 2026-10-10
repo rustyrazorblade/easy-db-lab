@@ -953,6 +953,13 @@ object Constants {
          * when a live ssh never produces a tunnel.
          */
         const val SSM_TUNNEL_VERIFY_ATTEMPTS = 60
+
+        /**
+         * How many times, 500ms apart, a running tunnel is probed before it is reused. A tunnel
+         * that is up answers the first probe; a second covers one dropped packet. One that fails
+         * both is stopped and replaced.
+         */
+        const val REUSE_TUNNEL_VERIFY_ATTEMPTS = 2
     }
 
     // Tailscale VPN configuration

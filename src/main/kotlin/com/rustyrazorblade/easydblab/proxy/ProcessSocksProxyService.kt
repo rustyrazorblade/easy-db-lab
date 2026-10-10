@@ -61,11 +61,11 @@ internal fun isLocalPortBindFailure(transcript: List<String>): Boolean = transcr
  * SOCKS5 proxy service that launches a detached `ssh -N -D` OS process.
  *
  * Unlike the previous in-process implementation, the SSH process outlives the JVM.
- * On each [ensureRunning] call the service checks `.socks5-proxy-state` for a reusable
- * process (PID alive + same controlIP + same sshConfig path + port genuinely accepting
- * connections) before starting a new one. A live PID whose port is not accepting connections
- * is a zombie tunnel and is never reused — a fresh proxy is started instead, and that start
- * fails the calling command if it cannot be verified either.
+ * On each [ensureRunning] call the service checks its in-memory tunnel, then `.socks5-proxy-state`,
+ * for a reusable process (PID alive + same controlIP + same sshConfig path + the tunnel verified
+ * end-to-end by the [TunnelReachabilityProbe]) before starting a new one. A live ssh whose tunnel
+ * no longer reaches the control node is a zombie tunnel and is never reused: it is stopped, a fresh
+ * proxy is started instead, and that start fails the calling command if it cannot be verified either.
  * When started, the proxy port is published via the private [Constants.Proxy.PORT_PROPERTY] system
  * property. The clients that need the tunnel (fabric8 K8s, OkHttp) read that port and configure the
  * SOCKS proxy explicitly. We deliberately do NOT set the standard `socksProxyHost`/`socksProxyPort`
@@ -105,15 +105,20 @@ class ProcessSocksProxyService(
 
     override fun ensureRunning(gatewayHost: ClusterHost): SocksProxyState =
         lock.withLock {
-            // Return in-memory state if still alive AND the tunnel is genuinely accepting
-            // connections. A live PID with a dead port is a zombie tunnel (e.g. the remote side
-            // dropped the forward without killing the local process) and must not be reused —
-            // see isValidProxy() below, which enforces the same check on the state-file path.
+            // Return in-memory state only while the tunnel still carries traffic end-to-end. A live
+            // ssh with an open local port can still be a zombie tunnel (its SSH connection died
+            // silently), so the same probe isValidProxy() uses on the state-file path decides.
             val current = state
-            if (current != null && isAlive(pid) && isPortAccepting(current.localPort)) {
-                log.debug { "SOCKS5 proxy already running in-memory on port ${current.localPort} [PID $pid]" }
-                envFile.recordPort(current.localPort)
-                return@withLock current.copy(reused = true)
+            if (current != null && isAlive(pid)) {
+                if (reachesGateway(current.localPort, gatewayHost)) {
+                    log.debug { "SOCKS5 proxy already running in-memory on port ${current.localPort} [PID $pid]" }
+                    envFile.recordPort(current.localPort)
+                    return@withLock current.copy(reused = true)
+                }
+                log.info { "SOCKS5 proxy on port ${current.localPort} [PID $pid] no longer reaches ${gatewayHost.alias}; replacing it" }
+                inMemoryRecord()?.let { terminateStaleProxy(it) }
+                state = null
+                pid = 0
             }
 
             // Try to reuse from state file
@@ -393,12 +398,26 @@ class ProcessSocksProxyService(
             log.debug { "Control IP changed (was ${loaded.controlIP}, now ${gatewayHost.privateIp})" }
             return false
         }
-        if (!isPortAccepting(loaded.port)) {
-            log.debug { "Proxy PID ${loaded.pid} is alive but port ${loaded.port} is not accepting connections" }
+        if (!reachesGateway(loaded.port, gatewayHost)) {
+            log.info { "SOCKS5 proxy on port ${loaded.port} [PID ${loaded.pid}] no longer reaches ${gatewayHost.alias}; replacing it" }
             return false
         }
         return true
     }
+
+    /**
+     * Whether the running tunnel on [port] still carries traffic to [gatewayHost]'s `sshd`, by the same
+     * [reachabilityProbe] a fresh start is verified with. A tunnel that is up answers at once, so it gets
+     * only [Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS] tries, not a fresh start's window.
+     */
+    private fun reachesGateway(
+        port: Int,
+        gatewayHost: ClusterHost,
+    ): Boolean =
+        (1..Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS).any { attempt ->
+            if (attempt > 1) Thread.sleep(verifyDelay.toMillis())
+            reachabilityProbe.isReachable(port, gatewayHost.privateIp, SSH_PORT)
+        }
 
     /**
      * Ends a superseded proxy `ssh` process so it does not leak.

@@ -51,6 +51,9 @@ class ProcessSocksProxyServiceUnitTest {
 
         /** Port a recorded tunnel listens on in the stop tests; nothing binds it. */
         const val STOP_PORT = 41234
+
+        /** Port a replacement tunnel is started on; nothing binds it. */
+        const val NEW_PORT = 45678
     }
 
     @TempDir
@@ -384,6 +387,159 @@ class ProcessSocksProxyServiceUnitTest {
         }
         assertThat(json.decodeFromString<Socks5ProxyStateFile>(stateFile.readText()).port).isEqualTo(41234)
         assertThat(tempDir.list()).noneMatch { it.endsWith(".tmp") }
+    }
+
+    /**
+     * A live PID that is not this JVM's, which the stop path refuses to signal: the test runner's parent.
+     * The service's liveness check sees it alive; every lookup here is faked, so it is never signaled.
+     */
+    private val livePid: Long = requireNotNull(ProcessHandle.current().parent().orElse(null)) { "the test JVM has no parent" }.pid()
+
+    /** A process lookup that finds nothing, so a stale-tunnel stop never reaches a real process. */
+    private val noProcesses = TunnelProcessControl(lookup = { null })
+
+    /** A launched ssh that stays alive under [livePid], so the in-memory reuse path sees it running. */
+    private fun liveTunnelProcess(): Process =
+        mock {
+            on { isAlive } doReturn true
+            on { pid() } doReturn livePid
+        }
+
+    /** A probe that reports reachable only through the ports in [healthy], counting every call per port. */
+    private class PortProbe(
+        vararg healthy: Int,
+    ) : TunnelReachabilityProbe {
+        val healthy = healthy.toMutableSet()
+        val calls = mutableMapOf<Int, Int>()
+
+        override fun isReachable(
+            localSocksPort: Int,
+            targetHost: String,
+            targetPort: Int,
+        ): Boolean {
+            calls.merge(localSocksPort, 1, Int::plus)
+            return localSocksPort in healthy
+        }
+    }
+
+    @Test
+    fun `a recorded tunnel that passes the end-to-end probe is reused and its port recorded`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+
+        val state = service(probe = PortProbe(STOP_PORT)).ensureRunning(testHost)
+
+        assertThat(state.reused).isTrue()
+        assertThat(state.localPort).isEqualTo(STOP_PORT)
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = STOP_PORT))
+    }
+
+    @Test
+    fun `a recorded tunnel whose far end is dead is stopped and replaced, and only the new port is recorded`() {
+        // The live-cluster failure: the ssh process and its local port stay up after the SSH
+        // connection died, so only an end-to-end probe tells the tunnel is useless.
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val envFile = recordedEnv()
+        val zombie = FakeTunnelProcess.sshTunnel(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val probe = PortProbe(NEW_PORT)
+        val launched = mutableListOf<List<String>>()
+
+        val state =
+            service(
+                probe = probe,
+                launcher = { command, _ -> liveTunnelProcess().also { launched += command } },
+                portSelector = { NEW_PORT },
+                tunnelProcesses = TunnelProcessControl(lookup = { pid -> zombie.handle.takeIf { pid == livePid } }),
+            ).ensureRunning(testHost)
+
+        assertThat(zombie.handle.isAlive).withFailMessage("the dead tunnel must be stopped, not leaked").isFalse()
+        assertThat(dynamicForwardPorts(launched)).containsExactly(NEW_PORT)
+        assertThat(state.reused).isFalse()
+        assertThat(state.localPort).isEqualTo(NEW_PORT)
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = NEW_PORT))
+        assertThat(json.decodeFromString<Socks5ProxyStateFile>(stateFile().readText()).port).isEqualTo(NEW_PORT)
+    }
+
+    @Test
+    fun `a recorded tunnel that fails the probe and cannot be replaced leaves no port recorded`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val envFile = recordedEnv()
+
+        assertThatThrownBy {
+            service(probe = PortProbe(), launcher = { _, _ -> deadProcess(exitCode = 255) }, tunnelProcesses = noProcesses)
+                .ensureRunning(testHost)
+        }.isInstanceOf(IllegalStateException::class.java)
+
+        assertThat(envFile.read().socksPort).isNull()
+        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
+    }
+
+    @Test
+    fun `a recorded tunnel is probed a bounded number of times before it is replaced`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val probe = PortProbe(NEW_PORT)
+
+        service(probe = probe, launcher = { _, _ -> liveTunnelProcess() }, portSelector = { NEW_PORT }, tunnelProcesses = noProcesses)
+            .ensureRunning(testHost)
+
+        assertThat(probe.calls[STOP_PORT]).isEqualTo(Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS)
+    }
+
+    @Test
+    fun `a recorded tunnel that fails one probe and passes the next is reused`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val probe = mock<TunnelReachabilityProbe>()
+        whenever(probe.isReachable(any<Int>(), any<String>(), any<Int>())).thenReturn(false, true)
+
+        val state = service(probe = probe).ensureRunning(testHost)
+
+        assertThat(state.reused).isTrue()
+        assertThat(state.localPort).isEqualTo(STOP_PORT)
+    }
+
+    @Test
+    fun `the in-memory tunnel is reused while it passes the probe`() {
+        val launched = mutableListOf<List<String>>()
+        val svc =
+            service(
+                probe = PortProbe(STOP_PORT),
+                launcher = { command, _ -> liveTunnelProcess().also { launched += command } },
+                portSelector = { STOP_PORT },
+            )
+        svc.ensureRunning(testHost)
+        val envFile = ProxyEnvFile(tempDir).apply { removePort() }
+
+        val second = svc.ensureRunning(testHost)
+
+        assertThat(launched).hasSize(1)
+        assertThat(second.reused).isTrue()
+        assertThat(envFile.read().socksPort).isEqualTo(STOP_PORT)
+    }
+
+    @Test
+    fun `an in-memory tunnel whose far end died is stopped and replaced, and only the new port is recorded`() {
+        val ports = ArrayDeque(listOf(STOP_PORT, NEW_PORT))
+        val launched = mutableListOf<List<String>>()
+        val probe = PortProbe(STOP_PORT, NEW_PORT)
+        val zombie = FakeTunnelProcess.sshTunnel(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val svc =
+            service(
+                probe = probe,
+                launcher = { command, _ -> liveTunnelProcess().also { launched += command } },
+                portSelector = { ports.removeFirst() },
+                tunnelProcesses = TunnelProcessControl(lookup = { pid -> zombie.handle.takeIf { pid == livePid } }),
+            )
+        svc.ensureRunning(testHost)
+        probe.healthy.remove(STOP_PORT)
+
+        val second = svc.ensureRunning(testHost)
+
+        assertThat(zombie.handle.isAlive).withFailMessage("the dead tunnel must be stopped, not leaked").isFalse()
+        assertThat(dynamicForwardPorts(launched)).containsExactly(STOP_PORT, NEW_PORT)
+        assertThat(second.reused).isFalse()
+        assertThat(second.localPort).isEqualTo(NEW_PORT)
+        assertThat(ProxyEnvFile(tempDir).read().socksPort).isEqualTo(NEW_PORT)
+        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("$NEW_PORT")
     }
 
     @Test

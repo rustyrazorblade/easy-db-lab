@@ -151,6 +151,7 @@ curl http://control0:3100/ready
 
 The `easy-db-lab` CLI is the only thing that starts or stops the tunnel. Any command that needs to
 reach the cluster starts it, or reuses the one already running, before the command does its work.
+The CLI reuses a running tunnel only after a connection through it reaches the control node. If the tunnel's SSH connection died while its local port stayed open, the CLI stops it, starts a new one, and records the new port.
 To start it for everything else (your shell, a browser), run:
 
 ```bash

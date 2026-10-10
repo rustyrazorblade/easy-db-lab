@@ -270,6 +270,8 @@ easy-db-lab keeps open, and the tool reaches the private cluster addresses. On a
 the wrappers run the tool unchanged, and it connects directly. The CLI starts or restarts the
 tunnel before the first step runs, so a kit never has to.
 
+The `kubectl`, `helm`, `cilium` and `k9s` wrappers always set `KUBECONFIG` to the workspace `kubeconfig` for their call, in place of any inherited value, on SOCKS and Tailscale clusters. A bare `<workspace>/bin/kubectl` therefore works with no setup, from a step or from your own shell. If the workspace has no `kubeconfig` file, the wrapper names the missing file and exits 1. The `curl` and `skopeo` wrappers leave `KUBECONFIG` unchanged.
+
 Indirect calls go through the wrappers too, because they look the tool up on `PATH`: `timeout 60
 kubectl ...`, `echo ns | xargs kubectl get`, `sh -c 'helm list -A'`, and a script in the kit's own
 `bin/` that calls `kubectl`.

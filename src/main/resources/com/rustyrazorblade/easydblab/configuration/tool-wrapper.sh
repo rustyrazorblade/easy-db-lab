@@ -10,6 +10,8 @@
 #   - on a Tailscale cluster it runs the real tool with the environment unchanged;
 #   - on a SOCKS cluster it routes this one call through the recorded tunnel port;
 #   - with no port recorded it fails and says to run `easy-db-lab start-socks`.
+# kubectl, helm, cilium and k9s always use <workspace>/kubeconfig, in place of any inherited KUBECONFIG,
+# because a wrapper reaches only its own workspace's cluster. curl and skopeo leave KUBECONFIG alone.
 # The proxy variables are set for this call only, so tools that are not wrapped (aws included)
 # never get them.
 #
@@ -44,6 +46,17 @@ if [ -z "$real" ]; then
     echo "easy-db-lab: $tool is not installed: no $tool found on PATH outside easy-db-lab's tool wrappers." >&2
     exit 127
 fi
+
+case $tool in
+    kubectl | helm | cilium | k9s)
+        kubeconfig=$workspace/kubeconfig
+        if ! [ -f "$kubeconfig" ]; then
+            echo "easy-db-lab: $kubeconfig does not exist, so $tool cannot reach the cluster of the workspace $workspace." >&2
+            exit 1
+        fi
+        export KUBECONFIG="$kubeconfig"
+        ;;
+esac
 
 # Only the env file decides; values inherited from the caller are ignored.
 unset EDL_TAILSCALE_ACTIVE EDL_SOCKS_PORT

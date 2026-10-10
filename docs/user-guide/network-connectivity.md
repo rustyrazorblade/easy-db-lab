@@ -185,6 +185,8 @@ of a wrapped tool reads the workspace's `.socks5-proxy.env`, which the CLI write
 - on a Tailscale cluster, runs the tool unchanged, so it connects directly;
 - with no tunnel recorded, fails with a message that says to run `easy-db-lab start-socks`.
 
+The `kubectl`, `helm`, `cilium` and `k9s` wrappers always use the workspace `kubeconfig`. They replace any `KUBECONFIG` you exported, because a workspace's wrapper reaches only that workspace's cluster. A bare `<workspace>/bin/kubectl get ns` works with no setup: you do not need to source `env.sh` or set `KUBECONFIG`. If the workspace has no `kubeconfig` file, the wrapper names the missing file and exits 1. The `curl` and `skopeo` wrappers do not change `KUBECONFIG`.
+
 The wrappers replace any proxy variables you set in your shell for that one call, so an exported
 `NO_PROXY` cannot send cluster traffic around the tunnel. They do not change your shell, and tools
 without a wrapper, `aws` included, connect directly. A wrapped tool sends all of its traffic through

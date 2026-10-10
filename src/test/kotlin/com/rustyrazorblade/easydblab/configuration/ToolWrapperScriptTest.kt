@@ -76,8 +76,86 @@ internal class ToolWrapperScriptTest {
         val wrapped = run("kubectl get ns", env = inherited)
 
         assertThat(wrapped.exitCode).withFailMessage(wrapped.toString()).isZero()
-        assertThat(wrapped.environment()).isEqualTo(direct.environment())
+        assertThat(wrapped.environment().withoutKubeconfig()).isEqualTo(direct.environment())
         assertThat(wrapped.environment()).contains("NO_PROXY=*", "http_proxy=http://corporate:3128", "OPERATOR_VAR=kept")
+        assertThat(wrapped.kubeconfig()).isEqualTo(workspaceKubeconfig())
+    }
+
+    @ParameterizedTest(name = "{0} under {1}")
+    @MethodSource("kubernetesToolsAndShells")
+    fun `a bare call with no KUBECONFIG uses the workspace kubeconfig`(
+        tool: String,
+        shell: String,
+    ) {
+        socksCluster(port = 41234)
+
+        val result = run("$shell \"${'$'}WS/bin/$tool\" probe", env = mapOf("WS" to workspace.absolutePath))
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.kubeconfig()).isEqualTo(workspaceKubeconfig())
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `an inherited KUBECONFIG is overridden for the Kubernetes tools and kept for curl and skopeo`(tool: String) {
+        socksCluster(port = 41234)
+
+        val result = run("$tool probe", env = mapOf("KUBECONFIG" to INHERITED_KUBECONFIG))
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        val expected = if (tool in KUBERNETES_TOOLS) workspaceKubeconfig() else INHERITED_KUBECONFIG
+        assertThat(result.kubeconfig()).isEqualTo(expected)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("kubernetesTools")
+    fun `a missing workspace kubeconfig fails with exit 1, names the file and does not run the real binary`(tool: String) {
+        socksCluster(port = 41234)
+        File(workspace, Constants.K3s.LOCAL_KUBECONFIG).delete()
+
+        val result = run("$tool probe", env = mapOf("KUBECONFIG" to INHERITED_KUBECONFIG))
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stdout).doesNotContain("tool=")
+        assertThat(result.stderr).contains(workspaceKubeconfig())
+    }
+
+    @Test
+    fun `a missing workspace kubeconfig also fails on a Tailscale cluster`() {
+        ProxyEnvFile(workspace).recordTailscale(active = true)
+        File(workspace, Constants.K3s.LOCAL_KUBECONFIG).delete()
+
+        val result = run("kubectl get ns")
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stdout).doesNotContain("tool=")
+        assertThat(result.stderr).contains(workspaceKubeconfig())
+    }
+
+    @Test
+    fun `curl and skopeo do not need the workspace kubeconfig`() {
+        socksCluster(port = 41234)
+        File(workspace, Constants.K3s.LOCAL_KUBECONFIG).delete()
+
+        listOf("curl http://10.0.1.5:3000/", "skopeo inspect docker://x").forEach { call ->
+            val result = run(call)
+            assertThat(result.exitCode).withFailMessage("$call: $result").isZero()
+            assertThat(result.kubeconfig()).withFailMessage("$call: $result").isEqualTo("unset")
+        }
+    }
+
+    @Test
+    fun `on a Tailscale cluster the Kubernetes tools get the workspace kubeconfig and curl keeps the inherited one`() {
+        ProxyEnvFile(workspace).recordTailscale(active = true)
+        val inherited = mapOf("KUBECONFIG" to INHERITED_KUBECONFIG, "HTTPS_PROXY" to "http://corporate:3128")
+
+        val kubectl = run("kubectl get ns", env = inherited)
+        val curl = run("curl http://10.0.1.5:3000/", env = inherited)
+
+        assertThat(kubectl.kubeconfig()).isEqualTo(workspaceKubeconfig())
+        assertThat(kubectl.proxyVariables()).isEqualTo(NONE + mapOf("HTTPS_PROXY" to "http://corporate:3128"))
+        assertThat(curl.kubeconfig()).isEqualTo(INHERITED_KUBECONFIG)
+        assertThat(curl.proxyVariables()).isEqualTo(NONE + mapOf("HTTPS_PROXY" to "http://corporate:3128"))
     }
 
     @Test
@@ -258,6 +336,11 @@ internal class ToolWrapperScriptTest {
         assertThat(result.stderr).contains("easy-db-lab start-socks")
     }
 
+    /** The absolute path the wrapper resolves for the workspace kubeconfig; the wrapper resolves symlinks. */
+    private fun workspaceKubeconfig(): String = File(workspace.canonicalFile, Constants.K3s.LOCAL_KUBECONFIG).path
+
+    private fun List<String>.withoutKubeconfig(): List<String> = filterNot { it.startsWith("KUBECONFIG=") }
+
     private fun socksCluster(port: Int) {
         ProxyEnvFile(workspace).apply {
             recordTailscale(active = false)
@@ -265,11 +348,12 @@ internal class ToolWrapperScriptTest {
         }
     }
 
-    /** A workspace whose `bin/` holds the six wrapper copies and the marker. */
+    /** A workspace with a `kubeconfig`, whose `bin/` holds the six wrapper copies and the marker. */
     private fun workspace(name: String): File =
         File(root, name).apply {
             val bin = File(this, Constants.ToolWrappers.DIRECTORY).apply { mkdirs() }
             File(bin, Constants.ToolWrappers.MARKER).writeText("")
+            File(this, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
             Constants.ToolWrappers.TOOLS.forEach { tool ->
                 File(bin, tool).apply {
                     writeText(WRAPPER)
@@ -278,7 +362,10 @@ internal class ToolWrapperScriptTest {
             }
         }
 
-    /** A stand-in for a real binary: prints its name, its proxy variables, its arguments, and optionally stdin. */
+    /**
+     * A stand-in for a real binary: prints its name, its proxy variables, its `KUBECONFIG`, its arguments, and
+     * optionally stdin.
+     */
     private fun stub(tool: String) {
         File(realBin, tool).apply {
             writeText(
@@ -286,6 +373,7 @@ internal class ToolWrapperScriptTest {
                 |#!/bin/sh
                 |echo "tool=${'$'}{0##*/}"
                 |for v in ${PROXY_VARIABLES.joinToString(" ")}; do eval "val=\${'$'}{${'$'}v-unset}"; echo "${'$'}v=${'$'}val"; done
+                |echo "KUBECONFIG=${'$'}{KUBECONFIG-unset}"
                 |for a in "${'$'}@"; do echo "arg=${'$'}a"; done
                 |if [ -n "${'$'}{STUB_READ_STDIN:-}" ]; then echo "stdin=${'$'}(cat)"; fi
                 |if [ -n "${'$'}{STUB_PRINT_ENV:-}" ]; then env | sed 's/^/env:/'; fi
@@ -337,6 +425,9 @@ internal class ToolWrapperScriptTest {
                 .filter { it.size == 2 && it[0] in PROXY_VARIABLES }
                 .associate { (name, value) -> name to value }
 
+        /** The `KUBECONFIG` the last stub saw, or `unset`. */
+        fun kubeconfig(): String? = stdout.lines().lastOrNull { it.startsWith("KUBECONFIG=") }?.removePrefix("KUBECONFIG=")
+
         fun arguments(): List<String> = stdout.lines().filter { it.startsWith("arg=") }.map { it.removePrefix("arg=") }
 
         /** The stub's environment, minus what any shell sets on its own. */
@@ -354,6 +445,8 @@ internal class ToolWrapperScriptTest {
         const val LIMIT_SECONDS = 30L
         val SYSTEM_PATH = listOf("/usr/bin", "/bin", "/usr/sbin", "/sbin")
         val SHELL_BOOKKEEPING = listOf("SHLVL", "_", "PWD", "OLDPWD")
+        const val INHERITED_KUBECONFIG = "/home/operator/.kube/config"
+        val KUBERNETES_TOOLS = listOf("kubectl", "helm", "cilium", "k9s")
 
         val WRAPPER: String =
             requireNotNull(ToolWrapperScriptTest::class.java.getResource(Constants.ToolWrappers.RESOURCE)) {
@@ -386,9 +479,21 @@ internal class ToolWrapperScriptTest {
 
         /** Every tool under `/bin/sh`, and under dash too where it is installed (it is `/bin/sh` on Debian and Ubuntu). */
         @JvmStatic
-        fun toolsAndShells(): List<Arguments> {
+        fun toolsAndShells(): List<Arguments> = Constants.ToolWrappers.TOOLS.withShells()
+
+        /** The four Kubernetes tools under each shell, as [toolsAndShells] does. */
+        @JvmStatic
+        fun kubernetesToolsAndShells(): List<Arguments> = KUBERNETES_TOOLS.withShells()
+
+        @JvmStatic
+        fun tools(): List<String> = Constants.ToolWrappers.TOOLS
+
+        @JvmStatic
+        fun kubernetesTools(): List<String> = KUBERNETES_TOOLS
+
+        private fun List<String>.withShells(): List<Arguments> {
             val shells = listOf("/bin/sh", "/bin/dash").filter { File(it).canExecute() }
-            return Constants.ToolWrappers.TOOLS.flatMap { tool -> shells.map { Arguments.of(tool, it) } }
+            return flatMap { tool -> shells.map { Arguments.of(tool, it) } }
         }
     }
 }

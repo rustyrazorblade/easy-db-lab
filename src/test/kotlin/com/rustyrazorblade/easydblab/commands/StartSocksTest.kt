@@ -50,6 +50,7 @@ class StartSocksTest : BaseKoinTest() {
                     ProcessSocksProxyService(
                         get(),
                         { _, _, _ -> true },
+                        get(),
                         verifyDelay = Duration.ofMillis(1),
                         processLauncher =
                             SshProcessLauncher { command, _ ->

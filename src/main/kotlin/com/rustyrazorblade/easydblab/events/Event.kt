@@ -6086,6 +6086,61 @@ sealed interface Event {
         data object NoTunnelRunning : Proxy {
             override fun toDisplayString(): String = "No SOCKS5 tunnel was running."
         }
+
+        /** Why a recorded tunnel was replaced rather than reused. */
+        @Serializable
+        enum class ReplaceReason(
+            val description: String,
+        ) {
+            /** It went to another control node than the one the cluster now has. */
+            @SerialName("gateway-changed")
+            GATEWAY_CHANGED("it went to another control node"),
+
+            /** Its process ran, but the end-to-end probe no longer reached the control node through it. */
+            @SerialName("unreachable")
+            UNREACHABLE("it no longer reached the control node"),
+
+            /** Its recorded process had exited. */
+            @SerialName("process-gone")
+            PROCESS_GONE("its process had exited"),
+
+            /** It was started with another workspace `sshConfig` path, so the workspace has moved. */
+            @SerialName("ssh-config-changed")
+            SSH_CONFIG_CHANGED("it used another sshConfig path"),
+        }
+
+        /**
+         * A recorded tunnel on [oldPort] failed the reuse check for [reason], and a new tunnel was
+         * started on [newPort]. The env file records the new port, but a browser keeps the old one.
+         */
+        @Serializable
+        @SerialName("Proxy.TunnelReplaced")
+        data class TunnelReplaced(
+            val oldPort: Int,
+            val newPort: Int,
+            val reason: ReplaceReason,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                """
+                |Replaced the SOCKS5 tunnel on localhost:$oldPort, because ${reason.description}. The new tunnel listens on localhost:$newPort.
+                |If your browser uses the tunnel, change its SOCKS v5 proxy port from $oldPort to $newPort.
+                """.trimMargin()
+        }
+
+        /**
+         * A tunnel being replaced, on [port], did not end when it was asked, then forced, to stop: the
+         * process [pid] still runs. The new tunnel is started anyway.
+         */
+        @Serializable
+        @SerialName("Proxy.SupersededTunnelStopFailed")
+        data class SupersededTunnelStopFailed(
+            val pid: Int,
+            val port: Int,
+        ) : Proxy {
+            override fun toDisplayString(): String = "Error: the replaced SOCKS5 tunnel on localhost:$port [PID $pid] did not stop. End it with 'kill -9 $pid'."
+
+            override fun isError(): Boolean = true
+        }
     }
 
     /**

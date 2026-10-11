@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -89,6 +90,7 @@ class ProcessSocksProxyServiceTest {
     ) = ProcessSocksProxyService(
         Context.forCli(tempDir).copy(workingDirectory = tempDir),
         SocksTunnelReachabilityProbe(Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS),
+        EventBus(),
         verifyDelay = VERIFY_DELAY,
         processLauncher = launcher,
         portSelector = portSelector,
@@ -242,6 +244,7 @@ class ProcessSocksProxyServiceTest {
     ) = ProcessSocksProxyService(
         Context.forCli(workspace).copy(workingDirectory = workspace),
         TunnelReachabilityProbe { _, _, _ -> true },
+        EventBus(),
         verifyDelay = VERIFY_DELAY,
         processLauncher = launcher,
         portSelector = portSelector,

@@ -40,6 +40,7 @@ class StartSocksReuseIntegrationTest : BaseKoinTest() {
                     ProcessSocksProxyService(
                         get(),
                         { _, _, _ -> true },
+                        get(),
                         processLauncher = SshProcessLauncher { _, _ -> error("a running tunnel must be reused, not replaced") },
                         envFile = get(),
                     )

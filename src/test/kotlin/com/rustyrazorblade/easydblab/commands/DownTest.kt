@@ -40,6 +40,7 @@ class DownTest : BaseKoinTest() {
                     ProcessSocksProxyService(
                         get(),
                         { _, _, _ -> false },
+                        get(),
                         envFile = get(),
                         tunnelProcesses =
                             TunnelProcessControl(

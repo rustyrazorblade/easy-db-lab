@@ -112,6 +112,7 @@ object TestModules {
                 ProcessSocksProxyService(
                     get(),
                     { _, _, _ -> false },
+                    get(),
                     processLauncher = SshProcessLauncher { _, _ -> error("tests never launch ssh") },
                     envFile = get(),
                 )

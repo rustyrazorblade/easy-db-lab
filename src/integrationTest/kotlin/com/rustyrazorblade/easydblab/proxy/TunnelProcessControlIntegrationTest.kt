@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.events.EventBus
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -142,7 +143,7 @@ internal class TunnelProcessControlIntegrationTest {
     private fun launchTunnel(port: Int): Pair<ProcessHandle, ProcessHandle> {
         ToolWrapperInstaller().install(workspace)
         val command =
-            ProcessSocksProxyService(Context.forCli(workspace).copy(workingDirectory = workspace), { _, _, _ -> false })
+            ProcessSocksProxyService(Context.forCli(workspace).copy(workingDirectory = workspace), { _, _, _ -> false }, EventBus())
                 .buildTunnelCommand(port, sshConfig.absolutePath, File(workspace, "ssh.log"), "control0")
         val tunnel = DefaultSshProcessLauncher.launch(command, File(workspace, "ssh.log")).toHandle()
         started += tunnel

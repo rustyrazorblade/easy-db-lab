@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.proxy
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.writeTextAtomically
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -81,18 +83,26 @@ private fun utcSeconds(instant: Instant): String = DateTimeFormatter.ISO_INSTANT
  * properties — those would make java.net route every socket (including the AWS SDK / S3) through the
  * tunnel, which breaks direct AWS access on corporate networks.
  *
- * Each verified start or reuse also records the port in the workspace's [ProxyEnvFile], which is
- * where the shell-side tool wrappers read it; a start removes the old port first, so a failed start
- * leaves none recorded. The state file is replaced atomically, so a reader never sees a partial one.
+ * Each verified start or reuse also records the port and the script's PID in the workspace's
+ * [ProxyEnvFile], which is where the shell-side tool wrappers read them; a start removes the old ones
+ * first, so a failed start leaves none recorded. The state file is replaced atomically, so a reader
+ * never sees a partial one.
+ *
+ * A recorded tunnel that is replaced changes the port a browser must use, so the replacement is
+ * reported here, with [Event.Proxy.TunnelReplaced], for every caller; so is a replaced tunnel that
+ * will not stop. The service emits these itself because each of its callers reaches the tunnel
+ * through [ensureRunning], and the stop failure happens before a new start that may then fail.
  *
  * The process is killed at cluster teardown by the `Down` command via `cleanupSocks5Proxy()`.
  *
+ * @param eventBus where the replacement of a recorded tunnel is reported
  * @param verifyAttempts how many times a fresh tunnel is probed before it counts as failed; the
  *   SSH route supplies it, because a tunnel over SSM Session Manager takes far longer to come up
  */
 class ProcessSocksProxyService(
     private val context: Context,
     private val reachabilityProbe: TunnelReachabilityProbe,
+    private val eventBus: EventBus,
     private val verifyDelay: Duration = Duration.ofMillis(VERIFY_DELAY_MS),
     private val processLauncher: SshProcessLauncher = DefaultSshProcessLauncher,
     private val portSelector: LocalPortSelector = LoopbackPortSelector(),
@@ -123,46 +133,69 @@ class ProcessSocksProxyService(
 
     private var lastVerified: VerifiedTunnel? = null
 
+    /** What the reuse check found for one source of a tunnel: the in-memory one, or the state file's. */
+    private sealed interface TunnelCheck {
+        /** The tunnel is kept; [state] is what the caller gets. */
+        data class Reused(
+            val state: SocksProxyState,
+        ) : TunnelCheck
+
+        /** The tunnel on [port] was not reusable for [reason], and has been stopped. */
+        data class Replaced(
+            val port: Int,
+            val reason: Event.Proxy.ReplaceReason,
+        ) : TunnelCheck
+
+        /** There was no tunnel to check. */
+        data object Absent : TunnelCheck
+    }
+
     override fun ensureRunning(gatewayHost: ClusterHost): SocksProxyState =
         lock.withLock {
-            val current = state
-            if (current != null && isAlive(pid)) {
-                reuseInMemory(current, gatewayHost)?.let { return@withLock it }
-            }
+            val inMemory = state?.takeIf { isAlive(pid) }?.let { checkInMemory(it, gatewayHost) } ?: TunnelCheck.Absent
+            if (inMemory is TunnelCheck.Reused) return@withLock inMemory.state
 
-            // Try to reuse from state file
             val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
             val sshConfigPath = File(context.workingDirectory, "sshConfig").absolutePath
+            val recorded = checkStateFile(stateFile, gatewayHost, sshConfigPath)
+            if (recorded is TunnelCheck.Reused) return@withLock recorded.state
 
-            if (stateFile.exists()) {
-                @Suppress("TooGenericExceptionCaught")
-                try {
-                    val loaded = json.decodeFromString<Socks5ProxyStateFile>(stateFile.readText())
-                    if (isValidProxy(loaded, gatewayHost, sshConfigPath)) {
-                        log.info { "Reusing existing SOCKS5 proxy on port ${loaded.port} [PID ${loaded.pid}]" }
-                        val reused = buildProxyState(loaded.port, gatewayHost).copy(reused = true)
-                        state = reused
-                        pid = loaded.pid
-                        markVerified(loaded.pid, loaded.port)
-                        applySystemProperties(loaded.port)
-                        envFile.recordTunnel(loaded.port, loaded.pid.toLong())
-                        return@withLock reused
-                    } else {
-                        log.info { "Stale SOCKS5 proxy state, starting fresh" }
-                        // The recorded proxy is not reusable (e.g. a live PID whose port stopped
-                        // accepting — a zombie tunnel). startNewProxy() below overwrites the state
-                        // file with a new PID, so this one becomes unrecorded and `Down` could
-                        // never find it. Kill it now, before it is forgotten, or it leaks and
-                        // survives teardown (issue #741).
-                        terminateStaleProxy(loaded)
-                    }
-                } catch (e: Exception) {
-                    log.warn(e) { "Failed to read proxy state file, starting fresh" }
-                }
+            val started = startNewProxy(gatewayHost, sshConfigPath, stateFile)
+            // The in-memory tunnel is the one the caller was using, so its reason comes first.
+            (inMemory as? TunnelCheck.Replaced ?: recorded as? TunnelCheck.Replaced)?.let { replaced ->
+                eventBus.emit(Event.Proxy.TunnelReplaced(replaced.port, started.localPort, replaced.reason))
             }
-
-            startNewProxy(gatewayHost, sshConfigPath, stateFile)
+            started
         }
+
+    /**
+     * The tunnel recorded in [stateFile], reused when it is still valid; otherwise it is stopped and
+     * reported as replaced. A missing or unreadable state file has no tunnel to check.
+     */
+    private fun checkStateFile(
+        stateFile: File,
+        gatewayHost: ClusterHost,
+        sshConfigPath: String,
+    ): TunnelCheck {
+        val loaded = readStateFile(stateFile) ?: return TunnelCheck.Absent
+        val reason = staleReason(loaded, gatewayHost, sshConfigPath)
+        if (reason == null) {
+            log.info { "Reusing existing SOCKS5 proxy on port ${loaded.port} [PID ${loaded.pid}]" }
+            val reused = buildProxyState(loaded.port, gatewayHost).copy(reused = true)
+            state = reused
+            pid = loaded.pid
+            markVerified(loaded.pid, loaded.port)
+            applySystemProperties(loaded.port)
+            envFile.recordTunnel(loaded.port, loaded.pid.toLong())
+            return TunnelCheck.Reused(reused)
+        }
+        log.info { "Stale SOCKS5 proxy state (${reason.description}), starting fresh" }
+        // startNewProxy() overwrites the state file with a new PID, so this tunnel becomes
+        // unrecorded and `Down` could never find it. Stop it now, before it is forgotten, or it
+        // leaks and survives teardown (issue #741).
+        terminateStaleProxy(loaded)
+        return TunnelCheck.Replaced(loaded.port, reason)
+    }
 
     override fun start(gatewayHost: ClusterHost): SocksProxyState = ensureRunning(gatewayHost)
 
@@ -195,34 +228,33 @@ class ProcessSocksProxyService(
         }
 
     /**
-     * The in-memory tunnel, when it is still to [gatewayHost] and still carries traffic end-to-end;
-     * otherwise null, after stopping it. A live ssh with an open local port can still be a zombie
-     * tunnel (its SSH connection died silently), so the same probe isValidProxy() uses on the
-     * state-file path decides. A tunnel that passed the probe less than
+     * The in-memory tunnel, reused when it is still to [gatewayHost] and still carries traffic
+     * end-to-end; otherwise it is stopped and reported as replaced. A live ssh with an open local port
+     * can still be a zombie tunnel (its SSH connection died silently), so the same probe the
+     * state-file path uses decides. A tunnel that passed the probe less than
      * [Constants.Proxy.REUSE_PROBE_FRESHNESS] ago is reused without probing again, because cluster
      * HTTP clients ask for the tunnel on every request.
      */
-    private fun reuseInMemory(
+    private fun checkInMemory(
         current: SocksProxyState,
         gatewayHost: ClusterHost,
-    ): SocksProxyState? {
-        val replaceReason =
+    ): TunnelCheck {
+        val reason =
             when {
-                current.gatewayHost.privateIp != gatewayHost.privateIp ->
-                    "goes to ${current.gatewayHost.privateIp}, not ${gatewayHost.alias} (${gatewayHost.privateIp})"
+                current.gatewayHost.privateIp != gatewayHost.privateIp -> Event.Proxy.ReplaceReason.GATEWAY_CHANGED
                 isFreshlyVerified(pid, current.localPort) -> null
                 reachesGateway(current.localPort, gatewayHost) -> null.also { markVerified(pid, current.localPort) }
-                else -> "no longer reaches ${gatewayHost.alias}"
+                else -> Event.Proxy.ReplaceReason.UNREACHABLE
             }
-        if (replaceReason == null) {
+        if (reason == null) {
             log.debug { "SOCKS5 proxy already running in-memory on port ${current.localPort} [PID $pid]" }
             envFile.recordTunnel(current.localPort, pid.toLong())
-            return current.copy(reused = true)
+            return TunnelCheck.Reused(current.copy(reused = true))
         }
-        log.info { "SOCKS5 proxy on port ${current.localPort} [PID $pid] $replaceReason; replacing it" }
+        log.info { "SOCKS5 proxy on port ${current.localPort} [PID $pid] is not reusable (${reason.description}); replacing it" }
         inMemoryRecord()?.let { terminateStaleProxy(it) }
         forgetInMemory()
-        return null
+        return TunnelCheck.Replaced(current.localPort, reason)
     }
 
     /** Records that the tunnel [tunnelPid] on [port] passed the end-to-end probe just now. */
@@ -454,29 +486,19 @@ class ProcessSocksProxyService(
         log.debug { "Published SOCKS5 proxy port $port via ${Constants.Proxy.PORT_PROPERTY} (global socksProxyHost left unset)" }
     }
 
-    private fun isValidProxy(
+    /** Why the recorded tunnel [loaded] cannot be reused for [gatewayHost]; null when it can. */
+    private fun staleReason(
         loaded: Socks5ProxyStateFile,
         gatewayHost: ClusterHost,
         sshConfigPath: String,
-    ): Boolean {
-        if (!isAlive(loaded.pid)) {
-            log.debug { "Proxy PID ${loaded.pid} is no longer alive" }
-            return false
+    ): Event.Proxy.ReplaceReason? =
+        when {
+            !isAlive(loaded.pid) -> Event.Proxy.ReplaceReason.PROCESS_GONE
+            loaded.sshConfig != sshConfigPath -> Event.Proxy.ReplaceReason.SSH_CONFIG_CHANGED
+            loaded.controlIP != gatewayHost.privateIp -> Event.Proxy.ReplaceReason.GATEWAY_CHANGED
+            !reachesGateway(loaded.port, gatewayHost) -> Event.Proxy.ReplaceReason.UNREACHABLE
+            else -> null
         }
-        if (loaded.sshConfig != sshConfigPath) {
-            log.debug { "SSH config path changed (was ${loaded.sshConfig}, now $sshConfigPath)" }
-            return false
-        }
-        if (loaded.controlIP != gatewayHost.privateIp) {
-            log.debug { "Control IP changed (was ${loaded.controlIP}, now ${gatewayHost.privateIp})" }
-            return false
-        }
-        if (!reachesGateway(loaded.port, gatewayHost)) {
-            log.info { "SOCKS5 proxy on port ${loaded.port} [PID ${loaded.pid}] no longer reaches ${gatewayHost.alias}; replacing it" }
-            return false
-        }
-        return true
-    }
 
     /**
      * Whether the running tunnel on [port] still carries traffic to [gatewayHost]'s `sshd`, by the same
@@ -502,7 +524,8 @@ class ProcessSocksProxyService(
      *
      * The PID is signaled only when it is still that tunnel, by the same check `stop()` uses
      * ([TunnelProcessControl]): the OS may have given a dead tunnel's PID to another program.
-     * Stopping it never blocks starting its replacement: a tunnel that will not end is logged.
+     * Stopping it never blocks starting its replacement: a tunnel that will not end is logged and
+     * reported with [Event.Proxy.SupersededTunnelStopFailed], which names the PID to kill.
      *
      * Internal (not private) purely so a test can drive it without exercising the whole
      * [ensureRunning] state-file path.
@@ -511,7 +534,10 @@ class ProcessSocksProxyService(
         when (val result = tunnelProcesses.stop(stale)) {
             is TunnelStopResult.Stopped -> log.info { "Terminated superseded SOCKS5 proxy process [PID ${result.pid}]" }
             TunnelStopResult.NotRunning -> log.debug { "Superseded SOCKS5 proxy [PID ${stale.pid}] is no longer running" }
-            is TunnelStopResult.StopFailed -> log.warn { "Superseded SOCKS5 proxy process [PID ${result.pid}] did not stop" }
+            is TunnelStopResult.StopFailed -> {
+                log.warn { "Superseded SOCKS5 proxy process [PID ${result.pid}] did not stop" }
+                eventBus.emit(Event.Proxy.SupersededTunnelStopFailed(pid = result.pid, port = stale.port))
+            }
         }
     }
 

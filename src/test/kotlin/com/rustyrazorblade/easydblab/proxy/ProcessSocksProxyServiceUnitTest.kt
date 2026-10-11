@@ -3,6 +3,10 @@ package com.rustyrazorblade.easydblab.proxy
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.assertj.core.api.Assertions.assertThat
@@ -75,6 +79,22 @@ class ProcessSocksProxyServiceUnitTest {
             availabilityZone = "us-east-1a",
         )
 
+    /** Every event the services under test emitted, in order. */
+    private val events = mutableListOf<Event>()
+
+    private val eventBus =
+        EventBus().apply {
+            addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        events += envelope.event
+                    }
+
+                    override fun close() = Unit
+                },
+            )
+        }
+
     @BeforeEach
     fun setUp() {
         File(tempDir, "sshConfig").writeText("Host control0\n  Hostname 10.0.1.5\n")
@@ -102,6 +122,7 @@ class ProcessSocksProxyServiceUnitTest {
     ) = ProcessSocksProxyService(
         Context.forCli(tempDir).copy(workingDirectory = tempDir),
         probe,
+        eventBus,
         verifyDelay = VERIFY_DELAY,
         processLauncher = launcher,
         portSelector = portSelector,
@@ -457,6 +478,7 @@ class ProcessSocksProxyServiceUnitTest {
         val recorded =
             json.decodeFromString<Socks5ProxyStateFile>(File(tempDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE).readText())
         assertThat(recorded.port).isEqualTo(41234)
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(52000, 41234, Event.Proxy.ReplaceReason.PROCESS_GONE))
     }
 
     @Test
@@ -559,6 +581,7 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(state.localPort).isEqualTo(NEW_PORT)
         assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(NEW_PORT, livePid)))
         assertThat(json.decodeFromString<Socks5ProxyStateFile>(stateFile().readText()).port).isEqualTo(NEW_PORT)
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.UNREACHABLE))
     }
 
     @Test
@@ -644,6 +667,7 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(second.localPort).isEqualTo(NEW_PORT)
         assertThat(ProxyEnvFile(tempDir).read().tunnel?.port).isEqualTo(NEW_PORT)
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("$NEW_PORT")
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.UNREACHABLE))
     }
 
     /** A clock the test moves by hand, so the probe freshness window is tested without sleeping. */
@@ -796,6 +820,49 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(state.reused).isFalse()
         assertThat(state.gatewayHost.privateIp).isEqualTo("10.0.1.9")
         assertThat(ProxyEnvFile(tempDir).read().tunnel?.port).isEqualTo(NEW_PORT)
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.GATEWAY_CHANGED))
+    }
+
+    @Test
+    fun `a superseded tunnel that will not stop is reported with its PID, and the new tunnel still starts`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val hung = FakeTunnelProcess.tunnelScript(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath, endsOnSignal = false)
+
+        val state =
+            service(
+                probe = PortProbe(NEW_PORT),
+                launcher = { _, _ -> aliveProcess() },
+                portSelector = { NEW_PORT },
+                tunnelProcesses = TunnelProcessControl(lookup = { pid -> hung.handle.takeIf { pid == livePid } }, stopWait = Duration.ofMillis(50)),
+            ).ensureRunning(testHost)
+
+        assertThat(state.localPort).isEqualTo(NEW_PORT)
+        assertThat(events).containsExactly(
+            Event.Proxy.SupersededTunnelStopFailed(pid = livePid.toInt(), port = STOP_PORT),
+            Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.UNREACHABLE),
+        )
+        assertThat(events.first().toDisplayString()).contains("kill -9 $livePid")
+        assertThat(events.last().toDisplayString()).contains("localhost:$NEW_PORT").contains("browser")
+    }
+
+    @Test
+    fun `a replacement that fails to start reports no replaced tunnel`() {
+        writeStateFile(pid = -1, port = STOP_PORT)
+
+        assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }, tunnelProcesses = noProcesses).ensureRunning(testHost) }
+            .isInstanceOf(IllegalStateException::class.java)
+
+        assertThat(events).isEmpty()
+    }
+
+    @Test
+    fun `a first start and a reuse report no replaced tunnel`() {
+        val svc = inMemoryService(PortProbe(STOP_PORT), ManualClock(), ArrayDeque(listOf(STOP_PORT)))
+
+        svc.ensureRunning(testHost)
+        svc.ensureRunning(testHost)
+
+        assertThat(events).isEmpty()
     }
 
     @Test

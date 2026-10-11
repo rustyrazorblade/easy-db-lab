@@ -10,8 +10,8 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownMode
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
-import com.rustyrazorblade.easydblab.proxy.Socks5ProxyStateFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.TunnelStopResult
 import com.rustyrazorblade.easydblab.services.BackendState
 import com.rustyrazorblade.easydblab.services.TailFlushFailed
 import com.rustyrazorblade.easydblab.services.TailSignal
@@ -22,10 +22,8 @@ import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.serialization.json.Json
 import org.koin.core.component.inject
 import picocli.CommandLine
-import java.io.File
 import java.util.Scanner
 
 /**
@@ -543,43 +541,18 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * Cleanup SOCKS5 proxy if it exists.
-     *
-     * Resolves the state file against [Context.workingDirectory] — the same location
-     * [com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService] writes it to. Resolving it
-     * against the process cwd instead would miss the file whenever `workingDirectory` is set
-     * explicitly rather than inherited from cwd (long-running `Server`/`Repl`, tests), orphaning
-     * the `ssh -N -D` tunnel process at teardown.
+     * Stops the SOCKS5 tunnel through [SocksProxyService.stop], the same path `stop-socks` takes:
+     * it ends the `ssh -N -D` process, deletes `.socks5-proxy-state` and removes the port from the
+     * proxy env file, all in [Context.workingDirectory]. Resolving them against the process cwd
+     * instead would miss them whenever `workingDirectory` is set explicitly (long-running
+     * `Server`/`Repl`, tests), orphaning the tunnel process at teardown.
      */
-    @Suppress("TooGenericExceptionCaught")
     internal fun cleanupSocks5Proxy() {
-        val proxyStateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
-        if (!proxyStateFile.exists()) {
-            return
-        }
-
-        try {
-            val proxyState = Json.decodeFromString<Socks5ProxyStateFile>(proxyStateFile.readText())
-
-            // Try to kill the process
-            try {
-                val process = ProcessBuilder("kill", proxyState.pid.toString()).start()
-                process.waitFor()
-                if (process.exitValue() == 0) {
-                    eventBus.emit(Event.Teardown.Socks5ProxyStopped(proxyState.pid))
-                } else {
-                    log.warn { "Failed to kill SOCKS5 proxy process ${proxyState.pid}, it may already be stopped" }
-                }
-            } catch (e: Exception) {
-                log.warn(e) { "Error killing SOCKS5 proxy process ${proxyState.pid}" }
-            }
-
-            // Remove the state file
-            proxyStateFile.delete()
-        } catch (e: Exception) {
-            log.warn(e) { "Failed to read or cleanup SOCKS5 proxy state, continuing anyway" }
-            // Try to delete the file anyway
-            proxyStateFile.delete()
+        when (val result = socksProxyService.stop()) {
+            is TunnelStopResult.Stopped -> eventBus.emit(Event.Teardown.Socks5ProxyStopped(result.pid))
+            TunnelStopResult.NotRunning -> Unit
+            // The teardown goes on; the tunnel's PID stays recorded so it can still be found and stopped.
+            is TunnelStopResult.StopFailed -> eventBus.emit(Event.Teardown.Socks5ProxyStopFailed(result.pid))
         }
     }
 

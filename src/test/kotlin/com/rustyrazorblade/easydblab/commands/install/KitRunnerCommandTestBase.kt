@@ -13,11 +13,13 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.DefaultKitEndpointResolver
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.KitEndpointResolver
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
+import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.KitWorkloadProbe
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
@@ -92,6 +94,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
                 single<MetricsRegistryService> { mockMetricsRegistryService }
                 single<KitHookExecutor> { mockKitHookExecutor }
                 single<KitEndpointResolver> { DefaultKitEndpointResolver() }
+                single { KitProcessEnvironment(ToolWrapperInstaller()) }
                 single { KitWorkloadProbe(mockKubeService, mock(), pollInterval = Duration.ZERO, maxPolls = STOP_WAIT_POLLS) }
             },
         )
@@ -104,6 +107,7 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
         whenever(mockMetricsRegistryService.register(any(), any(), any())).thenReturn(Result.success(Unit))
         whenever(mockMetricsRegistryService.deregister(any(), any())).thenReturn(Result.success(Unit))
         workingDir = get<Context>().workingDirectory
+        File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).writeText(WORKSPACE_KUBECONFIG)
     }
 
     protected fun writeScript(
@@ -166,5 +170,8 @@ abstract class KitRunnerCommandTestBase : BaseKoinTest() {
     protected companion object {
         /** How many times the injected probe polls a stopping kit before giving up. */
         const val STOP_WAIT_POLLS = 3
+
+        /** The workspace kubeconfig every kit process needs; its content is never read by these tests. */
+        const val WORKSPACE_KUBECONFIG = "apiVersion: v1\nkind: Config\n"
     }
 }

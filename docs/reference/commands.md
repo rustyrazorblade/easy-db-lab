@@ -104,6 +104,12 @@ Initialize a directory for easy-db-lab.
 easy-db-lab init [cluster-name] [options]
 ```
 
+Use a new, empty directory as the workspace, for example under `clusters/`. `init` fails, and
+writes nothing, in a directory that already has a `bin/` file or directory: easy-db-lab writes its
+tool wrappers into the workspace's `bin/`. This also keeps a source checkout from being used as a
+workspace. With `--clean`, the check runs after the cleanup, which removes a `bin/` that holds only
+easy-db-lab's wrappers.
+
 The database and application node groups are configured through a namespaced
 `--db.*` / `--app.*` scheme. Every pre-existing flag continues to work as an
 **alias** carrying its established default. When both a namespaced option and its
@@ -216,6 +222,32 @@ Clean up generated files from the current directory.
 ```bash
 easy-db-lab clean
 ```
+
+In `bin/` it deletes only the tool wrappers and their marker, and removes `bin/` only when nothing
+else is left in it.
+
+### start-socks
+
+Start the SOCKS5 tunnel to the cluster, or reuse the one that runs, record its port for the tool
+wrappers and `env.sh`, and print the port for browser setup.
+
+```bash
+easy-db-lab start-socks
+```
+
+On a Tailscale cluster it starts nothing and says that no tunnel is needed. See
+[SOCKS Proxy](../user-guide/network-connectivity.md#socks-proxy-alternative).
+
+### stop-socks
+
+Stop the SOCKS5 tunnel and remove its port from the record, without tearing the cluster down.
+Wrapped tools then fail with a pointer to `start-socks` until the tunnel starts again.
+
+```bash
+easy-db-lab stop-socks
+```
+
+If the tunnel process does not end after `stop-socks` asks and then forces it to, `stop-socks` prints its PID and exits non-zero.  The PID and port stay recorded, so stop the process with `kill <pid>` and run `stop-socks` again.  If no tunnel runs, `stop-socks` says so and succeeds.
 
 ### hosts
 

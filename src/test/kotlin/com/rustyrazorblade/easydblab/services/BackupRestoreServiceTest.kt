@@ -6,6 +6,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.proxy.ProxyEnv
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
@@ -83,6 +85,27 @@ internal class BackupRestoreServiceTest {
 
             verify(mockVpcService).getVpcTags(vpcId)
             verify(mockClusterBackupService).restoreAll(eq(tempDir.absolutePath), any())
+        }
+
+        @Test
+        fun `a restored workspace gets the tool wrappers and the cluster's Tailscale flag`() {
+            val vpcId = "vpc-12345"
+            whenever(mockClusterStateManager.exists()).thenReturn(false, true)
+            whenever(mockVpcService.getVpcTags(vpcId)).thenReturn(
+                mapOf("ClusterId" to "test-cluster-id", "Name" to "test-cluster", Constants.Vpc.BUCKET_TAG_KEY to "test-bucket"),
+            )
+            whenever(mockClusterBackupService.restoreAll(any(), any()))
+                .thenReturn(Result.success(RestoreResult(successfulTargets = setOf(BackupTarget.STATE_JSON), filesRestored = 1)))
+            whenever(mockClusterStateManager.load()).thenReturn(createClusterState(s3Bucket = "test-bucket").copy(tailscaleActive = true))
+
+            val result = service.restoreFromVpc(vpcId, tempDir.absolutePath)
+
+            assertThat(result.isSuccess).isTrue()
+            assertThat(ProxyEnvFile(tempDir).read()).isEqualTo(ProxyEnv(tailscaleActive = true, socksPort = null))
+            assertThat(File(tempDir, Constants.ToolWrappers.DIRECTORY).list())
+                .containsExactlyInAnyOrderElementsOf(
+                    Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER,
+                )
         }
 
         @Test

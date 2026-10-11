@@ -15,7 +15,7 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -89,7 +89,7 @@ class DefaultCommandExecutor(
     private val requirementCheckDeps: RequirementCheckDeps,
     private val resourceManager: ResourceManager,
     private val eventBus: EventBus,
-    private val socksProxyService: SocksProxyService,
+    private val proxyPreflight: ProxyPreflight,
     private val proxyAvailability: ProxyAvailability,
     private val profileSetupProvider: ProfileSetupCommandProvider,
 ) : CommandExecutor,
@@ -153,7 +153,8 @@ class DefaultCommandExecutor(
 
     /**
      * Starts the SOCKS5 proxy for commands that carry [RequiresProxy] (see [checkRequirements]),
-     * when the cluster is provisioned, infrastructure is UP, and Tailscale is not active.
+     * when the cluster is provisioned, infrastructure is UP, and Tailscale is not active, and records
+     * the cluster's Tailscale flag for the shell-side tool wrappers (see [ProxyPreflight]).
      *
      * A failure to establish the proxy propagates to the caller rather than being swallowed:
      * the annotation is the assertion that the command cannot proceed without a working tunnel,
@@ -161,21 +162,7 @@ class DefaultCommandExecutor(
      * a more confusing Fabric8/HTTP error later. `Down` is never annotated, so it never starts a
      * tunnel it would immediately have to tear down.
      */
-    private fun ensureProxyRunning() {
-        if (!clusterStateManager.exists()) return
-        val state =
-            try {
-                clusterStateManager.load()
-            } catch (e: Exception) {
-                log.debug(e) { "Could not load cluster state for proxy startup check" }
-                return
-            }
-        if (!state.isInfrastructureUp()) return
-        if (state.isTailscaleEnabled()) return
-        val controlHost = state.getControlHost() ?: return
-
-        socksProxyService.ensureRunning(controlHost)
-    }
+    private fun ensureProxyRunning() = proxyPreflight.ensureTunnel()
 
     /**
      * Executes a command with the complete lifecycle:

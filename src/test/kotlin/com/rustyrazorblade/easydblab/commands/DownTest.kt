@@ -2,19 +2,55 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.proxy.FakeTunnelProcess
+import com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ProxyEnv
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.TunnelProcessControl
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.ResourceLock
+import org.koin.core.module.Module
+import org.koin.dsl.module
+import org.koin.test.get
 import java.io.File
-import java.util.concurrent.TimeUnit
+import java.time.Duration
 
 class DownTest : BaseKoinTest() {
+    /** The only process the tunnel stop can see; a test cannot start a real `ssh -N -D`. */
+    private var process: FakeTunnelProcess? = null
+
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                single { ProxyEnvFile(get<Context>().workingDirectory) }
+                single<SocksProxyService> {
+                    ProcessSocksProxyService(
+                        get(),
+                        { _, _, _ -> false },
+                        envFile = get(),
+                        tunnelProcesses =
+                            TunnelProcessControl(
+                                lookup = { pid -> process?.takeIf { it.pid == pid }?.handle },
+                                stopWait = Duration.ofMillis(50),
+                            ),
+                    )
+                }
+            },
+        )
+
     @BeforeEach
     @AfterEach
     fun clearProxyProperty() {
@@ -33,72 +69,86 @@ class DownTest : BaseKoinTest() {
     }
 
     @Test
-    fun `Down command should clean up SOCKS5 proxy state file`(
-        @TempDir tempDir: File,
-    ) {
-        // Create a temporary proxy state file
-        val proxyStateFile = File(tempDir, ".socks5-proxy-state")
-        val proxyStateJson =
-            """
-            {
-              "pid": 12345,
-              "port": 1080,
-              "controlHost": "control0",
-              "controlIP": "54.1.2.5",
-              "clusterName": "test",
-              "startTime": "2025-01-19T10:30:00Z",
-              "sshConfig": "/path/to/sshConfig"
-            }
-            """.trimIndent()
-        proxyStateFile.writeText(proxyStateJson)
+    fun `cleanupSocks5Proxy resolves the state file against workingDirectory and stops the tunnel`() {
+        // The state file lives in the cluster working directory, NOT the process cwd. The test
+        // process cwd is the project root (never the temp workingDirectory), so a cwd-relative
+        // resolver would miss the file, skip the stop, and orphan the ssh tunnel (issue #738).
+        val tunnel = FakeTunnelProcess.tunnelScript(TUNNEL_PID, TUNNEL_PORT, sshConfig()).also { process = it }
+        val proxyStateFile = recordTunnel()
+        val events = captureEvents()
 
-        assertThat(proxyStateFile).exists()
+        Down().cleanupSocks5Proxy()
 
-        // Simulate cleanup (the Down command would call cleanupSocks5Proxy)
-        // In a real scenario, it would try to kill the process too, but we can't test that easily
-        // So we just verify file deletion works
-        if (proxyStateFile.exists()) {
-            proxyStateFile.delete()
-        }
-
+        assertThat(tunnel.handle.isAlive).withFailMessage("cleanupSocks5Proxy should have stopped the tunnel").isFalse()
         assertThat(proxyStateFile).doesNotExist()
+        assertThat(events).containsExactly(Event.Teardown.Socks5ProxyStopped(TUNNEL_PID.toInt()))
     }
 
     @Test
-    fun `cleanupSocks5Proxy resolves the state file against workingDirectory and kills the tunnel`() {
-        // The state file lives in the cluster working directory, NOT the process cwd. This test
-        // proves Down resolves it against context.workingDirectory: the test process cwd is the
-        // project root (never the temp workingDirectory), so a cwd-relative resolver would miss
-        // the file, skip the kill, and orphan the ssh tunnel (issue #738).
-        val workingDir = context.workingDirectory
+    fun `cleanupSocks5Proxy reports nothing when no tunnel is recorded`() {
+        val events = captureEvents()
 
-        // A real, killable stand-in for the `ssh -N -D` tunnel process.
-        val tunnel = ProcessBuilder("sleep", "60").start()
-        try {
-            val proxyStateFile = File(workingDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
-            proxyStateFile.writeText(
+        Down().cleanupSocks5Proxy()
+
+        assertThat(events).isEmpty()
+    }
+
+    @Test
+    fun `cleanupSocks5Proxy reports a tunnel that will not stop and keeps it recorded`() {
+        process = FakeTunnelProcess.tunnelScript(TUNNEL_PID, TUNNEL_PORT, sshConfig(), endsOnSignal = false)
+        val proxyStateFile = recordTunnel()
+        val events = captureEvents()
+
+        Down().cleanupSocks5Proxy()
+
+        assertThat(proxyStateFile).exists()
+        assertThat(events).containsExactly(Event.Teardown.Socks5ProxyStopFailed(TUNNEL_PID.toInt()))
+    }
+
+    private fun sshConfig() = File(context.workingDirectory, "sshConfig").absolutePath
+
+    private fun recordTunnel(): File =
+        File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE).apply {
+            writeText(
                 """
                 {
-                  "pid": ${tunnel.pid()},
-                  "port": 1080,
+                  "pid": $TUNNEL_PID,
+                  "port": $TUNNEL_PORT,
                   "controlHost": "control0",
                   "controlIP": "10.0.1.5",
                   "clusterName": "test",
                   "startTime": "2025-01-19T10:30:00Z",
-                  "sshConfig": "$workingDir/sshConfig"
+                  "sshConfig": "${sshConfig()}"
                 }
                 """.trimIndent(),
             )
-
-            Down().cleanupSocks5Proxy()
-
-            assertThat(tunnel.waitFor(5, TimeUnit.SECONDS))
-                .withFailMessage("cleanupSocks5Proxy should have killed the tunnel process")
-                .isTrue()
-            assertThat(proxyStateFile).doesNotExist()
-        } finally {
-            tunnel.destroyForcibly()
         }
+
+    private fun captureEvents(): List<Event> {
+        val events = mutableListOf<Event>()
+        get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return events
+    }
+
+    @Test
+    fun `cleanupSocks5Proxy removes the port from the proxy env file and keeps the Tailscale flag`() {
+        val envFile =
+            ProxyEnvFile(context.workingDirectory).apply {
+                recordTailscale(active = false)
+                recordPort(41234)
+            }
+
+        Down().cleanupSocks5Proxy()
+
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
     }
 
     @Test
@@ -254,5 +304,10 @@ class DownTest : BaseKoinTest() {
         assertThat(reloadedState.clusterId).isEqualTo(clusterId)
         assertThat(reloadedState.createdAt).isEqualTo(createdAt)
         assertThat(reloadedState.infrastructureStatus).isEqualTo(InfrastructureStatus.DOWN)
+    }
+
+    private companion object {
+        const val TUNNEL_PID = 4242L
+        const val TUNNEL_PORT = 41234
     }
 }

@@ -224,7 +224,7 @@ Files written:
 
 Next steps:
   [ ] Run: easy-db-lab kit list   (verify the kit appears)
-  [ ] Add --<name> flag to bin/end-to-end-test and validate on a live cluster before merging
+  [ ] Validate on a live cluster before merging (/agent-test or an /easy-db-lab:plan test plan)
 ```
 
 ---

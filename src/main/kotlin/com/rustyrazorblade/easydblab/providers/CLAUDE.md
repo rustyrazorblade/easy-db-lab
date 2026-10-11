@@ -137,12 +137,17 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
 - **OpenSSH paths** (the SOCKS tunnel, every `env.sh` helper) use `sshConfig`.
   `ClusterConfigurationService` writes `route.proxyCommand(host)` into each `Host` block (and
   into the fallback config `env.sh` writes when `sshConfig` is missing). Under `ssm` that is
-  `aws ssm start-session --document-name AWS-StartSSHSession`. The `Hostname` line must stay
-  directly after `Host`, because `env.sh` reads it with `grep -A 1`.
-  Under `ssm` the config also carries global `ServerAliveInterval`/`ServerAliveCountMax`, because
-  Session Manager drops a session after 20 idle minutes and a quiet SOCKS tunnel would otherwise die,
-  and `ConnectTimeout 30` (`Constants.Ssm.SSH_CONNECT_TIMEOUT_SECONDS`), because keepalives start only
-  after auth and a session that passes no data would otherwise hang ssh at the banner exchange.
+  `aws ssm start-session --document-name AWS-StartSSHSession`. Each `Hostname` line still
+  directly follows its `Host` line. Nothing reads the file that way any more (the old `env.sh`
+  `start-socks5` read it with `grep -A 1`; the CLI now manages the tunnel), but the order is
+  harmless and the `ssm-ssh-transport` spec scenario still names it.
+  Under every transport the config carries global `ServerAliveInterval`/`ServerAliveCountMax`
+  (`Constants.Ssh`): an idle SOCKS tunnel's connection can die silently (a laptop sleep or a network
+  change on a direct connection, Session Manager's 20-minute idle timeout under `ssm`), and without
+  keepalives ssh lingers with its local port open; with them it exits within about 90s. Under `ssm`
+  the config also carries `ConnectTimeout 30` (`Constants.Ssm.SSH_CONNECT_TIMEOUT_SECONDS`), because
+  keepalives start only after auth and a session that passes no data would otherwise hang ssh at the
+  banner exchange.
   Each `ProxyCommand` runs through `edl-ssm-proxy` (`ssm/SsmProxyWrapper`, the packaged
   `ssm/edl-ssm-proxy.sh` written into the profile dir): the AWS CLI does not pass a termination on
   to `session-manager-plugin`, and a stuck plugin ignores its stdin closing, so the wrapper ends the

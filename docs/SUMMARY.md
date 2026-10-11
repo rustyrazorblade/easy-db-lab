@@ -53,7 +53,6 @@
 - [Publishing](development/publishing.md)
 - [Building Cassandra Refs](development/building-cassandra-refs.md)
 - [Testing](development/testing.md)
-- [End-to-End Testing](development/end-to-end-testing.md)
 - [Spark](development/spark.md)
 - [Log Infrastructure](reference/log-infrastructure.md)
 - [Pyroscope Configuration](reference/pyroscope-configuration.md)

@@ -15,7 +15,7 @@ Command/Service → eventBus.emit(Event.Domain.Type(...)) → EventBus → Event
 
 | File | Purpose |
 |------|---------|
-| `Event.kt` | Sealed interface hierarchy with ~230+ concrete event types across 35 domain interfaces |
+| `Event.kt` | Sealed interface hierarchy: one sealed sub-interface per domain (listed below), each holding that domain's concrete event types |
 | `EventBus.kt` | Central dispatcher: `emit(event)` → wraps in `EventEnvelope` → dispatches to listeners |
 | `EventContext.kt` | Stack-based `ThreadLocal` for tracking current command name |
 | `EventEnvelope.kt` | Wraps `Event` + timestamp + commandName; serializable to JSON |
@@ -63,6 +63,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Server.*` — Server lifecycle (shutdown when the cluster's VPC no longer exists)
 - `Event.Sql.*` — Shared SQL query results, used by every SQL kit command
 - `Event.Compactor.*` — The account compactor service: `Started` (created, or scaled from 0 to 1 task), `AlreadyRunning` (left as it is), `Starting` (no task runs yet, but one is pending or none has stopped; left as it is), `NoTaskRunning` (an error: a task is asked for, none runs or is pending, and the latest stopped; left as it is), `Stopped` (desired count set to 0; emitted only after the update), `AccessDenied` (an error: ECS refused a call because the operator lacks the `EasyDBLabCompactor` policy; the call then fails), `NotCreated` (a stop found no service and changed nothing), `KeptRunning` (`down` found other clusters that use the account bucket)
+- `Event.Proxy.*` — The SOCKS5 tunnel as `start-socks` and `stop-socks` manage it: `TunnelReady` (the port, and whether a running tunnel was reused), `TunnelNotNeeded` (a Tailscale cluster), `NoRunningCluster` (an error: nothing to tunnel to), `TunnelStopped` (the PID), `TunnelStopFailed` (an error: the verified tunnel process did not end; it stays recorded), `NoTunnelRunning` (nothing recorded, or the recorded PID is gone or now another process's). `down` reports the same stop as `Teardown.Socks5ProxyStopped` or `Teardown.Socks5ProxyStopFailed`
 - `Event.Report.*` — Test documents: `DocumentsUploaded` (each stored document's name and S3 URI, and the rebuilt index's URI), from `report upload`
 - `Event.Message` / `Event.Error` — Generic types (kept for tests only, zero production usage)
 

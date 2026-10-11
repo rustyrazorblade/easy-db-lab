@@ -3,7 +3,6 @@ package com.rustyrazorblade.easydblab.proxy
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.jupiter.api.Test
-import java.net.ConnectException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -40,18 +39,20 @@ class SocksTcpBridgeTest {
     }
 
     @Test
-    fun `close stops the listener so subsequent connects are refused`() {
+    fun `close stops the listener and releases its port`() {
         val bridge = SocksTcpBridge(socksPort = deadPort(), targetHost = "10.0.0.1", targetPort = 5432)
         bridge.start()
-        val port = bridge.localPort
+        val acceptor =
+            Thread.getAllStackTraces().keys.single { it.name == "socks-bridge-acceptor-${bridge.localPort}" }
 
         bridge.close()
 
-        Socket().use { client ->
-            assertThatCode {
-                client.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 500)
-            }.isInstanceOf(ConnectException::class.java)
-        }
+        // The acceptor blocks in accept() until the listening socket is closed, so its exit
+        // proves close() closed the listener, which is what frees the port. The test watches
+        // the bridge's own thread, not the port number: another process on a shared runner can
+        // take a freed ephemeral port, and a client on Linux can connect to itself on it.
+        acceptor.join(ACCEPTOR_EXIT_TIMEOUT_MS)
+        assertThat(acceptor.isAlive).isFalse()
     }
 
     @Test
@@ -97,5 +98,9 @@ class SocksTcpBridgeTest {
                 assertThat(firstByte).isEqualTo(-1)
             }
         }
+    }
+
+    private companion object {
+        const val ACCEPTOR_EXIT_TIMEOUT_MS = 5_000L
     }
 }

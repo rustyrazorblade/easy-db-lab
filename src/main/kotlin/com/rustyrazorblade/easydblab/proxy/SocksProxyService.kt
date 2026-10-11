@@ -9,21 +9,23 @@ import java.time.Instant
  * @property localPort The local port the proxy listens on
  * @property gatewayHost Full host info for the SSH gateway
  * @property startTime When the proxy was started
- * @property connectionCount Tracks usage in server mode
+ * @property reused True when an already running, verified tunnel was kept instead of a new one started
  */
 data class SocksProxyState(
     val localPort: Int,
     val gatewayHost: ClusterHost,
     val startTime: Instant,
+    val reused: Boolean = false,
 )
 
 /**
  * Service interface for managing a SOCKS5 proxy via SSH dynamic port forwarding.
  *
- * The proxy is an OS process that persists across JVM restarts until `down` is called.
- * [ensureRunning] checks for a reusable existing process before starting a new one.
- * When the proxy starts, JVM system properties are set so all Java socket-layer clients
- * route through the tunnel automatically.
+ * The proxy is an OS process that persists across JVM restarts until `down` or `stop-socks` is
+ * called. [ensureRunning] checks for a reusable existing process before starting a new one. Its port
+ * is published only to the clients that opt in to the tunnel: the private
+ * [com.rustyrazorblade.easydblab.Constants.Proxy.PORT_PROPERTY] for the CLI's own clients, and the
+ * workspace's [ProxyEnvFile] for the shell-side tool wrappers.
  *
  * The implementation is thread-safe and gateway-agnostic.
  */
@@ -68,4 +70,14 @@ interface SocksProxyService {
      * @return The configured local port
      */
     fun getLocalPort(): Int
+
+    /**
+     * Stops the recorded tunnel without touching the cluster: ends its process, deletes the proxy
+     * state file, unpublishes the port, and removes the port from the proxy env file. The env file
+     * keeps its Tailscale flag. A recorded PID that now belongs to another process is not signaled.
+     * When the tunnel process will not end, its state file and port stay recorded.
+     *
+     * @return how the attempt ended
+     */
+    fun stop(): TunnelStopResult
 }

@@ -12,12 +12,14 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CollisionCheck
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
+import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
 import com.rustyrazorblade.easydblab.services.KitType
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
@@ -86,6 +88,7 @@ class KitEndToEndTest : BaseKoinTest() {
                 single { TemplateService(get(), get()) }
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
+                single { KitProcessEnvironment(ToolWrapperInstaller()) }
             },
         )
 
@@ -94,6 +97,7 @@ class KitEndToEndTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         whenever(mockGrafanaClient.installDashboard(any(), any(), any())).thenReturn(Result.success(Unit))
         workingDir = get<Context>().workingDirectory
+        File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
     }
 
     /**

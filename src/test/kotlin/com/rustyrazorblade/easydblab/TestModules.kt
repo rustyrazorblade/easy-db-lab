@@ -18,6 +18,11 @@ import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
+import com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.EcrPullSecretService
@@ -94,6 +99,22 @@ object TestModules {
             single {
                 val context = get<Context>()
                 UserConfigProvider(context.profileDir)
+            }
+
+            // Real: it only writes and removes the packaged tool wrappers in a workspace's bin/.
+            single { ToolWrapperInstaller() }
+
+            // Real, over the test workspace, so stopping a tunnel (`down`, `stop-socks`) runs the
+            // real state file and env file code. Its ssh launcher refuses to start anything: a test
+            // that needs a tunnel to start registers its own service with a fake launcher.
+            single { ProxyEnvFile(get<Context>().workingDirectory) }
+            single<SocksProxyService> {
+                ProcessSocksProxyService(
+                    get(),
+                    { _, _, _ -> false },
+                    processLauncher = SshProcessLauncher { _, _ -> error("tests never launch ssh") },
+                    envFile = get(),
+                )
             }
         }
     }

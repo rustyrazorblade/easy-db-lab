@@ -6,17 +6,36 @@ NC_BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 # Determine the cluster directory (where this script is located)
-# Works in both bash and zsh, and when sourced from a different directory
+# Works in both bash and zsh, and when sourced from a different directory. CDPATH is cleared in
+# the subshell only: with it set, cd could resolve a relative path to another directory.
 if [ -n "${ZSH_VERSION:-}" ]; then
-    CLUSTER_DIR="$(cd "$(dirname "${(%):-%x}")" && pwd)"
+    CLUSTER_DIR="$(unset CDPATH; cd "$(dirname "${(%):-%x}")" && pwd)"
 else
-    CLUSTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    CLUSTER_DIR="$(unset CDPATH; cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
 echo -e "${YELLOW_BOLD}[WARNING]${YELLOW} We are creating aliases which override these commands:${NC}"
 echo -e "${NC_BOLD}  ssh\n  sftp\n  scp\n  rsync\n${NC}"
 echo "The aliases point the commands they override to your new cluster."
+echo "kubectl, helm, cilium, curl, skopeo and k9s now run this workspace's wrappers in $CLUSTER_DIR/bin,"
+echo "which reach the cluster through the SOCKS5 tunnel (or directly on a Tailscale cluster)."
 echo -e "To undo these changes exit this terminal.\n"
+
+# The tool wrappers in bin/ replace the shell functions an older env.sh defined. Drop any such
+# function left in this shell, so the names resolve to the wrappers. The check keeps zsh from
+# printing an error for a name that is not defined, and keeps `set -e` shells alive.
+for _edl_tool in kubectl helm cilium curl skopeo k9s; do
+  if typeset -f "$_edl_tool" >/dev/null 2>&1; then
+    unset -f "$_edl_tool"
+  fi
+done
+unset _edl_tool
+
+# Put the wrappers first on PATH, once, however often this file is sourced.
+case "$PATH" in
+  "$CLUSTER_DIR/bin:"*) ;;
+  *) export PATH="$CLUSTER_DIR/bin:$PATH" ;;
+esac
 
 mkdir -p "$CLUSTER_DIR/artifacts"
 
@@ -26,17 +45,9 @@ sftp() { command sftp -F "$SSH_CONFIG" "$@"; }
 scp() { command scp -F "$SSH_CONFIG" "$@"; }
 rsync() { command rsync -ave "ssh -F $SSH_CONFIG" "$@"; }
 
-# Configure kubectl to use the K3s cluster kubeconfig (if it exists)
+# Configure kubectl, helm and k9s to use the K3s cluster kubeconfig (if it exists)
 if [ -f "$CLUSTER_DIR/kubeconfig" ]; then
   export KUBECONFIG="$CLUSTER_DIR/kubeconfig"
-  # k9s function - uses proxy only when Tailscale is not connected
-  k9s() {
-    if is-tailscale-connected; then
-      command k9s --kubeconfig "$KUBECONFIG" "$@"
-    else
-      HTTPS_PROXY="socks5://localhost:$(_socks5_port)" command k9s --kubeconfig "$KUBECONFIG" "$@"
-    fi
-  }
 fi
 
 # general purpose function for executing commands on all cassandra nodes
@@ -129,291 +140,70 @@ c-flame-sepworker() {
   fi
 }
 
-# SOCKS5 proxy functions
-# Global variable to store SOCKS5 proxy PID
-SOCKS5_PROXY_PID=""
+# SOCKS5 proxy helpers. The easy-db-lab CLI is the only thing that starts or stops the tunnel
+# (`easy-db-lab start-socks`, `easy-db-lab stop-socks`); it records the state shell-side tools need
+# in .socks5-proxy.env, which these helpers source. Nothing here reads JSON.
 
-# Reads the proxy port from the state file written by the easy-db-lab CLI each time it is called.
-# Falls back to 1080 if the file does not exist yet (e.g., before first command run).
+# The port of the tunnel the CLI recorded, or nothing when none is recorded.
 _socks5_port() {
-    if [ -f "$CLUSTER_DIR/.socks5-proxy-state" ] && command -v jq &>/dev/null; then
-        jq -r '.port // 1080' "$CLUSTER_DIR/.socks5-proxy-state" 2>/dev/null
-    else
-        echo 1080
+  (
+    unset EDL_SOCKS_PORT
+    if [ -f "$CLUSTER_DIR/.socks5-proxy.env" ]; then
+      . "$CLUSTER_DIR/.socks5-proxy.env"
     fi
+    printf '%s\n' "${EDL_SOCKS_PORT:-}"
+  )
 }
 
-# Check if Tailscale is connected on control node
-# Returns 0 (true) if connected, 1 (false) otherwise
-is-tailscale-connected() {
-  # Check if tailscale command exists locally
-  if ! command -v tailscale &>/dev/null; then
-    return 1
-  fi
-
-  # Check if Tailscale is connected locally
-  local ts_status
-  ts_status=$(tailscale status --json 2>/dev/null)
-
-  # Check if BackendState is "Running"
-  # Use <<< to avoid broken pipe from grep -q closing the pipe early on large JSON
-  [ -n "$ts_status" ] && grep -q '"BackendState":.*"Running"' <<< "$ts_status"
+# "true" when the cluster is reached over Tailscale, as the CLI recorded it.
+_edl_tailscale_active() {
+  (
+    unset EDL_TAILSCALE_ACTIVE
+    if [ -f "$CLUSTER_DIR/.socks5-proxy.env" ]; then
+      . "$CLUSTER_DIR/.socks5-proxy.env"
+    fi
+    printf '%s\n' "${EDL_TAILSCALE_ACTIVE:-}"
+  )
 }
 
-# Proxy wrapper for commands that need to access internal network (10.x.x.x)
+# Runs any command with its traffic routed through the SOCKS5 tunnel, for tools that have no wrapper.
+# On a Tailscale cluster the command runs directly.
 # Usage: with-proxy curl http://10.0.1.50:8080/api
 with-proxy() {
-  ALL_PROXY="socks5h://localhost:$(_socks5_port)" \
-  HTTP_PROXY="socks5h://localhost:$(_socks5_port)" \
-  HTTPS_PROXY="socks5h://localhost:$(_socks5_port)" \
+  if [ "$(_edl_tailscale_active)" = true ]; then
+    "$@"
+    return
+  fi
+  local port
+  port=$(_socks5_port)
+  if [ -z "$port" ]; then
+    echo "easy-db-lab: no SOCKS tunnel is recorded for the workspace $CLUSTER_DIR." >&2
+    echo "easy-db-lab: run 'easy-db-lab start-socks' in $CLUSTER_DIR, then try again." >&2
+    return 1
+  fi
+  ALL_PROXY="socks5h://localhost:$port" \
+  HTTP_PROXY="socks5h://localhost:$port" \
+  HTTPS_PROXY="socks5h://localhost:$port" \
   NO_PROXY="localhost,127.0.0.1" \
   "$@"
 }
 
-# kubectl wrapper - uses proxy only when Tailscale is not connected
-kubectl() {
-  if is-tailscale-connected; then
-    command kubectl "$@"
-  else
-    HTTPS_PROXY="socks5://localhost:$(_socks5_port)" command kubectl "$@"
-  fi
-}
-
-# helm wrapper - uses proxy only when Tailscale is not connected
-helm() {
-  if is-tailscale-connected; then
-    command helm "$@"
-  else
-    HTTPS_PROXY="socks5://localhost:$(_socks5_port)" command helm "$@"
-  fi
-}
-
-# cilium wrapper - uses proxy only when Tailscale is not connected
-cilium() {
-  if is-tailscale-connected; then
-    command cilium "$@"
-  else
-    HTTPS_PROXY="socks5://localhost:$(_socks5_port)" command cilium "$@"
-  fi
-}
-
-# curl wrapper - uses proxy only when Tailscale is not connected
-curl() {
-  if is-tailscale-connected; then
-    command curl "$@"
-  else
-    ALL_PROXY="socks5h://localhost:$(_socks5_port)" \
-    NO_PROXY="localhost,127.0.0.1" \
-    command curl "$@"
-  fi
-}
-
-# skopeo wrapper - uses proxy only when Tailscale is not connected
-skopeo() {
-  if is-tailscale-connected; then
-    command skopeo "$@"
-  else
-    ALL_PROXY="socks5h://localhost:$(_socks5_port)" \
-    HTTP_PROXY="socks5h://localhost:$(_socks5_port)" \
-    HTTPS_PROXY="socks5h://localhost:$(_socks5_port)" \
-    NO_PROXY="localhost,127.0.0.1" \
-    command skopeo "$@"
-  fi
-}
-
-# Start SOCKS5 proxy via SSH dynamic port forwarding
-start-socks5() {
-  local port=${1:-$(_socks5_port)}
-  local proxy_state_file="$CLUSTER_DIR/.socks5-proxy-state"
-
-  echo "Starting SOCKS5 proxy..."
-
-  # Check if control0 exists in SSH config
-  if ! grep -q "^Host control0" "$SSH_CONFIG" 2>/dev/null; then
-    echo -e "${YELLOW}Warning: control0 not found in SSH config. Cannot start SOCKS5 proxy.${NC}"
-    return 1
-  fi
-
-  # Get control host IP from sshConfig
-  local control_ip=$(grep -A 1 "^Host control0" "$SSH_CONFIG" | grep "Hostname" | awk '{print $2}')
-
-  # Check if proxy state file exists and validate
-  if [ -f "$proxy_state_file" ]; then
-    echo "Found existing proxy state, validating..."
-
-    # Read existing proxy state (simple JSON parsing with grep/awk)
-    local existing_pid=$(grep '"pid"' "$proxy_state_file" | awk -F: '{print $2}' | tr -d ' ,')
-    local existing_ip=$(grep '"controlIP"' "$proxy_state_file" | awk -F'"' '{print $4}')
-    local existing_ssh_config=$(grep '"sshConfig"' "$proxy_state_file" | awk -F'"' '{print $4}')
-
-    local proxy_valid=true
-
-    # Check if PID is still running
-    if ! kill -0 "$existing_pid" 2>/dev/null; then
-      echo "  - Previous proxy process (PID: $existing_pid) is no longer running"
-      proxy_valid=false
-    fi
-
-    # Check if SSH config matches
-    if [ "$existing_ssh_config" != "$SSH_CONFIG" ]; then
-      echo "  - SSH config has changed (was: $existing_ssh_config, now: $SSH_CONFIG)"
-      proxy_valid=false
-    fi
-
-    # Check if control host IP matches
-    if [ "$existing_ip" != "$control_ip" ]; then
-      echo "  - Control host IP has changed (was: $existing_ip, now: $control_ip)"
-      proxy_valid=false
-    fi
-
-    # If proxy is invalid, clean it up
-    if [ "$proxy_valid" = false ]; then
-      echo "  - Stopping stale SOCKS5 proxy..."
-      if kill "$existing_pid" 2>/dev/null; then
-        echo "  - Stopped process $existing_pid"
-      fi
-      rm -f "$proxy_state_file"
-    else
-      echo -e "${YELLOW}Valid SOCKS5 proxy already running on localhost:$port [PID: $existing_pid]${NC}"
-
-      echo "  - Use 'with-proxy <command>' to route commands through the proxy"
-      echo "  - kubectl is automatically configured to use the proxy"
-      echo "  - Use 'socks5-status' to check the status"
-      return 0
-    fi
-  fi
-
-  # Check if port is already in use (e.g., by MCP mode Kotlin proxy)
-  if lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo -e "${YELLOW}SOCKS5 proxy already running on localhost:$port (managed externally)${NC}"
-    echo "  - This may be managed by easy-db-lab in MCP mode"
-
-    echo "  - Use 'with-proxy <command>' to route commands through the proxy"
-    echo "  - kubectl is automatically configured to use the proxy"
-    echo "  - Use 'socks5-status' to check the status"
-    return 0
-  fi
-
-  # Start SSH dynamic port forwarding (SOCKS5 proxy)
-  # Redirect stdin/stdout/stderr to /dev/null so the background process
-  # doesn't inherit any pipe file descriptors from the caller, which would
-  # block the pipe from closing if this is run inside a pipeline.
-  ssh -F "$SSH_CONFIG" -N -D "$port" control0 </dev/null >/dev/null 2>&1 &
-  SOCKS5_PROXY_PID=$!
-
-  # Wait a moment and verify the process is still running
-  sleep 1
-  if kill -0 $SOCKS5_PROXY_PID 2>/dev/null; then
-    echo "  - SOCKS5 proxy started on localhost:$port [PID: $SOCKS5_PROXY_PID]"
-
-    # Write proxy state to file
-    local cluster_name=$(basename "$CLUSTER_DIR")
-    local start_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-    cat > "$proxy_state_file" <<EOF
-{
-  "pid": $SOCKS5_PROXY_PID,
-  "port": $port,
-  "controlHost": "control0",
-  "controlIP": "$control_ip",
-  "clusterName": "$cluster_name",
-  "startTime": "$start_time",
-  "sshConfig": "$SSH_CONFIG"
-}
-EOF
-
-    echo "  - Proxy state saved to $proxy_state_file"
-
-    echo ""
-    echo -e "${NC_BOLD}SOCKS5 proxy is now active:${NC}"
-    echo "  - SOCKS Host: localhost"
-    echo "  - SOCKS Port: $port"
-    echo "  - Use 'with-proxy <command>' to route commands through the proxy"
-    echo "  - kubectl is automatically configured to use the proxy"
-    echo ""
-    echo -e "${NC_BOLD}To configure your browser:${NC}"
-    echo "  - SOCKS Host: localhost"
-    echo "  - SOCKS Port: $port"
-    echo "  - SOCKS Version: 5"
-    echo ""
-    echo "Use 'stop-socks5' to stop the SOCKS5 proxy."
-    return 0
-  else
-    echo -e "${YELLOW}Error: Failed to start SOCKS5 proxy${NC}"
-    SOCKS5_PROXY_PID=""
-    return 1
-  fi
-}
-
-# Stop SOCKS5 proxy
-stop-socks5() {
-  local proxy_state_file="$CLUSTER_DIR/.socks5-proxy-state"
-
-  echo "Stopping SOCKS5 proxy..."
-
-  # Try to read PID from state file first
-  if [ -f "$proxy_state_file" ]; then
-    local proxy_pid=$(grep '"pid"' "$proxy_state_file" | awk -F: '{print $2}' | tr -d ' ,')
-    if [ -n "$proxy_pid" ]; then
-      if kill "$proxy_pid" 2>/dev/null; then
-        echo "  - Stopped SOCKS5 proxy process [PID: $proxy_pid]"
-      else
-        echo "  - Process $proxy_pid not running"
-      fi
-    fi
-    rm -f "$proxy_state_file"
-    echo "  - Removed proxy state file"
-  elif [ -n "$SOCKS5_PROXY_PID" ]; then
-    # Fall back to global variable if no state file
-    if kill $SOCKS5_PROXY_PID 2>/dev/null; then
-      echo "  - Stopped SOCKS5 proxy process [PID: $SOCKS5_PROXY_PID]"
-    fi
-    SOCKS5_PROXY_PID=""
-  else
-    # Last resort: find existing SSH SOCKS5 proxy processes
-    local PIDS=$(ps aux | grep -E "ssh.*-D.*control0" | grep -v grep | awk '{print $2}')
-    if [ -n "$PIDS" ]; then
-      echo "$PIDS" | while read pid; do
-        if kill $pid 2>/dev/null; then
-          echo "  - Stopped SOCKS5 proxy process [PID: $pid]"
-        fi
-      done
-    else
-      echo "  - No active SOCKS5 proxy processes found."
-    fi
-  fi
-
-  echo "SOCKS5 proxy stopped."
-}
-
-# Check SOCKS5 proxy status
+# Shows the tunnel the CLI recorded, and whether anything listens on its port.
 socks5-status() {
-  echo "Checking SOCKS5 proxy status..."
-
-  # Check for SSH CLI-based SOCKS5 proxy
-  local SSH_PIDS=$(ps aux | grep -E "ssh.*-D.*control0" | grep -v grep)
-
-  if [ -n "$SSH_PIDS" ]; then
-    echo -e "${NC_BOLD}Active SSH SOCKS5 proxy:${NC}"
-    echo "$SSH_PIDS" | while read line; do
-      local pid=$(echo "$line" | awk '{print $2}')
-      local port=$(echo "$line" | grep -oE '\-D [0-9]+' | awk '{print $2}')
-      echo "  - SOCKS5 proxy active on localhost:${port:-$(_socks5_port)} [SSH PID: $pid]"
-    done
-  elif lsof -Pi :$(_socks5_port) -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo -e "${NC_BOLD}Active SOCKS5 proxy (non-SSH):${NC}"
-    local PID=$(lsof -Pi :$(_socks5_port) -sTCP:LISTEN -t 2>/dev/null | head -1)
-    local COMMAND=$(ps -p "$PID" -o comm= 2>/dev/null)
-    echo "  - SOCKS5 proxy active on localhost:$(_socks5_port) [${COMMAND:-Unknown} PID: $PID]"
-    echo "  - This may be managed by easy-db-lab in MCP mode"
+  if [ "$(_edl_tailscale_active)" = true ]; then
+    echo "This cluster uses Tailscale: no SOCKS5 tunnel is needed."
+    return 0
+  fi
+  local port
+  port=$(_socks5_port)
+  if [ -z "$port" ]; then
+    echo "No SOCKS5 tunnel is recorded. Run 'easy-db-lab start-socks' to start one."
+  elif lsof -Pi :"$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
+    echo "SOCKS5 tunnel active on localhost:$port"
   else
-    echo "  - No active SOCKS5 proxy found."
+    echo "SOCKS5 tunnel recorded on localhost:$port, but nothing listens there. Run 'easy-db-lab start-socks' to restart it."
   fi
 }
-
-# Aliases for convenience
-alias socks5-start="start-socks5"
-alias socks5-stop="stop-socks5"
 
 # ClickHouse client helper (interactive). Extra arguments go to clickhouse-client.
 # The Altinity operator names server pods chi-clickhouse-clickhouse-<shard>-<replica>-0, so the
@@ -440,6 +230,6 @@ clickhouse-query() {
   curl -s "http://${db_ip}:30123/" -d "$query"
 }
 
-# SOCKS5 proxy is started automatically by the easy-db-lab CLI before each command.
-# _socks5_port() reads the current port from the state file on each invocation.
-# Use 'with-proxy <command>' for ad-hoc commands, or 'socks5-status' to check the proxy.
+# The easy-db-lab CLI starts the SOCKS5 tunnel for the commands that need it, and 'easy-db-lab
+# start-socks' starts it for everything else (the wrappers, with-proxy, a browser).
+# Use 'with-proxy <command>' for a tool that has no wrapper, or 'socks5-status' to check the tunnel.

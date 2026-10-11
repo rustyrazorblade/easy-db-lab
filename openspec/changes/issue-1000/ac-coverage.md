@@ -1,0 +1,32 @@
+| Source | Requirement | Covering scenario(s) | Status |
+|--------|-------------|----------------------|--------|
+| AC 1 | A kit install shell step runs `kubectl get ns` and `kit install` exits 0 | `typed-install-steps: kubectl in an install shell step` | ✅ Covered |
+| AC 2 | Every kit shell step, install or phase, gets an absolute `KUBECONFIG` to a file that exists | `typed-install-steps: KUBECONFIG is absolute in install and phase steps`; `typed-install-steps: Missing kubeconfig fails the step`; `workload-runner: Script gets the wrappers and an absolute kubeconfig`; `kit-lifecycle-hooks: Hook gets the wrappers and an absolute kubeconfig` | ✅ Covered |
+| AC 3 | With a published port, `kubectl`, `helm`, `cilium`, `curl`, `skopeo` in a shell step resolve to the wrappers and use the tunnel | `networking: Wrapped tools reach the cluster through the tunnel`; `typed-install-steps: Wrappers come first on PATH` | ✅ Covered |
+| AC 4 | Indirect calls (`timeout`, `xargs`, nested `bin/` script, `/bin/sh` script) go through the wrapper | `networking: Indirect calls go through the wrapper` | ✅ Covered |
+| AC 5 | `aws` and other unwrapped tools get no proxy settings | `networking: Unwrapped tools in a shell step get no proxy settings` | ✅ Covered |
+| AC 6 | A proxy restart on a new port is used by the next wrapped call | `networking: New port after a proxy restart`; `networking: Stale proxy replaced without user intervention` | ✅ Covered |
+| AC 7 | On Tailscale the wrapped tools connect directly | `networking: Tailscale cluster` | ✅ Covered |
+| AC 8 | A wrapper calls the real binary, never itself | `networking: Wrapper runs the real binary`; `networking: Two workspaces on PATH do not call each other`; `networking: Real binary missing` | ✅ Covered |
+| AC 9 | After `source env.sh`, the five tools resolve to the same wrappers and route correctly on SOCKS and Tailscale | `networking: Sourced shell resolves the wrappers`; `networking: Sourced shell on a SOCKS cluster`; `networking: Tailscale cluster` | ✅ Covered |
+| AC 10 | A Homebrew install with no repo writes working wrappers | `networking: Wrappers written from a Homebrew install` | ✅ Covered |
+| AC 11 | Nothing sets, clears, or reads and restores `socksProxyHost`/`socksProxyPort` | `networking: Shell-side routing never touches the JVM proxy properties` | ✅ Covered |
+| AC 12 | No temporary kubeconfig copies; `KubeconfigProxyResolver` no longer exists | `typed-install-steps: No temporary kubeconfig`; REMOVED `networking: Local kubectl/helm invoked by kit shell steps route through the tunnel via a per-command kubeconfig proxy-url` (class deletion is task 5.5; specs name no classes) | ✅ Covered |
+| AC 13 | `k9s` after `source env.sh` resolves to the wrapper and follows the same rules | `networking: Sourced shell on a SOCKS cluster`; `networking: Sourced shell resolves the wrappers`; `networking: Tailscale cluster` | ✅ Covered |
+| AC 14 | Inherited `NO_PROXY`, `no_proxy`, `http_proxy`, and similar do not bypass the tunnel | `networking: Inherited proxy variables do not bypass the tunnel` | ✅ Covered |
+| AC 15 | No port recorded on a SOCKS cluster fails with a message naming `easy-db-lab start-socks` | `networking: No port recorded`; `networking: with-proxy with no port recorded` | ✅ Covered |
+| AC 16 | `source env.sh` right after `up` on Tailscale connects directly | `networking: env.sh right after a Tailscale up`; `networking: Tailscale up leaves a usable env file` | ✅ Covered |
+| AC 17 | `down` or `stop-socks` removes the port from the env file | `networking: Port removed when the tunnel stops`; `networking: Proxy cleaned up on teardown`; `networking: stop-socks` | ✅ Covered |
+| AC 18 | `init` in a directory with `bin/` fails clearly and writes nothing | `cluster-lifecycle: init refuses a directory that already has bin/`; `cluster-lifecycle: init refuses the source checkout` | ✅ Covered |
+| AC 19 | The `ssm` transport works the same as `ssh` | `networking: SSM transport`; `networking: Direct transport` | ✅ Covered |
+| AC 20 | No code or script parses JSON in shell to read proxy state | `networking: No shell code parses JSON for proxy state`; `networking: Shell tools read the port from the env file` | ✅ Covered |
+| Owner redirect | The Kubernetes tool wrappers always use the workspace kubeconfig, so a bare `<workspace>/bin/kubectl` works with no setup | `networking: A bare wrapper call works with no setup`; `networking: An inherited KUBECONFIG is overridden`; `networking: Missing workspace kubeconfig`; `networking: curl and skopeo leave KUBECONFIG alone`; `networking: Tailscale cluster` | ✅ Covered |
+| Owner redirect | The SOCKS tunnel reconnects on its own on the same port, and stopping it leaves no ssh running | `networking: A dropped connection reconnects on the same port`; `networking: Stopping the tunnel stops the loop and its ssh`; `networking: The script is written with the wrappers`; `networking: A reused PID that is not the tunnel script is not signaled`; `cluster-lifecycle: Cleanup removes the wrappers` | ✅ Covered |
+| Risk | Wrapped tools send all traffic through the tunnel; unwrapped tools, `aws` included, go direct | `networking: Unwrapped tools in a shell step get no proxy settings` (requirement text of "SOCKS Proxy Routes Only Cluster-Internal Traffic" states wrapped tools tunnel all traffic) | ✅ Covered |
+| Risk | Scripts that bypass `PATH` are not covered | `networking: Calls that bypass PATH are not wrapped` | ✅ Covered |
+| Risk | macOS lacks `timeout` | — | ⚠️ Excluded — test-harness concern, not behavior; unit tests use `env`/`xargs`/`sh -c` (task 3.1) and the real-cluster run exercises `timeout` (task 13.1) |
+| Risk | Concurrent writes from two processes in one workspace | `networking: Concurrent writers never leave a partial file`; `networking: Proxy state file is written atomically` | ✅ Covered |
+| Risk | Open shells that sourced an old `env.sh` keep the old functions until re-sourced | `networking: Re-sourcing replaces old functions` | ✅ Covered |
+| Risk | Stale port after the tunnel dies on its own | `networking: Tunnel died on its own`; `networking: Stale proxy replaced without user intervention` | ✅ Covered |
+| Risk | zsh `unset -f` noise | `networking: Re-sourcing replaces old functions` (requirement text: no errors in bash or zsh, safe under `set -e`) | ✅ Covered |
+| Risk | Unarchived `ssm-ssh-transport` delta also edits `networking` | — | ⚠️ Excluded — not a behavior; analyzed in `overrides.md` ("Conflicts with other in-flight changes") |

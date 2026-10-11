@@ -255,6 +255,38 @@ variables injected as environment variables.
       --timeout=300s
 ```
 
+### How local scripts reach the cluster
+
+Shell steps in `install:` and in phases, phase scripts in `bin/`, and hook scripts all run on your
+machine with the same two settings:
+
+- `KUBECONFIG` is the absolute path of the workspace `kubeconfig`. The process does not start if
+  that file does not exist.
+- `<workspace>/bin` is first on `PATH`. easy-db-lab writes a wrapper there for each of `kubectl`,
+  `helm`, `cilium`, `curl`, `skopeo` and `k9s` before the process starts.
+
+On a SOCKS cluster (no Tailscale), each wrapper sends its call through the SOCKS5 tunnel that
+easy-db-lab keeps open, and the tool reaches the private cluster addresses. On a Tailscale cluster
+the wrappers run the tool unchanged, and it connects directly. The CLI starts or restarts the
+tunnel before the first step runs, so a kit never has to.
+
+The `kubectl`, `helm`, `cilium` and `k9s` wrappers always set `KUBECONFIG` to the workspace `kubeconfig` for their call, in place of any inherited value, on SOCKS and Tailscale clusters. A bare `<workspace>/bin/kubectl` therefore works with no setup, from a step or from your own shell. If the workspace has no `kubeconfig` file, the wrapper names the missing file and exits 1. The `curl` and `skopeo` wrappers leave `KUBECONFIG` unchanged.
+
+Indirect calls go through the wrappers too, because they look the tool up on `PATH`: `timeout 60
+kubectl ...`, `echo ns | xargs kubectl get`, `sh -c 'helm list -A'`, and a script in the kit's own
+`bin/` that calls `kubectl`.
+
+Some things are not wrapped:
+
+- Tools other than those six, `aws` included, get no proxy settings and connect directly.
+- A call that bypasses `PATH` is not wrapped: an absolute path such as `/usr/local/bin/kubectl`,
+  `env -i kubectl`, or a script that sets its own `PATH=/usr/bin:/bin`. Call the tool by its name
+  and keep the inherited `PATH`.
+- A wrapped tool sends all of its traffic through the tunnel, public URLs included. `helm repo add`
+  of a public chart repository works, but it is slower than a direct connection.
+
+If a wrapper says that no SOCKS tunnel is recorded, run `easy-db-lab start-socks` in the workspace.
+
 ## Environment Variables
 
 All scripts and shell steps receive the following environment variables:
@@ -262,7 +294,8 @@ All scripts and shell steps receive the following environment variables:
 | Variable | Description |
 |----------|-------------|
 | `CLUSTER_NAME` | Name of the cluster |
-| `KUBECONFIG` | Absolute path to the local kubeconfig file |
+| `KUBECONFIG` | Absolute path to the workspace kubeconfig file |
+| `PATH` | `<workspace>/bin` (the tool wrappers) followed by the inherited `PATH` |
 | `CONTROL_HOST` | Public IP of the control node |
 | `CONTROL_HOST_PUBLIC` | Public IP of the control node |
 | `CONTROL_HOST_PRIVATE` | Private IP of the control node |

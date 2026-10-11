@@ -86,6 +86,25 @@ internal class TunnelProcessControlIntegrationTest {
     }
 
     @Test
+    fun `restarting a real tunnel's ssh keeps the script and starts a new ssh on the same port`() {
+        val port = freePort()
+        val (tunnel, ssh) = launchTunnel(port)
+
+        val result = TunnelProcessControl().restartSsh(record(tunnel.pid(), port))
+
+        assertThat(result).isEqualTo(TunnelSshRestart.Restarted(ssh.pid()))
+        val next = awaitSsh(tunnel) { it.pid() != ssh.pid() }
+        assertThat(
+            next
+                .info()
+                .arguments()
+                .map { it.toList() }
+                .orElse(emptyList()),
+        ).containsSequence("-D", "$port")
+        assertThat(tunnel.isAlive).isTrue()
+    }
+
+    @Test
     fun `a real tunnel script for another port is not signaled`() {
         val (tunnel, _) = launchTunnel(freePort())
 

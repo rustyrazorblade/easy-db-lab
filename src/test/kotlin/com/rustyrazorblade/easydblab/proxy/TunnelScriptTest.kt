@@ -15,8 +15,8 @@ import java.util.concurrent.TimeUnit
  * installed) against a stub `ssh` that records each run and then exits or stays up.
  *
  * Each run of the stub appends `<pid> <epoch seconds> <arguments>` to `runs.log`. Its first
- * `STUB_FAILS` runs exit at once with status 255, as an ssh whose connection died does; later runs
- * stay up, as a connected ssh does.
+ * `STUB_FAILS` runs exit at once with status `STUB_STATUS` (255 unless set), as an ssh whose
+ * connection died does; later runs stay up, as a connected ssh does.
  */
 internal class TunnelScriptTest {
     @TempDir
@@ -41,7 +41,7 @@ internal class TunnelScriptTest {
                 |#!/bin/sh
                 |echo "${'$'}${'$'} ${'$'}(date +%s) ${'$'}*" >> "${runsLog.absolutePath}"
                 |runs=${'$'}(wc -l < "${runsLog.absolutePath}")
-                |if [ "${'$'}runs" -le "${'$'}{STUB_FAILS:-0}" ]; then exit 255; fi
+                |if [ "${'$'}runs" -le "${'$'}{STUB_FAILS:-0}" ]; then exit "${'$'}{STUB_STATUS:-255}"; fi
                 |exec sleep 300
                 |
                 """.trimMargin(),
@@ -103,11 +103,28 @@ internal class TunnelScriptTest {
 
     @ParameterizedTest(name = "under {0}")
     @MethodSource("shells")
-    fun `a first ssh that fails within the start-up grace ends the script with its status`(shell: String) {
-        val tunnel = launch(shell, failures = 1, backoffSeconds = 1, graceSeconds = 60)
+    fun `USR1 restarts ssh at once on the same port, even within the start-up grace`(shell: String) {
+        // The grace is long and the backoff longer than the test waits: neither may apply to a restart
+        // the CLI asked for, which is how a rewritten sshConfig reaches the running tunnel.
+        val tunnel = launch(shell, failures = 0, backoffSeconds = 30, graceSeconds = 60)
+        val first = awaitRuns(1).single()
+
+        signal(tunnel, "USR1")
+        val second = awaitRuns(2).last()
+
+        assertThat(ProcessHandle.of(first.pid).map { it.isAlive }.orElse(false)).withFailMessage("the old ssh is still running").isFalse()
+        assertThat(second.arguments).isEqualTo(SSH_ARGUMENTS)
+        assertThat(tunnel.isAlive).withFailMessage("the script must keep running").isTrue()
+    }
+
+    @ParameterizedTest(name = "under {0}")
+    @MethodSource("shells")
+    fun `a first start that fails is not retried by the script`(shell: String) {
+        // A status other than ssh's usual 255, so the test sees the script pass on ssh's own status.
+        val tunnel = launch(shell, failures = 1, backoffSeconds = 1, graceSeconds = 60, status = DISTINCT_STATUS)
 
         assertThat(tunnel.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).withFailMessage("the script kept restarting a failed start").isTrue()
-        assertThat(tunnel.exitValue()).isEqualTo(SSH_FAILURE)
+        assertThat(tunnel.exitValue()).isEqualTo(DISTINCT_STATUS)
         assertThat(runsLog.readLines()).hasSize(1)
     }
 
@@ -116,6 +133,7 @@ internal class TunnelScriptTest {
         failures: Int,
         backoffSeconds: Int,
         graceSeconds: Int,
+        status: Int = SSH_FAILURE,
     ): Process =
         ProcessBuilder(shell, script.absolutePath, "$PORT", SSH_CONFIG, "$backoffSeconds", "$graceSeconds", HOST)
             .redirectErrorStream(true)
@@ -123,8 +141,17 @@ internal class TunnelScriptTest {
             .apply {
                 environment()["PATH"] = "${stubBin.absolutePath}:/usr/bin:/bin"
                 environment()["STUB_FAILS"] = "$failures"
+                environment()["STUB_STATUS"] = "$status"
             }.start()
             .also { started += it }
+
+    /** Sends [name] to [process] with the system `kill`, as the CLI does. */
+    private fun signal(
+        process: Process,
+        name: String,
+    ) {
+        assertThat(ProcessBuilder("kill", "-$name", "${process.pid()}").start().waitFor()).isZero()
+    }
 
     /** One run of the stub ssh. */
     private data class Run(
@@ -151,6 +178,7 @@ internal class TunnelScriptTest {
         const val SSH_CONFIG = "/work/sshConfig"
         const val HOST = "control0"
         const val SSH_FAILURE = 255
+        const val DISTINCT_STATUS = 3
         const val LIMIT_SECONDS = 15L
         const val POLL_MS = 50L
         const val SSH_ARGUMENTS = "-v -o ExitOnForwardFailure=yes -N -D $PORT -F $SSH_CONFIG $HOST"

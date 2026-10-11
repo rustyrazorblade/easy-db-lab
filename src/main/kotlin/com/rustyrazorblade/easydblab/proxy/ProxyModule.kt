@@ -1,19 +1,19 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
 import com.rustyrazorblade.easydblab.services.ResourceManager
+import org.koin.dsl.binds
 import org.koin.dsl.module
-
-/** Socket timeout (ms) for a single end-to-end tunnel reachability probe. */
-private const val PROBE_CONNECT_TIMEOUT_MS = 1000
 
 /**
  * Koin module for proxy-related dependency injection.
  *
  * Provides:
  * - [TunnelReachabilityProbe] as a singleton — the real SOCKS-based end-to-end tunnel check
- * - [SocksProxyService] as a singleton — manages the detached SSH proxy process
+ * - [SocksProxyService] as a singleton — manages the detached SSH proxy process; also bound as the
+ *   [SshConfigReloader] that applies a rewritten `sshConfig` to it
  * - [ProxyEnvFile] as a singleton — the workspace's proxy state for shell-side tools
  * - [ToolWrapperInstaller] as a singleton — writes the shell-side tool wrappers
  * - [WorkspaceShellTools] as a singleton — the wrappers plus the Tailscale flag, at `up` and restore
@@ -27,14 +27,15 @@ val proxyModule =
     module {
         // End-to-end tunnel reachability probe — the injectable seam the proxy service uses to
         // decide whether a freshly started tunnel actually carries traffic.
-        single<TunnelReachabilityProbe> { SocksTunnelReachabilityProbe(PROBE_CONNECT_TIMEOUT_MS) }
+        single<TunnelReachabilityProbe> { SocksTunnelReachabilityProbe(Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS) }
 
         // SOCKS proxy service - singleton to share state across requests.
         // Uses ProcessSocksProxyService which launches a detached OS process that
         // persists across JVM restarts and is reused via .socks5-proxy-state.
-        single<SocksProxyService> {
+        // The same instance applies a rewritten sshConfig to the tunnel it runs.
+        single {
             ProcessSocksProxyService(get(), get(), verifyAttempts = get<SshRoute>().tunnelVerifyAttempts, envFile = get())
-        }
+        } binds arrayOf(SocksProxyService::class, SshConfigReloader::class)
 
         // The workspace's sourceable proxy state for the shell-side tool wrappers and env.sh.
         single { ProxyEnvFile(get<Context>().workingDirectory) }

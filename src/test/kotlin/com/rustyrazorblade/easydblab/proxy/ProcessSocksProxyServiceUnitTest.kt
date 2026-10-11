@@ -745,6 +745,89 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(ProxyEnvFile(tempDir).read().socksPort).isEqualTo(NEW_PORT)
     }
 
+    /** The workspace's sshConfig, as the state file records it. */
+    private fun sshConfigFile() = File(tempDir, "sshConfig")
+
+    /**
+     * A service whose process lookup sees only [tunnel], under the PID [livePid]. A restart request
+     * ends [ssh], as the real script does on USR1.
+     */
+    private fun serviceSeeingTunnel(
+        tunnel: FakeTunnelProcess,
+        ssh: FakeTunnelProcess,
+        probe: TunnelReachabilityProbe,
+        launcher: SshProcessLauncher = SshProcessLauncher { _, _ -> error("a reloaded tunnel must keep its process, not be replaced") },
+    ) = service(
+        probe = probe,
+        launcher = launcher,
+        portSelector = { NEW_PORT },
+        tunnelProcesses =
+            TunnelProcessControl(
+                lookup = { pid -> tunnel.handle.takeIf { pid == livePid } },
+                stopWait = Duration.ofMillis(50),
+                requestSshRestart = { ssh.handle.destroy() },
+            ),
+    )
+
+    @Test
+    fun `a changed sshConfig restarts the running tunnel's ssh, the script keeps running, and the port stays the same`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val envFile = recordedEnv()
+        val ssh = FakeTunnelProcess.ssh(livePid + 1, STOP_PORT, sshConfigFile().absolutePath)
+        val tunnel = FakeTunnelProcess.tunnelScript(livePid, STOP_PORT, sshConfigFile().absolutePath, children = listOf(ssh))
+
+        serviceSeeingTunnel(tunnel, ssh, PortProbe(STOP_PORT)).sshConfigChanged(sshConfigFile(), testHost)
+
+        assertThat(ssh.handle.isAlive).withFailMessage("the old ssh must be restarted to read the new sshConfig").isFalse()
+        assertThat(tunnel.signals).withFailMessage("the script must keep running").isZero()
+        assertThat(tunnel.handle.isAlive).isTrue()
+        assertThat(envFile.read().socksPort).isEqualTo(STOP_PORT)
+        assertThat(json.decodeFromString<Socks5ProxyStateFile>(stateFile().readText()).port).isEqualTo(STOP_PORT)
+    }
+
+    @Test
+    fun `a changed sshConfig with no recorded tunnel does nothing`() {
+        service(launcher = { _, _ -> error("nothing may be started") }).sshConfigChanged(sshConfigFile(), testHost)
+
+        assertThat(stateFile()).doesNotExist()
+    }
+
+    @Test
+    fun `a changed sshConfig leaves a tunnel of another sshConfig alone`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val ssh = FakeTunnelProcess.ssh(livePid + 1, STOP_PORT, sshConfigFile().absolutePath)
+        val tunnel = FakeTunnelProcess.tunnelScript(livePid, STOP_PORT, sshConfigFile().absolutePath, children = listOf(ssh))
+
+        serviceSeeingTunnel(tunnel, ssh, PortProbe(STOP_PORT)).sshConfigChanged(File(tempDir, "other/sshConfig"), testHost)
+
+        assertThat(ssh.signals + tunnel.signals).isZero()
+    }
+
+    @Test
+    fun `a changed sshConfig never signals a recorded PID that is not the tunnel`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val ssh = FakeTunnelProcess.ssh(livePid + 1, STOP_PORT, sshConfigFile().absolutePath)
+        val other = FakeTunnelProcess(livePid, "/bin/sh", listOf("/work/bin/other-script"), children = listOf(ssh))
+
+        serviceSeeingTunnel(other, ssh, PortProbe(STOP_PORT)).sshConfigChanged(sshConfigFile(), testHost)
+
+        assertThat(ssh.signals + other.signals).isZero()
+    }
+
+    @Test
+    fun `a tunnel that does not come back after its ssh restart is replaced, and only the new port is recorded`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val envFile = recordedEnv()
+        val ssh = FakeTunnelProcess.ssh(livePid + 1, STOP_PORT, sshConfigFile().absolutePath)
+        val tunnel = FakeTunnelProcess.tunnelScript(livePid, STOP_PORT, sshConfigFile().absolutePath, children = listOf(ssh))
+
+        serviceSeeingTunnel(tunnel, ssh, PortProbe(NEW_PORT), launcher = { _, _ -> liveTunnelProcess() })
+            .sshConfigChanged(sshConfigFile(), testHost)
+
+        assertThat(envFile.read().socksPort).isEqualTo(NEW_PORT)
+        assertThat(tunnel.handle.isAlive).withFailMessage("the tunnel that did not come back must be stopped").isFalse()
+    }
+
     @Test
     fun `stop ends the recorded tunnel and removes the state file and the port`() {
         writeStateFile(pid = FAKE_PID.toInt(), port = STOP_PORT)

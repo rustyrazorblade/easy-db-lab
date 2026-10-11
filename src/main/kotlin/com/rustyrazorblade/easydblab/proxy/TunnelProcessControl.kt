@@ -24,6 +24,25 @@ sealed interface TunnelStopResult {
     ) : TunnelStopResult
 }
 
+/** How an attempt to restart the `ssh` of a recorded SOCKS5 tunnel ended. */
+sealed interface TunnelSshRestart {
+    /** The tunnel's ssh [sshPid] ended; the script starts a new one on the same port after its backoff. */
+    data class Restarted(
+        val sshPid: Long,
+    ) : TunnelSshRestart
+
+    /** The tunnel runs no ssh right now, between two runs; the next one it starts reads the current files. */
+    data object NoSshRunning : TunnelSshRestart
+
+    /** The recorded PID is gone or is not this tunnel, so nothing was signaled. */
+    data object NotTheTunnel : TunnelSshRestart
+
+    /** The tunnel's ssh [sshPid] is still running after it was asked, then forced, to end. */
+    data class SshDidNotStop(
+        val sshPid: Long,
+    ) : TunnelSshRestart
+}
+
 /**
  * Finds and ends the `edl-socks-tunnel` process of a recorded SOCKS5 tunnel, and the `ssh` it runs.
  *
@@ -39,21 +58,17 @@ sealed interface TunnelStopResult {
  *
  * @param lookup finds a live process by PID; tests replace it to model processes they cannot start
  * @param stopWait how long a process is given to end after each signal
+ * @param requestSshRestart asks a verified tunnel script to restart its ssh, and reports whether the
+ *   request was delivered; tests replace it to model a script they cannot start
  */
 class TunnelProcessControl(
     private val lookup: (Long) -> ProcessHandle? = { ProcessHandle.of(it).orElse(null) },
     private val stopWait: Duration = Duration.ofSeconds(DEFAULT_STOP_WAIT_SECONDS),
+    private val requestSshRestart: (ProcessHandle) -> Boolean = ::sendRestartSignal,
 ) {
     /** Stops the tunnel [recorded] describes, if that PID still is that tunnel. */
     fun stop(recorded: Socks5ProxyStateFile): TunnelStopResult {
-        val handle =
-            lookup(recorded.pid.toLong())
-                ?.takeIf { it.isAlive && it.pid() != ProcessHandle.current().pid() }
-                ?: return TunnelStopResult.NotRunning
-        if (!isTunnel(handle, recorded)) {
-            log.info { "PID ${recorded.pid} is no longer the recorded SOCKS5 tunnel; leaving it alone" }
-            return TunnelStopResult.NotRunning
-        }
+        val handle = verifiedTunnel(recorded) ?: return TunnelStopResult.NotRunning
         // Taken before the KILL, because a killed shell's children stop being its descendants.
         val children = handle.descendants().toList().toMutableSet()
         val scriptEnded =
@@ -75,6 +90,49 @@ class TunnelProcessControl(
             }
         }
     }
+
+    /**
+     * Restarts the `ssh` of the tunnel [recorded] describes and leaves the script running, so the new
+     * ssh starts on the same port and reads the files as they are now. The script, once verified, is
+     * asked with [Constants.Proxy.TUNNEL_RESTART_SIGNAL]: it ends its ssh and starts the next one at
+     * once. Ending the ssh directly would not do, because the script takes an early exit of its first
+     * ssh for a failed start and exits too. Nothing is signaled when the PID is not that tunnel.
+     */
+    fun restartSsh(recorded: Socks5ProxyStateFile): TunnelSshRestart {
+        val handle = verifiedTunnel(recorded) ?: return TunnelSshRestart.NotTheTunnel
+        val ssh =
+            handle
+                .children()
+                .filter { isSsh(it) }
+                .findFirst()
+                .orElse(null) ?: return TunnelSshRestart.NoSshRunning
+        return if (requestSshRestart(handle) && ends(ssh) { true }) {
+            TunnelSshRestart.Restarted(ssh.pid())
+        } else {
+            log.warn { "The ssh [PID ${ssh.pid()}] of SOCKS5 tunnel process ${recorded.pid} did not stop" }
+            TunnelSshRestart.SshDidNotStop(ssh.pid())
+        }
+    }
+
+    /** The live process of the tunnel [recorded] describes, or null when the PID is gone or is not that tunnel. */
+    private fun verifiedTunnel(recorded: Socks5ProxyStateFile): ProcessHandle? {
+        val handle =
+            lookup(recorded.pid.toLong())
+                ?.takeIf { it.isAlive && it.pid() != ProcessHandle.current().pid() }
+                ?: return null
+        if (!isTunnel(handle, recorded)) {
+            log.info { "PID ${recorded.pid} is no longer the recorded SOCKS5 tunnel; leaving it alone" }
+            return null
+        }
+        return handle
+    }
+
+    private fun isSsh(handle: ProcessHandle): Boolean =
+        handle
+            .info()
+            .command()
+            .map { File(it).name == SSH }
+            .orElse(false)
 
     /**
      * True when [handle] is the `edl-socks-tunnel` that [recorded] describes: the OS reports the
@@ -114,6 +172,19 @@ class TunnelProcessControl(
 
     private companion object {
         val log = KotlinLogging.logger {}
+
+        /** Sends [Constants.Proxy.TUNNEL_RESTART_SIGNAL] to [script] with the system `kill`; the JDK can send only TERM and KILL. */
+        fun sendRestartSignal(script: ProcessHandle): Boolean {
+            val kill =
+                ProcessBuilder("kill", "-${Constants.Proxy.TUNNEL_RESTART_SIGNAL}", "${script.pid()}")
+                    .redirectErrorStream(true)
+                    .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+                    .start()
+            return kill.waitFor(KILL_WAIT_SECONDS, TimeUnit.SECONDS) && kill.exitValue() == 0
+        }
+
+        const val KILL_WAIT_SECONDS = 5L
+        const val SSH = "ssh"
         const val DEFAULT_STOP_WAIT_SECONDS = 5L
     }
 }

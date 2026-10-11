@@ -95,7 +95,8 @@ class ProcessSocksProxyService(
     private val tunnelProcesses: TunnelProcessControl = TunnelProcessControl(),
     private val clock: Clock = Clock.systemUTC(),
     private val toolWrappers: ToolWrapperInstaller = ToolWrapperInstaller(),
-) : SocksProxyService {
+) : SocksProxyService,
+    SshConfigReloader {
     companion object {
         private const val VERIFY_DELAY_MS = 500L
         private const val VERIFY_CONNECT_TIMEOUT_MS = 1000
@@ -469,16 +470,51 @@ class ProcessSocksProxyService(
 
     /**
      * Whether the running tunnel on [port] still carries traffic to [gatewayHost]'s `sshd`, by the same
-     * [reachabilityProbe] a fresh start is verified with. A tunnel that is up answers at once, so it gets
-     * only [Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS] tries, not a fresh start's window.
+     * [reachabilityProbe] a fresh start is verified with, within [attempts] tries [verifyDelay] apart. A
+     * tunnel that is up answers at once, so a reuse gets only [Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS]
+     * tries, not a fresh start's window.
      */
     private fun reachesGateway(
         port: Int,
         gatewayHost: ClusterHost,
+        attempts: Int = Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS,
     ): Boolean =
-        (1..Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS).any { attempt ->
+        (1..attempts).any { attempt ->
             if (attempt > 1) Thread.sleep(verifyDelay.toMillis())
             reachabilityProbe.isReachable(port, gatewayHost.privateIp, SSH_PORT)
+        }
+
+    /**
+     * Restarts the `ssh` of the recorded tunnel when it runs on [sshConfig], so the new file takes
+     * effect now; the script keeps its PID and starts the new ssh on the same port. The tunnel is then
+     * verified end to end within a fresh start's window, since the new ssh comes up only after the
+     * script's backoff. One that does not come back is replaced, as a stale tunnel is. Nothing that is
+     * not the verified tunnel is signaled.
+     */
+    override fun sshConfigChanged(
+        sshConfig: File,
+        gatewayHost: ClusterHost,
+    ): Unit =
+        lock.withLock {
+            val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
+            val recorded = readStateFile(stateFile)?.takeIf { it.sshConfig == sshConfig.absolutePath } ?: return@withLock
+            when (val restart = tunnelProcesses.restartSsh(recorded)) {
+                TunnelSshRestart.NotTheTunnel -> return@withLock
+                is TunnelSshRestart.Restarted ->
+                    log.info {
+                        "Restarted the ssh [PID ${restart.sshPid}] of SOCKS5 tunnel [PID ${recorded.pid}] for the new ${sshConfig.name}"
+                    }
+                TunnelSshRestart.NoSshRunning ->
+                    log.info { "SOCKS5 tunnel [PID ${recorded.pid}] is between ssh runs; its next ssh reads the new ${sshConfig.name}" }
+                is TunnelSshRestart.SshDidNotStop -> Unit
+            }
+            lastVerified = null
+            if (reachesGateway(recorded.port, gatewayHost, verifyAttempts)) {
+                markVerified(recorded.pid, recorded.port)
+            } else {
+                log.info { "SOCKS5 tunnel on port ${recorded.port} did not come back after its ssh restart; replacing it" }
+                ensureRunning(gatewayHost)
+            }
         }
 
     /**

@@ -46,11 +46,11 @@ class ProcessSocksProxyServiceTest {
         /** Tiny verify delay so the verify loop's retries do not sleep the production 500ms each. */
         val VERIFY_DELAY: Duration = Duration.ofMillis(1)
 
+        /** Room for the replacement's own start and verification, and for a busy CI runner. */
+        const val REPLACEMENT_SLACK_MS = 700L
+
         /** Arbitrary PID returned by the fake dead process; never inspected for liveness here. */
         const val FAKE_PID = 4242L
-
-        /** The real probe's connect and read timeout; every tunnel here is on the loopback. */
-        const val PROBE_TIMEOUT_MS = 1000
     }
 
     @TempDir
@@ -88,7 +88,7 @@ class ProcessSocksProxyServiceTest {
         clock: Clock = Clock.systemUTC(),
     ) = ProcessSocksProxyService(
         Context.forCli(tempDir).copy(workingDirectory = tempDir),
-        SocksTunnelReachabilityProbe(PROBE_TIMEOUT_MS),
+        SocksTunnelReachabilityProbe(Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS),
         verifyDelay = VERIFY_DELAY,
         processLauncher = launcher,
         portSelector = portSelector,
@@ -298,7 +298,7 @@ class ProcessSocksProxyServiceTest {
         // port stayed up. The real probe gets "Malformed reply from SOCKS server" through it.
         val livePid = ProcessHandle.current().pid().toInt()
         val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
-        FakeSocksTunnel(farEndAlive = false).use { dead ->
+        FakeSocksTunnel(FakeSocksTunnel.Behaviour.DROPS_CONNECT).use { dead ->
             FakeSocksTunnel().use { replacement ->
                 writeStateFile(pid = livePid, port = dead.port)
                 envFile.recordPort(dead.port)
@@ -314,6 +314,34 @@ class ProcessSocksProxyServiceTest {
                 assertThat(state.localPort).isEqualTo(replacement.port)
                 assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = replacement.port))
                 assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("${replacement.port}")
+            }
+        }
+    }
+
+    @Test
+    fun `a tunnel whose far end never answers is replaced within the reuse attempts' probe bound`() {
+        // The QA case: the tunnel's TCP connection is dropped on the control node, so ssh is alive,
+        // its port accepts, and nothing ever answers through it.
+        val livePid = ProcessHandle.current().pid().toInt()
+        FakeSocksTunnel(FakeSocksTunnel.Behaviour.SILENT).use { dead ->
+            FakeSocksTunnel().use { replacement ->
+                writeStateFile(pid = livePid, port = dead.port)
+                val alive: Process =
+                    mock {
+                        on { isAlive } doReturn true
+                        on { pid() } doReturn FAKE_PID
+                    }
+                val start = System.nanoTime()
+
+                val state = service(launcher = { _, _ -> alive }, portSelector = { replacement.port }).ensureRunning(testHost)
+
+                val millis =
+                    java.util.concurrent.TimeUnit.NANOSECONDS
+                        .toMillis(System.nanoTime() - start)
+                assertThat(state.localPort).isEqualTo(replacement.port)
+                val bound =
+                    Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS * (Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS + VERIFY_DELAY.toMillis())
+                assertThat(millis).isLessThan(bound + REPLACEMENT_SLACK_MS)
             }
         }
     }

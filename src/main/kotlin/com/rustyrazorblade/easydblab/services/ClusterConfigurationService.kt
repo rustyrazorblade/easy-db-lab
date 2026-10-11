@@ -10,10 +10,12 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
+import com.rustyrazorblade.easydblab.proxy.SshConfigReloader
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
+import java.io.StringWriter
 import java.nio.file.Path
 
 /**
@@ -95,12 +97,14 @@ interface ClusterConfigurationService {
  *
  * @property userConfigProvider Provider for user configuration including SSH key path
  * @property sshRoute supplies each host's `ProxyCommand` when the profile's SSH transport needs one
+ * @property sshConfigReloader applies a changed `sshConfig` to the SOCKS tunnel already running on it
  * @property workspaceShellTools writes the tool wrappers and the Tailscale flag
  */
 class DefaultClusterConfigurationService(
     private val userConfigProvider: UserConfigProvider,
     private val eventBus: EventBus,
     private val sshRoute: SshRoute,
+    private val sshConfigReloader: SshConfigReloader,
     private val workspaceShellTools: WorkspaceShellTools = WorkspaceShellTools(ToolWrapperInstaller()),
 ) : ClusterConfigurationService {
     companion object {
@@ -133,14 +137,9 @@ class DefaultClusterConfigurationService(
         // leaving a half-written sshConfig behind.
         val proxyCommands = proxyCommandsFor(clusterState.hosts)
         val sshConfigFile = File(workingDirectory.toFile(), SSH_CONFIG_FILE)
-        sshConfigFile.bufferedWriter().use { writer ->
-            ClusterConfigWriter.writeSshConfig(
-                writer,
-                sshKeyPath,
-                clusterState.hosts,
-                proxyCommands,
-            )
-        }
+        val previous = sshConfigFile.takeIf { it.isFile }?.readText()
+        val sshConfig = renderSshConfig(sshKeyPath, clusterState.hosts, proxyCommands)
+        sshConfigFile.writeText(sshConfig)
 
         val envFile = File(workingDirectory.toFile(), ENV_FILE)
         envFile.bufferedWriter().use { writer ->
@@ -155,7 +154,25 @@ class DefaultClusterConfigurationService(
         // env.sh puts bin/ on PATH, and a Tailscale cluster never starts a tunnel that would
         // record anything, so both are written here, where every cluster passes.
         workspaceShellTools.prepare(workingDirectory.toFile(), clusterState.isTailscaleEnabled())
+
+        // A command can start the tunnel before it rewrites sshConfig (`up` on a cluster that is up),
+        // and the running ssh read the old file. A first write has no tunnel to update, and a
+        // Tailscale cluster has no tunnel at all.
+        val controlHost = clusterState.getControlHost()
+        if (previous != null && previous != sshConfig && controlHost != null && !clusterState.isTailscaleEnabled()) {
+            sshConfigReloader.sshConfigChanged(sshConfigFile.absoluteFile, controlHost)
+        }
     }
+
+    /** The `sshConfig` content for [hosts], so it can be compared with the file before it is replaced. */
+    private fun renderSshConfig(
+        sshKeyPath: String,
+        hosts: Map<ServerType, List<ClusterHost>>,
+        proxyCommands: Map<String, String>,
+    ): String =
+        StringWriter()
+            .also { text -> text.buffered().use { ClusterConfigWriter.writeSshConfig(it, sshKeyPath, hosts, proxyCommands) } }
+            .toString()
 
     /** The `ProxyCommand` for each host alias whose route needs one; empty under the direct transport. */
     private fun proxyCommandsFor(hosts: Map<ServerType, List<ClusterHost>>): Map<String, String> =

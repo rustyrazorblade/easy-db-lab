@@ -962,6 +962,13 @@ object Constants {
         const val REUSE_TUNNEL_VERIFY_ATTEMPTS = 2
 
         /**
+         * The whole budget, in milliseconds, of one end-to-end tunnel probe: the connect, the SOCKS5
+         * handshake and CONNECT reply, and the read of the control node's `sshd` banner together. A
+         * working tunnel answers in milliseconds; a dead one is given up on after this, every attempt.
+         */
+        const val PROBE_ATTEMPT_TIMEOUT_MS = 1000
+
+        /**
          * How long after a tunnel last passed the end-to-end probe this process reuses its in-memory
          * tunnel without probing again. Cluster HTTP clients ask for the tunnel on every request, so
          * a burst of requests probes once. Across CLI invocations the state-file path always probes.
@@ -978,6 +985,13 @@ object Constants {
          * every later exit is a dropped connection and is restarted.
          */
         const val TUNNEL_STARTUP_GRACE_SECONDS = 60
+
+        /**
+         * The signal that asks `edl-socks-tunnel` to end its ssh and start the next one at once, on the
+         * same port, with no backoff and no start-up grace exit: how a rewritten `sshConfig` reaches a
+         * running tunnel. The script traps it; the name is the one the system `kill` takes.
+         */
+        const val TUNNEL_RESTART_SIGNAL = "USR1"
     }
 
     // Tailscale VPN configuration

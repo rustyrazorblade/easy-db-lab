@@ -21,8 +21,11 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /**
  * Fast unit-tier tests for [ProcessSocksProxyService]: the state-file bookkeeping, the fail-fast
@@ -54,6 +57,9 @@ class ProcessSocksProxyServiceUnitTest {
 
         /** Port a replacement tunnel is started on; nothing binds it. */
         const val NEW_PORT = 45678
+
+        /** Just past the probe freshness window, so the next reuse probes. */
+        val PAST_FRESHNESS: Duration = Constants.Proxy.REUSE_PROBE_FRESHNESS.plusSeconds(1)
     }
 
     @TempDir
@@ -91,6 +97,7 @@ class ProcessSocksProxyServiceUnitTest {
         portSelector: LocalPortSelector = LocalPortSelector { DEFAULT_TEST_PORT },
         verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
         tunnelProcesses: TunnelProcessControl = TunnelProcessControl(),
+        clock: Clock = Clock.systemUTC(),
     ) = ProcessSocksProxyService(
         Context.forCli(tempDir).copy(workingDirectory = tempDir),
         probe,
@@ -99,6 +106,7 @@ class ProcessSocksProxyServiceUnitTest {
         portSelector = portSelector,
         verifyAttempts = verifyAttempts,
         tunnelProcesses = tunnelProcesses,
+        clock = clock,
     )
 
     /** A service whose process lookup sees only [process]. */
@@ -522,15 +530,18 @@ class ProcessSocksProxyServiceUnitTest {
         val launched = mutableListOf<List<String>>()
         val probe = PortProbe(STOP_PORT, NEW_PORT)
         val zombie = FakeTunnelProcess.sshTunnel(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val clock = ManualClock()
         val svc =
             service(
                 probe = probe,
                 launcher = { command, _ -> liveTunnelProcess().also { launched += command } },
                 portSelector = { ports.removeFirst() },
                 tunnelProcesses = TunnelProcessControl(lookup = { pid -> zombie.handle.takeIf { pid == livePid } }),
+                clock = clock,
             )
         svc.ensureRunning(testHost)
         probe.healthy.remove(STOP_PORT)
+        clock.advance(PAST_FRESHNESS)
 
         val second = svc.ensureRunning(testHost)
 
@@ -540,6 +551,158 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(second.localPort).isEqualTo(NEW_PORT)
         assertThat(ProxyEnvFile(tempDir).read().socksPort).isEqualTo(NEW_PORT)
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("$NEW_PORT")
+    }
+
+    /** A clock the test moves by hand, so the probe freshness window is tested without sleeping. */
+    private class ManualClock(
+        private var now: Instant = Instant.parse("2026-10-10T12:00:00Z"),
+    ) : Clock() {
+        fun advance(by: Duration) {
+            now = now.plus(by)
+        }
+
+        override fun instant(): Instant = now
+
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId): Clock = this
+    }
+
+    /** An in-memory service on [clock] whose tunnels are launched on [ports] in order and probed by [probe]. */
+    private fun inMemoryService(
+        probe: PortProbe,
+        clock: Clock,
+        ports: ArrayDeque<Int>,
+        launched: MutableList<List<String>> = mutableListOf(),
+        launcher: SshProcessLauncher = SshProcessLauncher { command, _ -> liveTunnelProcess().also { launched += command } },
+    ) = service(probe = probe, launcher = launcher, portSelector = { ports.removeFirst() }, tunnelProcesses = noProcesses, clock = clock)
+
+    @Test
+    fun `an in-memory reuse within the freshness window does not probe`() {
+        val probe = PortProbe(STOP_PORT)
+        val clock = ManualClock()
+        val svc = inMemoryService(probe, clock, ArrayDeque(listOf(STOP_PORT)))
+        svc.ensureRunning(testHost)
+        val probesAfterStart = probe.calls.getValue(STOP_PORT)
+
+        clock.advance(Constants.Proxy.REUSE_PROBE_FRESHNESS.minusSeconds(1))
+        val second = svc.ensureRunning(testHost)
+
+        assertThat(second.reused).isTrue()
+        assertThat(probe.calls.getValue(STOP_PORT)).isEqualTo(probesAfterStart)
+    }
+
+    @Test
+    fun `an in-memory reuse once the freshness window has passed probes again`() {
+        val probe = PortProbe(STOP_PORT)
+        val clock = ManualClock()
+        val svc = inMemoryService(probe, clock, ArrayDeque(listOf(STOP_PORT)))
+        svc.ensureRunning(testHost)
+        val probesAfterStart = probe.calls.getValue(STOP_PORT)
+
+        clock.advance(Constants.Proxy.REUSE_PROBE_FRESHNESS)
+        svc.ensureRunning(testHost)
+
+        assertThat(probe.calls.getValue(STOP_PORT)).isEqualTo(probesAfterStart + 1)
+    }
+
+    @Test
+    fun `a probe that passes on reuse starts a new freshness window`() {
+        val probe = PortProbe(STOP_PORT)
+        val clock = ManualClock()
+        val svc = inMemoryService(probe, clock, ArrayDeque(listOf(STOP_PORT)))
+        svc.ensureRunning(testHost)
+        clock.advance(PAST_FRESHNESS)
+        svc.ensureRunning(testHost)
+        val probesAfterReuse = probe.calls.getValue(STOP_PORT)
+
+        clock.advance(Duration.ofSeconds(1))
+        svc.ensureRunning(testHost)
+
+        assertThat(probe.calls.getValue(STOP_PORT)).isEqualTo(probesAfterReuse)
+    }
+
+    @Test
+    fun `a replaced tunnel is probed fresh and does not inherit the old tunnel's window`() {
+        val probe = PortProbe(STOP_PORT, NEW_PORT)
+        val clock = ManualClock()
+        val launched = mutableListOf<List<String>>()
+        val svc = inMemoryService(probe, clock, ArrayDeque(listOf(STOP_PORT, NEW_PORT)), launched)
+        svc.ensureRunning(testHost)
+        clock.advance(PAST_FRESHNESS)
+        probe.healthy.remove(STOP_PORT)
+
+        val replacement = svc.ensureRunning(testHost)
+
+        assertThat(replacement.localPort).isEqualTo(NEW_PORT)
+        assertThat(probe.calls.getValue(NEW_PORT)).withFailMessage("the replacement must be verified by its own probe").isEqualTo(1)
+        assertThat(dynamicForwardPorts(launched)).containsExactly(STOP_PORT, NEW_PORT)
+    }
+
+    @Test
+    fun `a failed probe is never cached, so the next call probes again`() {
+        val probe = PortProbe(STOP_PORT)
+        val clock = ManualClock()
+        var launches = 0
+        val svc =
+            inMemoryService(
+                probe,
+                clock,
+                ArrayDeque(listOf(STOP_PORT, NEW_PORT, NEW_PORT)),
+                launcher = { _, _ -> if (launches++ == 0) liveTunnelProcess() else deadProcess(exitCode = 255) },
+            )
+        svc.ensureRunning(testHost)
+        clock.advance(PAST_FRESHNESS)
+        probe.healthy.remove(STOP_PORT)
+        assertThatThrownBy { svc.ensureRunning(testHost) }.isInstanceOf(IllegalStateException::class.java)
+        val probesAfterFailure = probe.calls.getValue(STOP_PORT)
+        probe.healthy.add(STOP_PORT)
+
+        clock.advance(Duration.ofSeconds(1))
+        val next = svc.ensureRunning(testHost)
+
+        assertThat(probe.calls.getValue(STOP_PORT)).isGreaterThan(probesAfterFailure)
+        assertThat(next.localPort).isEqualTo(STOP_PORT)
+    }
+
+    @Test
+    fun `the state-file path always probes, even within the window of another process`() {
+        val probe = PortProbe(STOP_PORT)
+        val clock = ManualClock()
+        inMemoryService(probe, clock, ArrayDeque(listOf(STOP_PORT))).ensureRunning(testHost)
+        val probesAfterStart = probe.calls.getValue(STOP_PORT)
+
+        // A new CLI invocation: a new service that knows the tunnel only from the state file.
+        service(probe = probe, tunnelProcesses = noProcesses, clock = clock).ensureRunning(testHost)
+
+        assertThat(probe.calls.getValue(STOP_PORT)).isEqualTo(probesAfterStart + 1)
+    }
+
+    @Test
+    fun `an in-memory tunnel to another gateway is not reused, even within the window`() {
+        val probe = PortProbe(STOP_PORT, NEW_PORT)
+        val clock = ManualClock()
+        val launched = mutableListOf<List<String>>()
+        val zombie = FakeTunnelProcess.sshTunnel(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val ports = ArrayDeque(listOf(STOP_PORT, NEW_PORT))
+        val svc =
+            service(
+                probe = probe,
+                launcher = { command, _ -> liveTunnelProcess().also { launched += command } },
+                portSelector = { ports.removeFirst() },
+                tunnelProcesses = TunnelProcessControl(lookup = { pid -> zombie.handle.takeIf { pid == livePid } }),
+                clock = clock,
+            )
+        svc.ensureRunning(testHost)
+        val otherGateway = testHost.copy(privateIp = "10.0.1.9")
+
+        val state = svc.ensureRunning(otherGateway)
+
+        assertThat(zombie.handle.isAlive).withFailMessage("the tunnel to the old gateway must be stopped").isFalse()
+        assertThat(dynamicForwardPorts(launched)).containsExactly(STOP_PORT, NEW_PORT)
+        assertThat(state.reused).isFalse()
+        assertThat(state.gatewayHost.privateIp).isEqualTo("10.0.1.9")
+        assertThat(ProxyEnvFile(tempDir).read().socksPort).isEqualTo(NEW_PORT)
     }
 
     @Test

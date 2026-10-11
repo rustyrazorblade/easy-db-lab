@@ -13,6 +13,7 @@ import java.io.File
 import java.io.IOException
 import java.net.BindException
 import java.net.InetSocketAddress
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.locks.ReentrantLock
@@ -90,6 +91,7 @@ class ProcessSocksProxyService(
     private val verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
     private val envFile: ProxyEnvFile = ProxyEnvFile(context.workingDirectory),
     private val tunnelProcesses: TunnelProcessControl = TunnelProcessControl(),
+    private val clock: Clock = Clock.systemUTC(),
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_DELAY_MS = 500L
@@ -103,22 +105,20 @@ class ProcessSocksProxyService(
     private var state: SocksProxyState? = null
     private var pid: Int = 0
 
+    /** The tunnel that last passed the end-to-end probe in this process, and when it passed. */
+    private data class VerifiedTunnel(
+        val pid: Int,
+        val port: Int,
+        val at: Instant,
+    )
+
+    private var lastVerified: VerifiedTunnel? = null
+
     override fun ensureRunning(gatewayHost: ClusterHost): SocksProxyState =
         lock.withLock {
-            // Return in-memory state only while the tunnel still carries traffic end-to-end. A live
-            // ssh with an open local port can still be a zombie tunnel (its SSH connection died
-            // silently), so the same probe isValidProxy() uses on the state-file path decides.
             val current = state
             if (current != null && isAlive(pid)) {
-                if (reachesGateway(current.localPort, gatewayHost)) {
-                    log.debug { "SOCKS5 proxy already running in-memory on port ${current.localPort} [PID $pid]" }
-                    envFile.recordPort(current.localPort)
-                    return@withLock current.copy(reused = true)
-                }
-                log.info { "SOCKS5 proxy on port ${current.localPort} [PID $pid] no longer reaches ${gatewayHost.alias}; replacing it" }
-                inMemoryRecord()?.let { terminateStaleProxy(it) }
-                state = null
-                pid = 0
+                reuseInMemory(current, gatewayHost)?.let { return@withLock it }
             }
 
             // Try to reuse from state file
@@ -134,6 +134,7 @@ class ProcessSocksProxyService(
                         val reused = buildProxyState(loaded.port, gatewayHost).copy(reused = true)
                         state = reused
                         pid = loaded.pid
+                        markVerified(loaded.pid, loaded.port)
                         applySystemProperties(loaded.port)
                         envFile.recordPort(loaded.port)
                         return@withLock reused
@@ -178,12 +179,66 @@ class ProcessSocksProxyService(
                     System.clearProperty(Constants.Proxy.PORT_PROPERTY)
                     envFile.removePort()
                     stateFile.delete()
-                    state = null
-                    pid = 0
+                    forgetInMemory()
                 }
             }
             result
         }
+
+    /**
+     * The in-memory tunnel, when it is still to [gatewayHost] and still carries traffic end-to-end;
+     * otherwise null, after stopping it. A live ssh with an open local port can still be a zombie
+     * tunnel (its SSH connection died silently), so the same probe isValidProxy() uses on the
+     * state-file path decides. A tunnel that passed the probe less than
+     * [Constants.Proxy.REUSE_PROBE_FRESHNESS] ago is reused without probing again, because cluster
+     * HTTP clients ask for the tunnel on every request.
+     */
+    private fun reuseInMemory(
+        current: SocksProxyState,
+        gatewayHost: ClusterHost,
+    ): SocksProxyState? {
+        val replaceReason =
+            when {
+                current.gatewayHost.privateIp != gatewayHost.privateIp ->
+                    "goes to ${current.gatewayHost.privateIp}, not ${gatewayHost.alias} (${gatewayHost.privateIp})"
+                isFreshlyVerified(pid, current.localPort) -> null
+                reachesGateway(current.localPort, gatewayHost) -> null.also { markVerified(pid, current.localPort) }
+                else -> "no longer reaches ${gatewayHost.alias}"
+            }
+        if (replaceReason == null) {
+            log.debug { "SOCKS5 proxy already running in-memory on port ${current.localPort} [PID $pid]" }
+            envFile.recordPort(current.localPort)
+            return current.copy(reused = true)
+        }
+        log.info { "SOCKS5 proxy on port ${current.localPort} [PID $pid] $replaceReason; replacing it" }
+        inMemoryRecord()?.let { terminateStaleProxy(it) }
+        forgetInMemory()
+        return null
+    }
+
+    /** Records that the tunnel [tunnelPid] on [port] passed the end-to-end probe just now. */
+    private fun markVerified(
+        tunnelPid: Int,
+        port: Int,
+    ) {
+        lastVerified = VerifiedTunnel(tunnelPid, port, clock.instant())
+    }
+
+    /** Whether the tunnel [tunnelPid] on [port] passed the probe less than the freshness window ago. */
+    private fun isFreshlyVerified(
+        tunnelPid: Int,
+        port: Int,
+    ): Boolean =
+        lastVerified?.let {
+            it.pid == tunnelPid && it.port == port && Duration.between(it.at, clock.instant()) < Constants.Proxy.REUSE_PROBE_FRESHNESS
+        } ?: false
+
+    /** Drops the in-memory tunnel and its probe time; the next call finds it again only through the state file. */
+    private fun forgetInMemory() {
+        state = null
+        pid = 0
+        lastVerified = null
+    }
 
     /** The tunnel this process started or reused, as the state file would record it; null when there is none. */
     private fun inMemoryRecord(): Socks5ProxyStateFile? {
@@ -259,6 +314,8 @@ class ProcessSocksProxyService(
         // The same for shell-side tools: a wrapper must never route through the port of a tunnel
         // that is being replaced, so the env file records no port until the new one is verified.
         envFile.removePort()
+        // Nor may an in-memory reuse skip the probe on the strength of the tunnel being replaced.
+        lastVerified = null
 
         // ProcessBuilder's redirect will NOT create parent dirs; without this, ssh's stderr is
         // silently discarded and the transcript we rely on for diagnosis would be lost.
@@ -300,6 +357,7 @@ class ProcessSocksProxyService(
         val proxyState = buildProxyState(port, gatewayHost)
         state = proxyState
         pid = newPid
+        markVerified(newPid, port)
 
         log.info { "SOCKS5 proxy started successfully on 127.0.0.1:$port via ${gatewayHost.alias}" }
         return proxyState

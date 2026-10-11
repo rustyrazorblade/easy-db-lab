@@ -19,8 +19,11 @@ import java.net.BindException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /**
  * Integration-tier tests for [ProcessSocksProxyService] that genuinely require real socket I/O: the
@@ -82,13 +85,29 @@ class ProcessSocksProxyServiceTest {
         launcher: SshProcessLauncher =
             SshProcessLauncher { _, _ -> error("ssh launch not expected in this test") },
         portSelector: LocalPortSelector = LoopbackPortSelector(),
+        clock: Clock = Clock.systemUTC(),
     ) = ProcessSocksProxyService(
         Context.forCli(tempDir).copy(workingDirectory = tempDir),
         SocksTunnelReachabilityProbe(PROBE_TIMEOUT_MS),
         verifyDelay = VERIFY_DELAY,
         processLauncher = launcher,
         portSelector = portSelector,
+        clock = clock,
     )
+
+    /**
+     * A clock that moves past [Constants.Proxy.REUSE_PROBE_FRESHNESS] each time it is read, so every
+     * in-memory reuse probes the tunnel again, without the test sleeping.
+     */
+    private class OutsideFreshnessClock : Clock() {
+        private var now = Instant.parse("2026-10-10T12:00:00Z")
+
+        override fun instant(): Instant = now.also { now = now.plus(Constants.Proxy.REUSE_PROBE_FRESHNESS).plusSeconds(1) }
+
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+
+        override fun withZone(zone: ZoneId): Clock = this
+    }
 
     private fun writeStateFile(
         pid: Int,
@@ -363,7 +382,8 @@ class ProcessSocksProxyServiceTest {
         // tunnel so the recorded port stops accepting while the recorded PID (this JVM) stays
         // alive — the "process alive, tunnel dead" case the in-memory fast path must not trust.
         val livePid = ProcessHandle.current().pid().toInt()
-        val svc = service(launcher = { _, _ -> deadProcess(exitCode = 255) })
+        // Past the freshness window, so the second call probes instead of trusting the first call's probe.
+        val svc = service(launcher = { _, _ -> deadProcess(exitCode = 255) }, clock = OutsideFreshnessClock())
         FakeSocksTunnel().use { tunnel ->
             val port = tunnel.port
             writeStateFile(pid = livePid, port = port)

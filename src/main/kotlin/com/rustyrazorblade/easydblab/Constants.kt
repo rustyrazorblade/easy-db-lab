@@ -960,6 +960,13 @@ object Constants {
          * both is stopped and replaced.
          */
         const val REUSE_TUNNEL_VERIFY_ATTEMPTS = 2
+
+        /**
+         * How long after a tunnel last passed the end-to-end probe this process reuses its in-memory
+         * tunnel without probing again. Cluster HTTP clients ask for the tunnel on every request, so
+         * a burst of requests probes once. Across CLI invocations the state-file path always probes.
+         */
+        val REUSE_PROBE_FRESHNESS: java.time.Duration = java.time.Duration.ofSeconds(10)
     }
 
     // Tailscale VPN configuration

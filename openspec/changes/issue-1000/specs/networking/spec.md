@@ -191,7 +191,7 @@ The CLI MUST update keys without dropping the others, and MUST write the file at
 
 ### Requirement: SOCKS tunnel reconnects on its own
 
-The CLI MUST start the SOCKS tunnel through a packaged POSIX script, `<workspace>/bin/edl-socks-tunnel`, written with the tool wrappers. The script MUST run `ssh -N -D <port> -F <sshConfig> <host>` with `ExitOnForwardFailure=yes`, wait for it to exit, and start it again on the same port after a short backoff, for as long as the script runs. Because the port does not change, the proxy env file stays correct across a reconnect, and wrapped tools in an open shell work again once the connection comes back. The SSH keepalives in the generated `sshConfig` (every transport) make `ssh` exit when a connection dies, so the script can reconnect.
+The CLI MUST start the SOCKS tunnel through a packaged POSIX script, `<workspace>/bin/edl-socks-tunnel`, written with the tool wrappers. The script MUST run `ssh -N -D <port> -F <sshConfig> <host>` with `ExitOnForwardFailure=yes`, wait for it to exit, and start it again on the same port after a short backoff, for as long as the script runs. The one exception is the first `ssh` run: if it exits within a startup grace period (longer than the CLI's tunnel verification window), the script MUST exit with `ssh`'s status and not restart it, so a start that cannot succeed (a port already in use, a refused key, a changed host key) still fails fast and the CLI can retry on a new port. Because the port does not change, the proxy env file stays correct across a reconnect, and wrapped tools in an open shell work again once the connection comes back. The SSH keepalives in the generated `sshConfig` (every transport) make `ssh` exit when a connection dies, so the script can reconnect.
 
 The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST verify that a recorded PID is an `edl-socks-tunnel` process for the recorded port and `sshConfig` before it signals it. `stop-socks`, `down`, and the replacement of a stale tunnel MUST stop the script and its `ssh` child, and MUST leave no `ssh` process of that tunnel running. The CLI still verifies a reused tunnel end to end, and replaces it when the check fails.
 
@@ -201,6 +201,13 @@ The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST ver
 - **WHEN** the connection to the control node is available again
 - **THEN** `edl-socks-tunnel` starts `ssh` again on the same port within a few seconds
 - **AND** a wrapped tool in a shell that sourced `env.sh` works again with no CLI command
+
+#### Scenario: A first start that fails is not retried by the script
+
+- **GIVEN** a first `ssh` run that exits within the startup grace period, for example because its port is already in use
+- **WHEN** `edl-socks-tunnel` sees it exit
+- **THEN** the script exits with the same status and does not start `ssh` again
+- **AND** the CLI reports the failed start or retries on a new port
 
 #### Scenario: Stopping the tunnel stops the loop and its ssh
 

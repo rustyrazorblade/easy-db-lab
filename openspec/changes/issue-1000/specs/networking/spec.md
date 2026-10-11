@@ -20,8 +20,8 @@ The CLI is the only component that starts or stops the proxy. `env.sh` and the t
 
 - **GIVEN** a cluster whose `state.json` has `tailscaleActive: false`
 - **WHEN** any component needs to reach internal cluster services
-- **THEN** a SOCKS5 proxy is started via `ssh -N -D <port> -F sshConfig control0` as a detached OS process
-- **AND** its PID and port are written to `.socks5-proxy-state`
+- **THEN** a SOCKS5 proxy is started as a detached OS process through `<workspace>/bin/edl-socks-tunnel`, which runs `ssh -N -D <port> -F sshConfig control0`
+- **AND** the PID of `edl-socks-tunnel` and the port are written to `.socks5-proxy-state`
 - **AND** once the tunnel is verified, its port is written to the proxy env file
 
 #### Scenario: Proxy reused across invocations
@@ -189,9 +189,39 @@ The CLI MUST update keys without dropping the others, and MUST write the file at
 - **WHEN** the repository's shell scripts and packaged shell resources are searched
 - **THEN** none reads `.socks5-proxy-state` or parses JSON to learn the proxy port or the Tailscale state
 
+### Requirement: SOCKS tunnel reconnects on its own
+
+The CLI MUST start the SOCKS tunnel through a packaged POSIX script, `<workspace>/bin/edl-socks-tunnel`, written with the tool wrappers. The script MUST run `ssh -N -D <port> -F <sshConfig> <host>` with `ExitOnForwardFailure=yes`, wait for it to exit, and start it again on the same port after a short backoff, for as long as the script runs. Because the port does not change, the proxy env file stays correct across a reconnect, and wrapped tools in an open shell work again once the connection comes back. The SSH keepalives in the generated `sshConfig` (every transport) make `ssh` exit when a connection dies, so the script can reconnect.
+
+The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST verify that a recorded PID is an `edl-socks-tunnel` process for the recorded port and `sshConfig` before it signals it. `stop-socks`, `down`, and the replacement of a stale tunnel MUST stop the script and its `ssh` child, and MUST leave no `ssh` process of that tunnel running. The CLI still verifies a reused tunnel end to end, and replaces it when the check fails.
+
+#### Scenario: A dropped connection reconnects on the same port
+
+- **GIVEN** a running tunnel whose `ssh` exits because its connection died
+- **WHEN** the connection to the control node is available again
+- **THEN** `edl-socks-tunnel` starts `ssh` again on the same port within a few seconds
+- **AND** a wrapped tool in a shell that sourced `env.sh` works again with no CLI command
+
+#### Scenario: Stopping the tunnel stops the loop and its ssh
+
+- **WHEN** `stop-socks` or `down` stops the tunnel
+- **THEN** the `edl-socks-tunnel` process and its `ssh` child have both exited
+- **AND** no new `ssh` is started afterwards
+
+#### Scenario: The script is written with the wrappers
+
+- **WHEN** `up` completes, a kit process is launched, or a workspace is restored from a VPC
+- **THEN** `<workspace>/bin/edl-socks-tunnel` exists, is executable, and matches the packaged script
+
+#### Scenario: A reused PID that is not the tunnel script is not signaled
+
+- **GIVEN** `.socks5-proxy-state` records a PID now held by a process that is not `edl-socks-tunnel` for the recorded port
+- **WHEN** the CLI stops or replaces the tunnel
+- **THEN** it does not signal that process
+
 ### Requirement: Workspace tool wrappers
 
-The CLI MUST write executable wrapper scripts named `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s` into `<workspace>/bin/`, plus a marker file `.easy-db-lab-tool-wrappers` in that directory. The wrappers MUST come from resources packaged in the distribution, so they work from a Homebrew install with no source checkout. They MUST run under the POSIX `/bin/sh` of both Linux (dash) and macOS.
+The CLI MUST write executable wrapper scripts named `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s` into `<workspace>/bin/`, plus the tunnel script `edl-socks-tunnel` and a marker file `.easy-db-lab-tool-wrappers` in that directory. The foreign-file check below covers `edl-socks-tunnel` as well as the six wrappers. The wrappers MUST come from resources packaged in the distribution, so they work from a Homebrew install with no source checkout. They MUST run under the POSIX `/bin/sh` of both Linux (dash) and macOS.
 
 The CLI MUST write them at `up`, before every kit process it launches, and when it restores a workspace from a VPC. Writing MUST be idempotent, MUST replace a wrapper whose content changed, and MUST be atomic. If `<workspace>/bin/` holds one of the six names and has no marker, the CLI MUST fail with a clear message and write nothing.
 

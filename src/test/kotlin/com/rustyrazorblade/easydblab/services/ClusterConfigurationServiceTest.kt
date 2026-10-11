@@ -220,11 +220,11 @@ class ClusterConfigurationServiceTest {
         }
 
         @Test
-        fun `a direct route leaves hosts without a ProxyCommand`() {
+        fun `a direct route leaves hosts without a ProxyCommand and keeps idle connections alive`() {
             service.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
 
             assertThat(File(tempDir.toFile(), "sshConfig").readText()).doesNotContain("ProxyCommand")
-            assertThat(File(tempDir.toFile(), "sshConfig").readText()).doesNotContain("ServerAlive")
+            assertThat(File(tempDir.toFile(), "sshConfig").readText()).contains("ServerAliveInterval 30", "ServerAliveCountMax 3")
             assertThat(File(tempDir.toFile(), "sshConfig").readText()).doesNotContain("ConnectTimeout")
             assertThat(File(tempDir.toFile(), "env.sh").readText()).doesNotContain("ProxyCommand")
         }

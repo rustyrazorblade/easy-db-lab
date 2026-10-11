@@ -1019,6 +1019,18 @@ object Constants {
         const val BACKEND_STATE_TIMED_OUT = "timed out"
     }
 
+    // OpenSSH options the generated sshConfig sets for every SSH transport
+    object Ssh {
+        /**
+         * ssh keepalive interval for every host, direct or over SSM: well inside Session Manager's
+         * 20-minute idle timeout, and short enough that a tunnel whose connection died is noticed.
+         */
+        const val KEEPALIVE_INTERVAL_SECONDS = 30
+
+        /** Unanswered keepalives before ssh gives up on a dropped connection (about 90s at the interval above). */
+        const val KEEPALIVE_COUNT_MAX = 3
+    }
+
     // AWS Systems Manager Session Manager, used as the SSH transport when a profile selects `ssm`
     object Ssm {
         /** The AWS CLI executable. Session Manager sessions are started through it. */
@@ -1083,13 +1095,6 @@ object Constants {
 
         /** Most recent plugin output lines kept for error messages. */
         const val TRANSCRIPT_MAX_LINES = 50
-
-        /** ssh keepalive interval for hosts reached over SSM, well inside Session Manager's 20-minute idle timeout. */
-        const val SSH_KEEPALIVE_INTERVAL_SECONDS = 30
-
-        /** Unanswered keepalives before ssh gives up on a dropped session (about 90s at the interval above). */
-        const val SSH_KEEPALIVE_COUNT_MAX = 3
-
         const val AWS_CLI_INSTALL_HINT =
             "brew install awscli (or https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)"
 

@@ -35,12 +35,14 @@ object ClusterConfigWriter {
         writer.appendLine("UserKnownHostsFile=/dev/null")
         writer.appendLine("User ubuntu")
         writer.appendLine("IdentityFile $identityFile")
+        // Every transport needs keepalives. An idle connection such as the SOCKS tunnel can die
+        // silently, after a laptop sleep or a network change on a direct connection, or when Session
+        // Manager ends a session after 20 idle minutes. Without keepalives ssh lingers with its local
+        // port open and the tunnel carries nothing. Keepalives count as traffic, so they hold an SSM
+        // session open, and they make ssh exit within interval x count when the connection is gone.
+        writer.appendLine("ServerAliveInterval ${Constants.Ssh.KEEPALIVE_INTERVAL_SECONDS}")
+        writer.appendLine("ServerAliveCountMax ${Constants.Ssh.KEEPALIVE_COUNT_MAX}")
         if (proxyCommands.isNotEmpty()) {
-            // Session Manager ends a session after 20 idle minutes, which silently kills a quiet
-            // long-lived connection such as the SOCKS tunnel. Keepalives count as traffic, so
-            // they hold the session open, and they make ssh exit promptly if it is dropped anyway.
-            writer.appendLine("ServerAliveInterval ${Constants.Ssm.SSH_KEEPALIVE_INTERVAL_SECONDS}")
-            writer.appendLine("ServerAliveCountMax ${Constants.Ssm.SSH_KEEPALIVE_COUNT_MAX}")
             // Keepalives start only after authentication, so a session whose plugin connects but
             // passes no data would hang ssh forever. ConnectTimeout bounds the wait for the server's
             // banner, ProxyCommand included (checked on OpenSSH 9.6 and 10.3).

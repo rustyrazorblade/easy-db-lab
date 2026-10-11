@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.BufferedWriter
@@ -16,11 +17,41 @@ import java.io.StringWriter
  * cluster lifetimes.
  */
 internal class ClusterConfigWriterTest {
-    private fun renderSshConfig(hosts: Map<ServerType, List<ClusterHost>>): String {
+    private fun renderSshConfig(
+        hosts: Map<ServerType, List<ClusterHost>>,
+        proxyCommands: Map<String, String> = emptyMap(),
+    ): String {
         val stringWriter = StringWriter()
         val bufferedWriter = BufferedWriter(stringWriter)
-        ClusterConfigWriter.writeSshConfig(bufferedWriter, "/path/to/identity", hosts)
+        ClusterConfigWriter.writeSshConfig(bufferedWriter, "/path/to/identity", hosts, proxyCommands)
         return stringWriter.toString()
+    }
+
+    private val control = ClusterHost("54.1.1.1", "10.0.0.1", "control0", "us-west-2a")
+
+    /** The global lines of [config], before its first Host block, where an option applies to every host. */
+    private fun globalLines(config: String): List<String> = config.lines().takeWhile { !it.startsWith("Host ") }
+
+    @Test
+    fun `a direct config sends keepalives to every host, so a tunnel whose connection died makes ssh exit`() {
+        val global = globalLines(renderSshConfig(mapOf(ServerType.Control to listOf(control))))
+
+        assertThat(global).contains(
+            "ServerAliveInterval ${Constants.Ssh.KEEPALIVE_INTERVAL_SECONDS}",
+            "ServerAliveCountMax ${Constants.Ssh.KEEPALIVE_COUNT_MAX}",
+        )
+        assertThat(global).noneMatch { it.startsWith("ConnectTimeout") }
+    }
+
+    @Test
+    fun `an ssm config sends the same keepalives and bounds the wait for the banner`() {
+        val config = renderSshConfig(mapOf(ServerType.Control to listOf(control)), mapOf("control0" to "edl-ssm-proxy i-control"))
+
+        assertThat(globalLines(config)).contains(
+            "ServerAliveInterval ${Constants.Ssh.KEEPALIVE_INTERVAL_SECONDS}",
+            "ServerAliveCountMax ${Constants.Ssh.KEEPALIVE_COUNT_MAX}",
+            "ConnectTimeout ${Constants.Ssm.SSH_CONNECT_TIMEOUT_SECONDS}",
+        )
     }
 
     @Test

@@ -16,7 +16,6 @@ import com.rustyrazorblade.easydblab.providers.ssm.SsmSessionCommandBuilder
 import com.rustyrazorblade.easydblab.providers.ssm.SsmSshRoute
 import com.rustyrazorblade.easydblab.proxy.ProxyEnv
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
-import com.rustyrazorblade.easydblab.proxy.SshConfigReloader
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -37,10 +36,6 @@ class ClusterConfigurationServiceTest {
     private lateinit var service: ClusterConfigurationService
     private lateinit var eventBus: EventBus
     private val capturedEvents = mutableListOf<EventEnvelope>()
-
-    /** Every sshConfig change the service reported, with the gateway it named. */
-    private val reloads = mutableListOf<Pair<File, ClusterHost>>()
-    private val reloader = SshConfigReloader { sshConfig, gatewayHost -> reloads += sshConfig to gatewayHost }
 
     @TempDir
     lateinit var tempDir: Path
@@ -69,7 +64,6 @@ class ClusterConfigurationServiceTest {
                 userConfigProvider,
                 eventBus,
                 DirectSshRoute(22),
-                reloader,
             )
     }
 
@@ -85,7 +79,7 @@ class ClusterConfigurationServiceTest {
         )
 
     /** A service whose hosts are routed over SSM, as under a profile with the `ssm` transport. */
-    private val ssmService by lazy { DefaultClusterConfigurationService(userConfigProvider, eventBus, ssmRoute, reloader) }
+    private val ssmService by lazy { DefaultClusterConfigurationService(userConfigProvider, eventBus, ssmRoute) }
 
     @AfterEach
     fun closeRoute() = ssmRoute.close()
@@ -117,54 +111,6 @@ class ClusterConfigurationServiceTest {
             // SSH and env files should still be created
             assertThat(File(tempDir.toFile(), "sshConfig")).exists()
             assertThat(File(tempDir.toFile(), "env.sh")).exists()
-        }
-    }
-
-    @Nested
-    inner class SshConfigChanges {
-        private val control = ClusterHost("54.1.1.9", "10.0.0.9", "control0", "us-west-2a", "i-control")
-        private val sshConfig: File get() = File(tempDir.toFile(), DefaultClusterConfigurationService.SSH_CONFIG_FILE)
-
-        private fun state(controlPublicIp: String = control.publicIp) =
-            createClusterState(controlHosts = listOf(control.copy(publicIp = controlPublicIp)))
-
-        @Test
-        fun `the first sshConfig of a workspace restarts nothing`() {
-            service.writeSshAndEnvironmentFiles(tempDir, state(), createUserConfig())
-
-            assertThat(reloads).isEmpty()
-        }
-
-        @Test
-        fun `rewriting the same sshConfig restarts nothing`() {
-            service.writeSshAndEnvironmentFiles(tempDir, state(), createUserConfig())
-
-            service.writeSshAndEnvironmentFiles(tempDir, state(), createUserConfig())
-
-            assertThat(reloads).isEmpty()
-        }
-
-        @Test
-        fun `a changed sshConfig is applied to the running tunnel through the control node`() {
-            service.writeSshAndEnvironmentFiles(tempDir, state(controlPublicIp = "54.1.1.8"), createUserConfig())
-
-            service.writeSshAndEnvironmentFiles(tempDir, state(), createUserConfig())
-
-            assertThat(reloads).containsExactly(sshConfig.absoluteFile to control)
-            assertThat(sshConfig.readText()).contains("Hostname ${control.publicIp}")
-        }
-
-        @Test
-        fun `a changed sshConfig on a Tailscale cluster restarts nothing, since it has no tunnel`() {
-            service.writeSshAndEnvironmentFiles(
-                tempDir,
-                state(controlPublicIp = "54.1.1.8").copy(tailscaleActive = true),
-                createUserConfig(),
-            )
-
-            service.writeSshAndEnvironmentFiles(tempDir, state().copy(tailscaleActive = true), createUserConfig())
-
-            assertThat(reloads).isEmpty()
         }
     }
 

@@ -985,13 +985,6 @@ object Constants {
          * every later exit is a dropped connection and is restarted.
          */
         const val TUNNEL_STARTUP_GRACE_SECONDS = 60
-
-        /**
-         * The signal that asks `edl-socks-tunnel` to end its ssh and start the next one at once, on the
-         * same port, with no backoff and no start-up grace exit: how a rewritten `sshConfig` reaches a
-         * running tunnel. The script traps it; the name is the one the system `kill` takes.
-         */
-        const val TUNNEL_RESTART_SIGNAL = "USR1"
     }
 
     // Tailscale VPN configuration

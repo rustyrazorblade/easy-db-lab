@@ -48,7 +48,6 @@ internal class FakeTunnelProcess(
             on { isAlive } doAnswer { !exit.isDone }
             on { onExit() } doReturn exit
             on { descendants() } doAnswer { children.filter { !it.exit.isDone }.map { it.handle }.stream() }
-            on { children() } doAnswer { children.filter { !it.exit.isDone }.map { it.handle }.stream() }
             on { destroy() } doAnswer { signal(forced = false) }
             on { destroyForcibly() } doAnswer { signal(forced = true) }
         }

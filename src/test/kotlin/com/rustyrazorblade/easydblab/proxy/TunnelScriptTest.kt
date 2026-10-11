@@ -103,22 +103,6 @@ internal class TunnelScriptTest {
 
     @ParameterizedTest(name = "under {0}")
     @MethodSource("shells")
-    fun `USR1 restarts ssh at once on the same port, even within the start-up grace`(shell: String) {
-        // The grace is long and the backoff longer than the test waits: neither may apply to a restart
-        // the CLI asked for, which is how a rewritten sshConfig reaches the running tunnel.
-        val tunnel = launch(shell, failures = 0, backoffSeconds = 30, graceSeconds = 60)
-        val first = awaitRuns(1).single()
-
-        signal(tunnel, "USR1")
-        val second = awaitRuns(2).last()
-
-        assertThat(ProcessHandle.of(first.pid).map { it.isAlive }.orElse(false)).withFailMessage("the old ssh is still running").isFalse()
-        assertThat(second.arguments).isEqualTo(SSH_ARGUMENTS)
-        assertThat(tunnel.isAlive).withFailMessage("the script must keep running").isTrue()
-    }
-
-    @ParameterizedTest(name = "under {0}")
-    @MethodSource("shells")
     fun `a first start that fails is not retried by the script`(shell: String) {
         // A status other than ssh's usual 255, so the test sees the script pass on ssh's own status.
         val tunnel = launch(shell, failures = 1, backoffSeconds = 1, graceSeconds = 60, status = DISTINCT_STATUS)
@@ -144,14 +128,6 @@ internal class TunnelScriptTest {
                 environment()["STUB_STATUS"] = "$status"
             }.start()
             .also { started += it }
-
-    /** Sends [name] to [process] with the system `kill`, as the CLI does. */
-    private fun signal(
-        process: Process,
-        name: String,
-    ) {
-        assertThat(ProcessBuilder("kill", "-$name", "${process.pid()}").start().waitFor()).isZero()
-    }
 
     /** One run of the stub ssh. */
     private data class Run(

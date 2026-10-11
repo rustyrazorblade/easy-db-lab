@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
 import com.rustyrazorblade.easydblab.services.ResourceManager
-import org.koin.dsl.binds
 import org.koin.dsl.module
 
 /**
@@ -12,8 +11,7 @@ import org.koin.dsl.module
  *
  * Provides:
  * - [TunnelReachabilityProbe] as a singleton — the real SOCKS-based end-to-end tunnel check
- * - [SocksProxyService] as a singleton — manages the detached SSH proxy process; also bound as the
- *   [SshConfigReloader] that applies a rewritten `sshConfig` to it
+ * - [SocksProxyService] as a singleton — manages the detached SSH proxy process
  * - [ProxyEnvFile] as a singleton — the workspace's proxy state for shell-side tools
  * - [ToolWrapperInstaller] as a singleton — writes the shell-side tool wrappers
  * - [WorkspaceShellTools] as a singleton — the wrappers plus the Tailscale flag, at `up` and restore
@@ -32,10 +30,9 @@ val proxyModule =
         // SOCKS proxy service - singleton to share state across requests.
         // Uses ProcessSocksProxyService which launches a detached OS process that
         // persists across JVM restarts and is reused via .socks5-proxy-state.
-        // The same instance applies a rewritten sshConfig to the tunnel it runs.
-        single {
+        single<SocksProxyService> {
             ProcessSocksProxyService(get(), get(), verifyAttempts = get<SshRoute>().tunnelVerifyAttempts, envFile = get())
-        } binds arrayOf(SocksProxyService::class, SshConfigReloader::class)
+        }
 
         // The workspace's sourceable proxy state for the shell-side tool wrappers and env.sh.
         single { ProxyEnvFile(get<Context>().workingDirectory) }

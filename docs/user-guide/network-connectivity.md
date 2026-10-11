@@ -154,8 +154,6 @@ reach the cluster starts it, or reuses the one already running, before the comma
 The CLI reuses a running tunnel only after a connection through it reaches the control node. If the tunnel's SSH connection died while its local port stayed open, the CLI stops it, starts a new one, and records the new port.
 
 The tunnel reconnects by itself. The CLI runs it through `<workspace>/bin/edl-socks-tunnel`, which easy-db-lab writes with the tool wrappers. That script runs `ssh -N -D` and, when `ssh` exits, starts it again on the same port after a two-second pause. The SSH keepalives make `ssh` exit about 90 seconds after its connection dies, for example after a laptop sleep or a network change. Because the port does not change, wrapped tools in an open shell work again as soon as the connection comes back, with no CLI command. `stop-socks` and `down` stop the script and its `ssh`.
-
-When a command rewrites the workspace's `sshConfig` with new content, for example `up` on a cluster that is already up, the CLI restarts the running tunnel's `ssh` at once, on the same port, so the new settings take effect now. It then checks the tunnel again before the command goes on.
 To start it for everything else (your shell, a browser), run:
 
 ```bash

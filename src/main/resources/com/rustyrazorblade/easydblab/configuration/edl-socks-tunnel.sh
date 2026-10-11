@@ -14,9 +14,6 @@
 # If the first ssh exits within <startup-grace-seconds>, the tunnel never came up (the port was
 # taken, the key was refused), so the script exits with ssh's status and the CLI reports the failure.
 #
-# USR1 asks for a restart: the script ends its ssh and starts the next one at once, with no backoff
-# and no start-up grace exit. The CLI sends it when it rewrites sshConfig, so the new file is read now.
-#
 # TERM or INT ends the running ssh and the loop; nothing is started afterwards. HUP is left alone:
 # the CLI starts the script under nohup, so the tunnel survives the terminal that started it.
 #
@@ -34,24 +31,15 @@ host=$5
 
 child=
 stopping=
-restarting=
 status=0
 
-end_child() {
+stop() {
+    stopping=1
     if [ -n "$child" ]; then
         kill "$child" 2>/dev/null
     fi
 }
-stop() {
-    stopping=1
-    end_child
-}
-restart() {
-    restarting=1
-    end_child
-}
 trap stop TERM INT
-trap restart USR1
 
 # Runs "$@" in the background and waits until it has exited, also when a trapped signal interrupts
 # the wait; leaves its exit status in $status.
@@ -59,7 +47,7 @@ run_child() {
     "$@" &
     child=$!
     # A signal that came before $child was set found no child to end.
-    if [ -n "$stopping" ] || [ -n "$restarting" ]; then
+    if [ -n "$stopping" ]; then
         kill "$child" 2>/dev/null
     fi
     while :; do
@@ -72,15 +60,9 @@ run_child() {
 
 first=1
 while [ -z "$stopping" ]; do
-    # A restart asked for during the backoff ended the sleep; this ssh is the one it asked for.
-    restarting=
     started=$(date +%s)
     run_child ssh -v -o ExitOnForwardFailure=yes -N -D "$port" -F "$ssh_config" "$host"
     [ -n "$stopping" ] && break
-    if [ -n "$restarting" ]; then
-        echo "edl-socks-tunnel: restarting ssh on port $port, as asked." >&2
-        continue
-    fi
     if [ -n "$first" ] && [ $(($(date +%s) - started)) -lt "$grace" ]; then
         echo "edl-socks-tunnel: ssh exited with status $status before the tunnel on port $port was up; not restarting." >&2
         exit "$status"

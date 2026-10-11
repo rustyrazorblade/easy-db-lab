@@ -20,25 +20,8 @@ internal class TunnelProcessControlTest {
             sshConfig = SSH_CONFIG,
         )
 
-    /** Every script a restart was requested of, by PID. */
-    private val restartRequests = mutableListOf<Long>()
-
-    /**
-     * A control whose lookup sees only [process]. A restart request is recorded and, as the real
-     * script does on USR1, ends the script's [restartEnds] ssh.
-     */
-    private fun control(
-        process: FakeTunnelProcess?,
-        restartEnds: FakeTunnelProcess? = null,
-    ) = TunnelProcessControl(
-        lookup = { pid -> process?.takeIf { it.pid == pid }?.handle },
-        stopWait = Duration.ofMillis(50),
-        requestSshRestart = { script ->
-            restartRequests += script.pid()
-            restartEnds?.handle?.destroy()
-            true
-        },
-    )
+    private fun control(process: FakeTunnelProcess?) =
+        TunnelProcessControl(lookup = { pid -> process?.takeIf { it.pid == pid }?.handle }, stopWait = Duration.ofMillis(50))
 
     private fun ssh(endsOnSignal: Boolean = true) = FakeTunnelProcess.ssh(SSH_PID, PORT, SSH_CONFIG, endsOnSignal)
 
@@ -135,57 +118,6 @@ internal class TunnelProcessControlTest {
 
         assertThat(result).isEqualTo(TunnelStopResult.StopFailed(PID.toInt()))
         assertThat(hung.signals).isEqualTo(2)
-    }
-
-    @Test
-    fun `restarting the recorded tunnel's ssh asks the script, which keeps running, and waits for the old ssh to end`() {
-        val ssh = ssh()
-        val tunnel = FakeTunnelProcess.tunnelScript(PID, PORT, SSH_CONFIG, children = listOf(ssh))
-
-        val result = control(tunnel, restartEnds = ssh).restartSsh(recorded)
-
-        assertThat(result).isEqualTo(TunnelSshRestart.Restarted(SSH_PID))
-        assertThat(restartRequests).containsExactly(PID)
-        assertThat(ssh.handle.isAlive).isFalse()
-        assertThat(tunnel.signals).withFailMessage("the script must not be stopped").isZero()
-        assertThat(tunnel.handle.isAlive).isTrue()
-    }
-
-    @Test
-    fun `restarting the ssh of a PID that is not the tunnel signals nothing`() {
-        val sshOfOther = ssh()
-        val other = FakeTunnelProcess(PID, "/bin/sh", listOf("/work/bin/other-script"), children = listOf(sshOfOther))
-
-        val result = control(other, restartEnds = sshOfOther).restartSsh(recorded)
-
-        assertThat(result).isEqualTo(TunnelSshRestart.NotTheTunnel)
-        assertThat(restartRequests).isEmpty()
-        assertThat(other.signals + sshOfOther.signals).isZero()
-    }
-
-    @Test
-    fun `a tunnel between two ssh runs has no ssh to restart`() {
-        val tunnel = FakeTunnelProcess.tunnelScript(PID, PORT, SSH_CONFIG)
-
-        assertThat(control(tunnel).restartSsh(recorded)).isEqualTo(TunnelSshRestart.NoSshRunning)
-        assertThat(restartRequests).isEmpty()
-    }
-
-    @Test
-    fun `a tunnel whose children are not ssh has no ssh to restart`() {
-        val sleeper = FakeTunnelProcess(SSH_PID, "/bin/sleep", listOf("2"))
-        val tunnel = FakeTunnelProcess.tunnelScript(PID, PORT, SSH_CONFIG, children = listOf(sleeper))
-
-        assertThat(control(tunnel).restartSsh(recorded)).isEqualTo(TunnelSshRestart.NoSshRunning)
-        assertThat(restartRequests).isEmpty()
-    }
-
-    @Test
-    fun `an ssh that does not end after the restart request is reported`() {
-        val hungSsh = ssh(endsOnSignal = false)
-        val tunnel = FakeTunnelProcess.tunnelScript(PID, PORT, SSH_CONFIG, children = listOf(hungSsh))
-
-        assertThat(control(tunnel, restartEnds = hungSsh).restartSsh(recorded)).isEqualTo(TunnelSshRestart.SshDidNotStop(SSH_PID))
     }
 
     @Test

@@ -152,6 +152,8 @@ curl http://control0:3100/ready
 The `easy-db-lab` CLI is the only thing that starts or stops the tunnel. Any command that needs to
 reach the cluster starts it, or reuses the one already running, before the command does its work.
 The CLI reuses a running tunnel only after a connection through it reaches the control node. If the tunnel's SSH connection died while its local port stayed open, the CLI stops it, starts a new one, and records the new port.
+
+The tunnel reconnects by itself. The CLI runs it through `<workspace>/bin/edl-socks-tunnel`, which easy-db-lab writes with the tool wrappers. That script runs `ssh -N -D` and, when `ssh` exits, starts it again on the same port after a two-second pause. The SSH keepalives make `ssh` exit about 90 seconds after its connection dies, for example after a laptop sleep or a network change. Because the port does not change, wrapped tools in an open shell work again as soon as the connection comes back, with no CLI command. `stop-socks` and `down` stop the script and its `ssh`.
 To start it for everything else (your shell, a browser), run:
 
 ```bash
@@ -272,9 +274,9 @@ If the tunnel process does not end, `stop-socks` prints its PID and exits non-ze
 ### Host Key Verification
 
 The `sshConfig` generated for your cluster sets `UserKnownHostsFile=/dev/null` alongside
-`StrictHostKeyChecking=no`. `ssh` — and therefore the SOCKS tunnel, which is launched with
-`ssh -N -D` against that config — never reads or writes your `~/.ssh/known_hosts` for cluster
-nodes.
+`StrictHostKeyChecking=no`. `ssh` — and therefore the SOCKS tunnel, whose `edl-socks-tunnel`
+script runs `ssh -N -D` against that config — never reads or writes your `~/.ssh/known_hosts` for
+cluster nodes.
 
 This matters because AWS recycles public IPs across ephemeral cluster lifetimes. Without this
 setting, a recycled IP that previously belonged to a different cluster (with a different host

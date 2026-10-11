@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.api.parallel.ResourceLock
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
@@ -131,7 +132,8 @@ class ProcessSocksProxyServiceUnitTest {
         }
 
     /** The `-D` port each launched ssh command was handed, in launch order. */
-    private fun dynamicForwardPorts(launched: List<List<String>>): List<Int> = launched.map { it[it.indexOf("-D") + 1].toInt() }
+    private fun dynamicForwardPorts(launched: List<List<String>>): List<Int> =
+        launched.map { command -> command[command.indexOfFirst { it.endsWith("/${Constants.ToolWrappers.TUNNEL_SCRIPT}") } + 1].toInt() }
 
     /** Writes what ssh prints when another process already holds its `-D` port. */
     private fun writeBindFailureTranscript(
@@ -224,17 +226,55 @@ class ProcessSocksProxyServiceUnitTest {
     }
 
     @Test
-    fun `buildSshCommand dials the recorded alias with fail-fast forwarding options`() {
-        val command = service().buildSshCommand(port = 1080, sshConfigPath = "/work/sshConfig", alias = "gw-alias")
+    fun `the tunnel command runs the workspace's edl-socks-tunnel under nohup for the recorded alias`() {
+        val command = service().buildTunnelCommand(port = 1080, sshConfigPath = "/work/sshConfig", alias = "gw-alias")
 
-        // The alias must be the final ssh argument (the host to connect to), and the command must
-        // carry the dynamic forward and the ExitOnForwardFailure option that lets a dead ssh be
-        // detected fast. A hardcoded control0 would show up here instead of the passed alias.
-        assertThat(command.last()).isEqualTo("gw-alias")
-        assertThat(command).doesNotContain("control0")
-        assertThat(command).containsSequence("-D", "1080")
-        assertThat(command).containsSequence("-F", "/work/sshConfig")
-        assertThat(command).contains("ExitOnForwardFailure=yes")
+        // The script runs ssh with the dynamic forward and ExitOnForwardFailure itself. The alias is
+        // the host it dials; a hardcoded control0 would show up here instead of the passed alias.
+        assertThat(command).containsExactly(
+            "nohup",
+            File(tempDir, "${Constants.ToolWrappers.DIRECTORY}/${Constants.ToolWrappers.TUNNEL_SCRIPT}").absolutePath,
+            "1080",
+            "/work/sshConfig",
+            "${Constants.Proxy.TUNNEL_RESTART_BACKOFF_SECONDS}",
+            "${Constants.Proxy.TUNNEL_STARTUP_GRACE_SECONDS}",
+            "gw-alias",
+        )
+    }
+
+    @Test
+    fun `a fresh start writes the tunnel script before it launches it`() {
+        val script = File(tempDir, "${Constants.ToolWrappers.DIRECTORY}/${Constants.ToolWrappers.TUNNEL_SCRIPT}")
+        var writtenAtLaunch = false
+        val launcher =
+            SshProcessLauncher { _, _ ->
+                writtenAtLaunch = script.canExecute()
+                aliveProcess()
+            }
+
+        service(probe = { _, _, _ -> true }, launcher = launcher).ensureRunning(testHost)
+
+        assertThat(writtenAtLaunch).withFailMessage("the tunnel script was not written before the launch").isTrue()
+    }
+
+    @Test
+    fun `a start that fails verification ends the script's ssh too, not only the script`() {
+        val ssh = FakeTunnelProcess.ssh(FAKE_PID + 1, DEFAULT_TEST_PORT, File(tempDir, "sshConfig").absolutePath)
+        val process =
+            mock<Process> {
+                on { isAlive } doReturn true
+                on { pid() } doReturn FAKE_PID
+                on { descendants() } doAnswer {
+                    java.util.stream.Stream
+                        .of(ssh.handle)
+                }
+            }
+
+        assertThatThrownBy { service(probe = { _, _, _ -> false }, launcher = { _, _ -> process }).ensureRunning(testHost) }
+            .isInstanceOf(IllegalStateException::class.java)
+
+        verify(process).destroyForcibly()
+        assertThat(ssh.handle.isAlive).withFailMessage("the script's ssh must not outlive a failed start").isFalse()
     }
 
     @Test
@@ -448,7 +488,7 @@ class ProcessSocksProxyServiceUnitTest {
         // connection died, so only an end-to-end probe tells the tunnel is useless.
         writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
         val envFile = recordedEnv()
-        val zombie = FakeTunnelProcess.sshTunnel(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val zombie = FakeTunnelProcess.tunnelScript(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
         val probe = PortProbe(NEW_PORT)
         val launched = mutableListOf<List<String>>()
 
@@ -529,7 +569,7 @@ class ProcessSocksProxyServiceUnitTest {
         val ports = ArrayDeque(listOf(STOP_PORT, NEW_PORT))
         val launched = mutableListOf<List<String>>()
         val probe = PortProbe(STOP_PORT, NEW_PORT)
-        val zombie = FakeTunnelProcess.sshTunnel(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val zombie = FakeTunnelProcess.tunnelScript(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
         val clock = ManualClock()
         val svc =
             service(
@@ -683,7 +723,7 @@ class ProcessSocksProxyServiceUnitTest {
         val probe = PortProbe(STOP_PORT, NEW_PORT)
         val clock = ManualClock()
         val launched = mutableListOf<List<String>>()
-        val zombie = FakeTunnelProcess.sshTunnel(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val zombie = FakeTunnelProcess.tunnelScript(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
         val ports = ArrayDeque(listOf(STOP_PORT, NEW_PORT))
         val svc =
             service(
@@ -709,7 +749,7 @@ class ProcessSocksProxyServiceUnitTest {
     fun `stop ends the recorded tunnel and removes the state file and the port`() {
         writeStateFile(pid = FAKE_PID.toInt(), port = STOP_PORT)
         val envFile = recordedEnv()
-        val tunnel = FakeTunnelProcess.sshTunnel(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val tunnel = FakeTunnelProcess.tunnelScript(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
 
         val result = serviceSeeing(tunnel).stop()
 
@@ -748,7 +788,7 @@ class ProcessSocksProxyServiceUnitTest {
     fun `a tunnel that will not stop keeps its state file and its port`() {
         writeStateFile(pid = FAKE_PID.toInt(), port = STOP_PORT)
         val envFile = recordedEnv()
-        val hung = FakeTunnelProcess.sshTunnel(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath, endsOnSignal = false)
+        val hung = FakeTunnelProcess.tunnelScript(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath, endsOnSignal = false)
 
         val result = serviceSeeing(hung).stop()
 
@@ -783,7 +823,7 @@ class ProcessSocksProxyServiceUnitTest {
 
     @Test
     fun `a superseded tunnel that is still our ssh is terminated before its record is overwritten`() {
-        val zombie = FakeTunnelProcess.sshTunnel(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val zombie = FakeTunnelProcess.tunnelScript(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
 
         serviceSeeing(zombie).terminateStaleProxy(staleRecord())
 
@@ -808,7 +848,7 @@ class ProcessSocksProxyServiceUnitTest {
 
     @Test
     fun `stop with a corrupt state file still stops the tunnel this process started`() {
-        val tunnel = FakeTunnelProcess.sshTunnel(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val tunnel = FakeTunnelProcess.tunnelScript(FAKE_PID, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
         val svc = serviceSeeing(tunnel, probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() })
         svc.ensureRunning(testHost)
         stateFile().writeText("{ not json")

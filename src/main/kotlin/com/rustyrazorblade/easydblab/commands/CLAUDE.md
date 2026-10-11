@@ -186,7 +186,7 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
   *on the control node* over SSH — do **not** need this annotation. There is no local client
   making the call, and SSH never traverses the SOCKS tunnel (the tunnel exists only to reach the
   private Kubernetes API from the developer's machine). `Down` is a concrete example: its first
-  actions unpublish the proxy port and kill the ssh process, so it must not carry `@RequiresProxy`
+  actions unpublish the proxy port and stop the `edl-socks-tunnel` process and its ssh, so it must not carry `@RequiresProxy`
   or it would start a tunnel it exists to tear down.
 
   The annotation takes one parameter, `tolerateFailure: Boolean = false`. When `true`, a proxy

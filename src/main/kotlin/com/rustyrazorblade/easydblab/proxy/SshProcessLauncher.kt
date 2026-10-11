@@ -3,9 +3,10 @@ package com.rustyrazorblade.easydblab.proxy
 import java.io.File
 
 /**
- * Launches the detached `ssh -N -D` OS process that backs a SOCKS5 proxy.
+ * Launches the detached `edl-socks-tunnel` OS process, which runs the `ssh -N -D` that backs a SOCKS5
+ * proxy and restarts it when it exits.
  *
- * This is the injectable seam [ProcessSocksProxyService] uses to spawn ssh. It exists so the
+ * This is the injectable seam [ProcessSocksProxyService] uses to spawn the tunnel. It exists so the
  * service's start / verify / cleanup decisions — which command line is built, how a dead or hanging
  * ssh is surfaced, and that a process is destroyed on verification failure — can be driven in tests
  * with a fake [Process], without spawning a real `ssh` against a live host. A real ssh to a fixed
@@ -15,7 +16,7 @@ import java.io.File
  */
 fun interface SshProcessLauncher {
     /**
-     * @param command the full process command line (`nohup ssh -v … <alias>`).
+     * @param command the full process command line (`nohup <workspace>/bin/edl-socks-tunnel <port> … <alias>`).
      * @param logFile file the ssh `-v` transcript (stderr) is redirected to.
      * @return the started [Process].
      */
@@ -26,10 +27,10 @@ fun interface SshProcessLauncher {
 }
 
 /**
- * Production [SshProcessLauncher]: spawns the real `ssh` via [ProcessBuilder], detaching stdin and
- * stdout to `/dev/null` and redirecting stderr (the `ssh -v` transcript) to the log file so a failed
- * start's real error survives for diagnosis. The redirect overwrites, so the log is always exactly
- * this attempt's transcript.
+ * Production [SshProcessLauncher]: spawns the real tunnel script via [ProcessBuilder], detaching stdin
+ * and stdout to `/dev/null` and redirecting stderr (the `ssh -v` transcript of every ssh the script
+ * runs, and the script's own restart lines) to the log file so a failed start's real error survives
+ * for diagnosis. The redirect overwrites, so the log starts with this launch.
  */
 object DefaultSshProcessLauncher : SshProcessLauncher {
     override fun launch(

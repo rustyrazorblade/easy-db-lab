@@ -74,7 +74,7 @@ class StopSocksTest : BaseKoinTest() {
 
     @Test
     fun `stops the tunnel and removes its port, keeping the Tailscale flag`() {
-        val tunnel = FakeTunnelProcess.sshTunnel(PID, PORT, sshConfig()).also { process = it }
+        val tunnel = FakeTunnelProcess.tunnelScript(PID, PORT, sshConfig()).also { process = it }
         val stateFile = recordTunnel()
         val envFile = recordedEnv()
         System.setProperty(Constants.Proxy.PORT_PROPERTY, "$PORT")
@@ -90,7 +90,7 @@ class StopSocksTest : BaseKoinTest() {
 
     @Test
     fun `a tunnel that will not stop fails the command and stays recorded`() {
-        process = FakeTunnelProcess.sshTunnel(PID, PORT, sshConfig(), endsOnSignal = false)
+        process = FakeTunnelProcess.tunnelScript(PID, PORT, sshConfig(), endsOnSignal = false)
         val stateFile = recordTunnel()
         val envFile = recordedEnv()
 

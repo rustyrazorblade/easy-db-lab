@@ -191,9 +191,10 @@ class ProcessSocksProxyServiceTest {
     }
 
     /**
-     * Stands in for `ssh -D`: binds the command's `-D` port on the IPv4 loopback with SO_REUSEADDR
-     * off, the way ssh does, and holds it. When the port is already taken it writes ssh's bind error
-     * to the transcript and returns an exited process, as `ExitOnForwardFailure=yes` makes ssh do.
+     * Stands in for `edl-socks-tunnel` and its `ssh -D`: binds the command's port on the IPv4 loopback
+     * with SO_REUSEADDR off, the way ssh does, and holds it. When the port is already taken it writes
+     * ssh's bind error to the transcript and returns an exited process, as the script does when its
+     * first ssh fails within the start-up grace.
      */
     private class LoopbackBindingLauncher : SshProcessLauncher {
         val listeners = mutableListOf<ServerSocket>()
@@ -203,7 +204,8 @@ class ProcessSocksProxyServiceTest {
             command: List<String>,
             logFile: File,
         ): Process {
-            val port = command[command.indexOf("-D") + 1].toInt()
+            // The tunnel script's first argument is the -D port it gives ssh.
+            val port = command[command.indexOfFirst { it.endsWith("/${Constants.ToolWrappers.TUNNEL_SCRIPT}") } + 1].toInt()
             attemptedPorts.add(port)
             val socket = ServerSocket().apply { reuseAddress = false }
             return try {

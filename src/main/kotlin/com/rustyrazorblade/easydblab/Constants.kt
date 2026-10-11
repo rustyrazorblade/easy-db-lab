@@ -967,6 +967,17 @@ object Constants {
          * a burst of requests probes once. Across CLI invocations the state-file path always probes.
          */
         val REUSE_PROBE_FRESHNESS: java.time.Duration = java.time.Duration.ofSeconds(10)
+
+        /** Seconds `edl-socks-tunnel` waits after its ssh exits before it starts ssh again on the same port. */
+        const val TUNNEL_RESTART_BACKOFF_SECONDS = 2
+
+        /**
+         * Seconds within which an exit of the tunnel's first ssh ends `edl-socks-tunnel` with ssh's
+         * status, so a start that fails (a bound port, a refused key) fails the CLI's start at once
+         * and is not retried forever. It is longer than the `ssm` start verification (about 30s);
+         * every later exit is a dropped connection and is restarted.
+         */
+        const val TUNNEL_STARTUP_GRACE_SECONDS = 60
     }
 
     // Tailscale VPN configuration
@@ -1128,6 +1139,12 @@ object Constants {
 
         /** The tools that get a wrapper, which are also the wrapper file names. */
         val TOOLS = listOf("kubectl", "helm", "cilium", "curl", "skopeo", "k9s")
+
+        /** The tunnel script written into `bin/` with the wrappers, which keeps the SOCKS tunnel's ssh running. */
+        const val TUNNEL_SCRIPT = "edl-socks-tunnel"
+
+        /** The packaged tunnel script. */
+        const val TUNNEL_RESOURCE = "/com/rustyrazorblade/easydblab/configuration/edl-socks-tunnel.sh"
     }
 
     // Container Registry configuration

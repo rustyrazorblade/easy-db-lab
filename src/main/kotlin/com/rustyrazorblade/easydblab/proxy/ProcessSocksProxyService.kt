@@ -59,9 +59,11 @@ private val LOCAL_PORT_BIND_FAILURE = Regex("""Address already in use|cannot lis
 internal fun isLocalPortBindFailure(transcript: List<String>): Boolean = transcript.any { LOCAL_PORT_BIND_FAILURE.containsMatchIn(it) }
 
 /**
- * SOCKS5 proxy service that launches a detached `ssh -N -D` OS process.
+ * SOCKS5 proxy service that launches a detached `<workspace>/bin/edl-socks-tunnel` OS process, which
+ * runs `ssh -N -D` and starts it again on the same port when its connection dies.
  *
- * Unlike the previous in-process implementation, the SSH process outlives the JVM.
+ * Unlike the previous in-process implementation, the tunnel process outlives the JVM. Its PID is the
+ * one recorded, and [TunnelProcessControl] stops it and its ssh together.
  * On each [ensureRunning] call the service checks its in-memory tunnel, then `.socks5-proxy-state`,
  * for a reusable process (PID alive + same controlIP + same sshConfig path + the tunnel verified
  * end-to-end by the [TunnelReachabilityProbe]) before starting a new one. A live ssh whose tunnel
@@ -92,6 +94,7 @@ class ProcessSocksProxyService(
     private val envFile: ProxyEnvFile = ProxyEnvFile(context.workingDirectory),
     private val tunnelProcesses: TunnelProcessControl = TunnelProcessControl(),
     private val clock: Clock = Clock.systemUTC(),
+    private val toolWrappers: ToolWrapperInstaller = ToolWrapperInstaller(),
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_DELAY_MS = 500L
@@ -384,16 +387,21 @@ class ProcessSocksProxyService(
     ): LaunchedProxy {
         val port = portSelector.select()
         log.info { "Starting SOCKS5 proxy to ${gatewayHost.alias} (${gatewayHost.privateIp}) on port $port" }
-        val process = processLauncher.launch(buildSshCommand(port, sshConfigPath, gatewayHost.alias), logFile)
+        // A workspace from before the tunnel script, or one whose bin/ was cleaned, may not have it yet.
+        toolWrappers.install(context.workingDirectory)
+        val process = processLauncher.launch(buildTunnelCommand(port, sshConfigPath, gatewayHost.alias), logFile)
 
         val newPid = process.pid().toInt()
-        log.info { "SSH proxy process started [PID $newPid]" }
+        log.info { "SOCKS5 tunnel process started [PID $newPid]" }
 
         try {
             verifyTunnelReachable(process, port, gatewayHost.privateIp, logFile)
         } catch (e: IllegalStateException) {
             val sshExited = !process.isAlive
+            // The script's ssh is taken first: once the script is killed, it is no longer a descendant.
+            val children = process.descendants().toList()
             process.destroyForcibly()
+            children.forEach { it.destroyForcibly() }
             if (sshExited && isLocalPortBindFailure(readTranscript(logFile))) {
                 log.info { "SOCKS5 proxy port $port was taken by another process; selecting another port" }
                 throw BindException(e.message)
@@ -404,30 +412,26 @@ class ProcessSocksProxyService(
     }
 
     /**
-     * Builds the `ssh -N -D` command line that opens the dynamic SOCKS5 forward to [alias].
+     * Builds the command line that starts the workspace's `edl-socks-tunnel` for the dynamic SOCKS5
+     * forward on [port] to [alias]. The script runs `ssh -v -o ExitOnForwardFailure=yes -N -D`, and
+     * starts it again on the same port when it exits, so a dropped connection reconnects with no CLI
+     * command. `nohup` keeps the tunnel alive when the terminal that started it closes.
      *
      * Internal (not private) purely so a test can assert the command dials the gateway's recorded
-     * [alias] (never a hardcoded host) and carries the fail-fast options, without spawning ssh.
-     *
-     * `-o ExitOnForwardFailure=yes` makes ssh exit immediately if the dynamic forward cannot be set
-     * up rather than lingering half-open, which is what lets verification detect a dead ssh fast.
+     * [alias] (never a hardcoded host), without spawning the script.
      */
-    internal fun buildSshCommand(
+    internal fun buildTunnelCommand(
         port: Int,
         sshConfigPath: String,
         alias: String,
     ): List<String> =
         listOf(
             "nohup",
-            "ssh",
-            "-v",
-            "-o",
-            "ExitOnForwardFailure=yes",
-            "-N",
-            "-D",
+            File(File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY), Constants.ToolWrappers.TUNNEL_SCRIPT).absolutePath,
             "$port",
-            "-F",
             sshConfigPath,
+            "${Constants.Proxy.TUNNEL_RESTART_BACKOFF_SECONDS}",
+            "${Constants.Proxy.TUNNEL_STARTUP_GRACE_SECONDS}",
             alias,
         )
 

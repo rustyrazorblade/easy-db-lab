@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.time.Duration
@@ -9,7 +10,7 @@ import java.util.concurrent.TimeoutException
 
 /** How an attempt to stop a recorded SOCKS5 tunnel ended. */
 sealed interface TunnelStopResult {
-    /** The tunnel process [pid] ended. */
+    /** The tunnel process [pid] ended, and so did every ssh it ran. */
     data class Stopped(
         val pid: Int,
     ) : TunnelStopResult
@@ -17,19 +18,24 @@ sealed interface TunnelStopResult {
     /** No tunnel was running: nothing was recorded, the PID was gone, or it now belongs to another process. */
     data object NotRunning : TunnelStopResult
 
-    /** The tunnel process [pid] is still running after it was asked, then forced, to end. */
+    /** The tunnel process [pid], or an ssh it ran, is still running after it was asked, then forced, to end. */
     data class StopFailed(
         val pid: Int,
     ) : TunnelStopResult
 }
 
 /**
- * Finds and ends the `ssh -N -D` process of a recorded SOCKS5 tunnel.
+ * Finds and ends the `edl-socks-tunnel` process of a recorded SOCKS5 tunnel, and the `ssh` it runs.
  *
  * `.socks5-proxy-state` records only a PID. The tunnel can die on its own and the OS can give its
  * PID to an unrelated process, so a PID is signaled only after its process proves to be this
- * tunnel: an `ssh` executable whose arguments, when the OS reports them, carry the recorded
- * `-D <port>` and `-F <sshConfig>`.
+ * tunnel: a shell running a script named [Constants.ToolWrappers.TUNNEL_SCRIPT] whose first two
+ * arguments are the recorded port and `sshConfig`. A process whose arguments the OS does not report
+ * cannot prove that, so it is never signaled.
+ *
+ * A stop asks the script to end (TERM), which ends its `ssh`, and forces it (KILL) if it does not.
+ * A killed shell leaves its children running, so every descendant of the script is ended too: a stop
+ * leaves no `ssh` of the tunnel running.
  *
  * @param lookup finds a live process by PID; tests replace it to model processes they cannot start
  * @param stopWait how long a process is given to end after each signal
@@ -48,25 +54,46 @@ class TunnelProcessControl(
             log.info { "PID ${recorded.pid} is no longer the recorded SOCKS5 tunnel; leaving it alone" }
             return TunnelStopResult.NotRunning
         }
+        // Taken before the KILL, because a killed shell's children stop being its descendants.
+        val children = handle.descendants().toList().toMutableSet()
+        val scriptEnded =
+            ends(handle) { it.destroy() } ||
+                run {
+                    // The loop may have started a new ssh while TERM went unanswered.
+                    children += handle.descendants().toList()
+                    ends(handle) { it.destroyForcibly() }
+                }
+        val survivors = children.filter { it.isAlive }.filterNot { child -> ends(child) { it.destroyForcibly() } }
         return when {
-            ends(handle) { it.destroy() } || ends(handle) { it.destroyForcibly() } -> TunnelStopResult.Stopped(recorded.pid)
+            scriptEnded && survivors.isEmpty() -> TunnelStopResult.Stopped(recorded.pid)
             else -> {
-                log.warn { "SOCKS5 tunnel process ${recorded.pid} did not stop; it stays recorded in the proxy state file" }
+                log.warn {
+                    "SOCKS5 tunnel process ${recorded.pid} or its ssh (${survivors.joinToString { "PID ${it.pid()}" }}) did not stop; " +
+                        "it stays recorded in the proxy state file"
+                }
                 TunnelStopResult.StopFailed(recorded.pid)
             }
         }
     }
 
-    /** True when [handle] is the `ssh` process that [recorded] describes. */
+    /**
+     * True when [handle] is the `edl-socks-tunnel` that [recorded] describes: the OS reports the
+     * script path as its first argument, then the recorded port and `sshConfig`.
+     */
     internal fun isTunnel(
         handle: ProcessHandle,
         recorded: Socks5ProxyStateFile,
     ): Boolean {
-        val info = handle.info()
-        val command = info.command().orElse(null) ?: return false
-        if (File(command).name != SSH) return false
-        val arguments = info.arguments().orElse(null)?.toList() ?: return true
-        return arguments.containsPair("-D", recorded.port.toString()) && arguments.containsPair("-F", recorded.sshConfig)
+        val arguments =
+            handle
+                .info()
+                .arguments()
+                .orElse(null)
+                ?.toList() ?: return false
+        val script = arguments.firstOrNull() ?: return false
+        return File(script).name == Constants.ToolWrappers.TUNNEL_SCRIPT &&
+            arguments.getOrNull(1) == recorded.port.toString() &&
+            arguments.getOrNull(2) == recorded.sshConfig
     }
 
     /** Sends [signal] and reports whether the process ended within [stopWait]. */
@@ -85,14 +112,8 @@ class TunnelProcessControl(
         }
     }
 
-    private fun List<String>.containsPair(
-        flag: String,
-        value: String,
-    ): Boolean = indices.any { this[it] == flag && getOrNull(it + 1) == value }
-
     private companion object {
         val log = KotlinLogging.logger {}
-        const val SSH = "ssh"
         const val DEFAULT_STOP_WAIT_SECONDS = 5L
     }
 }

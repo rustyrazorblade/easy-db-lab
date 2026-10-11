@@ -73,7 +73,7 @@ class DownTest : BaseKoinTest() {
         // The state file lives in the cluster working directory, NOT the process cwd. The test
         // process cwd is the project root (never the temp workingDirectory), so a cwd-relative
         // resolver would miss the file, skip the stop, and orphan the ssh tunnel (issue #738).
-        val tunnel = FakeTunnelProcess.sshTunnel(TUNNEL_PID, TUNNEL_PORT, sshConfig()).also { process = it }
+        val tunnel = FakeTunnelProcess.tunnelScript(TUNNEL_PID, TUNNEL_PORT, sshConfig()).also { process = it }
         val proxyStateFile = recordTunnel()
         val events = captureEvents()
 
@@ -95,7 +95,7 @@ class DownTest : BaseKoinTest() {
 
     @Test
     fun `cleanupSocks5Proxy reports a tunnel that will not stop and keeps it recorded`() {
-        process = FakeTunnelProcess.sshTunnel(TUNNEL_PID, TUNNEL_PORT, sshConfig(), endsOnSignal = false)
+        process = FakeTunnelProcess.tunnelScript(TUNNEL_PID, TUNNEL_PORT, sshConfig(), endsOnSignal = false)
         val proxyStateFile = recordTunnel()
         val events = captureEvents()
 

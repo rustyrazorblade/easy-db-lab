@@ -17,17 +17,38 @@ internal class ToolWrapperInstallerTest {
     private val packaged: String by lazy {
         requireNotNull(javaClass.getResource(Constants.ToolWrappers.RESOURCE)).readText()
     }
+    private val packagedTunnel: String by lazy {
+        requireNotNull(javaClass.getResource(Constants.ToolWrappers.TUNNEL_RESOURCE)).readText()
+    }
+
+    /** Everything an install writes into `bin/`. */
+    private val written = Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER
 
     @Test
-    fun `writes the six executable wrappers and the marker`() {
+    fun `writes the six executable wrappers, the tunnel script and the marker`() {
         installer.install(workspace)
 
-        assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.MARKER)
+        assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(written)
         Constants.ToolWrappers.TOOLS.forEach { tool ->
             val wrapper = File(bin, tool)
             assertThat(wrapper).hasContent(packaged)
             assertThat(wrapper.canExecute()).withFailMessage("$tool is not executable").isTrue()
         }
+        val tunnel = File(bin, Constants.ToolWrappers.TUNNEL_SCRIPT)
+        assertThat(tunnel).hasContent(packagedTunnel)
+        assertThat(tunnel.canExecute()).withFailMessage("the tunnel script is not executable").isTrue()
+    }
+
+    @Test
+    fun `a tunnel script without the marker fails, names the file, and writes nothing`() {
+        bin.mkdirs()
+        val foreign = File(bin, Constants.ToolWrappers.TUNNEL_SCRIPT).apply { writeText("#!/bin/sh\necho mine\n") }
+
+        assertThatThrownBy { installer.install(workspace) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(foreign.path)
+
+        assertThat(bin.list()).containsExactly(Constants.ToolWrappers.TUNNEL_SCRIPT)
     }
 
     @Test
@@ -111,7 +132,7 @@ internal class ToolWrapperInstallerTest {
 
         racing.install(workspace)
 
-        assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.MARKER)
+        assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(written)
     }
 
     @Test

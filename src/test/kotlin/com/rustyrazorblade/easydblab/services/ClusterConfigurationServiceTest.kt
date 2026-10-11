@@ -196,26 +196,6 @@ class ClusterConfigurationServiceTest {
         }
 
         @Test
-        fun `an ssm route keeps idle sessions alive with keepalives that apply to every host`() {
-            ssmService.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
-
-            val lines = File(tempDir.toFile(), "sshConfig").readLines()
-            val firstHost = lines.indexOfFirst { it.startsWith("Host ") }
-            // Global, so before any Host block: Session Manager drops a session after 20 idle minutes.
-            assertThat(lines.subList(0, firstHost)).contains("ServerAliveInterval 30", "ServerAliveCountMax 3")
-        }
-
-        /** Keepalives start only after auth, so a session that passes no data needs its own bound. */
-        @Test
-        fun `an ssm route bounds the wait for the server's banner for every host`() {
-            ssmService.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
-
-            val lines = File(tempDir.toFile(), "sshConfig").readLines()
-            val firstHost = lines.indexOfFirst { it.startsWith("Host ") }
-            assertThat(lines.subList(0, firstHost)).contains("ConnectTimeout 30")
-        }
-
-        @Test
         fun `the env sh fallback config routes hosts the same way as sshConfig`() {
             ssmService.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
 
@@ -223,12 +203,10 @@ class ClusterConfigurationServiceTest {
         }
 
         @Test
-        fun `a direct route leaves hosts without a ProxyCommand and keeps idle connections alive`() {
+        fun `a direct route leaves hosts without a ProxyCommand`() {
             service.writeSshAndEnvironmentFiles(tempDir, createClusterState(), createUserConfig())
 
             assertThat(File(tempDir.toFile(), "sshConfig").readText()).doesNotContain("ProxyCommand")
-            assertThat(File(tempDir.toFile(), "sshConfig").readText()).contains("ServerAliveInterval 30", "ServerAliveCountMax 3")
-            assertThat(File(tempDir.toFile(), "sshConfig").readText()).doesNotContain("ConnectTimeout")
             assertThat(File(tempDir.toFile(), "env.sh").readText()).doesNotContain("ProxyCommand")
         }
 

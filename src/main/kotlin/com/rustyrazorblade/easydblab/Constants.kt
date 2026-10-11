@@ -1060,6 +1060,14 @@ object Constants {
 
         /** Unanswered keepalives before ssh gives up on a dropped connection (about 90s at the interval above). */
         const val KEEPALIVE_COUNT_MAX = 3
+
+        /**
+         * OpenSSH's ConnectTimeout in the generated sshConfig, for every transport. Keepalives start
+         * only after authentication, so this bounds the wait for the server's banner, ProxyCommand
+         * included (verified on OpenSSH 9.6 and 10.3); it does not bound key exchange once the banner
+         * has arrived. It matches [Ssm.SSH_AUTH_TIMEOUT_SECONDS].
+         */
+        const val CONNECT_TIMEOUT_SECONDS = 30
     }
 
     // AWS Systems Manager Session Manager, used as the SSH transport when a profile selects `ssm`
@@ -1082,13 +1090,6 @@ object Constants {
          * then carries nothing would otherwise hold each attempt for MINA's 120s default.
          */
         const val SSH_AUTH_TIMEOUT_SECONDS = 30L
-
-        /**
-         * OpenSSH's ConnectTimeout in the `ssm` sshConfig, matching [SSH_AUTH_TIMEOUT_SECONDS]. With a
-         * ProxyCommand it bounds the wait for the server's banner (verified on OpenSSH 9.6 and
-         * 10.3); it does not bound key exchange once the banner has arrived.
-         */
-        const val SSH_CONNECT_TIMEOUT_SECONDS = 30
 
         /** Prefix of the line the AWS CLI prints with a new session's ID, which TerminateSession needs. */
         const val SESSION_ID_MARKER = "Starting session with SessionId: "

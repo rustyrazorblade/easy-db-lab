@@ -42,12 +42,11 @@ object ClusterConfigWriter {
         // session open, and they make ssh exit within interval x count when the connection is gone.
         writer.appendLine("ServerAliveInterval ${Constants.Ssh.KEEPALIVE_INTERVAL_SECONDS}")
         writer.appendLine("ServerAliveCountMax ${Constants.Ssh.KEEPALIVE_COUNT_MAX}")
-        if (proxyCommands.isNotEmpty()) {
-            // Keepalives start only after authentication, so a session whose plugin connects but
-            // passes no data would hang ssh forever. ConnectTimeout bounds the wait for the server's
-            // banner, ProxyCommand included (checked on OpenSSH 9.6 and 10.3).
-            writer.appendLine("ConnectTimeout ${Constants.Ssm.SSH_CONNECT_TIMEOUT_SECONDS}")
-        }
+        // Keepalives start only after authentication, so a connect that never completes (a host that
+        // drops the SYN, or a Session Manager plugin that connects but passes no data) would hang
+        // ssh, and the tunnel script with it. ConnectTimeout bounds the wait for the server's banner,
+        // ProxyCommand included (checked on OpenSSH 9.6 and 10.3).
+        writer.appendLine("ConnectTimeout ${Constants.Ssh.CONNECT_TIMEOUT_SECONDS}")
 
         // get each server type and get the hosts for type and add it to the sshConfig.
         ServerType.entries.forEach { serverType ->

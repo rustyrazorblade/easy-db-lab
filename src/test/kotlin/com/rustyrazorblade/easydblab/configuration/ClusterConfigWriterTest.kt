@@ -32,26 +32,26 @@ internal class ClusterConfigWriterTest {
     /** The global lines of [config], before its first Host block, where an option applies to every host. */
     private fun globalLines(config: String): List<String> = config.lines().takeWhile { !it.startsWith("Host ") }
 
-    @Test
-    fun `a direct config sends keepalives to every host, so a tunnel whose connection died makes ssh exit`() {
-        val global = globalLines(renderSshConfig(mapOf(ServerType.Control to listOf(control))))
-
-        assertThat(global).contains(
+    /** The global keepalive and connect-timeout lines every transport's config carries. */
+    private val connectionBounds =
+        listOf(
             "ServerAliveInterval ${Constants.Ssh.KEEPALIVE_INTERVAL_SECONDS}",
             "ServerAliveCountMax ${Constants.Ssh.KEEPALIVE_COUNT_MAX}",
+            "ConnectTimeout ${Constants.Ssh.CONNECT_TIMEOUT_SECONDS}",
         )
-        assertThat(global).noneMatch { it.startsWith("ConnectTimeout") }
+
+    @Test
+    fun `a direct config sends keepalives to every host and bounds the wait for the banner`() {
+        val global = globalLines(renderSshConfig(mapOf(ServerType.Control to listOf(control))))
+
+        assertThat(global).containsAll(connectionBounds)
     }
 
     @Test
-    fun `an ssm config sends the same keepalives and bounds the wait for the banner`() {
+    fun `an ssm config sends the same keepalives and the same bound on the banner`() {
         val config = renderSshConfig(mapOf(ServerType.Control to listOf(control)), mapOf("control0" to "edl-ssm-proxy i-control"))
 
-        assertThat(globalLines(config)).contains(
-            "ServerAliveInterval ${Constants.Ssh.KEEPALIVE_INTERVAL_SECONDS}",
-            "ServerAliveCountMax ${Constants.Ssh.KEEPALIVE_COUNT_MAX}",
-            "ConnectTimeout ${Constants.Ssm.SSH_CONNECT_TIMEOUT_SECONDS}",
-        )
+        assertThat(globalLines(config)).containsAll(connectionBounds)
     }
 
     @Test

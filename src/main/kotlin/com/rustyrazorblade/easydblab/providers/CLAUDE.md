@@ -144,10 +144,10 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
   Under every transport the config carries global `ServerAliveInterval`/`ServerAliveCountMax`
   (`Constants.Ssh`): an idle SOCKS tunnel's connection can die silently (a laptop sleep or a network
   change on a direct connection, Session Manager's 20-minute idle timeout under `ssm`), and without
-  keepalives ssh lingers with its local port open; with them it exits within about 90s. Under `ssm`
-  the config also carries `ConnectTimeout 30` (`Constants.Ssm.SSH_CONNECT_TIMEOUT_SECONDS`), because
-  keepalives start only after auth and a session that passes no data would otherwise hang ssh at the
-  banner exchange.
+  keepalives ssh lingers with its local port open; with them it exits within about 90s. Every
+  transport's config also carries `ConnectTimeout 30` (`Constants.Ssh.CONNECT_TIMEOUT_SECONDS`),
+  because keepalives start only after auth, and a connect that never completes (a dropped SYN, or a
+  session that passes no data) would otherwise hang ssh at the banner exchange.
   Each `ProxyCommand` runs through `edl-ssm-proxy` (`ssm/SsmProxyWrapper`, the packaged
   `ssm/edl-ssm-proxy.sh` written into the profile dir): the AWS CLI does not pass a termination on
   to `session-manager-plugin`, and a stuck plugin ignores its stdin closing, so the wrapper ends the

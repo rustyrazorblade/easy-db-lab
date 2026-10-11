@@ -88,6 +88,36 @@ internal class TunnelProcessControlIntegrationTest {
     }
 
     @Test
+    fun `a real script killed with KILL leaves an orphaned ssh, and stopping the recorded tunnel ends it`() {
+        val port = freePort()
+        val (tunnel, ssh) = launchTunnel(port)
+        // Once its script is gone the ssh is no one's descendant, so it is ended on its own afterwards.
+        started += ssh
+        tunnel.destroyForcibly()
+        assertThat(tunnel.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).isFalse()
+        assertThat(ssh.isAlive).withFailMessage("KILL on the script was expected to leave its ssh running").isTrue()
+
+        val result = TunnelProcessControl().stop(record(tunnel.pid(), port))
+
+        assertThat(result).isEqualTo(TunnelStopResult.Stopped(tunnel.pid().toInt()))
+        assertThat(ssh.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).isFalse()
+        assertThat(sshProcessesFor(port)).isEmpty()
+    }
+
+    @Test
+    fun `a real orphaned ssh for another port is not signaled`() {
+        val (tunnel, ssh) = launchTunnel(freePort())
+        started += ssh
+        tunnel.destroyForcibly()
+        assertThat(tunnel.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).isFalse()
+
+        val result = TunnelProcessControl().stop(record(tunnel.pid(), freePort()))
+
+        assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
+        assertThat(ssh.isAlive).isTrue()
+    }
+
+    @Test
     fun `a real tunnel script for another port is not signaled`() {
         val (tunnel, _) = launchTunnel(freePort())
 

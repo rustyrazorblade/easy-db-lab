@@ -431,6 +431,21 @@ class ProcessSocksProxyServiceUnitTest {
     }
 
     @Test
+    fun `a new start stops the orphaned ssh that the recorded tunnel's killed script left`() {
+        writeStateFile(pid = -1, port = STOP_PORT)
+        val orphan = FakeTunnelProcess.ssh(FAKE_PID + 1, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+
+        service(
+            probe = { _, _, _ -> true },
+            launcher = { _, _ -> aliveProcess() },
+            portSelector = { NEW_PORT },
+            tunnelProcesses = TunnelProcessControl(lookup = { null }, allProcesses = { java.util.stream.Stream.of(orphan.handle) }),
+        ).ensureRunning(testHost)
+
+        assertThat(orphan.handle.isAlive).withFailMessage("the orphaned ssh of the replaced tunnel was left running").isFalse()
+    }
+
+    @Test
     fun `a stale PID is replaced by a tunnel on a new port, and the env file records the new port`() {
         writeStateFile(pid = -1, port = 52000)
         val envFile = ProxyEnvFile(tempDir).apply { recordTunnel(52000, ProcessHandle.current().pid()) }

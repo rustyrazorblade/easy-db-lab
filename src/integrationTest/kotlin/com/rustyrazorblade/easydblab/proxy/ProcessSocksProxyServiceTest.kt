@@ -252,8 +252,8 @@ class ProcessSocksProxyServiceTest {
         val preferred = reserveFreePort()
         val launcher = LoopbackBindingLauncher()
         try {
-            val first = serviceIn(workspace("cluster-a"), launcher, LoopbackPortSelector(preferred)).ensureRunning(testHost)
-            val second = serviceIn(workspace("cluster-b"), launcher, LoopbackPortSelector(preferred)).ensureRunning(testHost)
+            val first = serviceIn(workspace("cluster-a"), launcher, LoopbackPortSelector(candidates = { preferred })).ensureRunning(testHost)
+            val second = serviceIn(workspace("cluster-b"), launcher, LoopbackPortSelector(candidates = { preferred })).ensureRunning(testHost)
 
             assertThat(first.localPort).isEqualTo(preferred)
             assertThat(second.localPort).isNotEqualTo(first.localPort)
@@ -270,8 +270,8 @@ class ProcessSocksProxyServiceTest {
         val preferred = reserveFreePort()
         val launcher = LoopbackBindingLauncher()
         try {
-            val first = serviceIn(workspace("cluster-a"), launcher, LoopbackPortSelector(preferred)).ensureRunning(testHost)
-            val live = LoopbackPortSelector(preferred)
+            val first = serviceIn(workspace("cluster-a"), launcher, LoopbackPortSelector(candidates = { preferred })).ensureRunning(testHost)
+            val live = LoopbackPortSelector(candidates = { preferred })
             var staleProbe = true
             val racingSelector =
                 LocalPortSelector {

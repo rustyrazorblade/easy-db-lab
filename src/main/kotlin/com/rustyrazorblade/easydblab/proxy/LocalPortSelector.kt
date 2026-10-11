@@ -23,23 +23,26 @@ fun interface LocalPortSelector {
 }
 
 /**
- * Production [LocalPortSelector]: [preferred] if it is free on the loopback interface, otherwise an
- * OS-assigned ephemeral port.
+ * Production [LocalPortSelector]: a random port from [Constants.Proxy.LOCAL_PORT_RANGE] that is free
+ * on the loopback interface, with no fixed port preferred, so two workspaces are unlikely to want the
+ * same port. When [attempts] random ports are all taken, it takes an OS-assigned loopback port.
  *
- * @param preferred the port to try first. The integration tests pass a port known to be bound, to
- *   drive the fallback branch deterministically instead of binding the hardcoded default port (a
- *   fixed-port collision risk on CI — issue #750).
+ * Two workspaces can still pick the same free port at the same moment; the service's bind-race retry
+ * handles that.
+ *
+ * @param candidates the next port to try; the integration tests pass known ports to drive each branch
+ * @param attempts how many candidates are tried before the OS is asked for a port
  */
 class LoopbackPortSelector(
-    private val preferred: Int = Constants.Proxy.DEFAULT_SOCKS5_PORT,
+    private val candidates: () -> Int = { Constants.Proxy.LOCAL_PORT_RANGE.random() },
+    private val attempts: Int = Constants.Proxy.LOCAL_PORT_ATTEMPTS,
 ) : LocalPortSelector {
     override fun select(): Int =
-        if (isLoopbackPortFree(preferred)) {
-            preferred
-        } else {
-            log.debug { "Port $preferred is in use on the loopback interface, selecting an available port" }
-            ServerSocket(0).use { it.localPort }
-        }
+        generateSequence(candidates).take(attempts).firstOrNull { isLoopbackPortFree(it) }
+            ?: run {
+                log.debug { "$attempts random ports were in use on the loopback interface; taking an OS-assigned port" }
+                ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")).use { it.localPort }
+            }
 
     /**
      * Probes whether [port] is free the way `ssh -D` binds it: on the loopback interface, not the
@@ -53,8 +56,7 @@ class LoopbackPortSelector(
      * "bind [::1]:<port>: Address already in use".
      *
      * This probe instead binds each loopback address with `SO_REUSEADDR` disabled, matching ssh. The
-     * port is free only if every loopback address binds cleanly; a live loopback listener triggers
-     * the ephemeral fallback.
+     * port is free only if every loopback address binds cleanly.
      */
     private fun isLoopbackPortFree(port: Int): Boolean =
         loopbackProbeAddresses().all { address ->

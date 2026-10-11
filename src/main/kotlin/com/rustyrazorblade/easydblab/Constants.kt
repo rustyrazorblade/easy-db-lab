@@ -896,7 +896,14 @@ object Constants {
 
     // Proxy configuration
     object Proxy {
-        const val DEFAULT_SOCKS5_PORT = 1080
+        /**
+         * The ports a new SOCKS5 tunnel picks its local port from, at random: the IANA dynamic range,
+         * which no registered service uses. No port in it is preferred.
+         */
+        val LOCAL_PORT_RANGE: IntRange = 49152..65535
+
+        /** How many random ports a tunnel start tries before it takes an OS-assigned one. */
+        const val LOCAL_PORT_ATTEMPTS = 20
 
         /**
          * JVM system property used to publish the active SOCKS5 proxy port to the clients that need

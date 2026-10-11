@@ -51,7 +51,7 @@ class ProcessSocksProxyServiceUnitTest {
         const val FAKE_PID = 4242L
 
         /** Port the default fake selector hands out; nothing ever binds it. */
-        const val DEFAULT_TEST_PORT = 1080
+        const val DEFAULT_TEST_PORT = 52000
 
         /** Port a recorded tunnel listens on in the stop tests; nothing binds it. */
         const val STOP_PORT = 41234
@@ -355,13 +355,13 @@ class ProcessSocksProxyServiceUnitTest {
         // Two workspaces starting a proxy at once can both find the same port free; the loser's ssh
         // dies with "Address already in use". The service must pick a new port and relaunch, not
         // fail the command.
-        val ports = ArrayDeque(listOf(1080, 41234))
+        val ports = ArrayDeque(listOf(52000, 41234))
         val launched = mutableListOf<List<String>>()
         val launcher =
             SshProcessLauncher { command, logFile ->
                 launched.add(command)
                 if (launched.size == 1) {
-                    writeBindFailureTranscript(logFile, port = 1080)
+                    writeBindFailureTranscript(logFile, port = 52000)
                     deadProcess(exitCode = 255)
                 } else {
                     aliveProcess()
@@ -375,7 +375,7 @@ class ProcessSocksProxyServiceUnitTest {
                 portSelector = { ports.removeFirst() },
             ).ensureRunning(testHost)
 
-        assertThat(dynamicForwardPorts(launched)).containsExactly(1080, 41234)
+        assertThat(dynamicForwardPorts(launched)).containsExactly(52000, 41234)
         assertThat(state.localPort).isEqualTo(41234)
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("41234")
         val recorded =
@@ -432,8 +432,8 @@ class ProcessSocksProxyServiceUnitTest {
 
     @Test
     fun `a stale PID is replaced by a tunnel on a new port, and the env file records the new port`() {
-        writeStateFile(pid = -1, port = 1080)
-        val envFile = ProxyEnvFile(tempDir).apply { recordTunnel(1080, ProcessHandle.current().pid()) }
+        writeStateFile(pid = -1, port = 52000)
+        val envFile = ProxyEnvFile(tempDir).apply { recordTunnel(52000, ProcessHandle.current().pid()) }
 
         service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }, portSelector = { 41234 })
             .ensureRunning(testHost)
@@ -446,11 +446,11 @@ class ProcessSocksProxyServiceUnitTest {
 
     @Test
     fun `a failed start leaves no port in the env file`() {
-        writeStateFile(pid = -1, port = 1080)
+        writeStateFile(pid = -1, port = 52000)
         val envFile =
             ProxyEnvFile(tempDir).apply {
                 recordTailscale(active = false)
-                recordTunnel(1080, ProcessHandle.current().pid())
+                recordTunnel(52000, ProcessHandle.current().pid())
             }
 
         assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }).ensureRunning(testHost) }
@@ -461,7 +461,7 @@ class ProcessSocksProxyServiceUnitTest {
 
     @Test
     fun `the proxy state file is replaced by rename, so a reader of the old file still sees all of it`() {
-        writeStateFile(pid = -1, port = 1080)
+        writeStateFile(pid = -1, port = 52000)
         val stateFile = File(tempDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
         val before = stateFile.readText()
 
@@ -905,8 +905,8 @@ class ProcessSocksProxyServiceUnitTest {
 
     @Test
     fun `isLocalPortBindFailure recognizes ssh's dynamic-forward bind errors`() {
-        assertThat(isLocalPortBindFailure(listOf("bind [127.0.0.1]:1080: Address already in use"))).isTrue()
-        assertThat(isLocalPortBindFailure(listOf("channel_setup_fwd_listener_tcpip: cannot listen to port: 1080"))).isTrue()
+        assertThat(isLocalPortBindFailure(listOf("bind [127.0.0.1]:52000: Address already in use"))).isTrue()
+        assertThat(isLocalPortBindFailure(listOf("channel_setup_fwd_listener_tcpip: cannot listen to port: 52000"))).isTrue()
         assertThat(isLocalPortBindFailure(listOf("Permission denied (publickey).", "Connection refused"))).isFalse()
         assertThat(isLocalPortBindFailure(emptyList())).isFalse()
     }
@@ -936,9 +936,9 @@ class ProcessSocksProxyServiceUnitTest {
         val probe = mock<TunnelReachabilityProbe>()
         whenever(probe.isReachable(any<Int>(), any<String>(), any<Int>())).thenReturn(false, false, true)
 
-        service(probe = probe).verifyTunnelReachable(process, port = 1080, targetPrivateIp = "10.0.1.5", logFile = logFile())
+        service(probe = probe).verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
 
-        verify(probe, times(3)).isReachable(1080, "10.0.1.5", SSH_PORT)
+        verify(probe, times(3)).isReachable(52000, "10.0.1.5", SSH_PORT)
     }
 
     @Test
@@ -950,10 +950,10 @@ class ProcessSocksProxyServiceUnitTest {
         whenever(probe.isReachable(any<Int>(), any<String>(), any<Int>())).thenReturn(false)
 
         assertThatThrownBy {
-            service(probe = probe).verifyTunnelReachable(process, port = 1080, targetPrivateIp = "10.0.1.5", logFile = logFile())
+            service(probe = probe).verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("SOCKS5 proxy")
-        verify(probe, times(Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS)).isReachable(1080, "10.0.1.5", SSH_PORT)
+        verify(probe, times(Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS)).isReachable(52000, "10.0.1.5", SSH_PORT)
     }
 
     @Test
@@ -965,10 +965,10 @@ class ProcessSocksProxyServiceUnitTest {
 
         assertThatThrownBy {
             service(probe = probe, verifyAttempts = Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)
-                .verifyTunnelReachable(process, port = 1080, targetPrivateIp = "10.0.1.5", logFile = logFile())
+                .verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
 
-        verify(probe, times(Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)).isReachable(1080, "10.0.1.5", SSH_PORT)
+        verify(probe, times(Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)).isReachable(52000, "10.0.1.5", SSH_PORT)
     }
 
     @Test
@@ -979,7 +979,7 @@ class ProcessSocksProxyServiceUnitTest {
         val probe = mock<TunnelReachabilityProbe>()
 
         assertThatThrownBy {
-            service(probe = probe).verifyTunnelReachable(process, port = 1080, targetPrivateIp = "10.0.1.5", logFile = logFile())
+            service(probe = probe).verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("ssh exited with code 255")
         verify(probe, never()).isReachable(any<Int>(), any<String>(), any<Int>())

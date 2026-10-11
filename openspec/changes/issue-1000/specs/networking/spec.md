@@ -142,6 +142,7 @@ The CLI MUST write a sourceable file, `.socks5-proxy.env`, in the workspace. It 
 
 - `EDL_TAILSCALE_ACTIVE=true` or `EDL_TAILSCALE_ACTIVE=false`, from the cluster state.
 - `EDL_SOCKS_PORT=<port>`, only while a verified tunnel is recorded.
+- `EDL_SOCKS_PID=<pid>`, the PID of the recorded `edl-socks-tunnel` script, written and removed together with `EDL_SOCKS_PORT`.
 
 This file is the only source of proxy state for shell-side tools. Any value that a shell-side tool needs MUST be written by the CLI to this file. No script in the system MAY parse JSON to read proxy state, and `jq` is not required.
 
@@ -191,7 +192,9 @@ The CLI MUST update keys without dropping the others, and MUST write the file at
 
 ### Requirement: SOCKS tunnel reconnects on its own
 
-The CLI MUST start the SOCKS tunnel through a packaged POSIX script, `<workspace>/bin/edl-socks-tunnel`, written with the tool wrappers. The script MUST run `ssh -N -D <port> -F <sshConfig> <host>` with `ExitOnForwardFailure=yes`, wait for it to exit, and start it again on the same port after a short backoff, for as long as the script runs. The one exception is the first `ssh` run: if it exits within a startup grace period (longer than the CLI's tunnel verification window), the script MUST exit with `ssh`'s status and not restart it, so a start that cannot succeed (a port already in use, a refused key, a changed host key) still fails fast and the CLI can retry on a new port. Because the port does not change, the proxy env file stays correct across a reconnect, and wrapped tools in an open shell work again once the connection comes back. The SSH keepalives in the generated `sshConfig` (every transport) make `ssh` exit when a connection dies, so the script can reconnect.
+The CLI MUST start the SOCKS tunnel through a packaged POSIX script, `<workspace>/bin/edl-socks-tunnel`, written with the tool wrappers. The script MUST run `ssh -N -D <port> -F <sshConfig> <host>` with `ExitOnForwardFailure=yes`, wait for it to exit, and start it again on the same port after a short backoff, for as long as the script runs. The script MUST restart `ssh` only when the workspace's proxy env file records the script's own port as `EDL_SOCKS_PORT`; the CLI writes that port only after it verifies the tunnel end to end, so a recorded port means the tunnel came up. When the env file does not record its port, the tunnel never came up, and the script MUST exit with `ssh`'s status and not restart it, so a start that cannot succeed (a port already in use, a refused key, a changed host key) still fails fast and the CLI can retry on a new port. No timer decides this. When a restarted `ssh` cannot bind its port (for example, another process took it during the backoff), the script MUST exit after that one attempt and MUST NOT loop. The script MUST stop only on TERM; it MUST ignore INT, so a Ctrl-C in the terminal that launched an easy-db-lab command does not end the shared tunnel. Each line the script writes to the tunnel log MUST start with a UTC timestamp, and the script MUST log a line before each `ssh` run. The CLI MUST append to the tunnel log on each launch, with a timestamped header line, and MUST NOT truncate it.
+
+The CLI MUST choose the tunnel's local port at random from free ports and MUST NOT prefer a fixed port, so two workspaces are unlikely to want the same port. Because the port does not change, the proxy env file stays correct across a reconnect, and wrapped tools in an open shell work again once the connection comes back. The SSH keepalives in the generated `sshConfig` (every transport) make `ssh` exit when a connection dies, so the script can reconnect.
 
 The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST verify that a recorded PID is an `edl-socks-tunnel` process for the recorded port and `sshConfig` before it signals it. `stop-socks`, `down`, and the replacement of a stale tunnel MUST stop the script and its `ssh` child, and MUST leave no `ssh` process of that tunnel running. The CLI still verifies a reused tunnel end to end, and replaces it when the check fails.
 
@@ -204,10 +207,48 @@ The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST ver
 
 #### Scenario: A first start that fails is not retried by the script
 
-- **GIVEN** a first `ssh` run that exits within the startup grace period, for example because its port is already in use
-- **WHEN** `edl-socks-tunnel` sees it exit
+- **GIVEN** a tunnel whose port the env file does not record yet, because the CLI has not verified it
+- **WHEN** its `ssh` exits, for example because its port is already in use
 - **THEN** the script exits with the same status and does not start `ssh` again
 - **AND** the CLI reports the failed start or retries on a new port
+
+#### Scenario: A verified tunnel reconnects even right after it started
+
+- **GIVEN** a tunnel that the CLI verified and recorded in the env file a few seconds ago
+- **WHEN** its `ssh` exits
+- **THEN** the script starts `ssh` again on the same port
+
+#### Scenario: A restart that cannot bind its port ends the script
+
+- **GIVEN** a verified tunnel whose port another process took while its `ssh` was in backoff
+- **WHEN** the restarted `ssh` fails to bind the port
+- **THEN** the script exits after that one attempt and does not loop
+- **AND** wrapped tools fail with the `easy-db-lab start-socks` message and never use the port
+
+#### Scenario: Ctrl-C does not end the shared tunnel
+
+- **GIVEN** a running tunnel started by an easy-db-lab command in a terminal
+- **WHEN** the user presses Ctrl-C in that terminal during a later easy-db-lab command
+- **THEN** the tunnel script and its `ssh` keep running
+
+#### Scenario: The tunnel log keeps the history of every launch
+
+- **GIVEN** a tunnel log from an earlier tunnel
+- **WHEN** the CLI launches a new tunnel, or the script restarts `ssh`
+- **THEN** the earlier lines remain, and each new line starts with a UTC timestamp
+
+#### Scenario: A replaced tunnel is reported with its new port
+
+- **GIVEN** a recorded tunnel that fails the reuse check
+- **WHEN** any CLI command replaces it
+- **THEN** the CLI emits a typed event that names the old port, the new port, and the reason
+- **AND** if the old tunnel does not stop, the CLI emits a typed error event that names its PID and how to end it
+
+#### Scenario: A killed script leaves no orphaned ssh behind
+
+- **GIVEN** a tunnel script killed from outside with KILL, whose `ssh` child still runs with the recorded port and `sshConfig`
+- **WHEN** the CLI next starts or replaces the tunnel, or `stop-socks` or `down` runs
+- **THEN** that orphaned `ssh` is stopped
 
 #### Scenario: Stopping the tunnel stops the loop and its ssh
 
@@ -340,7 +381,7 @@ On every call, each wrapper MUST ignore inherited `EDL_TAILSCALE_ACTIVE` and `ED
 - `curl`: `ALL_PROXY=socks5h://localhost:<port>` and `NO_PROXY=localhost,127.0.0.1`.
 - `skopeo`: `ALL_PROXY`, `HTTP_PROXY`, and `HTTPS_PROXY` set to `socks5h://localhost:<port>`, and `NO_PROXY=localhost,127.0.0.1`.
 
-When no port is recorded, the wrapper MUST fail with exit code 1 and a message that names the workspace and `easy-db-lab start-socks`.
+When no port is recorded, or the recorded `EDL_SOCKS_PID` is not a live process, the wrapper MUST fail with exit code 1 and a message that names the workspace and `easy-db-lab start-socks`, and MUST NOT use the port.
 
 #### Scenario: Wrapped tools reach the cluster through the tunnel
 
@@ -360,6 +401,13 @@ When no port is recorded, the wrapper MUST fail with exit code 1 and a message t
 - **WHEN** a wrapped tool runs
 - **THEN** the real binary sees only the wrapper's proxy variables
 - **AND** the call goes through the tunnel
+
+#### Scenario: Recorded tunnel process is gone
+
+- **GIVEN** an env file that records a port and an `EDL_SOCKS_PID` whose process has exited
+- **WHEN** a wrapped tool runs
+- **THEN** it exits 1 with a message that names the workspace and `easy-db-lab start-socks`
+- **AND** it does not connect to the recorded port
 
 #### Scenario: Inherited EDL values are ignored
 

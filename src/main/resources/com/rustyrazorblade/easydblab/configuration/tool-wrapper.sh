@@ -9,7 +9,8 @@
 # Each call reads <workspace>/.socks5-proxy.env, which only the easy-db-lab CLI writes:
 #   - on a Tailscale cluster it runs the real tool with the environment unchanged;
 #   - on a SOCKS cluster it routes this one call through the recorded tunnel port;
-#   - with no port recorded it fails and says to run `easy-db-lab start-socks`.
+#   - with no tunnel recorded, or when the recorded tunnel script (EDL_SOCKS_PID) has exited, it fails
+#     and says to run `easy-db-lab start-socks`.
 # kubectl, helm, cilium and k9s always use <workspace>/kubeconfig, in place of any inherited KUBECONFIG,
 # because a wrapper reaches only its own workspace's cluster. curl and skopeo leave KUBECONFIG alone.
 # The proxy variables are set for this call only, so tools that are not wrapped (aws included)
@@ -59,7 +60,7 @@ case $tool in
 esac
 
 # Only the env file decides; values inherited from the caller are ignored.
-unset EDL_TAILSCALE_ACTIVE EDL_SOCKS_PORT
+unset EDL_TAILSCALE_ACTIVE EDL_SOCKS_PORT EDL_SOCKS_PID
 env_file=$workspace/.socks5-proxy.env
 if [ -f "$env_file" ]; then
     . "$env_file"
@@ -69,13 +70,19 @@ if [ "${EDL_TAILSCALE_ACTIVE:-}" = true ]; then
     exec "$real" "$@"
 fi
 
-case ${EDL_SOCKS_PORT:-} in
-    '' | *[!0-9]*)
-        echo "easy-db-lab: no SOCKS tunnel is recorded for the workspace $workspace, so $tool cannot reach the cluster." >&2
-        echo "easy-db-lab: run 'easy-db-lab start-socks' in $workspace, then try again." >&2
-        exit 1
-        ;;
+# Fails with the pointer to start-socks; $1 says why there is no tunnel to use.
+no_tunnel() {
+    echo "easy-db-lab: $1 for the workspace $workspace, so $tool cannot reach the cluster." >&2
+    echo "easy-db-lab: run 'easy-db-lab start-socks' in $workspace, then try again." >&2
+    exit 1
+}
+
+case ${EDL_SOCKS_PORT:-}:${EDL_SOCKS_PID:-} in
+    :* | *: | *[!0-9:]*) no_tunnel "no SOCKS tunnel is recorded" ;;
 esac
+# The port is used only while the recorded tunnel script runs: once it has exited, nothing of ours
+# listens there, and another process may have taken the port.
+kill -0 "$EDL_SOCKS_PID" 2>/dev/null || no_tunnel "the recorded SOCKS tunnel (PID $EDL_SOCKS_PID) is not running"
 
 socks=socks5://localhost:$EDL_SOCKS_PORT
 socks_h=socks5h://localhost:$EDL_SOCKS_PORT

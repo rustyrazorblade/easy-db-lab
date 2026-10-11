@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService
 import com.rustyrazorblade.easydblab.proxy.ProxyEnv
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.RecordedTunnel
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
 import org.assertj.core.api.Assertions.assertThat
@@ -90,7 +91,7 @@ class StartSocksTest : BaseKoinTest() {
         StartSocks().call()
 
         assertThat(launched).hasSize(1)
-        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = PORT))
+        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(PORT, FAKE_PID)))
         assertThat(events).containsExactly(Event.Proxy.TunnelReady(port = PORT, reused = false))
         assertThat(events.single().toDisplayString()).contains("localhost:$PORT")
     }
@@ -102,7 +103,7 @@ class StartSocksTest : BaseKoinTest() {
         StartSocks().call()
 
         assertThat(launched).isEmpty()
-        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = true, socksPort = null))
+        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
         assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded)
     }
 

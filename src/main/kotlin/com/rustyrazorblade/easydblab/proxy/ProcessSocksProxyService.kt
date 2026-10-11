@@ -145,7 +145,7 @@ class ProcessSocksProxyService(
                         pid = loaded.pid
                         markVerified(loaded.pid, loaded.port)
                         applySystemProperties(loaded.port)
-                        envFile.recordPort(loaded.port)
+                        envFile.recordTunnel(loaded.port, loaded.pid.toLong())
                         return@withLock reused
                     } else {
                         log.info { "Stale SOCKS5 proxy state, starting fresh" }
@@ -186,7 +186,7 @@ class ProcessSocksProxyService(
                 is TunnelStopResult.StopFailed -> Unit
                 is TunnelStopResult.Stopped, TunnelStopResult.NotRunning -> {
                     System.clearProperty(Constants.Proxy.PORT_PROPERTY)
-                    envFile.removePort()
+                    envFile.removeTunnel()
                     stateFile.delete()
                     forgetInMemory()
                 }
@@ -216,7 +216,7 @@ class ProcessSocksProxyService(
             }
         if (replaceReason == null) {
             log.debug { "SOCKS5 proxy already running in-memory on port ${current.localPort} [PID $pid]" }
-            envFile.recordPort(current.localPort)
+            envFile.recordTunnel(current.localPort, pid.toLong())
             return current.copy(reused = true)
         }
         log.info { "SOCKS5 proxy on port ${current.localPort} [PID $pid] $replaceReason; replacing it" }
@@ -322,7 +322,7 @@ class ProcessSocksProxyService(
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
         // The same for shell-side tools: a wrapper must never route through the port of a tunnel
         // that is being replaced, so the env file records no port until the new one is verified.
-        envFile.removePort()
+        envFile.removeTunnel()
         // Nor may an in-memory reuse skip the probe on the strength of the tunnel being replaced.
         lastVerified = null
 
@@ -361,7 +361,7 @@ class ProcessSocksProxyService(
         log.debug { "Proxy state written to ${stateFile.absolutePath}" }
 
         applySystemProperties(port)
-        envFile.recordPort(port)
+        envFile.recordTunnel(port, newPid.toLong())
 
         val proxyState = buildProxyState(port, gatewayHost)
         state = proxyState

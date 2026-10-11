@@ -909,8 +909,8 @@ object Constants {
 
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
-         * tool wrappers in `bin/` and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE] and
-         * [ENV_SOCKS_PORT], one `KEY=value` line each, so no shell code ever parses JSON.
+         * tool wrappers in `bin/`, the tunnel script and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE],
+         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses JSON.
          */
         const val ENV_FILE = ".socks5-proxy.env"
 
@@ -919,6 +919,12 @@ object Constants {
 
         /** The env file key that holds the verified tunnel's local port; absent while no tunnel is recorded. */
         const val ENV_SOCKS_PORT = "EDL_SOCKS_PORT"
+
+        /**
+         * The env file key that holds the PID of the verified tunnel's `edl-socks-tunnel` script,
+         * written and removed with [ENV_SOCKS_PORT]. Shell-side tools use the port only while it is live.
+         */
+        const val ENV_SOCKS_PID = "EDL_SOCKS_PID"
 
         /**
          * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script

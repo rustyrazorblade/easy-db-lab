@@ -134,7 +134,7 @@ internal class EnvShSourcingTest {
     fun `with-proxy routes through the recorded port`() {
         ProxyEnvFile(workspace).apply {
             recordTailscale(active = false)
-            recordPort(41234)
+            recordTunnel(41234, ProcessHandle.current().pid())
         }
 
         val result = bash("source ./env.sh >/dev/null; with-proxy sh -c 'echo \"ALL_PROXY=${'$'}ALL_PROXY\"'")
@@ -146,7 +146,7 @@ internal class EnvShSourcingTest {
     fun `socks5-status reports the recorded port`() {
         ProxyEnvFile(workspace).apply {
             recordTailscale(active = false)
-            recordPort(41234)
+            recordTunnel(41234, ProcessHandle.current().pid())
         }
 
         val result = bash("source ./env.sh >/dev/null; socks5-status")
@@ -154,6 +154,39 @@ internal class EnvShSourcingTest {
         assertThat(result.exitCode).isZero()
         assertThat(result.stdout).contains("41234")
     }
+
+    @Test
+    fun `with-proxy fails with the start-socks message when the recorded tunnel script has exited`() {
+        ProxyEnvFile(workspace).apply {
+            recordTailscale(active = false)
+            recordTunnel(41234, exitedPid())
+        }
+
+        val result = bash("source ./env.sh >/dev/null; with-proxy echo ran")
+
+        assertThat(result.exitCode).isNotZero()
+        assertThat(result.stdout).doesNotContain("ran")
+        assertThat(result.stderr).contains("easy-db-lab start-socks")
+    }
+
+    @Test
+    fun `socks5-status says no tunnel runs when the recorded tunnel script has exited`() {
+        ProxyEnvFile(workspace).apply {
+            recordTailscale(active = false)
+            recordTunnel(41234, exitedPid())
+        }
+
+        val result = bash("source ./env.sh >/dev/null; socks5-status")
+
+        assertThat(result.stdout).doesNotContain("41234").contains("easy-db-lab start-socks")
+    }
+
+    /** The PID of a process that has already exited. */
+    private fun exitedPid(): Long =
+        ProcessBuilder("true").start().let { process ->
+            assertThat(process.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+            process.pid()
+        }
 
     private fun bash(script: String): Result {
         val process = ProcessBuilder("/bin/bash", "-c", script).directory(workspace).start()

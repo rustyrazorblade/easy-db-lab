@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.providers.ssm.SsmSessionCommandBuilder
 import com.rustyrazorblade.easydblab.providers.ssm.SsmSshRoute
 import com.rustyrazorblade.easydblab.proxy.ProxyEnv
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.RecordedTunnel
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -122,7 +123,7 @@ class ClusterConfigurationServiceTest {
 
             service.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
 
-            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = true, socksPort = null))
+            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
             val bin = File(tempDir.toFile(), Constants.ToolWrappers.DIRECTORY)
             assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(
                 Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER,
@@ -131,11 +132,11 @@ class ClusterConfigurationServiceTest {
 
         @Test
         fun `on a SOCKS cluster it records that the cluster is not Tailscale and keeps a recorded port`() {
-            ProxyEnvFile(tempDir.toFile()).recordPort(41234)
+            ProxyEnvFile(tempDir.toFile()).recordTunnel(41234, ProcessHandle.current().pid())
 
             service.writeSshAndEnvironmentFiles(tempDir, createClusterState().copy(tailscaleActive = false), createUserConfig())
 
-            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = 41234))
+            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, ProcessHandle.current().pid())))
             assertThat(File(tempDir.toFile(), "${Constants.ToolWrappers.DIRECTORY}/kubectl").canExecute()).isTrue()
         }
 

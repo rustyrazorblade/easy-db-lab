@@ -128,7 +128,7 @@ class ProcessSocksProxyServiceUnitTest {
     private fun recordedEnv() =
         ProxyEnvFile(tempDir).apply {
             recordTailscale(active = false)
-            recordPort(STOP_PORT)
+            recordTunnel(STOP_PORT, ProcessHandle.current().pid())
         }
 
     /** The `-D` port each launched ssh command was handed, in launch order. */
@@ -421,24 +421,24 @@ class ProcessSocksProxyServiceUnitTest {
     }
 
     @Test
-    fun `a verified start records its port in the proxy env file and keeps the Tailscale flag`() {
+    fun `a verified start records its port and its script PID in the proxy env file and keeps the Tailscale flag`() {
         val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
 
         service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }, portSelector = { 41234 })
             .ensureRunning(testHost)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = 41234))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, FAKE_PID)))
     }
 
     @Test
     fun `a stale PID is replaced by a tunnel on a new port, and the env file records the new port`() {
         writeStateFile(pid = -1, port = 1080)
-        val envFile = ProxyEnvFile(tempDir).apply { recordPort(1080) }
+        val envFile = ProxyEnvFile(tempDir).apply { recordTunnel(1080, ProcessHandle.current().pid()) }
 
         service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }, portSelector = { 41234 })
             .ensureRunning(testHost)
 
-        assertThat(envFile.read().socksPort).isEqualTo(41234)
+        assertThat(envFile.read().tunnel?.port).isEqualTo(41234)
         val recorded =
             json.decodeFromString<Socks5ProxyStateFile>(File(tempDir, Constants.Vpc.SOCKS5_PROXY_STATE_FILE).readText())
         assertThat(recorded.port).isEqualTo(41234)
@@ -450,13 +450,13 @@ class ProcessSocksProxyServiceUnitTest {
         val envFile =
             ProxyEnvFile(tempDir).apply {
                 recordTailscale(active = false)
-                recordPort(1080)
+                recordTunnel(1080, ProcessHandle.current().pid())
             }
 
         assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }).ensureRunning(testHost) }
             .isInstanceOf(IllegalStateException::class.java)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
     }
 
     @Test
@@ -517,7 +517,7 @@ class ProcessSocksProxyServiceUnitTest {
 
         assertThat(state.reused).isTrue()
         assertThat(state.localPort).isEqualTo(STOP_PORT)
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = STOP_PORT))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(STOP_PORT, livePid)))
     }
 
     @Test
@@ -542,7 +542,7 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(dynamicForwardPorts(launched)).containsExactly(NEW_PORT)
         assertThat(state.reused).isFalse()
         assertThat(state.localPort).isEqualTo(NEW_PORT)
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = NEW_PORT))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(NEW_PORT, livePid)))
         assertThat(json.decodeFromString<Socks5ProxyStateFile>(stateFile().readText()).port).isEqualTo(NEW_PORT)
     }
 
@@ -556,7 +556,7 @@ class ProcessSocksProxyServiceUnitTest {
                 .ensureRunning(testHost)
         }.isInstanceOf(IllegalStateException::class.java)
 
-        assertThat(envFile.read().socksPort).isNull()
+        assertThat(envFile.read().tunnel).isNull()
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
     }
 
@@ -593,13 +593,13 @@ class ProcessSocksProxyServiceUnitTest {
                 portSelector = { STOP_PORT },
             )
         svc.ensureRunning(testHost)
-        val envFile = ProxyEnvFile(tempDir).apply { removePort() }
+        val envFile = ProxyEnvFile(tempDir).apply { removeTunnel() }
 
         val second = svc.ensureRunning(testHost)
 
         assertThat(launched).hasSize(1)
         assertThat(second.reused).isTrue()
-        assertThat(envFile.read().socksPort).isEqualTo(STOP_PORT)
+        assertThat(envFile.read().tunnel?.port).isEqualTo(STOP_PORT)
     }
 
     @Test
@@ -627,7 +627,7 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(dynamicForwardPorts(launched)).containsExactly(STOP_PORT, NEW_PORT)
         assertThat(second.reused).isFalse()
         assertThat(second.localPort).isEqualTo(NEW_PORT)
-        assertThat(ProxyEnvFile(tempDir).read().socksPort).isEqualTo(NEW_PORT)
+        assertThat(ProxyEnvFile(tempDir).read().tunnel?.port).isEqualTo(NEW_PORT)
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("$NEW_PORT")
     }
 
@@ -780,7 +780,7 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(dynamicForwardPorts(launched)).containsExactly(STOP_PORT, NEW_PORT)
         assertThat(state.reused).isFalse()
         assertThat(state.gatewayHost.privateIp).isEqualTo("10.0.1.9")
-        assertThat(ProxyEnvFile(tempDir).read().socksPort).isEqualTo(NEW_PORT)
+        assertThat(ProxyEnvFile(tempDir).read().tunnel?.port).isEqualTo(NEW_PORT)
     }
 
     @Test
@@ -793,7 +793,7 @@ class ProcessSocksProxyServiceUnitTest {
 
         assertThat(result).isEqualTo(TunnelStopResult.Stopped(FAKE_PID.toInt()))
         assertThat(stateFile()).doesNotExist()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
     }
 
     @Test
@@ -805,7 +805,7 @@ class ProcessSocksProxyServiceUnitTest {
 
         assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
         assertThat(stateFile()).doesNotExist()
-        assertThat(envFile.read().socksPort).isNull()
+        assertThat(envFile.read().tunnel).isNull()
     }
 
     @Test
@@ -819,7 +819,7 @@ class ProcessSocksProxyServiceUnitTest {
         assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
         assertThat(other.signals).isZero()
         assertThat(stateFile()).doesNotExist()
-        assertThat(envFile.read().socksPort).isNull()
+        assertThat(envFile.read().tunnel).isNull()
     }
 
     @Test
@@ -832,7 +832,7 @@ class ProcessSocksProxyServiceUnitTest {
 
         assertThat(result).isEqualTo(TunnelStopResult.StopFailed(FAKE_PID.toInt()))
         assertThat(stateFile()).exists()
-        assertThat(envFile.read().socksPort).isEqualTo(STOP_PORT)
+        assertThat(envFile.read().tunnel?.port).isEqualTo(STOP_PORT)
     }
 
     @Test
@@ -844,7 +844,7 @@ class ProcessSocksProxyServiceUnitTest {
 
         assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
         assertThat(stateFile()).doesNotExist()
-        assertThat(envFile.read().socksPort).isNull()
+        assertThat(envFile.read().tunnel).isNull()
     }
 
     /** The record a superseded tunnel left: what ensureRunning has just found not reusable (issue #741). */

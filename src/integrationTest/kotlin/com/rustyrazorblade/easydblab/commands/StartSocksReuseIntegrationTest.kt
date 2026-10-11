@@ -92,7 +92,7 @@ class StartSocksReuseIntegrationTest : BaseKoinTest() {
 
             StartSocks().call()
 
-            assertThat(ProxyEnvFile(workspace).read().socksPort).isEqualTo(port)
+            assertThat(ProxyEnvFile(workspace).read().tunnel?.port).isEqualTo(port)
             assertThat(events).containsExactly(Event.Proxy.TunnelReady(port = port, reused = true))
         }
     }

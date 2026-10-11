@@ -170,7 +170,7 @@ class ProcessSocksProxyServiceTest {
 
             service().ensureRunning(testHost)
 
-            assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = port))
+            assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(port, livePid.toLong())))
         }
     }
 
@@ -301,7 +301,7 @@ class ProcessSocksProxyServiceTest {
         FakeSocksTunnel(FakeSocksTunnel.Behaviour.DROPS_CONNECT).use { dead ->
             FakeSocksTunnel().use { replacement ->
                 writeStateFile(pid = livePid, port = dead.port)
-                envFile.recordPort(dead.port)
+                envFile.recordTunnel(dead.port, ProcessHandle.current().pid())
                 val alive: Process =
                     mock {
                         on { isAlive } doReturn true
@@ -312,7 +312,7 @@ class ProcessSocksProxyServiceTest {
 
                 assertThat(state.reused).isFalse()
                 assertThat(state.localPort).isEqualTo(replacement.port)
-                assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = replacement.port))
+                assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(replacement.port, FAKE_PID)))
                 assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("${replacement.port}")
             }
         }
@@ -396,13 +396,13 @@ class ProcessSocksProxyServiceTest {
             val port = tunnel.port
             writeStateFile(pid = livePid, port = port)
             svc.ensureRunning(testHost)
-            envFile.removePort()
+            envFile.removeTunnel()
 
             val second = svc.ensureRunning(testHost)
 
             assertThat(second.reused).isTrue()
             assertThat(second.localPort).isEqualTo(port)
-            assertThat(envFile.read().socksPort).isEqualTo(port)
+            assertThat(envFile.read().tunnel?.port).isEqualTo(port)
         }
     }
 

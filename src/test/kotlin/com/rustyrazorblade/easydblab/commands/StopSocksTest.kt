@@ -83,7 +83,7 @@ class StopSocksTest : BaseKoinTest() {
 
         assertThat(tunnel.handle.isAlive).isFalse()
         assertThat(stateFile).doesNotExist()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
         assertThat(events).containsExactly(Event.Proxy.TunnelStopped(PID.toInt()))
     }
@@ -97,7 +97,7 @@ class StopSocksTest : BaseKoinTest() {
         assertThatThrownBy { StopSocks().call() }.isInstanceOf(CommandFailedException::class.java)
 
         assertThat(stateFile).exists()
-        assertThat(envFile.read().socksPort).isEqualTo(PORT)
+        assertThat(envFile.read().tunnel?.port).isEqualTo(PORT)
         assertThat(events).containsExactly(Event.Proxy.TunnelStopFailed(PID.toInt()))
     }
 
@@ -109,7 +109,7 @@ class StopSocksTest : BaseKoinTest() {
         StopSocks().call()
 
         assertThat(stateFile).doesNotExist()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
         assertThat(events).containsExactly(Event.Proxy.NoTunnelRunning)
     }
 
@@ -119,7 +119,7 @@ class StopSocksTest : BaseKoinTest() {
 
         StopSocks().call()
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
         assertThat(events).containsExactly(Event.Proxy.NoTunnelRunning)
     }
 
@@ -128,7 +128,7 @@ class StopSocksTest : BaseKoinTest() {
     private fun recordedEnv() =
         ProxyEnvFile(context.workingDirectory).apply {
             recordTailscale(active = false)
-            recordPort(PORT)
+            recordTunnel(PORT, ProcessHandle.current().pid())
         }
 
     private fun recordTunnel(): File =

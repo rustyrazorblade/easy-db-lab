@@ -101,7 +101,7 @@ internal class BackupRestoreServiceTest {
             val result = service.restoreFromVpc(vpcId, tempDir.absolutePath)
 
             assertThat(result.isSuccess).isTrue()
-            assertThat(ProxyEnvFile(tempDir).read()).isEqualTo(ProxyEnv(tailscaleActive = true, socksPort = null))
+            assertThat(ProxyEnvFile(tempDir).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
             assertThat(File(tempDir, Constants.ToolWrappers.DIRECTORY).list())
                 .containsExactlyInAnyOrderElementsOf(
                     Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER,

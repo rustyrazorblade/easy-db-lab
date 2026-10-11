@@ -143,12 +143,12 @@ class DownTest : BaseKoinTest() {
         val envFile =
             ProxyEnvFile(context.workingDirectory).apply {
                 recordTailscale(active = false)
-                recordPort(41234)
+                recordTunnel(41234, ProcessHandle.current().pid())
             }
 
         Down().cleanupSocks5Proxy()
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, socksPort = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
     }
 
     @Test

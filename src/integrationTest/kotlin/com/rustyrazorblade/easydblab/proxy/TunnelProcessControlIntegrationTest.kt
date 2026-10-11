@@ -72,7 +72,7 @@ internal class TunnelProcessControlIntegrationTest {
         val port = freePort()
         val (tunnel, ssh) = launchTunnel(port)
         // What the CLI writes once it has verified the tunnel; the script restarts only then.
-        ProxyEnvFile(workspace).recordPort(port)
+        ProxyEnvFile(workspace).recordTunnel(port, tunnel.pid())
 
         ssh.destroy()
         val next = awaitSsh(tunnel) { it.pid() != ssh.pid() }

@@ -320,7 +320,7 @@ class KitInstallCommandTest : BaseKoinTest() {
     fun `kubectl get ns in an install shell step succeeds, so kit install exits 0`() {
         ProxyEnvFile(workingDir).apply {
             recordTailscale(active = false)
-            recordPort(41234)
+            recordTunnel(41234, ProcessHandle.current().pid())
         }
         val stubs =
             File(tempDir, "real-bin").apply {

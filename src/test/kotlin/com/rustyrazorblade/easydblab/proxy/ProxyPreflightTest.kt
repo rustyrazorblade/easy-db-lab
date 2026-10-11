@@ -44,7 +44,7 @@ internal class ProxyPreflightTest {
         preflight.ensureTunnel()
 
         verify(socksProxyService, never()).ensureRunning(any())
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, socksPort = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
     }
 
     @Test

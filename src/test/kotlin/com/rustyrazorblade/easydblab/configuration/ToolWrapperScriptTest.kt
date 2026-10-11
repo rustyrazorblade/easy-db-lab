@@ -163,7 +163,7 @@ internal class ToolWrapperScriptTest {
         socksCluster(port = 41234)
         val first = run("kubectl get ns")
 
-        ProxyEnvFile(workspace).recordPort(45678)
+        ProxyEnvFile(workspace).recordTunnel(45678, ProcessHandle.current().pid())
         val second = run("kubectl get ns")
 
         assertThat(first.stdout).contains("HTTPS_PROXY=socks5://localhost:41234")
@@ -184,6 +184,42 @@ internal class ToolWrapperScriptTest {
     @Test
     fun `with no env file at all the wrapper fails the same way`() {
         val result = run("helm list -A")
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stderr).contains("easy-db-lab start-socks")
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `a recorded tunnel whose script has exited fails with the start-socks message and does not use the port`(tool: String) {
+        ProxyEnvFile(workspace).apply {
+            recordTailscale(active = false)
+            recordTunnel(41234, exitedPid())
+        }
+
+        val result = run("$tool probe")
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stdout).doesNotContain("tool=").doesNotContain("41234")
+        assertThat(result.stderr).contains(workspace.canonicalPath).contains("easy-db-lab start-socks")
+    }
+
+    @Test
+    fun `a recorded port with no PID fails with the start-socks message`() {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText("EDL_TAILSCALE_ACTIVE=false\nEDL_SOCKS_PORT=41234\n")
+
+        val result = run("kubectl get ns")
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stdout).doesNotContain("tool=")
+        assertThat(result.stderr).contains("easy-db-lab start-socks")
+    }
+
+    @Test
+    fun `an inherited PID does not stand in for a missing one`() {
+        File(workspace, Constants.Proxy.ENV_FILE).writeText("EDL_TAILSCALE_ACTIVE=false\nEDL_SOCKS_PORT=41234\n")
+
+        val result = run("kubectl get ns", env = mapOf("EDL_SOCKS_PID" to "${ProcessHandle.current().pid()}"))
 
         assertThat(result.exitCode).isEqualTo(1)
         assertThat(result.stderr).contains("easy-db-lab start-socks")
@@ -219,7 +255,7 @@ internal class ToolWrapperScriptTest {
         val other = workspace("other")
         ProxyEnvFile(other).apply {
             recordTailscale(active = false)
-            recordPort(45678)
+            recordTunnel(45678, ProcessHandle.current().pid())
         }
 
         val result = run("kubectl get ns", path = listOf(File(workspace, "bin"), File(other, "bin"), realBin))
@@ -247,7 +283,7 @@ internal class ToolWrapperScriptTest {
         val decoy = workspace("decoy")
         ProxyEnvFile(decoy).apply {
             recordTailscale(active = false)
-            recordPort(45678)
+            recordTunnel(45678, ProcessHandle.current().pid())
         }
 
         val result =
@@ -341,10 +377,17 @@ internal class ToolWrapperScriptTest {
 
     private fun List<String>.withoutKubeconfig(): List<String> = filterNot { it.startsWith("KUBECONFIG=") }
 
+    /** The PID of a process that has already exited. */
+    private fun exitedPid(): Long =
+        ProcessBuilder("true").start().let { process ->
+            assertThat(process.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+            process.pid()
+        }
+
     private fun socksCluster(port: Int) {
         ProxyEnvFile(workspace).apply {
             recordTailscale(active = false)
-            recordPort(port)
+            recordTunnel(port, ProcessHandle.current().pid())
         }
     }
 

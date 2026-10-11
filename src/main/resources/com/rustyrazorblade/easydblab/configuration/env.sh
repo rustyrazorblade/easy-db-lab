@@ -144,14 +144,17 @@ c-flame-sepworker() {
 # (`easy-db-lab start-socks`, `easy-db-lab stop-socks`); it records the state shell-side tools need
 # in .socks5-proxy.env, which these helpers source. Nothing here reads JSON.
 
-# The port of the tunnel the CLI recorded, or nothing when none is recorded.
+# The port of the tunnel the CLI recorded, while its tunnel script (EDL_SOCKS_PID) still runs; nothing
+# when none is recorded or the script has exited, because then nothing of ours listens on the port.
 _socks5_port() {
   (
-    unset EDL_SOCKS_PORT
+    unset EDL_SOCKS_PORT EDL_SOCKS_PID
     if [ -f "$CLUSTER_DIR/.socks5-proxy.env" ]; then
       . "$CLUSTER_DIR/.socks5-proxy.env"
     fi
-    printf '%s\n' "${EDL_SOCKS_PORT:-}"
+    if [ -n "${EDL_SOCKS_PORT:-}" ] && [ -n "${EDL_SOCKS_PID:-}" ] && kill -0 "$EDL_SOCKS_PID" 2>/dev/null; then
+      printf '%s\n' "$EDL_SOCKS_PORT"
+    fi
   )
 }
 
@@ -177,7 +180,7 @@ with-proxy() {
   local port
   port=$(_socks5_port)
   if [ -z "$port" ]; then
-    echo "easy-db-lab: no SOCKS tunnel is recorded for the workspace $CLUSTER_DIR." >&2
+    echo "easy-db-lab: no running SOCKS tunnel is recorded for the workspace $CLUSTER_DIR." >&2
     echo "easy-db-lab: run 'easy-db-lab start-socks' in $CLUSTER_DIR, then try again." >&2
     return 1
   fi
@@ -197,7 +200,7 @@ socks5-status() {
   local port
   port=$(_socks5_port)
   if [ -z "$port" ]; then
-    echo "No SOCKS5 tunnel is recorded. Run 'easy-db-lab start-socks' to start one."
+    echo "No running SOCKS5 tunnel is recorded. Run 'easy-db-lab start-socks' to start one."
   elif lsof -Pi :"$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo "SOCKS5 tunnel active on localhost:$port"
   else

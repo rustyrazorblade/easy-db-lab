@@ -68,9 +68,11 @@ internal class TunnelProcessControlIntegrationTest {
     }
 
     @Test
-    fun `a real tunnel whose ssh dies starts ssh again on the same port`() {
+    fun `a real verified tunnel whose ssh dies starts ssh again on the same port`() {
         val port = freePort()
-        val (tunnel, ssh) = launchTunnel(port, startupGraceSeconds = 0)
+        val (tunnel, ssh) = launchTunnel(port)
+        // What the CLI writes once it has verified the tunnel; the script restarts only then.
+        ProxyEnvFile(workspace).recordPort(port)
 
         ssh.destroy()
         val next = awaitSsh(tunnel) { it.pid() != ssh.pid() }
@@ -106,22 +108,12 @@ internal class TunnelProcessControlIntegrationTest {
         assertThat(ssh.isAlive).isTrue()
     }
 
-    /**
-     * Starts `edl-socks-tunnel` exactly as [ProcessSocksProxyService] does, and waits for its ssh.
-     *
-     * @param startupGraceSeconds replaces the production start-up grace, so a test can kill the first
-     *   ssh at once and still see it restarted
-     */
-    private fun launchTunnel(
-        port: Int,
-        startupGraceSeconds: Int = Constants.Proxy.TUNNEL_STARTUP_GRACE_SECONDS,
-    ): Pair<ProcessHandle, ProcessHandle> {
+    /** Starts `edl-socks-tunnel` exactly as [ProcessSocksProxyService] does, and waits for its ssh. */
+    private fun launchTunnel(port: Int): Pair<ProcessHandle, ProcessHandle> {
         ToolWrapperInstaller().install(workspace)
         val command =
             ProcessSocksProxyService(Context.forCli(workspace).copy(workingDirectory = workspace), { _, _, _ -> false })
-                .buildTunnelCommand(port, sshConfig.absolutePath, "control0")
-                .toMutableList()
-                .apply { set(lastIndex - 1, "$startupGraceSeconds") }
+                .buildTunnelCommand(port, sshConfig.absolutePath, File(workspace, "ssh.log"), "control0")
         val tunnel = DefaultSshProcessLauncher.launch(command, File(workspace, "ssh.log")).toHandle()
         started += tunnel
         return tunnel to awaitSsh(tunnel) { true }

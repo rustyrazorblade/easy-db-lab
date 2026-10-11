@@ -140,7 +140,7 @@ class ProcessSocksProxyServiceUnitTest {
         logFile: File,
         port: Int,
     ) {
-        logFile.writeText(
+        logFile.appendText(
             """
             debug1: Local connections to LOCALHOST:$port forwarded to remote address socks:0
             bind [127.0.0.1]:$port: Address already in use
@@ -227,19 +227,57 @@ class ProcessSocksProxyServiceUnitTest {
 
     @Test
     fun `the tunnel command runs the workspace's edl-socks-tunnel under nohup for the recorded alias`() {
-        val command = service().buildTunnelCommand(port = 1080, sshConfigPath = "/work/sshConfig", alias = "gw-alias")
+        val command =
+            service().buildTunnelCommand(port = 41234, sshConfigPath = "/work/sshConfig", logFile = logFile(), alias = "gw-alias")
 
         // The script runs ssh with the dynamic forward and ExitOnForwardFailure itself. The alias is
         // the host it dials; a hardcoded control0 would show up here instead of the passed alias.
         assertThat(command).containsExactly(
             "nohup",
             File(tempDir, "${Constants.ToolWrappers.DIRECTORY}/${Constants.ToolWrappers.TUNNEL_SCRIPT}").absolutePath,
-            "1080",
+            "41234",
             "/work/sshConfig",
             "${Constants.Proxy.TUNNEL_RESTART_BACKOFF_SECONDS}",
-            "${Constants.Proxy.TUNNEL_STARTUP_GRACE_SECONDS}",
+            logFile().absolutePath,
             "gw-alias",
         )
+    }
+
+    @Test
+    fun `each launch appends a timestamped header naming its port and alias, and keeps the earlier log`() {
+        logFile().apply {
+            parentFile.mkdirs()
+            writeText("an earlier tunnel's line\n")
+        }
+        val clock = Clock.fixed(Instant.parse("2026-10-11T23:23:38.517Z"), ZoneOffset.UTC)
+
+        service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }, portSelector = { 41234 }, clock = clock)
+            .ensureRunning(testHost)
+
+        assertThat(logFile().readLines()).containsExactly(
+            "an earlier tunnel's line",
+            "2026-10-11T23:23:38Z easy-db-lab: launching the SOCKS5 tunnel on port 41234 to control0",
+        )
+    }
+
+    @Test
+    fun `a bind failure an earlier launch logged does not make this launch retry on another port`() {
+        logFile().parentFile.mkdirs()
+        writeBindFailureTranscript(logFile(), port = 41000)
+        val launched = mutableListOf<List<String>>()
+        val launcher =
+            SshProcessLauncher { command, logFile ->
+                launched.add(command)
+                logFile.appendText("Permission denied (publickey).\n")
+                deadProcess(exitCode = 255)
+            }
+
+        assertThatThrownBy { service(launcher = launcher).ensureRunning(testHost) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("Permission denied")
+            .hasMessageNotContaining("Address already in use")
+
+        assertThat(launched).hasSize(1)
     }
 
     @Test
@@ -351,7 +389,7 @@ class ProcessSocksProxyServiceUnitTest {
         val launcher =
             SshProcessLauncher { command, logFile ->
                 launched.add(command)
-                logFile.writeText("Permission denied (publickey).\n")
+                logFile.appendText("Permission denied (publickey).\n")
                 deadProcess(exitCode = 255)
             }
 

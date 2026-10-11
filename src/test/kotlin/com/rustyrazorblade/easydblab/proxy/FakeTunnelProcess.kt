@@ -88,7 +88,7 @@ internal class FakeTunnelProcess(
         ) = FakeTunnelProcess(
             pid,
             "/bin/sh",
-            listOf("/work/bin/${Constants.ToolWrappers.TUNNEL_SCRIPT}", "$port", sshConfig, "2", "60", "control0"),
+            listOf("/work/bin/${Constants.ToolWrappers.TUNNEL_SCRIPT}", "$port", sshConfig, "2", "/work/logs/socks5-proxy.log", "control0"),
             endsOnSignal,
             endsOnlyWhenForced,
             children,

@@ -921,10 +921,11 @@ object Constants {
         const val ENV_SOCKS_PORT = "EDL_SOCKS_PORT"
 
         /**
-         * Filename of the SOCKS5 proxy's `ssh -v` transcript. It lives under the workspace
-         * `logs/` directory (alongside `logs/info.log`), overwritten on each proxy start so the
-         * tail is always exactly the most recent attempt. Read back on verification failure to
-         * surface the real ssh error (e.g. a changed host key or refused connection).
+         * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script
+         * runs and the script's own timestamped lines. It lives under the workspace `logs/` directory
+         * (alongside `logs/info.log`). Each launch appends a timestamped header and never truncates
+         * it, so it keeps the history of every tunnel. A failed start reads back only its own part,
+         * to surface the real ssh error (e.g. a changed host key or refused connection).
          */
         const val SOCKS5_PROXY_LOG_FILE = "socks5-proxy.log"
 
@@ -977,14 +978,6 @@ object Constants {
 
         /** Seconds `edl-socks-tunnel` waits after its ssh exits before it starts ssh again on the same port. */
         const val TUNNEL_RESTART_BACKOFF_SECONDS = 2
-
-        /**
-         * Seconds within which an exit of the tunnel's first ssh ends `edl-socks-tunnel` with ssh's
-         * status, so a start that fails (a bound port, a refused key) fails the CLI's start at once
-         * and is not retried forever. It is longer than the `ssm` start verification (about 30s);
-         * every later exit is a dropped connection and is restarted.
-         */
-        const val TUNNEL_STARTUP_GRACE_SECONDS = 60
     }
 
     // Tailscale VPN configuration

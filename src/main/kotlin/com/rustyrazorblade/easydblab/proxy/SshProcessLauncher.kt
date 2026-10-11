@@ -30,7 +30,7 @@ fun interface SshProcessLauncher {
  * Production [SshProcessLauncher]: spawns the real tunnel script via [ProcessBuilder], detaching stdin
  * and stdout to `/dev/null` and redirecting stderr (the `ssh -v` transcript of every ssh the script
  * runs, and the script's own restart lines) to the log file so a failed start's real error survives
- * for diagnosis. The redirect overwrites, so the log starts with this launch.
+ * for diagnosis. The redirect appends, so the log keeps the history of every launch.
  */
 object DefaultSshProcessLauncher : SshProcessLauncher {
     override fun launch(
@@ -41,6 +41,6 @@ object DefaultSshProcessLauncher : SshProcessLauncher {
             .apply {
                 redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                 redirectOutput(ProcessBuilder.Redirect.to(File("/dev/null")))
-                redirectError(ProcessBuilder.Redirect.to(logFile))
+                redirectError(ProcessBuilder.Redirect.appendTo(logFile))
             }.start()
 }

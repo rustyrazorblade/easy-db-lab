@@ -76,7 +76,7 @@ internal class TunnelProcessControlTest {
 
     @Test
     fun `a shell running another script with the same arguments is left alone`() {
-        val other = FakeTunnelProcess(PID, "/bin/sh", listOf("/work/bin/other-script", "$PORT", SSH_CONFIG, "2", "60", "control0"))
+        val other = FakeTunnelProcess(PID, "/bin/sh", listOf("/work/bin/other-script", "$PORT", SSH_CONFIG, "2", "/work/logs/socks5-proxy.log", "control0"))
 
         val result = control(other).stop(recorded)
 

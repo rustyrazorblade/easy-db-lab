@@ -217,7 +217,7 @@ class ProcessSocksProxyServiceTest {
                 }
             } catch (_: BindException) {
                 socket.close()
-                logFile.writeText("bind [127.0.0.1]:$port: Address already in use\ncannot listen to port: $port\n")
+                logFile.appendText("bind [127.0.0.1]:$port: Address already in use\ncannot listen to port: $port\n")
                 mock {
                     on { isAlive } doReturn false
                     on { exitValue() } doReturn 255

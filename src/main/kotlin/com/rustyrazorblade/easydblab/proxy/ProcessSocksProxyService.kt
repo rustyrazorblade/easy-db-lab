@@ -11,11 +11,14 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
+import java.io.RandomAccessFile
 import java.net.BindException
 import java.net.InetSocketAddress
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
@@ -57,6 +60,9 @@ private val LOCAL_PORT_BIND_FAILURE = Regex("""Address already in use|cannot lis
  * bound by another process — the one ssh failure a fresh port fixes.
  */
 internal fun isLocalPortBindFailure(transcript: List<String>): Boolean = transcript.any { LOCAL_PORT_BIND_FAILURE.containsMatchIn(it) }
+
+/** [instant] in UTC to the second, the timestamp every line of the tunnel log starts with. */
+private fun utcSeconds(instant: Instant): String = DateTimeFormatter.ISO_INSTANT.format(instant.truncatedTo(ChronoUnit.SECONDS))
 
 /**
  * SOCKS5 proxy service that launches a detached `<workspace>/bin/edl-socks-tunnel` OS process, which
@@ -389,20 +395,23 @@ class ProcessSocksProxyService(
         log.info { "Starting SOCKS5 proxy to ${gatewayHost.alias} (${gatewayHost.privateIp}) on port $port" }
         // A workspace from before the tunnel script, or one whose bin/ was cleaned, may not have it yet.
         toolWrappers.install(context.workingDirectory)
-        val process = processLauncher.launch(buildTunnelCommand(port, sshConfigPath, gatewayHost.alias), logFile)
+        // The log keeps every launch; only what this one writes, from here on, explains its failure.
+        val transcriptStart = logFile.length()
+        logFile.appendText("${utcSeconds(clock.instant())} easy-db-lab: launching the SOCKS5 tunnel on port $port to ${gatewayHost.alias}\n")
+        val process = processLauncher.launch(buildTunnelCommand(port, sshConfigPath, logFile, gatewayHost.alias), logFile)
 
         val newPid = process.pid().toInt()
         log.info { "SOCKS5 tunnel process started [PID $newPid]" }
 
         try {
-            verifyTunnelReachable(process, port, gatewayHost.privateIp, logFile)
+            verifyTunnelReachable(process, port, gatewayHost.privateIp, logFile, transcriptStart)
         } catch (e: IllegalStateException) {
             val sshExited = !process.isAlive
             // The script's ssh is taken first: once the script is killed, it is no longer a descendant.
             val children = process.descendants().toList()
             process.destroyForcibly()
             children.forEach { it.destroyForcibly() }
-            if (sshExited && isLocalPortBindFailure(readTranscript(logFile))) {
+            if (sshExited && isLocalPortBindFailure(readTranscript(logFile, transcriptStart))) {
                 log.info { "SOCKS5 proxy port $port was taken by another process; selecting another port" }
                 throw BindException(e.message)
             }
@@ -414,8 +423,9 @@ class ProcessSocksProxyService(
     /**
      * Builds the command line that starts the workspace's `edl-socks-tunnel` for the dynamic SOCKS5
      * forward on [port] to [alias]. The script runs `ssh -v -o ExitOnForwardFailure=yes -N -D`, and
-     * starts it again on the same port when it exits, so a dropped connection reconnects with no CLI
-     * command. `nohup` keeps the tunnel alive when the terminal that started it closes.
+     * starts it again on the same port when it exits after the tunnel was verified, so a dropped
+     * connection reconnects with no CLI command. It appends everything it and its ssh write to
+     * [logFile]. `nohup` keeps the tunnel alive when the terminal that started it closes.
      *
      * Internal (not private) purely so a test can assert the command dials the gateway's recorded
      * [alias] (never a hardcoded host), without spawning the script.
@@ -423,6 +433,7 @@ class ProcessSocksProxyService(
     internal fun buildTunnelCommand(
         port: Int,
         sshConfigPath: String,
+        logFile: File,
         alias: String,
     ): List<String> =
         listOf(
@@ -431,7 +442,7 @@ class ProcessSocksProxyService(
             "$port",
             sshConfigPath,
             "${Constants.Proxy.TUNNEL_RESTART_BACKOFF_SECONDS}",
-            "${Constants.Proxy.TUNNEL_STARTUP_GRACE_SECONDS}",
+            logFile.absolutePath,
             alias,
         )
 
@@ -530,6 +541,7 @@ class ProcessSocksProxyService(
      * condition, timeout, and exit-code reporting — can be driven directly in tests with a mock
      * [Process] and a mock probe, without spawning a real ssh process.
      *
+     * @param transcriptStart where this launch's part of [logFile] begins
      * @throws IllegalStateException if ssh exits early or the tunnel never becomes reachable
      */
     @Suppress("MagicNumber")
@@ -538,12 +550,13 @@ class ProcessSocksProxyService(
         port: Int,
         targetPrivateIp: String,
         logFile: File,
+        transcriptStart: Long = 0,
     ) {
         repeat(verifyAttempts) { attempt ->
             // A dead ssh (e.g. a changed host key kills it in ~50ms) will never open the tunnel;
             // stop immediately instead of waiting out the remaining attempts.
             if (!process.isAlive) {
-                throw IllegalStateException(verificationFailureMessage(logFile, exitCode = process.exitValue()))
+                throw IllegalStateException(verificationFailureMessage(logFile, exitCode = process.exitValue(), transcriptStart))
             }
             if (reachabilityProbe.isReachable(port, targetPrivateIp, SSH_PORT)) {
                 log.debug { "SOCKS5 tunnel reachable end-to-end on port $port (attempt ${attempt + 1})" }
@@ -555,13 +568,13 @@ class ProcessSocksProxyService(
             }
         }
         val exitCode = if (process.isAlive) null else process.exitValue()
-        throw IllegalStateException(verificationFailureMessage(logFile, exitCode))
+        throw IllegalStateException(verificationFailureMessage(logFile, exitCode, transcriptStart))
     }
 
     /**
      * Builds the failure message for a proxy that never came up, naming the SOCKS proxy as the
      * failing component, citing the ssh exit code when it died, and surfacing the real ssh error
-     * pulled from [logFile] (debug chatter stripped) plus the full transcript path.
+     * pulled from [logFile] after [transcriptStart] (debug chatter stripped) plus the full transcript path.
      *
      * Internal (not private) purely so the message construction — that the real, un-prefixed ssh
      * error is surfaced while `debug*:` chatter is dropped — can be driven directly in tests with a
@@ -570,9 +583,10 @@ class ProcessSocksProxyService(
     internal fun verificationFailureMessage(
         logFile: File,
         exitCode: Int?,
+        transcriptStart: Long = 0,
     ): String {
         val exitInfo = exitCode?.let { " (ssh exited with code $it)" } ?: ""
-        val errors = readSshErrors(logFile)
+        val errors = stripSshDebugNoise(readTranscript(logFile, transcriptStart), SSH_ERROR_TAIL_LINES)
         return buildString {
             append("SOCKS5 proxy failed to establish a working tunnel$exitInfo. ")
             append("See ${logFile.absolutePath} for the full ssh -v transcript.")
@@ -583,11 +597,19 @@ class ProcessSocksProxyService(
         }
     }
 
-    private fun readSshErrors(logFile: File): List<String> = stripSshDebugNoise(readTranscript(logFile), SSH_ERROR_TAIL_LINES)
-
-    private fun readTranscript(logFile: File): List<String> =
+    /** The lines of [logFile] after its first [from] bytes: what one launch wrote to the shared log. */
+    private fun readTranscript(
+        logFile: File,
+        from: Long,
+    ): List<String> =
         try {
-            logFile.readLines()
+            RandomAccessFile(logFile, "r").use { file ->
+                file.seek(from.coerceAtMost(file.length()))
+                ByteArray((file.length() - file.filePointer).toInt())
+                    .also { file.readFully(it) }
+                    .toString(Charsets.UTF_8)
+                    .lines()
+            }
         } catch (e: IOException) {
             log.debug(e) { "Could not read ssh transcript from ${logFile.absolutePath}" }
             emptyList()

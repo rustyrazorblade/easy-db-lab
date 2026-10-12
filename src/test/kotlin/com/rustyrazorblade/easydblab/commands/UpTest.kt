@@ -587,6 +587,26 @@ class UpTest : UpTestFixture() {
     }
 
     @Test
+    fun `up --no-setup reports the SOCKS tunnel it starts or reuses, once`() {
+        // Under --no-setup the tunnel may already come from the @RequiresProxy preflight, which reports nothing.
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `up --no-setup reports no SOCKS tunnel on a Tailscale cluster`() {
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).isEmpty()
+    }
+
+    @Test
     fun `up reports no SOCKS tunnel on a Tailscale cluster`() {
         val events = captureEvents()
 

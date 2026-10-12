@@ -644,10 +644,15 @@ class Up(
         }
     }
 
-    /** Runs instance setup, K3s configuration, and optional AxonOps setup unless --no-setup. */
+    /**
+     * Runs instance setup, K3s configuration, and optional AxonOps setup unless --no-setup. Either way
+     * `up` starts or reuses the SOCKS tunnel and reports it once: under --no-setup the tunnel may come
+     * from the `@RequiresProxy` preflight, which reports nothing.
+     */
     private fun setupInstancesIfNeeded() {
         if (noSetup) {
             eventBus.emit(Event.Provision.SkippingNodeSetup)
+            startProxyIfNeeded()
         } else {
             runNestedCommand { SetupInstance() }
             startTailscaleIfConfigured()

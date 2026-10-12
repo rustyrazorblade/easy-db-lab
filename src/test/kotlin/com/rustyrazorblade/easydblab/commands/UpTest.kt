@@ -3,9 +3,9 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -649,7 +649,9 @@ class UpTest : UpTestFixture() {
     @Test
     fun `a preflight tunnel to another control node is not reported, and up asks for one to the current node`() {
         val oldControl = testControlHost.copy(privateIp = "10.0.9.9")
-        tunnelFromPreflight(reused = false, later = { host -> tunnel(host, port = TUNNEL_PORT, reused = true) }, preflightControl = oldControl)
+        tunnelFromPreflight(reused = false, later = { host ->
+            tunnel(host, port = TUNNEL_PORT, reused = true)
+        }, preflightControl = oldControl)
         val events = captureEvents()
 
         newUp().apply { noSetup = true }.execute()

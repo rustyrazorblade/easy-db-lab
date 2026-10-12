@@ -248,7 +248,8 @@ internal class SshToolWrapperScriptTest {
         val builder = ProcessBuilder("/bin/sh", "-c", command).directory(root)
         builder.environment().apply {
             clear()
-            val path = pathPrefix + listOf(File(workspace, Constants.ToolWrappers.DIRECTORY).absolutePath, realBin.absolutePath) + systemPath
+            val path =
+                pathPrefix + listOf(File(workspace, Constants.ToolWrappers.DIRECTORY).absolutePath, realBin.absolutePath) + systemPath
             put("PATH", path.joinToString(File.pathSeparator))
             put("WS", workspace.absolutePath)
             putAll(env)

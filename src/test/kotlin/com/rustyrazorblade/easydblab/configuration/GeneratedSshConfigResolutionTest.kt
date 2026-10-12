@@ -83,7 +83,9 @@ internal class GeneratedSshConfigResolutionTest {
     @Test
     fun `the system settings never reach a cluster host`() {
         listOf("control0", "db0", "app0").forEach { host ->
-            assertThat(resolve(sshConfig, host)).describedAs(host).noneMatch { it.startsWith("sendenv ") }.doesNotContain("serveraliveinterval 77")
+            assertThat(
+                resolve(sshConfig, host),
+            ).describedAs(host).noneMatch { it.startsWith("sendenv ") }.doesNotContain("serveraliveinterval 77")
         }
     }
 

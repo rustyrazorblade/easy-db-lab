@@ -80,11 +80,13 @@ internal class FakeTunnelProcess(
             port: Int,
             sshConfig: String,
             endsOnSignal: Boolean = true,
+            children: List<FakeTunnelProcess> = emptyList(),
         ) = FakeTunnelProcess(
             pid,
             "/usr/bin/ssh",
             listOf("-v", "-o", "ExitOnForwardFailure=yes", "-N", "-D", "127.0.0.1:$port", "-F", sshConfig, "control0"),
             endsOnSignal,
+            children = children,
         )
 
         /**

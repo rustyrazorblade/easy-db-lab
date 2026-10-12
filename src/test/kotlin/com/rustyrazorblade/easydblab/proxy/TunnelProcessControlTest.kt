@@ -210,6 +210,19 @@ internal class TunnelProcessControlTest {
     }
 
     @Test
+    fun `a forked child of the running tunnel's ssh is not taken for an orphan`() {
+        // Between fork and exec, the child ssh forks for its ProxyCommand has ssh's own arguments.
+        val forked = FakeTunnelProcess.ssh(SSH_PID + 1, PORT, SSH_CONFIG)
+        val ssh = FakeTunnelProcess.ssh(SSH_PID, PORT, SSH_CONFIG, children = listOf(forked))
+        val script = FakeTunnelProcess.tunnelScript(PID + 1, PORT, SSH_CONFIG, children = listOf(ssh))
+
+        val result = control(process = null, running = listOf(script, ssh, forked)).stop(recorded)
+
+        assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
+        assertThat(script.signals + ssh.signals + forked.signals).isZero()
+    }
+
+    @Test
     fun `a shell whose arguments the OS does not report is left alone`() {
         val unknown = FakeTunnelProcess(PID, "/bin/sh", arguments = null)
 

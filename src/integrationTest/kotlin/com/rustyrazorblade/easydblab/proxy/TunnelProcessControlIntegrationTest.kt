@@ -63,8 +63,7 @@ internal class TunnelProcessControlIntegrationTest {
         assertThat(result).isEqualTo(TunnelStopResult.Stopped(tunnel.pid().toInt()))
         assertThat(tunnel.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).isFalse()
         assertThat(ssh.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).isFalse()
-        // Past the restart backoff: nothing starts a new ssh for the port.
-        Thread.sleep(TimeUnit.SECONDS.toMillis(Constants.Proxy.TUNNEL_RESTART_BACKOFF_SECONDS + 1L))
+        // The script has exited, so nothing is left to start a new ssh for the port.
         assertThat(sshProcessesFor(port)).isEmpty()
     }
 
@@ -84,7 +83,7 @@ internal class TunnelProcessControlIntegrationTest {
                 .arguments()
                 .map { it.toList() }
                 .orElse(emptyList()),
-        ).containsSequence("-D", "$port")
+        ).containsSequence("-D", "${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:$port")
         assertThat(tunnel.isAlive).isTrue()
     }
 
@@ -100,7 +99,8 @@ internal class TunnelProcessControlIntegrationTest {
 
         val result = TunnelProcessControl().stop(record(tunnel.pid(), port))
 
-        assertThat(result).isEqualTo(TunnelStopResult.Stopped(tunnel.pid().toInt()))
+        // The PID reported is the one stopped: the orphaned ssh, not the script already gone.
+        assertThat(result).isEqualTo(TunnelStopResult.Stopped(ssh.pid().toInt()))
         assertThat(ssh.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).isFalse()
         assertThat(sshProcessesFor(port)).isEmpty()
     }
@@ -176,7 +176,7 @@ internal class TunnelProcessControlIntegrationTest {
             .map { File(it).name }
             .orElse("") == "ssh"
 
-    /** Every live ssh process whose arguments carry `-D <port>`. */
+    /** Every live ssh process whose arguments carry `-D 127.0.0.1:<port>`. */
     private fun sshProcessesFor(port: Int): List<ProcessHandle> =
         ProcessHandle
             .allProcesses()
@@ -188,7 +188,9 @@ internal class TunnelProcessControlIntegrationTest {
                         .arguments()
                         .map { it.toList() }
                         .orElse(emptyList())
-                arguments.indices.any { arguments[it] == "-D" && arguments.getOrNull(it + 1) == "$port" }
+                arguments.indices.any {
+                    arguments[it] == "-D" && arguments.getOrNull(it + 1) == "${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:$port"
+                }
             }.toList()
 
     private fun record(

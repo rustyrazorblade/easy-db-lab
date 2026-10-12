@@ -50,8 +50,9 @@ sealed interface TunnelStopResult {
  * A script killed from outside with KILL leaves its `ssh` running with no parent to find it by. So
  * when the recorded PID is gone, or now belongs to another program, the stop looks for an orphaned
  * `ssh`: one whose arguments the OS reports as the script's (`-N`, `-D 127.0.0.1:<recorded port>` and
- * `-F` with the recorded `sshConfig`), and whose parent is not a live tunnel script. It stops each
- * one it finds.
+ * `-F` with the recorded `sshConfig`), and whose parent is neither a live tunnel script nor such an
+ * `ssh` itself: between `fork` and `exec`, the child an `ssh` starts for its `ProxyCommand` has the
+ * same arguments. It stops each one it finds.
  *
  * @param lookup finds a live process by PID; tests replace it to model processes they cannot start
  * @param allProcesses lists the live processes searched for an orphaned `ssh`; tests replace it too
@@ -132,7 +133,7 @@ class TunnelProcessControl(
     private fun stopOrphanedSsh(recorded: Socks5ProxyStateFile): TunnelStopResult {
         val orphans =
             allProcesses()
-                .filter { it.isAlive && isTunnelSsh(it, recorded) && isOrphaned(it) }
+                .filter { it.isAlive && isTunnelSsh(it, recorded) && isOrphaned(it, recorded) }
                 .toList()
         if (orphans.isEmpty()) return TunnelStopResult.NotRunning
         log.info {
@@ -172,8 +173,14 @@ class TunnelProcessControl(
             arguments.hasPair("-F", recorded.sshConfig)
     }
 
-    /** True when no tunnel script runs [handle]: its parent is gone, or is not an `edl-socks-tunnel`. */
-    private fun isOrphaned(handle: ProcessHandle): Boolean = handle.parent().map { !isTunnelScript(it) }.orElse(true)
+    /**
+     * True when no tunnel runs [handle]: its parent is gone, or is neither an `edl-socks-tunnel` nor the
+     * tunnel's `ssh` that forked it.
+     */
+    private fun isOrphaned(
+        handle: ProcessHandle,
+        recorded: Socks5ProxyStateFile,
+    ): Boolean = handle.parent().map { !isTunnelScript(it) && !isTunnelSsh(it, recorded) }.orElse(true)
 
     private fun isTunnelScript(handle: ProcessHandle): Boolean =
         handle

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.proxy
 
+import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.net.InetSocketAddress
 import java.net.Proxy
@@ -58,7 +59,7 @@ class SocksTunnelReachabilityProbe(
     ): Boolean =
         try {
             val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(attemptTimeoutMs.toLong())
-            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", localSocksPort))
+            val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, localSocksPort))
             Socket(proxy).use { socket ->
                 socket.connect(InetSocketAddress(targetHost, targetPort), attemptTimeoutMs)
                 val remainingMs = TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime())

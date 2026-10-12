@@ -11,7 +11,10 @@ import java.util.stream.Stream
 
 /** How an attempt to stop a recorded SOCKS5 tunnel ended. */
 sealed interface TunnelStopResult {
-    /** The tunnel process [pid] ended, and so did every ssh it ran. */
+    /**
+     * The tunnel ended: [pid] is the process that was stopped, the tunnel script with every ssh it ran,
+     * or the orphaned ssh of a script that was already gone.
+     */
     data class Stopped(
         val pid: Int,
     ) : TunnelStopResult
@@ -46,7 +49,7 @@ sealed interface TunnelStopResult {
  *
  * A script killed from outside with KILL leaves its `ssh` running with no parent to find it by. So
  * when the recorded PID is gone, or now belongs to another program, the stop looks for an orphaned
- * `ssh`: one whose arguments the OS reports as the script's (`-N`, `-D` with the recorded port and
+ * `ssh`: one whose arguments the OS reports as the script's (`-N`, `-D 127.0.0.1:<recorded port>` and
  * `-F` with the recorded `sshConfig`), and whose parent is not a live tunnel script. It stops each
  * one it finds.
  *
@@ -64,10 +67,7 @@ class TunnelProcessControl(
      * script, otherwise any orphaned ssh it left.
      */
     fun stop(recorded: Socks5ProxyStateFile): TunnelStopResult {
-        val handle =
-            lookup(recorded.pid.toLong())
-                ?.takeIf { it.isAlive && it.pid() != ProcessHandle.current().pid() }
-                ?: return stopOrphanedSsh(recorded)
+        val handle = liveProcess(recorded) ?: return stopOrphanedSsh(recorded)
         if (!isTunnel(handle, recorded)) {
             log.info { "PID ${recorded.pid} is no longer the recorded SOCKS5 tunnel; leaving it alone" }
             return stopOrphanedSsh(recorded)
@@ -94,6 +94,16 @@ class TunnelProcessControl(
             }
         }
     }
+
+    /**
+     * True when the recorded PID is a live process that proves to be the `edl-socks-tunnel` [recorded]
+     * describes ([isTunnel]). A PID the OS gave to another program is not the tunnel.
+     */
+    fun isRunning(recorded: Socks5ProxyStateFile): Boolean = liveProcess(recorded)?.let { isTunnel(it, recorded) } ?: false
+
+    /** The live process that holds the recorded PID, unless it is this JVM. */
+    private fun liveProcess(recorded: Socks5ProxyStateFile): ProcessHandle? =
+        lookup(recorded.pid.toLong())?.takeIf { it.isAlive && it.pid() != ProcessHandle.current().pid() }
 
     /**
      * True when [handle] is the `edl-socks-tunnel` that [recorded] describes: the OS reports the
@@ -132,7 +142,7 @@ class TunnelProcessControl(
         }
         val survivors = orphans.filterNot { orphan -> ends(orphan) { it.destroy() } || ends(orphan) { it.destroyForcibly() } }
         return when (val survivor = survivors.firstOrNull()) {
-            null -> TunnelStopResult.Stopped(recorded.pid)
+            null -> TunnelStopResult.Stopped(orphans.first().pid().toInt())
             else -> {
                 log.warn {
                     "The orphaned ssh of the SOCKS5 tunnel on port ${recorded.port} (${survivors.joinToString {
@@ -146,8 +156,8 @@ class TunnelProcessControl(
 
     /**
      * True when [handle] is an `ssh` the tunnel script ran for [recorded]: the executable is `ssh`, and
-     * the OS reports `-N`, then `-D` followed by the recorded port and `-F` followed by the recorded
-     * `sshConfig`. A process whose arguments the OS does not report cannot prove that.
+     * the OS reports `-N`, then `-D` followed by `127.0.0.1:<recorded port>` and `-F` followed by the
+     * recorded `sshConfig`. A process whose arguments the OS does not report cannot prove that.
      */
     internal fun isTunnelSsh(
         handle: ProcessHandle,
@@ -158,7 +168,7 @@ class TunnelProcessControl(
         val arguments = info.arguments().orElse(null)?.toList() ?: return false
         return File(command).name == "ssh" &&
             "-N" in arguments &&
-            arguments.hasPair("-D", recorded.port.toString()) &&
+            arguments.hasPair("-D", "${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:${recorded.port}") &&
             arguments.hasPair("-F", recorded.sshConfig)
     }
 

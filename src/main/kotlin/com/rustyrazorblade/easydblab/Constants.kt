@@ -921,6 +921,14 @@ object Constants {
         const val PORT_PROPERTY = "easydblab.socks5Port"
 
         /**
+         * The address the SOCKS5 tunnel listens on, `ssh -D 127.0.0.1:<port>`, and the one every client
+         * of the tunnel connects to. It is IPv4 loopback only, never `localhost`: an ssh that also
+         * listened on `::1` keeps running with only that address bound when another process holds
+         * 127.0.0.1 on the port, and a client of `localhost` could then reach that other process.
+         */
+        const val TUNNEL_LISTEN_ADDRESS = "127.0.0.1"
+
+        /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
          * tool wrappers in `bin/`, the tunnel script and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE],
          * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses JSON.

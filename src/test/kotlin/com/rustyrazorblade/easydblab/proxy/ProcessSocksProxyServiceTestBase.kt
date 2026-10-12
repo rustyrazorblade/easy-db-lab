@@ -21,6 +21,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.util.stream.Stream
 
 /**
  * The shared fixtures of the [ProcessSocksProxyService] unit tests: a workspace in a temp directory, a
@@ -157,8 +158,8 @@ internal abstract class ProcessSocksProxyServiceTestBase {
         pid: Int,
         port: Int,
         controlIP: String = testHost.privateIp,
+        sshConfigPath: String = sshConfigPath(),
     ) {
-        val sshConfigPath = File(tempDir, "sshConfig").absolutePath
         val stateFile =
             Socks5ProxyStateFile(
                 pid = pid,
@@ -198,6 +199,27 @@ internal abstract class ProcessSocksProxyServiceTestBase {
 
     /** A process lookup that finds nothing, so a stale-tunnel stop never reaches a real process. */
     protected val noProcesses = TunnelProcessControl(lookup = { null })
+
+    /** The workspace `sshConfig` path a tunnel of this workspace is started with. */
+    protected fun sshConfigPath(): String = File(tempDir, "sshConfig").absolutePath
+
+    /**
+     * The `edl-socks-tunnel` the state file records as [livePid], as the OS would report it, so the
+     * service's check that the recorded PID is still the tunnel passes.
+     */
+    protected fun recordedScript(
+        port: Int = STOP_PORT,
+        sshConfig: String = sshConfigPath(),
+        endsOnSignal: Boolean = true,
+    ) = FakeTunnelProcess.tunnelScript(livePid, port, sshConfig, endsOnSignal = endsOnSignal)
+
+    /** A process control whose lookup sees only [processes] and whose process list is empty. */
+    protected fun seeing(vararg processes: FakeTunnelProcess) =
+        TunnelProcessControl(
+            lookup = { pid -> processes.firstOrNull { it.pid == pid }?.handle },
+            allProcesses = { Stream.empty() },
+            stopWait = Duration.ofMillis(50),
+        )
 
     /** A launched ssh that stays alive under [livePid], so the in-memory reuse path sees it running. */
     protected fun liveTunnelProcess(): Process =
@@ -245,7 +267,8 @@ internal abstract class ProcessSocksProxyServiceTestBase {
         ports: ArrayDeque<Int>,
         launched: MutableList<List<String>> = mutableListOf(),
         launcher: SshProcessLauncher = SshProcessLauncher { command, _ -> liveTunnelProcess().also { launched += command } },
-    ) = service(probe = probe, launcher = launcher, portSelector = { ports.removeFirst() }, tunnelProcesses = noProcesses, clock = clock)
+        tunnelProcesses: TunnelProcessControl = noProcesses,
+    ) = service(probe = probe, launcher = launcher, portSelector = { ports.removeFirst() }, tunnelProcesses = tunnelProcesses, clock = clock)
 
     /** The record a superseded tunnel left: what ensureRunning has just found not reusable (issue #741). */
     protected fun staleRecord() =

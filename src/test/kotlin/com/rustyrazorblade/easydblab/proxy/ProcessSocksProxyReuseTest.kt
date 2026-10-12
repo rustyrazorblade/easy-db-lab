@@ -51,11 +51,69 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
     }
 
     @Test
+    fun `a recorded PID that another program now holds is replaced as gone, and that program is not signaled`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
+        val other = FakeTunnelProcess(livePid, "/bin/sleep", listOf("60"))
+
+        val state =
+            service(
+                // The recorded port still answers, so only the identity check can tell the tunnel is gone.
+                probe = PortProbe(STOP_PORT, NEW_PORT),
+                launcher = { _, _ -> aliveProcess() },
+                portSelector = { NEW_PORT },
+                tunnelProcesses = seeing(other),
+            ).ensureRunning(testHost)
+
+        assertThat(state.localPort).isEqualTo(NEW_PORT)
+        assertThat(other.signals).isZero()
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.PROCESS_GONE))
+    }
+
+    @Test
+    fun `a recorded tunnel started with another sshConfig is stopped and replaced`() {
+        val movedConfig = File(tempDir, "old-workspace/sshConfig").absolutePath
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT, sshConfigPath = movedConfig)
+        val old = recordedScript(sshConfig = movedConfig)
+
+        val state =
+            service(
+                probe = PortProbe(STOP_PORT, NEW_PORT),
+                launcher = { _, _ -> aliveProcess() },
+                portSelector = { NEW_PORT },
+                tunnelProcesses = seeing(old),
+            ).ensureRunning(testHost)
+
+        assertThat(state.localPort).isEqualTo(NEW_PORT)
+        assertThat(old.handle.isAlive).withFailMessage("the tunnel with the old sshConfig was left running").isFalse()
+        assertThat(ProxyEnvFile(tempDir).read().tunnel?.port).isEqualTo(NEW_PORT)
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.SSH_CONFIG_CHANGED))
+    }
+
+    @Test
+    fun `a recorded tunnel to another control node is stopped and replaced`() {
+        writeStateFile(pid = livePid.toInt(), port = STOP_PORT, controlIP = "10.0.1.9")
+        val old = recordedScript()
+
+        val state =
+            service(
+                probe = PortProbe(STOP_PORT, NEW_PORT),
+                launcher = { _, _ -> aliveProcess() },
+                portSelector = { NEW_PORT },
+                tunnelProcesses = seeing(old),
+            ).ensureRunning(testHost)
+
+        assertThat(state.localPort).isEqualTo(NEW_PORT)
+        assertThat(old.handle.isAlive).withFailMessage("the tunnel to the old control node was left running").isFalse()
+        assertThat(ProxyEnvFile(tempDir).read().tunnel?.port).isEqualTo(NEW_PORT)
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.GATEWAY_CHANGED))
+    }
+
+    @Test
     fun `a recorded tunnel that passes the end-to-end probe is reused and its port recorded`() {
         writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
         val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
 
-        val state = service(probe = PortProbe(STOP_PORT)).ensureRunning(testHost)
+        val state = service(probe = PortProbe(STOP_PORT), tunnelProcesses = seeing(recordedScript())).ensureRunning(testHost)
 
         assertThat(state.reused).isTrue()
         assertThat(state.localPort).isEqualTo(STOP_PORT)
@@ -68,7 +126,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         // connection died, so only an end-to-end probe tells the tunnel is useless.
         writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
         val envFile = recordedEnv()
-        val zombie = FakeTunnelProcess.tunnelScript(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath)
+        val zombie = recordedScript()
         val probe = PortProbe(NEW_PORT)
         val launched = mutableListOf<List<String>>()
 
@@ -77,7 +135,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
                 probe = probe,
                 launcher = { command, _ -> liveTunnelProcess().also { launched += command } },
                 portSelector = { NEW_PORT },
-                tunnelProcesses = TunnelProcessControl(lookup = { pid -> zombie.handle.takeIf { pid == livePid } }),
+                tunnelProcesses = seeing(zombie),
             ).ensureRunning(testHost)
 
         assertThat(zombie.handle.isAlive).withFailMessage("the dead tunnel must be stopped, not leaked").isFalse()
@@ -95,7 +153,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         val envFile = recordedEnv()
 
         assertThatThrownBy {
-            service(probe = PortProbe(), launcher = { _, _ -> deadProcess(exitCode = 255) }, tunnelProcesses = noProcesses)
+            service(probe = PortProbe(), launcher = { _, _ -> deadProcess(exitCode = 255) }, tunnelProcesses = seeing(recordedScript()))
                 .ensureRunning(testHost)
         }.isInstanceOf(IllegalStateException::class.java)
 
@@ -108,7 +166,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
         val probe = PortProbe(NEW_PORT)
 
-        service(probe = probe, launcher = { _, _ -> liveTunnelProcess() }, portSelector = { NEW_PORT }, tunnelProcesses = noProcesses)
+        service(probe = probe, launcher = { _, _ -> liveTunnelProcess() }, portSelector = { NEW_PORT }, tunnelProcesses = seeing(recordedScript()))
             .ensureRunning(testHost)
 
         assertThat(probe.calls[STOP_PORT]).isEqualTo(Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS)
@@ -120,7 +178,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         val probe = mock<TunnelReachabilityProbe>()
         whenever(probe.isReachable(any<Int>(), any<String>(), any<Int>())).thenReturn(false, true)
 
-        val state = service(probe = probe).ensureRunning(testHost)
+        val state = service(probe = probe, tunnelProcesses = seeing(recordedScript())).ensureRunning(testHost)
 
         assertThat(state.reused).isTrue()
         assertThat(state.localPort).isEqualTo(STOP_PORT)
@@ -248,6 +306,8 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
                 clock,
                 ArrayDeque(listOf(STOP_PORT, NEW_PORT, NEW_PORT)),
                 launcher = { _, _ -> if (launches++ == 0) liveTunnelProcess() else deadProcess(exitCode = 255) },
+                // The tunnel that fails its probe will not stop, so it stays the tunnel the state file names.
+                tunnelProcesses = seeing(recordedScript(endsOnSignal = false)),
             )
         svc.ensureRunning(testHost)
         clock.advance(PAST_FRESHNESS)
@@ -271,7 +331,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         val probesAfterStart = probe.calls.getValue(STOP_PORT)
 
         // A new CLI invocation: a new service that knows the tunnel only from the state file.
-        service(probe = probe, tunnelProcesses = noProcesses, clock = clock).ensureRunning(testHost)
+        service(probe = probe, tunnelProcesses = seeing(recordedScript()), clock = clock).ensureRunning(testHost)
 
         assertThat(probe.calls.getValue(STOP_PORT)).isEqualTo(probesAfterStart + 1)
     }
@@ -307,17 +367,14 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
     @Test
     fun `a superseded tunnel that will not stop is reported with its PID, and the new tunnel still starts`() {
         writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
-        val hung = FakeTunnelProcess.tunnelScript(livePid, STOP_PORT, File(tempDir, "sshConfig").absolutePath, endsOnSignal = false)
+        val hung = recordedScript(endsOnSignal = false)
 
         val state =
             service(
                 probe = PortProbe(NEW_PORT),
                 launcher = { _, _ -> aliveProcess() },
                 portSelector = { NEW_PORT },
-                tunnelProcesses =
-                    TunnelProcessControl(lookup = { pid ->
-                        hung.handle.takeIf { pid == livePid }
-                    }, stopWait = Duration.ofMillis(50)),
+                tunnelProcesses = seeing(hung),
             ).ensureRunning(testHost)
 
         assertThat(state.localPort).isEqualTo(NEW_PORT)

@@ -490,14 +490,18 @@ class ProcessSocksProxyService(
         log.debug { "Published SOCKS5 proxy port $port via ${Constants.Proxy.PORT_PROPERTY} (global socksProxyHost left unset)" }
     }
 
-    /** Why the recorded tunnel [loaded] cannot be reused for [gatewayHost]; null when it can. */
+    /**
+     * Why the recorded tunnel [loaded] cannot be reused for [gatewayHost]; null when it can. A recorded
+     * PID counts as the tunnel only when [TunnelProcessControl.isRunning] proves it is the recorded
+     * script: the OS may have given a dead tunnel's PID to another program.
+     */
     private fun staleReason(
         loaded: Socks5ProxyStateFile,
         gatewayHost: ClusterHost,
         sshConfigPath: String,
     ): Event.Proxy.ReplaceReason? =
         when {
-            !isAlive(loaded.pid) -> Event.Proxy.ReplaceReason.PROCESS_GONE
+            !tunnelProcesses.isRunning(loaded) -> Event.Proxy.ReplaceReason.PROCESS_GONE
             loaded.sshConfig != sshConfigPath -> Event.Proxy.ReplaceReason.SSH_CONFIG_CHANGED
             loaded.controlIP != gatewayHost.privateIp -> Event.Proxy.ReplaceReason.GATEWAY_CHANGED
             !reachesGateway(loaded.port, gatewayHost) -> Event.Proxy.ReplaceReason.UNREACHABLE
@@ -550,7 +554,7 @@ class ProcessSocksProxyService(
     private fun isPortAccepting(port: Int): Boolean =
         try {
             java.net.Socket().use { socket ->
-                socket.connect(InetSocketAddress("127.0.0.1", port), VERIFY_CONNECT_TIMEOUT_MS)
+                socket.connect(InetSocketAddress(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, port), VERIFY_CONNECT_TIMEOUT_MS)
             }
             true
         } catch (_: Exception) {

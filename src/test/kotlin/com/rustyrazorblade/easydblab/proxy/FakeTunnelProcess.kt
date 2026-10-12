@@ -74,7 +74,7 @@ internal class FakeTunnelProcess(
     }
 
     companion object {
-        /** The `ssh -N -D` an `edl-socks-tunnel` runs for [port] and [sshConfig]. */
+        /** The `ssh -N -D 127.0.0.1:<port>` an `edl-socks-tunnel` runs for [port] and [sshConfig]. */
         fun ssh(
             pid: Long,
             port: Int,
@@ -83,7 +83,7 @@ internal class FakeTunnelProcess(
         ) = FakeTunnelProcess(
             pid,
             "/usr/bin/ssh",
-            listOf("-v", "-o", "ExitOnForwardFailure=yes", "-N", "-D", "$port", "-F", sshConfig, "control0"),
+            listOf("-v", "-o", "ExitOnForwardFailure=yes", "-N", "-D", "127.0.0.1:$port", "-F", sshConfig, "control0"),
             endsOnSignal,
         )
 

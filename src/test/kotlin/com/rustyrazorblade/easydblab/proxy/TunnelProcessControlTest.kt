@@ -62,7 +62,8 @@ internal class TunnelProcessControlTest {
 
         val result = control(process = null, running = listOf(orphan, otherPort, otherConfig)).stop(recorded)
 
-        assertThat(result).isEqualTo(TunnelStopResult.Stopped(PID.toInt()))
+        // The PID reported is the one that was stopped: the orphan's, not the dead script's.
+        assertThat(result).isEqualTo(TunnelStopResult.Stopped(SSH_PID.toInt()))
         assertThat(orphan.handle.isAlive).isFalse()
         assertThat(otherPort.signals + otherConfig.signals).isZero()
     }
@@ -74,7 +75,7 @@ internal class TunnelProcessControlTest {
 
         val result = control(other, running = listOf(other, orphan)).stop(recorded)
 
-        assertThat(result).isEqualTo(TunnelStopResult.Stopped(PID.toInt()))
+        assertThat(result).isEqualTo(TunnelStopResult.Stopped(SSH_PID.toInt()))
         assertThat(orphan.handle.isAlive).isFalse()
         assertThat(other.signals).isZero()
     }
@@ -90,8 +91,33 @@ internal class TunnelProcessControlTest {
     }
 
     @Test
+    fun `an ssh whose dynamic forward is not on 127 0 0 1 at the recorded port is not taken for the tunnel's ssh`() {
+        val otherAddress =
+            FakeTunnelProcess(SSH_PID, "/usr/bin/ssh", listOf("-N", "-D", "[::1]:$PORT", "-F", SSH_CONFIG, "control0"))
+        val anyAddress = FakeTunnelProcess(SSH_PID + 1, "/usr/bin/ssh", listOf("-N", "-D", "$PORT", "-F", SSH_CONFIG, "control0"))
+
+        val result = control(process = null, running = listOf(otherAddress, anyAddress)).stop(recorded)
+
+        assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
+        assertThat(otherAddress.signals + anyAddress.signals).isZero()
+    }
+
+    @Test
+    fun `isRunning is true only while the recorded PID is the recorded tunnel script`() {
+        val tunnel = FakeTunnelProcess.tunnelScript(PID, PORT, SSH_CONFIG)
+        val other = FakeTunnelProcess(PID, "/bin/sleep", listOf("60"))
+        val otherPort = FakeTunnelProcess.tunnelScript(PID, PORT + 1, SSH_CONFIG)
+
+        assertThat(control(tunnel).isRunning(recorded)).isTrue()
+        assertThat(control(other).isRunning(recorded)).withFailMessage("a PID another program holds is not the tunnel").isFalse()
+        assertThat(control(otherPort).isRunning(recorded)).isFalse()
+        assertThat(control(null).isRunning(recorded)).isFalse()
+        assertThat(tunnel.signals + other.signals + otherPort.signals).isZero()
+    }
+
+    @Test
     fun `a process that only names the port and sshConfig is not taken for the tunnel's ssh`() {
-        val notSsh = FakeTunnelProcess(SSH_PID, "/usr/bin/nc", listOf("-D", "$PORT", "-F", SSH_CONFIG))
+        val notSsh = FakeTunnelProcess(SSH_PID, "/usr/bin/nc", listOf("-D", "127.0.0.1:$PORT", "-F", SSH_CONFIG))
         val unreported = FakeTunnelProcess(SSH_PID + 1, "/usr/bin/ssh", arguments = null)
 
         val result = control(process = null, running = listOf(notSsh, unreported)).stop(recorded)

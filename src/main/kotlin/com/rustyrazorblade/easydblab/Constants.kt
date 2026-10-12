@@ -900,7 +900,13 @@ object Constants {
          * The ports a new SOCKS5 tunnel picks its local port from, at random: the IANA dynamic range,
          * which no registered service uses. No port in it is preferred.
          */
-        val LOCAL_PORT_RANGE: IntRange = 49152..65535
+        val LOCAL_PORT_RANGE: IntRange = DYNAMIC_PORT_MIN..DYNAMIC_PORT_MAX
+
+        /** The first port of the IANA dynamic range. */
+        const val DYNAMIC_PORT_MIN = 49152
+
+        /** The last port of the IANA dynamic range, the highest TCP port. */
+        const val DYNAMIC_PORT_MAX = 65535
 
         /** How many random ports a tunnel start tries before it takes an OS-assigned one. */
         const val LOCAL_PORT_ATTEMPTS = 20
@@ -987,7 +993,10 @@ object Constants {
          * tunnel without probing again. Cluster HTTP clients ask for the tunnel on every request, so
          * a burst of requests probes once. Across CLI invocations the state-file path always probes.
          */
-        val REUSE_PROBE_FRESHNESS: java.time.Duration = java.time.Duration.ofSeconds(10)
+        val REUSE_PROBE_FRESHNESS: java.time.Duration = java.time.Duration.ofSeconds(REUSE_PROBE_FRESHNESS_SECONDS)
+
+        /** [REUSE_PROBE_FRESHNESS] in seconds. */
+        const val REUSE_PROBE_FRESHNESS_SECONDS = 10L
 
         /** Seconds `edl-socks-tunnel` waits after its ssh exits before it starts ssh again on the same port. */
         const val TUNNEL_RESTART_BACKOFF_SECONDS = 2

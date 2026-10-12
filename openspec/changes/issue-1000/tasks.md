@@ -111,3 +111,4 @@ Run from `./gradlew installDist` output, in a workspace outside the checkout, on
 - [ ] 13.7 Regression: a built-in kit with shell steps, and `presto start`.
 - [ ] 13.8 On a Tailscale cluster: `source env.sh` right after `up`, then `kubectl get ns` connects directly.
 - [ ] 13.9 Re-run QA on the live cluster for the 3.5 redesign (moved from 3.5, whose code and test work is done).
+- [ ] 13.10 Live QA for the SSH wrappers (task 3.6): `<workspace>/bin/ssh control0 hostname` with no `env.sh`, `rsync` of a file to a node, and a kit step that runs `ssh`.

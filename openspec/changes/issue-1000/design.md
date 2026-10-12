@@ -51,7 +51,7 @@ This becomes a standing rule in the root `CLAUDE.md`: any value that a shell-sid
 
 ### 2. Wrapper scripts in `<workspace>/bin/`
 
-One POSIX `#!/bin/sh` resource, `src/main/resources/com/rustyrazorblade/easydblab/configuration/tool-wrapper.sh`, is written six times into `<workspace>/bin/` as `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s`, plus a marker file `<workspace>/bin/.easy-db-lab-tool-wrappers`. It must run under dash and macOS `/bin/sh`.
+One POSIX `#!/bin/sh` resource, `src/main/resources/com/rustyrazorblade/easydblab/configuration/tool-wrapper.sh`, is written ten times into `<workspace>/bin/` as `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s`, plus a marker file `<workspace>/bin/.easy-db-lab-tool-wrappers`. It must run under dash and macOS `/bin/sh`.
 
 Each call:
 
@@ -73,9 +73,9 @@ The proxy variables live only in the wrapper's own process, so `aws` and every o
 
 `PackagedExecutable` lives in the root package beside `ShellQuoting.kt`. It compares content, stages to a unique temp file, checks the result of `setExecutable`, and renames atomically. `SsmProxyWrapper` moves onto it, which fixes its fixed `.tmp` file name race. The existing SSM tests must still pass.
 
-`ToolWrapperInstaller` writes the six wrappers and the marker. It runs at `up`, before every kit process, and at VPC restore. It is idempotent and rewrites a wrapper whose content changed (for example after an upgrade). If `<workspace>/bin/<tool>` exists and the marker does not, it fails fast and writes nothing.
+`ToolWrapperInstaller` writes the ten wrappers and the marker. It runs at `up`, before every kit process, and at VPC restore. It is idempotent and rewrites a wrapper whose content changed (for example after an upgrade). If `<workspace>/bin/<tool>` exists and the marker does not, it fails fast and writes nothing.
 
-`clean` deletes only the six wrapper files and the marker, by name. It never deletes other files in `bin/`, and removes the directory only if it is then empty.
+`clean` deletes only the ten wrapper files and the marker, by name. It never deletes other files in `bin/`, and removes the directory only if it is then empty.
 
 ### 4. `init` refuses a directory that already has `bin/`
 
@@ -109,8 +109,8 @@ Both are lifecycle commands, so they emit new typed domain events (per `events/C
 
 ### 7. `env.sh`
 
-- A guarded `unset -f` for `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s` (no error in zsh when a name is undefined, and safe under `set -e`), then `export PATH="$CLUSTER_DIR/bin:$PATH"`.
-- Removes those six functions, `start-socks5`, `stop-socks5`, the `socks5-start`/`socks5-stop` aliases, and `is-tailscale-connected` once nothing calls it.
+- A guarded `unset -f` for `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, `k9s`, `ssh`, `scp`, `sftp`, and `rsync` (no error in zsh when a name is undefined, and safe under `set -e`), then `export PATH="$CLUSTER_DIR/bin:$PATH"`.
+- Removes those ten functions, `start-socks5`, `stop-socks5`, the `socks5-start`/`socks5-stop` aliases, and `is-tailscale-connected` once nothing calls it.
 - Keeps `with-proxy` and `socks5-status`. `_socks5_port` sources the env file: no `jq`, no 1080 fallback. `with-proxy` fails like the wrappers when no port is recorded, and on a Tailscale cluster runs the command directly.
 - Help text updated.
 

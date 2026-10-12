@@ -1,13 +1,11 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
-import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 
-private val log = KotlinLogging.logger {}
 
 /**
  * Chooses the local port a new SOCKS5 proxy's `ssh -D` listener will bind.
@@ -25,24 +23,28 @@ fun interface LocalPortSelector {
 /**
  * Production [LocalPortSelector]: a random port from [Constants.Proxy.LOCAL_PORT_RANGE] that is free
  * on the loopback interface, with no fixed port preferred, so two workspaces are unlikely to want the
- * same port. When [attempts] random ports are all taken, it takes an OS-assigned loopback port.
+ * same port. The range lies outside the OS ephemeral ranges (see [Constants.Proxy.LOCAL_PORT_RANGE]),
+ * so when [attempts] random ports are all taken it fails rather than take an OS-assigned port, which
+ * would be ephemeral.
  *
  * Two workspaces can still pick the same free port at the same moment; the service's bind-race retry
  * handles that.
  *
  * @param candidates the next port to try; the integration tests pass known ports to drive each branch
- * @param attempts how many candidates are tried before the OS is asked for a port
+ * @param attempts how many candidates are tried before the selection fails
  */
 class LoopbackPortSelector(
     private val candidates: () -> Int = { Constants.Proxy.LOCAL_PORT_RANGE.random() },
     private val attempts: Int = Constants.Proxy.LOCAL_PORT_ATTEMPTS,
 ) : LocalPortSelector {
+    /** @throws IllegalStateException when [attempts] random ports of the range are all taken */
     override fun select(): Int =
         generateSequence(candidates).take(attempts).firstOrNull { isLoopbackPortFree(it) }
-            ?: run {
-                log.debug { "$attempts random ports were in use on the loopback interface; taking an OS-assigned port" }
-                ServerSocket(0, 0, InetAddress.getByName("127.0.0.1")).use { it.localPort }
-            }
+            ?: error(
+                "No free local port for the SOCKS5 tunnel: $attempts random ports in " +
+                    "${Constants.Proxy.LOCAL_PORT_RANGE.first}-${Constants.Proxy.LOCAL_PORT_RANGE.last} were all in use on the " +
+                    "loopback interface. Free some ports in that range, then run 'easy-db-lab start-socks'.",
+            )
 
     /**
      * Probes whether [port] is free the way `ssh -D` binds it: on the loopback interface, not the

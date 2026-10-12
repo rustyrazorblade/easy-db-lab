@@ -151,6 +151,22 @@ class ProcessSocksProxyServiceTest {
     /** Reserves then releases an OS-assigned port, yielding a port that is (now) free — nothing listens. */
     private fun reserveFreePort(): Int = ServerSocket(0).use { it.localPort }
 
+    /**
+     * Candidates that offer [preferred] first and then random ports of the tunnel range, as the
+     * production selector would: every workspace's selector reaches for the same port first.
+     */
+    private fun preferredThenRandom(preferred: Int): () -> Int {
+        var first = true
+        return {
+            if (first) {
+                first = false
+                preferred
+            } else {
+                Constants.Proxy.LOCAL_PORT_RANGE.random()
+            }
+        }
+    }
+
     @Test
     fun `reuses proxy when state file has a live PID, matching IP, and a tunnel that carries traffic`() {
         // A stand-in tunnel script as the recorded PID, and a working SOCKS tunnel on the recorded port:
@@ -268,13 +284,13 @@ class ProcessSocksProxyServiceTest {
                 serviceIn(
                     workspace("cluster-a"),
                     launcher,
-                    LoopbackPortSelector(candidates = { preferred }),
+                    LoopbackPortSelector(candidates = preferredThenRandom(preferred)),
                 ).ensureRunning(testHost)
             val second =
                 serviceIn(
                     workspace("cluster-b"),
                     launcher,
-                    LoopbackPortSelector(candidates = { preferred }),
+                    LoopbackPortSelector(candidates = preferredThenRandom(preferred)),
                 ).ensureRunning(testHost)
 
             assertThat(first.localPort).isEqualTo(preferred)
@@ -296,9 +312,9 @@ class ProcessSocksProxyServiceTest {
                 serviceIn(
                     workspace("cluster-a"),
                     launcher,
-                    LoopbackPortSelector(candidates = { preferred }),
+                    LoopbackPortSelector(candidates = preferredThenRandom(preferred)),
                 ).ensureRunning(testHost)
-            val live = LoopbackPortSelector(candidates = { preferred })
+            val live = LoopbackPortSelector(candidates = preferredThenRandom(preferred))
             var staleProbe = true
             val racingSelector =
                 LocalPortSelector {

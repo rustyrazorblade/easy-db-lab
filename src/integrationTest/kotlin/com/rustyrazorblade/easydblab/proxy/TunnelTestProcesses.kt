@@ -30,9 +30,11 @@ internal object TunnelTestProcesses {
     private const val POLL_MS = 100L
 
     /**
-     * A port for a test tunnel that is free on the IPv4 and IPv6 loopback now, chosen outside every
-     * ephemeral range (Linux 32768-60999, macOS 49152-65535). An OS-assigned port comes from that range,
-     * so on a busy machine another process's outgoing connection could take it before ssh binds it.
+     * A port for a test tunnel that is free on the IPv4 and IPv6 loopback now. It is chosen outside every
+     * ephemeral range (Linux 32768-60999, macOS 49152-65535), for the same reason the real tunnel's
+     * [Constants.Proxy.LOCAL_PORT_RANGE] is: on a busy machine another process's outgoing connection
+     * could take an ephemeral port before ssh binds it. It is also outside the real tunnel's range, so a
+     * test run cannot collide with a live tunnel on the same machine.
      */
     fun freeTunnelPort(): Int =
         generateSequence { Random.nextInt(TEST_PORT_RANGE.first, TEST_PORT_RANGE.last + 1) }
@@ -54,7 +56,7 @@ internal object TunnelTestProcesses {
             false
         }
 
-    private val TEST_PORT_RANGE = 20000..29999
+    private val TEST_PORT_RANGE = 10000..19999
     private const val TEST_PORT_ATTEMPTS = 50
 
     /** Installs the tunnel script once, in a new directory, and returns that directory. */

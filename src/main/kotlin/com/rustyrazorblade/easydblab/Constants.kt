@@ -897,18 +897,24 @@ object Constants {
     // Proxy configuration
     object Proxy {
         /**
-         * The ports a new SOCKS5 tunnel picks its local port from, at random: the IANA dynamic range,
-         * which no registered service uses. No port in it is preferred.
+         * The ports a new SOCKS5 tunnel picks its local port from, at random, with none preferred. The
+         * range lies below every OS ephemeral range (Linux 32768-60999, macOS 49152-65535). The OS gives
+         * outgoing connections their local port from the ephemeral range, so an outgoing loopback
+         * connection could take an ephemeral tunnel port while the tunnel script waits to restart ssh,
+         * and the restart would then find its port taken and end the tunnel.
          */
-        val LOCAL_PORT_RANGE: IntRange = DYNAMIC_PORT_MIN..DYNAMIC_PORT_MAX
+        val LOCAL_PORT_RANGE: IntRange = TUNNEL_PORT_MIN..TUNNEL_PORT_MAX
 
-        /** The first port of the IANA dynamic range. */
-        const val DYNAMIC_PORT_MIN = 49152
+        /** The first port of [LOCAL_PORT_RANGE]. */
+        const val TUNNEL_PORT_MIN = 20000
 
-        /** The last port of the IANA dynamic range, the highest TCP port. */
-        const val DYNAMIC_PORT_MAX = 65535
+        /** The last port of [LOCAL_PORT_RANGE]. */
+        const val TUNNEL_PORT_MAX = 29999
 
-        /** How many random ports a tunnel start tries before it takes an OS-assigned one. */
+        /**
+         * How many random ports of [LOCAL_PORT_RANGE] a tunnel start tries before it fails. It never
+         * falls back to an OS-assigned port, which would be an ephemeral one.
+         */
         const val LOCAL_PORT_ATTEMPTS = 20
 
         /**

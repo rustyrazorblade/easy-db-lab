@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -56,11 +57,12 @@ class LoopbackPortSelectorTest {
     }
 
     @Test
-    fun `takes an OS-assigned port when every candidate is bound`() {
+    fun `fails naming the range when every candidate is bound, rather than taking an ephemeral port`() {
         ServerSocket(0).use { occupied ->
-            val selected = LoopbackPortSelector(candidates = { occupied.localPort }, attempts = 3).select()
-
-            assertThat(selected).isNotEqualTo(occupied.localPort).isGreaterThan(0)
+            assertThatThrownBy { LoopbackPortSelector(candidates = { occupied.localPort }, attempts = 3).select() }
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("${Constants.Proxy.LOCAL_PORT_RANGE.first}-${Constants.Proxy.LOCAL_PORT_RANGE.last}")
+                .hasMessageContaining("3 random ports")
         }
     }
 

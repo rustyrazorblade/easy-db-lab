@@ -170,7 +170,7 @@ easy-db-lab start-socks
 `start-socks` prints the tunnel's local port. On a Tailscale cluster it starts nothing and says that
 no tunnel is needed.
 
-Each new tunnel listens on a random free local port, from 49152 to 65535; no port is preferred. Each workspace records its own port, so several clusters can run side by side, and two workspaces are unlikely to want the same port. If they do, the second one picks another port.
+Each new tunnel listens on a random free local port, from 20000 to 29999; no port is preferred. The range is below the ports the OS gives outgoing connections (32768 and up on Linux, 49152 and up on macOS), so no outgoing connection can take the tunnel's port while `ssh` waits to restart. If 20 random ports in the range are all in use, the CLI fails with a message that names the range. Each workspace records its own port, so several clusters can run side by side, and two workspaces are unlikely to want the same port. If they do, the second one picks another port.
 
 The CLI records the tunnel in the workspace's `.socks5-proxy.env`, as `EDL_SOCKS_PORT` (the port) and `EDL_SOCKS_PID` (the PID of the tunnel script), next to `EDL_TAILSCALE_ACTIVE`. The CLI is the only writer of this file; the wrappers and `env.sh` read it. Each write holds a lock on `.socks5-proxy.env.lock`, so two easy-db-lab commands in the same workspace never lose each other's values.
 

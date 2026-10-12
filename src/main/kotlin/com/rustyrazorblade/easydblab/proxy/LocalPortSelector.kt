@@ -31,10 +31,13 @@ fun interface LocalPortSelector {
  *
  * @param candidates the next port to try; the integration tests pass known ports to drive each branch
  * @param attempts how many candidates are tried before the selection fails
+ * @param bindsCleanly whether a socket binds the address and port with `SO_REUSEADDR` off; tests
+ *   replace it to model a host without a bindable IPv6 loopback, with no real socket
  */
 class LoopbackPortSelector(
     private val candidates: () -> Int = { Constants.Proxy.LOCAL_PORT_RANGE.random() },
     private val attempts: Int = Constants.Proxy.LOCAL_PORT_ATTEMPTS,
+    private val bindsCleanly: (InetAddress, Int) -> Boolean = ::bindsWithoutReuse,
 ) : LocalPortSelector {
     /** @throws IllegalStateException when [attempts] random ports of the range are all taken */
     override fun select(): Int =
@@ -55,27 +58,31 @@ class LoopbackPortSelector(
      * use it. That made the fallback dead code against this tool's own proxy: a second datacenter
      * kept retrying the busy port and ssh failed to bind it.
      *
-     * This probe instead binds each loopback address with `SO_REUSEADDR` disabled, matching ssh. The
-     * port is free only if every loopback address binds cleanly. The tunnel binds only `127.0.0.1`,
-     * but a port another process holds on `::1` is passed over too, so a client that says
-     * `localhost` cannot reach that process.
+     * This probe instead binds `127.0.0.1` with `SO_REUSEADDR` disabled, matching ssh. The tunnel binds
+     * only `127.0.0.1` and every client uses that address, so `::1` is not probed: a host that cannot
+     * bind `::1` at all (IPv6 off by sysctl, many containers, some WSL setups) would otherwise find no
+     * free port.
      */
-    private fun isLoopbackPortFree(port: Int): Boolean =
-        loopbackProbeAddresses().all { address ->
-            try {
-                ServerSocket().use { socket ->
-                    socket.reuseAddress = false
-                    socket.bind(InetSocketAddress(address, port))
-                    true
-                }
-            } catch (_: IOException) {
-                false
-            }
-        }
+    private fun isLoopbackPortFree(port: Int): Boolean = loopbackProbeAddresses().all { bindsCleanly(it, port) }
 
     /**
-     * The loopback addresses a free port must be free on: the IPv4 loopback the tunnel binds, and the
-     * IPv6 loopback. Both are resolved from their literal forms, so neither depends on name resolution.
+     * The loopback addresses a free port must be free on: only the IPv4 loopback the tunnel binds,
+     * resolved from its literal form, so it does not depend on name resolution.
      */
-    private fun loopbackProbeAddresses(): List<InetAddress> = listOf(InetAddress.getByName("127.0.0.1"), InetAddress.getByName("::1"))
+    private fun loopbackProbeAddresses(): List<InetAddress> = listOf(InetAddress.getByName(Constants.Proxy.TUNNEL_LISTEN_ADDRESS))
 }
+
+/** Whether a server socket binds [address]:[port] with `SO_REUSEADDR` off, as `ssh -D` binds it. */
+private fun bindsWithoutReuse(
+    address: InetAddress,
+    port: Int,
+): Boolean =
+    try {
+        ServerSocket().use { socket ->
+            socket.reuseAddress = false
+            socket.bind(InetSocketAddress(address, port))
+            true
+        }
+    } catch (_: IOException) {
+        false
+    }

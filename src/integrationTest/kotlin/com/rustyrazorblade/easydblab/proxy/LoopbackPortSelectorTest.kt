@@ -39,10 +39,10 @@ class LoopbackPortSelectorTest {
 
     @Test
     fun `skips a candidate bound only on the loopback interface (ssh -D style)`() {
-        // Regression: ssh -D binds 127.0.0.1/::1 with SO_REUSEADDR, not the wildcard address. A
-        // wildcard probe with SO_REUSEADDR (the old behavior) coexists with that listener and wrongly
-        // reports the port as free, so the second datacenter kept retrying the busy port and ssh
-        // failed with "bind [::1]:<port>: Address already in use". The selector must probe loopback.
+        // Regression: ssh -D binds 127.0.0.1 with SO_REUSEADDR, not the wildcard address. A wildcard
+        // probe with SO_REUSEADDR (the old behavior) coexists with that listener and wrongly reports
+        // the port as free, so the second datacenter kept retrying the busy port and ssh failed to
+        // bind it. The selector must probe 127.0.0.1 itself.
         val free = freePort()
         val loopback = ServerSocket()
         loopback.reuseAddress = true

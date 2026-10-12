@@ -30,7 +30,7 @@ internal object TunnelTestProcesses {
     private const val POLL_MS = 100L
 
     /**
-     * A port for a test tunnel that is free on the IPv4 and IPv6 loopback now. It is chosen outside every
+     * A port for a test tunnel that is free on 127.0.0.1, the only address the tunnel binds, now. It is chosen outside every
      * ephemeral range (Linux 32768-60999, macOS 49152-65535), for the same reason the real tunnel's
      * [Constants.Proxy.LOCAL_PORT_RANGE] is: on a busy machine another process's outgoing connection
      * could take an ephemeral port before ssh binds it. It is also outside the real tunnel's range, so a
@@ -39,7 +39,7 @@ internal object TunnelTestProcesses {
     fun freeTunnelPort(): Int =
         generateSequence { Random.nextInt(TEST_PORT_RANGE.first, TEST_PORT_RANGE.last + 1) }
             .take(TEST_PORT_ATTEMPTS)
-            .firstOrNull { port -> listOf("127.0.0.1", "::1").all { isFree(it, port) } }
+            .firstOrNull { port -> isFree(Constants.Proxy.TUNNEL_LISTEN_ADDRESS, port) }
             ?: error("no free port in $TEST_PORT_RANGE after $TEST_PORT_ATTEMPTS tries")
 
     private fun isFree(

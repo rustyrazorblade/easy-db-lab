@@ -81,7 +81,7 @@ internal class EnvShSourcingTest {
         bash("export EASY_DB_LAB_SSH_KEY=/keys/cluster; source ./env.sh >/dev/null")
 
         val written = File(workspace, "sshConfig").readLines()
-        assertThat(written.first()).isEqualTo("Host db* app* control*")
+        assertThat(written.first()).isEqualTo("Host db* app* control* !*.*")
         assertThat(written).contains(" IdentityFile /keys/cluster", "Host db0", " Hostname 54.1.1.2")
         // The heredoc leaves ~ as written, for ssh to expand.
         assertThat(written.dropLastWhile { it.isBlank() }.takeLast(2)).containsExactly("Host *", "Include ~/.ssh/config")

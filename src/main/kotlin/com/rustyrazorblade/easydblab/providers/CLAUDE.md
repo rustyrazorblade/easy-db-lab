@@ -136,9 +136,11 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
 
 - **OpenSSH paths** (the SOCKS tunnel, every `env.sh` helper and the `bin/` SSH wrappers) use
   `sshConfig`. `ClusterConfigWriter.writeSshConfig` puts every cluster-wide option (host keys, user,
-  identity, keepalives, `ConnectTimeout`) in one `Host db* app* control*` block, its wildcards derived
-  from `ServerType`, then one block per host, and ends with `Host *` and `Include ~/.ssh/config`, so
-  any other host (`github.com`, a bare IP) resolves as it would without `-F`; the first value obtained
+  identity, keepalives, `ConnectTimeout`) in one `Host db* app* control* !*.*` block, its wildcards
+  derived from `ServerType`; `!*.*` keeps every dotted name and IP address out, because OpenSSH patterns
+  have no character classes and `db*` alone would match `db.boo.com`. Then one block per host, and it
+  ends with `Host *` and `Include ~/.ssh/config`, so any other host (`github.com`, `db.boo.com`, an IP)
+  resolves as it would without `-F`; the first value obtained
   wins, so the included file cannot change a cluster option (`GeneratedSshConfigResolutionTest` checks
   this with real `ssh -G`). `ClusterConfigurationService` writes `route.proxyCommand(host)` into each `Host` block (and
   into the fallback config `env.sh` writes when `sshConfig` is missing). Under `ssm` that is

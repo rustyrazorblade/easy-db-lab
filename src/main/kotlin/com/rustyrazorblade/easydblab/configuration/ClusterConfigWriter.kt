@@ -14,8 +14,10 @@ object ClusterConfigWriter {
      * Writes SSH config content to the provided writer.
      *
      * Every cluster-wide option sits in one `Host` block whose patterns are a wildcard per
-     * [ServerType] prefix (`db*`, `app*`, `control*`), so they apply to every cluster host, however
-     * many the cluster grows to, and to no other host. Each host then gets its own block with its
+     * [ServerType] prefix (`db*`, `app*`, `control*`) and the negated `!*.*`, so they apply to every
+     * cluster host, however many the cluster grows to, and to no other host. OpenSSH patterns have no
+     * character classes, so the wildcards alone would also match a name such as `db.boo.com`; the
+     * negation keeps every name with a dot, and so every IP address, out of the block. Each host then gets its own block with its
      * address and, under the `ssm` transport, its `ProxyCommand`. The file ends with `Host *` and
      * `Include ~/.ssh/config`, so any other host, such as `github.com` for a `git` that runs through
      * the workspace's `ssh` wrapper, resolves exactly as it would without `-F`.
@@ -37,7 +39,9 @@ object ClusterConfigWriter {
         hosts: Map<ServerType, List<ClusterHost>>,
         proxyCommands: Map<String, String> = emptyMap(),
     ) {
-        writer.appendLine("Host ${ServerType.entries.joinToString(" ") { "${it.serverType}*" }}")
+        // !*.* keeps every name with a dot, and so every IP address, out of the cluster block: OpenSSH
+        // patterns have no character classes, so db* alone would also match db.boo.com.
+        writer.appendLine("Host ${ServerType.entries.joinToString(" ") { "${it.serverType}*" }} !*.*")
         writer.appendLine(" StrictHostKeyChecking=no")
         // AWS recycles public IPs across ephemeral cluster lifetimes, so a host's key
         // recorded in the developer's ~/.ssh/known_hosts can collide with a different

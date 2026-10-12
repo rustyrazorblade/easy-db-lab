@@ -40,15 +40,23 @@ internal class GeneratedSshConfigResolutionTest {
     fun `another host gets none of the cluster's options`() {
         val resolved = resolve("github.com")
 
-        assertThat(resolved).doesNotContain("identityfile $IDENTITY", "user ubuntu", "userknownhostsfile /dev/null")
+        assertThat(resolved).doesNotContain(*CLUSTER_ONLY)
         assertThat(resolved).contains("hostname github.com")
     }
 
     @Test
-    fun `an IP address that is not a cluster alias gets none of the cluster's options`() {
-        val resolved = resolve("192.0.2.10")
+    fun `an IP address gets none of the cluster's options`() {
+        listOf("192.0.2.10", "10.0.1.5").forEach { address ->
+            assertThat(resolve(address)).describedAs(address).doesNotContain(*CLUSTER_ONLY)
+        }
+    }
 
-        assertThat(resolved).doesNotContain("identityfile $IDENTITY", "user ubuntu", "userknownhostsfile /dev/null")
+    @Test
+    fun `a dotted name that starts like a node type gets none of the cluster's options`() {
+        // db* alone would match these; the cluster block's !*.* keeps every name with a dot out.
+        listOf("db.boo.com", "dbserver.example.com", "control.example.org").forEach { host ->
+            assertThat(resolve(host)).describedAs(host).doesNotContain(*CLUSTER_ONLY)
+        }
     }
 
     @Test
@@ -96,5 +104,8 @@ internal class GeneratedSshConfigResolutionTest {
     private companion object {
         const val IDENTITY = "/path/to/cluster-identity"
         const val LIMIT_SECONDS = 30L
+
+        /** The resolved options only the cluster block sets, which no personal ssh config would. */
+        val CLUSTER_ONLY = arrayOf("identityfile $IDENTITY", "user ubuntu", "userknownhostsfile /dev/null")
     }
 }

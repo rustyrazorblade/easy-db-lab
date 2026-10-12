@@ -290,14 +290,16 @@ If the tunnel script was killed from outside (for example with `kill -9`), its `
 ### The Generated sshConfig
 
 The `sshConfig` generated for your cluster applies its options to the cluster's hosts only. It
-starts with one `Host db* app* control*` block, a wildcard per node type, so it covers every node
-the cluster grows to. That block sets `StrictHostKeyChecking=no`, `UserKnownHostsFile=/dev/null`,
+starts with one `Host db* app* control* !*.*` block: a wildcard per node type, so it covers every
+node the cluster grows to, and `!*.*`, which keeps out every name with a dot, such as
+`db.example.com`, and every IP address. OpenSSH host patterns have no character classes, so
+`db*` alone would also match `db.example.com`. That block sets `StrictHostKeyChecking=no`, `UserKnownHostsFile=/dev/null`,
 `User ubuntu`, the cluster's `IdentityFile`, the keepalives and `ConnectTimeout`. Each node then has
 its own `Host` block with its address and, under the `ssm` transport, its `ProxyCommand`.
 
 The file ends with `Host *` and `Include ~/.ssh/config`. Any other host, such as `github.com` for a
-`git` that runs through the workspace's `ssh` wrapper, or a bare IP address, resolves exactly as it
-would without `-F`: from your own `~/.ssh/config`. `ssh` keeps the first value it reads for an
+`git` that runs through the workspace's `ssh` wrapper, a dotted name like `db.example.com`, or an IP
+address, resolves exactly as it would without `-F`: from your own `~/.ssh/config`. `ssh` keeps the first value it reads for an
 option, so your own config can add options for a cluster node but cannot change the ones the
 cluster block sets. To see what applies to a host, run `ssh -F <workspace>/sshConfig -G <host>`.
 

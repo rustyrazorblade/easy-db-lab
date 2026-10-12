@@ -30,7 +30,7 @@ internal class ClusterConfigWriterTest {
     private val control = ClusterHost("54.1.1.1", "10.0.0.1", "control0", "us-west-2a")
 
     /** The line that opens the block of options every cluster host gets, one wildcard per server type. */
-    private val clusterPattern = "Host db* app* control*"
+    private val clusterPattern = "Host db* app* control* !*.*"
 
     /** The option lines of [config]'s cluster block: after [clusterPattern], up to the next blank line. */
     private fun clusterBlock(config: String): List<String> =
@@ -64,7 +64,7 @@ internal class ClusterConfigWriterTest {
     }
 
     @Test
-    fun `the cluster block names one wildcard for each server type`() {
+    fun `the cluster block names one wildcard for each server type and excludes every name with a dot`() {
         val patterns =
             renderSshConfig(emptyMap())
                 .lines()
@@ -72,7 +72,7 @@ internal class ClusterConfigWriterTest {
                 .removePrefix("Host ")
                 .split(" ")
 
-        assertThat(patterns).containsExactlyElementsOf(ServerType.entries.map { "${it.serverType}*" })
+        assertThat(patterns).containsExactlyElementsOf(ServerType.entries.map { "${it.serverType}*" } + "!*.*")
     }
 
     @Test

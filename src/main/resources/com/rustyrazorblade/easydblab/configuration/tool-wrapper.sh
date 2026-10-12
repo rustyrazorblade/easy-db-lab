@@ -10,7 +10,7 @@
 #   - on a Tailscale cluster it runs the real tool with the environment unchanged;
 #   - on a SOCKS cluster it routes this one call through the recorded tunnel port;
 #   - with no tunnel recorded, or when the recorded tunnel script (EDL_SOCKS_PID) has exited, it fails
-#     and says to run `easy-db-lab start-socks`.
+#     and says to run `easy-db-lab socks start`.
 # kubectl, helm, cilium and k9s always use <workspace>/kubeconfig, in place of any inherited KUBECONFIG,
 # because a wrapper reaches only its own workspace's cluster. curl and skopeo leave KUBECONFIG alone.
 # The proxy variables are set for this call only, so tools that are not wrapped (aws included)
@@ -70,14 +70,14 @@ if [ "${EDL_TAILSCALE_ACTIVE:-}" = true ]; then
     exec "$real" "$@"
 fi
 
-# Fails with the pointer to start-socks; $1 says why there is no tunnel to use, and $2, when set, where
+# Fails with the pointer to socks start; $1 says why there is no tunnel to use, and $2, when set, where
 # to read more.
 no_tunnel() {
     echo "easy-db-lab: $1 for the workspace $workspace, so $tool cannot reach the cluster." >&2
     if [ -n "${2:-}" ]; then
         echo "easy-db-lab: $2" >&2
     fi
-    echo "easy-db-lab: run 'easy-db-lab start-socks' in $workspace, then try again." >&2
+    echo "easy-db-lab: run 'easy-db-lab socks start' in $workspace, then try again." >&2
     exit 1
 }
 

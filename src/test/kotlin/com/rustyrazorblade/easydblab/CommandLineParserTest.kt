@@ -158,6 +158,23 @@ class CommandLineParserTest : BaseKoinTest() {
         ).containsExactly("query")
     }
 
+    /** The SOCKS tunnel is managed by the `socks` group; the old top-level names are gone, with no aliases. */
+    @Test
+    fun `socks start and socks stop parse, and start-socks and stop-socks are unknown`() {
+        val commandLine = CommandLineParser().commandLine
+
+        assertThat(
+            commandLine.subcommands
+                .getValue("socks")
+                .subcommands.keys,
+        ).containsExactlyInAnyOrder("start", "stop")
+        for (args in listOf("start-socks", "stop-socks")) {
+            assertThatThrownBy { commandLine.parseArgs(args) }
+                .describedAs(args)
+                .isInstanceOf(CommandLine.UnmatchedArgumentException::class.java)
+        }
+    }
+
     /** `commands` and `--help` print each option's description; an empty one tells the user nothing. */
     @Test
     fun `every visible option in the command tree has a description`() {

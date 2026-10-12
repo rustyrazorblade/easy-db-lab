@@ -75,6 +75,7 @@ commands/
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
 ├── profile/               # Profile inspection and setup (profile show, profile setup)
 ├── report/                # report upload — a test's markdown documents in the account bucket; works after down
+├── socks/                 # socks start, socks stop — the workspace SOCKS5 tunnel for tools outside the CLI
 ├── spark/                 # Spark commands
 ├── tailscale/             # Tailscale VPN commands
 ├── mixins/                # Reusable PicoCLI mixins

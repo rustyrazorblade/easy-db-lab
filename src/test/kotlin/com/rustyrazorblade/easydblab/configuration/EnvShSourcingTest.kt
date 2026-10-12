@@ -110,14 +110,14 @@ internal class EnvShSourcingTest {
     }
 
     @Test
-    fun `with-proxy with no port recorded fails and names start-socks`() {
+    fun `with-proxy with no port recorded fails and names socks start`() {
         ProxyEnvFile(workspace).recordTailscale(active = false)
 
         val result = bash("source ./env.sh >/dev/null; with-proxy echo ran")
 
         assertThat(result.exitCode).isNotZero()
         assertThat(result.stdout).doesNotContain("ran")
-        assertThat(result.stderr).contains("easy-db-lab start-socks").contains("/logs/socks5-proxy.log")
+        assertThat(result.stderr).contains("easy-db-lab socks start").contains("/logs/socks5-proxy.log")
     }
 
     @Test
@@ -163,7 +163,7 @@ internal class EnvShSourcingTest {
     }
 
     @Test
-    fun `with-proxy fails with the start-socks message when the recorded tunnel script has exited`() {
+    fun `with-proxy fails with the socks start message when the recorded tunnel script has exited`() {
         ProxyEnvFile(workspace).apply {
             recordTailscale(active = false)
             recordTunnel(41234, exitedPid())
@@ -173,7 +173,7 @@ internal class EnvShSourcingTest {
 
         assertThat(result.exitCode).isNotZero()
         assertThat(result.stdout).doesNotContain("ran")
-        assertThat(result.stderr).contains("easy-db-lab start-socks").contains("/logs/socks5-proxy.log")
+        assertThat(result.stderr).contains("easy-db-lab socks start").contains("/logs/socks5-proxy.log")
     }
 
     @Test
@@ -185,7 +185,7 @@ internal class EnvShSourcingTest {
 
         val result = bash("source ./env.sh >/dev/null; socks5-status")
 
-        assertThat(result.stdout).doesNotContain("41234").contains("easy-db-lab start-socks")
+        assertThat(result.stdout).doesNotContain("41234").contains("easy-db-lab socks start")
     }
 
     /** The PID of a process that has already exited. */

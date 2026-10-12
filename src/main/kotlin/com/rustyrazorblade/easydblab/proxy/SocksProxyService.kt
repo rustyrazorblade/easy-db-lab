@@ -21,7 +21,7 @@ data class SocksProxyState(
 /**
  * Service interface for managing a SOCKS5 proxy via SSH dynamic port forwarding.
  *
- * The proxy is an OS process that persists across JVM restarts until `down` or `stop-socks` is
+ * The proxy is an OS process that persists across JVM restarts until `down` or `socks stop` is
  * called. [ensureRunning] checks for a reusable existing process before starting a new one. Its port
  * is published only to the clients that opt in to the tunnel: the private
  * [com.rustyrazorblade.easydblab.Constants.Proxy.PORT_PROPERTY] for the CLI's own clients, and the

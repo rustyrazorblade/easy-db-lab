@@ -16,9 +16,7 @@ import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
-import com.rustyrazorblade.easydblab.commands.StartSocks
 import com.rustyrazorblade.easydblab.commands.Status
-import com.rustyrazorblade.easydblab.commands.StopSocks
 import com.rustyrazorblade.easydblab.commands.Up
 import com.rustyrazorblade.easydblab.commands.UploadAuthorizedKeys
 import com.rustyrazorblade.easydblab.commands.Version
@@ -54,6 +52,8 @@ import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStop
 import com.rustyrazorblade.easydblab.commands.profile.ProfileShow
 import com.rustyrazorblade.easydblab.commands.profile.SetupProfile
+import com.rustyrazorblade.easydblab.commands.socks.SocksStart
+import com.rustyrazorblade.easydblab.commands.socks.SocksStop
 import com.rustyrazorblade.easydblab.commands.spark.SparkJobs
 import com.rustyrazorblade.easydblab.commands.spark.SparkLogs
 import com.rustyrazorblade.easydblab.commands.spark.SparkStatus
@@ -88,8 +88,8 @@ val commandsModule =
         factory { ProfileShow() }
         factory { SetupProfile() }
         factory { ShowIamPolicies() }
-        factory { StartSocks() }
-        factory { StopSocks() }
+        factory { SocksStart() }
+        factory { SocksStop() }
         factory { Status() }
         factory { Up() }
         factory { UploadAuthorizedKeys() }

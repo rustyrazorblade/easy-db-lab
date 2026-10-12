@@ -141,7 +141,7 @@ c-flame-sepworker() {
 }
 
 # SOCKS5 proxy helpers. The easy-db-lab CLI is the only thing that starts or stops the tunnel
-# (`easy-db-lab start-socks`, `easy-db-lab stop-socks`); it records the state shell-side tools need
+# (`easy-db-lab socks start`, `easy-db-lab socks stop`); it records the state shell-side tools need
 # in .socks5-proxy.env, which these helpers source. Nothing here reads JSON.
 
 # The port of the tunnel the CLI recorded, while its tunnel script (EDL_SOCKS_PID) still runs; nothing
@@ -182,7 +182,7 @@ with-proxy() {
   if [ -z "$port" ]; then
     echo "easy-db-lab: no running SOCKS tunnel is recorded for the workspace $CLUSTER_DIR." >&2
     echo "easy-db-lab: if a tunnel was running, $CLUSTER_DIR/logs/socks5-proxy.log says why it exited." >&2
-    echo "easy-db-lab: run 'easy-db-lab start-socks' in $CLUSTER_DIR, then try again." >&2
+    echo "easy-db-lab: run 'easy-db-lab socks start' in $CLUSTER_DIR, then try again." >&2
     return 1
   fi
   # The tunnel listens on 127.0.0.1 only; localhost could resolve to ::1, where another process may listen.
@@ -202,11 +202,11 @@ socks5-status() {
   local port
   port=$(_socks5_port)
   if [ -z "$port" ]; then
-    echo "No running SOCKS5 tunnel is recorded. Run 'easy-db-lab start-socks' to start one."
+    echo "No running SOCKS5 tunnel is recorded. Run 'easy-db-lab socks start' to start one."
   elif lsof -Pi :"$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
     echo "SOCKS5 tunnel active on 127.0.0.1:$port"
   else
-    echo "SOCKS5 tunnel recorded on 127.0.0.1:$port, but nothing listens there. Run 'easy-db-lab start-socks' to restart it."
+    echo "SOCKS5 tunnel recorded on 127.0.0.1:$port, but nothing listens there. Run 'easy-db-lab socks start' to restart it."
   fi
 }
 
@@ -236,5 +236,5 @@ clickhouse-query() {
 }
 
 # The easy-db-lab CLI starts the SOCKS5 tunnel for the commands that need it, and 'easy-db-lab
-# start-socks' starts it for everything else (the wrappers, with-proxy, a browser).
+# socks start' starts it for everything else (the wrappers, with-proxy, a browser).
 # Use 'with-proxy <command>' for a tool that has no wrapper, or 'socks5-status' to check the tunnel.

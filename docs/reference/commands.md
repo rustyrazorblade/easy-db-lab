@@ -226,28 +226,28 @@ easy-db-lab clean
 In `bin/` it deletes only the tool wrappers and their marker, and removes `bin/` only when nothing
 else is left in it.
 
-### start-socks
+### socks start
 
 Start the SOCKS5 tunnel to the cluster, or reuse the one that runs, record its port for the tool
 wrappers and `env.sh`, and print the port for browser setup.
 
 ```bash
-easy-db-lab start-socks
+easy-db-lab socks start
 ```
 
 On a Tailscale cluster it starts nothing and says that no tunnel is needed. See
 [SOCKS Proxy](../user-guide/network-connectivity.md#socks-proxy-alternative).
 
-### stop-socks
+### socks stop
 
 Stop the SOCKS5 tunnel and remove its port from the record, without tearing the cluster down.
-Wrapped tools then fail with a pointer to `start-socks` until the tunnel starts again.
+Wrapped tools then fail with a pointer to `socks start` until the tunnel starts again.
 
 ```bash
-easy-db-lab stop-socks
+easy-db-lab socks stop
 ```
 
-If the tunnel process does not end after `stop-socks` asks and then forces it to, `stop-socks` prints its PID and exits non-zero.  The PID and port stay recorded, so stop the process with `kill <pid>` and run `stop-socks` again.  If no tunnel runs, `stop-socks` says so and succeeds.
+If the tunnel process does not end after `socks stop` asks and then forces it to, `socks stop` prints its PID and exits non-zero.  The PID and port stay recorded, so stop the process with `kill <pid>` and run `socks stop` again.  If no tunnel runs, `socks stop` says so and succeeds.
 
 ### hosts
 

@@ -19,9 +19,7 @@ import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
-import com.rustyrazorblade.easydblab.commands.StartSocks
 import com.rustyrazorblade.easydblab.commands.Status
-import com.rustyrazorblade.easydblab.commands.StopSocks
 import com.rustyrazorblade.easydblab.commands.Up
 import com.rustyrazorblade.easydblab.commands.UploadAuthorizedKeys
 import com.rustyrazorblade.easydblab.commands.Version
@@ -38,6 +36,7 @@ import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.platform.Platform
 import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.commands.report.Report
+import com.rustyrazorblade.easydblab.commands.socks.Socks
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -94,8 +93,7 @@ import kotlin.system.exitProcess
         Init::class,
         SetupInstance::class,
         Up::class,
-        StartSocks::class,
-        StopSocks::class,
+        Socks::class,
         Repl::class,
         Server::class,
         // Parent command groups

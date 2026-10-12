@@ -166,7 +166,7 @@ export AWS_PROFILE=sandbox-admin
 ```
 
 The SOCKS5 tunnel picks a free port on its own, so no port check is needed. Inside the test
-workspace, `easy-db-lab stop-socks` stops a tunnel and `socks5-status` (after `source env.sh`)
+workspace, `easy-db-lab socks stop` stops a tunnel and `socks5-status` (after `source env.sh`)
 shows its port.
 
 Kill any stale server processes:

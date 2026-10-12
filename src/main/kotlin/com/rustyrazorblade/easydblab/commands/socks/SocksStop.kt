@@ -1,5 +1,6 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.commands.socks
 
+import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
@@ -9,14 +10,14 @@ import picocli.CommandLine.Command
 
 /**
  * Stops the workspace's SOCKS5 tunnel and removes its port from the proxy env file, leaving the
- * cluster running. Wrapped tools then fail with a pointer to `start-socks` until it runs again; the
+ * cluster running. Wrapped tools then fail with a pointer to `socks start` until it runs again; the
  * next CLI command that needs the tunnel starts a new one on its own.
  */
 @Command(
-    name = "stop-socks",
+    name = "stop",
     description = ["Stop the SOCKS5 tunnel to the cluster without tearing the cluster down"],
 )
-class StopSocks : PicoBaseCommand() {
+class SocksStop : PicoBaseCommand() {
     private val socksProxyService: SocksProxyService by inject()
 
     override fun execute() {

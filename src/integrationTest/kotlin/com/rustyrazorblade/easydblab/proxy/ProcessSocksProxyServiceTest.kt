@@ -431,7 +431,7 @@ class ProcessSocksProxyServiceTest {
     @Test
     fun `a second call reuses the in-memory tunnel and records its port again`() {
         // The first call fills the in-memory state through a genuine reuse; the second takes the
-        // in-memory fast path. Removing the port in between models a stop-socks of an old tunnel
+        // in-memory fast path. Removing the port in between models a socks stop of an old tunnel
         // or a deleted env file: the fast path must record the port again.
         val svc = service()
         val envFile = ProxyEnvFile(tempDir)

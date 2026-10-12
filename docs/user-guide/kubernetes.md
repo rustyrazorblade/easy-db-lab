@@ -48,20 +48,20 @@ Any `easy-db-lab` command that needs the cluster starts the tunnel on its own. `
 does not start it. To start it for your shell or a browser:
 
 ```bash
-easy-db-lab start-socks
+easy-db-lab socks start
 ```
 
 ### Manual Proxy Control
 
 ```bash
 # Start the SOCKS5 tunnel, or reuse the running one, and print its port
-easy-db-lab start-socks
+easy-db-lab socks start
 
 # Check the recorded port (after source env.sh)
 socks5-status
 
 # Stop the tunnel; the cluster keeps running
-easy-db-lab stop-socks
+easy-db-lab socks stop
 ```
 
 ### Running Commands Through the Proxy

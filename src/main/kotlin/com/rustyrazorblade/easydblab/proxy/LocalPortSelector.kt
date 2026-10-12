@@ -45,7 +45,7 @@ class LoopbackPortSelector(
             ?: error(
                 "No free local port for the SOCKS5 tunnel: $attempts random ports in " +
                     "${Constants.Proxy.LOCAL_PORT_RANGE.first}-${Constants.Proxy.LOCAL_PORT_RANGE.last} were all in use on the " +
-                    "loopback interface. Free some ports in that range, then run 'easy-db-lab start-socks'.",
+                    "loopback interface. Free some ports in that range, then run 'easy-db-lab socks start'.",
             )
 
     /**

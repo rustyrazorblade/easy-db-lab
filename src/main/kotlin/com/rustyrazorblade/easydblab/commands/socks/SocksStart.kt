@@ -1,5 +1,6 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.commands.socks
 
+import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
@@ -12,14 +13,14 @@ import picocli.CommandLine.Command
  *
  * Every other command that needs the tunnel starts it on its own; this one exists for what runs
  * outside the CLI. The tool wrappers in `<workspace>/bin/` read the port from the proxy env file and
- * fail until one is recorded, for example after `stop-socks`, and a browser needs the port to reach
+ * fail until one is recorded, for example after `socks stop`, and a browser needs the port to reach
  * the cluster's web UIs. On a Tailscale cluster there is no tunnel to start.
  */
 @Command(
-    name = "start-socks",
+    name = "start",
     description = ["Start the SOCKS5 tunnel to the cluster (or reuse the running one) and record its port"],
 )
-class StartSocks : PicoBaseCommand() {
+class SocksStart : PicoBaseCommand() {
     private val socksProxyService: SocksProxyService by inject()
     private val proxyEnvFile: ProxyEnvFile by inject()
 

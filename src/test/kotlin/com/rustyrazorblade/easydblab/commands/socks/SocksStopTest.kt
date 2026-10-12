@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.commands.socks
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
@@ -27,11 +27,11 @@ import java.io.File
 import java.time.Duration
 
 /**
- * `stop-socks` ends the tunnel recorded in the workspace and leaves the cluster alone. The process
+ * `socks stop` ends the tunnel recorded in the workspace and leaves the cluster alone. The process
  * lookup sees only [process], because a test cannot start a real `ssh -N -D`.
  */
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
-class StopSocksTest : BaseKoinTest() {
+class SocksStopTest : BaseKoinTest() {
     private val events = mutableListOf<Event>()
     private var process: FakeTunnelProcess? = null
 
@@ -80,7 +80,7 @@ class StopSocksTest : BaseKoinTest() {
         val envFile = recordedEnv()
         System.setProperty(Constants.Proxy.PORT_PROPERTY, "$PORT")
 
-        StopSocks().call()
+        SocksStop().call()
 
         assertThat(tunnel.handle.isAlive).isFalse()
         assertThat(stateFile).doesNotExist()
@@ -95,7 +95,7 @@ class StopSocksTest : BaseKoinTest() {
         val stateFile = recordTunnel()
         val envFile = recordedEnv()
 
-        assertThatThrownBy { StopSocks().call() }.isInstanceOf(CommandFailedException::class.java)
+        assertThatThrownBy { SocksStop().call() }.isInstanceOf(CommandFailedException::class.java)
 
         assertThat(stateFile).exists()
         assertThat(envFile.read().tunnel?.port).isEqualTo(PORT)
@@ -107,7 +107,7 @@ class StopSocksTest : BaseKoinTest() {
         val stateFile = recordTunnel()
         val envFile = recordedEnv()
 
-        StopSocks().call()
+        SocksStop().call()
 
         assertThat(stateFile).doesNotExist()
         assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
@@ -118,7 +118,7 @@ class StopSocksTest : BaseKoinTest() {
     fun `with nothing recorded it says so and still removes a stale port`() {
         val envFile = recordedEnv()
 
-        StopSocks().call()
+        SocksStop().call()
 
         assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
         assertThat(events).containsExactly(Event.Proxy.NoTunnelRunning)

@@ -155,19 +155,19 @@ The CLI reuses a running tunnel only after a connection through it reaches the c
 
 When the CLI replaces a tunnel, it prints the old port, the new port and the reason: the tunnel went to another control node, it no longer reached the control node, its process had exited, or its PID now belongs to another process. If your browser uses the tunnel, change its SOCKS port to the new one. If the old tunnel does not stop, the CLI prints an error with its PID; end it with `kill -9 <pid>`. The CLI no longer records that tunnel, so it will not stop an `ssh` the tunnel leaves: the error also gives the `pkill` command that ends it.
 
-The tunnel reconnects by itself. The CLI runs it through `<workspace>/bin/edl-socks-tunnel`, which easy-db-lab writes with the tool wrappers. That script runs `ssh -N -D 127.0.0.1:<port>` and, when `ssh` exits, starts it again on the same port after a two-second pause. The tunnel listens on 127.0.0.1 only, and every client of it uses 127.0.0.1, never `localhost`: if another process holds the port on one loopback address, a client of `localhost` could reach that process instead. The SSH keepalives make `ssh` exit about 90 seconds after its connection dies, for example after a laptop sleep or a network change. Because the port does not change, wrapped tools in an open shell work again as soon as the connection comes back, with no CLI command. `stop-socks` and `down` stop the script and its `ssh`.
+The tunnel reconnects by itself. The CLI runs it through `<workspace>/bin/edl-socks-tunnel`, which easy-db-lab writes with the tool wrappers. That script runs `ssh -N -D 127.0.0.1:<port>` and, when `ssh` exits, starts it again on the same port after a two-second pause. The tunnel listens on 127.0.0.1 only, and every client of it uses 127.0.0.1, never `localhost`: if another process holds the port on one loopback address, a client of `localhost` could reach that process instead. The SSH keepalives make `ssh` exit about 90 seconds after its connection dies, for example after a laptop sleep or a network change. Because the port does not change, wrapped tools in an open shell work again as soon as the connection comes back, with no CLI command. `socks stop` and `down` stop the script and its `ssh`.
 
-The script restarts `ssh` only for a tunnel the CLI has verified. The CLI records the port in `.socks5-proxy.env` only after a connection through the tunnel reaches the control node, and the script checks that record. A tunnel that never came up (its port was taken, its key was refused) ends at once, and the CLI reports the failure or retries on a new port. If another process takes the port while `ssh` waits to restart, the script ends after that one attempt. The wrapped tools then fail with the `start-socks` message, which names `<workspace>/logs/socks5-proxy.log`, and the next CLI command starts a new tunnel. The log records each `ssh` start and why the script ended, with a UTC timestamp on every line.
+The script restarts `ssh` only for a tunnel the CLI has verified. The CLI records the port in `.socks5-proxy.env` only after a connection through the tunnel reaches the control node, and the script checks that record. A tunnel that never came up (its port was taken, its key was refused) ends at once, and the CLI reports the failure or retries on a new port. If another process takes the port while `ssh` waits to restart, the script ends after that one attempt. The wrapped tools then fail with the `socks start` message, which names `<workspace>/logs/socks5-proxy.log`, and the next CLI command starts a new tunnel. The log records each `ssh` start and why the script ended, with a UTC timestamp on every line.
 
-The tunnel is shared by every command in the workspace, so Ctrl-C does not end it. Pressing Ctrl-C during an easy-db-lab command stops that command and leaves the tunnel running. Use `easy-db-lab stop-socks` to stop it.
+The tunnel is shared by every command in the workspace, so Ctrl-C does not end it. Pressing Ctrl-C during an easy-db-lab command stops that command and leaves the tunnel running. Use `easy-db-lab socks stop` to stop it.
 
 To start it for everything else (your shell, a browser), run:
 
 ```bash
-easy-db-lab start-socks
+easy-db-lab socks start
 ```
 
-`start-socks` prints the tunnel's local port. On a Tailscale cluster it starts nothing and says that
+`socks start` prints the tunnel's local port. On a Tailscale cluster it starts nothing and says that
 no tunnel is needed.
 
 Each new tunnel listens on a random free local port, from 20000 to 29999; no port is preferred. The range is below the ports the OS gives outgoing connections (32768 and up on Linux, 49152 and up on macOS), so no outgoing connection can take the tunnel's port while `ssh` waits to restart. If 20 random ports in the range are all in use, the CLI fails with a message that names the range. Each workspace records its own port, so several clusters can run side by side, and two workspaces are unlikely to want the same port. If they do, the second one picks another port.
@@ -195,7 +195,7 @@ of a wrapped tool reads the workspace's `.socks5-proxy.env`, which the CLI write
 
 - on a SOCKS cluster, routes that one call through the tunnel;
 - on a Tailscale cluster, runs the tool unchanged, so it connects directly;
-- with no tunnel recorded, or when the recorded tunnel script (`EDL_SOCKS_PID`) is no longer running, fails with exit code 1 and a message that says to run `easy-db-lab start-socks`. It never uses the port of a tunnel that is gone, because another process may hold that port now.
+- with no tunnel recorded, or when the recorded tunnel script (`EDL_SOCKS_PID`) is no longer running, fails with exit code 1 and a message that says to run `easy-db-lab socks start`. It never uses the port of a tunnel that is gone, because another process may hold that port now.
 
 The `kubectl`, `helm`, `cilium` and `k9s` wrappers always use the workspace `kubeconfig`. They replace any `KUBECONFIG` you exported, because a workspace's wrapper reaches only that workspace's cluster. A bare `<workspace>/bin/kubectl get ns` works with no setup: you do not need to source `env.sh` or set `KUBECONFIG`. If the workspace has no `kubeconfig` file, the wrapper names the missing file and exits 1. The `curl` and `skopeo` wrappers do not change `KUBECONFIG`.
 
@@ -253,13 +253,13 @@ so behavior is identical either way. In neither path are the JVM-global `socksPr
 
 ### Browser Access
 
-Run `easy-db-lab start-socks` and note the port it prints. Then configure your browser's SOCKS5
+Run `easy-db-lab socks start` and note the port it prints. Then configure your browser's SOCKS5
 proxy:
 
 | Setting | Value |
 |---------|-------|
 | SOCKS Host | `127.0.0.1` |
-| SOCKS Port | the port `start-socks` printed (`socks5-status` shows it too) |
+| SOCKS Port | the port `socks start` printed (`socks5-status` shows it too) |
 | SOCKS Version | 5 |
 
 Then access cluster services:
@@ -270,17 +270,17 @@ Then access cluster services:
 ### Proxy Management
 
 ```bash
-easy-db-lab start-socks   # Start the tunnel, or reuse the running one, and print its port
+easy-db-lab socks start   # Start the tunnel, or reuse the running one, and print its port
 socks5-status             # Show the recorded port (after source env.sh)
-easy-db-lab stop-socks    # Stop the tunnel; the cluster keeps running
+easy-db-lab socks stop    # Stop the tunnel; the cluster keeps running
 ```
 
-`easy-db-lab down` stops the tunnel too. After `stop-socks`, wrapped tools fail with the
-`start-socks` message until a CLI command or `start-socks` starts the tunnel again.
+`easy-db-lab down` stops the tunnel too. After `socks stop`, wrapped tools fail with the
+`socks start` message until a CLI command or `socks start` starts the tunnel again.
 
-If the tunnel process does not end, `stop-socks` prints its PID and exits non-zero.  The PID and port stay recorded.  Stop the process with `kill <pid>`, then run `easy-db-lab stop-socks` again.  `down` goes on with the teardown in that case and prints the same PID.
+If the tunnel process does not end, `socks stop` prints its PID and exits non-zero.  The PID and port stay recorded.  Stop the process with `kill <pid>`, then run `easy-db-lab socks stop` again.  `down` goes on with the teardown in that case and prints the same PID.
 
-If the tunnel script was killed from outside (for example with `kill -9`), its `ssh` can keep running on its own. `stop-socks`, `down` and the next tunnel start find that `ssh` by the recorded port and `sshConfig`, and stop it.
+If the tunnel script was killed from outside (for example with `kill -9`), its `ssh` can keep running on its own. `socks stop`, `down` and the next tunnel start find that `ssh` by the recorded port and `sshConfig`, and stop it.
 
 ### Host Key Verification
 
@@ -324,7 +324,7 @@ Kubernetes API (stress jobs) as unavailable. See the
 
 **"no SOCKS tunnel is recorded for the workspace" or "the recorded SOCKS tunnel (PID ...) is not running":**
 ```bash
-easy-db-lab start-socks    # Start the tunnel and record its port
+easy-db-lab socks start    # Start the tunnel and record its port
 ```
 
 **"Connection refused" errors:**
@@ -332,20 +332,20 @@ The tunnel's `ssh` cannot reach the control node right now. The tunnel restarts 
 if that does not help, start a new tunnel:
 ```bash
 socks5-status              # Shows the recorded port and whether anything listens on it
-easy-db-lab start-socks    # Starts a new tunnel and records its port
+easy-db-lab socks start    # Starts a new tunnel and records its port
 ssh control0 hostname      # Verify SSH works
 ```
 
 **Proxy not working after network change:**
 ```bash
-easy-db-lab stop-socks
-easy-db-lab start-socks
+easy-db-lab socks stop
+easy-db-lab socks start
 ```
 
 **Commands timing out:**
 1. Check cluster status: `easy-db-lab status`
 2. Verify SSH works: `ssh control0 hostname`
-3. Restart the tunnel: `easy-db-lab stop-socks && easy-db-lab start-socks`
+3. Restart the tunnel: `easy-db-lab socks stop && easy-db-lab socks start`
 
 **`easy-db-lab` command fails with a SOCKS proxy error:**
 As of this change, `easy-db-lab` commands that need the tunnel (`up`, kit commands, Grafana

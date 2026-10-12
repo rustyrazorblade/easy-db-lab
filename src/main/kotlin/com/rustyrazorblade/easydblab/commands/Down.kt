@@ -541,7 +541,7 @@ class Down : PicoBaseCommand() {
     }
 
     /**
-     * Stops the SOCKS5 tunnel through [SocksProxyService.stop], the same path `stop-socks` takes:
+     * Stops the SOCKS5 tunnel through [SocksProxyService.stop], the same path `socks stop` takes:
      * it ends the `ssh -N -D` process, deletes `.socks5-proxy-state` and removes the port from the
      * proxy env file, all in [Context.workingDirectory]. Resolving them against the process cwd
      * instead would miss them whenever `workingDirectory` is set explicitly (long-running

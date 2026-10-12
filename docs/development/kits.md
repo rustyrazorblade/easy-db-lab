@@ -285,7 +285,7 @@ Some things are not wrapped:
 - A wrapped tool sends all of its traffic through the tunnel, public URLs included. `helm repo add`
   of a public chart repository works, but it is slower than a direct connection.
 
-If a wrapper says that no SOCKS tunnel is recorded, run `easy-db-lab start-socks` in the workspace.
+If a wrapper says that no SOCKS tunnel is recorded, run `easy-db-lab socks start` in the workspace.
 
 ## Environment Variables
 

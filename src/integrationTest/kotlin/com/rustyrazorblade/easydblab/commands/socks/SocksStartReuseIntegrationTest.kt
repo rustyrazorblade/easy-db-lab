@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.commands.socks
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
@@ -27,11 +27,11 @@ import java.io.File
 import java.net.ServerSocket
 
 /**
- * `start-socks` with a verified tunnel already running keeps it. Reuse needs a port that really
+ * `socks start` with a verified tunnel already running keeps it. Reuse needs a port that really
  * accepts connections, which is why this case lives in the integration tier.
  */
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
-class StartSocksReuseIntegrationTest : BaseKoinTest() {
+class SocksStartReuseIntegrationTest : BaseKoinTest() {
     override fun additionalTestModules(): List<Module> =
         listOf(
             module {
@@ -97,7 +97,7 @@ class StartSocksReuseIntegrationTest : BaseKoinTest() {
                 """.trimIndent(),
             )
 
-            StartSocks().call()
+            SocksStart().call()
 
             assertThat(ProxyEnvFile(workspace).read().tunnel?.port).isEqualTo(port)
             assertThat(events).containsExactly(Event.Proxy.TunnelReady(port = port, reused = true))

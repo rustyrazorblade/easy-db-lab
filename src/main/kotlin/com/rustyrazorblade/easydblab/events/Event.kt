@@ -6011,7 +6011,7 @@ sealed interface Event {
     }
 
     /**
-     * The SOCKS5 tunnel that `start-socks` and `stop-socks` manage outside of `up` and `down`. The
+     * The SOCKS5 tunnel that `socks start` and `socks stop` manage outside of `up` and `down`. The
      * tool wrappers and `env.sh` read its port from the workspace's proxy env file.
      */
     @Serializable
@@ -6054,18 +6054,18 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
-        /** `stop-socks` stopped the tunnel process [pid] and removed its port from the env file. */
+        /** `socks stop` stopped the tunnel process [pid] and removed its port from the env file. */
         @Serializable
         @SerialName("Proxy.TunnelStopped")
         data class TunnelStopped(
             val pid: Int,
         ) : Proxy {
             override fun toDisplayString(): String =
-                "Stopped the SOCKS5 tunnel [PID $pid]. Wrapped tools fail until 'easy-db-lab start-socks' starts it again."
+                "Stopped the SOCKS5 tunnel [PID $pid]. Wrapped tools fail until 'easy-db-lab socks start' starts it again."
         }
 
         /**
-         * `stop-socks` asked, then forced, the tunnel process [pid] to end, and it still runs. Its
+         * `socks stop` asked, then forced, the tunnel process [pid] to end, and it still runs. Its
          * PID and port stay recorded.
          */
         @Serializable
@@ -6075,12 +6075,12 @@ sealed interface Event {
         ) : Proxy {
             override fun toDisplayString(): String =
                 "Error: the SOCKS5 tunnel [PID $pid] did not stop. It is still recorded; stop it with 'kill $pid' " +
-                    "and run 'easy-db-lab stop-socks' again."
+                    "and run 'easy-db-lab socks stop' again."
 
             override fun isError(): Boolean = true
         }
 
-        /** `stop-socks` found no running tunnel; any recorded port was removed from the env file. */
+        /** `socks stop` found no running tunnel; any recorded port was removed from the env file. */
         @Serializable
         @SerialName("Proxy.NoTunnelRunning")
         data object NoTunnelRunning : Proxy {

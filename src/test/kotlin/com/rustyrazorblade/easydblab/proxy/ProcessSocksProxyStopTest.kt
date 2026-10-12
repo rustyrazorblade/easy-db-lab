@@ -7,7 +7,7 @@ import org.junit.jupiter.api.parallel.ResourceLock
 import org.mockito.kotlin.times
 import java.io.File
 
-/** [ProcessSocksProxyService] stopping a tunnel: `stop()` for `stop-socks` and `down`, and the stop of a superseded tunnel before its record is overwritten. */
+/** [ProcessSocksProxyService] stopping a tunnel: `stop()` for `socks stop` and `down`, and the stop of a superseded tunnel before its record is overwritten. */
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
 internal class ProcessSocksProxyStopTest : ProcessSocksProxyServiceTestBase() {
     @Test

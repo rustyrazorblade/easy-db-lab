@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.commands
+package com.rustyrazorblade.easydblab.commands.socks
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
@@ -33,11 +33,11 @@ import java.io.File
 import java.time.Duration
 
 /**
- * `start-socks` through the real [ProcessSocksProxyService], with only the `ssh` process and the
+ * `socks start` through the real [ProcessSocksProxyService], with only the `ssh` process and the
  * end-to-end probe faked, so the state file and the env file it writes are the real ones.
  */
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
-class StartSocksTest : BaseKoinTest() {
+class SocksStartTest : BaseKoinTest() {
     private val launched = mutableListOf<List<String>>()
     private val events = mutableListOf<Event>()
 
@@ -89,7 +89,7 @@ class StartSocksTest : BaseKoinTest() {
 
     @Test
     fun `starts the tunnel, records its port, and reports it`() {
-        StartSocks().call()
+        SocksStart().call()
 
         assertThat(launched).hasSize(1)
         assertThat(
@@ -103,7 +103,7 @@ class StartSocksTest : BaseKoinTest() {
     fun `on a Tailscale cluster it starts nothing and says no tunnel is needed`() {
         save(clusterState(tailscale = true))
 
-        StartSocks().call()
+        SocksStart().call()
 
         assertThat(launched).isEmpty()
         assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
@@ -114,7 +114,7 @@ class StartSocksTest : BaseKoinTest() {
     fun `with no running cluster it fails and starts nothing`() {
         save(clusterState(tailscale = false).apply { markInfrastructureDown() })
 
-        assertThatThrownBy { StartSocks().call() }.isInstanceOf(CommandFailedException::class.java)
+        assertThatThrownBy { SocksStart().call() }.isInstanceOf(CommandFailedException::class.java)
 
         assertThat(launched).isEmpty()
         assertThat(events).containsExactly(Event.Proxy.NoRunningCluster(context.workingDirectory.absolutePath))

@@ -171,14 +171,14 @@ internal class ToolWrapperScriptTest {
     }
 
     @Test
-    fun `with no port recorded the wrapper fails and names the workspace and start-socks`() {
+    fun `with no port recorded the wrapper fails and names the workspace and socks start`() {
         ProxyEnvFile(workspace).recordTailscale(active = false)
 
         val result = run("kubectl get ns")
 
         assertThat(result.exitCode).isEqualTo(1)
         assertThat(result.stdout).doesNotContain("tool=")
-        assertThat(result.stderr).contains(workspace.canonicalPath).contains("easy-db-lab start-socks")
+        assertThat(result.stderr).contains(workspace.canonicalPath).contains("easy-db-lab socks start")
     }
 
     @Test
@@ -186,12 +186,12 @@ internal class ToolWrapperScriptTest {
         val result = run("helm list -A")
 
         assertThat(result.exitCode).isEqualTo(1)
-        assertThat(result.stderr).contains("easy-db-lab start-socks")
+        assertThat(result.stderr).contains("easy-db-lab socks start")
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("tools")
-    fun `a recorded tunnel whose script has exited fails with the start-socks message and does not use the port`(tool: String) {
+    fun `a recorded tunnel whose script has exited fails with the socks start message and does not use the port`(tool: String) {
         ProxyEnvFile(workspace).apply {
             recordTailscale(active = false)
             recordTunnel(41234, exitedPid())
@@ -203,19 +203,19 @@ internal class ToolWrapperScriptTest {
         assertThat(result.stdout).doesNotContain("tool=").doesNotContain("41234")
         assertThat(result.stderr)
             .contains(workspace.canonicalPath)
-            .contains("easy-db-lab start-socks")
+            .contains("easy-db-lab socks start")
             .contains("${workspace.canonicalPath}/logs/socks5-proxy.log")
     }
 
     @Test
-    fun `a recorded port with no PID fails with the start-socks message`() {
+    fun `a recorded port with no PID fails with the socks start message`() {
         File(workspace, Constants.Proxy.ENV_FILE).writeText("EDL_TAILSCALE_ACTIVE=false\nEDL_SOCKS_PORT=41234\n")
 
         val result = run("kubectl get ns")
 
         assertThat(result.exitCode).isEqualTo(1)
         assertThat(result.stdout).doesNotContain("tool=")
-        assertThat(result.stderr).contains("easy-db-lab start-socks")
+        assertThat(result.stderr).contains("easy-db-lab socks start")
     }
 
     @Test
@@ -225,7 +225,7 @@ internal class ToolWrapperScriptTest {
         val result = run("kubectl get ns", env = mapOf("EDL_SOCKS_PID" to "${ProcessHandle.current().pid()}"))
 
         assertThat(result.exitCode).isEqualTo(1)
-        assertThat(result.stderr).contains("easy-db-lab start-socks")
+        assertThat(result.stderr).contains("easy-db-lab socks start")
     }
 
     @Test
@@ -372,7 +372,7 @@ internal class ToolWrapperScriptTest {
         val result = run("kubectl get ns", env = mapOf("EDL_SOCKS_PORT" to "41234"))
 
         assertThat(result.exitCode).isEqualTo(1)
-        assertThat(result.stderr).contains("easy-db-lab start-socks")
+        assertThat(result.stderr).contains("easy-db-lab socks start")
     }
 
     /** The absolute path the wrapper resolves for the workspace kubeconfig; the wrapper resolves symlinks. */

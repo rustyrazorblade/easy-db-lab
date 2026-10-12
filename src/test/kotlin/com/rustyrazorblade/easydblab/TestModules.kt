@@ -104,7 +104,7 @@ object TestModules {
             // Real: it only writes and removes the packaged tool wrappers in a workspace's bin/.
             single { ToolWrapperInstaller() }
 
-            // Real, over the test workspace, so stopping a tunnel (`down`, `stop-socks`) runs the
+            // Real, over the test workspace, so stopping a tunnel (`down`, `socks stop`) runs the
             // real state file and env file code. Its ssh launcher refuses to start anything: a test
             // that needs a tunnel to start registers its own service with a fake launcher.
             single { ProxyEnvFile(get<Context>().workingDirectory) }

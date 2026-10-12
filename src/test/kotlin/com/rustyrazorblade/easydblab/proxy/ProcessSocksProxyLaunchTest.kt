@@ -308,7 +308,9 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
                 service(probe = sshGoneAtRecord, launcher = { _, _ -> scriptStaysUp }, portSelector = { 41234 }).ensureRunning(testHost)
             }
 
-        assertThat(failure).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("stopped carrying traffic right after it was verified")
+        assertThat(
+            failure,
+        ).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("stopped carrying traffic right after it was verified")
         assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
         assertThat(stateFile()).doesNotExist()
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()

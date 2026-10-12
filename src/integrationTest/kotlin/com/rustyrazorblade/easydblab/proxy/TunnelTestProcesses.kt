@@ -25,8 +25,7 @@ internal object TunnelTestProcesses {
     private const val POLL_MS = 100L
 
     /** Installs the tunnel script once, in a new directory, and returns that directory. */
-    fun installScriptOnce(): File =
-        Files.createTempDirectory("edl-tunnel-script").toFile().also { ToolWrapperInstaller().install(it) }
+    fun installScriptOnce(): File = Files.createTempDirectory("edl-tunnel-script").toFile().also { ToolWrapperInstaller().install(it) }
 
     /** Links [workspace]'s `bin/edl-socks-tunnel` to the copy [installScriptOnce] put in [installed]. */
     fun linkScript(
@@ -60,7 +59,9 @@ internal object TunnelTestProcesses {
                 .orElse(null)
                 ?.let { return it }
             check(tunnel.isAlive) { "the tunnel script exited before it ran ssh.\n${diagnostics(tunnel, logFile)}" }
-            check(System.nanoTime() < deadline) { "the tunnel script ran no ssh for $forward in ${SSH_WAIT_SECONDS}s.\n${diagnostics(tunnel, logFile)}" }
+            check(System.nanoTime() < deadline) {
+                "the tunnel script ran no ssh for $forward in ${SSH_WAIT_SECONDS}s.\n${diagnostics(tunnel, logFile)}"
+            }
             Thread.sleep(POLL_MS)
         }
     }

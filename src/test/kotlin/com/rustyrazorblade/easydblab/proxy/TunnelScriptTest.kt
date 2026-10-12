@@ -337,6 +337,7 @@ internal class TunnelScriptTest {
         const val NOT_FOUND_STATUS = 127
         const val BACKOFF_SECONDS = 1
         const val PAST_BACKOFF_MS = 1500L
+
         /** How long a test waits on the script; a passing test waits only as long as the script takes. */
         const val LIMIT_SECONDS = 60L
         const val POLL_MS = 50L

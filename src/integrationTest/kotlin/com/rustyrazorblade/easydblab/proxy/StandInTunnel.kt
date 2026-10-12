@@ -32,8 +32,15 @@ internal class StandInTunnel(
         // Run by /bin/sh, as its shebang would be: the OS reports the same arguments, and a test does not
         // exec a file the OS has never seen, which on macOS can wait on a system scan.
         process =
-            ProcessBuilder("/bin/sh", script.absolutePath, "$port", sshConfig, "2", File(directory, "stand-in.log").absolutePath, "control0")
-                .redirectErrorStream(true)
+            ProcessBuilder(
+                "/bin/sh",
+                script.absolutePath,
+                "$port",
+                sshConfig,
+                "2",
+                File(directory, "stand-in.log").absolutePath,
+                "control0",
+            ).redirectErrorStream(true)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .start()
         awaitArguments()

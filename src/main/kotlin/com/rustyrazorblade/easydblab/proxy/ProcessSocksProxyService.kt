@@ -437,7 +437,7 @@ class ProcessSocksProxyService(
         envFile.removeTunnel()
         stateFile.delete()
         val cause = verificationFailureMessage(logFile, launched.process.exitValue(), launched.transcriptStart)
-        throw IllegalStateException("The SOCKS5 tunnel on port ${launched.port} exited right after it was verified. $cause")
+        error("The SOCKS5 tunnel on port ${launched.port} exited right after it was verified. $cause")
     }
 
     /**

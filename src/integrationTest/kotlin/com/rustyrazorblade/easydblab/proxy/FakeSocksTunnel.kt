@@ -94,8 +94,11 @@ internal class FakeSocksTunnel(
     }
 
     companion object {
-        /** How long a [Behaviour.SLOW_THEN_SILENT] tunnel takes to answer the CONNECT. */
-        const val SLOW_REPLY_MS = 700L
+        /**
+         * How long a [Behaviour.SLOW_THEN_SILENT] tunnel takes to answer the CONNECT: most of the probe
+         * bound `SocksTunnelReachabilityProbeIntegrationTest` uses, so the reply still comes within it.
+         */
+        const val SLOW_REPLY_MS = 2500L
 
         private const val BACKLOG = 50
         private const val SOCKS_VERSION: Byte = 5

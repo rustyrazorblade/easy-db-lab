@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.proxy
 
-import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.util.concurrent.TimeUnit
@@ -8,10 +7,14 @@ import java.util.concurrent.TimeUnit
 /**
  * [SocksTunnelReachabilityProbe] through a real SOCKS5 listener whose far end works, never answers,
  * or answers slowly and then goes silent. One attempt, from the connect to the banner read, never
- * takes longer than its bound: a dead tunnel is noticed in about a second, not after several waits.
+ * takes longer than its bound: a dead tunnel is noticed after one bound, not after several waits.
+ *
+ * The probe here has a longer bound, [ATTEMPT_MS], than the CLI's, so that a correct attempt (about
+ * one bound) and a wrong one (a banner read with its own full timeout, about the slow reply plus one
+ * bound) are far apart, and a busy machine's scheduling delay cannot carry one into the other.
  */
 internal class SocksTunnelReachabilityProbeIntegrationTest {
-    private val probe = SocksTunnelReachabilityProbe(Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS)
+    private val probe = SocksTunnelReachabilityProbe(ATTEMPT_MS)
 
     @Test
     fun `a working tunnel is reachable`() {
@@ -51,10 +54,14 @@ internal class SocksTunnelReachabilityProbeIntegrationTest {
     private companion object {
         const val TARGET = "10.0.1.5"
 
+        /** The probe's bound for one attempt in these tests; longer than [FakeSocksTunnel.SLOW_REPLY_MS]. */
+        const val ATTEMPT_MS = 3000
+
         /**
-         * The bound, plus room for thread scheduling on a busy CI runner. It stays below the bound plus
-         * [FakeSocksTunnel.SLOW_REPLY_MS], what a banner read with its own full timeout would take.
+         * The bound, plus room for thread scheduling on a busy machine (1.5s). It stays as far below the
+         * bound plus [FakeSocksTunnel.SLOW_REPLY_MS], what a banner read with its own full timeout would
+         * take (about 5.5s).
          */
-        const val BOUND_WITH_SLACK_MS = Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS + 500L
+        const val BOUND_WITH_SLACK_MS = ATTEMPT_MS + 1500L
     }
 }

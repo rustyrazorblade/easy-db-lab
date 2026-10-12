@@ -90,7 +90,13 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
 
     @Test
     fun `the process the launch command starts passes the identity check its record is stopped by`() {
-        val command = service().buildTunnelCommand(port = STOP_PORT, sshConfigPath = sshConfigPath(), logFile = logFile(), alias = "control0")
+        val command =
+            service().buildTunnelCommand(
+                port = STOP_PORT,
+                sshConfigPath = sshConfigPath(),
+                logFile = logFile(),
+                alias = "control0",
+            )
         // nohup execs the rest of its arguments: the OS then reports /bin/sh as the command and the
         // script path, then the script's own arguments, as its arguments.
         val launched = FakeTunnelProcess(livePid, command[1], command.drop(2))

@@ -37,7 +37,7 @@ import java.time.ZoneOffset
  * The logic-only cases that used to live here (fail-fast on a dead ssh, which alias ssh dials,
  * orphaned-process cleanup, the verify loop, message construction) no longer spawn a real ssh — they
  * are driven through the injected [SshProcessLauncher] / mock [Process] seam and live in the fast
- * unit tier (`ProcessSocksProxyServiceUnitTest`, `ProcessSocksProxyMessageTest`). Where a fresh start
+ * unit tier (`ProcessSocksProxyLaunchTest`, `ProcessSocksProxyReuseTest`, `ProcessSocksProxyStopTest`, `ProcessSocksProxyMessageTest`). Where a fresh start
  * is needed here only to observe that a bad reuse candidate is rejected, this file injects a fake
  * launcher that returns an already-dead process so the fresh attempt fails fast and deterministically.
  */

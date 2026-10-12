@@ -20,7 +20,7 @@ The CLI is the only component that starts or stops the proxy. `env.sh` and the t
 
 - **GIVEN** a cluster whose `state.json` has `tailscaleActive: false`
 - **WHEN** any component needs to reach internal cluster services
-- **THEN** a SOCKS5 proxy is started as a detached OS process through `<workspace>/bin/edl-socks-tunnel`, which runs `ssh -N -D <port> -F sshConfig control0`
+- **THEN** a SOCKS5 proxy is started as a detached OS process through `<workspace>/bin/edl-socks-tunnel`, which runs `ssh -N -D 127.0.0.1:<port> -F sshConfig control0`
 - **AND** the PID of `edl-socks-tunnel` and the port are written to `.socks5-proxy-state`
 - **AND** once the tunnel is verified, its port is written to the proxy env file
 
@@ -192,7 +192,7 @@ The CLI MUST update keys without dropping the others, and MUST write the file at
 
 ### Requirement: SOCKS tunnel reconnects on its own
 
-The CLI MUST start the SOCKS tunnel through a packaged POSIX script, `<workspace>/bin/edl-socks-tunnel`, written with the tool wrappers. The script MUST run `ssh -N -D <port> -F <sshConfig> <host>` with `ExitOnForwardFailure=yes`, wait for it to exit, and start it again on the same port after a short backoff, for as long as the script runs. The script MUST restart `ssh` only when the workspace's proxy env file records the script's own port as `EDL_SOCKS_PORT`; the CLI writes that port only after it verifies the tunnel end to end, so a recorded port means the tunnel came up. When the env file does not record its port, the tunnel never came up, and the script MUST exit with `ssh`'s status and not restart it, so a start that cannot succeed (a port already in use, a refused key, a changed host key) still fails fast and the CLI can retry on a new port. No timer decides this. When a restarted `ssh` cannot bind its port (for example, another process took it during the backoff), the script MUST exit after that one attempt and MUST NOT loop. The script MUST stop only on TERM; it MUST ignore INT, so a Ctrl-C in the terminal that launched an easy-db-lab command does not end the shared tunnel. Each line the script writes to the tunnel log MUST start with a UTC timestamp, and the script MUST log a line before each `ssh` run. The CLI MUST append to the tunnel log on each launch, with a timestamped header line, and MUST NOT truncate it.
+The CLI MUST start the SOCKS tunnel through a packaged POSIX script, `<workspace>/bin/edl-socks-tunnel`, written with the tool wrappers. The script MUST run `ssh -N -D 127.0.0.1:<port> -F <sshConfig> <host>` with `ExitOnForwardFailure=yes` (IPv4 loopback only, so no other process can hold the port on `::1` and split it), wait for it to exit, and start it again on the same port after a short backoff, for as long as the script runs. The script MUST restart `ssh` only when the workspace's proxy env file records the script's own port as `EDL_SOCKS_PORT`; the CLI writes that port only after it verifies the tunnel end to end, so a recorded port means the tunnel came up. When the env file does not record its port, the tunnel never came up, and the script MUST exit with `ssh`'s status and not restart it, so a start that cannot succeed (a port already in use, a refused key, a changed host key) still fails fast and the CLI can retry on a new port. No timer decides this. When a restarted `ssh` cannot bind its port (for example, another process took it during the backoff), the script MUST exit after that one attempt and MUST NOT loop. The script MUST stop only on TERM; it MUST ignore INT, so a Ctrl-C in the terminal that launched an easy-db-lab command does not end the shared tunnel. Each line the script writes to the tunnel log MUST start with a UTC timestamp, and the script MUST log a line before each `ssh` run. The CLI MUST append to the tunnel log on each launch, with a timestamped header line, and MUST NOT truncate it.
 
 The CLI MUST choose the tunnel's local port at random from free ports and MUST NOT prefer a fixed port, so two workspaces are unlikely to want the same port. Because the port does not change, the proxy env file stays correct across a reconnect, and wrapped tools in an open shell work again once the connection comes back. The SSH keepalives in the generated `sshConfig` (every transport) make `ssh` exit when a connection dies, so the script can reconnect.
 
@@ -377,9 +377,9 @@ The `kubectl`, `helm`, `cilium`, and `k9s` wrappers MUST always set `KUBECONFIG`
 
 On every call, each wrapper MUST ignore inherited `EDL_TAILSCALE_ACTIVE` and `EDL_SOCKS_PORT` values and source the workspace's proxy env file. When `EDL_TAILSCALE_ACTIVE` is not `true` and a port is recorded, the wrapper MUST clear every inherited proxy variable (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, upper and lower case) and set its own, in both cases, for its own call only:
 
-- `kubectl`, `helm`, `cilium`, `k9s`: `HTTPS_PROXY=socks5://localhost:<port>`.
-- `curl`: `ALL_PROXY=socks5h://localhost:<port>` and `NO_PROXY=localhost,127.0.0.1`.
-- `skopeo`: `ALL_PROXY`, `HTTP_PROXY`, and `HTTPS_PROXY` set to `socks5h://localhost:<port>`, and `NO_PROXY=localhost,127.0.0.1`.
+- `kubectl`, `helm`, `cilium`, `k9s`: `HTTPS_PROXY=socks5://127.0.0.1:<port>`.
+- `curl`: `ALL_PROXY=socks5h://127.0.0.1:<port>` and `NO_PROXY=localhost,127.0.0.1`.
+- `skopeo`: `ALL_PROXY`, `HTTP_PROXY`, and `HTTPS_PROXY` set to `socks5h://127.0.0.1:<port>`, and `NO_PROXY=localhost,127.0.0.1`.
 
 When no port is recorded, or the recorded `EDL_SOCKS_PID` is not a live process, the wrapper MUST fail with exit code 1 and a message that names the workspace and `easy-db-lab start-socks`, and MUST NOT use the port.
 

@@ -6,8 +6,10 @@
 #
 #   edl-socks-tunnel <port> <sshConfig> <backoff-seconds> <log> <host>
 #
-# and records its PID. It runs `ssh -N -D <port>` to <host>, waits for ssh to exit, and starts it
-# again on the same port after <backoff-seconds>, for as long as it runs. The port never changes, so
+# and records its PID. It runs `ssh -N -D 127.0.0.1:<port>` to <host>, waits for ssh to exit, and starts
+# it again on the same port after <backoff-seconds>, for as long as it runs. The listener is on IPv4
+# loopback only, and every client uses 127.0.0.1: a tunnel that also listened on ::1 could keep running
+# with only that address bound while another process holds 127.0.0.1 on the port. The port never changes, so
 # the port recorded in the proxy env file stays right across a reconnect. The keepalives in the
 # generated sshConfig make ssh exit when its connection dies, which is what lets it reconnect.
 #
@@ -19,10 +21,11 @@
 # An ssh that could not bind its port (another process took it during the backoff) ends the script
 # too, after that one attempt, so it never loops on a port it cannot have. ssh reports the failure only
 # in text, so the script appends all its output to <log>, notes the log's size before each ssh run, and
-# looks for the bind errors in what that run wrote: "Address already in use" for each loopback address
-# and "cannot listen to port" once all of them failed. The CLI matches the same two messages.
+# looks for "cannot listen to port" in what that run wrote. ssh prints that only when no address of the
+# forward could be bound; its "Address already in use" line names one address and does not mean the
+# forward failed. The CLI matches the same message.
 #
-# TERM ends the running ssh and the loop; nothing is started afterwards. INT is ignored, and so is HUP
+# TERM ends the running ssh and the loop, and logs that it did; nothing is started afterwards. INT is ignored, and so is HUP
 # (the CLI starts the script under nohup): a Ctrl-C in the terminal of a later easy-db-lab command, or
 # closing that terminal, must not end the tunnel every command of the workspace shares.
 #
@@ -75,13 +78,16 @@ run_child() {
     fi
     # Only the trap sets $interrupted, so a wait that returned because the child exited ends the loop.
     # A status cannot tell the two apart, and kill -0 could match a new process that reused the PID.
-    # 127 means the child was already reaped. wait's own stderr is dropped: dash reports a child
-    # ended by a signal there ("Terminated: 15"), a log line with no timestamp.
+    # A later pass runs only after a trap interrupted the wait, and there 127 means the child was
+    # already reaped; on the first pass 127 is the child's own status. wait's own stderr is dropped:
+    # dash reports a child ended by a signal there ("Terminated: 15"), a log line with no timestamp.
+    first_wait=1
     while :; do
         interrupted=
         wait "$child" 2>/dev/null
         code=$?
-        [ "$code" -eq 127 ] && break
+        [ "$code" -eq 127 ] && [ -z "$first_wait" ] && break
+        first_wait=
         status=$code
         [ -n "$interrupted" ] || break
     done
@@ -106,13 +112,13 @@ log_size() {
 
 # Whether the log, after its first $1 bytes, holds the errors of an ssh that could not bind its port.
 bind_failed_after() {
-    tail -c +"$(($1 + 1))" "$log_file" | grep -q -e 'Address already in use' -e 'cannot listen to port'
+    tail -c +"$(($1 + 1))" "$log_file" | grep -q -e 'cannot listen to port'
 }
 
 while [ -z "$stopping" ]; do
     before=$(log_size)
     log "starting ssh on port $port"
-    run_child ssh -v -o ExitOnForwardFailure=yes -N -D "$port" -F "$ssh_config" "$host"
+    run_child ssh -v -o ExitOnForwardFailure=yes -N -D "127.0.0.1:$port" -F "$ssh_config" "$host"
     [ -n "$stopping" ] && break
     if ! port_is_recorded; then
         log "ssh exited with status $status before the tunnel on port $port was verified; not restarting."
@@ -125,4 +131,5 @@ while [ -z "$stopping" ]; do
     log "ssh exited with status $status; starting it again on port $port in ${backoff}s."
     run_child sleep "$backoff"
 done
+log "stopped by TERM; ssh on port $port has ended."
 exit 0

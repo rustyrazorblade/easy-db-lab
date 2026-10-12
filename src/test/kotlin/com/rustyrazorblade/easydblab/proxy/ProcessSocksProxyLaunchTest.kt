@@ -298,10 +298,17 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
 
     @Test
     fun `isLocalPortBindFailure recognizes ssh's dynamic-forward bind errors`() {
-        assertThat(isLocalPortBindFailure(listOf("bind [127.0.0.1]:52000: Address already in use"))).isTrue()
         assertThat(isLocalPortBindFailure(listOf("channel_setup_fwd_listener_tcpip: cannot listen to port: 52000"))).isTrue()
         assertThat(isLocalPortBindFailure(listOf("Permission denied (publickey).", "Connection refused"))).isFalse()
         assertThat(isLocalPortBindFailure(emptyList())).isFalse()
+    }
+
+    @Test
+    fun `an Address already in use line alone is not a bind failure`() {
+        // ssh -v prints it for one loopback address it could not bind while it binds another and keeps running.
+        val transcript = listOf("debug1: Local forwarding listening on 127.0.0.1 port 52000.", "bind [::1]:52000: Address already in use")
+
+        assertThat(isLocalPortBindFailure(transcript)).isFalse()
     }
 
     @Test

@@ -18,7 +18,9 @@ import java.util.concurrent.TimeUnit
  * Each run of the stub appends `<pid> <epoch seconds> <arguments>` to `runs.log`. Its first
  * `STUB_FAILS` runs exit at once with status `STUB_STATUS` (255 unless set), as an ssh whose
  * connection died does; the run numbered `STUB_BIND_FAILS_ON` first prints what ssh prints when its
- * `-D` port is taken. Later runs stay up, as a connected ssh does.
+ * `-D` port is taken, and the run numbered `STUB_PARTIAL_BIND_ON` prints only the "Address already in
+ * use" line ssh -v prints when one loopback address of several is taken. Later runs stay up, as a
+ * connected ssh does.
  */
 internal class TunnelScriptTest {
     @TempDir
@@ -51,6 +53,9 @@ internal class TunnelScriptTest {
                 |  echo "bind [127.0.0.1]:$PORT: Address already in use" >&2
                 |  echo "channel_setup_fwd_listener_tcpip: cannot listen to port: $PORT" >&2
                 |  exit 255
+                |fi
+                |if [ "${'$'}runs" -eq "${'$'}{STUB_PARTIAL_BIND_ON:-0}" ]; then
+                |  echo "bind [::1]:$PORT: Address already in use" >&2
                 |fi
                 |if [ "${'$'}runs" -le "${'$'}{STUB_FAILS:-0}" ]; then exit "${'$'}{STUB_STATUS:-255}"; fi
                 |exec sleep 300
@@ -115,7 +120,6 @@ internal class TunnelScriptTest {
 
         assertThat(tunnel.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).withFailMessage("the script kept restarting a taken port").isTrue()
         assertThat(tunnel.exitValue()).isEqualTo(SSH_FAILURE)
-        Thread.sleep(PAST_BACKOFF_MS)
         assertThat(runsLog.readLines()).hasSize(2)
     }
 
@@ -130,8 +134,8 @@ internal class TunnelScriptTest {
 
         assertThat(tunnel.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).withFailMessage("the script did not exit on TERM").isTrue()
         assertThat(ssh.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).isFalse()
-        Thread.sleep(PAST_BACKOFF_MS)
         assertThat(runsLog.readLines()).hasSize(1)
+        assertThat(tunnelLog.readLines().last()).matches(TIMESTAMPED.pattern).endsWith("stopped by TERM; ssh on port $PORT has ended.")
     }
 
     @ParameterizedTest(name = "under {0}")
@@ -148,7 +152,57 @@ internal class TunnelScriptTest {
         assertThat(
             backoff.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive,
         ).withFailMessage("the backoff sleep outlived TERM").isFalse()
-        Thread.sleep(PAST_BACKOFF_MS)
+        assertThat(runsLog.readLines()).hasSize(1)
+    }
+
+    @ParameterizedTest(name = "under {0}")
+    @MethodSource("shells")
+    fun `an ssh that reports one loopback address taken but exits for another reason is started again`(shell: String) {
+        // ssh -v prints "Address already in use" for an address it could not bind while it binds another
+        // and keeps running; only "cannot listen to port" means the port cannot be had.
+        recordPort(PORT)
+        val tunnel = launch(shell, failures = 1, partialBindOn = 1)
+
+        awaitRuns(2)
+
+        assertThat(tunnel.isAlive).withFailMessage("the script treated a partial bind error as a taken port").isTrue()
+    }
+
+    @ParameterizedTest(name = "under {0}")
+    @MethodSource("shells")
+    fun `a bind error an earlier launch wrote to the log does not stop a restart`(shell: String) {
+        tunnelLog.writeText("2026-10-11T00:00:00Z channel_setup_fwd_listener_tcpip: cannot listen to port: $PORT\n")
+        recordPort(PORT)
+        val tunnel = launch(shell, failures = 1)
+
+        awaitRuns(2)
+
+        assertThat(tunnel.isAlive).withFailMessage("the script read a bind error from before its own ssh run").isTrue()
+    }
+
+    @ParameterizedTest(name = "under {0}")
+    @MethodSource("shells")
+    fun `a bind error from an earlier run of the script does not stop a later run from restarting`(shell: String) {
+        recordPort(PORT)
+        val earlier = launch(shell, failures = 0, bindFailsOn = 1)
+        assertThat(earlier.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+        assertThat(tunnelLog.readText()).contains("cannot listen to port: $PORT")
+
+        // Run 2 of the stub fails plainly; run 3 stays up.
+        val later = launch(shell, failures = 2)
+        awaitRuns(3)
+
+        assertThat(later.isAlive).withFailMessage("the earlier run's bind error stopped the restart").isTrue()
+    }
+
+    @ParameterizedTest(name = "under {0}")
+    @MethodSource("shells")
+    fun `an unverified ssh that exits with 127 ends the script with 127`(shell: String) {
+        // 127 is also what wait returns for a child already reaped; on the first wait it is ssh's own status.
+        val tunnel = launch(shell, failures = 1, status = NOT_FOUND_STATUS)
+
+        assertThat(tunnel.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+        assertThat(tunnel.exitValue()).isEqualTo(NOT_FOUND_STATUS)
         assertThat(runsLog.readLines()).hasSize(1)
     }
 
@@ -196,6 +250,7 @@ internal class TunnelScriptTest {
         failures: Int,
         status: Int = SSH_FAILURE,
         bindFailsOn: Int = 0,
+        partialBindOn: Int = 0,
     ): Process =
         ProcessBuilder(shell, script.absolutePath, "$PORT", SSH_CONFIG, "$BACKOFF_SECONDS", tunnelLog.absolutePath, HOST)
             .redirectErrorStream(true)
@@ -205,6 +260,7 @@ internal class TunnelScriptTest {
                 environment()["STUB_FAILS"] = "$failures"
                 environment()["STUB_STATUS"] = "$status"
                 environment()["STUB_BIND_FAILS_ON"] = "$bindFailsOn"
+                environment()["STUB_PARTIAL_BIND_ON"] = "$partialBindOn"
             }.start()
             .also { started += it }
 
@@ -257,11 +313,12 @@ internal class TunnelScriptTest {
         const val HOST = "control0"
         const val SSH_FAILURE = 255
         const val DISTINCT_STATUS = 3
+        const val NOT_FOUND_STATUS = 127
         const val BACKOFF_SECONDS = 1
         const val PAST_BACKOFF_MS = 1500L
         const val LIMIT_SECONDS = 15L
         const val POLL_MS = 50L
-        const val SSH_ARGUMENTS = "-v -o ExitOnForwardFailure=yes -N -D $PORT -F $SSH_CONFIG $HOST"
+        const val SSH_ARGUMENTS = "-v -o ExitOnForwardFailure=yes -N -D 127.0.0.1:$PORT -F $SSH_CONFIG $HOST"
         val TIMESTAMPED = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z edl-socks-tunnel: .+""")
 
         /** `/bin/sh`, and dash too where it is installed (it is `/bin/sh` on Debian and Ubuntu). */

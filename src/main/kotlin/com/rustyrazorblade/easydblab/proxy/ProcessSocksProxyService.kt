@@ -52,10 +52,12 @@ internal fun stripSshDebugNoise(
         .takeLast(tailLines)
 
 /**
- * What `ssh` prints when its `-D` listener cannot bind: `bind [127.0.0.1]:<port>: Address already in
- * use` for each loopback address, then `cannot listen to port: <port>` once every address failed.
+ * What `ssh` prints when its `-D` listener cannot bind: `cannot listen to port: <port>`, once no address
+ * of the forward could be bound. Its `bind [<address>]:<port>: Address already in use` line names one
+ * address only; with `-v` ssh prints it while it binds another address and keeps running, so it is not
+ * matched.
  */
-private val LOCAL_PORT_BIND_FAILURE = Regex("""Address already in use|cannot listen to port""")
+private val LOCAL_PORT_BIND_FAILURE = Regex("""cannot listen to port""")
 
 /**
  * Whether an `ssh` transcript shows the dynamic forward failed because its local port was already

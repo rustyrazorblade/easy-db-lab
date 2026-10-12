@@ -966,7 +966,7 @@ object Constants {
          * How many times a SOCKS5 proxy start launches `ssh -D`, each on a freshly selected port,
          * when the previous attempt died because its local port was already bound. Two workspaces
          * starting a proxy at the same moment can both find the same port free; the loser's ssh
-         * exits with "Address already in use" and the next attempt picks another port.
+         * exits with "cannot listen to port" and the next attempt picks another port.
          */
         const val PORT_BIND_MAX_ATTEMPTS = 3
 

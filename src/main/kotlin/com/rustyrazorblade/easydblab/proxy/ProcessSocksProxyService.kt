@@ -70,13 +70,13 @@ private fun utcSeconds(instant: Instant): String = DateTimeFormatter.ISO_INSTANT
 
 /**
  * SOCKS5 proxy service that launches a detached `<workspace>/bin/edl-socks-tunnel` OS process, which
- * runs `ssh -N -D` and starts it again on the same port when its connection dies.
+ * runs `ssh -N -D 127.0.0.1:<port>` and starts it again on the same port when its connection dies.
  *
  * Unlike the previous in-process implementation, the tunnel process outlives the JVM. Its PID is the
  * one recorded, and [TunnelProcessControl] stops it and its ssh together.
  * On each [ensureRunning] call the service checks its in-memory tunnel, then `.socks5-proxy-state`,
- * for a reusable process (PID alive + same controlIP + same sshConfig path + the tunnel verified
- * end-to-end by the [TunnelReachabilityProbe]) before starting a new one. A live ssh whose tunnel
+ * for a reusable process (the PID still the recorded tunnel script + same controlIP + same sshConfig
+ * path + the tunnel verified end-to-end by the [TunnelReachabilityProbe]) before starting a new one. A live ssh whose tunnel
  * no longer reaches the control node is a zombie tunnel and is never reused: it is stopped, a fresh
  * proxy is started instead, and that start fails the calling command if it cannot be verified either.
  * When started, the proxy port is published via the private [Constants.Proxy.PORT_PROPERTY] system
@@ -338,7 +338,7 @@ class ProcessSocksProxyService(
      * message.
      *
      * The port is chosen per attempt. Another workspace starting its own proxy at the same moment
-     * can find the same port free and bind it first; ssh then dies with "Address already in use".
+     * can find the same port free and bind it first; ssh then dies with "cannot listen to port".
      * That one failure is retried under [RetryUtil.createLocalPortBindRetryConfig], each attempt
      * on a freshly selected port, so concurrent clusters never collide on the local SOCKS port.
      *
@@ -486,7 +486,7 @@ class ProcessSocksProxyService(
 
     /**
      * Builds the command line that starts the workspace's `edl-socks-tunnel` for the dynamic SOCKS5
-     * forward on [port] to [alias]. The script runs `ssh -v -o ExitOnForwardFailure=yes -N -D`, and
+     * forward on [port] to [alias]. The script runs `ssh -v -o ExitOnForwardFailure=yes -N -D 127.0.0.1:<port>`, and
      * starts it again on the same port when it exits after the tunnel was verified, so a dropped
      * connection reconnects with no CLI command. It appends everything it and its ssh write to
      * [logFile]. `nohup` keeps the tunnel alive when the terminal that started it closes.

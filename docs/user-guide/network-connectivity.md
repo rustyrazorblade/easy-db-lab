@@ -132,7 +132,7 @@ If you don't want to set up Tailscale, the SOCKS proxy provides connectivity via
 ```
 ┌─────────────────┐     SSH Tunnel      ┌──────────────┐
 │  Your Machine   │ ──────────────────► │ Control Node │
-│ localhost:<port>│                     │  (control0)  │
+│ 127.0.0.1:<port>│                     │  (control0)  │
 └────────┬────────┘                     └──────┬───────┘
          │                                     │
     SOCKS5 Proxy                         Private VPC
@@ -153,11 +153,11 @@ The `easy-db-lab` CLI is the only thing that starts or stops the tunnel. Any com
 reach the cluster starts it, or reuses the one already running, before the command does its work.
 The CLI reuses a running tunnel only after a connection through it reaches the control node. If the tunnel's SSH connection died while its local port stayed open, the CLI stops it, starts a new one, and records the new port.
 
-When the CLI replaces a tunnel, it prints the old port, the new port and the reason: the tunnel went to another control node, it no longer reached the control node, or its process had exited. If your browser uses the tunnel, change its SOCKS port to the new one. If the old tunnel does not stop, the CLI prints an error with its PID; end it with `kill -9 <pid>`.
+When the CLI replaces a tunnel, it prints the old port, the new port and the reason: the tunnel went to another control node, it no longer reached the control node, or its process had exited. If your browser uses the tunnel, change its SOCKS port to the new one. If the old tunnel does not stop, the CLI prints an error with its PID; end it with `kill -9 <pid>`. The CLI no longer records that tunnel, so it will not stop an `ssh` the tunnel leaves: the error also gives the `pkill` command that ends it.
 
-The tunnel reconnects by itself. The CLI runs it through `<workspace>/bin/edl-socks-tunnel`, which easy-db-lab writes with the tool wrappers. That script runs `ssh -N -D` and, when `ssh` exits, starts it again on the same port after a two-second pause. The SSH keepalives make `ssh` exit about 90 seconds after its connection dies, for example after a laptop sleep or a network change. Because the port does not change, wrapped tools in an open shell work again as soon as the connection comes back, with no CLI command. `stop-socks` and `down` stop the script and its `ssh`.
+The tunnel reconnects by itself. The CLI runs it through `<workspace>/bin/edl-socks-tunnel`, which easy-db-lab writes with the tool wrappers. That script runs `ssh -N -D 127.0.0.1:<port>` and, when `ssh` exits, starts it again on the same port after a two-second pause. The tunnel listens on 127.0.0.1 only, and every client of it uses 127.0.0.1, never `localhost`: if another process holds the port on one loopback address, a client of `localhost` could reach that process instead. The SSH keepalives make `ssh` exit about 90 seconds after its connection dies, for example after a laptop sleep or a network change. Because the port does not change, wrapped tools in an open shell work again as soon as the connection comes back, with no CLI command. `stop-socks` and `down` stop the script and its `ssh`.
 
-The script restarts `ssh` only for a tunnel the CLI has verified. The CLI records the port in `.socks5-proxy.env` only after a connection through the tunnel reaches the control node, and the script checks that record. A tunnel that never came up (its port was taken, its key was refused) ends at once, and the CLI reports the failure or retries on a new port. If another process takes the port while `ssh` waits to restart, the script ends after that one attempt. The wrapped tools then fail with the `start-socks` message, and the next CLI command starts a new tunnel.
+The script restarts `ssh` only for a tunnel the CLI has verified. The CLI records the port in `.socks5-proxy.env` only after a connection through the tunnel reaches the control node, and the script checks that record. A tunnel that never came up (its port was taken, its key was refused) ends at once, and the CLI reports the failure or retries on a new port. If another process takes the port while `ssh` waits to restart, the script ends after that one attempt. The wrapped tools then fail with the `start-socks` message, which names `<workspace>/logs/socks5-proxy.log`, and the next CLI command starts a new tunnel. The log records each `ssh` start and why the script ended, with a UTC timestamp on every line.
 
 The tunnel is shared by every command in the workspace, so Ctrl-C does not end it. Pressing Ctrl-C during an easy-db-lab command stops that command and leaves the tunnel running. Use `easy-db-lab stop-socks` to stop it.
 
@@ -172,7 +172,9 @@ no tunnel is needed.
 
 Each new tunnel listens on a random free local port, from 49152 to 65535; no port is preferred. Each workspace records its own port, so several clusters can run side by side, and two workspaces are unlikely to want the same port. If they do, the second one picks another port.
 
-The CLI records the tunnel in the workspace's `.socks5-proxy.env`, as `EDL_SOCKS_PORT` (the port) and `EDL_SOCKS_PID` (the PID of the tunnel script), next to `EDL_TAILSCALE_ACTIVE`. The CLI is the only writer of this file; the wrappers and `env.sh` read it.
+The CLI records the tunnel in the workspace's `.socks5-proxy.env`, as `EDL_SOCKS_PORT` (the port) and `EDL_SOCKS_PID` (the PID of the tunnel script), next to `EDL_TAILSCALE_ACTIVE`. The CLI is the only writer of this file; the wrappers and `env.sh` read it. Each write holds a lock on `.socks5-proxy.env.lock`, so two easy-db-lab commands in the same workspace never lose each other's values.
+
+A wrapper checks only that some process still holds the recorded PID, because a shell script cannot read another process's arguments portably. The CLI checks more: it reuses a recorded tunnel only when the process with that PID is the workspace's tunnel script, with the recorded port and `sshConfig`. When another program now holds the PID, the next CLI command that needs the tunnel starts a new one.
 
 ### Tool Wrappers
 
@@ -256,7 +258,7 @@ proxy:
 
 | Setting | Value |
 |---------|-------|
-| SOCKS Host | `localhost` |
+| SOCKS Host | `127.0.0.1` |
 | SOCKS Port | the port `start-socks` printed (`socks5-status` shows it too) |
 | SOCKS Version | 5 |
 

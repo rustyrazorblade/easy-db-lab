@@ -50,13 +50,14 @@ class LoopbackPortSelector(
      *
      * A plain `ServerSocket(port)` binds the wildcard address with `SO_REUSEADDR` enabled (Java's
      * default for a server socket). Under `SO_REUSEADDR`, a wildcard bind coexists with an existing
-     * loopback-scoped listener, so the probe reports the port as free even though `ssh -D` — which
-     * binds `127.0.0.1` and `::1` — cannot use it. That made the fallback dead code against this
-     * tool's own proxy: a second datacenter kept retrying the busy port and ssh failed with
-     * "bind [::1]:<port>: Address already in use".
+     * loopback-scoped listener, so the probe reports the port as free even though `ssh -D` cannot
+     * use it. That made the fallback dead code against this tool's own proxy: a second datacenter
+     * kept retrying the busy port and ssh failed to bind it.
      *
      * This probe instead binds each loopback address with `SO_REUSEADDR` disabled, matching ssh. The
-     * port is free only if every loopback address binds cleanly.
+     * port is free only if every loopback address binds cleanly. The tunnel binds only `127.0.0.1`,
+     * but a port another process holds on `::1` is passed over too, so a client that says
+     * `localhost` cannot reach that process.
      */
     private fun isLoopbackPortFree(port: Int): Boolean =
         loopbackProbeAddresses().all { address ->
@@ -72,8 +73,8 @@ class LoopbackPortSelector(
         }
 
     /**
-     * The loopback addresses `ssh -D` binds: the IPv4 and IPv6 loopback. Both are resolved from their
-     * literal forms, so neither depends on name resolution.
+     * The loopback addresses a free port must be free on: the IPv4 loopback the tunnel binds, and the
+     * IPv6 loopback. Both are resolved from their literal forms, so neither depends on name resolution.
      */
     private fun loopbackProbeAddresses(): List<InetAddress> = listOf(InetAddress.getByName("127.0.0.1"), InetAddress.getByName("::1"))
 }

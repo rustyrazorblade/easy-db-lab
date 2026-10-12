@@ -644,7 +644,7 @@ class Up(
      * fabric8 operations can reach the cluster API without Tailscale. The service is always asked, so
      * a tunnel that died since the preflight is restarted before K3s setup dials it. The tunnel is
      * reported once, as `socks start` reports it, with its port for a browser, and as what happened in
-     * this invocation: when it is the tunnel the preflight already started or reused (the same control
+     * this invocation: when the service reports the tunnel the preflight already started or reused still running (the same control
      * node and port), its `reused` flag is the preflight's, because the service would now call a
      * tunnel it just started "already running".
      */
@@ -653,8 +653,12 @@ class Up(
         val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
         log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
         val proxy = socksProxyService.ensureRunning(controlHost)
+        // Only the same live tunnel keeps the preflight's flag: one the recheck had to start again is
+        // new, even on the same port.
         val fromPreflight =
-            preflightTunnel?.takeIf { it.gatewayHost.privateIp == controlHost.privateIp && it.localPort == proxy.localPort }
+            preflightTunnel?.takeIf {
+                proxy.reused && it.gatewayHost.privateIp == controlHost.privateIp && it.localPort == proxy.localPort
+            }
         eventBus.emit(Event.Proxy.TunnelReady(port = proxy.localPort, reused = fromPreflight?.reused ?: proxy.reused))
     }
 

@@ -636,6 +636,17 @@ class UpTest : UpTestFixture() {
     }
 
     @Test
+    fun `a tunnel the preflight reused that died and was restarted on the same port is reported as started`() {
+        // The recheck started a new tunnel; that it landed on the same port does not make it the reused one.
+        tunnelFromPreflight(reused = true, later = { host -> tunnel(host, port = TUNNEL_PORT, reused = false) })
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+    }
+
+    @Test
     fun `a tunnel up's own check replaces on another port is reported as the new one`() {
         tunnelFromPreflight(reused = false, later = { host -> tunnel(host, port = OTHER_TUNNEL_PORT, reused = false) })
         val events = captureEvents()

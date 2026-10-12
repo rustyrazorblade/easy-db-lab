@@ -134,8 +134,13 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
 (`DirectSshRoute` or `ssm/SsmSshRoute`). Everything else asks the route; do not add another
 `when (sshTransport)` elsewhere. The only other reader is `up`'s local-tooling preflight.
 
-- **OpenSSH paths** (the SOCKS tunnel, every `env.sh` helper) use `sshConfig`.
-  `ClusterConfigurationService` writes `route.proxyCommand(host)` into each `Host` block (and
+- **OpenSSH paths** (the SOCKS tunnel, every `env.sh` helper and the `bin/` SSH wrappers) use
+  `sshConfig`. `ClusterConfigWriter.writeSshConfig` puts every cluster-wide option (host keys, user,
+  identity, keepalives, `ConnectTimeout`) in one `Host db* app* control*` block, its wildcards derived
+  from `ServerType`, then one block per host, and ends with `Host *` and `Include ~/.ssh/config`, so
+  any other host (`github.com`, a bare IP) resolves as it would without `-F`; the first value obtained
+  wins, so the included file cannot change a cluster option (`GeneratedSshConfigResolutionTest` checks
+  this with real `ssh -G`). `ClusterConfigurationService` writes `route.proxyCommand(host)` into each `Host` block (and
   into the fallback config `env.sh` writes when `sshConfig` is missing). Under `ssm` that is
   `aws ssm start-session --document-name AWS-StartSSHSession`. Each `Hostname` line still
   directly follows its `Host` line. Nothing reads the file that way any more (the old `env.sh`

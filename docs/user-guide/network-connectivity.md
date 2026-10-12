@@ -287,9 +287,23 @@ If the tunnel process does not end, `socks stop` prints its PID and exits non-ze
 
 If the tunnel script was killed from outside (for example with `kill -9`), its `ssh` can keep running on its own. `socks stop`, `down` and the next tunnel start find that `ssh` by the recorded port and `sshConfig`, and stop it.
 
+### The Generated sshConfig
+
+The `sshConfig` generated for your cluster applies its options to the cluster's hosts only. It
+starts with one `Host db* app* control*` block, a wildcard per node type, so it covers every node
+the cluster grows to. That block sets `StrictHostKeyChecking=no`, `UserKnownHostsFile=/dev/null`,
+`User ubuntu`, the cluster's `IdentityFile`, the keepalives and `ConnectTimeout`. Each node then has
+its own `Host` block with its address and, under the `ssm` transport, its `ProxyCommand`.
+
+The file ends with `Host *` and `Include ~/.ssh/config`. Any other host, such as `github.com` for a
+`git` that runs through the workspace's `ssh` wrapper, or a bare IP address, resolves exactly as it
+would without `-F`: from your own `~/.ssh/config`. `ssh` keeps the first value it reads for an
+option, so your own config can add options for a cluster node but cannot change the ones the
+cluster block sets. To see what applies to a host, run `ssh -F <workspace>/sshConfig -G <host>`.
+
 ### Host Key Verification
 
-The `sshConfig` generated for your cluster sets `UserKnownHostsFile=/dev/null` alongside
+For the cluster's nodes, the generated `sshConfig` sets `UserKnownHostsFile=/dev/null` alongside
 `StrictHostKeyChecking=no`. `ssh` — and therefore the SOCKS tunnel, whose `edl-socks-tunnel`
 script runs `ssh -N -D` against that config — never reads or writes your `~/.ssh/known_hosts` for
 cluster nodes.

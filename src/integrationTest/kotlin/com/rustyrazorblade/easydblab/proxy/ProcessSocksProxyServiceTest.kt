@@ -20,6 +20,7 @@ import java.net.BindException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.Socket
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -389,18 +390,21 @@ class ProcessSocksProxyServiceTest {
 
     @Test
     fun `a live PID whose recorded port is not listening is not reused`() {
-        val deadPort = reserveFreePort() // recorded but nothing is listening on it
+        // The recorded port stays bound, but never listens, for the whole test: a port closed first
+        // could be taken by another process's listener before the probe connects.
+        Socket().use { bound ->
+            bound.bind(InetSocketAddress("127.0.0.1", 0))
+            val deadPort = bound.localPort
+            writeStateFile(pid = recordedTunnelPid(deadPort), port = deadPort)
 
-        writeStateFile(pid = recordedTunnelPid(deadPort), port = deadPort)
+            // The reuse check rejects the zombie (the probe cannot connect), so a fresh start is attempted;
+            // the fake launcher makes that start fail fast, so the zombie is seen rejected, not reused.
+            assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }).ensureRunning(testHost) }
+                .isInstanceOf(IllegalStateException::class.java)
 
-        // isValidProxy() rejects the zombie (the probe cannot connect), so a fresh start is attempted; the
-        // fake launcher makes that start fail fast so we can observe the zombie was rejected, not reused.
-        assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }).ensureRunning(testHost) }
-            .isInstanceOf(IllegalStateException::class.java)
-
-        // The zombie's port must never be republished — it was rejected as invalid, and the fresh
-        // attempt also failed.
-        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
+            // The zombie's port must never be republished: it was rejected, and the fresh attempt also failed.
+            assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
+        }
     }
 
     @Test

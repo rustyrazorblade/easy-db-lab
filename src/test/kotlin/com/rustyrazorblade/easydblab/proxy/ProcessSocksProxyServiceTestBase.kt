@@ -267,7 +267,7 @@ internal abstract class ProcessSocksProxyServiceTestBase {
         ports: ArrayDeque<Int>,
         launched: MutableList<List<String>> = mutableListOf(),
         launcher: SshProcessLauncher = SshProcessLauncher { command, _ -> liveTunnelProcess().also { launched += command } },
-        tunnelProcesses: TunnelProcessControl = noProcesses,
+        tunnelProcesses: TunnelProcessControl = seeing(recordedScript()),
     ) = service(
         probe = probe,
         launcher = launcher,

@@ -155,7 +155,7 @@ class ProcessSocksProxyService(
 
     override fun ensureRunning(gatewayHost: ClusterHost): SocksProxyState =
         lock.withLock {
-            val inMemory = state?.takeIf { isAlive(pid) }?.let { checkInMemory(it, gatewayHost) } ?: TunnelCheck.Absent
+            val inMemory = state?.let { checkInMemory(it, gatewayHost) } ?: TunnelCheck.Absent
             if (inMemory is TunnelCheck.Reused) return@withLock inMemory.state
 
             val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
@@ -213,7 +213,7 @@ class ProcessSocksProxyService(
     override fun isRunning(): Boolean =
         lock.withLock {
             val current = state ?: return@withLock false
-            isAlive(pid) && isPortAccepting(current.localPort)
+            inMemoryStatus() == RecordedTunnelStatus.RUNNING && isPortAccepting(current.localPort)
         }
 
     override fun getState(): SocksProxyState? = lock.withLock { state }
@@ -252,6 +252,9 @@ class ProcessSocksProxyService(
     ): TunnelCheck {
         val reason =
             when {
+                // The same identity check as the state-file path: the PID must still be this tunnel's script.
+                inMemoryStatus() == RecordedTunnelStatus.GONE -> Event.Proxy.ReplaceReason.PROCESS_GONE
+                inMemoryStatus() == RecordedTunnelStatus.PID_REUSED -> Event.Proxy.ReplaceReason.PID_REUSED
                 current.gatewayHost.privateIp != gatewayHost.privateIp -> Event.Proxy.ReplaceReason.GATEWAY_CHANGED
                 isFreshlyVerified(pid, current.localPort) -> null
                 reachesGateway(current.localPort, gatewayHost) -> null.also { markVerified(pid, current.localPort) }
@@ -612,7 +615,8 @@ class ProcessSocksProxyService(
         }
     }
 
-    private fun isAlive(processPid: Int): Boolean = processPid > 0 && ProcessHandle.of(processPid.toLong()).isPresent
+    /** What the PID of the in-memory tunnel is now, by [TunnelProcessControl.status]; GONE when there is none. */
+    private fun inMemoryStatus(): RecordedTunnelStatus = inMemoryRecord()?.let { tunnelProcesses.status(it) } ?: RecordedTunnelStatus.GONE
 
     private fun isPortAccepting(port: Int): Boolean =
         try {

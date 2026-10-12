@@ -12,6 +12,7 @@ import org.mockito.kotlin.times
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.time.Duration
+import java.util.stream.Stream
 
 /** [ProcessSocksProxyService] deciding between reusing and replacing a tunnel, from memory and from the state file: the end-to-end probe, its freshness window, and the events a replacement emits. */
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
@@ -197,6 +198,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
                 probe = PortProbe(STOP_PORT),
                 launcher = { command, _ -> liveTunnelProcess().also { launched += command } },
                 portSelector = { STOP_PORT },
+                tunnelProcesses = seeing(recordedScript()),
             )
         svc.ensureRunning(testHost)
         val envFile = ProxyEnvFile(tempDir).apply { removeTunnel() }
@@ -390,6 +392,51 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         )
         assertThat(events.first().toDisplayString()).contains("kill -9 $livePid").contains("pkill -f -- \"-D 127.0.0.1:$STOP_PORT\"")
         assertThat(events.last().toDisplayString()).contains("127.0.0.1:$NEW_PORT").doesNotContain("localhost").contains("browser")
+    }
+
+    @Test
+    fun `an in-memory tunnel whose PID another program now holds is replaced as reused, within the freshness window`() {
+        val script = recordedScript()
+        val other = FakeTunnelProcess(livePid, "/bin/sleep", listOf("60"))
+        var holder = script
+        val svc =
+            inMemoryService(
+                PortProbe(STOP_PORT, NEW_PORT),
+                ManualClock(),
+                ArrayDeque(listOf(STOP_PORT, NEW_PORT)),
+                tunnelProcesses = TunnelProcessControl(lookup = { pid -> holder.handle.takeIf { pid == livePid } }, allProcesses = { Stream.empty() }),
+            )
+        svc.ensureRunning(testHost)
+        // The tunnel's script ended and the OS gave its PID to another program; the probe would still pass.
+        holder = other
+
+        val replacement = svc.ensureRunning(testHost)
+
+        assertThat(replacement.localPort).isEqualTo(NEW_PORT)
+        assertThat(replacement.reused).isFalse()
+        assertThat(other.signals).isZero()
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.PID_REUSED))
+    }
+
+    @Test
+    fun `an in-memory tunnel whose PID no process holds is replaced as gone, and reported once`() {
+        var alive = true
+        val script = recordedScript()
+        val svc =
+            inMemoryService(
+                PortProbe(STOP_PORT, NEW_PORT),
+                ManualClock(),
+                ArrayDeque(listOf(STOP_PORT, NEW_PORT)),
+                tunnelProcesses =
+                    TunnelProcessControl(lookup = { pid -> script.handle.takeIf { alive && pid == livePid } }, allProcesses = { Stream.empty() }),
+            )
+        svc.ensureRunning(testHost)
+        alive = false
+
+        val replacement = svc.ensureRunning(testHost)
+
+        assertThat(replacement.localPort).isEqualTo(NEW_PORT)
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.PROCESS_GONE))
     }
 
     @Test

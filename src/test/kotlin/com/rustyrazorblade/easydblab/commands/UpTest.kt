@@ -654,6 +654,15 @@ class UpTest : UpTestFixture() {
     }
 
     @Test
+    fun `the SSH readiness check does not echo what each host printed`() {
+        // `echo 1` proves a host answers; echoing its output put a bare "1" per host on the console.
+        newUp().execute()
+
+        assertThat(sshCheckedAliases).isNotEmpty()
+        assertThat(echoedCommands).doesNotContain("echo 1")
+    }
+
+    @Test
     fun `up --no-setup reports no SOCKS tunnel on a Tailscale cluster`() {
         val events = captureEvents()
 

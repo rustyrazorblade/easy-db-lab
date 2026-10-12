@@ -131,6 +131,9 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected var sshFailuresRemaining = Int.MAX_VALUE
     protected val sshCheckedAliases = mutableListOf<String>()
 
+    /** every remote command run with its output echoed to the console, in order */
+    protected val echoedCommands = mutableListOf<String>()
+
     /** Cilium node-fix paths the fake SSH reports missing, by host alias, and every alias asked */
     protected val missingCiliumFixes = mutableMapOf<String, List<String>>()
     protected val ciliumFixCheckedAliases = mutableListOf<String>()
@@ -238,7 +241,10 @@ abstract class UpTestFixture : BaseKoinTest() {
                 command: String,
                 output: Boolean,
                 secret: Boolean,
-            ): Response = fakeRemoteResponse(host, command)
+            ): Response {
+                if (output) echoedCommands.add(command)
+                return fakeRemoteResponse(host, command)
+            }
 
             override fun upload(
                 host: Host,
@@ -319,6 +325,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         sshFailureException = null
         sshFailuresRemaining = Int.MAX_VALUE
         sshCheckedAliases.clear()
+        echoedCommands.clear()
         missingCiliumFixes.clear()
         ciliumFixCheckedAliases.clear()
     }

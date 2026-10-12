@@ -629,7 +629,8 @@ class Up(
             serverType,
             hostFilter,
         ) { clusterHost ->
-            remoteOps.executeRemotely(clusterHost.toHost(), "echo 1").text
+            // Only that the host answers matters; echoing its output printed a bare "1" per host.
+            remoteOps.executeRemotely(clusterHost.toHost(), "echo 1", output = false).text
         }
     }
 

@@ -2,7 +2,7 @@
 
 ### Requirement: SOCKS Proxy
 
-The system MUST support a SOCKS5 proxy via SSH dynamic port forwarding as the access path to internal cluster services when Tailscale is not active. The proxy runs as a detached OS process that persists across JVM restarts, shared across invocations until `down` or `stop-socks` is called; its PID and port are recorded in `.socks5-proxy-state`. The proxy state file MUST be written atomically, so a reader never sees a partial file.
+The system MUST support a SOCKS5 proxy via SSH dynamic port forwarding as the access path to internal cluster services when Tailscale is not active. The proxy runs as a detached OS process that persists across JVM restarts, shared across invocations until `down` or `socks stop` is called; its PID and port are recorded in `.socks5-proxy-state`. The proxy state file MUST be written atomically, so a reader never sees a partial file.
 
 The proxy MUST be started eagerly by the command executor rather than lazily by individual services: when cluster state exists, infrastructure is UP, and Tailscale is not active, the executor SHALL start (or reuse) the proxy before any command logic executes. Because starting the proxy is idempotent and the process persists, startup MUST be attempted unconditionally on every command invocation under those conditions, and no individual service SHALL be responsible for starting it.
 
@@ -169,7 +169,7 @@ The CLI MUST update keys without dropping the others, and MUST write the file at
 #### Scenario: Port removed when the tunnel stops
 
 - **GIVEN** an env file that records a port
-- **WHEN** `down` or `stop-socks` stops the tunnel
+- **WHEN** `down` or `socks stop` stops the tunnel
 - **THEN** the env file no longer holds `EDL_SOCKS_PORT`
 - **AND** `EDL_TAILSCALE_ACTIVE` keeps its value
 
@@ -196,7 +196,7 @@ The CLI MUST start the SOCKS tunnel through a packaged POSIX script, `<workspace
 
 The CLI MUST choose the tunnel's local port at random from free ports and MUST NOT prefer a fixed port, so two workspaces are unlikely to want the same port. Because the port does not change, the proxy env file stays correct across a reconnect, and wrapped tools in an open shell work again once the connection comes back. The SSH keepalives in the generated `sshConfig` (every transport) make `ssh` exit when a connection dies, so the script can reconnect.
 
-The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST verify that a recorded PID is an `edl-socks-tunnel` process for the recorded port and `sshConfig` before it signals it. `stop-socks`, `down`, and the replacement of a stale tunnel MUST stop the script and its `ssh` child, and MUST leave no `ssh` process of that tunnel running. The CLI still verifies a reused tunnel end to end, and replaces it when the check fails.
+The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST verify that a recorded PID is an `edl-socks-tunnel` process for the recorded port and `sshConfig` before it signals it. `socks stop`, `down`, and the replacement of a stale tunnel MUST stop the script and its `ssh` child, and MUST leave no `ssh` process of that tunnel running. The CLI still verifies a reused tunnel end to end, and replaces it when the check fails.
 
 #### Scenario: A dropped connection reconnects on the same port
 
@@ -223,7 +223,7 @@ The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST ver
 - **GIVEN** a verified tunnel whose port another process took while its `ssh` was in backoff
 - **WHEN** the restarted `ssh` fails to bind the port
 - **THEN** the script exits after that one attempt and does not loop
-- **AND** wrapped tools fail with the `easy-db-lab start-socks` message and never use the port
+- **AND** wrapped tools fail with the `easy-db-lab socks start` message and never use the port
 
 #### Scenario: Ctrl-C does not end the shared tunnel
 
@@ -247,12 +247,12 @@ The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST ver
 #### Scenario: A killed script leaves no orphaned ssh behind
 
 - **GIVEN** a tunnel script killed from outside with KILL, whose `ssh` child still runs with the recorded port and `sshConfig`
-- **WHEN** the CLI next starts or replaces the tunnel, or `stop-socks` or `down` runs
+- **WHEN** the CLI next starts or replaces the tunnel, or `socks stop` or `down` runs
 - **THEN** that orphaned `ssh` is stopped
 
 #### Scenario: Stopping the tunnel stops the loop and its ssh
 
-- **WHEN** `stop-socks` or `down` stops the tunnel
+- **WHEN** `socks stop` or `down` stops the tunnel
 - **THEN** the `edl-socks-tunnel` process and its `ssh` child have both exited
 - **AND** no new `ssh` is started afterwards
 
@@ -381,7 +381,7 @@ On every call, each wrapper MUST ignore inherited `EDL_TAILSCALE_ACTIVE` and `ED
 - `curl`: `ALL_PROXY=socks5h://127.0.0.1:<port>` and `NO_PROXY=localhost,127.0.0.1`.
 - `skopeo`: `ALL_PROXY`, `HTTP_PROXY`, and `HTTPS_PROXY` set to `socks5h://127.0.0.1:<port>`, and `NO_PROXY=localhost,127.0.0.1`.
 
-When no port is recorded, or the recorded `EDL_SOCKS_PID` is not a live process, the wrapper MUST fail with exit code 1 and a message that names the workspace and `easy-db-lab start-socks`, and MUST NOT use the port.
+When no port is recorded, or the recorded `EDL_SOCKS_PID` is not a live process, the wrapper MUST fail with exit code 1 and a message that names the workspace and `easy-db-lab socks start`, and MUST NOT use the port.
 
 #### Scenario: Wrapped tools reach the cluster through the tunnel
 
@@ -406,7 +406,7 @@ When no port is recorded, or the recorded `EDL_SOCKS_PID` is not a live process,
 
 - **GIVEN** an env file that records a port and an `EDL_SOCKS_PID` whose process has exited
 - **WHEN** a wrapped tool runs
-- **THEN** it exits 1 with a message that names the workspace and `easy-db-lab start-socks`
+- **THEN** it exits 1 with a message that names the workspace and `easy-db-lab socks start`
 - **AND** it does not connect to the recorded port
 
 #### Scenario: Inherited EDL values are ignored
@@ -425,12 +425,12 @@ When no port is recorded, or the recorded `EDL_SOCKS_PID` is not a live process,
 
 - **GIVEN** a SOCKS cluster whose env file records no port
 - **WHEN** a wrapped tool runs
-- **THEN** it exits 1 with a message that names the workspace and `easy-db-lab start-socks`
+- **THEN** it exits 1 with a message that names the workspace and `easy-db-lab socks start`
 - **AND** it does not fall back to a default port
 
 #### Scenario: Tunnel died on its own
 
-- **GIVEN** a recorded port whose tunnel process has died without `down` or `stop-socks`
+- **GIVEN** a recorded port whose tunnel process has died without `down` or `socks stop`
 - **WHEN** a kit command that runs shell steps is invoked
 - **THEN** the CLI verifies or restarts the tunnel and records its port before the first step runs
 
@@ -467,43 +467,43 @@ The tool wrappers and the proxy env file MUST behave the same under the `direct`
 - **WHEN** a kit shell step or an `env.sh` shell runs a wrapped tool
 - **THEN** the call reaches the cluster through the tunnel
 
-### Requirement: start-socks and stop-socks commands
+### Requirement: socks start and socks stop commands
 
-The CLI MUST provide top-level `start-socks` and `stop-socks` commands. Both emit typed lifecycle events.
+The CLI MUST provide a `socks` command group with `socks start` and `socks stop` subcommands, following the project's command-group convention (for example `tailscale start`). Both emit typed lifecycle events.
 
-- `start-socks` starts or reuses the tunnel, records its port in the proxy env file, and prints the port so the user can set up a browser. It has no `--port` option. On a Tailscale cluster it reports that no tunnel is needed and starts nothing.
-- `stop-socks` stops the tunnel without tearing down the cluster and removes the port from the proxy env file.
+- `socks start` starts or reuses the tunnel, records its port in the proxy env file, and prints the port so the user can set up a browser. It has no `--port` option. On a Tailscale cluster it reports that no tunnel is needed and starts nothing.
+- `socks stop` stops the tunnel without tearing down the cluster and removes the port from the proxy env file.
 
-#### Scenario: start-socks on a SOCKS cluster
+#### Scenario: socks start on a SOCKS cluster
 
 - **GIVEN** a SOCKS cluster with no tunnel running
-- **WHEN** the user runs `easy-db-lab start-socks`
+- **WHEN** the user runs `easy-db-lab socks start`
 - **THEN** the tunnel starts, the env file records its port, and the port is printed
 
-#### Scenario: start-socks reuses a running tunnel
+#### Scenario: socks start reuses a running tunnel
 
 - **GIVEN** a SOCKS cluster with a verified tunnel running
-- **WHEN** the user runs `easy-db-lab start-socks`
+- **WHEN** the user runs `easy-db-lab socks start`
 - **THEN** no new tunnel starts and the existing port is recorded and printed
 
-#### Scenario: start-socks on a Tailscale cluster
+#### Scenario: socks start on a Tailscale cluster
 
 - **GIVEN** a cluster with `tailscaleActive: true`
-- **WHEN** the user runs `easy-db-lab start-socks`
+- **WHEN** the user runs `easy-db-lab socks start`
 - **THEN** it reports that no tunnel is needed and starts nothing
 
-#### Scenario: stop-socks
+#### Scenario: socks stop
 
 - **GIVEN** a running tunnel
-- **WHEN** the user runs `easy-db-lab stop-socks`
+- **WHEN** the user runs `easy-db-lab socks stop`
 - **THEN** the tunnel process stops, the env file no longer records a port, and the cluster keeps running
-- **AND** the next wrapped call fails with the `easy-db-lab start-socks` message
+- **AND** the next wrapped call fails with the `easy-db-lab socks start` message
 
 ### Requirement: env.sh puts the workspace tool wrappers on PATH
 
 `env.sh` MUST put `<workspace>/bin` first on `PATH`, so `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s` resolve to the same wrappers that kit shell steps use. It MUST first remove any shell function of those six names left by an earlier `env.sh`, without errors in bash or zsh and without failing under `set -e`. It MUST NOT define those functions and MUST NOT start or stop the proxy.
 
-`with-proxy` and `socks5-status` stay. They read the port from the proxy env file. `with-proxy` fails with the same `easy-db-lab start-socks` message as the wrappers when no port is recorded, and runs its command directly on a Tailscale cluster.
+`with-proxy` and `socks5-status` stay. They read the port from the proxy env file. `with-proxy` fails with the same `easy-db-lab socks start` message as the wrappers when no port is recorded, and runs its command directly on a Tailscale cluster.
 
 #### Scenario: Sourced shell resolves the wrappers
 
@@ -532,7 +532,7 @@ The CLI MUST provide top-level `start-socks` and `stop-socks` commands. Both emi
 
 - **GIVEN** a SOCKS cluster whose env file records no port
 - **WHEN** the user runs `with-proxy curl http://10.0.1.50:8080/`
-- **THEN** it fails with a message that names `easy-db-lab start-socks`
+- **THEN** it fails with a message that names `easy-db-lab socks start`
 
 #### Scenario: with-proxy on a Tailscale cluster
 

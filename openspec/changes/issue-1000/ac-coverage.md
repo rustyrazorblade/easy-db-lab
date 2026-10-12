@@ -14,9 +14,9 @@
 | AC 12 | No temporary kubeconfig copies; `KubeconfigProxyResolver` no longer exists | `typed-install-steps: No temporary kubeconfig`; REMOVED `networking: Local kubectl/helm invoked by kit shell steps route through the tunnel via a per-command kubeconfig proxy-url` (class deletion is task 5.5; specs name no classes) | ✅ Covered |
 | AC 13 | `k9s` after `source env.sh` resolves to the wrapper and follows the same rules | `networking: Sourced shell on a SOCKS cluster`; `networking: Sourced shell resolves the wrappers`; `networking: Tailscale cluster` | ✅ Covered |
 | AC 14 | Inherited `NO_PROXY`, `no_proxy`, `http_proxy`, and similar do not bypass the tunnel | `networking: Inherited proxy variables do not bypass the tunnel` | ✅ Covered |
-| AC 15 | No port recorded on a SOCKS cluster fails with a message naming `easy-db-lab start-socks` | `networking: No port recorded`; `networking: with-proxy with no port recorded` | ✅ Covered |
+| AC 15 | No port recorded on a SOCKS cluster fails with a message naming `easy-db-lab socks start` | `networking: No port recorded`; `networking: with-proxy with no port recorded` | ✅ Covered |
 | AC 16 | `source env.sh` right after `up` on Tailscale connects directly | `networking: env.sh right after a Tailscale up`; `networking: Tailscale up leaves a usable env file` | ✅ Covered |
-| AC 17 | `down` or `stop-socks` removes the port from the env file | `networking: Port removed when the tunnel stops`; `networking: Proxy cleaned up on teardown`; `networking: stop-socks` | ✅ Covered |
+| AC 17 | `down` or `socks stop` removes the port from the env file | `networking: Port removed when the tunnel stops`; `networking: Proxy cleaned up on teardown`; `networking: socks stop` | ✅ Covered |
 | AC 18 | `init` in a directory with `bin/` fails clearly and writes nothing | `cluster-lifecycle: init refuses a directory that already has bin/`; `cluster-lifecycle: init refuses the source checkout` | ✅ Covered |
 | AC 19 | The `ssm` transport works the same as `ssh` | `networking: SSM transport`; `networking: Direct transport` | ✅ Covered |
 | AC 20 | No code or script parses JSON in shell to read proxy state | `networking: No shell code parses JSON for proxy state`; `networking: Shell tools read the port from the env file` | ✅ Covered |

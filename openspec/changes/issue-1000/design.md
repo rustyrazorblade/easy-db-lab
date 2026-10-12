@@ -41,7 +41,7 @@ Who writes what:
 
 - `up` (`ClusterConfigurationService.writeSshAndEnvironmentFiles`) always writes `EDL_TAILSCALE_ACTIVE` from `state.json`'s `tailscaleActive`. Today the Tailscale branch of `up` returns before any proxy state is written (`CommandExecutor` returns before the Tailscale branch; `Up` returns without writing), so an `env.sh` user right after a Tailscale `up` has nothing to read. This fixes that.
 - `ProcessSocksProxyService` writes `EDL_SOCKS_PORT` only after the tunnel is verified, on start and on reuse.
-- `down` (`Down.cleanupSocks5Proxy`) and `stop-socks` remove `EDL_SOCKS_PORT`.
+- `down` (`Down.cleanupSocks5Proxy`) and `socks stop` remove `EDL_SOCKS_PORT`.
 - `CommandExecutor.ensureProxyRunning` writes `EDL_TAILSCALE_ACTIVE` on its early-return branches where cluster state is known.
 - VPC restore writes the env file and the wrappers.
 - `clean` deletes the file.
@@ -61,7 +61,7 @@ Each call:
 3. Finds the real binary: the first executable `$tool` on `PATH` whose directory does not hold the marker and which is not `-ef "$0"`. If none is found it prints a message to stderr and exits 127. Skipping marked directories means two workspaces' `bin/` on one `PATH` never call each other.
 4. Unsets `EDL_TAILSCALE_ACTIVE` and `EDL_SOCKS_PORT`, then sources the env file, so inherited values never leak in and a port change between calls is picked up.
 5. If `EDL_TAILSCALE_ACTIVE=true`, runs `exec "$real" "$@"` with the environment untouched.
-6. If no `EDL_SOCKS_PORT` is set, exits 1 with a message that names the workspace and tells the user to run `easy-db-lab start-socks`.
+6. If no `EDL_SOCKS_PORT` is set, exits 1 with a message that names the workspace and tells the user to run `easy-db-lab socks start`.
 7. Otherwise clears every inherited proxy variable (`HTTP_PROXY`/`http_proxy`, `HTTPS_PROXY`/`https_proxy`, `ALL_PROXY`/`all_proxy`, `NO_PROXY`/`no_proxy`) and sets both cases of:
    - `kubectl`, `helm`, `cilium`, `k9s`: `HTTPS_PROXY=socks5://localhost:$port`.
    - `curl`: `ALL_PROXY=socks5h://localhost:$port`, `NO_PROXY=localhost,127.0.0.1`.
@@ -101,10 +101,10 @@ With `--clean`, the check runs after the cleanup. The cleanup removes the wrappe
 
 Kit commands that launch these processes are `@RequiresProxy`, so the executor verifies (and if needed restarts) the tunnel before the step runs. A restart on a new port rewrites `EDL_SOCKS_PORT`, and the next wrapped call reads it.
 
-### 6. `start-socks` and `stop-socks`
+### 6. `socks start` and `socks stop`
 
-- `easy-db-lab start-socks` starts or reuses the tunnel through `ProcessSocksProxyService`, writes the port to the env file, and prints the port for browser setup. There is no `--port` option. On a Tailscale cluster it says no tunnel is needed.
-- `easy-db-lab stop-socks` stops the tunnel without tearing down the cluster, and removes the port from the env file.
+- `easy-db-lab socks start` starts or reuses the tunnel through `ProcessSocksProxyService`, writes the port to the env file, and prints the port for browser setup. There is no `--port` option. On a Tailscale cluster it says no tunnel is needed.
+- `easy-db-lab socks stop` stops the tunnel without tearing down the cluster, and removes the port from the env file.
 
 Both are lifecycle commands, so they emit new typed domain events (per `events/CLAUDE.md`). Kotlin is the only proxy manager.
 
@@ -126,9 +126,9 @@ Remove `bin/end-to-end-test`, `bin/e2e-pr`, `bin/debug-log-pipeline`, `bin/test-
 ### 10. Tests
 
 - Unit tier JUnit (`src/test`) runs the packaged wrapper through real `/bin/sh` with stub binaries, the same way as `SsmProxyWrapperScriptTest`. Cases: each tool's variables; hostile inherited proxy environment; Tailscale leaves the environment untouched; port change between calls; missing port message; missing real binary exits 127; no recursion with two workspaces' `bin/` on `PATH`; symlinked workspace; arguments with spaces, stdin, and exit code passthrough; indirect calls via `env`, `xargs`, `sh -c`, and a nested script; an unwrapped `aws` stub sees no proxy variables; inherited `EDL_*` values are ignored. macOS has no `timeout`, so indirect-call tests use `env`, `xargs`, and `sh -c`.
-- Kotlin: `ToolWrapperInstaller` (writes, idempotent, rewrites changed content, refuses a non-wrapper file), `PackagedExecutable`, the env file writer (atomic, merge, remove port), `KitProcessEnvironment` (`PATH` prefix, absolute `KUBECONFIG` overriding the relative one, missing kubeconfig fails), the environments built by `WorkloadStepExecutor`, `KitInstallCommand`, `KitRunnerCommand`, and `KitHookExecutor`, `init` `bin/` refusal, `start-socks`/`stop-socks`, `down` clears the port, `clean`, and `env.sh` content.
+- Kotlin: `ToolWrapperInstaller` (writes, idempotent, rewrites changed content, refuses a non-wrapper file), `PackagedExecutable`, the env file writer (atomic, merge, remove port), `KitProcessEnvironment` (`PATH` prefix, absolute `KUBECONFIG` overriding the relative one, missing kubeconfig fails), the environments built by `WorkloadStepExecutor`, `KitInstallCommand`, `KitRunnerCommand`, and `KitHookExecutor`, `init` `bin/` refusal, `socks start`/`socks stop`, `down` clears the port, `clean`, and `env.sh` content.
 - A bash test sources the generated `env.sh` and checks that `type -P kubectl` is the wrapper and that no function shadows it. zsh is checked by hand on the owner's laptop.
-- Real cluster (required), on the `direct` transport and on the `ssm` transport, from `installDist` output, in a workspace outside the checkout: a scratch kit whose install step runs `kubectl get ns`, `helm list -A`, indirect calls, `curl` to a private service, and `aws sts get-caller-identity` with no proxy variables; a phase step; a proxy restart on a new port; `source env.sh` then `kubectl` and `k9s`; `start-socks`/`stop-socks`; and a regression run of a built-in kit with shell steps and `presto start`.
+- Real cluster (required), on the `direct` transport and on the `ssm` transport, from `installDist` output, in a workspace outside the checkout: a scratch kit whose install step runs `kubectl get ns`, `helm list -A`, indirect calls, `curl` to a private service, and `aws sts get-caller-identity` with no proxy variables; a phase step; a proxy restart on a new port; `source env.sh` then `kubectl` and `k9s`; `socks start`/`socks stop`; and a regression run of a built-in kit with shell steps and `presto start`.
 
 ## Alternatives Considered
 
@@ -142,7 +142,7 @@ Remove `bin/end-to-end-test`, `bin/e2e-pr`, `bin/debug-log-pipeline`, `bin/test-
 8. **Tests.** Chosen: Kotlin JUnit running the script through `/bin/sh`. Rejected: a standalone `.test.sh` with a Gradle Exec task. A zsh test in CI was rejected by the owner (bash in CI; zsh by hand).
 9. **Wrapper form.** Chosen: six identical copies that dispatch on their name. Rejected: small scripts that source a shared library. Rejected: symlinks to one file.
 10. **Proxy variables.** Chosen: the wrapper fully controls them (a design-critic finding). Rejected: add-only, as `env.sh` does today, because an inherited `NO_PROXY` bypasses the tunnel and would regress phase steps.
-11. **Shell proxy manager.** **Owner override:** remove `env.sh`'s `start-socks5`/`stop-socks5` (Kotlin is the only manager) and add top-level `start-socks`/`stop-socks` commands. Rejected: keep the shell functions and have them write the env file. Rejected: overload `status` to start the tunnel (owner: weird). A `socks` group (`socks start`) was offered; the owner chose top-level `start-socks`. A `--port` option was rejected.
+11. **Shell proxy manager.** **Owner override:** remove `env.sh`'s `start-socks5`/`stop-socks5` (Kotlin is the only manager) and add top-level `socks start`/`socks stop` commands. Rejected: keep the shell functions and have them write the env file. Rejected: overload `status` to start the tunnel (owner: weird). A `socks` group (`socks start`) was offered; the owner chose top-level `socks start`. A `--port` option was rejected.
 12. **k9s.** Added as a sixth wrapper (the architect called it the owner's call and recommended it). Rejected: leave it as an `env.sh` function.
 13. **`PackagedExecutable` shared with `SsmProxyWrapper`.** Folded in (the architect). Rejected: duplicate the logic.
 
@@ -153,6 +153,6 @@ Remove `bin/end-to-end-test`, `bin/e2e-pr`, `bin/debug-log-pipeline`, `bin/test-
 - **macOS has no `timeout`.** Unit tests of indirect calls use `env`, `xargs`, and `sh -c` instead. The real-cluster check runs `timeout` where it is installed.
 - **Concurrent writes** from two processes in one workspace are handled by a unique temp file and a rename.
 - **Open shells that sourced an old `env.sh`** keep the old functions until they re-source it. The guarded `unset -f` removes them on re-source.
-- **A tunnel that dies on its own** (not through `down` or `stop-socks`) leaves a stale port. An interactive wrapped call gets "connection refused" until the next CLI command or `start-socks`. Kit steps are safe because their launchers are `@RequiresProxy`.
+- **A tunnel that dies on its own** (not through `down` or `socks stop`) leaves a stale port. An interactive wrapped call gets "connection refused" until the next CLI command or `socks start`. Kit steps are safe because their launchers are `@RequiresProxy`.
 - **zsh `unset -f` noise** when a name is not defined; the guard avoids it.
 - **The unarchived `ssm-ssh-transport` change** also edits the networking spec. See `overrides.md`.

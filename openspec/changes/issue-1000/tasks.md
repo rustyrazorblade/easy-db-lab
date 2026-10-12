@@ -18,7 +18,7 @@
   - hostile inherited `NO_PROXY`/`no_proxy`/`http_proxy`/`ALL_PROXY` are replaced;
   - Tailscale leaves the environment byte-for-byte unchanged;
   - a port change between two calls is picked up;
-  - no port recorded exits 1 with a message naming the workspace and `easy-db-lab start-socks`;
+  - no port recorded exits 1 with a message naming the workspace and `easy-db-lab socks start`;
   - no real binary exits 127 with a message on stderr;
   - two workspaces' `bin/` on `PATH` cause no recursion;
   - a symlinked workspace finds its env file;
@@ -29,9 +29,9 @@
 - [x] 3.2 Write `src/main/resources/com/rustyrazorblade/easydblab/configuration/tool-wrapper.sh` (POSIX `#!/bin/sh`, dispatch on `${0##*/}`, workspace from `pwd -P`, marker-skipping `PATH` search, `-ef "$0"` check, source the env file, `exec`). Make every case in 3.1 pass under dash and macOS `/bin/sh`.
 - [x] 3.3 Owner redirect after the first real-cluster run: the `kubectl`, `helm`, `cilium`, and `k9s` wrappers always set `KUBECONFIG` to the absolute `<workspace>/kubeconfig`, overriding any inherited value, on SOCKS and Tailscale clusters; a missing workspace kubeconfig exits 1 with a message naming the file and does not run the real binary; `curl` and `skopeo` leave `KUBECONFIG` unchanged. Write the failing `ToolWrapperScriptTest` cases first (bare call with no `KUBECONFIG`, inherited `KUBECONFIG` overridden, missing kubeconfig, Tailscale still sets it, `curl`/`skopeo` unchanged), then change the wrapper. Update `docs/user-guide/network-connectivity.md` and `docs/development/kits.md` to say a bare `<workspace>/bin/kubectl` works with no setup. Re-run 13.4 on the live cluster with a bare `<workspace>/bin/kubectl get ns` and an exported `KUBECONFIG=~/.kube/config`.
 
-- [x] 3.4 Owner redirect: the SOCKS tunnel reconnects on its own. Add the packaged POSIX script `configuration/edl-socks-tunnel.sh`, written by `ToolWrapperInstaller` to `<workspace>/bin/edl-socks-tunnel` with the wrappers (covered by the marker and the foreign-file check, removed by `clean`). It runs `ssh -N -D <port> -F <sshConfig> -o ExitOnForwardFailure=yes <host>`, waits for it, and restarts it on the same port after a short backoff; on TERM or INT it kills its `ssh` child and exits. `ProcessSocksProxyService` launches the script instead of `ssh` (keeping the ssh `-v` log), records the script's PID, and still verifies the tunnel end to end before publishing the port. `TunnelProcessControl` verifies a recorded PID is `edl-socks-tunnel` for the recorded port and `sshConfig`, and its stop (TERM, then KILL) leaves no `ssh` child of the tunnel running. Tests first: script tests under `/bin/sh` and dash with a stub `ssh` (restart after exit, same port, backoff, TERM kills the child and stops the loop); Kotlin tests for launch, identity, and stop; extend `TunnelProcessControlIntegrationTest` to a real `edl-socks-tunnel` running a real `ssh`. Update the networking docs. Re-run on the live cluster: kill only the tunnel's `ssh` child, confirm the same port works again without a CLI command, then `stop-socks` leaves no tunnel `ssh` running.
+- [x] 3.4 Owner redirect: the SOCKS tunnel reconnects on its own. Add the packaged POSIX script `configuration/edl-socks-tunnel.sh`, written by `ToolWrapperInstaller` to `<workspace>/bin/edl-socks-tunnel` with the wrappers (covered by the marker and the foreign-file check, removed by `clean`). It runs `ssh -N -D <port> -F <sshConfig> -o ExitOnForwardFailure=yes <host>`, waits for it, and restarts it on the same port after a short backoff; on TERM or INT it kills its `ssh` child and exits. `ProcessSocksProxyService` launches the script instead of `ssh` (keeping the ssh `-v` log), records the script's PID, and still verifies the tunnel end to end before publishing the port. `TunnelProcessControl` verifies a recorded PID is `edl-socks-tunnel` for the recorded port and `sshConfig`, and its stop (TERM, then KILL) leaves no `ssh` child of the tunnel running. Tests first: script tests under `/bin/sh` and dash with a stub `ssh` (restart after exit, same port, backoff, TERM kills the child and stops the loop); Kotlin tests for launch, identity, and stop; extend `TunnelProcessControlIntegrationTest` to a real `edl-socks-tunnel` running a real `ssh`. Update the networking docs. Re-run on the live cluster: kill only the tunnel's `ssh` child, confirm the same port works again without a CLI command, then `socks stop` leaves no tunnel `ssh` running.
 
-- [x] 3.5 Owner-approved redesign after review round 4 and QA round 3 (see networking "SOCKS tunnel reconnects on its own", "Proxy env file for shell-side tools", and "Wrappers route through the tunnel on a SOCKS cluster"): the script restarts `ssh` only when the env file records its own port, replacing the startup-grace timer and its constant; a restart that cannot bind its port ends the script; TERM only, INT ignored; the loop cannot spin on a reused PID; UTC timestamps and a line before each `ssh` run; the CLI appends to the tunnel log with a header per launch; the env file records `EDL_SOCKS_PID` with the port; wrappers fail with the `start-socks` message when that PID is not live; random free local port, no fixed preference; typed events for a replaced tunnel (old port, new port, reason) and for a superseded tunnel that will not stop; an orphaned `ssh` of a KILLed script is found by its recorded `-D` port and `-F` config and stopped; `ConnectTimeout` on every transport. Tests first, including the test-rigor findings TR1 (verified tunnel restarts right after start; unverified first exit ends the script), TR2, TR3, TP1, TP2, and OT1. The live-cluster QA re-run is 13.9.
+- [x] 3.5 Owner-approved redesign after review round 4 and QA round 3 (see networking "SOCKS tunnel reconnects on its own", "Proxy env file for shell-side tools", and "Wrappers route through the tunnel on a SOCKS cluster"): the script restarts `ssh` only when the env file records its own port, replacing the startup-grace timer and its constant; a restart that cannot bind its port ends the script; TERM only, INT ignored; the loop cannot spin on a reused PID; UTC timestamps and a line before each `ssh` run; the CLI appends to the tunnel log with a header per launch; the env file records `EDL_SOCKS_PID` with the port; wrappers fail with the `socks start` message when that PID is not live; random free local port, no fixed preference; typed events for a replaced tunnel (old port, new port, reason) and for a superseded tunnel that will not stop; an orphaned `ssh` of a KILLed script is found by its recorded `-D` port and `-F` config and stopped; `ConnectTimeout` on every transport. Tests first, including the test-rigor findings TR1 (verified tunnel restarts right after start; unverified first exit ends the script), TR2, TR3, TP1, TP2, and OT1. The live-cluster QA re-run is 13.9.
 
 ## 4. ToolWrapperInstaller
 
@@ -53,11 +53,11 @@
 - [x] 6.2 Write failing tests: `init` in a directory with a `bin/` directory fails and writes nothing; the same with a `bin` file; `init --clean` in a workspace whose `bin/` holds only wrappers and the marker succeeds; `init --clean` with a foreign file in `bin/` fails.
 - [x] 6.3 Implement the check in `Init` (after the cleanup when `--clean` is set).
 
-## 7. start-socks and stop-socks
+## 7. socks start and socks stop
 
 - [x] 7.1 Add typed events for tunnel started/reused (with the port), tunnel stopped, and "no tunnel needed on Tailscale".
-- [x] 7.2 Write failing tests: `start-socks` starts or reuses the tunnel, records the port, and emits the port; on Tailscale it starts nothing; `stop-socks` stops the tunnel and removes the port while leaving `EDL_TAILSCALE_ACTIVE`.
-- [x] 7.3 Implement both top-level commands through `ProcessSocksProxyService`, register them, and add them to help.
+- [x] 7.2 Write failing tests: `socks start` starts or reuses the tunnel, records the port, and emits the port; on Tailscale it starts nothing; `socks stop` stops the tunnel and removes the port while leaving `EDL_TAILSCALE_ACTIVE`.
+- [x] 7.3 Implement both commands, as the `socks` command group, through `ProcessSocksProxyService`, register them, and add them to help.
 
 ## 8. up, down, clean, and VPC restore
 
@@ -70,7 +70,7 @@
 ## 9. env.sh
 
 - [x] 9.1 Write a bash test that sources the generated `env.sh` from a temp workspace and checks that `type -P kubectl` is `<workspace>/bin/kubectl`, that none of the six names is a function, that `start-socks5`/`stop-socks5`/`socks5-start`/`socks5-stop` are not defined, that re-sourcing after defining the old functions removes them, and that sourcing works under `set -e`.
-- [x] 9.2 Edit `configuration/env.sh`: guarded `unset -f` of the six names, then `export PATH="$CLUSTER_DIR/bin:$PATH"`; remove the six functions, `start-socks5`, `stop-socks5`, their aliases, and `is-tailscale-connected` once unused; `_socks5_port` sources the env file (no `jq`, no 1080); `with-proxy` fails with the `start-socks` message when no port is recorded and runs directly on Tailscale; keep `socks5-status`; update help text.
+- [x] 9.2 Edit `configuration/env.sh`: guarded `unset -f` of the six names, then `export PATH="$CLUSTER_DIR/bin:$PATH"`; remove the six functions, `start-socks5`, `stop-socks5`, their aliases, and `is-tailscale-connected` once unused; `_socks5_port` sources the env file (no `jq`, no 1080); `with-proxy` fails with the `socks start` message when no port is recorded and runs directly on Tailscale; keep `socks5-status`; update help text.
 - [x] 9.3 Add a Kotlin test on the `env.sh` content written by `ClusterConfigWriter` (no `jq`, no `.socks5-proxy-state` read, `bin` on `PATH`).
 - [ ] 9.4 Check by hand in zsh on the owner's laptop: `source env.sh` twice gives no `unset -f` noise and `kubectl` resolves to the wrapper.
 
@@ -84,11 +84,11 @@
 ## 11. Docs and CLAUDE.md files
 
 - [x] 11.1 `docs/development/kits.md`: shell steps get `<workspace>/bin` first on `PATH` and an absolute `KUBECONFIG`; which tools are wrapped; that unwrapped tools go direct; that calls bypassing `PATH` are not wrapped.
-- [x] 11.2 `docs/user-guide/network-connectivity.md`: wrappers, the env file, `start-socks`/`stop-socks` (browser setup uses the printed port), `command kubectl` now runs the wrapper, Tailscale behavior.
+- [x] 11.2 `docs/user-guide/network-connectivity.md`: wrappers, the env file, `socks start`/`socks stop` (browser setup uses the printed port), `command kubectl` now runs the wrapper, Tailscale behavior.
 - [x] 11.3 `docs/user-guide/kubernetes.md`: `kubectl` and `k9s` after `source env.sh`.
 - [x] 11.4 Root `CLAUDE.md`: in the SOCKS absolute rule, replace "local kubectl/helm in kit shell steps via `SocksTcpBridge` (see `KubeconfigProxyResolver`)" with the tool wrappers; add the env-file standing rule; note that a workspace must not already have a `bin/`.
 - [x] 11.5 `providers/CLAUDE.md`: update the reason the `Hostname` line must follow `Host` (the `env.sh` `start-socks5` `grep -A 1` reader is gone; keep or drop the rule per what still reads it).
-- [ ] 11.6 Before archiving this change, archive `ssm-ssh-transport`, then add a MODIFIED copy of "SSH transport over SSM Session Manager" to this change's `networking` delta whose "Shell helpers work unchanged over SSM" scenario names `easy-db-lab start-socks` instead of starting the proxy from `env.sh` (see `overrides.md`).
+- [ ] 11.6 Before archiving this change, archive `ssm-ssh-transport`, then add a MODIFIED copy of "SSH transport over SSM Session Manager" to this change's `networking` delta whose "Shell helpers work unchanged over SSM" scenario names `easy-db-lab socks start` instead of starting the proxy from `env.sh` (see `overrides.md`).
 - [x] 11.7 Update any other `CLAUDE.md` that names `KubeconfigProxyResolver`, `start-socks5`, or the e2e scripts.
 
 ## 12. Build checks
@@ -104,7 +104,7 @@ Run from `./gradlew installDist` output, in a workspace outside the checkout, on
 - [ ] 13.2 The same calls in a phase step.
 - [ ] 13.3 Kill the tunnel, run a kit command so the proxy restarts on a new port, and confirm the next wrapped call uses it.
 - [ ] 13.4 `source env.sh`, then `kubectl get ns` and `k9s` work through the tunnel.
-- [ ] 13.5 `stop-socks`, then a wrapped call fails with the `start-socks` message; `start-socks` prints the port and the wrapped call works again.
+- [ ] 13.5 `socks stop`, then a wrapped call fails with the `socks start` message; `socks start` prints the port and the wrapped call works again.
 - [ ] 13.6 `down` removes the port from the env file.
 - [ ] 13.7 Regression: a built-in kit with shell steps, and `presto start`.
 - [ ] 13.8 On a Tailscale cluster: `source env.sh` right after `up`, then `kubectl get ns` connects directly.

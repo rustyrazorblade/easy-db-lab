@@ -9,7 +9,7 @@ This change replaces all three with one mechanism: real executable wrapper scrip
 **Env file (new standing rule)**
 - The CLI writes `<workspace>/.socks5-proxy.env`, a sourceable file with two fixed keys: `EDL_TAILSCALE_ACTIVE=true|false` and `EDL_SOCKS_PORT=<port>` (absent when no tunnel is up). One writer class owns the file and merge-updates keys with an atomic write (unique temp file in the same directory, then rename).
 - `up` (`ClusterConfigurationService.writeSshAndEnvironmentFiles`) always writes `EDL_TAILSCALE_ACTIVE` from cluster state. This also fixes the Tailscale `up` path, which today returns before writing any proxy state.
-- `ProcessSocksProxyService` writes `EDL_SOCKS_PORT` only after the tunnel is verified (start or reuse). `down` (`Down.cleanupSocks5Proxy`) and `stop-socks` remove it. `CommandExecutor.ensureProxyRunning` writes `EDL_TAILSCALE_ACTIVE` on its early-return branches. VPC restore writes the env file and the wrappers. `clean` deletes the env file.
+- `ProcessSocksProxyService` writes `EDL_SOCKS_PORT` only after the tunnel is verified (start or reuse). `down` (`Down.cleanupSocks5Proxy`) and `socks stop` remove it. `CommandExecutor.ensureProxyRunning` writes `EDL_TAILSCALE_ACTIVE` on its early-return branches. VPC restore writes the env file and the wrappers. `clean` deletes the env file.
 - `.socks5-proxy-state` (JSON) is now also written atomically, which fixes a partial-write bug in `ProcessSocksProxyService`.
 - New standing rule in the root `CLAUDE.md`: any value a shell-side tool needs is written by Kotlin to this env file. Shell code never parses JSON.
 
@@ -18,7 +18,7 @@ This change replaces all three with one mechanism: real executable wrapper scrip
 - Each wrapper finds the real binary on `PATH` (skipping any directory that holds the marker, and itself), sources the env file on every call, and then:
   - on a Tailscale cluster, runs the real binary with the environment unchanged;
   - on a SOCKS cluster with a recorded port, clears every inherited proxy variable and sets its own (`HTTPS_PROXY=socks5://` for kubectl/helm/cilium/k9s; `ALL_PROXY=socks5h://` plus `NO_PROXY=localhost,127.0.0.1` for curl; `ALL_PROXY`/`HTTP_PROXY`/`HTTPS_PROXY=socks5h://` plus `NO_PROXY` for skopeo), upper and lower case, for that call only;
-  - with no port recorded, fails with a message that names the workspace and `easy-db-lab start-socks`.
+  - with no port recorded, fails with a message that names the workspace and `easy-db-lab socks start`.
 - New `ToolWrapperInstaller` writes the wrappers at `up`, before every kit process, and at VPC restore. It fails fast and writes nothing if `<workspace>/bin/<tool>` exists without the marker.
 - New shared `PackagedExecutable` helper (content compare, unique staged temp file, checked `setExecutable`, atomic rename). `SsmProxyWrapper` moves onto it, which fixes its fixed `.tmp` name race.
 
@@ -28,8 +28,8 @@ This change replaces all three with one mechanism: real executable wrapper scrip
 
 **Commands**
 - `init` fails fast with a typed event and writes nothing when the directory already has a `bin/`. This is what blocks the source checkout or a project directory from being used as a workspace.
-- New top-level `easy-db-lab start-socks`: starts or reuses the tunnel, records the port in the env file, and prints the port for browser setup. On a Tailscale cluster it says no tunnel is needed.
-- New top-level `easy-db-lab stop-socks`: stops the tunnel without tearing down the cluster and removes the port from the env file.
+- New `easy-db-lab socks start` (in a new `socks` command group): starts or reuses the tunnel, records the port in the env file, and prints the port for browser setup. On a Tailscale cluster it says no tunnel is needed.
+- New `easy-db-lab socks stop`: stops the tunnel without tearing down the cluster and removes the port from the env file.
 - Both emit new typed lifecycle events.
 - `clean` deletes the env file, the six wrappers, and the marker by name, and removes `bin/` only if it is then empty.
 
@@ -44,7 +44,7 @@ This change replaces all three with one mechanism: real executable wrapper scrip
 - Remove root `.gitignore` entries that exist only for a repo-root workspace: `sshConfig`, `/env.sh`, `state.json`, `/kubeconfig`, `/.socks5-proxy-state`.
 
 **Docs**
-- `docs/development/kits.md`, `docs/user-guide/network-connectivity.md` (browser setup uses `start-socks` and its printed port; `command kubectl` now runs the wrapper), `docs/user-guide/kubernetes.md`, root `CLAUDE.md` (the SOCKS rule names the wrappers instead of `KubeconfigProxyResolver`; add the env-file standing rule), and `providers/CLAUDE.md` (the `grep -A 1` Hostname reason).
+- `docs/development/kits.md`, `docs/user-guide/network-connectivity.md` (browser setup uses `socks start` and its printed port; `command kubectl` now runs the wrapper), `docs/user-guide/kubernetes.md`, root `CLAUDE.md` (the SOCKS rule names the wrappers instead of `KubeconfigProxyResolver`; add the env-file standing rule), and `providers/CLAUDE.md` (the `grep -A 1` Hostname reason).
 
 ## Capabilities
 
@@ -54,7 +54,7 @@ None.
 
 ### Modified Capabilities
 
-- `networking`: MODIFIED "SOCKS Proxy" and "SOCKS Proxy Routes Only Cluster-Internal Traffic"; REMOVED the kubeconfig `proxy-url` requirement; ADDED the env file, the tool wrappers, wrapper routing, transports, `start-socks`/`stop-socks`, and `env.sh` requirements.
+- `networking`: MODIFIED "SOCKS Proxy" and "SOCKS Proxy Routes Only Cluster-Internal Traffic"; REMOVED the kubeconfig `proxy-url` requirement; ADDED the env file, the tool wrappers, wrapper routing, transports, `socks start`/`socks stop`, and `env.sh` requirements.
 - `typed-install-steps`: ADDED the launch environment for kit shell steps.
 - `workload-runner`: MODIFIED the script environment (absolute `KUBECONFIG`, wrappers on `PATH`).
 - `kit-lifecycle-hooks`: ADDED the launch environment for hook scripts.
@@ -64,7 +64,7 @@ None.
 
 ## Impact
 
-- Kotlin: `services/ClusterConfigurationService.kt`, `services/ProcessSocksProxyService.kt`, `services/CommandExecutor.kt`, `services/WorkloadStepExecutor.kt`, `services/KitHookExecutor.kt`, `commands/install/KitRunnerCommand.kt`, `commands/install/KitInstallCommand.kt`, `commands/Init.kt`, `commands/Down.kt`, `commands/Clean.kt`, `providers/ssm/SsmProxyWrapper.kt`, new `PackagedExecutable`, `ToolWrapperInstaller`, `KitProcessEnvironment`, proxy env file writer, `start-socks`/`stop-socks` commands, and new events in `events/Event.kt`. `services/KubeconfigProxyResolver.kt` is deleted.
+- Kotlin: `services/ClusterConfigurationService.kt`, `services/ProcessSocksProxyService.kt`, `services/CommandExecutor.kt`, `services/WorkloadStepExecutor.kt`, `services/KitHookExecutor.kt`, `commands/install/KitRunnerCommand.kt`, `commands/install/KitInstallCommand.kt`, `commands/Init.kt`, `commands/Down.kt`, `commands/Clean.kt`, `providers/ssm/SsmProxyWrapper.kt`, new `PackagedExecutable`, `ToolWrapperInstaller`, `KitProcessEnvironment`, proxy env file writer, `socks start`/`socks stop` commands, and new events in `events/Event.kt`. `services/KubeconfigProxyResolver.kt` is deleted.
 - Resources: new `configuration/tool-wrapper.sh`; `configuration/env.sh` rewritten in its proxy section.
 - Users: a workspace directory must not already have a `bin/`. The repo root can no longer be a workspace. Shells that sourced an old `env.sh` keep the old functions until they re-source it.
 - Wrapped tools send all their traffic through the tunnel, including public URLs such as `helm repo add`. Unwrapped tools, `aws` included, connect directly.

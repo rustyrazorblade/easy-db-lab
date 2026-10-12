@@ -298,29 +298,29 @@ class ProcessSocksProxyService(
         )
     }
 
-    /** The recorded proxy state, or null when the file is missing or cannot be read. */
-    private fun readStateFile(stateFile: File): Socks5ProxyStateFile? =
-        stateFile.takeIf { it.exists() }?.let { file ->
-            runCatching { json.decodeFromString<Socks5ProxyStateFile>(file.readText()) }
-                .onFailure { e -> log.warn(e) { "Could not read the SOCKS5 proxy state file ${file.absolutePath}" } }
-                .getOrNull()
+    /**
+     * The recorded proxy state, or null when the file is missing or cannot be read. A file that cannot
+     * be read throws an [IOException]; one that does not decode throws a `SerializationException`, which
+     * is an [IllegalArgumentException].
+     */
+    private fun readStateFile(stateFile: File): Socks5ProxyStateFile? {
+        if (!stateFile.exists()) return null
+        return try {
+            json.decodeFromString<Socks5ProxyStateFile>(stateFile.readText())
+        } catch (e: IOException) {
+            log.warn(e) { "Could not read the SOCKS5 proxy state file ${stateFile.absolutePath}" }
+            null
+        } catch (e: IllegalArgumentException) {
+            log.warn(e) { "Could not decode the SOCKS5 proxy state file ${stateFile.absolutePath}" }
+            null
         }
+    }
 
     override fun getLocalPort(): Int =
         lock.withLock {
             state?.localPort ?: run {
                 val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
-                if (stateFile.exists()) {
-                    @Suppress("TooGenericExceptionCaught")
-                    try {
-                        json.decodeFromString<Socks5ProxyStateFile>(stateFile.readText()).port
-                    } catch (e: Exception) {
-                        log.warn(e) { "Could not read proxy port from state file" }
-                        0
-                    }
-                } else {
-                    0
-                }
+                readStateFile(stateFile)?.port ?: 0
             }
         }
 
@@ -396,6 +396,7 @@ class ProcessSocksProxyService(
 
         applySystemProperties(port)
         envFile.recordTunnel(port, newPid.toLong())
+        confirmStillRunning(launched, stateFile, logFile)
 
         val proxyState = buildProxyState(port, gatewayHost)
         state = proxyState
@@ -406,11 +407,38 @@ class ProcessSocksProxyService(
         return proxyState
     }
 
-    /** A launched `ssh -D` process whose tunnel was verified reachable: its local [port] and [pid]. */
+    /**
+     * A launched tunnel script whose tunnel was verified reachable: its local [port], its [pid], the
+     * [process] itself, and where its part of the shared log begins ([transcriptStart]).
+     */
     private data class LaunchedProxy(
         val port: Int,
         val pid: Int,
+        val process: Process,
+        val transcriptStart: Long,
     )
+
+    /**
+     * Fails the start when the tunnel script of [launched] exited before its port was recorded.
+     *
+     * The script restarts an exited ssh only when the env file records its port, so an ssh that died
+     * between the probe and the record ended the script instead, and the record names a dead tunnel.
+     * Its port, PID and state file are removed again, so nothing routes through it.
+     *
+     * @throws IllegalStateException when the script is no longer running
+     */
+    private fun confirmStillRunning(
+        launched: LaunchedProxy,
+        stateFile: File,
+        logFile: File,
+    ) {
+        if (launched.process.isAlive) return
+        System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        envFile.removeTunnel()
+        stateFile.delete()
+        val cause = verificationFailureMessage(logFile, launched.process.exitValue(), launched.transcriptStart)
+        throw IllegalStateException("The SOCKS5 tunnel on port ${launched.port} exited right after it was verified. $cause")
+    }
 
     /**
      * One start attempt: selects a port, launches `ssh -D` on it, and verifies the tunnel.
@@ -453,7 +481,7 @@ class ProcessSocksProxyService(
             }
             throw e
         }
-        return LaunchedProxy(port, newPid)
+        return LaunchedProxy(port, newPid, process, transcriptStart)
     }
 
     /**

@@ -48,6 +48,13 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
     }
 
     @Test
+    fun `getLocalPort is zero when the state file does not decode`() {
+        stateFile().writeText("{ not the state file")
+
+        assertThat(service().getLocalPort()).isEqualTo(0)
+    }
+
+    @Test
     fun `isRunning is false when there is no in-memory state`() {
         assertThat(service().isRunning()).isFalse()
     }
@@ -263,6 +270,29 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
             .ensureRunning(testHost)
 
         assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, FAKE_PID)))
+    }
+
+    @Test
+    fun `a script that exits before its port is recorded fails the start and leaves nothing recorded`() {
+        // The script reads the env file when its ssh exits: an ssh that dies between the probe and the
+        // record finds no port, so the script exits instead of restarting, and the recorded tunnel is dead.
+        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+        val exitsAtRecord: Process =
+            mock {
+                on { isAlive } doAnswer { envFile.read().tunnel == null }
+                on { exitValue() } doReturn 255
+                on { pid() } doReturn FAKE_PID
+            }
+
+        val failure =
+            catchThrowable {
+                service(probe = { _, _, _ -> true }, launcher = { _, _ -> exitsAtRecord }, portSelector = { 41234 }).ensureRunning(testHost)
+            }
+
+        assertThat(failure).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("exited right after it was verified")
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(stateFile()).doesNotExist()
+        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
     }
 
     @Test

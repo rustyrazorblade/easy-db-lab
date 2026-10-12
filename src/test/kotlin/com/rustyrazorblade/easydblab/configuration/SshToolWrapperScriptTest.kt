@@ -29,18 +29,7 @@ internal class SshToolWrapperScriptTest {
 
     @BeforeEach
     fun setUp() {
-        workspace =
-            File(root, "ws").apply {
-                val bin = File(this, Constants.ToolWrappers.DIRECTORY).apply { mkdirs() }
-                File(bin, Constants.ToolWrappers.MARKER).writeText("")
-                Constants.ToolWrappers.WRAPPED_TOOLS.forEach { tool ->
-                    File(bin, tool).apply {
-                        writeText(WRAPPER)
-                        setExecutable(true)
-                    }
-                }
-                File(this, "sshConfig").writeText("Host control0\n  Hostname 10.0.1.5\n")
-            }
+        workspace = workspaceAt(File(root, "ws"))
         realBin = File(root, "real").apply { mkdirs() }
         Constants.ToolWrappers.SSH_TOOLS.forEach { stub(it) }
         // A recorded SOCKS tunnel, which the Kubernetes tools would route through and these must not.
@@ -69,8 +58,95 @@ internal class SshToolWrapperScriptTest {
         val result = run("$shell \"${'$'}WS/bin/rsync\" ./artifacts control0:/tmp/")
 
         assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
-        assertThat(result.lines("arg=")).containsExactly("-ave", "ssh -F ${sshConfig.path}", "./artifacts", "control0:/tmp/")
+        // Quoted for rsync's own parser, which splits -e on spaces and honours quotes.
+        assertThat(result.lines("arg=")).containsExactly("-ave", "ssh -F '${sshConfig.path}'", "./artifacts", "control0:/tmp/")
     }
+
+    /**
+     * The real rsync parses `-e` itself, so this runs it, with a stub `ssh` behind the wrapper that
+     * records what rsync started it with. A stub rsync would only show what the stub's own parsing
+     * does; the real one shows what reaches ssh. It is openrsync on macOS and GNU rsync on Linux,
+     * and both honour quotes in `-e`.
+     */
+    @ParameterizedTest(name = "under {0}")
+    @MethodSource("shells")
+    fun `rsync in a workspace whose path has a space hands ssh the whole sshConfig path`(shell: String) {
+        workspace = workspaceAt(File(root, "my ws"))
+        val real = requireNotNull(SYSTEM_PATH.map { File(it, "rsync") }.firstOrNull { it.canExecute() }) { "no rsync on $SYSTEM_PATH" }
+        File(realBin, "rsync").delete()
+        val recorded = File(root, "ssh-args")
+        // Ahead of bin/ on PATH, so rsync starts this stub and not the ssh wrapper, whose own -F would
+        // hide what rsync made of -e. (OpenSSH uses the last -F it is given.)
+        val sshFirst =
+            File(root, "ssh-first").apply {
+                mkdirs()
+                File(this, "ssh").apply {
+                    writeText("#!/bin/sh\nfor a in \"${'$'}@\"; do echo \"${'$'}a\"; done > \"${'$'}SSH_ARGS\"\nexit 1\n")
+                    setExecutable(true)
+                }
+            }
+        val source = File(root, "file").apply { writeText("x") }
+
+        run(
+            "$shell \"${'$'}WS/bin/rsync\" \"${source.absolutePath}\" control0:/tmp/",
+            env = mapOf("SSH_ARGS" to recorded.absolutePath),
+            pathPrefix = listOf(sshFirst.absolutePath),
+        )
+
+        assertThat(real).exists()
+        assertThat(recorded).exists()
+        assertThat(recorded.readLines()).containsSequence("-F", sshConfig.path).contains("control0")
+    }
+
+    @ParameterizedTest(name = "{0} under {1}")
+    @MethodSource("toolsAndShells")
+    fun `with no proxy env file the wrapper still runs the real binary with the sshConfig`(
+        tool: String,
+        shell: String,
+    ) {
+        ProxyEnvFile(workspace).delete()
+
+        val result = run("$shell \"${'$'}WS/bin/$tool\" control0")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.lines("arg=").first()).isEqualTo(if (tool == "rsync") "-ave" else "-F")
+    }
+
+    @ParameterizedTest(name = "{0} under {1}")
+    @MethodSource("toolsAndShells")
+    fun `with a recorded tunnel whose script has exited the wrapper still runs the real binary`(
+        tool: String,
+        shell: String,
+    ) {
+        // A dead tunnel stops the proxy wrappers; SSH does not use the tunnel, so it must not stop these.
+        ProxyEnvFile(workspace).recordTunnel(PORT, exitedPid())
+
+        val result = run("$shell \"${'$'}WS/bin/$tool\" control0")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.lines("arg=").first()).isEqualTo(if (tool == "rsync") "-ave" else "-F")
+    }
+
+    /** A workspace at [directory] whose `bin/` holds the ten wrapper copies and the marker, with an sshConfig. */
+    private fun workspaceAt(directory: File): File =
+        directory.apply {
+            val bin = File(this, Constants.ToolWrappers.DIRECTORY).apply { mkdirs() }
+            File(bin, Constants.ToolWrappers.MARKER).writeText("")
+            Constants.ToolWrappers.WRAPPED_TOOLS.forEach { tool ->
+                File(bin, tool).apply {
+                    writeText(WRAPPER)
+                    setExecutable(true)
+                }
+            }
+            File(this, "sshConfig").writeText("Host control0\n  Hostname 10.0.1.5\n")
+        }
+
+    /** The PID of a process that has already exited. */
+    private fun exitedPid(): Long =
+        ProcessBuilder("true").start().let { process ->
+            assertThat(process.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+            process.pid()
+        }
 
     @ParameterizedTest(name = "{0} under {1}")
     @MethodSource("toolsAndShells")
@@ -167,11 +243,12 @@ internal class SshToolWrapperScriptTest {
         command: String,
         env: Map<String, String> = emptyMap(),
         systemPath: List<String> = SYSTEM_PATH,
+        pathPrefix: List<String> = emptyList(),
     ): Result {
         val builder = ProcessBuilder("/bin/sh", "-c", command).directory(root)
         builder.environment().apply {
             clear()
-            val path = listOf(File(workspace, Constants.ToolWrappers.DIRECTORY).absolutePath, realBin.absolutePath) + systemPath
+            val path = pathPrefix + listOf(File(workspace, Constants.ToolWrappers.DIRECTORY).absolutePath, realBin.absolutePath) + systemPath
             put("PATH", path.joinToString(File.pathSeparator))
             put("WS", workspace.absolutePath)
             putAll(env)

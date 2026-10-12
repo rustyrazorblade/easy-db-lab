@@ -7,7 +7,7 @@
 # call of those tools, indirect ones included (env, xargs, sh -c, nested scripts), runs through here.
 #
 # ssh, scp and sftp get `-F <workspace>/sshConfig` before the caller's arguments, and rsync gets
-# `-ave "ssh -F <workspace>/sshConfig"`, so they reach the workspace's nodes by their aliases. They
+# `-ave "ssh -F '<workspace>/sshConfig'"` (quoted for rsync's parser), so they reach the workspace's nodes by their aliases. They
 # reach the nodes over SSH itself, never the SOCKS tunnel, so their proxy variables and KUBECONFIG are
 # left as the caller had them, and they fail when the workspace has no sshConfig.
 #
@@ -61,7 +61,10 @@ case $tool in
             exit 1
         fi
         if [ "$tool" = rsync ]; then
-            exec "$real" -ave "ssh -F $ssh_config" "$@"
+            # rsync splits -e on spaces and honours quotes, so the path is single-quoted for rsync's own
+            # parser, and each single quote in it is written as '"'"'.
+            quoted=$(printf '%s' "$ssh_config" | sed "s/'/'\"'\"'/g")
+            exec "$real" -ave "ssh -F '$quoted'" "$@"
         fi
         exec "$real" -F "$ssh_config" "$@"
         ;;

@@ -68,10 +68,13 @@ internal class SshToolWrapperScriptTest {
      * does; the real one shows what reaches ssh. It is openrsync on macOS and GNU rsync on Linux,
      * and both honour quotes in `-e`.
      */
-    @ParameterizedTest(name = "under {0}")
-    @MethodSource("shells")
-    fun `rsync in a workspace whose path has a space hands ssh the whole sshConfig path`(shell: String) {
-        workspace = workspaceAt(File(root, "my ws"))
+    @ParameterizedTest(name = "{0} under {1}")
+    @MethodSource("awkwardWorkspaceNamesAndShells")
+    fun `rsync in a workspace whose path has a space or a single quote hands ssh the whole sshConfig path`(
+        workspaceName: String,
+        shell: String,
+    ) {
+        workspace = workspaceAt(File(root, workspaceName))
         val real = requireNotNull(SYSTEM_PATH.map { File(it, "rsync") }.firstOrNull { it.canExecute() }) { "no rsync on $SYSTEM_PATH" }
         File(realBin, "rsync").delete()
         val recorded = File(root, "ssh-args")
@@ -287,6 +290,10 @@ internal class SshToolWrapperScriptTest {
 
         @JvmStatic
         fun shells(): List<String> = SHELLS
+
+        /** Workspace names rsync's -e parser would split or end a quote on, under each shell. */
+        @JvmStatic
+        fun awkwardWorkspaceNamesAndShells(): List<Arguments> = listOf("my ws", "it's ws").withShells()
 
         @JvmStatic
         fun toolsAndShells(): List<Arguments> = Constants.ToolWrappers.SSH_TOOLS.withShells()

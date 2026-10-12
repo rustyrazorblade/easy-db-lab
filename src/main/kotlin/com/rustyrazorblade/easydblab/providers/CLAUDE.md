@@ -139,9 +139,10 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
   identity, keepalives, `ConnectTimeout`) in one `Host db* app* control* !*.*` block, its wildcards
   derived from `ServerType`; `!*.*` keeps every dotted name and IP address out, because OpenSSH patterns
   have no character classes and `db*` alone would match `db.boo.com`. Then one block per host, and it
-  ends with `Host *` and `Include ~/.ssh/config`, so any other host (`github.com`, `db.boo.com`, an IP)
-  resolves as it would without `-F`; the first value obtained
-  wins, so the included file cannot change a cluster option (`GeneratedSshConfigResolutionTest` checks
+  ends with two disjoint `Match originalhost` blocks (`!originalhost db*,app*,control*` and
+  `originalhost db*.*,app*.*,control*.*`) that include `~/.ssh/config` and then `/etc/ssh/ssh_config`,
+  so any other host (`github.com`, `db.boo.com`, an IP) resolves as it would without `-F`, and cluster
+  hosts never read the personal or system config (`GeneratedSshConfigResolutionTest` checks
   this with real `ssh -G`). `ClusterConfigurationService` writes `route.proxyCommand(host)` into each `Host` block (and
   into the fallback config `env.sh` writes when `sshConfig` is missing). Under `ssm` that is
   `aws ssm start-session --document-name AWS-StartSSHSession`. Each `Hostname` line still

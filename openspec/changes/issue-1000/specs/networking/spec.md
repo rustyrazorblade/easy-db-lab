@@ -267,6 +267,30 @@ The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST ver
 - **WHEN** the CLI stops or replaces the tunnel
 - **THEN** it does not signal that process
 
+### Requirement: The generated sshConfig applies its settings to cluster hosts only
+
+The generated `<workspace>/sshConfig` MUST put every cluster-wide option (user, identity file, host-key settings, keepalives, connect timeout) under one host pattern built from the server types, `Host db* app* control* !*.*`. The `!*.*` excludes any name that contains a dot, including IP addresses, because OpenSSH host patterns have no character classes. Each cluster host MUST keep its own block with its `Hostname` and, under `ssm`, its `ProxyCommand`.
+
+The user's personal `~/.ssh/config` and the system `/etc/ssh/ssh_config` MUST NOT apply to cluster hosts, so no personal option (for example `ControlMaster`, `ControlPersist`, `ProxyJump`, `ProxyCommand`, `ForwardAgent`, or an extra `IdentityFile`) can reach a cluster host or the SOCKS tunnel. Every other host MUST resolve exactly as it would without `-F`: the file MUST include the personal config and then the system config only for names that are not cluster hosts.
+
+#### Scenario: Another host resolves as without the workspace sshConfig
+
+- **WHEN** `ssh -F <workspace>/sshConfig -G` resolves `github.com`, an IP address, or a dotted name such as `db.example.com`
+- **THEN** the result equals what `ssh -G` gives for the same name with no `-F`
+
+#### Scenario: Cluster hosts get the cluster settings
+
+- **WHEN** `ssh -F <workspace>/sshConfig -G` resolves `db0`, `app0`, or `control0`
+- **THEN** each gets the cluster user, identity file, host-key settings, keepalives, connect timeout, and its own `Hostname`
+- **AND** under `ssm`, `control0` gets its `ProxyCommand`
+
+#### Scenario: Personal settings never reach cluster hosts
+
+- **GIVEN** a personal `~/.ssh/config` whose `Host *` sets `ControlMaster`, `ControlPersist`, `ProxyJump`, `ForwardAgent`, and an `IdentityFile`
+- **WHEN** `ssh -F <workspace>/sshConfig -G` resolves `control0` or `db0`
+- **THEN** none of those personal settings appear
+- **AND** they still appear for `github.com`
+
 ### Requirement: SSH wrappers use the workspace SSH configuration
 
 The `ssh`, `scp`, `sftp`, and `rsync` wrappers in `<workspace>/bin/` MUST behave as the old `env.sh` functions did, as real executables that work from kit steps, nested scripts, `xargs`, and `/bin/sh` scripts:

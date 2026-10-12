@@ -7,10 +7,13 @@ import java.io.File
 /**
  * Writes and removes the workspace tool wrappers in `<workspace>/bin/`.
  *
- * Kit shell steps, hooks and `env.sh` shells put `<workspace>/bin` first on `PATH`, so `kubectl`,
- * `helm`, `cilium`, `curl`, `skopeo` and `k9s` resolve to the packaged wrapper, which routes each
- * call through the tunnel recorded in [ProxyEnvFile]. The wrappers are written at `up`, before every
- * kit process, and when a workspace is restored from a VPC, so an upgrade replaces stale copies.
+ * Kit shell steps, hooks and `env.sh` shells put `<workspace>/bin` first on `PATH`, so every tool of
+ * [Constants.ToolWrappers.WRAPPED_TOOLS] resolves to a copy of the one packaged wrapper. The six proxy
+ * wrappers ([Constants.ToolWrappers.TOOLS]: `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, `k9s`) route
+ * each call through the tunnel recorded in [ProxyEnvFile]. The four SSH wrappers
+ * ([Constants.ToolWrappers.SSH_TOOLS]: `ssh`, `scp`, `sftp`, `rsync`) add the workspace `sshConfig` and
+ * leave the proxy alone. The wrappers are written at `up`, before every kit process, and when a
+ * workspace is restored from a VPC, so an upgrade replaces stale copies.
  *
  * The tunnel script [Constants.ToolWrappers.TUNNEL_SCRIPT], which keeps the SOCKS tunnel's ssh running,
  * is written and removed with them.

@@ -37,7 +37,8 @@ val proxyModule =
         // The workspace's sourceable proxy state for the shell-side tool wrappers and env.sh.
         single { ProxyEnvFile(get<Context>().workingDirectory) }
 
-        // Writes the kubectl/helm/cilium/curl/skopeo/k9s wrappers into a workspace's bin/.
+        // Writes the wrappers into a workspace's bin/: the six proxy wrappers (kubectl, helm, cilium,
+        // curl, skopeo, k9s) and the four SSH wrappers (ssh, scp, sftp, rsync) that use the sshConfig.
         single { ToolWrapperInstaller() }
 
         // Prepares a workspace for shell-side tools: the wrappers and the Tailscale flag.

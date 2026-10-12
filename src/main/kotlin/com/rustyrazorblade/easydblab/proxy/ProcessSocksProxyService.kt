@@ -518,6 +518,12 @@ class ProcessSocksProxyService(
      * connection reconnects with no CLI command. It appends everything it and its ssh write to
      * [logFile]. `nohup` keeps the tunnel alive when the terminal that started it closes.
      *
+     * The script is run by [Constants.ToolWrappers.TUNNEL_SHELL] rather than exec'd. macOS scans the
+     * first exec of a new or rewritten executable (Gatekeeper and XProtect), which took about 4s after
+     * an upgrade rewrote the script, longer than a direct tunnel's verify window; a shell reads the
+     * script as data, so nothing waits on that scan. The OS reports the same arguments either way: the
+     * shell as the command, then the script path and its arguments.
+     *
      * Internal (not private) purely so a test can assert the command dials the gateway's recorded
      * [alias] (never a hardcoded host), without spawning the script.
      */
@@ -529,6 +535,7 @@ class ProcessSocksProxyService(
     ): List<String> =
         listOf(
             "nohup",
+            Constants.ToolWrappers.TUNNEL_SHELL,
             File(File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY), Constants.ToolWrappers.TUNNEL_SCRIPT).absolutePath,
             "$port",
             sshConfigPath,

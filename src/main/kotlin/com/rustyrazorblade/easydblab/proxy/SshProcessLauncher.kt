@@ -16,7 +16,7 @@ import java.io.File
  */
 fun interface SshProcessLauncher {
     /**
-     * @param command the full process command line (`nohup <workspace>/bin/edl-socks-tunnel <port> … <alias>`).
+     * @param command the full process command line (`nohup /bin/sh <workspace>/bin/edl-socks-tunnel <port> … <alias>`).
      * @param logFile file the ssh `-v` transcript (stderr) is redirected to.
      * @return the started [Process].
      */

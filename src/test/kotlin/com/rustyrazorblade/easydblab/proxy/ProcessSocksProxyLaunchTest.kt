@@ -75,8 +75,10 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
 
         // The script runs ssh with the dynamic forward and ExitOnForwardFailure itself. The alias is
         // the host it dials; a hardcoded control0 would show up here instead of the passed alias.
+        // /bin/sh reads the script as data: an exec of a just-rewritten script waits on the macOS scan.
         assertThat(command).containsExactly(
             "nohup",
+            "/bin/sh",
             File(tempDir, "${Constants.ToolWrappers.DIRECTORY}/${Constants.ToolWrappers.TUNNEL_SCRIPT}").absolutePath,
             "41234",
             "/work/sshConfig",
@@ -84,6 +86,17 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
             logFile().absolutePath,
             "gw-alias",
         )
+    }
+
+    @Test
+    fun `the process the launch command starts passes the identity check its record is stopped by`() {
+        val command = service().buildTunnelCommand(port = STOP_PORT, sshConfigPath = sshConfigPath(), logFile = logFile(), alias = "control0")
+        // nohup execs the rest of its arguments: the OS then reports /bin/sh as the command and the
+        // script path, then the script's own arguments, as its arguments.
+        val launched = FakeTunnelProcess(livePid, command[1], command.drop(2))
+        val record = staleRecord().copy(pid = livePid.toInt())
+
+        assertThat(seeing(launched).status(record)).isEqualTo(RecordedTunnelStatus.RUNNING)
     }
 
     @Test

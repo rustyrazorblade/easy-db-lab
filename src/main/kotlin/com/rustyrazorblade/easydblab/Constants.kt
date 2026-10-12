@@ -1186,6 +1186,12 @@ object Constants {
         /** The tunnel script written into `bin/` with the wrappers, which keeps the SOCKS tunnel's ssh running. */
         const val TUNNEL_SCRIPT = "edl-socks-tunnel"
 
+        /**
+         * The shell the CLI runs [TUNNEL_SCRIPT] with, `/bin/sh <script>`, instead of exec'ing it: macOS
+         * scans the first exec of a new or rewritten executable, and a shell reads the script as data.
+         */
+        const val TUNNEL_SHELL = "/bin/sh"
+
         /** The packaged tunnel script. */
         const val TUNNEL_RESOURCE = "/com/rustyrazorblade/easydblab/configuration/edl-socks-tunnel.sh"
     }

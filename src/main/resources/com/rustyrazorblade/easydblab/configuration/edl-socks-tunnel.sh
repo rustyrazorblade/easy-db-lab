@@ -4,7 +4,10 @@
 # easy-db-lab writes this script into <workspace>/bin/edl-socks-tunnel with the tool wrappers, and
 # rewrites it when it changes, so do not edit the copy. The CLI starts it, detached, as
 #
-#   edl-socks-tunnel <port> <sshConfig> <backoff-seconds> <log> <host>
+#   /bin/sh edl-socks-tunnel <port> <sshConfig> <backoff-seconds> <log> <host>
+#
+# through /bin/sh rather than as an executable: macOS scans the first exec of a rewritten executable,
+# which can outlast the CLI's wait for the tunnel. It stays executable, so it can be run by hand.
 #
 # and records its PID. It runs `ssh -N -D 127.0.0.1:<port>` to <host>, waits for ssh to exit, and starts
 # it again on the same port after <backoff-seconds>, for as long as it runs. The listener is on IPv4

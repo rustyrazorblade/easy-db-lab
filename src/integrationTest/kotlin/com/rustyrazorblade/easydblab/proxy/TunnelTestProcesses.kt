@@ -2,8 +2,13 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
 import java.io.File
+import java.io.IOException
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
+import kotlin.random.Random
 
 /**
  * What the integration tests that run a real `edl-socks-tunnel` share: one installed copy of the script
@@ -23,6 +28,34 @@ internal object TunnelTestProcesses {
     const val SSH_WAIT_SECONDS = 60L
 
     private const val POLL_MS = 100L
+
+    /**
+     * A port for a test tunnel that is free on the IPv4 and IPv6 loopback now, chosen outside every
+     * ephemeral range (Linux 32768-60999, macOS 49152-65535). An OS-assigned port comes from that range,
+     * so on a busy machine another process's outgoing connection could take it before ssh binds it.
+     */
+    fun freeTunnelPort(): Int =
+        generateSequence { Random.nextInt(TEST_PORT_RANGE.first, TEST_PORT_RANGE.last + 1) }
+            .take(TEST_PORT_ATTEMPTS)
+            .firstOrNull { port -> listOf("127.0.0.1", "::1").all { isFree(it, port) } }
+            ?: error("no free port in $TEST_PORT_RANGE after $TEST_PORT_ATTEMPTS tries")
+
+    private fun isFree(
+        address: String,
+        port: Int,
+    ): Boolean =
+        try {
+            ServerSocket().use {
+                it.reuseAddress = false
+                it.bind(InetSocketAddress(InetAddress.getByName(address), port))
+            }
+            true
+        } catch (_: IOException) {
+            false
+        }
+
+    private val TEST_PORT_RANGE = 20000..29999
+    private const val TEST_PORT_ATTEMPTS = 50
 
     /** Installs the tunnel script once, in a new directory, and returns that directory. */
     fun installScriptOnce(): File = Files.createTempDirectory("edl-tunnel-script").toFile().also { ToolWrapperInstaller().install(it) }

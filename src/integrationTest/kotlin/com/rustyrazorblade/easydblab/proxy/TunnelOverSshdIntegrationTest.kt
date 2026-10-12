@@ -149,7 +149,7 @@ internal class TunnelOverSshdIntegrationTest {
         assertThat(ProcessBuilder("kill", "-$name", "${process.pid()}").start().waitFor()).withFailMessage("kill -$name failed").isZero()
     }
 
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+    private fun freePort(): Int = TunnelTestProcesses.freeTunnelPort()
 
     companion object {
         private const val HOST_ALIAS = "control0"

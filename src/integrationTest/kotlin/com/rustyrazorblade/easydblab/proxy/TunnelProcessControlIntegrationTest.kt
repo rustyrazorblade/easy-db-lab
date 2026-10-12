@@ -10,7 +10,6 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
-import java.net.ServerSocket
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
@@ -109,12 +108,13 @@ internal class TunnelProcessControlIntegrationTest {
 
     @Test
     fun `a real orphaned ssh for another port is not signaled`() {
-        val (tunnel, ssh) = launchTunnel(freePort())
+        val port = freePort()
+        val (tunnel, ssh) = launchTunnel(port)
         started += ssh
         tunnel.destroyForcibly()
         assertThat(tunnel.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).isFalse()
 
-        val result = TunnelProcessControl().stop(record(tunnel.pid(), freePort()))
+        val result = TunnelProcessControl().stop(record(tunnel.pid(), otherPortThan(port)))
 
         assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
         assertThat(ssh.isAlive).isTrue()
@@ -122,9 +122,10 @@ internal class TunnelProcessControlIntegrationTest {
 
     @Test
     fun `a real tunnel script for another port is not signaled`() {
-        val (tunnel, _) = launchTunnel(freePort())
+        val port = freePort()
+        val (tunnel, _) = launchTunnel(port)
 
-        val result = TunnelProcessControl().stop(record(tunnel.pid(), freePort()))
+        val result = TunnelProcessControl().stop(record(tunnel.pid(), otherPortThan(port)))
 
         assertThat(result).isEqualTo(TunnelStopResult.NotRunning)
         assertThat(tunnel.isAlive).isTrue()
@@ -186,7 +187,9 @@ internal class TunnelProcessControlIntegrationTest {
         sshConfig = sshConfig.absolutePath,
     )
 
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+    private fun freePort(): Int = TunnelTestProcesses.freeTunnelPort()
+
+    private fun otherPortThan(port: Int): Int = generateSequence { freePort() }.first { it != port }
 
     private val logFile: File get() = File(workspace, "ssh.log")
 

@@ -65,7 +65,12 @@ internal class ClusterConfigWriterTest {
 
     @Test
     fun `the cluster block names one wildcard for each server type`() {
-        val patterns = renderSshConfig(emptyMap()).lines().first().removePrefix("Host ").split(" ")
+        val patterns =
+            renderSshConfig(emptyMap())
+                .lines()
+                .first()
+                .removePrefix("Host ")
+                .split(" ")
 
         assertThat(patterns).containsExactlyElementsOf(ServerType.entries.map { "${it.serverType}*" })
     }
@@ -83,7 +88,12 @@ internal class ClusterConfigWriterTest {
         val config = renderSshConfig(mapOf(ServerType.Control to listOf(control)), mapOf("control0" to "edl-ssm-proxy i-control"))
 
         assertThat(clusterBlock(config)).containsAll(connectionBounds)
-        val hostBlock = config.lines().dropWhile { it != "Host control0" }.drop(1).takeWhile { it.isNotBlank() }
+        val hostBlock =
+            config
+                .lines()
+                .dropWhile { it != "Host control0" }
+                .drop(1)
+                .takeWhile { it.isNotBlank() }
         assertThat(hostBlock).containsExactly(" Hostname 54.1.1.1", " ProxyCommand edl-ssm-proxy i-control")
     }
 

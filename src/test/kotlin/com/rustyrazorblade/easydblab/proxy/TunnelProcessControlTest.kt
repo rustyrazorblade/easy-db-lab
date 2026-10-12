@@ -103,16 +103,31 @@ internal class TunnelProcessControlTest {
     }
 
     @Test
-    fun `isRunning is true only while the recorded PID is the recorded tunnel script`() {
+    fun `status is RUNNING only while the recorded PID is the recorded tunnel script`() {
         val tunnel = FakeTunnelProcess.tunnelScript(PID, PORT, SSH_CONFIG)
+
+        assertThat(control(tunnel).status(recorded)).isEqualTo(RecordedTunnelStatus.RUNNING)
+        assertThat(tunnel.signals).isZero()
+    }
+
+    @Test
+    fun `status is PID_REUSED when a live process holds the PID but is not the recorded script`() {
         val other = FakeTunnelProcess(PID, "/bin/sleep", listOf("60"))
         val otherPort = FakeTunnelProcess.tunnelScript(PID, PORT + 1, SSH_CONFIG)
+        val unreported = FakeTunnelProcess(PID, "/bin/sh", arguments = null)
 
-        assertThat(control(tunnel).isRunning(recorded)).isTrue()
-        assertThat(control(other).isRunning(recorded)).withFailMessage("a PID another program holds is not the tunnel").isFalse()
-        assertThat(control(otherPort).isRunning(recorded)).isFalse()
-        assertThat(control(null).isRunning(recorded)).isFalse()
-        assertThat(tunnel.signals + other.signals + otherPort.signals).isZero()
+        assertThat(control(other).status(recorded)).isEqualTo(RecordedTunnelStatus.PID_REUSED)
+        assertThat(control(otherPort).status(recorded)).isEqualTo(RecordedTunnelStatus.PID_REUSED)
+        assertThat(control(unreported).status(recorded)).isEqualTo(RecordedTunnelStatus.PID_REUSED)
+        assertThat(other.signals + otherPort.signals + unreported.signals).isZero()
+    }
+
+    @Test
+    fun `status is GONE when no live process holds the PID`() {
+        val ended = FakeTunnelProcess.tunnelScript(PID, PORT, SSH_CONFIG).apply { handle.destroy() }
+
+        assertThat(control(null).status(recorded)).isEqualTo(RecordedTunnelStatus.GONE)
+        assertThat(control(ended).status(recorded)).isEqualTo(RecordedTunnelStatus.GONE)
     }
 
     @Test

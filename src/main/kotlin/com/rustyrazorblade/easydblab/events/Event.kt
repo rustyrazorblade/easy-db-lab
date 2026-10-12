@@ -6104,6 +6104,10 @@ sealed interface Event {
             @SerialName("process-gone")
             PROCESS_GONE("its process had exited"),
 
+            /** A live process holds its recorded PID, but it is not the tunnel script: the OS gave the PID to another program. */
+            @SerialName("pid-reused")
+            PID_REUSED("its PID now belongs to another process"),
+
             /** It was started with another workspace `sshConfig` path, so the workspace has moved. */
             @SerialName("ssh-config-changed")
             SSH_CONFIG_CHANGED("it used another sshConfig path"),

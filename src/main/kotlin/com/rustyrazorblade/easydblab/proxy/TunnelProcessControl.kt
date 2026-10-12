@@ -34,6 +34,18 @@ sealed interface TunnelStopResult {
     ) : TunnelStopResult
 }
 
+/** What the PID a tunnel record names is now. */
+enum class RecordedTunnelStatus {
+    /** The PID is the recorded `edl-socks-tunnel`, with the recorded port and `sshConfig`. */
+    RUNNING,
+
+    /** No live process holds the PID. */
+    GONE,
+
+    /** A live process holds the PID but does not prove to be the recorded script: the OS gave the PID to another program. */
+    PID_REUSED,
+}
+
 /**
  * Finds and ends the `edl-socks-tunnel` process of a recorded SOCKS5 tunnel, and the `ssh` it runs.
  *
@@ -87,7 +99,8 @@ class TunnelProcessControl(
             scriptEnded && survivors.isEmpty() -> TunnelStopResult.Stopped(recorded.pid)
             else -> {
                 log.warn {
-                    "SOCKS5 tunnel process ${recorded.pid} or its ssh (${survivors.joinToString { "PID ${it.pid()}" }}) did not stop; " +
+                    "SOCKS5 tunnel did not stop: script PID ${recorded.pid} alive=${!scriptEnded}; " +
+                        "surviving ssh PIDs: ${survivors.joinToString { "${it.pid()}" }.ifEmpty { "none" }}; " +
                         "it stays recorded in the proxy state file"
                 }
                 // The PID to kill: the script while it runs, otherwise the ssh it left.
@@ -97,10 +110,13 @@ class TunnelProcessControl(
     }
 
     /**
-     * True when the recorded PID is a live process that proves to be the `edl-socks-tunnel` [recorded]
-     * describes ([isTunnel]). A PID the OS gave to another program is not the tunnel.
+     * What the PID [recorded] names is now: the recorded `edl-socks-tunnel` ([isTunnel]), no live
+     * process, or a live process that is not the tunnel, because the OS gave the PID to another program.
      */
-    fun isRunning(recorded: Socks5ProxyStateFile): Boolean = liveProcess(recorded)?.let { isTunnel(it, recorded) } ?: false
+    fun status(recorded: Socks5ProxyStateFile): RecordedTunnelStatus {
+        val handle = liveProcess(recorded) ?: return RecordedTunnelStatus.GONE
+        return if (isTunnel(handle, recorded)) RecordedTunnelStatus.RUNNING else RecordedTunnelStatus.PID_REUSED
+    }
 
     /** The live process that holds the recorded PID, unless it is this JVM. */
     private fun liveProcess(recorded: Socks5ProxyStateFile): ProcessHandle? =

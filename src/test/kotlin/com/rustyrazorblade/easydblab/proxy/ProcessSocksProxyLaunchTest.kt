@@ -296,6 +296,26 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
     }
 
     @Test
+    fun `a tunnel whose ssh dies before the record while its script still runs fails the start and is stopped`() {
+        // The script is alive at the check, but its ssh died after the probe and before the record:
+        // the script will exit when it reads the env file, so the recorded tunnel would be dead.
+        val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
+        val scriptStaysUp = aliveProcess()
+        val sshGoneAtRecord = TunnelReachabilityProbe { _, _, _ -> envFile.read().tunnel == null }
+
+        val failure =
+            catchThrowable {
+                service(probe = sshGoneAtRecord, launcher = { _, _ -> scriptStaysUp }, portSelector = { 41234 }).ensureRunning(testHost)
+            }
+
+        assertThat(failure).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("stopped carrying traffic right after it was verified")
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(stateFile()).doesNotExist()
+        assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
+        verify(scriptStaysUp).destroyForcibly()
+    }
+
+    @Test
     fun `a failed start leaves no port in the env file`() {
         writeStateFile(pid = -1, port = 52000)
         val envFile =

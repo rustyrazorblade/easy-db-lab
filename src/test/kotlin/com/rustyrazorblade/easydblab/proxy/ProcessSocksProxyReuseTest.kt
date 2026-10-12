@@ -51,7 +51,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
     }
 
     @Test
-    fun `a recorded PID that another program now holds is replaced as gone, and that program is not signaled`() {
+    fun `a recorded PID that another program now holds is replaced as reused, and that program is not signaled`() {
         writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
         val other = FakeTunnelProcess(livePid, "/bin/sleep", listOf("60"))
 
@@ -66,7 +66,8 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
 
         assertThat(state.localPort).isEqualTo(NEW_PORT)
         assertThat(other.signals).isZero()
-        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.PROCESS_GONE))
+        assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.PID_REUSED))
+        assertThat(events.single().toDisplayString()).contains("its PID now belongs to another process")
     }
 
     @Test
@@ -295,7 +296,8 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         val replacement = svc.ensureRunning(testHost)
 
         assertThat(replacement.localPort).isEqualTo(NEW_PORT)
-        assertThat(probe.calls.getValue(NEW_PORT)).withFailMessage("the replacement must be verified by its own probe").isEqualTo(1)
+        // Its own probes: one verifies it, and one confirms it still carries traffic once it is recorded.
+        assertThat(probe.calls.getValue(NEW_PORT)).withFailMessage("the replacement must be verified by its own probe").isEqualTo(2)
         assertThat(dynamicForwardPorts(launched)).containsExactly(STOP_PORT, NEW_PORT)
     }
 
@@ -388,6 +390,30 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         )
         assertThat(events.first().toDisplayString()).contains("kill -9 $livePid").contains("pkill -f -- \"-D 127.0.0.1:$STOP_PORT\"")
         assertThat(events.last().toDisplayString()).contains("127.0.0.1:$NEW_PORT").doesNotContain("localhost").contains("browser")
+    }
+
+    @Test
+    fun `an in-memory tunnel that will not stop is judged once, not again from the state file`() {
+        val hung = recordedScript(endsOnSignal = false)
+        val probe = PortProbe(STOP_PORT, NEW_PORT)
+        val clock = ManualClock()
+        val svc = inMemoryService(probe, clock, ArrayDeque(listOf(STOP_PORT, NEW_PORT)), tunnelProcesses = seeing(hung))
+        svc.ensureRunning(testHost)
+        val signalsAfterStart = hung.signals
+        probe.healthy.remove(STOP_PORT)
+        clock.advance(PAST_FRESHNESS)
+        val probesBeforeReplace = probe.calls.getValue(STOP_PORT)
+
+        val replacement = svc.ensureRunning(testHost)
+
+        assertThat(replacement.localPort).isEqualTo(NEW_PORT)
+        assertThat(events).containsExactly(
+            Event.Proxy.SupersededTunnelStopFailed(pid = livePid.toInt(), port = STOP_PORT),
+            Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.UNREACHABLE),
+        )
+        // One gentle and one forced signal, from the one stop; the state file's copy is not stopped again.
+        assertThat(hung.signals - signalsAfterStart).isEqualTo(2)
+        assertThat(probe.calls.getValue(STOP_PORT) - probesBeforeReplace).isEqualTo(Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS)
     }
 
     @Test

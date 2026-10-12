@@ -45,6 +45,7 @@ import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RegistryService
+import com.rustyrazorblade.easydblab.services.SshReadinessWait
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
@@ -587,51 +588,10 @@ class Up(
             ).getOrThrow()
     }
 
-    /**
-     * Waits for SSH to become available on the control node and Cassandra hosts.
-     *
-     * The control node is included because the SOCKS tunnel and K3s setup both dial it next;
-     * confirming it is reachable here, rather than discovering it isn't mid-tunnel-setup, is
-     * what [downloadCassandraVersions] alone never verified.
-     */
+    /** Waits for SSH on the control node and the database hosts; see [SshReadinessWait]. */
     private fun waitForSshReady() {
-        eventBus.emit(Event.Provision.SshWaiting)
-        Thread.sleep(sshStartupDelay.toMillis())
-
-        val retryConfig = RetryUtil.createSshConnectionRetryConfig(sshRetryInterval)
-        val retry =
-            Retry.of("ssh-connection", retryConfig).also {
-                it.eventPublisher.onRetry { event ->
-                    eventBus.emit(Event.Provision.SshRetrying(event.numberOfRetryAttempts, event.lastThrowable?.message))
-                }
-            }
-
-        // Checked, because MINA's SshException (a refused connection while sshd starts) is a
-        // checked IOException that the plain decorateRunnable never sees.
-        Retry
-            .decorateCheckedRunnable(retry) {
-                // The control node is never what `--hosts` scopes — that filter targets db/app
-                // nodes for scale-out. Applying it here would make `up --hosts db2` filter the
-                // control check down to zero hosts (HostOperationsService.withHosts silently
-                // no-ops on an empty match), verifying nothing and reopening the readiness gap the
-                // control check exists to close. Always check control with no filter.
-                checkSshReady(ServerType.Control, hostFilter = "")
-                checkSshReady(ServerType.Cassandra, hostFilter = hosts.hostList)
-            }.run()
-    }
-
-    private fun checkSshReady(
-        serverType: ServerType,
-        hostFilter: String,
-    ) {
-        hostOperationsService.withHosts(
-            workingState.hosts,
-            serverType,
-            hostFilter,
-        ) { clusterHost ->
-            // Only that the host answers matters; echoing its output printed a bare "1" per host.
-            remoteOps.executeRemotely(clusterHost.toHost(), "echo 1", output = false).text
-        }
+        SshReadinessWait(hostOperationsService, remoteOps, eventBus, sshStartupDelay, sshRetryInterval)
+            .await(workingState.hosts, databaseHostFilter = hosts.hostList)
     }
 
     /** Downloads Cassandra version metadata from db hosts. Meaningless for the control node. */

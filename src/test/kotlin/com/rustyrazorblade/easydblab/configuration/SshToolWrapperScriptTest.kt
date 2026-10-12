@@ -100,7 +100,15 @@ internal class SshToolWrapperScriptTest {
         assertThat(result.lines("env:").filter { it.startsWith("HTTPS_PROXY=") || it.startsWith("KUBECONFIG=") })
             .containsExactlyInAnyOrder("HTTPS_PROXY=http://corporate:3128", "KUBECONFIG=/home/operator/.kube/config")
         assertThat(result.lines("env:")).noneMatch { line ->
-            listOf("ALL_PROXY=", "all_proxy=", "https_proxy=", "HTTP_PROXY=", "http_proxy=", "NO_PROXY=", "no_proxy=").any { line.startsWith(it) }
+            listOf(
+                "ALL_PROXY=",
+                "all_proxy=",
+                "https_proxy=",
+                "HTTP_PROXY=",
+                "http_proxy=",
+                "NO_PROXY=",
+                "no_proxy=",
+            ).any { line.startsWith(it) }
         }
     }
 

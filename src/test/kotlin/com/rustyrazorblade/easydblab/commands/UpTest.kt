@@ -15,6 +15,9 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -30,9 +33,6 @@ import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.koin.dsl.module
-import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
-import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.atLeastOnce
@@ -639,11 +639,17 @@ class UpTest : UpTestFixture() {
      */
     private fun tunnelFromPreflight(reused: Boolean) {
         val socks = getKoin().get<SocksProxyService>()
-        whenever(socks.ensureRunning(any())).thenAnswer { invocation ->
-            SocksProxyState(localPort = TUNNEL_PORT, gatewayHost = invocation.getArgument(0), startTime = Instant.EPOCH, reused = reused)
-        }.thenAnswer { invocation ->
-            SocksProxyState(localPort = TUNNEL_PORT, gatewayHost = invocation.getArgument(0), startTime = Instant.EPOCH, reused = true)
-        }
+        whenever(socks.ensureRunning(any()))
+            .thenAnswer { invocation ->
+                SocksProxyState(
+                    localPort = TUNNEL_PORT,
+                    gatewayHost = invocation.getArgument(0),
+                    startTime = Instant.EPOCH,
+                    reused = reused,
+                )
+            }.thenAnswer { invocation ->
+                SocksProxyState(localPort = TUNNEL_PORT, gatewayHost = invocation.getArgument(0), startTime = Instant.EPOCH, reused = true)
+            }
         // The preflight starts a tunnel only for a cluster whose infrastructure is up.
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(

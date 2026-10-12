@@ -8,7 +8,10 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.File
 
 /**
  * Unified service for backup and restore operations.
@@ -92,13 +95,15 @@ data class VpcRestoreResult(
  * Default implementation of BackupRestoreService.
  *
  * Coordinates VpcService and ClusterBackupService to provide
- * unified backup/restore operations.
+ * unified backup/restore operations. A VPC restore also writes the tool wrappers and the
+ * Tailscale flag, so the restored workspace works without `up`.
  */
 class DefaultBackupRestoreService(
     private val vpcService: VpcService,
     private val clusterBackupService: ClusterBackupService,
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
+    private val workspaceShellTools: WorkspaceShellTools = WorkspaceShellTools(ToolWrapperInstaller()),
 ) : BackupRestoreService {
     override fun restoreFromVpc(
         vpcId: VpcId,
@@ -171,6 +176,10 @@ class DefaultBackupRestoreService(
                     clusterStateManager.save(bootstrapState)
                     bootstrapState
                 }
+
+            // A restored workspace is used as it is, without `up`, so it needs the tool wrappers
+            // and the Tailscale flag that `up` would have written.
+            workspaceShellTools.prepare(File(workingDirectory), restoredState.isTailscaleEnabled())
 
             VpcRestoreResult(restoredState, result)
         }

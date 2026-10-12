@@ -65,6 +65,7 @@ class KitHookExecutorTest : BaseKoinTest() {
     fun setup() {
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         workingDir = get<Context>().workingDirectory
+        File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
         capturedEvents.clear()
         eventBus = get()
         eventBus.addListener(
@@ -125,6 +126,52 @@ class KitHookExecutorTest : BaseKoinTest() {
         )
         executor.firePostKitStart("cassandra")
         assertThat(outputFile).exists()
+    }
+
+    @Test
+    fun `a hook gets the absolute workspace kubeconfig and the workspace bin first on PATH`() {
+        val seen = File(workingDir, "hook-env.txt")
+        writeKit(
+            name = "presto",
+            yaml =
+                """
+                name: presto
+                hooks:
+                  post-workload-start:
+                    script: bin/update-catalogs.sh
+                """.trimIndent(),
+            hookScript = "echo \"${'$'}KUBECONFIG\" > \"${seen.absolutePath}\"\necho \"${'$'}PATH\" >> \"${seen.absolutePath}\"",
+        )
+
+        executor.firePostKitStart("cassandra")
+
+        val (kubeconfig, path) = seen.readLines()
+        assertThat(kubeconfig).isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+        assertThat(File(kubeconfig)).isFile()
+        assertThat(path.split(File.pathSeparator).first()).isEqualTo(File(workingDir, Constants.ToolWrappers.DIRECTORY).absolutePath)
+    }
+
+    @Test
+    fun `a hook does not start when the workspace kubeconfig is missing, and the failure is reported`() {
+        val kubeconfig = File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).apply { delete() }
+        val outputFile = File(workingDir, "hook-ran.txt")
+        writeKit(
+            name = "presto",
+            yaml =
+                """
+                name: presto
+                hooks:
+                  post-workload-start:
+                    script: bin/update-catalogs.sh
+                """.trimIndent(),
+            hookScript = """echo ran > "${outputFile.absolutePath}"""",
+        )
+
+        executor.firePostKitStart("cassandra")
+
+        assertThat(outputFile).doesNotExist()
+        val failed = capturedEvents.filterIsInstance<Event.Kit.HookFailed>().single()
+        assertThat(failed.reason).contains(kubeconfig.absolutePath)
     }
 
     @Test

@@ -902,7 +902,26 @@ object Constants {
 
     // Proxy configuration
     object Proxy {
-        const val DEFAULT_SOCKS5_PORT = 1080
+        /**
+         * The ports a new SOCKS5 tunnel picks its local port from, at random, with none preferred. The
+         * range lies below every OS ephemeral range (Linux 32768-60999, macOS 49152-65535). The OS gives
+         * outgoing connections their local port from the ephemeral range, so an outgoing loopback
+         * connection could take an ephemeral tunnel port while the tunnel script waits to restart ssh,
+         * and the restart would then find its port taken and end the tunnel.
+         */
+        val LOCAL_PORT_RANGE: IntRange = TUNNEL_PORT_MIN..TUNNEL_PORT_MAX
+
+        /** The first port of [LOCAL_PORT_RANGE]. */
+        const val TUNNEL_PORT_MIN = 20000
+
+        /** The last port of [LOCAL_PORT_RANGE]. */
+        const val TUNNEL_PORT_MAX = 29999
+
+        /**
+         * How many random ports of [LOCAL_PORT_RANGE] a tunnel start tries before it fails. It never
+         * falls back to an OS-assigned port, which would be an ephemeral one.
+         */
+        const val LOCAL_PORT_ATTEMPTS = 20
 
         /**
          * JVM system property used to publish the active SOCKS5 proxy port to the clients that need
@@ -914,10 +933,44 @@ object Constants {
         const val PORT_PROPERTY = "easydblab.socks5Port"
 
         /**
-         * Filename of the SOCKS5 proxy's `ssh -v` transcript. It lives under the workspace
-         * `logs/` directory (alongside `logs/info.log`), overwritten on each proxy start so the
-         * tail is always exactly the most recent attempt. Read back on verification failure to
-         * surface the real ssh error (e.g. a changed host key or refused connection).
+         * The address the SOCKS5 tunnel listens on, `ssh -D 127.0.0.1:<port>`, and the one every client
+         * of the tunnel connects to. It is IPv4 loopback only, never `localhost`: an ssh that also
+         * listened on `::1` keeps running with only that address bound when another process holds
+         * 127.0.0.1 on the port, and a client of `localhost` could then reach that other process.
+         */
+        const val TUNNEL_LISTEN_ADDRESS = "127.0.0.1"
+
+        /**
+         * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
+         * tool wrappers in `bin/`, the tunnel script and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE],
+         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses JSON.
+         */
+        const val ENV_FILE = ".socks5-proxy.env"
+
+        /**
+         * The lock file beside [ENV_FILE]. Every update of the env file holds an exclusive lock on it
+         * while it reads, changes and replaces the file, so two CLI processes never lose each other's keys.
+         */
+        const val ENV_LOCK_FILE = ".socks5-proxy.env.lock"
+
+        /** The env file key that says whether the cluster reaches its nodes over Tailscale (`true`/`false`). */
+        const val ENV_TAILSCALE_ACTIVE = "EDL_TAILSCALE_ACTIVE"
+
+        /** The env file key that holds the verified tunnel's local port; absent while no tunnel is recorded. */
+        const val ENV_SOCKS_PORT = "EDL_SOCKS_PORT"
+
+        /**
+         * The env file key that holds the PID of the verified tunnel's `edl-socks-tunnel` script,
+         * written and removed with [ENV_SOCKS_PORT]. Shell-side tools use the port only while it is live.
+         */
+        const val ENV_SOCKS_PID = "EDL_SOCKS_PID"
+
+        /**
+         * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script
+         * runs and the script's own timestamped lines. It lives under the workspace `logs/` directory
+         * (alongside `logs/info.log`). Each launch appends a timestamped header and never truncates
+         * it, so it keeps the history of every tunnel. A failed start reads back only its own part,
+         * to surface the real ssh error (e.g. a changed host key or refused connection).
          */
         const val SOCKS5_PROXY_LOG_FILE = "socks5-proxy.log"
 
@@ -925,7 +978,7 @@ object Constants {
          * How many times a SOCKS5 proxy start launches `ssh -D`, each on a freshly selected port,
          * when the previous attempt died because its local port was already bound. Two workspaces
          * starting a proxy at the same moment can both find the same port free; the loser's ssh
-         * exits with "Address already in use" and the next attempt picks another port.
+         * exits with "cannot listen to port" and the next attempt picks another port.
          */
         const val PORT_BIND_MAX_ATTEMPTS = 3
 
@@ -946,6 +999,33 @@ object Constants {
          * when a live ssh never produces a tunnel.
          */
         const val SSM_TUNNEL_VERIFY_ATTEMPTS = 60
+
+        /**
+         * How many times, 500ms apart, a running tunnel is probed before it is reused. A tunnel
+         * that is up answers the first probe; a second covers one dropped packet. One that fails
+         * both is stopped and replaced.
+         */
+        const val REUSE_TUNNEL_VERIFY_ATTEMPTS = 2
+
+        /**
+         * The whole budget, in milliseconds, of one end-to-end tunnel probe: the connect, the SOCKS5
+         * handshake and CONNECT reply, and the read of the control node's `sshd` banner together. A
+         * working tunnel answers in milliseconds; a dead one is given up on after this, every attempt.
+         */
+        const val PROBE_ATTEMPT_TIMEOUT_MS = 1000
+
+        /**
+         * How long after a tunnel last passed the end-to-end probe this process reuses its in-memory
+         * tunnel without probing again. Cluster HTTP clients ask for the tunnel on every request, so
+         * a burst of requests probes once. Across CLI invocations the state-file path always probes.
+         */
+        val REUSE_PROBE_FRESHNESS: java.time.Duration = java.time.Duration.ofSeconds(REUSE_PROBE_FRESHNESS_SECONDS)
+
+        /** [REUSE_PROBE_FRESHNESS] in seconds. */
+        const val REUSE_PROBE_FRESHNESS_SECONDS = 10L
+
+        /** Seconds `edl-socks-tunnel` waits after its ssh exits before it starts ssh again on the same port. */
+        const val TUNNEL_RESTART_BACKOFF_SECONDS = 2
     }
 
     // Tailscale VPN configuration
@@ -1005,6 +1085,26 @@ object Constants {
         const val BACKEND_STATE_TIMED_OUT = "timed out"
     }
 
+    // OpenSSH options the generated sshConfig sets for every SSH transport
+    object Ssh {
+        /**
+         * ssh keepalive interval for every host, direct or over SSM: well inside Session Manager's
+         * 20-minute idle timeout, and short enough that a tunnel whose connection died is noticed.
+         */
+        const val KEEPALIVE_INTERVAL_SECONDS = 30
+
+        /** Unanswered keepalives before ssh gives up on a dropped connection (about 90s at the interval above). */
+        const val KEEPALIVE_COUNT_MAX = 3
+
+        /**
+         * OpenSSH's ConnectTimeout in the generated sshConfig, for every transport. Keepalives start
+         * only after authentication, so this bounds the wait for the server's banner, ProxyCommand
+         * included (verified on OpenSSH 9.6 and 10.3); it does not bound key exchange once the banner
+         * has arrived. It matches [Ssm.SSH_AUTH_TIMEOUT_SECONDS].
+         */
+        const val CONNECT_TIMEOUT_SECONDS = 30
+    }
+
     // AWS Systems Manager Session Manager, used as the SSH transport when a profile selects `ssm`
     object Ssm {
         /** The AWS CLI executable. Session Manager sessions are started through it. */
@@ -1025,13 +1125,6 @@ object Constants {
          * then carries nothing would otherwise hold each attempt for MINA's 120s default.
          */
         const val SSH_AUTH_TIMEOUT_SECONDS = 30L
-
-        /**
-         * OpenSSH's ConnectTimeout in the `ssm` sshConfig, matching [SSH_AUTH_TIMEOUT_SECONDS]. With a
-         * ProxyCommand it bounds the wait for the server's banner (verified on OpenSSH 9.6 and
-         * 10.3); it does not bound key exchange once the banner has arrived.
-         */
-        const val SSH_CONNECT_TIMEOUT_SECONDS = 30
 
         /** Prefix of the line the AWS CLI prints with a new session's ID, which TerminateSession needs. */
         const val SESSION_ID_MARKER = "Starting session with SessionId: "
@@ -1069,19 +1162,53 @@ object Constants {
 
         /** Most recent plugin output lines kept for error messages. */
         const val TRANSCRIPT_MAX_LINES = 50
-
-        /** ssh keepalive interval for hosts reached over SSM, well inside Session Manager's 20-minute idle timeout. */
-        const val SSH_KEEPALIVE_INTERVAL_SECONDS = 30
-
-        /** Unanswered keepalives before ssh gives up on a dropped session (about 90s at the interval above). */
-        const val SSH_KEEPALIVE_COUNT_MAX = 3
-
         const val AWS_CLI_INSTALL_HINT =
             "brew install awscli (or https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)"
 
         const val PLUGIN_INSTALL_HINT =
             "brew install --cask session-manager-plugin " +
                 "(or https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)"
+    }
+
+    /**
+     * The workspace tool wrappers: one packaged POSIX script written into `<workspace>/bin/` once per
+     * wrapped tool. Each copy picks its tool from its own file name and routes it through the SOCKS
+     * tunnel recorded in [Proxy.ENV_FILE], so kit shell steps, hooks and `env.sh` shells all reach the
+     * cluster the same way.
+     */
+    object ToolWrappers {
+        /** The workspace directory the wrappers are written to. */
+        const val DIRECTORY = "bin"
+
+        /** The marker file that says a `bin/` directory holds easy-db-lab's wrappers. */
+        const val MARKER = ".easy-db-lab-tool-wrappers"
+
+        /** The packaged wrapper script. */
+        const val RESOURCE = "/com/rustyrazorblade/easydblab/configuration/tool-wrapper.sh"
+
+        /** The tools whose wrapper routes them to the cluster's private network: the SOCKS tunnel or Tailscale. */
+        val TOOLS = listOf("kubectl", "helm", "cilium", "curl", "skopeo", "k9s")
+
+        /**
+         * The tools whose wrapper reaches the nodes over SSH with the workspace `sshConfig`, and leaves the
+         * proxy variables and `KUBECONFIG` alone.
+         */
+        val SSH_TOOLS = listOf("ssh", "scp", "sftp", "rsync")
+
+        /** Every tool that gets a wrapper in `bin/`; the names are also the wrapper file names. */
+        val WRAPPED_TOOLS = TOOLS + SSH_TOOLS
+
+        /** The tunnel script written into `bin/` with the wrappers, which keeps the SOCKS tunnel's ssh running. */
+        const val TUNNEL_SCRIPT = "edl-socks-tunnel"
+
+        /**
+         * The shell the CLI runs [TUNNEL_SCRIPT] with, `/bin/sh <script>`, instead of exec'ing it: macOS
+         * scans the first exec of a new or rewritten executable, and a shell reads the script as data.
+         */
+        const val TUNNEL_SHELL = "/bin/sh"
+
+        /** The packaged tunnel script. */
+        const val TUNNEL_RESOURCE = "/com/rustyrazorblade/easydblab/configuration/edl-socks-tunnel.sh"
     }
 
     // Container Registry configuration

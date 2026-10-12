@@ -44,7 +44,7 @@ class ProxiedKubernetesClientFactory : KubernetesClientFactory {
         val config = Config.fromKubeconfig(kubeconfigContent)
 
         System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
-            config.httpsProxy = "socks5://127.0.0.1:$port"
+            config.httpsProxy = "socks5://${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:$port"
         }
 
         config.connectionTimeout = CONNECTION_TIMEOUT_MS

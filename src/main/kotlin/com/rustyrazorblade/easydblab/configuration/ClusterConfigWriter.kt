@@ -13,6 +13,20 @@ object ClusterConfigWriter {
     /**
      * Writes SSH config content to the provided writer.
      *
+     * Every cluster-wide option sits in one `Host` block whose patterns are a wildcard per
+     * [ServerType] prefix (`db*`, `app*`, `control*`) and the negated `!*.*`, so they apply to every
+     * cluster host, however many the cluster grows to, and to no other host. OpenSSH patterns have no
+     * character classes, so the wildcards alone would also match a name such as `db.boo.com`; the
+     * negation keeps every name with a dot, and so every IP address, out of the block. Each host then gets its own block with its
+     * address and, under the `ssm` transport, its `ProxyCommand`. The file ends with `Host *` and
+     * `Include ~/.ssh/config`, so any other host, such as `github.com` for a `git` that runs through
+     * the workspace's `ssh` wrapper, resolves exactly as it would without `-F`.
+     *
+     * OpenSSH keeps the first value it obtains for an option, reading the file top to bottom, so the
+     * included personal config cannot change an option the cluster block sets for a cluster host. The
+     * `Host *` line matters: an `Include` inside the last host's block would apply to that host only.
+     * A missing `~/.ssh/config` is no error.
+     *
      * @param writer BufferedWriter to write SSH config to
      * @param identityFile Path to the SSH identity file
      * @param hosts Map of server types to their hosts
@@ -25,27 +39,31 @@ object ClusterConfigWriter {
         hosts: Map<ServerType, List<ClusterHost>>,
         proxyCommands: Map<String, String> = emptyMap(),
     ) {
-        // write standard stuff first
-        writer.appendLine("StrictHostKeyChecking=no")
+        // !*.* keeps every name with a dot, and so every IP address, out of the cluster block: OpenSSH
+        // patterns have no character classes, so db* alone would also match db.boo.com.
+        writer.appendLine("Host ${ServerType.entries.joinToString(" ") { "${it.serverType}*" }} !*.*")
+        writer.appendLine(" StrictHostKeyChecking=no")
         // AWS recycles public IPs across ephemeral cluster lifetimes, so a host's key
         // recorded in the developer's ~/.ssh/known_hosts can collide with a different
         // cluster's key for the same IP. Pin to /dev/null so this config never reads
         // or writes that file -- matching the MINA SSHD path used everywhere else,
         // which verifies no host keys at all.
-        writer.appendLine("UserKnownHostsFile=/dev/null")
-        writer.appendLine("User ubuntu")
-        writer.appendLine("IdentityFile $identityFile")
-        if (proxyCommands.isNotEmpty()) {
-            // Session Manager ends a session after 20 idle minutes, which silently kills a quiet
-            // long-lived connection such as the SOCKS tunnel. Keepalives count as traffic, so
-            // they hold the session open, and they make ssh exit promptly if it is dropped anyway.
-            writer.appendLine("ServerAliveInterval ${Constants.Ssm.SSH_KEEPALIVE_INTERVAL_SECONDS}")
-            writer.appendLine("ServerAliveCountMax ${Constants.Ssm.SSH_KEEPALIVE_COUNT_MAX}")
-            // Keepalives start only after authentication, so a session whose plugin connects but
-            // passes no data would hang ssh forever. ConnectTimeout bounds the wait for the server's
-            // banner, ProxyCommand included (checked on OpenSSH 9.6 and 10.3).
-            writer.appendLine("ConnectTimeout ${Constants.Ssm.SSH_CONNECT_TIMEOUT_SECONDS}")
-        }
+        writer.appendLine(" UserKnownHostsFile=/dev/null")
+        writer.appendLine(" User ubuntu")
+        writer.appendLine(" IdentityFile $identityFile")
+        // Every transport needs keepalives. An idle connection such as the SOCKS tunnel can die
+        // silently, after a laptop sleep or a network change on a direct connection, or when Session
+        // Manager ends a session after 20 idle minutes. Without keepalives ssh lingers with its local
+        // port open and the tunnel carries nothing. Keepalives count as traffic, so they hold an SSM
+        // session open, and they make ssh exit within interval x count when the connection is gone.
+        writer.appendLine(" ServerAliveInterval ${Constants.Ssh.KEEPALIVE_INTERVAL_SECONDS}")
+        writer.appendLine(" ServerAliveCountMax ${Constants.Ssh.KEEPALIVE_COUNT_MAX}")
+        // Keepalives start only after authentication, so a connect that never completes (a host that
+        // drops the SYN, or a Session Manager plugin that connects but passes no data) would hang
+        // ssh, and the tunnel script with it. ConnectTimeout bounds the wait for the server's banner,
+        // ProxyCommand included (checked on OpenSSH 9.6 and 10.3).
+        writer.appendLine(" ConnectTimeout ${Constants.Ssh.CONNECT_TIMEOUT_SECONDS}")
+        writer.appendLine()
 
         // get each server type and get the hosts for type and add it to the sshConfig.
         ServerType.entries.forEach { serverType ->
@@ -57,6 +75,10 @@ object ClusterConfigWriter {
                 writer.appendLine()
             }
         }
+
+        // Every other host resolves as it would without -F.
+        writer.appendLine("Host *")
+        writer.appendLine("Include ~/.ssh/config")
 
         writer.flush()
     }

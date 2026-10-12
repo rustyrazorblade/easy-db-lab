@@ -108,6 +108,7 @@ class KitInstallCommand(
                             clusterState = clusterState,
                             variables = variables,
                             kitDir = kitDir,
+                            workspaceDir = context.workingDirectory,
                         ),
                 ).onFailure { e ->
                     log.debug(e) { "$instanceName install failed" }

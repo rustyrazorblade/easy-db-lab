@@ -132,7 +132,7 @@ If you don't want to set up Tailscale, the SOCKS proxy provides connectivity via
 ```
 ┌─────────────────┐     SSH Tunnel      ┌──────────────┐
 │  Your Machine   │ ──────────────────► │ Control Node │
-│ localhost:<port>│                     │  (control0)  │
+│ 127.0.0.1:<port>│                     │  (control0)  │
 └────────┬────────┘                     └──────┬───────┘
          │                                     │
     SOCKS5 Proxy                         Private VPC
@@ -149,30 +149,77 @@ kubectl get pods
 curl http://control0:3100/ready
 ```
 
-The `easy-db-lab` CLI starts the proxy: any command that needs to reach the cluster starts it, or
-reuses the one already running, before the command does its work. Sourcing `env.sh` does not start
-the proxy. Its wrappers only read the proxy's port from `.socks5-proxy-state`. If no command has
-started the proxy yet, run `start-socks5` before using the wrappers.
+The `easy-db-lab` CLI is the only thing that starts or stops the tunnel. Any command that needs to
+reach the cluster starts it, or reuses the one already running, before the command does its work.
+The CLI reuses a running tunnel only after a connection through it reaches the control node. If the tunnel's SSH connection died while its local port stayed open, the CLI stops it, starts a new one, and records the new port.
 
-The proxy listens on port 1080 when it is free. When another process already holds 1080 — most
-often the proxy of another cluster workspace you are running at the same time — the proxy picks a
-free port instead. Each workspace records its own port in `.socks5-proxy-state`, and the shell
-wrappers in `env.sh` read it from there, so several clusters can run side by side.
+When the CLI replaces a tunnel, it prints the old port, the new port and the reason: the tunnel went to another control node, it no longer reached the control node, its process had exited, or its PID now belongs to another process. If your browser uses the tunnel, change its SOCKS port to the new one. If the old tunnel does not stop, the CLI prints an error with its PID; end it with `kill -9 <pid>`. The CLI no longer records that tunnel, so it will not stop an `ssh` the tunnel leaves: the error also gives the `pkill` command that ends it.
 
-### Proxied Commands
+The tunnel reconnects by itself. The CLI runs it through `<workspace>/bin/edl-socks-tunnel`, which easy-db-lab writes with the tool wrappers. That script runs `ssh -N -D 127.0.0.1:<port>` and, when `ssh` exits, starts it again on the same port after a two-second pause. The tunnel listens on 127.0.0.1 only, and every client of it uses 127.0.0.1, never `localhost`: if another process holds the port on one loopback address, a client of `localhost` could reach that process instead. The SSH keepalives make `ssh` exit about 90 seconds after its connection dies, for example after a laptop sleep or a network change. Because the port does not change, wrapped tools in an open shell work again as soon as the connection comes back, with no CLI command. `socks stop` and `down` stop the script and its `ssh`.
 
-These commands are automatically configured to use the proxy after `source env.sh`:
+The script restarts `ssh` only for a tunnel the CLI has verified. The CLI records the port in `.socks5-proxy.env` only after a connection through the tunnel reaches the control node, and the script checks that record. A tunnel that never came up (its port was taken, its key was refused) ends at once, and the CLI reports the failure or retries on a new port. If another process takes the port while `ssh` waits to restart, the script ends after that one attempt. The wrapped tools then fail with the `socks start` message, which names `<workspace>/logs/socks5-proxy.log`, and the next CLI command starts a new tunnel. The log records each `ssh` start and why the script ended, with a UTC timestamp on every line.
+
+The tunnel is shared by every command in the workspace, so Ctrl-C does not end it. Pressing Ctrl-C during an easy-db-lab command stops that command and leaves the tunnel running. Use `easy-db-lab socks stop` to stop it.
+
+To start it for everything else (your shell, a browser), run:
+
+```bash
+easy-db-lab socks start
+```
+
+`socks start` prints the tunnel's local port. On a Tailscale cluster it starts nothing and says that
+no tunnel is needed.
+
+Each new tunnel listens on a random free local port, from 20000 to 29999; no port is preferred. The range is below the ports the OS gives outgoing connections (32768 and up on Linux, 49152 and up on macOS), so no outgoing connection can take the tunnel's port while `ssh` waits to restart. If 20 random ports in the range are all in use, the CLI fails with a message that names the range. Each workspace records its own port, so several clusters can run side by side, and two workspaces are unlikely to want the same port. If they do, the second one picks another port.
+
+The CLI records the tunnel in the workspace's `.socks5-proxy.env`, as `EDL_SOCKS_PORT` (the port) and `EDL_SOCKS_PID` (the PID of the tunnel script), next to `EDL_TAILSCALE_ACTIVE`. The CLI is the only writer of this file; the wrappers and `env.sh` read it. Each write holds a lock on `.socks5-proxy.env.lock`, so two easy-db-lab commands in the same workspace never lose each other's values.
+
+A wrapper checks only that some process still holds the recorded PID, because a shell script cannot read another process's arguments portably. The CLI checks more: it reuses a recorded tunnel only when the process with that PID is the workspace's tunnel script, with the recorded port and `sshConfig`. When another program now holds the PID, the next CLI command that needs the tunnel starts a new one.
+
+### Tool Wrappers
+
+easy-db-lab writes a small wrapper script for each of these tools into the workspace's `bin/`
+directory, at `up` and before every kit command:
 
 | Command | Description |
 |---------|-------------|
 | `kubectl` | Kubernetes CLI |
+| `helm` | Kubernetes package manager |
+| `cilium` | Cilium CLI |
 | `k9s` | Kubernetes TUI |
 | `curl` | HTTP client |
 | `skopeo` | Container image tool |
+| `ssh`, `scp`, `sftp` | SSH to the nodes, with the workspace `sshConfig` |
+| `rsync` | File sync to the nodes, over SSH with the workspace `sshConfig` |
+
+`source env.sh` puts `bin/` first on your `PATH`, and kit scripts get it first on theirs.
+
+The `ssh`, `scp` and `sftp` wrappers add `-F <workspace>/sshConfig` before your arguments, and the `rsync` wrapper adds `-ave "ssh -F <workspace>/sshConfig"`, so `ssh db0` reaches the node by its alias. They reach the nodes over SSH itself, not the SOCKS tunnel, so they leave your proxy variables and `KUBECONFIG` unchanged. If the workspace has no `sshConfig` file, they name the missing file and exit 1.
+
+Each call of the other wrapped tools reads the workspace's `.socks5-proxy.env`, which the CLI writes, and then:
+
+- on a SOCKS cluster, routes that one call through the tunnel;
+- on a Tailscale cluster, runs the tool unchanged, so it connects directly;
+- with no tunnel recorded, or when the recorded tunnel script (`EDL_SOCKS_PID`) is no longer running, fails with exit code 1 and a message that says to run `easy-db-lab socks start`. It never uses the port of a tunnel that is gone, because another process may hold that port now.
+
+The `kubectl`, `helm`, `cilium` and `k9s` wrappers always use the workspace `kubeconfig`. They replace any `KUBECONFIG` you exported, because a workspace's wrapper reaches only that workspace's cluster. A bare `<workspace>/bin/kubectl get ns` works with no setup: you do not need to source `env.sh` or set `KUBECONFIG`. If the workspace has no `kubeconfig` file, the wrapper names the missing file and exits 1. The `curl` and `skopeo` wrappers do not change `KUBECONFIG`.
+
+The wrappers replace any proxy variables you set in your shell for that one call, so an exported
+`NO_PROXY` cannot send cluster traffic around the tunnel. They do not change your shell, and tools
+without a wrapper, `aws` included, connect directly. A wrapped tool sends all of its traffic through
+the tunnel, public URLs included.
+
+`command kubectl` in a sourced shell also runs the wrapper, because the wrapper is a real file on
+your `PATH`, not a shell function. To run the real binary directly, call it by its full path, for
+example `/usr/local/bin/kubectl`.
+
+If you sourced an `env.sh` from an older version in an open shell, source the new one again: it
+removes the old `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, `k9s`, `ssh`, `scp`, `sftp` and `rsync` shell functions.
 
 ### Manual Proxy Usage
 
-For other commands, use the `with-proxy` wrapper:
+For other commands, use the `with-proxy` helper from `env.sh`. On a Tailscale cluster it runs the
+command directly:
 
 ```bash
 with-proxy wget http://10.0.1.50:8080/api
@@ -181,17 +228,16 @@ with-proxy http http://control0:3000/api/health
 
 ### Kit commands over SOCKS
 
-Kit lifecycle commands work transparently on SOCKS-only clusters — no extra flags or setup —
+Kit lifecycle commands work transparently on SOCKS-only clusters, with no extra flags or setup,
 whether or not Tailscale is enabled.
 
-**`kit <name> start` / `stop` and other lifecycle phases.** These run `kubectl` and `helm` on
-your machine to apply manifests, wait on pods, and read pod state. On a SOCKS-only cluster the
-private Kubernetes API is reachable only through the tunnel, so `easy-db-lab` hands those
-local `kubectl`/`helm` invocations a throwaway kubeconfig carrying a
-`proxy-url: socks5://127.0.0.1:<port>` on the cluster entry. That routes **only** kubectl/helm
-through the tunnel — `aws`, `curl`, and anything else a kit step runs stay direct. The proxied
-kubeconfig is derived per command and deleted when the command finishes; the workspace
-kubeconfig is never modified.
+**`kit install`, `<kit> start` / `stop` and other lifecycle phases.** Their shell steps, phase
+scripts and hooks run `kubectl`, `helm` and similar tools on your machine to apply manifests, wait
+on pods, and read pod state. Each of them runs with the workspace `bin/` first on `PATH` and the
+absolute workspace kubeconfig in `KUBECONFIG`, so those tools go through the wrappers above. The CLI
+verifies the tunnel, and restarts it on a new port if it died, before the first step runs. Indirect
+calls (`timeout`, `xargs`, nested scripts) go through the wrappers too. See
+[How local scripts reach the cluster](../development/kits.md#how-local-scripts-reach-the-cluster).
 
 ```bash
 easy-db-lab postgres start
@@ -212,12 +258,13 @@ so behavior is identical either way. In neither path are the JVM-global `socksPr
 
 ### Browser Access
 
-Configure your browser's SOCKS5 proxy:
+Run `easy-db-lab socks start` and note the port it prints. Then configure your browser's SOCKS5
+proxy:
 
 | Setting | Value |
 |---------|-------|
-| SOCKS Host | `localhost` |
-| SOCKS Port | the workspace's proxy port (`1080` unless it was taken; `socks5-status` shows it) |
+| SOCKS Host | `127.0.0.1` |
+| SOCKS Port | the port `socks start` printed (`socks5-status` shows it too) |
 | SOCKS Version | 5 |
 
 Then access cluster services:
@@ -228,18 +275,40 @@ Then access cluster services:
 ### Proxy Management
 
 ```bash
-start-socks5          # Start proxy
-start-socks5 1081     # Start on different port
-socks5-status         # Check status
-stop-socks5           # Stop proxy
+easy-db-lab socks start   # Start the tunnel, or reuse the running one, and print its port
+socks5-status             # Show the recorded port (after source env.sh)
+easy-db-lab socks stop    # Stop the tunnel; the cluster keeps running
 ```
+
+`easy-db-lab down` stops the tunnel too. After `socks stop`, wrapped tools fail with the
+`socks start` message until a CLI command or `socks start` starts the tunnel again.
+
+If the tunnel process does not end, `socks stop` prints its PID and exits non-zero.  The PID and port stay recorded.  Stop the process with `kill <pid>`, then run `easy-db-lab socks stop` again.  `down` goes on with the teardown in that case and prints the same PID.
+
+If the tunnel script was killed from outside (for example with `kill -9`), its `ssh` can keep running on its own. `socks stop`, `down` and the next tunnel start find that `ssh` by the recorded port and `sshConfig`, and stop it.
+
+### The Generated sshConfig
+
+The `sshConfig` generated for your cluster applies its options to the cluster's hosts only. It
+starts with one `Host db* app* control* !*.*` block: a wildcard per node type, so it covers every
+node the cluster grows to, and `!*.*`, which keeps out every name with a dot, such as
+`db.example.com`, and every IP address. OpenSSH host patterns have no character classes, so
+`db*` alone would also match `db.example.com`. That block sets `StrictHostKeyChecking=no`, `UserKnownHostsFile=/dev/null`,
+`User ubuntu`, the cluster's `IdentityFile`, the keepalives and `ConnectTimeout`. Each node then has
+its own `Host` block with its address and, under the `ssm` transport, its `ProxyCommand`.
+
+The file ends with `Host *` and `Include ~/.ssh/config`. Any other host, such as `github.com` for a
+`git` that runs through the workspace's `ssh` wrapper, a dotted name like `db.example.com`, or an IP
+address, resolves exactly as it would without `-F`: from your own `~/.ssh/config`. `ssh` keeps the first value it reads for an
+option, so your own config can add options for a cluster node but cannot change the ones the
+cluster block sets. To see what applies to a host, run `ssh -F <workspace>/sshConfig -G <host>`.
 
 ### Host Key Verification
 
-The `sshConfig` generated for your cluster sets `UserKnownHostsFile=/dev/null` alongside
-`StrictHostKeyChecking=no`. `ssh` — and therefore the SOCKS tunnel, which is launched with
-`ssh -N -D` against that config — never reads or writes your `~/.ssh/known_hosts` for cluster
-nodes.
+For the cluster's nodes, the generated `sshConfig` sets `UserKnownHostsFile=/dev/null` alongside
+`StrictHostKeyChecking=no`. `ssh` — and therefore the SOCKS tunnel, whose `edl-socks-tunnel`
+script runs `ssh -N -D` against that config — never reads or writes your `~/.ssh/known_hosts` for
+cluster nodes.
 
 This matters because AWS recycles public IPs across ephemeral cluster lifetimes. Without this
 setting, a recycled IP that previously belonged to a different cluster (with a different host
@@ -259,7 +328,13 @@ non-zero exit code rather than silently continuing against a proxy port nothing 
 The error names the SOCKS proxy as the failing component and points at `socks5-proxy.log` in
 your cluster workspace directory — that file holds the `ssh -v` transcript from the tunnel
 attempt and is the fastest way to find the real cause (a host-key mismatch, a security group
-blocking port 22, the control node not yet accepting SSH, and so on).
+blocking port 22, the control node not yet accepting SSH, and so on). The error quotes only the
+lines of the failed attempt.
+
+The log keeps the history of every tunnel in the workspace; nothing truncates it. Each launch adds
+a header line with a UTC timestamp, the port and the control node, and the tunnel script adds a
+timestamped line before each `ssh` run and each time `ssh` exits. Look for the last header to find
+the current tunnel.
 
 `easy-db-lab status` is the one exception: it still reports everything it can reach over SSH and
 the AWS SDK even when the tunnel is down, marking only the section that requires the private
@@ -268,29 +343,30 @@ Kubernetes API (stress jobs) as unavailable. See the
 
 ### Troubleshooting SOCKS Proxy
 
-**"Connection refused" errors:**
+**"no SOCKS tunnel is recorded for the workspace" or "the recorded SOCKS tunnel (PID ...) is not running":**
 ```bash
-socks5-status              # Check if running
-start-socks5               # Start if needed
+easy-db-lab socks start    # Start the tunnel and record its port
+```
+
+**"Connection refused" errors:**
+The tunnel's `ssh` cannot reach the control node right now. The tunnel restarts `ssh` by itself;
+if that does not help, start a new tunnel:
+```bash
+socks5-status              # Shows the recorded port and whether anything listens on it
+easy-db-lab socks start    # Starts a new tunnel and records its port
 ssh control0 hostname      # Verify SSH works
 ```
 
 **Proxy not working after network change:**
 ```bash
-stop-socks5
-source env.sh
-```
-
-**Port already in use:**
-```bash
-lsof -i :1080         # Check what's using the default port
-start-socks5 1081     # Use different port
+easy-db-lab socks stop
+easy-db-lab socks start
 ```
 
 **Commands timing out:**
 1. Check cluster status: `easy-db-lab status`
 2. Verify SSH works: `ssh control0 hostname`
-3. Restart proxy: `stop-socks5 && start-socks5`
+3. Restart the tunnel: `easy-db-lab socks stop && easy-db-lab socks start`
 
 **`easy-db-lab` command fails with a SOCKS proxy error:**
 As of this change, `easy-db-lab` commands that need the tunnel (`up`, kit commands, Grafana

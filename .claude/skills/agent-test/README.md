@@ -2,15 +2,12 @@
 
 Dynamic end-to-end test runner that calls `easy-db-lab` commands directly.
 
-## How it differs from `/e2e-test`
+## What it does
 
-| | `/e2e-test` | `/agent-test` |
-|--|--|--|
-| Execution | Wraps `bin/end-to-end-test` | Calls `easy-db-lab` commands directly |
-| Test plan | Fixed step list | Generated dynamically from branch changes |
-| Debugging | Post-hoc via `/debug-environment` | Inline at each failing step |
-| Adaptability | Flags only | Can adjust, skip, or add steps as needed |
-| Diff awareness | File-level (flags) | Reads actual diffs for targeted verification |
+- Calls `easy-db-lab` commands directly, in its own workspace under `clusters/`.
+- Generates its test plan from the branch's changes and reads the actual diffs for targeted
+  verification.
+- Investigates a failing step inline, and can adjust, skip, or add steps as needed.
 
 ## Usage
 

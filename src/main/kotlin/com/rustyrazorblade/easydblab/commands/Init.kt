@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
@@ -343,11 +344,17 @@ class Init : PicoBaseCommand() {
     override fun execute() {
         validateParameters()
 
-        if (!clean) {
+        if (clean) {
+            eventBus.emit(Event.Setup.CleaningExistingConfig)
+            // Execute Clean immediately with full lifecycle
+            commandExecutor.execute { Clean() }
+        } else {
             checkExistingFiles()
         }
+        // After the cleanup, which removes a bin/ that holds only easy-db-lab's wrappers.
+        refuseExistingBin()
 
-        val clusterState = prepareEnvironment()
+        val clusterState = createClusterState()
 
         eventBus.emit(Event.Setup.InitializingDirectory)
 
@@ -422,13 +429,20 @@ class Init : PicoBaseCommand() {
         }
     }
 
-    private fun prepareEnvironment(): ClusterState {
-        if (clean) {
-            eventBus.emit(Event.Setup.CleaningExistingConfig)
-            // Execute Clean immediately with full lifecycle
-            commandExecutor.execute { Clean() }
-        }
+    /**
+     * Refuses a directory that already has a `bin/`, before anything is written. The workspace
+     * `bin/` holds easy-db-lab's tool wrappers, and this is what keeps a source checkout or a
+     * project directory from being used as a workspace.
+     *
+     * @throws CommandFailedException after reporting [Event.Setup.WorkspaceHasBinDirectory]
+     */
+    private fun refuseExistingBin() {
+        if (!File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY).exists()) return
+        eventBus.emit(Event.Setup.WorkspaceHasBinDirectory(context.workingDirectory.absolutePath))
+        throw CommandFailedException("${context.workingDirectory.absolutePath} already has a bin/")
+    }
 
+    private fun createClusterState(): ClusterState {
         val state =
             ClusterState(
                 name = name,
@@ -473,7 +487,8 @@ class Init : PicoBaseCommand() {
     ) {
         this::class.java.getResourceAsStream(resourceName).use { stream ->
             requireNotNull(stream) { "Resource $resourceName not found" }
-            File(targetFileName).outputStream().use { output -> stream.copyTo(output) }
+            // Into the workspace, which is not always the process working directory (Server, Repl).
+            File(context.workingDirectory, targetFileName).outputStream().use { output -> stream.copyTo(output) }
         }
     }
 

@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
+import com.rustyrazorblade.easydblab.proxy.TunnelStopResult
 import com.rustyrazorblade.easydblab.services.BackendState
 import com.rustyrazorblade.easydblab.services.FlushOutcome
 import com.rustyrazorblade.easydblab.services.FlushStep
@@ -125,6 +126,8 @@ class DownBackupTest : BaseKoinTest() {
 
         whenever(socksProxyService.ensureRunning(any()))
             .thenReturn(SocksProxyState(1080, controlHost, Instant.now()))
+        // A mock's default for the sealed result is null; these teardowns record no tunnel.
+        whenever(socksProxyService.stop()).thenReturn(TunnelStopResult.NotRunning)
         whenever(teardownBackupService.unsavedSignals(any())).thenReturn(unsavedSignals)
     }
 

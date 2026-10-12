@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -18,7 +19,10 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
@@ -55,12 +59,14 @@ import org.junit.jupiter.api.BeforeEach
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.nio.file.Path
 import java.time.Duration
+import java.time.Instant
 
 /**
  * Shared fixture for the [Up] tests: the fully-wired "happy path" collaborators, the
@@ -72,6 +78,14 @@ import java.time.Duration
  * dozen mocks and a failure in one branch reads in its own file.
  */
 abstract class UpTestFixture : BaseKoinTest() {
+    protected companion object {
+        /** The local port the fake SOCKS proxy service reports for every tunnel `up` asks for. */
+        const val TUNNEL_PORT = 41234
+
+        /** Another local port, for a tunnel that replaced the one on [TUNNEL_PORT]. */
+        const val OTHER_TUNNEL_PORT = 45678
+    }
+
     protected lateinit var mockClusterStateManager: ClusterStateManager
     protected lateinit var mockS3BucketService: AwsS3BucketService
     protected lateinit var mockVpcService: VpcService
@@ -119,6 +133,9 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected var sshFailureException: Exception? = null
     protected var sshFailuresRemaining = Int.MAX_VALUE
     protected val sshCheckedAliases = mutableListOf<String>()
+
+    /** every remote command run with its output echoed to the console, in order */
+    protected val echoedCommands = mutableListOf<String>()
 
     /** Cilium node-fix paths the fake SSH reports missing, by host alias, and every alias asked */
     protected val missingCiliumFixes = mutableMapOf<String, List<String>>()
@@ -183,7 +200,15 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<TestDocumentService> { mock<TestDocumentService>().also { mockDocumentService = it } }
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
             single<RegistryService> { mock<RegistryService>() }
-            single<SocksProxyService> { mock<SocksProxyService>() }
+            // The real preflight the executor runs before `up`; a test calls ensureTunnel() to play the executor.
+            single { ProxyPreflight(get(), get(), ProxyEnvFile(get<Context>().workingDirectory)) }
+            single<SocksProxyService> {
+                mock<SocksProxyService> {
+                    on { ensureRunning(any()) } doAnswer { invocation ->
+                        SocksProxyState(localPort = TUNNEL_PORT, gatewayHost = invocation.getArgument(0), startTime = Instant.EPOCH)
+                    }
+                }
+            }
             single<CommandExecutor> { mock<CommandExecutor>().also { mockCommandExecutor = it } }
             single<ObservabilityStackService> {
                 mock<ObservabilityStackService>().also { mockObservabilityStackService = it }
@@ -219,7 +244,10 @@ abstract class UpTestFixture : BaseKoinTest() {
                 command: String,
                 output: Boolean,
                 secret: Boolean,
-            ): Response = fakeRemoteResponse(host, command)
+            ): Response {
+                if (output) echoedCommands.add(command)
+                return fakeRemoteResponse(host, command)
+            }
 
             override fun upload(
                 host: Host,
@@ -300,6 +328,7 @@ abstract class UpTestFixture : BaseKoinTest() {
         sshFailureException = null
         sshFailuresRemaining = Int.MAX_VALUE
         sshCheckedAliases.clear()
+        echoedCommands.clear()
         missingCiliumFixes.clear()
         ciliumFixCheckedAliases.clear()
     }
@@ -364,6 +393,8 @@ abstract class UpTestFixture : BaseKoinTest() {
         whenever(mockCommandExecutor.execute<PicoCommand>(any())).thenAnswer { invocation ->
             @Suppress("UNCHECKED_CAST")
             val factory = invocation.arguments[0] as () -> PicoCommand
+            // As DefaultCommandExecutor.checkRequirements does before every command, nested ones included.
+            getKoin().get<ProxyPreflight>().clear()
             val command = factory()
             invokedCommandNames.add(command::class.simpleName ?: "unknown")
             nestedCommandExitCodes[command::class.simpleName] ?: 0

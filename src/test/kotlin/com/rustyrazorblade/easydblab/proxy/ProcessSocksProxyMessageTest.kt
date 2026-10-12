@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.events.EventBus
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -25,7 +26,7 @@ class ProcessSocksProxyMessageTest {
     /** Never invoked here — [ProcessSocksProxyService.verificationFailureMessage] does no probing. */
     private val unusedProbe = TunnelReachabilityProbe { _, _, _ -> false }
 
-    private fun service() = ProcessSocksProxyService(Context.forCli(tempDir), unusedProbe)
+    private fun service() = ProcessSocksProxyService(Context.forCli(tempDir), unusedProbe, EventBus())
 
     private fun writeTranscript(vararg lines: String): File =
         File(tempDir, "socks5-proxy.log").apply { writeText(lines.joinToString("\n")) }

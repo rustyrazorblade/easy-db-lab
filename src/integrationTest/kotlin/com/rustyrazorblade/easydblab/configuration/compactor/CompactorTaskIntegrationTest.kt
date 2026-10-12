@@ -18,6 +18,7 @@ import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
@@ -84,6 +85,9 @@ class CompactorTaskIntegrationTest {
         const val SAMPLE_COUNT = 130
         val STARTUP: Duration = Duration.ofMinutes(3)
         val COMPACTION: Duration = Duration.ofMinutes(8)
+
+        /** How long the shipper gets to upload every one-minute block of the flushed head, on a busy machine. */
+        val SHIPPING: Duration = Duration.ofMinutes(8)
         val POLL: Duration = Duration.ofSeconds(3)
         val READY_REQUEST_TIMEOUT: Duration = Duration.ofSeconds(5)
         const val FIRST_LEVEL_WAIT_OFF = "-compactor.first-level-compaction-wait-period=0"
@@ -91,6 +95,9 @@ class CompactorTaskIntegrationTest {
     }
 
     private val s3 = SharedLocalStack.s3Client()
+
+    /** Each shipped block's time range, by its meta.json key, read once: a block in the store never changes. */
+    private val blockRanges = mutableMapOf<String, LongRange>()
     private val docker = DockerClientFactory.instance().client()
     private val bucket = "compactor-it-${UUID.randomUUID().toString().take(8)}"
     private val volumes = mutableListOf<String>()
@@ -306,12 +313,18 @@ class CompactorTaskIntegrationTest {
 
         // Four-hour-old samples across a complete two-hour range, then shipped as one-minute blocks.
         val start = (Instant.now().epochSecond - 2 * TWO_HOURS_SECONDS) / TWO_HOURS_SECONDS * TWO_HOURS_SECONDS
-        write(mimirA, (0 until SAMPLE_COUNT).map { (start + it * SAMPLE_STEP_SECONDS) * 1000 })
+        val written = (0 until SAMPLE_COUNT).map { (start + it * SAMPLE_STEP_SECONDS) * 1000 }
+        write(mimirA, written)
         // Counted at a fixed time just past the last sample, not at now: the samples start up to six
         // hours back, so a window that ends at now slides past the first sample while the test runs.
         val countedAt = start + SAMPLE_COUNT * SAMPLE_STEP_SECONDS
         flush(mimirA)
-        val shipped = awaitStable { blockMetas().size }
+        // The flush cuts the head into one-minute blocks, and the shipper uploads them on its own cycle,
+        // so wait until every written sample lies in a block in the store, however long the uploads take.
+        awaitUntil(SHIPPING, "every written sample in a block in the store", {
+            "${written.count { ts -> shippedRanges().none { ts in it } }} of ${written.size} samples not yet in a shipped block"
+        }) { written.all { ts -> shippedRanges().any { ts in it } } }
+        val shipped = blockMetas().size
         val before = samples(mimirA, countedAt)
         assertThat(before).describedAs("samples Mimir A answers before compaction").isEqualTo(SAMPLE_COUNT)
 
@@ -360,6 +373,13 @@ class CompactorTaskIntegrationTest {
     private fun blockMetas(): List<String> = objectKeys().filter { it.endsWith("/meta.json") }
 
     private fun compactionLevel(metaKey: String): Int =
+        metaJson(metaKey)
+            .getValue("compaction")
+            .jsonObject
+            .getValue("level")
+            .jsonPrimitive.int
+
+    private fun metaJson(metaKey: String) =
         Json
             .parseToJsonElement(
                 s3
@@ -372,10 +392,6 @@ class CompactorTaskIntegrationTest {
                         ResponseTransformer.toBytes(),
                     ).asUtf8String(),
             ).jsonObject
-            .getValue("compaction")
-            .jsonObject
-            .getValue("level")
-            .jsonPrimitive.int
 
     private fun url(mimir: GenericContainer<*>) = ObservabilityBackends.baseUrl(mimir, Constants.K8s.MIMIR_HTTP_PORT)
 
@@ -439,20 +455,15 @@ class CompactorTaskIntegrationTest {
             }
     }
 
-    /** Polls [value] until it is non-zero and unchanged for three looks in a row. */
-    private fun awaitStable(value: () -> Int): Int {
-        val deadline = System.nanoTime() + STARTUP.toNanos()
-        var last = -1
-        var same = 0
-        while (same < 3 && System.nanoTime() < deadline) {
-            Thread.sleep(POLL.toMillis())
-            val now = value()
-            same = if (now > 0 && now == last) same + 1 else 0
-            last = now
+    /** The time range, in milliseconds, of each block in the store; a block's meta.json never changes, so each is read once. */
+    private fun shippedRanges(): List<LongRange> =
+        blockMetas().map { key ->
+            blockRanges.getOrPut(key) {
+                val meta = metaJson(key)
+                // A block's maxTime is exclusive.
+                meta.getValue("minTime").jsonPrimitive.long until meta.getValue("maxTime").jsonPrimitive.long
+            }
         }
-        assertThat(same).describedAs("a stable non-zero value, last $last").isEqualTo(3)
-        return last
-    }
 
     private fun awaitUntil(
         within: Duration,

@@ -4186,6 +4186,18 @@ sealed interface Event {
             override fun toDisplayString(): String = "Stopped SOCKS5 proxy (PID: $pid)"
         }
 
+        /** `down` asked, then forced, the tunnel process [pid] to end, and it still runs. Its PID stays recorded. */
+        @Serializable
+        @SerialName("Teardown.Socks5ProxyStopFailed")
+        data class Socks5ProxyStopFailed(
+            val pid: Int,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "Error: the SOCKS5 proxy (PID: $pid) did not stop. It is still recorded; stop it with 'kill $pid'."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Teardown.ClusterStateMarkedDown")
         data object ClusterStateMarkedDown : Teardown {
@@ -5248,6 +5260,24 @@ sealed interface Event {
                 }
         }
 
+        /**
+         * `init` refused [directory] because it already has a `bin/` (a file or a directory). The
+         * workspace `bin/` belongs to easy-db-lab's tool wrappers, so a source checkout or a project
+         * directory cannot be a workspace. Nothing was written.
+         */
+        @Serializable
+        @SerialName("Setup.WorkspaceHasBinDirectory")
+        data class WorkspaceHasBinDirectory(
+            val directory: String,
+        ) : Setup {
+            override fun toDisplayString(): String =
+                "Error: $directory already has a bin/. easy-db-lab needs bin/ for its tool wrappers " +
+                    "(kubectl, helm, cilium, curl, skopeo, k9s, ssh, scp, sftp, rsync), so this directory cannot be a workspace. " +
+                    "Use a new, empty directory as the workspace, for example under clusters/."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         @SerialName("Setup.CleaningExistingConfig")
         data object CleaningExistingConfig : Setup {
@@ -5977,6 +6007,146 @@ sealed interface Event {
         ) : Compactor {
             override fun toDisplayString(): String =
                 "Account compactor kept running: ${clusterVpcs.size} other cluster(s) use the account bucket"
+        }
+    }
+
+    /**
+     * The SOCKS5 tunnel that `socks start` and `socks stop` manage outside of `up` and `down`. The
+     * tool wrappers and `env.sh` read its port from the workspace's proxy env file.
+     */
+    @Serializable
+    sealed interface Proxy : Event {
+        /**
+         * The tunnel runs on local [port] and the env file records it; [reused] is true when an
+         * already running, verified tunnel was kept rather than a new one started.
+         */
+        @Serializable
+        @SerialName("Proxy.TunnelReady")
+        data class TunnelReady(
+            val port: Int,
+            val reused: Boolean,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                """
+                |SOCKS5 tunnel ${if (reused) "already running" else "started"} on 127.0.0.1:$port.
+                |kubectl, helm, cilium, curl, skopeo and k9s from this workspace's bin/ use it.
+                |To browse cluster web UIs, set your browser's SOCKS v5 proxy to host 127.0.0.1, port $port.
+                """.trimMargin()
+        }
+
+        /** The cluster reaches its nodes over Tailscale, so no tunnel was started. */
+        @Serializable
+        @SerialName("Proxy.TunnelNotNeeded")
+        data object TunnelNotNeeded : Proxy {
+            override fun toDisplayString(): String =
+                "This cluster uses Tailscale, so no SOCKS5 tunnel is needed: tools connect to the nodes directly."
+        }
+
+        /** No tunnel could be started because the workspace has no running cluster. */
+        @Serializable
+        @SerialName("Proxy.NoRunningCluster")
+        data class NoRunningCluster(
+            val workspace: String,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                "Error: $workspace has no running cluster to open a SOCKS5 tunnel to. Run 'easy-db-lab up' first."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** `socks stop` stopped the tunnel process [pid] and removed its port from the env file. */
+        @Serializable
+        @SerialName("Proxy.TunnelStopped")
+        data class TunnelStopped(
+            val pid: Int,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                "Stopped the SOCKS5 tunnel [PID $pid]. Wrapped tools fail until 'easy-db-lab socks start' starts it again."
+        }
+
+        /**
+         * `socks stop` asked, then forced, the tunnel process [pid] to end, and it still runs. Its
+         * PID and port stay recorded.
+         */
+        @Serializable
+        @SerialName("Proxy.TunnelStopFailed")
+        data class TunnelStopFailed(
+            val pid: Int,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                "Error: the SOCKS5 tunnel [PID $pid] did not stop. It is still recorded; stop it with 'kill $pid' " +
+                    "and run 'easy-db-lab socks stop' again."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** `socks stop` found no running tunnel; any recorded port was removed from the env file. */
+        @Serializable
+        @SerialName("Proxy.NoTunnelRunning")
+        data object NoTunnelRunning : Proxy {
+            override fun toDisplayString(): String = "No SOCKS5 tunnel was running."
+        }
+
+        /** Why a recorded tunnel was replaced rather than reused. */
+        @Serializable
+        enum class ReplaceReason(
+            val description: String,
+        ) {
+            /** It went to another control node than the one the cluster now has. */
+            @SerialName("gateway-changed")
+            GATEWAY_CHANGED("it went to another control node"),
+
+            /** Its process ran, but the end-to-end probe no longer reached the control node through it. */
+            @SerialName("unreachable")
+            UNREACHABLE("it no longer reached the control node"),
+
+            /** Its recorded process had exited. */
+            @SerialName("process-gone")
+            PROCESS_GONE("its process had exited"),
+
+            /** A live process holds its recorded PID, but it is not the tunnel script: the OS gave the PID to another program. */
+            @SerialName("pid-reused")
+            PID_REUSED("its PID now belongs to another process"),
+
+            /** It was started with another workspace `sshConfig` path, so the workspace has moved. */
+            @SerialName("ssh-config-changed")
+            SSH_CONFIG_CHANGED("it used another sshConfig path"),
+        }
+
+        /**
+         * A recorded tunnel on [oldPort] failed the reuse check for [reason], and a new tunnel was
+         * started on [newPort]. The env file records the new port, but a browser keeps the old one.
+         */
+        @Serializable
+        @SerialName("Proxy.TunnelReplaced")
+        data class TunnelReplaced(
+            val oldPort: Int,
+            val newPort: Int,
+            val reason: ReplaceReason,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                """
+                |Replaced the SOCKS5 tunnel on 127.0.0.1:$oldPort, because ${reason.description}. The new tunnel listens on 127.0.0.1:$newPort.
+                |If your browser uses the tunnel, change its SOCKS v5 proxy port from $oldPort to $newPort.
+                """.trimMargin()
+        }
+
+        /**
+         * A tunnel being replaced, on [port], did not end when it was asked, then forced, to stop: the
+         * process [pid] still runs. The new tunnel is started anyway.
+         */
+        @Serializable
+        @SerialName("Proxy.SupersededTunnelStopFailed")
+        data class SupersededTunnelStopFailed(
+            val pid: Int,
+            val port: Int,
+        ) : Proxy {
+            override fun toDisplayString(): String =
+                "Error: the replaced SOCKS5 tunnel on 127.0.0.1:$port [PID $pid] did not stop. End it with 'kill -9 $pid'. " +
+                    "easy-db-lab no longer records this tunnel, so it will not stop an ssh the tunnel leaves; " +
+                    "end that with 'pkill -f -- \"-D 127.0.0.1:$port\"'."
+
+            override fun isError(): Boolean = true
         }
     }
 

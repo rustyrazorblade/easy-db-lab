@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.providers.ssm
 
+import com.rustyrazorblade.easydblab.PackagedExecutable
 import java.io.File
 
 /**
@@ -22,15 +23,8 @@ class SsmProxyWrapper(
      * @throws IllegalStateException if the packaged resource is missing from the distribution
      */
     fun install(): String {
-        val script = requireNotNull(javaClass.getResource(RESOURCE)) { "Missing packaged resource $RESOURCE" }.readText()
         val target = File(directory, FILE_NAME)
-        if (!target.isFile || target.readText() != script) {
-            directory.mkdirs()
-            val staged = File(directory, "$FILE_NAME.tmp")
-            staged.writeText(script)
-            check(staged.setExecutable(true, true)) { "Could not make ${staged.path} executable" }
-            check(staged.renameTo(target)) { "Could not move ${staged.path} to ${target.path}" }
-        }
+        PackagedExecutable.fromResource(RESOURCE).writeTo(target)
         return target.absolutePath
     }
 

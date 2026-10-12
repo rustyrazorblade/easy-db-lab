@@ -24,7 +24,9 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
@@ -43,6 +45,7 @@ import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RegistryService
+import com.rustyrazorblade.easydblab.services.SshReadinessWait
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
@@ -114,6 +117,7 @@ class Up(
     private val observabilityStackService: ObservabilityStackService by inject()
     private val registryService: RegistryService by inject()
     private val socksProxyService: SocksProxyService by inject()
+    private val proxyPreflight: ProxyPreflight by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val externalIpService: ExternalIpService by inject()
     private val provisioningPreflight: ProvisioningPreflight by inject()
@@ -141,7 +145,12 @@ class Up(
     @CommandLine.Mixin
     var hosts = HostsMixin()
 
+    /** The tunnel the `@RequiresProxy` preflight obtained for this `up`, if it ran; see [startProxyIfNeeded]. */
+    private var preflightTunnel: SocksProxyState? = null
+
     override fun execute() {
+        // Read before any nested command runs: the executor clears the record before each command.
+        preflightTunnel = proxyPreflight.tunnelForCommand()
         workingState = clusterStateManager.load()
         val initConfig =
             workingState.initConfig
@@ -579,50 +588,10 @@ class Up(
             ).getOrThrow()
     }
 
-    /**
-     * Waits for SSH to become available on the control node and Cassandra hosts.
-     *
-     * The control node is included because the SOCKS tunnel and K3s setup both dial it next;
-     * confirming it is reachable here, rather than discovering it isn't mid-tunnel-setup, is
-     * what [downloadCassandraVersions] alone never verified.
-     */
+    /** Waits for SSH on the control node and the database hosts; see [SshReadinessWait]. */
     private fun waitForSshReady() {
-        eventBus.emit(Event.Provision.SshWaiting)
-        Thread.sleep(sshStartupDelay.toMillis())
-
-        val retryConfig = RetryUtil.createSshConnectionRetryConfig(sshRetryInterval)
-        val retry =
-            Retry.of("ssh-connection", retryConfig).also {
-                it.eventPublisher.onRetry { event ->
-                    eventBus.emit(Event.Provision.SshRetrying(event.numberOfRetryAttempts, event.lastThrowable?.message))
-                }
-            }
-
-        // Checked, because MINA's SshException (a refused connection while sshd starts) is a
-        // checked IOException that the plain decorateRunnable never sees.
-        Retry
-            .decorateCheckedRunnable(retry) {
-                // The control node is never what `--hosts` scopes — that filter targets db/app
-                // nodes for scale-out. Applying it here would make `up --hosts db2` filter the
-                // control check down to zero hosts (HostOperationsService.withHosts silently
-                // no-ops on an empty match), verifying nothing and reopening the readiness gap the
-                // control check exists to close. Always check control with no filter.
-                checkSshReady(ServerType.Control, hostFilter = "")
-                checkSshReady(ServerType.Cassandra, hostFilter = hosts.hostList)
-            }.run()
-    }
-
-    private fun checkSshReady(
-        serverType: ServerType,
-        hostFilter: String,
-    ) {
-        hostOperationsService.withHosts(
-            workingState.hosts,
-            serverType,
-            hostFilter,
-        ) { clusterHost ->
-            remoteOps.executeRemotely(clusterHost.toHost(), "echo 1").text
-        }
+        SshReadinessWait(hostOperationsService, remoteOps, eventBus, sshStartupDelay, sshRetryInterval)
+            .await(workingState.hosts, databaseHostFilter = hosts.hostList)
     }
 
     /** Downloads Cassandra version metadata from db hosts. Meaningless for the control node. */
@@ -644,10 +613,15 @@ class Up(
         }
     }
 
-    /** Runs instance setup, K3s configuration, and optional AxonOps setup unless --no-setup. */
+    /**
+     * Runs instance setup, K3s configuration, and optional AxonOps setup unless --no-setup. Either way
+     * `up` starts or reuses the SOCKS tunnel and reports it once: under --no-setup the tunnel may come
+     * from the `@RequiresProxy` preflight, which reports nothing.
+     */
     private fun setupInstancesIfNeeded() {
         if (noSetup) {
             eventBus.emit(Event.Provision.SkippingNodeSetup)
+            startProxyIfNeeded()
         } else {
             runNestedCommand { SetupInstance() }
             startTailscaleIfConfigured()
@@ -667,13 +641,21 @@ class Up(
      *
      * Proxy and Tailscale are mutually exclusive networking paths to the private cluster.
      * Both are started at the same point so that subsequent K3s setup, kubectl, and
-     * fabric8 operations can reach the cluster API without Tailscale.
+     * fabric8 operations can reach the cluster API without Tailscale. The service is always asked, so
+     * a tunnel that died since the preflight is restarted before K3s setup dials it. The tunnel is
+     * reported once, as `socks start` reports it, with its port for a browser, and as what happened in
+     * this invocation: when it is the tunnel the preflight already started or reused (the same control
+     * node and port), its `reused` flag is the preflight's, because the service would now call a
+     * tunnel it just started "already running".
      */
     private fun startProxyIfNeeded() {
         if (workingState.isTailscaleEnabled()) return
         val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
         log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
-        socksProxyService.ensureRunning(controlHost)
+        val proxy = socksProxyService.ensureRunning(controlHost)
+        val fromPreflight =
+            preflightTunnel?.takeIf { it.gatewayHost.privateIp == controlHost.privateIp && it.localPort == proxy.localPort }
+        eventBus.emit(Event.Proxy.TunnelReady(port = proxy.localPort, reused = fromPreflight?.reused ?: proxy.reused))
     }
 
     /**

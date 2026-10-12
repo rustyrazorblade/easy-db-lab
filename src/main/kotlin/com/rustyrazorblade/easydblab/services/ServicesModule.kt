@@ -31,7 +31,8 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -118,8 +119,9 @@ val servicesModule =
         single<OkHttpClient> { get<HttpClientFactory>().createClient() }
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
+        factoryOf(::KitProcessEnvironment)
         factoryOf(::WorkloadStepExecutor)
-        factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get()) }
+        factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
         // Takes the workspace kubeconfig path, which the Fabric8-backed KubernetesService needs.
         factory { (kubeconfigPath: String) -> KitWorkloadProbe(get { parametersOf(kubeconfigPath) }, get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
@@ -240,6 +242,7 @@ val servicesModule =
                 get<ClusterBackupService>(),
                 get<ClusterStateManager>(),
                 get<EventBus>(),
+                get<WorkspaceShellTools>(),
             )
         }
 
@@ -259,7 +262,7 @@ val servicesModule =
                 ),
                 get<ResourceManager>(),
                 get<EventBus>(),
-                get<SocksProxyService>(),
+                get<ProxyPreflight>(),
                 get<ProxyAvailability>(),
                 get<ProfileSetupCommandProvider>(),
             )

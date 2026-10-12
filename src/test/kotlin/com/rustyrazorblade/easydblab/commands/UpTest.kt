@@ -3,14 +3,22 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -40,6 +48,7 @@ import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 import java.io.IOException
+import java.time.Instant
 
 /**
  * Tests for [Up], the command that provisions and configures the complete cluster.
@@ -570,6 +579,157 @@ class UpTest : UpTestFixture() {
 
         assertThat(localTailscaleQueries).isZero()
         assertThat(probedTargets).isEmpty()
+    }
+
+    @Test
+    fun `up reports the SOCKS tunnel it started on a cluster that does not use Tailscale`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        val events = captureEvents()
+
+        newUp().execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `up --no-setup reports the SOCKS tunnel it starts or reuses, once`() {
+        // Under --no-setup the tunnel may already come from the @RequiresProxy preflight, which reports nothing.
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `up --no-setup reports a tunnel the preflight started as started, and checks it again before K3s`() {
+        tunnelFromPreflight(reused = false)
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+        // Once for the preflight, once by up itself, which restarts a tunnel that died in between.
+        verify(getKoin().get<SocksProxyService>(), times(2)).ensureRunning(any())
+    }
+
+    @Test
+    fun `up reports a tunnel the preflight started as started, and checks it again before K3s`() {
+        tunnelFromPreflight(reused = false)
+        val events = captureEvents()
+
+        newUp().execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+        verify(getKoin().get<SocksProxyService>(), times(2)).ensureRunning(any())
+    }
+
+    @Test
+    fun `up --no-setup reports a tunnel the preflight found running as already running`() {
+        tunnelFromPreflight(reused = true)
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = true))
+    }
+
+    @Test
+    fun `a tunnel up's own check replaces on another port is reported as the new one`() {
+        tunnelFromPreflight(reused = false, later = { host -> tunnel(host, port = OTHER_TUNNEL_PORT, reused = false) })
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>())
+            .containsExactly(Event.Proxy.TunnelReady(OTHER_TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `a preflight tunnel to another control node is not reported, and up asks for one to the current node`() {
+        val oldControl = testControlHost.copy(privateIp = "10.0.9.9")
+        tunnelFromPreflight(reused = false, later = { host ->
+            tunnel(host, port = TUNNEL_PORT, reused = true)
+        }, preflightControl = oldControl)
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        verify(getKoin().get<SocksProxyService>()).ensureRunning(testControlHost)
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = true))
+    }
+
+    private fun tunnel(
+        host: ClusterHost,
+        port: Int,
+        reused: Boolean,
+    ) = SocksProxyState(localPort = port, gatewayHost = host, startTime = Instant.EPOCH, reused = reused)
+
+    /**
+     * Plays the executor: the `@RequiresProxy` preflight obtains the tunnel to [preflightControl]
+     * before `up` runs, [reused] as the service returns it; `up`'s own later ask gets [later], by
+     * default that tunnel running in memory.
+     */
+    private fun tunnelFromPreflight(
+        reused: Boolean,
+        later: (ClusterHost) -> SocksProxyState = { host -> tunnel(host, port = TUNNEL_PORT, reused = true) },
+        preflightControl: ClusterHost = testControlHost,
+    ) {
+        val socks = getKoin().get<SocksProxyService>()
+        whenever(socks.ensureRunning(any()))
+            .thenAnswer { invocation -> tunnel(invocation.getArgument(0), port = TUNNEL_PORT, reused = reused) }
+            .thenAnswer { invocation -> later(invocation.getArgument(0)) }
+        // The preflight starts a tunnel only for a cluster whose infrastructure is up.
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(
+            happyState()
+                .copy(tailscaleActive = false, hosts = happyHosts() + (ServerType.Control to listOf(preflightControl)))
+                .apply { markInfrastructureUp() },
+        )
+        getKoin().get<ProxyPreflight>().ensureTunnel()
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+    }
+
+    @Test
+    fun `the SSH readiness check does not echo what each host printed`() {
+        // `echo 1` proves a host answers; echoing its output put a bare "1" per host on the console.
+        newUp().execute()
+
+        assertThat(sshCheckedAliases).isNotEmpty()
+        assertThat(echoedCommands).doesNotContain("echo 1")
+    }
+
+    @Test
+    fun `up --no-setup reports no SOCKS tunnel on a Tailscale cluster`() {
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).isEmpty()
+    }
+
+    @Test
+    fun `up reports no SOCKS tunnel on a Tailscale cluster`() {
+        val events = captureEvents()
+
+        newUp().execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).isEmpty()
+    }
+
+    private fun captureEvents(): List<Event> {
+        val emitted = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return emitted
     }
 
     @Test

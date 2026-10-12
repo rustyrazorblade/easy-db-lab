@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Files
@@ -38,6 +39,9 @@ class ShellStepFailedException(
 /**
  * Bundles the per-execution context that every step needs, eliminating the
  * 7-parameter signatures on [WorkloadStepExecutor.execute] and [executeStep].
+ *
+ * @property kitDir the kit instance's directory, where shell steps run and relative files resolve
+ * @property workspaceDir the cluster workspace, whose `bin/` wrappers and kubeconfig shell steps get
  */
 data class StepExecutionContext(
     val kitName: String,
@@ -45,14 +49,23 @@ data class StepExecutionContext(
     val clusterState: ClusterState,
     val variables: Map<String, String>,
     val kitDir: File,
+    val workspaceDir: File,
 )
 
+/**
+ * Runs a kit's typed steps, in `install:` and in its lifecycle phases.
+ *
+ * Most steps act on the cluster through the control node or fabric8. A `shell` step runs on the
+ * operator's machine through [KitProcessEnvironment], so it gets the workspace tool wrappers and
+ * the absolute workspace kubeconfig.
+ */
 class WorkloadStepExecutor(
     private val k8sService: K8sService,
     private val helmService: HelmService,
     private val kubectlService: KubectlService,
     private val remoteOps: RemoteOperationsService,
     private val eventBus: EventBus,
+    private val kitProcessEnvironment: KitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller()),
 ) {
     fun execute(
         steps: List<InstallStep>,
@@ -258,12 +271,14 @@ class WorkloadStepExecutor(
         }
 
     /**
-     * Runs a shell step from the kit directory with the step variables in its environment. Its
+     * Runs a shell step from the kit directory with the step variables in its environment, the
+     * workspace tool wrappers first on `PATH`, and the absolute workspace kubeconfig. Its
      * output (stdout and stderr, merged) is passed through to the console as it runs, and the
      * last [Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES] lines are kept on the failure event for
      * structured consumers; the console already showed them, so its rendering does not repeat them.
      *
      * @throws ShellStepFailedException when the script exits non-zero
+     * @throws IllegalStateException when the workspace kubeconfig is missing; the script never starts
      */
     private fun runShellStep(
         step: InstallStep.Shell,
@@ -273,13 +288,12 @@ class WorkloadStepExecutor(
         try {
             tmpScript.writeText("#!/bin/bash\n${step.script}\n")
             tmpScript.setExecutable(true)
-            val process =
+            val builder =
                 ProcessBuilder(tmpScript.absolutePath)
                     .directory(ctx.kitDir)
                     .redirectInput(ProcessBuilder.Redirect.INHERIT)
                     .redirectErrorStream(true)
-                    .also { pb -> pb.environment().putAll(ctx.variables) }
-                    .start()
+            val process = kitProcessEnvironment.applyTo(builder, ctx.workspaceDir, ctx.variables).start()
             val tail = ArrayDeque<String>(Constants.Kit.SHELL_STEP_OUTPUT_TAIL_LINES)
             process.inputStream.bufferedReader().useLines { lines ->
                 lines.forEach { line ->

@@ -217,13 +217,10 @@ easy-db-lab cassandra update-config
 easy-db-lab cassandra start
 ```
 
-### Run a subset of e2e steps
-```bash
-bin/end-to-end-test --list-steps          # see all steps with numbers
-bin/end-to-end-test --start-step 13       # resume from step 13
-bin/end-to-end-test --cassandra --presto  # only Cassandra and Presto steps
-bin/end-to-end-test --no-teardown         # keep cluster alive after run
-```
+### Run an end-to-end test
+Lab test plans run through the `/easy-db-lab:plan` and `/easy-db-lab:run` skills, and branch
+verification through `/agent-test`. Each runs in its own workspace under `clusters/`, never in the
+repository root: `init` refuses a directory that already has a `bin/`.
 
 ---
 

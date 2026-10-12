@@ -21,6 +21,8 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -113,7 +115,7 @@ class CommandExecutorTest : BaseKoinTest() {
                     ),
                 resourceManager = mockResourceManager,
                 eventBus = eventBus,
-                socksProxyService = mockSocksProxyService,
+                proxyPreflight = ProxyPreflight(mockClusterStateManager, mockSocksProxyService, ProxyEnvFile(context.workingDirectory)),
                 proxyAvailability = proxyAvailability,
                 profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run here") },
             )
@@ -434,6 +436,8 @@ class CommandExecutorTest : BaseKoinTest() {
 
         // Then
         verify(mockSocksProxyService, never()).ensureRunning(any())
+        // The shell-side tool wrappers learn from the env file that this cluster needs no tunnel.
+        assertThat(ProxyEnvFile(context.workingDirectory).read().tailscaleActive).isTrue()
     }
 
     @Test

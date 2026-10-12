@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.BufferedWriter
@@ -16,86 +17,125 @@ import java.io.StringWriter
  * cluster lifetimes.
  */
 internal class ClusterConfigWriterTest {
-    private fun renderSshConfig(hosts: Map<ServerType, List<ClusterHost>>): String {
+    private fun renderSshConfig(
+        hosts: Map<ServerType, List<ClusterHost>>,
+        proxyCommands: Map<String, String> = emptyMap(),
+    ): String {
         val stringWriter = StringWriter()
         val bufferedWriter = BufferedWriter(stringWriter)
-        ClusterConfigWriter.writeSshConfig(bufferedWriter, "/path/to/identity", hosts)
+        ClusterConfigWriter.writeSshConfig(bufferedWriter, "/path/to/identity", hosts, proxyCommands)
         return stringWriter.toString()
     }
 
+    private val control = ClusterHost("54.1.1.1", "10.0.0.1", "control0", "us-west-2a")
+
+    /** The line that opens the block of options every cluster host gets, one wildcard per server type. */
+    private val clusterPattern = "Host db* app* control* !*.*"
+
+    /** The option lines of [config]'s cluster block: after [clusterPattern], up to the next blank line. */
+    private fun clusterBlock(config: String): List<String> =
+        config
+            .lines()
+            .dropWhile { it != clusterPattern }
+            .drop(1)
+            .takeWhile { it.isNotBlank() }
+            .map { it.trim() }
+
+    /** The cluster-wide keepalive and connect-timeout lines every transport's config carries. */
+    private val connectionBounds =
+        listOf(
+            "ServerAliveInterval ${Constants.Ssh.KEEPALIVE_INTERVAL_SECONDS}",
+            "ServerAliveCountMax ${Constants.Ssh.KEEPALIVE_COUNT_MAX}",
+            "ConnectTimeout ${Constants.Ssh.CONNECT_TIMEOUT_SECONDS}",
+        )
+
     @Test
-    fun `writeSshConfig pins UserKnownHostsFile to dev null alongside StrictHostKeyChecking before any Host block`() {
-        val controlHost =
-            ClusterHost(
-                publicIp = "54.1.1.1",
-                privateIp = "10.0.0.1",
-                alias = "control0",
-                availabilityZone = "us-west-2a",
-            )
-        val config = renderSshConfig(mapOf(ServerType.Control to listOf(controlHost)))
+    fun `the config opens with one block for every cluster host and sets nothing outside a Host block`() {
+        val config = renderSshConfig(mapOf(ServerType.Control to listOf(control)))
 
-        assertThat(config).contains("StrictHostKeyChecking=no")
-        assertThat(config).contains("UserKnownHostsFile=/dev/null")
+        assertThat(config.lines().first()).isEqualTo(clusterPattern)
+        assertThat(clusterBlock(config)).containsExactly(
+            "StrictHostKeyChecking=no",
+            "UserKnownHostsFile=/dev/null",
+            "User ubuntu",
+            "IdentityFile /path/to/identity",
+            *connectionBounds.toTypedArray(),
+        )
+    }
 
-        val strictHostKeyCheckingIndex = config.indexOf("StrictHostKeyChecking=no")
-        val userKnownHostsFileIndex = config.indexOf("UserKnownHostsFile=/dev/null")
-        val firstHostBlockIndex = config.indexOf("Host control0")
-        assertThat(firstHostBlockIndex).isGreaterThanOrEqualTo(0)
+    @Test
+    fun `the cluster block names one wildcard for each server type and excludes every name with a dot`() {
+        val patterns =
+            renderSshConfig(emptyMap())
+                .lines()
+                .first()
+                .removePrefix("Host ")
+                .split(" ")
 
-        // Both directives are global (outside any Host block), so they must precede
-        // the first "Host <alias>" line -- ssh_config applies later Host-scoped
-        // settings only within that block, but global settings must come first to
-        // apply to every host, including hosts with recycled public IPs.
-        assertThat(strictHostKeyCheckingIndex).isLessThan(firstHostBlockIndex)
-        assertThat(userKnownHostsFileIndex).isLessThan(firstHostBlockIndex)
+        assertThat(patterns).containsExactlyElementsOf(ServerType.entries.map { "${it.serverType}*" } + "!*.*")
+    }
+
+    @Test
+    fun `the config ends by including the developer's own ssh config for every host`() {
+        val config = renderSshConfig(mapOf(ServerType.Control to listOf(control)))
+
+        // Host * first: an Include inside the last host's block would apply to that host only.
+        assertThat(config.trimEnd().lines().takeLast(2)).containsExactly("Host *", "Include ~/.ssh/config")
+    }
+
+    @Test
+    fun `an ssm config carries the same cluster options and a ProxyCommand only in its host's block`() {
+        val config = renderSshConfig(mapOf(ServerType.Control to listOf(control)), mapOf("control0" to "edl-ssm-proxy i-control"))
+
+        assertThat(clusterBlock(config)).containsAll(connectionBounds)
+        val hostBlock =
+            config
+                .lines()
+                .dropWhile { it != "Host control0" }
+                .drop(1)
+                .takeWhile { it.isNotBlank() }
+        assertThat(hostBlock).containsExactly(" Hostname 54.1.1.1", " ProxyCommand edl-ssm-proxy i-control")
     }
 
     @Test
     fun `writeSshConfig emits one Host alias and Hostname pair per host across multiple server types`() {
-        val controlHost =
-            ClusterHost(
-                publicIp = "54.1.1.1",
-                privateIp = "10.0.0.1",
-                alias = "control0",
-                availabilityZone = "us-west-2a",
-            )
-        val dbHosts =
-            listOf(
-                ClusterHost(
-                    publicIp = "54.1.1.2",
-                    privateIp = "10.0.0.2",
-                    alias = "db0",
-                    availabilityZone = "us-west-2a",
-                ),
-                ClusterHost(
-                    publicIp = "54.1.1.3",
-                    privateIp = "10.0.0.3",
-                    alias = "db1",
-                    availabilityZone = "us-west-2b",
-                ),
-            )
         val hosts =
             mapOf(
-                ServerType.Control to listOf(controlHost),
-                ServerType.Cassandra to dbHosts,
+                ServerType.Control to listOf(control),
+                ServerType.Cassandra to
+                    listOf(
+                        ClusterHost(publicIp = "54.1.1.2", privateIp = "10.0.0.2", alias = "db0", availabilityZone = "us-west-2a"),
+                        ClusterHost(publicIp = "54.1.1.3", privateIp = "10.0.0.3", alias = "db1", availabilityZone = "us-west-2b"),
+                    ),
             )
 
         val config = renderSshConfig(hosts)
 
-        val expectedPairs =
-            listOf(
-                "control0" to "54.1.1.1",
-                "db0" to "54.1.1.2",
-                "db1" to "54.1.1.3",
-            )
-
+        val expectedPairs = listOf("control0" to "54.1.1.1", "db0" to "54.1.1.2", "db1" to "54.1.1.3")
         expectedPairs.forEach { (alias, publicIp) ->
-            assertThat(config).contains("Host $alias")
-            assertThat(config).contains("Hostname $publicIp")
+            // env.sh's fallback reads a host's address with `grep -A 1 "^Host <alias>"`.
+            assertThat(config).contains("Host $alias\n Hostname $publicIp\n")
         }
+        // Exactly one block per host, besides the cluster block and the closing Host *.
+        val hostAliases = Regex("(?m)^Host ([a-z]+\\d+)$").findAll(config).map { it.groupValues[1] }.toList()
+        assertThat(hostAliases).containsExactly("db0", "db1", "control0")
+    }
 
-        // Exactly one Host block per host -- no duplicates, no missing entries.
-        val hostBlockCount = Regex("(?m)^Host ").findAll(config).count()
-        assertThat(hostBlockCount).isEqualTo(expectedPairs.size)
+    @Test
+    fun `env sh reads proxy state only from the env file and puts the workspace bin first on PATH`() {
+        val stringWriter = StringWriter()
+        BufferedWriter(stringWriter).use { writer ->
+            ClusterConfigWriter.writeEnvironmentFile(
+                writer,
+                mapOf(ServerType.Control to listOf(ClusterHost("54.1.1.1", "10.0.0.1", "control0", "us-west-2a"))),
+                "lab",
+            )
+        }
+        val envSh = stringWriter.toString()
+
+        assertThat(envSh).doesNotContain("jq").doesNotContain(".socks5-proxy-state")
+        assertThat(envSh).contains("export PATH=\"\$CLUSTER_DIR/bin:\$PATH\"")
+        assertThat(envSh).contains("\$CLUSTER_DIR/.socks5-proxy.env")
+        assertThat(envSh).doesNotContainPattern("(?m)^(kubectl|helm|cilium|curl|skopeo|k9s)\\(\\)")
     }
 }

@@ -108,7 +108,7 @@ tasks.named<CreateStartScripts>("startScripts") {
         // both the apphome system property and the OTel java agent path are injected here.
         val agentOpts =
             "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\$APP_HOME " +
-                "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+                "-javaagent:\$APP_HOME/lib/opentelemetry-javaagent.jar\""
 
         // The agent's exporters default to OTLP on localhost:4318. With no collector there, every
         // export fails and the agent prints a stack trace to stderr on every run — the normal case
@@ -715,9 +715,11 @@ distributions {
             from("packer") {
                 into("packer")
             }
-            // Include the OTel agent in the distribution
+            // Include the OTel agent in the distribution. It goes in lib, beside the jars, because
+            // the Homebrew formula installs only bin and lib. The start script names each classpath
+            // jar, so the agent in lib is not on the classpath.
             from(copyOtelAgent) {
-                into("agents")
+                into("lib")
             }
         }
     }
@@ -728,8 +730,8 @@ tasks.distTar {
     archiveExtension.set("tar.gz")
 }
 
-// The OTel agent reaches install/easy-db-lab/agents through the `main` distribution's contents
-// above (`from(copyOtelAgent) { into("agents") }`), which installDist syncs.
+// The OTel agent reaches install/easy-db-lab/lib through the `main` distribution's contents
+// above (`from(copyOtelAgent) { into("lib") }`), which installDist syncs.
 tasks.named("installDist") {
     dependsOn(tasks.named("shadowJar"), copyOtelAgent)
 }

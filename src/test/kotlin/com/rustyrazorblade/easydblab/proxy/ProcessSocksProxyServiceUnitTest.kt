@@ -92,7 +92,7 @@ class ProcessSocksProxyServiceUnitTest {
         verifyDelay = VERIFY_DELAY,
         processLauncher = launcher,
         portSelector = portSelector,
-        verifyAttempts = verifyAttempts,
+        verifyAttempts = lazyOf(verifyAttempts),
     )
 
     /** The `-D` port each launched ssh command was handed, in launch order. */

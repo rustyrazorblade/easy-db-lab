@@ -14,7 +14,7 @@ This change replaces all three with one mechanism: real executable wrapper scrip
 - New standing rule in the root `CLAUDE.md`: any value a shell-side tool needs is written by Kotlin to this env file. Shell code never parses JSON.
 
 **Tool wrappers in `<workspace>/bin/`**
-- One packaged POSIX `#!/bin/sh` resource is written six times into `<workspace>/bin/` as `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s`, with a marker file `.easy-db-lab-tool-wrappers`. It runs under dash and macOS `/bin/sh`, and it is written from distribution resources, so a Homebrew install with no repo works.
+- One packaged POSIX `#!/bin/sh` resource is written into `<workspace>/bin/` as `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s`, with a marker file `.easy-db-lab-tool-wrappers`. It runs under dash and macOS `/bin/sh`, and it is written from distribution resources, so a Homebrew install with no repo works.
 - Each wrapper finds the real binary on `PATH` (skipping any directory that holds the marker, and itself), sources the env file on every call, and then:
   - on a Tailscale cluster, runs the real binary with the environment unchanged;
   - on a SOCKS cluster with a recorded port, clears every inherited proxy variable and sets its own (`HTTPS_PROXY=socks5://` for kubectl/helm/cilium/k9s; `ALL_PROXY=socks5h://` plus `NO_PROXY=localhost,127.0.0.1` for curl; `ALL_PROXY`/`HTTP_PROXY`/`HTTPS_PROXY=socks5h://` plus `NO_PROXY` for skopeo), upper and lower case, for that call only;
@@ -31,10 +31,10 @@ This change replaces all three with one mechanism: real executable wrapper scrip
 - New `easy-db-lab socks start` (in a new `socks` command group): starts or reuses the tunnel, records the port in the env file, and prints the port for browser setup. On a Tailscale cluster it says no tunnel is needed.
 - New `easy-db-lab socks stop`: stops the tunnel without tearing down the cluster and removes the port from the env file.
 - Both emit new typed lifecycle events.
-- `clean` deletes the env file, the six wrappers, and the marker by name, and removes `bin/` only if it is then empty.
+- `clean` deletes the env file, the ten wrappers, and the marker by name, and removes `bin/` only if it is then empty.
 
 **`env.sh`**
-- Puts `$CLUSTER_DIR/bin` first on `PATH`, after a guarded `unset -f` of the six tool names so a re-sourced shell drops old functions.
+- Puts `$CLUSTER_DIR/bin` first on `PATH`, after a guarded `unset -f` of the ten tool names so a re-sourced shell drops old functions.
 - Removes the `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s` functions, `start-socks5`, `stop-socks5`, the `socks5-start`/`socks5-stop` aliases, and the local `tailscale status` check.
 - Keeps `with-proxy` and `socks5-status`. `_socks5_port` sources the env file (no `jq`, no 1080 fallback). `with-proxy` fails like the wrappers when no port is recorded, and runs the command directly on a Tailscale cluster. Help text is updated.
 

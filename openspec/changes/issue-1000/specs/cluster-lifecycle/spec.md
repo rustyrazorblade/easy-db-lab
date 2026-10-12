@@ -40,7 +40,7 @@ The workspace's `bin/` directory belongs to easy-db-lab, which writes its tool w
 
 The system MUST allow cleanup of locally generated cluster files.
 
-Cleanup MUST remove only what easy-db-lab wrote in `bin/`: the six tool wrappers, the `edl-socks-tunnel` script, and the marker, by name. It MUST NOT remove any other file in `bin/`, and MUST remove `bin/` itself only when it is then empty.
+Cleanup MUST remove only what easy-db-lab wrote in `bin/`: the ten tool wrappers, the `edl-socks-tunnel` script, and the marker, by name. It MUST NOT remove any other file in `bin/`, and MUST remove `bin/` itself only when it is then empty.
 
 #### Scenario: Remove local cluster files
 

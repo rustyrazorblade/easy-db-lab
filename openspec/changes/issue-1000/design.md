@@ -21,7 +21,6 @@ The cluster SSH transport is `direct` (plain SSH) or `ssm`. Under `ssm` the tunn
 
 **Non-Goals:**
 - A cluster whose transport changes between SOCKS and Tailscale.
-- The `ssh`, `scp`, `sftp`, and `rsync` functions in `env.sh`.
 - Typed steps (`helm`, `manifest`, `wait`, and so on), which run on the control node or through fabric8.
 - Changing built-in kits.
 - Covering scripts that bypass `PATH` (`env -i`, an absolute `/usr/local/bin/kubectl`, `PATH=/usr/bin`). The docs say these are not wrapped.

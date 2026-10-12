@@ -267,24 +267,57 @@ The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST ver
 - **WHEN** the CLI stops or replaces the tunnel
 - **THEN** it does not signal that process
 
+### Requirement: SSH wrappers use the workspace SSH configuration
+
+The `ssh`, `scp`, `sftp`, and `rsync` wrappers in `<workspace>/bin/` MUST behave as the old `env.sh` functions did, as real executables that work from kit steps, nested scripts, `xargs`, and `/bin/sh` scripts:
+
+- `ssh`, `scp`, `sftp`: run the real binary with `-F <workspace>/sshConfig` before the caller's arguments.
+- `rsync`: run the real `rsync` with `-ave "ssh -F <workspace>/sshConfig"` before the caller's arguments.
+
+They MUST find the real binary the same way the other wrappers do, never themselves. They MUST NOT set or clear any proxy variable or `KUBECONFIG`, because SSH reaches the nodes through `sshConfig` on both transports. If `<workspace>/sshConfig` does not exist, they MUST exit 1 with a message that names the missing file and MUST NOT run the real binary.
+
+#### Scenario: ssh to a node by its alias with no setup
+
+- **GIVEN** a running cluster and a shell that has not sourced `env.sh`
+- **WHEN** the user runs `<workspace>/bin/ssh control0 hostname`
+- **THEN** the real `ssh` runs with `-F <workspace>/sshConfig` and reaches the node
+
+#### Scenario: rsync uses the workspace SSH configuration
+
+- **WHEN** a kit step runs `rsync somefile db0:/tmp/`
+- **THEN** the real `rsync` runs with `-ave "ssh -F <workspace>/sshConfig"` before the caller's arguments
+
+#### Scenario: SSH wrappers set no proxy variables
+
+- **GIVEN** a SOCKS cluster with a recorded tunnel and an inherited `HTTPS_PROXY`
+- **WHEN** an SSH wrapper runs
+- **THEN** the real binary sees the inherited environment unchanged
+
+#### Scenario: Missing workspace SSH configuration
+
+- **GIVEN** a workspace with no `sshConfig`
+- **WHEN** an SSH wrapper runs
+- **THEN** it exits 1 with a message that names the missing file
+- **AND** the real binary does not run
+
 ### Requirement: Workspace tool wrappers
 
-The CLI MUST write executable wrapper scripts named `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s` into `<workspace>/bin/`, plus the tunnel script `edl-socks-tunnel` and a marker file `.easy-db-lab-tool-wrappers` in that directory. The foreign-file check below covers `edl-socks-tunnel` as well as the six wrappers. The wrappers MUST come from resources packaged in the distribution, so they work from a Homebrew install with no source checkout. They MUST run under the POSIX `/bin/sh` of both Linux (dash) and macOS.
+The CLI MUST write executable wrapper scripts named `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s` into `<workspace>/bin/`, and SSH wrapper scripts named `ssh`, `scp`, `sftp`, and `rsync`, plus the tunnel script `edl-socks-tunnel` and a marker file `.easy-db-lab-tool-wrappers` in that directory. The foreign-file check below covers `edl-socks-tunnel` and the SSH wrappers as well as the six proxy wrappers. The wrappers MUST come from resources packaged in the distribution, so they work from a Homebrew install with no source checkout. They MUST run under the POSIX `/bin/sh` of both Linux (dash) and macOS.
 
-The CLI MUST write them at `up`, before every kit process it launches, and when it restores a workspace from a VPC. Writing MUST be idempotent, MUST replace a wrapper whose content changed, and MUST be atomic. If `<workspace>/bin/` holds one of the six names and has no marker, the CLI MUST fail with a clear message and write nothing.
+The CLI MUST write them at `up`, before every kit process it launches, and when it restores a workspace from a VPC. Writing MUST be idempotent, MUST replace a wrapper whose content changed, and MUST be atomic. If `<workspace>/bin/` holds one of the wrapper names or `edl-socks-tunnel` and has no marker, the CLI MUST fail with a clear message and write nothing.
 
 A call that bypasses `PATH` (an absolute path to the real binary, `env -i`, or a replaced `PATH`) is not wrapped, and the kit docs MUST say so.
 
 #### Scenario: Wrappers written at up
 
 - **WHEN** `up` completes
-- **THEN** `<workspace>/bin/` holds the six executable wrappers and the marker
+- **THEN** `<workspace>/bin/` holds the ten executable wrappers, `edl-socks-tunnel`, and the marker
 
 #### Scenario: Wrappers written from a Homebrew install
 
 - **GIVEN** the tool is installed with Homebrew and no repository exists on the machine
 - **WHEN** `up` runs or a kit process is launched
-- **THEN** the six wrappers are written from packaged resources and work
+- **THEN** the ten wrappers are written from packaged resources and work
 
 #### Scenario: Wrappers rewritten when their content changed
 
@@ -501,7 +534,7 @@ The CLI MUST provide a `socks` command group with `socks start` and `socks stop`
 
 ### Requirement: env.sh puts the workspace tool wrappers on PATH
 
-`env.sh` MUST put `<workspace>/bin` first on `PATH`, so `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, and `k9s` resolve to the same wrappers that kit shell steps use. It MUST first remove any shell function of those six names left by an earlier `env.sh`, without errors in bash or zsh and without failing under `set -e`. It MUST NOT define those functions and MUST NOT start or stop the proxy.
+`env.sh` MUST put `<workspace>/bin` first on `PATH`, so `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, `k9s`, `ssh`, `scp`, `sftp`, and `rsync` resolve to the same wrappers that kit shell steps use. It MUST first remove any shell function of those ten names left by an earlier `env.sh`, without errors in bash or zsh and without failing under `set -e`. It MUST NOT define those functions and MUST NOT start or stop the proxy.
 
 `with-proxy` and `socks5-status` stay. They read the port from the proxy env file. `with-proxy` fails with the same `easy-db-lab socks start` message as the wrappers when no port is recorded, and runs its command directly on a Tailscale cluster.
 

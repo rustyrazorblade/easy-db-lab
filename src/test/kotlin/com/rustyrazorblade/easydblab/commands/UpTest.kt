@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -602,25 +603,26 @@ class UpTest : UpTestFixture() {
     }
 
     @Test
-    fun `up --no-setup reports a tunnel the preflight started as started, and asks for no second one`() {
+    fun `up --no-setup reports a tunnel the preflight started as started, and checks it again before K3s`() {
         tunnelFromPreflight(reused = false)
         val events = captureEvents()
 
         newUp().apply { noSetup = true }.execute()
 
         assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
-        verify(getKoin().get<SocksProxyService>(), times(1)).ensureRunning(any())
+        // Once for the preflight, once by up itself, which restarts a tunnel that died in between.
+        verify(getKoin().get<SocksProxyService>(), times(2)).ensureRunning(any())
     }
 
     @Test
-    fun `up reports a tunnel the preflight started as started, and asks for no second one`() {
+    fun `up reports a tunnel the preflight started as started, and checks it again before K3s`() {
         tunnelFromPreflight(reused = false)
         val events = captureEvents()
 
         newUp().execute()
 
         assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
-        verify(getKoin().get<SocksProxyService>(), times(1)).ensureRunning(any())
+        verify(getKoin().get<SocksProxyService>(), times(2)).ensureRunning(any())
     }
 
     @Test
@@ -633,27 +635,55 @@ class UpTest : UpTestFixture() {
         assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = true))
     }
 
+    @Test
+    fun `a tunnel up's own check replaces on another port is reported as the new one`() {
+        tunnelFromPreflight(reused = false, later = { host -> tunnel(host, port = OTHER_TUNNEL_PORT, reused = false) })
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>())
+            .containsExactly(Event.Proxy.TunnelReady(OTHER_TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `a preflight tunnel to another control node is not reported, and up asks for one to the current node`() {
+        val oldControl = testControlHost.copy(privateIp = "10.0.9.9")
+        tunnelFromPreflight(reused = false, later = { host -> tunnel(host, port = TUNNEL_PORT, reused = true) }, preflightControl = oldControl)
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        verify(getKoin().get<SocksProxyService>()).ensureRunning(testControlHost)
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = true))
+    }
+
+    private fun tunnel(
+        host: ClusterHost,
+        port: Int,
+        reused: Boolean,
+    ) = SocksProxyState(localPort = port, gatewayHost = host, startTime = Instant.EPOCH, reused = reused)
+
     /**
-     * Plays the executor: the `@RequiresProxy` preflight obtains the tunnel before `up` runs, [reused]
-     * as the service returns it the first time; any later ask finds that tunnel running in memory.
+     * Plays the executor: the `@RequiresProxy` preflight obtains the tunnel to [preflightControl]
+     * before `up` runs, [reused] as the service returns it; `up`'s own later ask gets [later], by
+     * default that tunnel running in memory.
      */
-    private fun tunnelFromPreflight(reused: Boolean) {
+    private fun tunnelFromPreflight(
+        reused: Boolean,
+        later: (ClusterHost) -> SocksProxyState = { host -> tunnel(host, port = TUNNEL_PORT, reused = true) },
+        preflightControl: ClusterHost = testControlHost,
+    ) {
         val socks = getKoin().get<SocksProxyService>()
         whenever(socks.ensureRunning(any()))
-            .thenAnswer { invocation ->
-                SocksProxyState(
-                    localPort = TUNNEL_PORT,
-                    gatewayHost = invocation.getArgument(0),
-                    startTime = Instant.EPOCH,
-                    reused = reused,
-                )
-            }.thenAnswer { invocation ->
-                SocksProxyState(localPort = TUNNEL_PORT, gatewayHost = invocation.getArgument(0), startTime = Instant.EPOCH, reused = true)
-            }
+            .thenAnswer { invocation -> tunnel(invocation.getArgument(0), port = TUNNEL_PORT, reused = reused) }
+            .thenAnswer { invocation -> later(invocation.getArgument(0)) }
         // The preflight starts a tunnel only for a cluster whose infrastructure is up.
         whenever(mockClusterStateManager.exists()).thenReturn(true)
         whenever(mockClusterStateManager.load()).thenReturn(
-            happyState().copy(tailscaleActive = false, hosts = happyHosts()).apply { markInfrastructureUp() },
+            happyState()
+                .copy(tailscaleActive = false, hosts = happyHosts() + (ServerType.Control to listOf(preflightControl)))
+                .apply { markInfrastructureUp() },
         )
         getKoin().get<ProxyPreflight>().ensureTunnel()
         whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))

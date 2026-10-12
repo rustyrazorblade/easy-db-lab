@@ -641,21 +641,21 @@ class Up(
      *
      * Proxy and Tailscale are mutually exclusive networking paths to the private cluster.
      * Both are started at the same point so that subsequent K3s setup, kubectl, and
-     * fabric8 operations can reach the cluster API without Tailscale. The tunnel is reported once, as
-     * `socks start` reports it, with its port for a browser, and as what happened in this invocation:
-     * when the preflight already started or reused the tunnel to this control node, that is what is
-     * reported, because asking the service again would call a tunnel it just started "already running".
+     * fabric8 operations can reach the cluster API without Tailscale. The service is always asked, so
+     * a tunnel that died since the preflight is restarted before K3s setup dials it. The tunnel is
+     * reported once, as `socks start` reports it, with its port for a browser, and as what happened in
+     * this invocation: when it is the tunnel the preflight already started or reused (the same control
+     * node and port), its `reused` flag is the preflight's, because the service would now call a
+     * tunnel it just started "already running".
      */
     private fun startProxyIfNeeded() {
         if (workingState.isTailscaleEnabled()) return
         val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
-        val proxy =
-            preflightTunnel?.takeIf { it.gatewayHost.privateIp == controlHost.privateIp }
-                ?: run {
-                    log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
-                    socksProxyService.ensureRunning(controlHost)
-                }
-        eventBus.emit(Event.Proxy.TunnelReady(port = proxy.localPort, reused = proxy.reused))
+        log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
+        val proxy = socksProxyService.ensureRunning(controlHost)
+        val fromPreflight =
+            preflightTunnel?.takeIf { it.gatewayHost.privateIp == controlHost.privateIp && it.localPort == proxy.localPort }
+        eventBus.emit(Event.Proxy.TunnelReady(port = proxy.localPort, reused = fromPreflight?.reused ?: proxy.reused))
     }
 
     /**

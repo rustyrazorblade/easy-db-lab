@@ -81,6 +81,9 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected companion object {
         /** The local port the fake SOCKS proxy service reports for every tunnel `up` asks for. */
         const val TUNNEL_PORT = 41234
+
+        /** Another local port, for a tunnel that replaced the one on [TUNNEL_PORT]. */
+        const val OTHER_TUNNEL_PORT = 45678
     }
 
     protected lateinit var mockClusterStateManager: ClusterStateManager
@@ -390,6 +393,8 @@ abstract class UpTestFixture : BaseKoinTest() {
         whenever(mockCommandExecutor.execute<PicoCommand>(any())).thenAnswer { invocation ->
             @Suppress("UNCHECKED_CAST")
             val factory = invocation.arguments[0] as () -> PicoCommand
+            // As DefaultCommandExecutor.checkRequirements does before every command, nested ones included.
+            getKoin().get<ProxyPreflight>().clear()
             val command = factory()
             invokedCommandNames.add(command::class.simpleName ?: "unknown")
             nestedCommandExitCodes[command::class.simpleName] ?: 0

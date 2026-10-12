@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -18,6 +19,8 @@ import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
@@ -191,6 +194,8 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<TestDocumentService> { mock<TestDocumentService>().also { mockDocumentService = it } }
             single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
             single<RegistryService> { mock<RegistryService>() }
+            // The real preflight the executor runs before `up`; a test calls ensureTunnel() to play the executor.
+            single { ProxyPreflight(get(), get(), ProxyEnvFile(get<Context>().workingDirectory)) }
             single<SocksProxyService> {
                 mock<SocksProxyService> {
                     on { ensureRunning(any()) } doAnswer { invocation ->

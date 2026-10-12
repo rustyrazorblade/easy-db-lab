@@ -210,11 +210,12 @@ class DefaultCommandExecutor(
     private fun checkRequirements(command: PicoCommand) {
         val annotations = command::class.annotations
 
-        // Clear any proxy failure recorded for a previous command before this one runs. Without
+        // Clear any proxy failure or tunnel recorded for a previous command before this one runs. Without
         // this, a Server/Repl session that keeps the process alive across many commands could
         // let a stale failure from an earlier command leak into a later one that never touched
         // the proxy at all.
         proxyAvailability.clear()
+        proxyPreflight.clear()
 
         // Check if the command requires profile setup
         if (annotations.any { it is RequireProfileSetup }) {

@@ -24,7 +24,9 @@ import com.rustyrazorblade.easydblab.providers.aws.DiscoveredInstance
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.CiliumInstallAnnotator
 import com.rustyrazorblade.easydblab.services.CiliumNodeImageCheck
 import com.rustyrazorblade.easydblab.services.CiliumService
@@ -114,6 +116,7 @@ class Up(
     private val observabilityStackService: ObservabilityStackService by inject()
     private val registryService: RegistryService by inject()
     private val socksProxyService: SocksProxyService by inject()
+    private val proxyPreflight: ProxyPreflight by inject()
     private val commandExecutor: CommandExecutor by inject()
     private val externalIpService: ExternalIpService by inject()
     private val provisioningPreflight: ProvisioningPreflight by inject()
@@ -141,7 +144,12 @@ class Up(
     @CommandLine.Mixin
     var hosts = HostsMixin()
 
+    /** The tunnel the `@RequiresProxy` preflight obtained for this `up`, if it ran; see [startProxyIfNeeded]. */
+    private var preflightTunnel: SocksProxyState? = null
+
     override fun execute() {
+        // Read before any nested command runs: the executor clears the record before each command.
+        preflightTunnel = proxyPreflight.tunnelForCommand()
         workingState = clusterStateManager.load()
         val initConfig =
             workingState.initConfig
@@ -672,14 +680,20 @@ class Up(
      *
      * Proxy and Tailscale are mutually exclusive networking paths to the private cluster.
      * Both are started at the same point so that subsequent K3s setup, kubectl, and
-     * fabric8 operations can reach the cluster API without Tailscale. The tunnel it started or reused
-     * is reported as `socks start` reports it, with its port for a browser.
+     * fabric8 operations can reach the cluster API without Tailscale. The tunnel is reported once, as
+     * `socks start` reports it, with its port for a browser, and as what happened in this invocation:
+     * when the preflight already started or reused the tunnel to this control node, that is what is
+     * reported, because asking the service again would call a tunnel it just started "already running".
      */
     private fun startProxyIfNeeded() {
         if (workingState.isTailscaleEnabled()) return
         val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
-        log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
-        val proxy = socksProxyService.ensureRunning(controlHost)
+        val proxy =
+            preflightTunnel?.takeIf { it.gatewayHost.privateIp == controlHost.privateIp }
+                ?: run {
+                    log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
+                    socksProxyService.ensureRunning(controlHost)
+                }
         eventBus.emit(Event.Proxy.TunnelReady(port = proxy.localPort, reused = proxy.reused))
     }
 

@@ -11,7 +11,10 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.io.File
+import java.time.Instant
+import kotlin.concurrent.thread
 
 /**
  * [ProxyPreflight] decides, before a `@RequiresProxy` command, whether to start the tunnel, and
@@ -63,6 +66,38 @@ internal class ProxyPreflightTest {
 
         verify(socksProxyService, never()).ensureRunning(any())
         assertThat(envFile.file).doesNotExist()
+    }
+
+    @Test
+    fun `the tunnel it started or reused is recorded for the command, and clear removes it`() {
+        stateManager.save(clusterState(tailscale = false))
+        val started = SocksProxyState(localPort = 41234, gatewayHost = CONTROL, startTime = Instant.EPOCH, reused = false)
+        whenever(socksProxyService.ensureRunning(CONTROL)).thenReturn(started)
+
+        preflight.ensureTunnel()
+
+        assertThat(preflight.tunnelForCommand()).isEqualTo(started)
+        preflight.clear()
+        assertThat(preflight.tunnelForCommand()).isNull()
+    }
+
+    @Test
+    fun `a Tailscale cluster records no tunnel for the command`() {
+        stateManager.save(clusterState(tailscale = true))
+
+        preflight.ensureTunnel()
+
+        assertThat(preflight.tunnelForCommand()).isNull()
+    }
+
+    @Test
+    fun `a tunnel recorded on another thread is not this thread's`() {
+        stateManager.save(clusterState(tailscale = false))
+        whenever(socksProxyService.ensureRunning(CONTROL))
+            .thenReturn(SocksProxyState(localPort = 41234, gatewayHost = CONTROL, startTime = Instant.EPOCH))
+        thread { preflight.ensureTunnel() }.join()
+
+        assertThat(preflight.tunnelForCommand()).isNull()
     }
 
     private fun clusterState(tailscale: Boolean) =

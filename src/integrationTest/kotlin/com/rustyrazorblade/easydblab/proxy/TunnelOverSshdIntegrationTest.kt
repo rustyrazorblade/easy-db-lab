@@ -40,6 +40,7 @@ internal class TunnelOverSshdIntegrationTest {
     @AfterEach
     fun endEverythingStarted() {
         started.forEach { handle ->
+            // A script a failed test left stopped could not act on a TERM; KILL ends it either way.
             handle.descendants().forEach { it.destroyForcibly() }
             handle.destroyForcibly()
         }
@@ -49,12 +50,10 @@ internal class TunnelOverSshdIntegrationTest {
     fun `INT to the script and its ssh ends neither, and the tunnel still carries traffic`() {
         val port = freePort()
         val tunnel = launchTunnel(port)
-        val ssh = awaitSsh(tunnel)
+        val ssh = TunnelTestProcesses.awaitSsh(tunnel, port, logFile)
         awaitReachable(port)
 
-        listOf(tunnel, ssh).forEach { process ->
-            assertThat(ProcessBuilder("kill", "-INT", "${process.pid()}").start().waitFor()).isZero()
-        }
+        listOf(tunnel, ssh).forEach { signal("INT", it) }
         // The script and its ssh must stay alive, so there is no exit to wait for; give INT time to act.
         Thread.sleep(INT_SETTLE_MS)
 
@@ -63,20 +62,26 @@ internal class TunnelOverSshdIntegrationTest {
         assertThat(probe.isReachable(port, SSHD_HOST, SSHD_PORT)).withFailMessage("the tunnel stopped carrying traffic after INT").isTrue()
     }
 
+    /**
+     * The script is held with STOP while its ssh is ended and the port is taken, then let go with CONT,
+     * so the restart always finds the port taken. A long backoff would leave the order to timing instead.
+     */
     @Test
     fun `a restart that finds 127 0 0 1 taken on the port ends the script instead of binding only ipv6`() {
         val port = freePort()
         val tunnel = launchTunnel(port)
-        val ssh = awaitSsh(tunnel)
+        val ssh = TunnelTestProcesses.awaitSsh(tunnel, port, logFile)
         awaitReachable(port)
-        assertThat(arguments(ssh)).containsSequence("-D", "${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:$port")
+        assertThat(TunnelTestProcesses.arguments(ssh)).containsSequence("-D", "${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:$port")
         // What the CLI writes once it has verified the tunnel; the script restarts ssh only then.
         ProxyEnvFile(workspace).recordTunnel(port, tunnel.pid())
 
+        signal("STOP", tunnel)
         ssh.destroy()
-        assertThat(ssh.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).isFalse()
-        // Another process takes the port on 127.0.0.1 only, during the restart backoff.
+        // Another process takes the port on 127.0.0.1 only, before the script can restart ssh. The bind
+        // succeeds once ssh has exited: its listener closes then, though the stopped script cannot reap it yet.
         takeIpv4Loopback(port).use {
+            signal("CONT", tunnel)
             assertThat(tunnel.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive)
                 .withFailMessage("the script kept running with 127.0.0.1:$port taken: ${logFile.readText()}")
                 .isFalse()
@@ -89,7 +94,7 @@ internal class TunnelOverSshdIntegrationTest {
 
     /** Starts `edl-socks-tunnel` exactly as [ProcessSocksProxyService] does. */
     private fun launchTunnel(port: Int): ProcessHandle {
-        ToolWrapperInstaller().install(workspace)
+        TunnelTestProcesses.linkScript(installedScript, workspace)
         val command =
             ProcessSocksProxyService(Context.forCli(workspace).copy(workingDirectory = workspace), { _, _, _ -> false }, EventBus())
                 .buildTunnelCommand(port, writeSshConfig().absolutePath, logFile, HOST_ALIAS)
@@ -115,37 +120,16 @@ internal class TunnelOverSshdIntegrationTest {
             )
         }
 
-    /** Waits until [tunnel] runs an `ssh`, and returns it. */
-    private fun awaitSsh(tunnel: ProcessHandle): ProcessHandle {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(LIMIT_SECONDS)
-        while (true) {
-            tunnel
-                .descendants()
-                .filter { handle ->
-                    handle
-                        .info()
-                        .command()
-                        .map { File(it).name == "ssh" }
-                        .orElse(false)
-                }.findFirst()
-                .orElse(null)
-                ?.let { return it }
-            check(tunnel.isAlive) { "the tunnel script exited early: ${logFile.readText()}" }
-            check(System.nanoTime() < deadline) { "the tunnel script never ran ssh" }
-            Thread.sleep(POLL_MS)
-        }
-    }
-
     /** Waits until a SOCKS connection through [port] reaches the container's own `sshd`. */
     private fun awaitReachable(port: Int) {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(LIMIT_SECONDS)
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(TunnelTestProcesses.SSH_WAIT_SECONDS)
         while (!probe.isReachable(port, SSHD_HOST, SSHD_PORT)) {
             check(System.nanoTime() < deadline) { "the tunnel on port $port never carried traffic: ${logFile.readText()}" }
             Thread.sleep(POLL_MS)
         }
     }
 
-    /** Binds [port] on 127.0.0.1 only, retrying while the ssh that held it lets it go. */
+    /** Binds [port] on 127.0.0.1 only, retrying until the ssh that held it has exited. */
     private fun takeIpv4Loopback(port: Int): ServerSocket {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(LIMIT_SECONDS)
         while (true) {
@@ -158,12 +142,12 @@ internal class TunnelOverSshdIntegrationTest {
         }
     }
 
-    private fun arguments(handle: ProcessHandle): List<String> =
-        handle
-            .info()
-            .arguments()
-            .map { it.toList() }
-            .orElse(emptyList())
+    private fun signal(
+        name: String,
+        process: ProcessHandle,
+    ) {
+        assertThat(ProcessBuilder("kill", "-$name", "${process.pid()}").start().waitFor()).withFailMessage("kill -$name failed").isZero()
+    }
 
     private fun freePort(): Int = ServerSocket(0).use { it.localPort }
 
@@ -177,10 +161,16 @@ internal class TunnelOverSshdIntegrationTest {
         private const val POLL_MS = 100L
         private const val INT_SETTLE_MS = 1500L
 
-        /** An Alpine `sshd` that takes the test's key for root and allows the dynamic forward. */
+        /** `0600`: sshd refuses an `authorized_keys` others can write. */
+        private const val AUTHORIZED_KEYS_MODE = 384
+
+        /**
+         * An Alpine `sshd` that takes the test's key for root and allows the dynamic forward. The base is
+         * pinned by the digest of the alpine:3.20 image index, so every architecture gets the same image.
+         */
         private val SSHD_DOCKERFILE =
             """
-            FROM alpine:3.20
+            FROM alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
             RUN apk add --no-cache openssh-server \
              && ssh-keygen -A \
              && sed -i -E 's/^#?AllowTcpForwarding.*/AllowTcpForwarding yes/' /etc/ssh/sshd_config \
@@ -193,9 +183,13 @@ internal class TunnelOverSshdIntegrationTest {
         private lateinit var privateKey: File
         private lateinit var sshd: GenericContainer<*>
 
+        /** The tunnel script, installed once for the class; each test's workspace links to it. */
+        private lateinit var installedScript: File
+
         @BeforeAll
         @JvmStatic
         fun startSshd() {
+            installedScript = TunnelTestProcesses.installScriptOnce()
             keyDirectory = Files.createTempDirectory("edl-sshd-key").toFile()
             privateKey = File(keyDirectory, "id_ed25519")
             val keygen = ProcessBuilder("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", privateKey.absolutePath).inheritIO().start()
@@ -214,9 +208,7 @@ internal class TunnelOverSshdIntegrationTest {
         fun stopSshd() {
             sshd.stop()
             keyDirectory.deleteRecursively()
+            installedScript.deleteRecursively()
         }
-
-        /** `0600`: sshd refuses an `authorized_keys` others can write. */
-        private const val AUTHORIZED_KEYS_MODE = 384
     }
 }

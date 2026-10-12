@@ -2,12 +2,15 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.io.TempDir
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.MethodSource
 import java.io.File
+import java.nio.file.Files
 import java.util.concurrent.TimeUnit
 
 /**
@@ -28,7 +31,6 @@ internal class TunnelScriptTest {
 
     private lateinit var workspace: File
     private lateinit var script: File
-    private lateinit var stubBin: File
     private val runsLog: File get() = File(root, "runs.log")
     private val tunnelLog: File get() = File(root, "socks5-proxy.log")
     private val started = mutableListOf<Process>()
@@ -42,28 +44,6 @@ internal class TunnelScriptTest {
                 writeText(requireNotNull(TunnelScriptTest::class.java.getResource(Constants.ToolWrappers.TUNNEL_RESOURCE)).readText())
                 setExecutable(true)
             }
-        stubBin = File(root, "stub").apply { mkdirs() }
-        File(stubBin, "ssh").apply {
-            writeText(
-                """
-                |#!/bin/sh
-                |echo "${'$'}${'$'} ${'$'}(date +%s) ${'$'}*" >> "${runsLog.absolutePath}"
-                |runs=${'$'}(wc -l < "${runsLog.absolutePath}")
-                |if [ "${'$'}runs" -eq "${'$'}{STUB_BIND_FAILS_ON:-0}" ]; then
-                |  echo "bind [127.0.0.1]:$PORT: Address already in use" >&2
-                |  echo "channel_setup_fwd_listener_tcpip: cannot listen to port: $PORT" >&2
-                |  exit 255
-                |fi
-                |if [ "${'$'}runs" -eq "${'$'}{STUB_PARTIAL_BIND_ON:-0}" ]; then
-                |  echo "bind [::1]:$PORT: Address already in use" >&2
-                |fi
-                |if [ "${'$'}runs" -le "${'$'}{STUB_FAILS:-0}" ]; then exit "${'$'}{STUB_STATUS:-255}"; fi
-                |exec sleep 300
-                |
-                """.trimMargin(),
-            )
-            setExecutable(true)
-        }
     }
 
     @AfterEach
@@ -257,6 +237,7 @@ internal class TunnelScriptTest {
             .redirectOutput(File(root, "tunnel.out"))
             .apply {
                 environment()["PATH"] = "${stubBin.absolutePath}:/usr/bin:/bin"
+                environment()["STUB_RUNS_LOG"] = runsLog.absolutePath
                 environment()["STUB_FAILS"] = "$failures"
                 environment()["STUB_STATUS"] = "$status"
                 environment()["STUB_BIND_FAILS_ON"] = "$bindFailsOn"
@@ -307,7 +288,47 @@ internal class TunnelScriptTest {
         }
     }
 
-    private companion object {
+    companion object {
+        /**
+         * The stub `ssh`, written once for the class, so a test does not exec a file the OS has never
+         * seen: on macOS the first exec of a new file can wait on a system scan. Each test hands it its
+         * own runs log in `STUB_RUNS_LOG`.
+         */
+        private lateinit var stubBin: File
+
+        @BeforeAll
+        @JvmStatic
+        fun writeStubSsh() {
+            stubBin = Files.createTempDirectory("edl-stub-ssh").toFile()
+            File(stubBin, "ssh").apply {
+                writeText(
+                    """
+                    |#!/bin/sh
+                    |echo "${'$'}${'$'} ${'$'}(date +%s) ${'$'}*" >> "${'$'}STUB_RUNS_LOG"
+                    |runs=${'$'}(wc -l < "${'$'}STUB_RUNS_LOG")
+                    |if [ "${'$'}runs" -eq "${'$'}{STUB_BIND_FAILS_ON:-0}" ]; then
+                    |  echo "bind [127.0.0.1]:$PORT: Address already in use" >&2
+                    |  echo "channel_setup_fwd_listener_tcpip: cannot listen to port: $PORT" >&2
+                    |  exit 255
+                    |fi
+                    |if [ "${'$'}runs" -eq "${'$'}{STUB_PARTIAL_BIND_ON:-0}" ]; then
+                    |  echo "bind [::1]:$PORT: Address already in use" >&2
+                    |fi
+                    |if [ "${'$'}runs" -le "${'$'}{STUB_FAILS:-0}" ]; then exit "${'$'}{STUB_STATUS:-255}"; fi
+                    |exec sleep 300
+                    |
+                    """.trimMargin(),
+                )
+                setExecutable(true)
+            }
+        }
+
+        @AfterAll
+        @JvmStatic
+        fun removeStubSsh() {
+            stubBin.deleteRecursively()
+        }
+
         const val PORT = 41234
         const val SSH_CONFIG = "/work/sshConfig"
         const val HOST = "control0"
@@ -316,7 +337,8 @@ internal class TunnelScriptTest {
         const val NOT_FOUND_STATUS = 127
         const val BACKOFF_SECONDS = 1
         const val PAST_BACKOFF_MS = 1500L
-        const val LIMIT_SECONDS = 15L
+        /** How long a test waits on the script; a passing test waits only as long as the script takes. */
+        const val LIMIT_SECONDS = 60L
         const val POLL_MS = 50L
         const val SSH_ARGUMENTS = "-v -o ExitOnForwardFailure=yes -N -D 127.0.0.1:$PORT -F $SSH_CONFIG $HOST"
         val TIMESTAMPED = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z edl-socks-tunnel: .+""")

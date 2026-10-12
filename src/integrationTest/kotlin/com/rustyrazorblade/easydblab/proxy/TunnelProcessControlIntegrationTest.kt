@@ -4,7 +4,9 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.events.EventBus
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
@@ -75,7 +77,7 @@ internal class TunnelProcessControlIntegrationTest {
         ProxyEnvFile(workspace).recordTunnel(port, tunnel.pid())
 
         ssh.destroy()
-        val next = awaitSsh(tunnel) { it.pid() != ssh.pid() }
+        val next = awaitSsh(tunnel, port) { it.pid() != ssh.pid() }
 
         assertThat(
             next
@@ -141,56 +143,34 @@ internal class TunnelProcessControlIntegrationTest {
 
     /** Starts `edl-socks-tunnel` exactly as [ProcessSocksProxyService] does, and waits for its ssh. */
     private fun launchTunnel(port: Int): Pair<ProcessHandle, ProcessHandle> {
-        ToolWrapperInstaller().install(workspace)
+        TunnelTestProcesses.linkScript(installedScript, workspace)
         val command =
             ProcessSocksProxyService(Context.forCli(workspace).copy(workingDirectory = workspace), { _, _, _ -> false }, EventBus())
-                .buildTunnelCommand(port, sshConfig.absolutePath, File(workspace, "ssh.log"), "control0")
-        val tunnel = DefaultSshProcessLauncher.launch(command, File(workspace, "ssh.log")).toHandle()
+                .buildTunnelCommand(port, sshConfig.absolutePath, logFile, "control0")
+        val tunnel = DefaultSshProcessLauncher.launch(command, logFile).toHandle()
         started += tunnel
-        return tunnel to awaitSsh(tunnel) { true }
+        return tunnel to awaitSsh(tunnel, port)
     }
 
-    /** Waits until [tunnel] has an `ssh` descendant that matches [accept], and returns it. */
     private fun awaitSsh(
         tunnel: ProcessHandle,
-        accept: (ProcessHandle) -> Boolean,
-    ): ProcessHandle {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(LIMIT_SECONDS)
-        while (true) {
-            tunnel
-                .descendants()
-                .filter { isSsh(it) && accept(it) }
-                .findFirst()
-                .orElse(null)
-                ?.let { return it }
-            check(tunnel.isAlive) { "the tunnel script exited early: ${File(workspace, "ssh.log").readText()}" }
-            check(System.nanoTime() < deadline) { "the tunnel script never ran ssh" }
-            Thread.sleep(POLL_MS)
-        }
-    }
+        port: Int,
+        accept: (ProcessHandle) -> Boolean = { true },
+    ): ProcessHandle = TunnelTestProcesses.awaitSsh(tunnel, port, logFile, accept)
 
-    private fun isSsh(handle: ProcessHandle) =
-        handle
-            .info()
-            .command()
-            .map { File(it).name }
-            .orElse("") == "ssh"
-
-    /** Every live ssh process whose arguments carry `-D 127.0.0.1:<port>`. */
+    /**
+     * Every live process whose arguments carry `-N` and `-D 127.0.0.1:<port>`: an ssh of the tunnel,
+     * found by its arguments alone, so a process whose executable the OS does not report still counts.
+     */
     private fun sshProcessesFor(port: Int): List<ProcessHandle> =
         ProcessHandle
             .allProcesses()
-            .filter { isSsh(it) }
             .filter { handle ->
-                val arguments =
-                    handle
-                        .info()
-                        .arguments()
-                        .map { it.toList() }
-                        .orElse(emptyList())
-                arguments.indices.any {
-                    arguments[it] == "-D" && arguments.getOrNull(it + 1) == "${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:$port"
-                }
+                val arguments = TunnelTestProcesses.arguments(handle)
+                "-N" in arguments &&
+                    arguments.zipWithNext().any { (option, value) ->
+                        option == "-D" && value == "${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:$port"
+                    }
             }.toList()
 
     private fun record(
@@ -208,8 +188,25 @@ internal class TunnelProcessControlIntegrationTest {
 
     private fun freePort(): Int = ServerSocket(0).use { it.localPort }
 
-    private companion object {
-        const val LIMIT_SECONDS = 15L
-        const val POLL_MS = 50L
+    private val logFile: File get() = File(workspace, "ssh.log")
+
+    companion object {
+        /** How long a test waits for a process it signaled to exit. */
+        private const val LIMIT_SECONDS = 15L
+
+        /** The tunnel script, installed once for the class; each test's workspace links to it. */
+        private lateinit var installedScript: File
+
+        @BeforeAll
+        @JvmStatic
+        fun installScript() {
+            installedScript = TunnelTestProcesses.installScriptOnce()
+        }
+
+        @AfterAll
+        @JvmStatic
+        fun removeScript() {
+            installedScript.deleteRecursively()
+        }
     }
 }

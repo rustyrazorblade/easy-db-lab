@@ -166,8 +166,12 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         writeStateFile(pid = livePid.toInt(), port = STOP_PORT)
         val probe = PortProbe(NEW_PORT)
 
-        service(probe = probe, launcher = { _, _ -> liveTunnelProcess() }, portSelector = { NEW_PORT }, tunnelProcesses = seeing(recordedScript()))
-            .ensureRunning(testHost)
+        service(
+            probe = probe,
+            launcher = { _, _ -> liveTunnelProcess() },
+            portSelector = { NEW_PORT },
+            tunnelProcesses = seeing(recordedScript()),
+        ).ensureRunning(testHost)
 
         assertThat(probe.calls[STOP_PORT]).isEqualTo(Constants.Proxy.REUSE_TUNNEL_VERIFY_ATTEMPTS)
     }

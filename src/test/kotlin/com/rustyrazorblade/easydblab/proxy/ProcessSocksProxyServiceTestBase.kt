@@ -268,7 +268,13 @@ internal abstract class ProcessSocksProxyServiceTestBase {
         launched: MutableList<List<String>> = mutableListOf(),
         launcher: SshProcessLauncher = SshProcessLauncher { command, _ -> liveTunnelProcess().also { launched += command } },
         tunnelProcesses: TunnelProcessControl = noProcesses,
-    ) = service(probe = probe, launcher = launcher, portSelector = { ports.removeFirst() }, tunnelProcesses = tunnelProcesses, clock = clock)
+    ) = service(
+        probe = probe,
+        launcher = launcher,
+        portSelector = { ports.removeFirst() },
+        tunnelProcesses = tunnelProcesses,
+        clock = clock,
+    )
 
     /** The record a superseded tunnel left: what ensureRunning has just found not reusable (issue #741). */
     protected fun staleRecord() =

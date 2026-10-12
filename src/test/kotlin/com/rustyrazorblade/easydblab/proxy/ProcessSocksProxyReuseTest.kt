@@ -404,7 +404,10 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
                 PortProbe(STOP_PORT, NEW_PORT),
                 ManualClock(),
                 ArrayDeque(listOf(STOP_PORT, NEW_PORT)),
-                tunnelProcesses = TunnelProcessControl(lookup = { pid -> holder.handle.takeIf { pid == livePid } }, allProcesses = { Stream.empty() }),
+                tunnelProcesses =
+                    TunnelProcessControl(lookup = { pid ->
+                        holder.handle.takeIf { pid == livePid }
+                    }, allProcesses = { Stream.empty() }),
             )
         svc.ensureRunning(testHost)
         // The tunnel's script ended and the OS gave its PID to another program; the probe would still pass.
@@ -428,7 +431,9 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
                 ManualClock(),
                 ArrayDeque(listOf(STOP_PORT, NEW_PORT)),
                 tunnelProcesses =
-                    TunnelProcessControl(lookup = { pid -> script.handle.takeIf { alive && pid == livePid } }, allProcesses = { Stream.empty() }),
+                    TunnelProcessControl(lookup = { pid ->
+                        script.handle.takeIf { alive && pid == livePid }
+                    }, allProcesses = { Stream.empty() }),
             )
         svc.ensureRunning(testHost)
         alive = false

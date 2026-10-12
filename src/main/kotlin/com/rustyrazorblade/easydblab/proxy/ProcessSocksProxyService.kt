@@ -429,7 +429,9 @@ class ProcessSocksProxyService(
         toolWrappers.install(context.workingDirectory)
         // The log keeps every launch; only what this one writes, from here on, explains its failure.
         val transcriptStart = logFile.length()
-        logFile.appendText("${utcSeconds(clock.instant())} easy-db-lab: launching the SOCKS5 tunnel on port $port to ${gatewayHost.alias}\n")
+        logFile.appendText(
+            "${utcSeconds(clock.instant())} easy-db-lab: launching the SOCKS5 tunnel on port $port to ${gatewayHost.alias}\n",
+        )
         val process = processLauncher.launch(buildTunnelCommand(port, sshConfigPath, logFile, gatewayHost.alias), logFile)
 
         val newPid = process.pid().toInt()

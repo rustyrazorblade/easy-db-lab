@@ -92,7 +92,9 @@ class StartSocksTest : BaseKoinTest() {
         StartSocks().call()
 
         assertThat(launched).hasSize(1)
-        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(PORT, FAKE_PID)))
+        assertThat(
+            ProxyEnvFile(context.workingDirectory).read(),
+        ).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(PORT, FAKE_PID)))
         assertThat(events).containsExactly(Event.Proxy.TunnelReady(port = PORT, reused = false))
         assertThat(events.single().toDisplayString()).contains("localhost:$PORT")
     }

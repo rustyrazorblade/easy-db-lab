@@ -51,7 +51,10 @@ internal class SocksTunnelReachabilityProbeIntegrationTest {
     private companion object {
         const val TARGET = "10.0.1.5"
 
-        /** The bound, plus room for thread scheduling on a busy CI runner. */
-        const val BOUND_WITH_SLACK_MS = Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS + 300L
+        /**
+         * The bound, plus room for thread scheduling on a busy CI runner. It stays below the bound plus
+         * [FakeSocksTunnel.SLOW_REPLY_MS], what a banner read with its own full timeout would take.
+         */
+        const val BOUND_WITH_SLACK_MS = Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS + 500L
     }
 }

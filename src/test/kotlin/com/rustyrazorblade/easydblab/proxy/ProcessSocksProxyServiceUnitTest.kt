@@ -460,7 +460,11 @@ class ProcessSocksProxyServiceUnitTest {
             probe = { _, _, _ -> true },
             launcher = { _, _ -> aliveProcess() },
             portSelector = { NEW_PORT },
-            tunnelProcesses = TunnelProcessControl(lookup = { null }, allProcesses = { java.util.stream.Stream.of(orphan.handle) }),
+            tunnelProcesses =
+                TunnelProcessControl(lookup = { null }, allProcesses = {
+                    java.util.stream.Stream
+                        .of(orphan.handle)
+                }),
         ).ensureRunning(testHost)
 
         assertThat(orphan.handle.isAlive).withFailMessage("the orphaned ssh of the replaced tunnel was left running").isFalse()
@@ -833,7 +837,10 @@ class ProcessSocksProxyServiceUnitTest {
                 probe = PortProbe(NEW_PORT),
                 launcher = { _, _ -> aliveProcess() },
                 portSelector = { NEW_PORT },
-                tunnelProcesses = TunnelProcessControl(lookup = { pid -> hung.handle.takeIf { pid == livePid } }, stopWait = Duration.ofMillis(50)),
+                tunnelProcesses =
+                    TunnelProcessControl(lookup = { pid ->
+                        hung.handle.takeIf { pid == livePid }
+                    }, stopWait = Duration.ofMillis(50)),
             ).ensureRunning(testHost)
 
         assertThat(state.localPort).isEqualTo(NEW_PORT)
@@ -849,8 +856,12 @@ class ProcessSocksProxyServiceUnitTest {
     fun `a replacement that fails to start reports no replaced tunnel`() {
         writeStateFile(pid = -1, port = STOP_PORT)
 
-        assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }, tunnelProcesses = noProcesses).ensureRunning(testHost) }
-            .isInstanceOf(IllegalStateException::class.java)
+        assertThatThrownBy {
+            service(
+                launcher = { _, _ -> deadProcess(exitCode = 255) },
+                tunnelProcesses = noProcesses,
+            ).ensureRunning(testHost)
+        }.isInstanceOf(IllegalStateException::class.java)
 
         assertThat(events).isEmpty()
     }

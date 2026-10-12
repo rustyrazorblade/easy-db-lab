@@ -136,7 +136,9 @@ class ClusterConfigurationServiceTest {
 
             service.writeSshAndEnvironmentFiles(tempDir, createClusterState().copy(tailscaleActive = false), createUserConfig())
 
-            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, ProcessHandle.current().pid())))
+            assertThat(
+                ProxyEnvFile(tempDir.toFile()).read(),
+            ).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, ProcessHandle.current().pid())))
             assertThat(File(tempDir.toFile(), "${Constants.ToolWrappers.DIRECTORY}/kubectl").canExecute()).isTrue()
         }
 

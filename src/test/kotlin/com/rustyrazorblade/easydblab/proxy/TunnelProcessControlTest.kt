@@ -37,7 +37,14 @@ internal class TunnelProcessControlTest {
         val ssh = ssh()
         val restarted = FakeTunnelProcess.ssh(SSH_PID + 1, PORT, SSH_CONFIG)
         val tunnel =
-            FakeTunnelProcess.tunnelScript(PID, PORT, SSH_CONFIG, endsOnlyWhenForced = true, children = listOf(ssh), startsOnIgnoredTerm = restarted)
+            FakeTunnelProcess.tunnelScript(
+                PID,
+                PORT,
+                SSH_CONFIG,
+                endsOnlyWhenForced = true,
+                children = listOf(ssh),
+                startsOnIgnoredTerm = restarted,
+            )
 
         val result = control(tunnel).stop(recorded)
 
@@ -144,7 +151,12 @@ internal class TunnelProcessControlTest {
 
     @Test
     fun `a shell running another script with the same arguments is left alone`() {
-        val other = FakeTunnelProcess(PID, "/bin/sh", listOf("/work/bin/other-script", "$PORT", SSH_CONFIG, "2", "/work/logs/socks5-proxy.log", "control0"))
+        val other =
+            FakeTunnelProcess(
+                PID,
+                "/bin/sh",
+                listOf("/work/bin/other-script", "$PORT", SSH_CONFIG, "2", "/work/logs/socks5-proxy.log", "control0"),
+            )
 
         val result = control(other).stop(recorded)
 

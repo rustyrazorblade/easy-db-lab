@@ -145,7 +145,9 @@ internal class TunnelScriptTest {
         tunnel.destroy()
 
         assertThat(tunnel.waitFor(LIMIT_SECONDS, TimeUnit.SECONDS)).withFailMessage("the script did not exit on TERM").isTrue()
-        assertThat(backoff.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive).withFailMessage("the backoff sleep outlived TERM").isFalse()
+        assertThat(
+            backoff.onExit().get(LIMIT_SECONDS, TimeUnit.SECONDS).isAlive,
+        ).withFailMessage("the backoff sleep outlived TERM").isFalse()
         Thread.sleep(PAST_BACKOFF_MS)
         assertThat(runsLog.readLines()).hasSize(1)
     }
@@ -183,7 +185,10 @@ internal class TunnelScriptTest {
     }
 
     private fun recordPort(port: Int) {
-        File(workspace, Constants.Proxy.ENV_FILE).writeText("${Constants.Proxy.ENV_TAILSCALE_ACTIVE}=false\n${Constants.Proxy.ENV_SOCKS_PORT}=$port\n")
+        File(
+            workspace,
+            Constants.Proxy.ENV_FILE,
+        ).writeText("${Constants.Proxy.ENV_TAILSCALE_ACTIVE}=false\n${Constants.Proxy.ENV_SOCKS_PORT}=$port\n")
     }
 
     private fun launch(
@@ -232,8 +237,13 @@ internal class TunnelScriptTest {
         while (true) {
             process
                 .descendants()
-                .filter { handle -> handle.info().command().map { File(it).name == name }.orElse(false) }
-                .findFirst()
+                .filter { handle ->
+                    handle
+                        .info()
+                        .command()
+                        .map { File(it).name == name }
+                        .orElse(false)
+                }.findFirst()
                 .orElse(null)
                 ?.let { return it }
             check(System.nanoTime() < deadline) { "no $name ran under the script" }

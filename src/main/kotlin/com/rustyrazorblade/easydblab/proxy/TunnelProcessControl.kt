@@ -126,14 +126,18 @@ class TunnelProcessControl(
                 .toList()
         if (orphans.isEmpty()) return TunnelStopResult.NotRunning
         log.info {
-            "The SOCKS5 tunnel script [PID ${recorded.pid}] is gone; stopping its orphaned ssh (${orphans.joinToString { "PID ${it.pid()}" }})"
+            "The SOCKS5 tunnel script [PID ${recorded.pid}] is gone; stopping its orphaned ssh (${orphans.joinToString {
+                "PID ${it.pid()}"
+            }})"
         }
         val survivors = orphans.filterNot { orphan -> ends(orphan) { it.destroy() } || ends(orphan) { it.destroyForcibly() } }
         return when (val survivor = survivors.firstOrNull()) {
             null -> TunnelStopResult.Stopped(recorded.pid)
             else -> {
                 log.warn {
-                    "The orphaned ssh of the SOCKS5 tunnel on port ${recorded.port} (${survivors.joinToString { "PID ${it.pid()}" }}) did not stop"
+                    "The orphaned ssh of the SOCKS5 tunnel on port ${recorded.port} (${survivors.joinToString {
+                        "PID ${it.pid()}"
+                    }}) did not stop"
                 }
                 TunnelStopResult.StopFailed(survivor.pid().toInt())
             }

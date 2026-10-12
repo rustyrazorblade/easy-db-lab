@@ -6137,7 +6137,8 @@ sealed interface Event {
             val pid: Int,
             val port: Int,
         ) : Proxy {
-            override fun toDisplayString(): String = "Error: the replaced SOCKS5 tunnel on localhost:$port [PID $pid] did not stop. End it with 'kill -9 $pid'."
+            override fun toDisplayString(): String =
+                "Error: the replaced SOCKS5 tunnel on localhost:$port [PID $pid] did not stop. End it with 'kill -9 $pid'."
 
             override fun isError(): Boolean = true
         }

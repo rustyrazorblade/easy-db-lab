@@ -153,7 +153,14 @@ The `easy-db-lab` CLI is the only thing that starts or stops the tunnel. Any com
 reach the cluster starts it, or reuses the one already running, before the command does its work.
 The CLI reuses a running tunnel only after a connection through it reaches the control node. If the tunnel's SSH connection died while its local port stayed open, the CLI stops it, starts a new one, and records the new port.
 
+When the CLI replaces a tunnel, it prints the old port, the new port and the reason: the tunnel went to another control node, it no longer reached the control node, or its process had exited. If your browser uses the tunnel, change its SOCKS port to the new one. If the old tunnel does not stop, the CLI prints an error with its PID; end it with `kill -9 <pid>`.
+
 The tunnel reconnects by itself. The CLI runs it through `<workspace>/bin/edl-socks-tunnel`, which easy-db-lab writes with the tool wrappers. That script runs `ssh -N -D` and, when `ssh` exits, starts it again on the same port after a two-second pause. The SSH keepalives make `ssh` exit about 90 seconds after its connection dies, for example after a laptop sleep or a network change. Because the port does not change, wrapped tools in an open shell work again as soon as the connection comes back, with no CLI command. `stop-socks` and `down` stop the script and its `ssh`.
+
+The script restarts `ssh` only for a tunnel the CLI has verified. The CLI records the port in `.socks5-proxy.env` only after a connection through the tunnel reaches the control node, and the script checks that record. A tunnel that never came up (its port was taken, its key was refused) ends at once, and the CLI reports the failure or retries on a new port. If another process takes the port while `ssh` waits to restart, the script ends after that one attempt. The wrapped tools then fail with the `start-socks` message, and the next CLI command starts a new tunnel.
+
+The tunnel is shared by every command in the workspace, so Ctrl-C does not end it. Pressing Ctrl-C during an easy-db-lab command stops that command and leaves the tunnel running. Use `easy-db-lab stop-socks` to stop it.
+
 To start it for everything else (your shell, a browser), run:
 
 ```bash
@@ -163,9 +170,9 @@ easy-db-lab start-socks
 `start-socks` prints the tunnel's local port. On a Tailscale cluster it starts nothing and says that
 no tunnel is needed.
 
-The tunnel listens on port 1080 when it is free. When another process already holds 1080, most
-often the tunnel of another cluster workspace you run at the same time, it picks a free port
-instead. Each workspace records its own port, so several clusters can run side by side.
+Each new tunnel listens on a random free local port, from 49152 to 65535; no port is preferred. Each workspace records its own port, so several clusters can run side by side, and two workspaces are unlikely to want the same port. If they do, the second one picks another port.
+
+The CLI records the tunnel in the workspace's `.socks5-proxy.env`, as `EDL_SOCKS_PORT` (the port) and `EDL_SOCKS_PID` (the PID of the tunnel script), next to `EDL_TAILSCALE_ACTIVE`. The CLI is the only writer of this file; the wrappers and `env.sh` read it.
 
 ### Tool Wrappers
 
@@ -186,7 +193,7 @@ of a wrapped tool reads the workspace's `.socks5-proxy.env`, which the CLI write
 
 - on a SOCKS cluster, routes that one call through the tunnel;
 - on a Tailscale cluster, runs the tool unchanged, so it connects directly;
-- with no tunnel recorded, fails with a message that says to run `easy-db-lab start-socks`.
+- with no tunnel recorded, or when the recorded tunnel script (`EDL_SOCKS_PID`) is no longer running, fails with exit code 1 and a message that says to run `easy-db-lab start-socks`. It never uses the port of a tunnel that is gone, because another process may hold that port now.
 
 The `kubectl`, `helm`, `cilium` and `k9s` wrappers always use the workspace `kubeconfig`. They replace any `KUBECONFIG` you exported, because a workspace's wrapper reaches only that workspace's cluster. A bare `<workspace>/bin/kubectl get ns` works with no setup: you do not need to source `env.sh` or set `KUBECONFIG`. If the workspace has no `kubeconfig` file, the wrapper names the missing file and exits 1. The `curl` and `skopeo` wrappers do not change `KUBECONFIG`.
 
@@ -271,6 +278,8 @@ easy-db-lab stop-socks    # Stop the tunnel; the cluster keeps running
 
 If the tunnel process does not end, `stop-socks` prints its PID and exits non-zero.  The PID and port stay recorded.  Stop the process with `kill <pid>`, then run `easy-db-lab stop-socks` again.  `down` goes on with the teardown in that case and prints the same PID.
 
+If the tunnel script was killed from outside (for example with `kill -9`), its `ssh` can keep running on its own. `stop-socks`, `down` and the next tunnel start find that `ssh` by the recorded port and `sshConfig`, and stop it.
+
 ### Host Key Verification
 
 The `sshConfig` generated for your cluster sets `UserKnownHostsFile=/dev/null` alongside
@@ -296,7 +305,13 @@ non-zero exit code rather than silently continuing against a proxy port nothing 
 The error names the SOCKS proxy as the failing component and points at `socks5-proxy.log` in
 your cluster workspace directory — that file holds the `ssh -v` transcript from the tunnel
 attempt and is the fastest way to find the real cause (a host-key mismatch, a security group
-blocking port 22, the control node not yet accepting SSH, and so on).
+blocking port 22, the control node not yet accepting SSH, and so on). The error quotes only the
+lines of the failed attempt.
+
+The log keeps the history of every tunnel in the workspace; nothing truncates it. Each launch adds
+a header line with a UTC timestamp, the port and the control node, and the tunnel script adds a
+timestamped line before each `ssh` run and each time `ssh` exits. Look for the last header to find
+the current tunnel.
 
 `easy-db-lab status` is the one exception: it still reports everything it can reach over SSH and
 the AWS SDK even when the tunnel is down, marking only the section that requires the private
@@ -305,13 +320,14 @@ Kubernetes API (stress jobs) as unavailable. See the
 
 ### Troubleshooting SOCKS Proxy
 
-**"no SOCKS tunnel is recorded for the workspace":**
+**"no SOCKS tunnel is recorded for the workspace" or "the recorded SOCKS tunnel (PID ...) is not running":**
 ```bash
 easy-db-lab start-socks    # Start the tunnel and record its port
 ```
 
 **"Connection refused" errors:**
-The tunnel died on its own after the port was recorded. Start it again:
+The tunnel's `ssh` cannot reach the control node right now. The tunnel restarts `ssh` by itself;
+if that does not help, start a new tunnel:
 ```bash
 socks5-status              # Shows the recorded port and whether anything listens on it
 easy-db-lab start-socks    # Starts a new tunnel and records its port

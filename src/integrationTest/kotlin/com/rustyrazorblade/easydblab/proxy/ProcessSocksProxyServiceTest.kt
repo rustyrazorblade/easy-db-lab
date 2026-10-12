@@ -2,8 +2,8 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.events.EventBus
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.assertj.core.api.Assertions.assertThat
@@ -255,8 +255,18 @@ class ProcessSocksProxyServiceTest {
         val preferred = reserveFreePort()
         val launcher = LoopbackBindingLauncher()
         try {
-            val first = serviceIn(workspace("cluster-a"), launcher, LoopbackPortSelector(candidates = { preferred })).ensureRunning(testHost)
-            val second = serviceIn(workspace("cluster-b"), launcher, LoopbackPortSelector(candidates = { preferred })).ensureRunning(testHost)
+            val first =
+                serviceIn(
+                    workspace("cluster-a"),
+                    launcher,
+                    LoopbackPortSelector(candidates = { preferred }),
+                ).ensureRunning(testHost)
+            val second =
+                serviceIn(
+                    workspace("cluster-b"),
+                    launcher,
+                    LoopbackPortSelector(candidates = { preferred }),
+                ).ensureRunning(testHost)
 
             assertThat(first.localPort).isEqualTo(preferred)
             assertThat(second.localPort).isNotEqualTo(first.localPort)
@@ -273,7 +283,12 @@ class ProcessSocksProxyServiceTest {
         val preferred = reserveFreePort()
         val launcher = LoopbackBindingLauncher()
         try {
-            val first = serviceIn(workspace("cluster-a"), launcher, LoopbackPortSelector(candidates = { preferred })).ensureRunning(testHost)
+            val first =
+                serviceIn(
+                    workspace("cluster-a"),
+                    launcher,
+                    LoopbackPortSelector(candidates = { preferred }),
+                ).ensureRunning(testHost)
             val live = LoopbackPortSelector(candidates = { preferred })
             var staleProbe = true
             val racingSelector =

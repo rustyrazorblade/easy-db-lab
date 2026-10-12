@@ -62,6 +62,13 @@ class StartScriptTelemetryTest {
     }
 
     @Test
+    fun `the agent loads from lib, the directory the Homebrew formula installs with the jars`() {
+        val appHome = startScript.parentFile.parentFile.canonicalPath
+
+        assertThat(jvmArgs()).contains("-javaagent:$appHome/lib/opentelemetry-javaagent.jar")
+    }
+
+    @Test
     fun `class-data sharing is off so the appended agent does not print a CDS warning on every run`() {
         val args = jvmArgs()
 

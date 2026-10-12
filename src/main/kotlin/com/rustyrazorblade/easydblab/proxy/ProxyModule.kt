@@ -28,7 +28,7 @@ val proxyModule =
         // Uses ProcessSocksProxyService which launches a detached OS process that
         // persists across JVM restarts and is reused via .socks5-proxy-state.
         single<SocksProxyService> {
-            ProcessSocksProxyService(get(), get(), verifyAttempts = get<SshRoute>().tunnelVerifyAttempts)
+            ProcessSocksProxyService(get(), get(), verifyAttempts = lazy { get<SshRoute>().tunnelVerifyAttempts })
         }
 
         // Proxy availability holder - singleton so DefaultCommandExecutor and the command it

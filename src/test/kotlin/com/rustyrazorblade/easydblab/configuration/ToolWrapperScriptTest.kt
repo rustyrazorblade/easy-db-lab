@@ -166,8 +166,8 @@ internal class ToolWrapperScriptTest {
         ProxyEnvFile(workspace).recordTunnel(45678, ProcessHandle.current().pid())
         val second = run("kubectl get ns")
 
-        assertThat(first.stdout).contains("HTTPS_PROXY=socks5://localhost:41234")
-        assertThat(second.stdout).contains("HTTPS_PROXY=socks5://localhost:45678")
+        assertThat(first.stdout).contains("HTTPS_PROXY=socks5://127.0.0.1:41234")
+        assertThat(second.stdout).contains("HTTPS_PROXY=socks5://127.0.0.1:45678")
     }
 
     @Test
@@ -201,7 +201,10 @@ internal class ToolWrapperScriptTest {
 
         assertThat(result.exitCode).isEqualTo(1)
         assertThat(result.stdout).doesNotContain("tool=").doesNotContain("41234")
-        assertThat(result.stderr).contains(workspace.canonicalPath).contains("easy-db-lab start-socks")
+        assertThat(result.stderr)
+            .contains(workspace.canonicalPath)
+            .contains("easy-db-lab start-socks")
+            .contains("${workspace.canonicalPath}/logs/socks5-proxy.log")
     }
 
     @Test
@@ -262,7 +265,7 @@ internal class ToolWrapperScriptTest {
 
         assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
         assertThat(result.stdout.lines().filter { it == "tool=kubectl" }).hasSize(1)
-        assertThat(result.stdout).contains("HTTPS_PROXY=socks5://localhost:41234")
+        assertThat(result.stdout).contains("HTTPS_PROXY=socks5://127.0.0.1:41234")
     }
 
     @Test
@@ -274,7 +277,7 @@ internal class ToolWrapperScriptTest {
         val result = run("kubectl get ns", path = listOf(File(link, "bin"), realBin))
 
         assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
-        assertThat(result.stdout).contains("HTTPS_PROXY=socks5://localhost:41234")
+        assertThat(result.stdout).contains("HTTPS_PROXY=socks5://127.0.0.1:41234")
     }
 
     @Test
@@ -293,7 +296,7 @@ internal class ToolWrapperScriptTest {
             )
 
         assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
-        assertThat(result.stdout).contains("HTTPS_PROXY=socks5://localhost:41234")
+        assertThat(result.stdout).contains("HTTPS_PROXY=socks5://127.0.0.1:41234")
     }
 
     @Test
@@ -339,7 +342,7 @@ internal class ToolWrapperScriptTest {
         calls.forEach { call ->
             val result = run(call)
             assertThat(result.exitCode).withFailMessage("$call: $result").isZero()
-            assertThat(result.stdout).withFailMessage("$call: $result").contains("HTTPS_PROXY=socks5://localhost:41234")
+            assertThat(result.stdout).withFailMessage("$call: $result").contains("HTTPS_PROXY=socks5://127.0.0.1:41234")
         }
     }
 
@@ -359,7 +362,7 @@ internal class ToolWrapperScriptTest {
 
         val result = run("kubectl get ns", env = mapOf("EDL_TAILSCALE_ACTIVE" to "true", "EDL_SOCKS_PORT" to "9"))
 
-        assertThat(result.stdout).contains("HTTPS_PROXY=socks5://localhost:41234")
+        assertThat(result.stdout).contains("HTTPS_PROXY=socks5://127.0.0.1:41234")
     }
 
     @Test
@@ -501,8 +504,8 @@ internal class ToolWrapperScriptTest {
 
         val NONE = PROXY_VARIABLES.associateWith { "unset" }
 
-        private const val SOCKS = "socks5://localhost:41234"
-        private const val SOCKS_H = "socks5h://localhost:41234"
+        private const val SOCKS = "socks5://127.0.0.1:41234"
+        private const val SOCKS_H = "socks5h://127.0.0.1:41234"
         private const val LOCAL = "localhost,127.0.0.1"
 
         private val TUNNEL_ONLY = NONE + mapOf("HTTPS_PROXY" to SOCKS, "https_proxy" to SOCKS)

@@ -96,7 +96,7 @@ class StartSocksTest : BaseKoinTest() {
             ProxyEnvFile(context.workingDirectory).read(),
         ).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(PORT, FAKE_PID)))
         assertThat(events).containsExactly(Event.Proxy.TunnelReady(port = PORT, reused = false))
-        assertThat(events.single().toDisplayString()).contains("localhost:$PORT")
+        assertThat(events.single().toDisplayString()).contains("127.0.0.1:$PORT").doesNotContain("localhost")
     }
 
     @Test

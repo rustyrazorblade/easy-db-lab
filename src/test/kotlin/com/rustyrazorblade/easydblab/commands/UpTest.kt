@@ -1,5 +1,9 @@
 package com.rustyrazorblade.easydblab.commands
 
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
@@ -570,6 +574,39 @@ class UpTest : UpTestFixture() {
 
         assertThat(localTailscaleQueries).isZero()
         assertThat(probedTargets).isEmpty()
+    }
+
+    @Test
+    fun `up reports the SOCKS tunnel it started on a cluster that does not use Tailscale`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        val events = captureEvents()
+
+        newUp().execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `up reports no SOCKS tunnel on a Tailscale cluster`() {
+        val events = captureEvents()
+
+        newUp().execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).isEmpty()
+    }
+
+    private fun captureEvents(): List<Event> {
+        val emitted = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return emitted
     }
 
     @Test

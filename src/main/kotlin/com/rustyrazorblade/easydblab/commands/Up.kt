@@ -667,13 +667,15 @@ class Up(
      *
      * Proxy and Tailscale are mutually exclusive networking paths to the private cluster.
      * Both are started at the same point so that subsequent K3s setup, kubectl, and
-     * fabric8 operations can reach the cluster API without Tailscale.
+     * fabric8 operations can reach the cluster API without Tailscale. The tunnel it started or reused
+     * is reported as `start-socks` reports it, with its port for a browser.
      */
     private fun startProxyIfNeeded() {
         if (workingState.isTailscaleEnabled()) return
         val controlHost = workingState.hosts[ServerType.Control]?.firstOrNull() ?: return
         log.info { "Starting SOCKS5 proxy to ${controlHost.alias} for K8s API access" }
-        socksProxyService.ensureRunning(controlHost)
+        val proxy = socksProxyService.ensureRunning(controlHost)
+        eventBus.emit(Event.Proxy.TunnelReady(port = proxy.localPort, reused = proxy.reused))
     }
 
     /**

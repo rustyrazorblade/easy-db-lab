@@ -382,8 +382,8 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
             Event.Proxy.SupersededTunnelStopFailed(pid = livePid.toInt(), port = STOP_PORT),
             Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.UNREACHABLE),
         )
-        assertThat(events.first().toDisplayString()).contains("kill -9 $livePid")
-        assertThat(events.last().toDisplayString()).contains("localhost:$NEW_PORT").contains("browser")
+        assertThat(events.first().toDisplayString()).contains("kill -9 $livePid").contains("pkill -f -- \"-D 127.0.0.1:$STOP_PORT\"")
+        assertThat(events.last().toDisplayString()).contains("127.0.0.1:$NEW_PORT").doesNotContain("localhost").contains("browser")
     }
 
     @Test

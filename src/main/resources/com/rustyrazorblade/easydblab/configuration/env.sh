@@ -181,12 +181,14 @@ with-proxy() {
   port=$(_socks5_port)
   if [ -z "$port" ]; then
     echo "easy-db-lab: no running SOCKS tunnel is recorded for the workspace $CLUSTER_DIR." >&2
+    echo "easy-db-lab: if a tunnel was running, $CLUSTER_DIR/logs/socks5-proxy.log says why it exited." >&2
     echo "easy-db-lab: run 'easy-db-lab start-socks' in $CLUSTER_DIR, then try again." >&2
     return 1
   fi
-  ALL_PROXY="socks5h://localhost:$port" \
-  HTTP_PROXY="socks5h://localhost:$port" \
-  HTTPS_PROXY="socks5h://localhost:$port" \
+  # The tunnel listens on 127.0.0.1 only; localhost could resolve to ::1, where another process may listen.
+  ALL_PROXY="socks5h://127.0.0.1:$port" \
+  HTTP_PROXY="socks5h://127.0.0.1:$port" \
+  HTTPS_PROXY="socks5h://127.0.0.1:$port" \
   NO_PROXY="localhost,127.0.0.1" \
   "$@"
 }
@@ -202,9 +204,9 @@ socks5-status() {
   if [ -z "$port" ]; then
     echo "No running SOCKS5 tunnel is recorded. Run 'easy-db-lab start-socks' to start one."
   elif lsof -Pi :"$port" -sTCP:LISTEN -t >/dev/null 2>&1; then
-    echo "SOCKS5 tunnel active on localhost:$port"
+    echo "SOCKS5 tunnel active on 127.0.0.1:$port"
   else
-    echo "SOCKS5 tunnel recorded on localhost:$port, but nothing listens there. Run 'easy-db-lab start-socks' to restart it."
+    echo "SOCKS5 tunnel recorded on 127.0.0.1:$port, but nothing listens there. Run 'easy-db-lab start-socks' to restart it."
   fi
 }
 

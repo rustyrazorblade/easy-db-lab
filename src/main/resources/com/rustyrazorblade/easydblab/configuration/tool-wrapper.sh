@@ -70,9 +70,13 @@ if [ "${EDL_TAILSCALE_ACTIVE:-}" = true ]; then
     exec "$real" "$@"
 fi
 
-# Fails with the pointer to start-socks; $1 says why there is no tunnel to use.
+# Fails with the pointer to start-socks; $1 says why there is no tunnel to use, and $2, when set, where
+# to read more.
 no_tunnel() {
     echo "easy-db-lab: $1 for the workspace $workspace, so $tool cannot reach the cluster." >&2
+    if [ -n "${2:-}" ]; then
+        echo "easy-db-lab: $2" >&2
+    fi
     echo "easy-db-lab: run 'easy-db-lab start-socks' in $workspace, then try again." >&2
     exit 1
 }
@@ -81,11 +85,18 @@ case ${EDL_SOCKS_PORT:-}:${EDL_SOCKS_PID:-} in
     :* | *: | *[!0-9:]*) no_tunnel "no SOCKS tunnel is recorded" ;;
 esac
 # The port is used only while the recorded tunnel script runs: once it has exited, nothing of ours
-# listens there, and another process may have taken the port.
-kill -0 "$EDL_SOCKS_PID" 2>/dev/null || no_tunnel "the recorded SOCKS tunnel (PID $EDL_SOCKS_PID) is not running"
+# listens there, and another process may have taken the port. kill -0 shows only that some process
+# holds the PID, not that it is the tunnel: POSIX sh cannot read another process's arguments portably.
+# That is enough here, because the CLI's check is the one that decides. Every CLI command that uses
+# the tunnel first proves the recorded PID is the tunnel script, by its arguments, and replaces the
+# tunnel when another program holds the PID.
+kill -0 "$EDL_SOCKS_PID" 2>/dev/null ||
+    no_tunnel "the recorded SOCKS tunnel (PID $EDL_SOCKS_PID) is not running" \
+        "$workspace/logs/socks5-proxy.log says why it exited."
 
-socks=socks5://localhost:$EDL_SOCKS_PORT
-socks_h=socks5h://localhost:$EDL_SOCKS_PORT
+# The tunnel listens on 127.0.0.1 only; localhost could resolve to ::1, where another process may listen.
+socks=socks5://127.0.0.1:$EDL_SOCKS_PORT
+socks_h=socks5h://127.0.0.1:$EDL_SOCKS_PORT
 local_hosts=localhost,127.0.0.1
 
 # Replace, never add to, the caller's proxy settings: an inherited NO_PROXY would bypass the tunnel.

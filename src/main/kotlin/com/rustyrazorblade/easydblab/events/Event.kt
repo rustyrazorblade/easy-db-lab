@@ -6028,9 +6028,9 @@ sealed interface Event {
         ) : Proxy {
             override fun toDisplayString(): String =
                 """
-                |SOCKS5 tunnel ${if (reused) "already running" else "started"} on localhost:$port.
+                |SOCKS5 tunnel ${if (reused) "already running" else "started"} on 127.0.0.1:$port.
                 |kubectl, helm, cilium, curl, skopeo and k9s from this workspace's bin/ use it.
-                |To browse cluster web UIs, set your browser's SOCKS v5 proxy to host localhost, port $port.
+                |To browse cluster web UIs, set your browser's SOCKS v5 proxy to host 127.0.0.1, port $port.
                 """.trimMargin()
         }
 
@@ -6122,7 +6122,7 @@ sealed interface Event {
         ) : Proxy {
             override fun toDisplayString(): String =
                 """
-                |Replaced the SOCKS5 tunnel on localhost:$oldPort, because ${reason.description}. The new tunnel listens on localhost:$newPort.
+                |Replaced the SOCKS5 tunnel on 127.0.0.1:$oldPort, because ${reason.description}. The new tunnel listens on 127.0.0.1:$newPort.
                 |If your browser uses the tunnel, change its SOCKS v5 proxy port from $oldPort to $newPort.
                 """.trimMargin()
         }
@@ -6138,7 +6138,9 @@ sealed interface Event {
             val port: Int,
         ) : Proxy {
             override fun toDisplayString(): String =
-                "Error: the replaced SOCKS5 tunnel on localhost:$port [PID $pid] did not stop. End it with 'kill -9 $pid'."
+                "Error: the replaced SOCKS5 tunnel on 127.0.0.1:$port [PID $pid] did not stop. End it with 'kill -9 $pid'. " +
+                    "easy-db-lab no longer records this tunnel, so it will not stop an ssh the tunnel leaves; " +
+                    "end that with 'pkill -f -- \"-D 127.0.0.1:$port\"'."
 
             override fun isError(): Boolean = true
         }

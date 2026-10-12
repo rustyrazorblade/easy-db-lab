@@ -117,7 +117,7 @@ internal class EnvShSourcingTest {
 
         assertThat(result.exitCode).isNotZero()
         assertThat(result.stdout).doesNotContain("ran")
-        assertThat(result.stderr).contains("easy-db-lab start-socks")
+        assertThat(result.stderr).contains("easy-db-lab start-socks").contains("/logs/socks5-proxy.log")
     }
 
     @Test
@@ -137,9 +137,16 @@ internal class EnvShSourcingTest {
             recordTunnel(41234, ProcessHandle.current().pid())
         }
 
-        val result = bash("source ./env.sh >/dev/null; with-proxy sh -c 'echo \"ALL_PROXY=${'$'}ALL_PROXY\"'")
+        val result =
+            bash(
+                "source ./env.sh >/dev/null; with-proxy sh -c " +
+                    "'echo \"ALL_PROXY=${'$'}ALL_PROXY HTTP_PROXY=${'$'}HTTP_PROXY HTTPS_PROXY=${'$'}HTTPS_PROXY NO_PROXY=${'$'}NO_PROXY\"'",
+            )
 
-        assertThat(result.stdout).contains("ALL_PROXY=socks5h://localhost:41234")
+        assertThat(result.stdout).contains(
+            "ALL_PROXY=socks5h://127.0.0.1:41234 HTTP_PROXY=socks5h://127.0.0.1:41234 " +
+                "HTTPS_PROXY=socks5h://127.0.0.1:41234 NO_PROXY=localhost,127.0.0.1",
+        )
     }
 
     @Test
@@ -152,7 +159,7 @@ internal class EnvShSourcingTest {
         val result = bash("source ./env.sh >/dev/null; socks5-status")
 
         assertThat(result.exitCode).isZero()
-        assertThat(result.stdout).contains("41234")
+        assertThat(result.stdout).contains("127.0.0.1:41234").doesNotContain("localhost")
     }
 
     @Test
@@ -166,7 +173,7 @@ internal class EnvShSourcingTest {
 
         assertThat(result.exitCode).isNotZero()
         assertThat(result.stdout).doesNotContain("ran")
-        assertThat(result.stderr).contains("easy-db-lab start-socks")
+        assertThat(result.stderr).contains("easy-db-lab start-socks").contains("/logs/socks5-proxy.log")
     }
 
     @Test

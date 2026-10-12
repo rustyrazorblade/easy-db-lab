@@ -17,31 +17,39 @@ object ClusterConfigWriter {
      * [ServerType] prefix (`db*`, `app*`, `control*`) and the negated `!*.*`, so they apply to every
      * cluster host, however many the cluster grows to, and to no other host. OpenSSH patterns have no
      * character classes, so the wildcards alone would also match a name such as `db.boo.com`; the
-     * negation keeps every name with a dot, and so every IP address, out of the block. Each host then gets its own block with its
-     * address and, under the `ssm` transport, its `ProxyCommand`. The file ends with `Host *` and
-     * `Include ~/.ssh/config`, so any other host, such as `github.com` for a `git` that runs through
-     * the workspace's `ssh` wrapper, resolves exactly as it would without `-F`.
+     * negation keeps every name with a dot, and so every IP address, out of the block. Each host then
+     * gets its own block with its address and, under the `ssm` transport, its `ProxyCommand`.
      *
-     * OpenSSH keeps the first value it obtains for an option, reading the file top to bottom, so the
-     * included personal config cannot change an option the cluster block sets for a cluster host. The
-     * `Host *` line matters: an `Include` inside the last host's block would apply to that host only.
-     * A missing `~/.ssh/config` is no error.
+     * Cluster hosts never read the personal or the system config, so none of their options (such as
+     * `ControlMaster`, `ProxyJump`, `ForwardAgent` or another `IdentityFile`) reaches a node or the
+     * SOCKS tunnel. Every other host, such as `github.com` for a `git` that runs through the
+     * workspace's `ssh` wrapper, includes [personalConfig] and then [systemConfig], which is what
+     * `ssh` reads without `-F`, so it resolves exactly as it would without the workspace file. Two
+     * `Match originalhost` blocks select those names: one without a cluster prefix, and one with a
+     * prefix and a dot. They are disjoint because options such as `IdentityFile` add up, and a name
+     * that included the files twice would get them twice. `originalhost` is the name as typed,
+     * before a `Hostname` replaces it. A missing included file is no error.
      *
      * @param writer BufferedWriter to write SSH config to
      * @param identityFile Path to the SSH identity file
      * @param hosts Map of server types to their hosts
      * @param proxyCommands the `ProxyCommand` for each host alias that has one; a host without an
      *   entry is dialed at its public IP directly
+     * @param personalConfig the personal OpenSSH config every other host includes first
+     * @param systemConfig the system OpenSSH config every other host includes after [personalConfig]
      */
     fun writeSshConfig(
         writer: BufferedWriter,
         identityFile: String,
         hosts: Map<ServerType, List<ClusterHost>>,
         proxyCommands: Map<String, String> = emptyMap(),
+        personalConfig: String = Constants.Ssh.PERSONAL_CONFIG,
+        systemConfig: String = Constants.Ssh.SYSTEM_CONFIG,
     ) {
+        val prefixes = ServerType.entries.map { it.serverType }
         // !*.* keeps every name with a dot, and so every IP address, out of the cluster block: OpenSSH
         // patterns have no character classes, so db* alone would also match db.boo.com.
-        writer.appendLine("Host ${ServerType.entries.joinToString(" ") { "${it.serverType}*" }} !*.*")
+        writer.appendLine("Host ${prefixes.joinToString(" ") { "$it*" }} !*.*")
         writer.appendLine(" StrictHostKeyChecking=no")
         // AWS recycles public IPs across ephemeral cluster lifetimes, so a host's key
         // recorded in the developer's ~/.ssh/known_hosts can collide with a different
@@ -76,9 +84,16 @@ object ClusterConfigWriter {
             }
         }
 
-        // Every other host resolves as it would without -F.
-        writer.appendLine("Host *")
-        writer.appendLine("Include ~/.ssh/config")
+        // Every other host resolves as it would without -F: a name without a cluster prefix, and a
+        // dotted name with one. Disjoint, so no name includes the files twice.
+        listOf(
+            "!originalhost ${prefixes.joinToString(",") { "$it*" }}",
+            "originalhost ${prefixes.joinToString(",") { "$it*.*" }}",
+        ).forEach { criteria ->
+            writer.appendLine("Match $criteria")
+            writer.appendLine(" Include $personalConfig")
+            writer.appendLine(" Include $systemConfig")
+        }
 
         writer.flush()
     }

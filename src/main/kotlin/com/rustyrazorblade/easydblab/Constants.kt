@@ -1103,6 +1103,12 @@ object Constants {
          * has arrived. It matches [Ssm.SSH_AUTH_TIMEOUT_SECONDS].
          */
         const val CONNECT_TIMEOUT_SECONDS = 30
+
+        /** The personal OpenSSH config `ssh` reads first without `-F`; the generated sshConfig includes it for other hosts. */
+        const val PERSONAL_CONFIG = "~/.ssh/config"
+
+        /** The system OpenSSH config `ssh` reads after the personal one without `-F`. */
+        const val SYSTEM_CONFIG = "/etc/ssh/ssh_config"
     }
 
     // AWS Systems Manager Session Manager, used as the SSH transport when a profile selects `ssm`

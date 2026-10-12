@@ -84,7 +84,8 @@ internal class EnvShSourcingTest {
         assertThat(written.first()).isEqualTo("Host db* app* control* !*.*")
         assertThat(written).contains(" IdentityFile /keys/cluster", "Host db0", " Hostname 54.1.1.2")
         // The heredoc leaves ~ as written, for ssh to expand.
-        assertThat(written.dropLastWhile { it.isBlank() }.takeLast(2)).containsExactly("Host *", "Include ~/.ssh/config")
+        assertThat(written.dropLastWhile { it.isBlank() }.takeLast(3))
+            .containsExactly("Match originalhost db*.*,app*.*,control*.*", " Include ~/.ssh/config", " Include /etc/ssh/ssh_config")
     }
 
     @Test

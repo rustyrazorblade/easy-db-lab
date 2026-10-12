@@ -78,11 +78,11 @@ WHEN a packaged topic file has a missing or malformed frontmatter header, the co
 
 ### Requirement: Seed topics are task-oriented
 
-The distribution SHALL ship nine seed topics — `provisioning`, `kits`, `stress-testing`, `profiles`, `connecting`, `querying`, `observability`, `spark`, and `cassandra` — and each SHALL be written as task-oriented guidance describing how to perform the operation, not as a reference listing of command-line flags. The `cassandra` topic SHALL be an umbrella guide to managing the database on a running cluster — lifecycle (start, stop, restart), version selection/installation, and configuration (the Cassandra config patch-file workflow) — and SHALL point to the `stress-testing` topic for load rather than duplicating it.
+The distribution SHALL ship ten seed topics — `provisioning`, `kits`, `stress-testing`, `profiles`, `connecting`, `querying`, `observability`, `spark`, `cassandra`, and `cassandra-builds` — and each SHALL be written as task-oriented guidance describing how to perform the operation, not as a reference listing of command-line flags. The `cassandra` topic SHALL be an umbrella guide to managing the database on a running cluster — lifecycle (start, stop, restart), version selection/installation, and configuration (the Cassandra config patch-file workflow) — and SHALL point to the `stress-testing` topic for load rather than duplicating it.
 
 #### Scenario: Each seed topic describes how to perform its operation
 
-- **WHEN** a user reads any of the nine seed topics
+- **WHEN** a user reads any of the ten seed topics
 - **THEN** the content explains how to carry out that operation step by step
 - **AND** the content is not merely a list of command-line flags
 

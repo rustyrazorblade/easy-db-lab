@@ -161,7 +161,9 @@ This command:
 - Downloads configuration files to your local directory
 - Applies any existing patch configuration
 
-Available versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, trunk
+`cassandra use` accepts any installed version. Run `easy-db-lab cassandra list` to see them.
+This includes a build published by `cassandra build`. See [Custom Builds](installing-cassandra.md#custom-builds),
+or run `easy-db-lab help cassandra-builds`.
 
 ### Step 2: Customize Configuration (Optional)
 

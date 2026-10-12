@@ -241,7 +241,7 @@ sealed interface Event {
         ) : Cassandra {
             override fun toDisplayString(): String =
                 "You can update cassandra.patch.yaml and the JVM config files under $version, " +
-                    "then run easy-db-lab update-config to apply the changes."
+                    "then run easy-db-lab cassandra update-config to apply the changes."
         }
 
         @Serializable

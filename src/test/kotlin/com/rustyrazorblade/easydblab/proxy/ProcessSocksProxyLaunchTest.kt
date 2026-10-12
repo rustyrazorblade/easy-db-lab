@@ -18,6 +18,7 @@ import java.io.File
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import java.util.stream.Stream
 
 /** [ProcessSocksProxyService] starting a tunnel: the command line, the appended log, the verify loop, the bind-race retry, what a verified start records, and the reading of an ssh transcript. */
 @ResourceLock(Constants.Proxy.PORT_PROPERTY)
@@ -300,7 +301,14 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         // The script is alive at the check, but its ssh died after the probe and before the record:
         // the script will exit when it reads the env file, so the recorded tunnel would be dead.
         val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
-        val scriptStaysUp = aliveProcess()
+        // The ssh the script started last, still its descendant; it must not outlive the script.
+        val ssh = mock<ProcessHandle>()
+        val scriptStaysUp: Process =
+            mock {
+                on { isAlive } doReturn true
+                on { pid() } doReturn FAKE_PID
+                on { descendants() } doAnswer { Stream.of(ssh) }
+            }
         val sshGoneAtRecord = TunnelReachabilityProbe { _, _, _ -> envFile.read().tunnel == null }
 
         val failure =
@@ -315,6 +323,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         assertThat(stateFile()).doesNotExist()
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
         verify(scriptStaysUp).destroyForcibly()
+        verify(ssh).destroyForcibly()
     }
 
     @Test

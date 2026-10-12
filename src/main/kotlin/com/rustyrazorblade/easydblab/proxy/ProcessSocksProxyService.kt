@@ -250,11 +250,12 @@ class ProcessSocksProxyService(
         current: SocksProxyState,
         gatewayHost: ClusterHost,
     ): TunnelCheck {
+        // The same identity check as the state-file path: the PID must still be this tunnel's script.
+        val status = inMemoryStatus()
         val reason =
             when {
-                // The same identity check as the state-file path: the PID must still be this tunnel's script.
-                inMemoryStatus() == RecordedTunnelStatus.GONE -> Event.Proxy.ReplaceReason.PROCESS_GONE
-                inMemoryStatus() == RecordedTunnelStatus.PID_REUSED -> Event.Proxy.ReplaceReason.PID_REUSED
+                status == RecordedTunnelStatus.GONE -> Event.Proxy.ReplaceReason.PROCESS_GONE
+                status == RecordedTunnelStatus.PID_REUSED -> Event.Proxy.ReplaceReason.PID_REUSED
                 current.gatewayHost.privateIp != gatewayHost.privateIp -> Event.Proxy.ReplaceReason.GATEWAY_CHANGED
                 isFreshlyVerified(pid, current.localPort) -> null
                 reachesGateway(current.localPort, gatewayHost) -> null.also { markVerified(pid, current.localPort) }

@@ -142,6 +142,7 @@ class CleanTest : BaseKoinTest() {
         get<Clean>().execute()
 
         assertThat(envFile.file).doesNotExist()
+        assertThat(File(context.workingDirectory, Constants.Proxy.ENV_LOCK_FILE)).doesNotExist()
     }
 
     @Test

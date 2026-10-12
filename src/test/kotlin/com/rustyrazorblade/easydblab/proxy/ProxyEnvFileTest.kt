@@ -8,6 +8,7 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /** [ProxyEnvFile] is the only source of proxy state for shell-side tools, so its content must always be sourceable. */
 internal class ProxyEnvFileTest {
@@ -89,7 +90,7 @@ internal class ProxyEnvFileTest {
             assertThat(String(oldReader.readAllBytes())).isEqualTo("EDL_TAILSCALE_ACTIVE=false\nEDL_SOCKS_PORT=41234\nEDL_SOCKS_PID=$PID\n")
         }
         assertThat(envFile.read().tunnel).isEqualTo(RecordedTunnel(45678, PID))
-        assertThat(workspace.list()).containsExactly(Constants.Proxy.ENV_FILE)
+        assertThat(workspace.list()).containsExactlyInAnyOrder(Constants.Proxy.ENV_FILE, Constants.Proxy.ENV_LOCK_FILE)
     }
 
     @Test
@@ -134,7 +135,64 @@ internal class ProxyEnvFileTest {
             assertThat(lines[1]).matches("EDL_SOCKS_PORT=\\d+")
             assertThat(lines[2]).isEqualTo("EDL_SOCKS_PID=$PID")
         }
-        assertThat(workspace.list()).containsExactly(Constants.Proxy.ENV_FILE)
+        assertThat(workspace.list()).containsExactlyInAnyOrder(Constants.Proxy.ENV_FILE, Constants.Proxy.ENV_LOCK_FILE)
+    }
+
+    @Test
+    fun `two threads writing different keys at once keep both`() {
+        val pool = Executors.newFixedThreadPool(2)
+        val start = CountDownLatch(1)
+        val lost = AtomicInteger()
+        try {
+            val tunnelWriter =
+                pool.submit {
+                    start.await()
+                    val writer = ProxyEnvFile(workspace)
+                    for (port in 1..ROUNDS * WRITERS) {
+                        writer.recordTunnel(port, PID)
+                        if ((writer.read().tunnel?.port ?: 0) < port) lost.incrementAndGet()
+                    }
+                }
+            val flagWriter =
+                pool.submit {
+                    start.await()
+                    val writer = ProxyEnvFile(workspace)
+                    repeat(ROUNDS * WRITERS) { round -> writer.recordTailscale(active = round % 2 == 0) }
+                }
+            start.countDown()
+            listOf(tunnelWriter, flagWriter).forEach { it.get(LIMIT_SECONDS, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+        envFile.recordTailscale(active = true)
+
+        assertThat(lost.get()).withFailMessage("a tunnel update was overwritten by a Tailscale update").isZero()
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(ROUNDS * WRITERS, PID)))
+    }
+
+    @Test
+    fun `two processes writing different keys at once keep both`() {
+        val rounds = ROUNDS * WRITERS
+        val java = File(System.getProperty("java.home"), "bin/java").absolutePath
+        val child =
+            ProcessBuilder(
+                java,
+                "-cp",
+                System.getProperty("java.class.path"),
+                ProxyEnvFileWriterMain::class.java.name,
+                workspace.absolutePath,
+                "$rounds",
+            ).redirectErrorStream(true).start()
+        // This process writes the Tailscale flag for as long as the child writes the tunnel.
+        var round = 0
+        while (child.isAlive) {
+            envFile.recordTailscale(active = round++ % 2 == 0)
+        }
+        envFile.recordTailscale(active = true)
+        val output = child.inputStream.bufferedReader().readText()
+
+        assertThat(child.exitValue()).withFailMessage("the child's tunnel update was lost: $output").isZero()
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(rounds, ProxyEnvFileWriterMain.PID)))
     }
 
     @Test

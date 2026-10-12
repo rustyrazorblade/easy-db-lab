@@ -935,6 +935,12 @@ object Constants {
          */
         const val ENV_FILE = ".socks5-proxy.env"
 
+        /**
+         * The lock file beside [ENV_FILE]. Every update of the env file holds an exclusive lock on it
+         * while it reads, changes and replaces the file, so two CLI processes never lose each other's keys.
+         */
+        const val ENV_LOCK_FILE = ".socks5-proxy.env.lock"
+
         /** The env file key that says whether the cluster reaches its nodes over Tailscale (`true`/`false`). */
         const val ENV_TAILSCALE_ACTIVE = "EDL_TAILSCALE_ACTIVE"
 

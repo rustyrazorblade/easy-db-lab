@@ -43,6 +43,7 @@ class Clean :
                 "axonops-workbench.json",
                 ".socks5-proxy-state",
                 Constants.Proxy.ENV_FILE,
+                Constants.Proxy.ENV_LOCK_FILE,
                 "kubeconfig",
             )
 

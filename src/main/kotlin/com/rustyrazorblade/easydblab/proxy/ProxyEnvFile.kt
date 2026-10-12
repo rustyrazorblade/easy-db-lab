@@ -3,6 +3,10 @@ package com.rustyrazorblade.easydblab.proxy
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.writeTextAtomically
 import java.io.File
+import java.nio.channels.FileChannel
+import java.nio.file.StandardOpenOption
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * A verified tunnel as the env file records it: its local [port] and the [pid] of its
@@ -34,6 +38,11 @@ data class ProxyEnv(
  * removed together. Each update keeps the other keys and replaces the file in one rename, so a
  * wrapper that sources it while another CLI process writes always reads a whole file.
  *
+ * Each update reads the file, changes one key and writes it back while it holds an exclusive lock on
+ * [Constants.Proxy.ENV_LOCK_FILE], so two CLI processes that update different keys at once keep both.
+ * A JVM cannot take a second lock on a file it has locked already, so the threads of one process also
+ * take turns on [localLock] first. Readers take no lock: the rename gives them a whole file.
+ *
  * @param workspace the cluster workspace directory
  */
 class ProxyEnvFile(
@@ -53,19 +62,33 @@ class ProxyEnvFile(
         )
     }
 
+    private val lockFile = File(workspace, Constants.Proxy.ENV_LOCK_FILE)
+
     /** Records whether the cluster is reached over Tailscale, keeping any recorded tunnel. */
-    fun recordTailscale(active: Boolean) = write(read().copy(tailscaleActive = active))
+    fun recordTailscale(active: Boolean) = update { it.copy(tailscaleActive = active) }
 
     /** Records the verified tunnel on [port] whose script is [pid], keeping the Tailscale flag. */
     fun recordTunnel(
         port: Int,
         pid: Long,
-    ) = write(read().copy(tunnel = RecordedTunnel(port, pid)))
+    ) = update { it.copy(tunnel = RecordedTunnel(port, pid)) }
 
     /** Removes the recorded tunnel's port and PID, keeping the Tailscale flag. Writes nothing when no file exists. */
     fun removeTunnel() {
-        if (file.exists()) write(read().copy(tunnel = null))
+        if (!file.exists()) return
+        locked { if (file.exists()) write(read().copy(tunnel = null)) }
     }
+
+    /** Replaces the recorded state with [change] applied to it, under the lock. */
+    private fun update(change: (ProxyEnv) -> ProxyEnv) = locked { write(change(read())) }
+
+    /** Runs [block] while this thread holds [localLock] and this process holds the lock file. */
+    private fun <T> locked(block: () -> T): T =
+        localLock.withLock {
+            FileChannel.open(lockFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE).use { channel ->
+                channel.lock().use { block() }
+            }
+        }
 
     /** Deletes the file. */
     fun delete() {
@@ -91,4 +114,9 @@ class ProxyEnvFile(
         } else {
             emptyMap()
         }
+
+    private companion object {
+        /** Taken before the file lock, by every thread of this JVM, for every workspace. */
+        val localLock = ReentrantLock()
+    }
 }

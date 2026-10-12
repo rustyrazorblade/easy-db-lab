@@ -263,9 +263,11 @@ machine with the same two settings:
 - `KUBECONFIG` is the absolute path of the workspace `kubeconfig`. The process does not start if
   that file does not exist.
 - `<workspace>/bin` is first on `PATH`. easy-db-lab writes a wrapper there for each of `kubectl`,
-  `helm`, `cilium`, `curl`, `skopeo` and `k9s` before the process starts.
+  `helm`, `cilium`, `curl`, `skopeo`, `k9s`, `ssh`, `scp`, `sftp` and `rsync` before the process
+  starts. The `ssh`, `scp`, `sftp` and `rsync` wrappers use the workspace `sshConfig`, so a step can
+  run `ssh db0 ...` by the node's alias; they never use the tunnel.
 
-On a SOCKS cluster (no Tailscale), each wrapper sends its call through the SOCKS5 tunnel that
+On a SOCKS cluster (no Tailscale), each of the other wrappers sends its call through the SOCKS5 tunnel that
 easy-db-lab keeps open, and the tool reaches the private cluster addresses. On a Tailscale cluster
 the wrappers run the tool unchanged, and it connects directly. The CLI starts or restarts the
 tunnel before the first step runs, so a kit never has to.

@@ -30,7 +30,7 @@ class ToolWrapperInstaller(
     private val afterMarkerFoundMissing: () -> Unit = {},
 ) {
     /**
-     * Writes the marker, the six wrappers and the tunnel script into [workspace]'s `bin/`, leaving any
+     * Writes the marker, the wrappers ([Constants.ToolWrappers.WRAPPED_TOOLS]) and the tunnel script into [workspace]'s `bin/`, leaving any
      * copy that is already up to date as it is.
      *
      * @throws IllegalStateException if `bin/` holds a tool file but not the marker
@@ -56,7 +56,7 @@ class ToolWrapperInstaller(
     }
 
     /**
-     * Deletes the six wrappers, the tunnel script and the marker from [workspace]'s `bin/`, by name, and then `bin/`
+     * Deletes the wrappers, the tunnel script and the marker from [workspace]'s `bin/`, by name, and then `bin/`
      * itself if nothing else is left in it. A `bin/` without the marker is not easy-db-lab's, so
      * nothing in it is touched.
      */
@@ -69,7 +69,7 @@ class ToolWrapperInstaller(
 
     private fun binOf(workspace: File) = File(workspace, Constants.ToolWrappers.DIRECTORY)
 
-    private fun wrapperFiles(bin: File) = Constants.ToolWrappers.TOOLS.map { File(bin, it) }
+    private fun wrapperFiles(bin: File) = Constants.ToolWrappers.WRAPPED_TOOLS.map { File(bin, it) }
 
     private fun tunnelFile(bin: File) = File(bin, Constants.ToolWrappers.TUNNEL_SCRIPT)
 }

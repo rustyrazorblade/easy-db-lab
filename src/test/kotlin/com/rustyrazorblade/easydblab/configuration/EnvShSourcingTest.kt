@@ -19,7 +19,7 @@ internal class EnvShSourcingTest {
     @TempDir
     lateinit var workspace: File
 
-    private val tools = Constants.ToolWrappers.TOOLS.joinToString(" ")
+    private val tools = Constants.ToolWrappers.WRAPPED_TOOLS.joinToString(" ")
 
     @BeforeEach
     fun writeWorkspace() {
@@ -34,7 +34,7 @@ internal class EnvShSourcingTest {
     }
 
     @Test
-    fun `kubectl resolves to the workspace wrapper and none of the six tools is a function`() {
+    fun `kubectl resolves to the workspace wrapper and none of the wrapped tools is a function`() {
         val result =
             bash(
                 "source ./env.sh >/dev/null; type -P kubectl; for t in $tools; do declare -F \"${'$'}t\" && echo \"function: ${'$'}t\"; done; true",
@@ -42,6 +42,36 @@ internal class EnvShSourcingTest {
 
         assertThat(result.stdout.lines().first()).isEqualTo(File(workspace, "bin/kubectl").canonicalPath)
         assertThat(result.stdout).doesNotContain("function:")
+    }
+
+    @Test
+    fun `ssh, scp, sftp and rsync resolve to the workspace wrappers`() {
+        val result = bash("source ./env.sh >/dev/null; for t in ssh scp sftp rsync; do type -P \"${'$'}t\"; done")
+
+        assertThat(result.stdout.trim().lines()).containsExactly(
+            File(workspace, "bin/ssh").canonicalPath,
+            File(workspace, "bin/scp").canonicalPath,
+            File(workspace, "bin/sftp").canonicalPath,
+            File(workspace, "bin/rsync").canonicalPath,
+        )
+    }
+
+    @Test
+    fun `c-all reaches each node through the ssh wrapper with the workspace sshConfig`() {
+        // A stand-in for the real ssh, behind bin/ on PATH, that prints what it was given.
+        val realBin =
+            File(workspace, "real").apply {
+                mkdirs()
+                File(this, "ssh").apply {
+                    writeText("#!/bin/sh\necho \"ssh-args: ${'$'}*\"\n")
+                    setExecutable(true)
+                }
+            }
+
+        val result = bash("PATH=\"${realBin.absolutePath}:${'$'}PATH\"; source ./env.sh >/dev/null; c-all hostname")
+
+        assertThat(result.stdout.lines().filter { it.startsWith("ssh-args: ") })
+            .containsExactly("ssh-args: -F ${File(workspace, "sshConfig").canonicalPath} db0 hostname")
     }
 
     @Test
@@ -58,7 +88,7 @@ internal class EnvShSourcingTest {
 
     @Test
     fun `re-sourcing removes the functions an older env sh defined`() {
-        val oldFunctions = Constants.ToolWrappers.TOOLS.joinToString("\n") { "$it() { echo old-$it; }" }
+        val oldFunctions = Constants.ToolWrappers.WRAPPED_TOOLS.joinToString("\n") { "$it() { echo old-$it; }" }
 
         val result =
             bash(

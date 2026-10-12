@@ -14,17 +14,16 @@ else
     CLUSTER_DIR="$(unset CDPATH; cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-echo -e "${YELLOW_BOLD}[WARNING]${YELLOW} We are creating aliases which override these commands:${NC}"
-echo -e "${NC_BOLD}  ssh\n  sftp\n  scp\n  rsync\n${NC}"
-echo "The aliases point the commands they override to your new cluster."
-echo "kubectl, helm, cilium, curl, skopeo and k9s now run this workspace's wrappers in $CLUSTER_DIR/bin,"
-echo "which reach the cluster through the SOCKS5 tunnel (or directly on a Tailscale cluster)."
+echo -e "${YELLOW_BOLD}[WARNING]${YELLOW} This shell now runs this workspace's wrappers in $CLUSTER_DIR/bin for:${NC}"
+echo -e "${NC_BOLD}  ssh, scp, sftp and rsync${NC}, which use the workspace sshConfig to reach the nodes, and"
+echo -e "${NC_BOLD}  kubectl, helm, cilium, curl, skopeo and k9s${NC}, which reach the cluster through the SOCKS5 tunnel"
+echo "  (or directly on a Tailscale cluster)."
 echo -e "To undo these changes exit this terminal.\n"
 
 # The tool wrappers in bin/ replace the shell functions an older env.sh defined. Drop any such
 # function left in this shell, so the names resolve to the wrappers. The check keeps zsh from
 # printing an error for a name that is not defined, and keeps `set -e` shells alive.
-for _edl_tool in kubectl helm cilium curl skopeo k9s; do
+for _edl_tool in kubectl helm cilium curl skopeo k9s ssh scp sftp rsync; do
   if typeset -f "$_edl_tool" >/dev/null 2>&1; then
     unset -f "$_edl_tool"
   fi
@@ -39,11 +38,9 @@ esac
 
 mkdir -p "$CLUSTER_DIR/artifacts"
 
+# ssh, scp, sftp and rsync are wrappers in bin/ that add -F "$SSH_CONFIG"; the fallback below writes
+# that file when it is missing.
 SSH_CONFIG="$CLUSTER_DIR/sshConfig"
-ssh() { command ssh -F "$SSH_CONFIG" "$@"; }
-sftp() { command sftp -F "$SSH_CONFIG" "$@"; }
-scp() { command scp -F "$SSH_CONFIG" "$@"; }
-rsync() { command rsync -ave "ssh -F $SSH_CONFIG" "$@"; }
 
 # Configure kubectl, helm and k9s to use the K3s cluster kubeconfig (if it exists)
 if [ -f "$CLUSTER_DIR/kubeconfig" ]; then

@@ -67,7 +67,8 @@ easy-db-lab socks stop
 ### Running Commands Through the Proxy
 
 `kubectl`, `helm`, `cilium`, `curl`, `skopeo` and `k9s` use the tunnel through the workspace
-wrappers. For other commands:
+wrappers. `ssh`, `scp`, `sftp` and `rsync` have wrappers too, which use the workspace `sshConfig`
+and do not need the tunnel. For other commands:
 
 ```bash
 # Route any command through the proxy

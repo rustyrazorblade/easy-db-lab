@@ -189,9 +189,14 @@ directory, at `up` and before every kit command:
 | `k9s` | Kubernetes TUI |
 | `curl` | HTTP client |
 | `skopeo` | Container image tool |
+| `ssh`, `scp`, `sftp` | SSH to the nodes, with the workspace `sshConfig` |
+| `rsync` | File sync to the nodes, over SSH with the workspace `sshConfig` |
 
-`source env.sh` puts `bin/` first on your `PATH`, and kit scripts get it first on theirs. Each call
-of a wrapped tool reads the workspace's `.socks5-proxy.env`, which the CLI writes, and then:
+`source env.sh` puts `bin/` first on your `PATH`, and kit scripts get it first on theirs.
+
+The `ssh`, `scp` and `sftp` wrappers add `-F <workspace>/sshConfig` before your arguments, and the `rsync` wrapper adds `-ave "ssh -F <workspace>/sshConfig"`, so `ssh db0` reaches the node by its alias. They reach the nodes over SSH itself, not the SOCKS tunnel, so they leave your proxy variables and `KUBECONFIG` unchanged. If the workspace has no `sshConfig` file, they name the missing file and exit 1.
+
+Each call of the other wrapped tools reads the workspace's `.socks5-proxy.env`, which the CLI writes, and then:
 
 - on a SOCKS cluster, routes that one call through the tunnel;
 - on a Tailscale cluster, runs the tool unchanged, so it connects directly;
@@ -209,7 +214,7 @@ your `PATH`, not a shell function. To run the real binary directly, call it by i
 example `/usr/local/bin/kubectl`.
 
 If you sourced an `env.sh` from an older version in an open shell, source the new one again: it
-removes the old `kubectl`, `helm`, `cilium`, `curl`, `skopeo` and `k9s` shell functions.
+removes the old `kubectl`, `helm`, `cilium`, `curl`, `skopeo`, `k9s`, `ssh`, `scp`, `sftp` and `rsync` shell functions.
 
 ### Manual Proxy Usage
 

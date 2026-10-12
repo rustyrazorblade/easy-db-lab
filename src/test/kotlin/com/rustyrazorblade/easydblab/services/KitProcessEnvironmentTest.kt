@@ -67,7 +67,7 @@ internal class KitProcessEnvironmentTest {
         environment.applyTo(ProcessBuilder("true"), workspace, emptyMap())
 
         assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(
-            Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER,
+            Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER,
         )
     }
 

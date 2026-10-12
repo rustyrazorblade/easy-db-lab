@@ -22,14 +22,14 @@ internal class ToolWrapperInstallerTest {
     }
 
     /** Everything an install writes into `bin/`. */
-    private val written = Constants.ToolWrappers.TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER
+    private val written = Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER
 
     @Test
-    fun `writes the six executable wrappers, the tunnel script and the marker`() {
+    fun `writes the ten executable wrappers, the tunnel script and the marker`() {
         installer.install(workspace)
 
         assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(written)
-        Constants.ToolWrappers.TOOLS.forEach { tool ->
+        Constants.ToolWrappers.WRAPPED_TOOLS.forEach { tool ->
             val wrapper = File(bin, tool)
             assertThat(wrapper).hasContent(packaged)
             assertThat(wrapper.canExecute()).withFailMessage("$tool is not executable").isTrue()

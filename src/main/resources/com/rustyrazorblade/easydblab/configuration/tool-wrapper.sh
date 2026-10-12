@@ -2,11 +2,16 @@
 # easy-db-lab tool wrapper.
 #
 # easy-db-lab writes this script into <workspace>/bin/ once for each of kubectl, helm, cilium, curl,
-# skopeo and k9s, and rewrites it when it changes, so do not edit the copies. Kit shell steps, hooks
-# and shells that sourced env.sh have <workspace>/bin first on PATH, so every call of those tools,
-# indirect ones included (env, xargs, sh -c, nested scripts), runs through here.
+# skopeo, k9s, ssh, scp, sftp and rsync, and rewrites it when it changes, so do not edit the copies.
+# Kit shell steps, hooks and shells that sourced env.sh have <workspace>/bin first on PATH, so every
+# call of those tools, indirect ones included (env, xargs, sh -c, nested scripts), runs through here.
 #
-# Each call reads <workspace>/.socks5-proxy.env, which only the easy-db-lab CLI writes:
+# ssh, scp and sftp get `-F <workspace>/sshConfig` before the caller's arguments, and rsync gets
+# `-ave "ssh -F <workspace>/sshConfig"`, so they reach the workspace's nodes by their aliases. They
+# reach the nodes over SSH itself, never the SOCKS tunnel, so their proxy variables and KUBECONFIG are
+# left as the caller had them, and they fail when the workspace has no sshConfig.
+#
+# Each call of the other tools reads <workspace>/.socks5-proxy.env, which only the easy-db-lab CLI writes:
 #   - on a Tailscale cluster it runs the real tool with the environment unchanged;
 #   - on a SOCKS cluster it routes this one call through the recorded tunnel port;
 #   - with no tunnel recorded, or when the recorded tunnel script (EDL_SOCKS_PID) has exited, it fails
@@ -47,6 +52,20 @@ if [ -z "$real" ]; then
     echo "easy-db-lab: $tool is not installed: no $tool found on PATH outside easy-db-lab's tool wrappers." >&2
     exit 127
 fi
+
+case $tool in
+    ssh | scp | sftp | rsync)
+        ssh_config=$workspace/sshConfig
+        if ! [ -f "$ssh_config" ]; then
+            echo "easy-db-lab: $ssh_config does not exist, so $tool cannot reach the hosts of the workspace $workspace." >&2
+            exit 1
+        fi
+        if [ "$tool" = rsync ]; then
+            exec "$real" -ave "ssh -F $ssh_config" "$@"
+        fi
+        exec "$real" -F "$ssh_config" "$@"
+        ;;
+esac
 
 case $tool in
     kubectl | helm | cilium | k9s)
@@ -116,7 +135,7 @@ case $tool in
         export NO_PROXY="$local_hosts" no_proxy="$local_hosts"
         ;;
     *)
-        echo "easy-db-lab: $0 is not one of easy-db-lab's tool wrappers (kubectl, helm, cilium, curl, skopeo, k9s)." >&2
+        echo "easy-db-lab: $0 is not one of easy-db-lab's tool wrappers (kubectl, helm, cilium, curl, skopeo, k9s, ssh, scp, sftp, rsync)." >&2
         exit 1
         ;;
 esac

@@ -5272,7 +5272,7 @@ sealed interface Event {
         ) : Setup {
             override fun toDisplayString(): String =
                 "Error: $directory already has a bin/. easy-db-lab needs bin/ for its tool wrappers " +
-                    "(kubectl, helm, cilium, curl, skopeo, k9s), so this directory cannot be a workspace. " +
+                    "(kubectl, helm, cilium, curl, skopeo, k9s, ssh, scp, sftp, rsync), so this directory cannot be a workspace. " +
                     "Use a new, empty directory as the workspace, for example under clusters/."
 
             override fun isError(): Boolean = true

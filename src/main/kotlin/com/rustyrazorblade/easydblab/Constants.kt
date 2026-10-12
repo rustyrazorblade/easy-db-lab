@@ -1180,8 +1180,17 @@ object Constants {
         /** The packaged wrapper script. */
         const val RESOURCE = "/com/rustyrazorblade/easydblab/configuration/tool-wrapper.sh"
 
-        /** The tools that get a wrapper, which are also the wrapper file names. */
+        /** The tools whose wrapper routes them to the cluster's private network: the SOCKS tunnel or Tailscale. */
         val TOOLS = listOf("kubectl", "helm", "cilium", "curl", "skopeo", "k9s")
+
+        /**
+         * The tools whose wrapper reaches the nodes over SSH with the workspace `sshConfig`, and leaves the
+         * proxy variables and `KUBECONFIG` alone.
+         */
+        val SSH_TOOLS = listOf("ssh", "scp", "sftp", "rsync")
+
+        /** Every tool that gets a wrapper in `bin/`; the names are also the wrapper file names. */
+        val WRAPPED_TOOLS = TOOLS + SSH_TOOLS
 
         /** The tunnel script written into `bin/` with the wrappers, which keeps the SOCKS tunnel's ssh running. */
         const val TUNNEL_SCRIPT = "edl-socks-tunnel"

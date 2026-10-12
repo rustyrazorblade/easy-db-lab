@@ -75,7 +75,17 @@ class ProcessSocksProxyServiceTest {
     @AfterEach
     fun tearDown() {
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        standIns.forEach { it.close() }
     }
+
+    private val standIns = mutableListOf<StandInTunnel>()
+
+    /**
+     * The PID of a real process the OS reports as this workspace's tunnel script on [port]: the CLI
+     * reuses a recorded tunnel only when its PID is that script.
+     */
+    private fun recordedTunnelPid(port: Int): Int =
+        StandInTunnel(tempDir, port, File(tempDir, "sshConfig").absolutePath).also { standIns += it }.pid
 
     /**
      * Builds a service. [launcher] defaults to one that fails loudly if a fresh ssh spawn is
@@ -143,12 +153,12 @@ class ProcessSocksProxyServiceTest {
 
     @Test
     fun `reuses proxy when state file has a live PID, matching IP, and a tunnel that carries traffic`() {
-        // Use this JVM's PID as a live PID, and serve a working SOCKS tunnel on the recorded port —
-        // isValidProxy() probes through it, not just the PID, so a merely-recorded port, or one whose
+        // A stand-in tunnel script as the recorded PID, and a working SOCKS tunnel on the recorded port:
+        // the reuse check probes through it, not just the PID, so a merely-recorded port, or one whose
         // far end is dead, would (correctly) be rejected as a zombie tunnel rather than reused.
-        val livePid = ProcessHandle.current().pid().toInt()
         FakeSocksTunnel().use { tunnel ->
             val port = tunnel.port
+            val livePid = recordedTunnelPid(port)
             writeStateFile(pid = livePid, port = port)
 
             val state = service().ensureRunning(testHost)
@@ -164,10 +174,10 @@ class ProcessSocksProxyServiceTest {
 
     @Test
     fun `reusing a verified proxy records its port in the env file and keeps the Tailscale flag`() {
-        val livePid = ProcessHandle.current().pid().toInt()
         val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
         FakeSocksTunnel().use { tunnel ->
             val port = tunnel.port
+            val livePid = recordedTunnelPid(port)
             writeStateFile(pid = livePid, port = port)
 
             service().ensureRunning(testHost)
@@ -178,10 +188,9 @@ class ProcessSocksProxyServiceTest {
 
     @Test
     fun `publishes the proxy port property but never the global socksProxyHost when reusing a valid proxy`() {
-        val livePid = ProcessHandle.current().pid().toInt()
         FakeSocksTunnel().use { tunnel ->
             val port = tunnel.port
-            writeStateFile(pid = livePid, port = port)
+            writeStateFile(pid = recordedTunnelPid(port), port = port)
 
             service().ensureRunning(testHost)
 
@@ -314,11 +323,10 @@ class ProcessSocksProxyServiceTest {
     fun `a tunnel whose port accepts while its far end is dead is replaced, and only the new port is recorded`() {
         // The live-cluster failure: the SSH connection of an idle tunnel died while ssh and its local
         // port stayed up. The real probe gets "Malformed reply from SOCKS server" through it.
-        val livePid = ProcessHandle.current().pid().toInt()
         val envFile = ProxyEnvFile(tempDir).apply { recordTailscale(active = false) }
         FakeSocksTunnel(FakeSocksTunnel.Behaviour.DROPS_CONNECT).use { dead ->
             FakeSocksTunnel().use { replacement ->
-                writeStateFile(pid = livePid, port = dead.port)
+                writeStateFile(pid = recordedTunnelPid(dead.port), port = dead.port)
                 envFile.recordTunnel(dead.port, ProcessHandle.current().pid())
                 val alive: Process =
                     mock {
@@ -340,10 +348,9 @@ class ProcessSocksProxyServiceTest {
     fun `a tunnel whose far end never answers is replaced within the reuse attempts' probe bound`() {
         // The QA case: the tunnel's TCP connection is dropped on the control node, so ssh is alive,
         // its port accepts, and nothing ever answers through it.
-        val livePid = ProcessHandle.current().pid().toInt()
         FakeSocksTunnel(FakeSocksTunnel.Behaviour.SILENT).use { dead ->
             FakeSocksTunnel().use { replacement ->
-                writeStateFile(pid = livePid, port = dead.port)
+                writeStateFile(pid = recordedTunnelPid(dead.port), port = dead.port)
                 val alive: Process =
                     mock {
                         on { isAlive } doReturn true
@@ -366,10 +373,9 @@ class ProcessSocksProxyServiceTest {
 
     @Test
     fun `a live PID whose recorded port is not listening is not reused`() {
-        val livePid = ProcessHandle.current().pid().toInt()
         val deadPort = reserveFreePort() // recorded but nothing is listening on it
 
-        writeStateFile(pid = livePid, port = deadPort)
+        writeStateFile(pid = recordedTunnelPid(deadPort), port = deadPort)
 
         // isValidProxy() rejects the zombie (the probe cannot connect), so a fresh start is attempted; the
         // fake launcher makes that start fail fast so we can observe the zombie was rejected, not reused.
@@ -407,12 +413,11 @@ class ProcessSocksProxyServiceTest {
         // The first call fills the in-memory state through a genuine reuse; the second takes the
         // in-memory fast path. Removing the port in between models a stop-socks of an old tunnel
         // or a deleted env file: the fast path must record the port again.
-        val livePid = ProcessHandle.current().pid().toInt()
         val svc = service()
         val envFile = ProxyEnvFile(tempDir)
         FakeSocksTunnel().use { tunnel ->
             val port = tunnel.port
-            writeStateFile(pid = livePid, port = port)
+            writeStateFile(pid = recordedTunnelPid(port), port = port)
             svc.ensureRunning(testHost)
             envFile.removeTunnel()
 
@@ -427,14 +432,13 @@ class ProcessSocksProxyServiceTest {
     @Test
     fun `an in-memory port that dies between calls is re-validated, not trusted, on the next call`() {
         // Populate in-memory state via a genuine reuse (a working fake tunnel), then close the
-        // tunnel so the recorded port stops accepting while the recorded PID (this JVM) stays
-        // alive — the "process alive, tunnel dead" case the in-memory fast path must not trust.
-        val livePid = ProcessHandle.current().pid().toInt()
+        // tunnel so the recorded port stops accepting while the recorded PID (a stand-in tunnel
+        // script) stays alive — the "process alive, tunnel dead" case the in-memory fast path must not trust.
         // Past the freshness window, so the second call probes instead of trusting the first call's probe.
         val svc = service(launcher = { _, _ -> deadProcess(exitCode = 255) }, clock = OutsideFreshnessClock())
         FakeSocksTunnel().use { tunnel ->
             val port = tunnel.port
-            writeStateFile(pid = livePid, port = port)
+            writeStateFile(pid = recordedTunnelPid(port), port = port)
             val first = svc.ensureRunning(testHost)
             assertThat(first.localPort).isEqualTo(port)
         }

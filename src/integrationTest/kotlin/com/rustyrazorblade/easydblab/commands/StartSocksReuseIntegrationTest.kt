@@ -15,6 +15,7 @@ import com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
+import com.rustyrazorblade.easydblab.proxy.StandInTunnel
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -48,9 +49,12 @@ class StartSocksReuseIntegrationTest : BaseKoinTest() {
             },
         )
 
+    private var standIn: StandInTunnel? = null
+
     @AfterEach
     fun clearPort() {
         System.clearProperty(Constants.Proxy.PORT_PROPERTY)
+        standIn?.close()
     }
 
     @Test
@@ -77,10 +81,12 @@ class StartSocksReuseIntegrationTest : BaseKoinTest() {
 
         ServerSocket(0).use { listener ->
             val port = listener.localPort
+            // The CLI reuses a recorded tunnel only when its PID is the workspace's tunnel script.
+            val script = StandInTunnel(workspace, port, sshConfig.absolutePath).also { standIn = it }
             File(workspace, Constants.Vpc.SOCKS5_PROXY_STATE_FILE).writeText(
                 """
                 {
-                  "pid": ${ProcessHandle.current().pid()},
+                  "pid": ${script.pid},
                   "port": $port,
                   "controlHost": "control0",
                   "controlIP": "10.0.1.5",

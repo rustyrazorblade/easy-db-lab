@@ -330,7 +330,7 @@ class KitInstallCommandTest : BaseKoinTest() {
                         """
                         |#!/bin/sh
                         |[ -f "${'$'}KUBECONFIG" ] || { echo "no kubeconfig at ${'$'}KUBECONFIG" >&2; exit 1; }
-                        |[ "${'$'}HTTPS_PROXY" = socks5://localhost:41234 ] || { echo "not through the tunnel" >&2; exit 1; }
+                        |[ "${'$'}HTTPS_PROXY" = socks5://127.0.0.1:41234 ] || { echo "not through the tunnel" >&2; exit 1; }
                         |echo "default Active"
                         |
                         """.trimMargin(),

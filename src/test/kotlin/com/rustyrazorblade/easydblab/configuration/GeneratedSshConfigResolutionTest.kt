@@ -111,6 +111,16 @@ internal class GeneratedSshConfigResolutionTest {
     }
 
     @Test
+    fun `a dot-free name with a cluster prefix counts as a cluster host`() {
+        // appserver has no Host block of its own, so it gets the cluster block and no Hostname of a node.
+        val resolved = resolve(sshConfig, "appserver")
+
+        assertThat(resolved).contains("user ubuntu", "identityfile $IDENTITY", "hostname appserver")
+        assertThat(resolved).doesNotContain(*PERSONAL_ONLY).doesNotContain("serveraliveinterval 77")
+        assertThat(resolved).noneMatch { it.startsWith("sendenv ") }
+    }
+
+    @Test
     fun `the control node gets the cluster options and its Session Manager ProxyCommand`() {
         assertThat(resolve(sshConfig, "control0")).contains("hostname 54.1.1.1", *CLUSTER_ONLY, "proxycommand edl-ssm-proxy i-control")
         assertThat(resolve(sshConfig, "db0")).doesNotContain("proxycommand edl-ssm-proxy i-control")

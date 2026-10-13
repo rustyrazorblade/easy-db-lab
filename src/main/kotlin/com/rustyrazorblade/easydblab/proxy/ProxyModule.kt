@@ -26,7 +26,6 @@ private fun isSshOpenToAll(clusterStateManager: ClusterStateManager): Boolean =
  *   command (currently only `Status`) observe a proxy establishment failure the executor
  *   chose not to propagate
  */
-
 val proxyModule =
     module {
         // End-to-end tunnel reachability probe — the injectable seam the proxy service uses to

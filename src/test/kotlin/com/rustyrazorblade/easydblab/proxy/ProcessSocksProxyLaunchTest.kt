@@ -467,12 +467,30 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
             }
 
         assertThatThrownBy {
-            service(connectFailureHint = DirectSshRoute(sshPort = 22).tunnelConnectFailureHint(sshOpenToAll = false))
+            service(connectFailureHint = { DirectSshRoute(sshPort = 22).tunnelConnectFailureHint(sshOpenToAll = false) })
                 .verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = log)
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("ssh exited with code 255")
             .hasMessageNotContaining("could not connect")
             .hasMessageNotContaining("security group")
+    }
+
+    @Test
+    fun `a hint that cannot be looked up neither replaces the tunnel failure nor escapes the verify loop`() {
+        // The loop must still throw IllegalStateException, the one the launch catches to stop the
+        // script and its still-dialing ssh; a hint lookup that throws must not get past it.
+        val log = logFile().apply { parentFile.mkdirs() }
+        log.writeText("debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.\n")
+        val brokenHint: () -> String? = { throw java.io.UncheckedIOException(java.io.IOException("state.json is corrupt")) }
+
+        assertThatThrownBy {
+            service(
+                connectFailureHint = brokenHint,
+            ).verifyTunnelReachable(aliveProcess(), port = 52000, gatewayHost = testHost, logFile = log)
+        }.isExactlyInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("ssh could not connect to control0 (54.1.2.3) port 22 within")
+            .hasMessageNotContaining("security group")
+            .hasMessageNotContaining("corrupt")
     }
 
     @Test

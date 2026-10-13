@@ -39,6 +39,8 @@
 
 - [x] 3.8 Fix round 14 (review round 13): the security-group hint is given only on `direct` when the cluster is not `init --open`, read from the cluster state when the failure is built (`SshRoute.tunnelConnectFailureHint(sshOpenToAll)`, wired in `ProxyModule`); the hint now ends "is the likely cause"; the spec and docs name the ProxyCommand form for `ssm`; a Koin test over the real `proxyModule` covers direct, direct open and ssm; a verify-loop test covers a dial that ends in an ssh exit; a negative measured wait counts as none.
 
+- [x] 3.9 Fix round 15 (review round 14): a connect hint that cannot be looked up (for example, a corrupt `state.json`) gives no hint, is logged at debug, and never replaces the tunnel failure or gets past the launch's catch that stops the tunnel script and its ssh. Tests: a throwing hint through the verify loop, and a corrupt `state.json` through the real `proxyModule`.
+
 ## 4. ToolWrapperInstaller
 
 - [x] 4.1 Write failing tests: writes six executable wrappers and the marker; a second run changes nothing; a changed wrapper is rewritten; `bin/kubectl` without the marker fails with a message naming the file and writes nothing; works when the source checkout is absent (resources come from the classpath).

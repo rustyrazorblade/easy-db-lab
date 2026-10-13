@@ -722,7 +722,7 @@ class ProcessSocksProxyService(
             append("SOCKS5 proxy failed to establish a working tunnel$exitInfo. ")
             stalledConnect?.let { sentence ->
                 append("$sentence ")
-                connectFailureHint()?.let { append("$it ") }
+                connectFailureHintOrNone()?.let { append("$it ") }
             }
             append("See ${logFile.absolutePath} for the full ssh -v transcript.")
             if (errors.isNotEmpty()) {
@@ -731,6 +731,16 @@ class ProcessSocksProxyService(
             }
         }
     }
+
+    /**
+     * The route's [connectFailureHint], or none when looking it up fails (for example, a cluster
+     * state that does not parse). The hint only adds to a failure: a lookup that throws must neither
+     * replace that failure nor get past the launch's catch, which stops the tunnel script and its ssh.
+     */
+    private fun connectFailureHintOrNone(): String? =
+        runCatching { connectFailureHint() }
+            .onFailure { log.debug(it) { "Could not look up the SOCKS tunnel connect hint; reporting the failure without it" } }
+            .getOrNull()
 
     /** The lines of [logFile] after its first [from] bytes: what one launch wrote to the shared log. */
     private fun readTranscript(

@@ -102,7 +102,7 @@ internal abstract class ProcessSocksProxyServiceTestBase {
         verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
         tunnelProcesses: TunnelProcessControl = TunnelProcessControl(),
         clock: Clock = Clock.systemUTC(),
-        connectFailureHint: String? = null,
+        connectFailureHint: () -> String? = { null },
     ) = ProcessSocksProxyService(
         Context.forCli(tempDir).copy(workingDirectory = tempDir),
         probe,
@@ -113,7 +113,7 @@ internal abstract class ProcessSocksProxyServiceTestBase {
         verifyAttempts = verifyAttempts,
         tunnelProcesses = tunnelProcesses,
         clock = clock,
-        connectFailureHint = { connectFailureHint },
+        connectFailureHint = connectFailureHint,
     )
 
     /** A service whose process lookup sees only [process]. */

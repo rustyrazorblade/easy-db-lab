@@ -67,14 +67,25 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
             .doesNotContain("security group")
     }
 
+    @Test
+    fun `a corrupt cluster state gives the stage without a hint`() {
+        val message = stalledConnectMessage(SshTransport.Direct, open = false) { stateFile.writeText("{ not json") }
+
+        assertThat(message)
+            .contains("ssh could not connect to control0 (54.1.2.3) port 22 within 15s.")
+            .doesNotContain("security group")
+    }
+
     /**
      * The failure message of a tunnel whose ssh was still dialing after 15s, from the service the
      * production module builds for [transport] and a cluster saved with [open]. The cluster state is
-     * written after the service is resolved, so the hint must read it when the message is built.
+     * written after the service is resolved, so the hint must read it when the message is built;
+     * [afterSave] can then change the file.
      */
     private fun stalledConnectMessage(
         transport: SshTransport,
         open: Boolean,
+        afterSave: () -> Unit = {},
     ): String {
         val user = getKoin().get<User>().copy(sshTransport = transport)
         getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
@@ -82,6 +93,7 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
         getKoin().get<ClusterStateManager>().save(
             ClusterState(name = "test-cluster", versions = mutableMapOf(), initConfig = InitConfig(open = open)),
         )
+        afterSave()
         val log = File(tempDir, "socks5-proxy.log").apply { writeText("debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.\n") }
         try {
             return service.verificationFailureMessage(log, exitCode = null, gatewayAlias = "control0", stalledFor = Duration.ofSeconds(15))

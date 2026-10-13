@@ -35,14 +35,23 @@ Images under test:
 
 ### Conventions for every step
 
-Each step after step 2 starts with `. "$(dirname "$EDB")/ferrosa-plan.env"`. That file holds the values the run derives and four helpers:
+Each step after step 2 starts with `. "$(dirname "$EDB")/ferrosa-plan.env"`. That file holds the values the run derives and five helpers:
 
 - `sshn <host> <command>`: SSH through the workspace `sshConfig`.
 - `k <kubectl args>`: `sudo k3s kubectl` on `control0`. The arguments pass through a remote shell, so never give it an argument with a space or a quote. Ask for `-o json` and filter with `jq` on the laptop.
 - `mq '<PromQL>'`: an instant Mimir query on `control0`, in the cluster tenant. It prints the JSON reply.
-- `cq <host> <port>`: `cqlsh` (Cassandra 5.0's, protocol v4) on `app0`. It reads the CQL statements from stdin, with no username or password.
+- `cq <host> <port>`: `cqlsh` (Cassandra 5.0's, protocol v4) on `app0`. It reads the CQL statements from stdin, with no username or password. In batch mode `cqlsh` exits 2 when any statement fails, so every `cq` block prints `cqlsh exit=`, and a pass needs `0`.
+- `stress_check <job>`: saves the whole log of a finished stress job to the workspace and prints the evidence of a clean run.
+
+**A stress job that "succeeded" is not a clean run.** cassandra-easy-stress exits 0 even when it cannot connect, when the server rejects its schema, when the data center does not match, or when every request fails. It writes request exceptions only to a log inside its container. So `succeeded=1` proves only that the arguments parsed. A clean run of a job with `-t 4` needs all of these in `stress_check`:
+
+- `schema lines` at least 1, `runner lines` 1, `profile lines` 4 (one message for each thread; the helper counts messages, because the four can share one output line), and `complete lines` 1;
+- `error lines` 0. Read the printed lines: a line from the OTel agent (`[otel.javaagent`) or the Pyroscope agent is not a stress error. Record it in `issues.md` as an observability defect, and judge the run on the other lines;
+- in the `last report` line, the error count (the second-to-last column) is 0, and the write and read counts add up to about the duration in seconds times 5,000.
 
 The blocks run in bash or zsh. They never rely on word splitting of a variable.
+
+**Privacy.** This repo is public, and the journal and report can reach a public PR. In everything the run records, write the account number as `<account>` and the data bucket name as `<data-bucket>`. The registry URL contains the account number.
 
 A failed `ferrosa start` leaves its pods behind (except a validation failure, which creates nothing). Every step that expects a failed start runs `ferrosa stop` after the check, so the next `start` does not hit the collision check.
 
@@ -84,12 +93,23 @@ sshn() { ssh -F "$CLUSTER_DIR/sshConfig" "$@"; }
 k() { sshn control0 "sudo k3s kubectl $*"; }
 mq() { sshn control0 "curl -s -H 'X-Scope-OrgID: $TENANT' http://localhost:9009/prometheus/api/v1/query --data-urlencode query@-" <<<"$1"; }
 cq() { sshn app0 "/usr/local/cassandra/5.0/bin/cqlsh --protocol-version=4 $1 $2"; }
+stress_check() {
+  log="$CLUSTER_DIR/stress-$1.log"
+  "$EDB" cassandra stress logs "$1" > "$log"
+  echo "schema lines:   $(grep -c 'Creating cassandra_easy_stress' "$log")"
+  echo "runner lines:   $(grep -c 'Starting main runner' "$log")"
+  echo "profile lines:  $(grep -o 'Running the profile for' "$log" | wc -l | tr -d ' ')"
+  echo "complete lines: $(grep -c 'Stress complete, 4.' "$log")"
+  echo "error lines:    $(grep -ciE 'exception|error with cassandra-easy-stress|NoNodeAvailable|AllNodesFailed' "$log")"
+  grep -inE 'exception|error with cassandra-easy-stress|NoNodeAvailable|AllNodesFailed' "$log" | head -20
+  echo "last report:"; grep ' | ' "$log" | grep -v 'Count' | tail -1
+}
 EOF
 . "$CLUSTER_DIR/ferrosa-plan.env"
 
 for t in kubectl jq docker aws gh curl; do command -v "$t" >/dev/null || echo "MISSING $t"; done
 docker buildx version
-aws sts get-caller-identity --query Arn --output text
+aws sts get-caller-identity >/dev/null && echo "aws auth ok"
 
 $EDB status
 $EDB hosts
@@ -112,6 +132,7 @@ sshn app0 '/usr/local/cassandra/5.0/bin/cqlsh --version'
 ```
 
 **Pass:**
+- `aws auth ok` is printed.
 - `hosts` lists `control0`, `db0`, `db1`, `db2` and `app0`. If the app node has another alias, use that alias in every step and in the `cq` helper.
 - Every node prints `PASS`, with an NVMe device for `/mnt/db1`.
 - Every node lists both credential-provider files, the config count is at least 1, and the journal count is at least 1.
@@ -122,6 +143,7 @@ sshn app0 '/usr/local/cassandra/5.0/bin/cqlsh --version'
 - A `FAIL` line means data lands on the root volume.
 - A missing file or a journal count of 0 means the kubelet has no ECR provider; steps 19 and 20 would then fail with `no basic auth credentials`.
 - If `curl` fails, run `$EDB tailscale start` and repeat the `curl` once. If it still fails, record it; step 22 needs it.
+- No `aws auth ok`: run `aws sso login --no-browser --profile "$AWS_PROFILE"` and repeat the step.
 - A `MISSING` line names a laptop tool to install before step 4.
 - If `cqlsh` is missing, record the output of `sshn app0 'ls /usr/local/cassandra/*/bin/cqlsh; command -v cqlsh'`, and point `cq` at a `cqlsh` that exists.
 
@@ -174,7 +196,7 @@ BASE="https://downloads.ferrosa.ai/images/amd64/nightly/ferrosa-profiling/linux/
 curl -fSL -o "$WORK/oci.tar" "$BASE/oci.tar"
 curl -fsSL -o "$WORK/SHA256SUMS" "$BASE/SHA256SUMS"
 cat "$WORK/SHA256SUMS"
-EXPECTED=$(awk '/oci\.tar/ {print $1}' "$WORK/SHA256SUMS")
+EXPECTED=$(awk '$2 == "oci.tar" || $2 == "*oci.tar" {print $1}' "$WORK/SHA256SUMS")
 ACTUAL=$(shasum -a 256 "$WORK/oci.tar" | awk '{print $1}')
 [ -n "$EXPECTED" ] && [ "$EXPECTED" = "$ACTUAL" ] && echo "checksum PASS" || echo "checksum FAIL expected=$EXPECTED actual=$ACTUAL"
 
@@ -215,7 +237,7 @@ $EDB kit info ferrosa
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
 $EDB kit install ferrosa
-$EDB commands | grep -A6 '^  ferrosa '
+$EDB commands | sed -n '/^  ferrosa /,/^  [^ ]/p' | grep -E '^    [a-z]'
 k get pv -o json | jq -r '.items[] | select(.metadata.name | startswith("data-ferrosa-")) | "\(.metadata.name) path=\(.spec.local.path) phase=\(.status.phase) affinity=\([.spec.nodeAffinity.required.nodeSelectorTerms[0].matchExpressions[] | "\(.key)=\(.values | join(","))"] | join(" "))"'
 for h in db0 db1 db2; do sshn "$h" 'ls -ld /mnt/db1/ferrosa'; done
 grep -E '3094|3090|3078|3074|3088|3053|3081' "$CLUSTER_DIR/ferrosa/README.md"
@@ -223,7 +245,7 @@ $EDB ferrosa start --help
 ```
 
 **Pass:**
-- `commands` shows a `ferrosa` group with `start`, `status`, `stop` and `uninstall`.
+- `commands` shows a `ferrosa` group with exactly `start`, `status`, `stop` and `uninstall`.
 - There are exactly three PVs, `data-ferrosa-0` to `data-ferrosa-2`. Each has `path=/mnt/db1/ferrosa`, phase `Available`, and affinity `type=db` with `easydblab.com/node-ordinal` equal to its own ordinal.
 - `/mnt/db1/ferrosa` exists on all three db nodes.
 - The scaffolded `README.md` shows all seven NodePorts with connection details.
@@ -233,11 +255,11 @@ $EDB ferrosa start --help
 
 ### 7. Every validation error fails `start` and applies nothing
 
-Nothing of the kit exists yet, so a gate that ran too late would leave a ConfigMap, a claim or a Deployment behind.
+Nothing of the kit exists yet, so a gate that ran too late would leave a ConfigMap, a claim or a StatefulSet behind.
 
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
-count_objects() { k get deployment,pod,service,configmap,pvc -l easydblab/kit=ferrosa -o json | jq '.items | length'; }
+count_objects() { k get statefulset,deployment,pod,service,configmap,pvc -l easydblab/kit=ferrosa -o json | jq '.items | length'; }
 echo "before: $(count_objects)"
 $EDB ferrosa start --image="ghcr.io/ferrosadb/ferrosa:$FERROSA_TAG" --version="$FERROSA_TAG"; echo "exit=$?"
 $EDB ferrosa start --storage=bogus; echo "exit=$?"
@@ -265,10 +287,10 @@ echo "after: $(count_objects)"
 MISSING_TAG="edl-missing-$(date +%s)"
 time $EDB ferrosa start --version="$MISSING_TAG"; echo "exit=$?"
 $EDB ferrosa stop
-k get deployment,pod,service -l easydblab/kit=ferrosa -o json | jq '.items | length'
+k get statefulset,pod,service -l easydblab/kit=ferrosa -o json | jq '.items | length'
 ```
 
-**Pass:** `start` exits non-zero within about 2 minutes. The error names a `ferrosa-<i>` pod and `ghcr.io/ferrosadb/ferrosa:<MISSING_TAG>`, with `ErrImagePull`, `ImagePullBackOff` or `InvalidImageName`. It never prints `All 3 FerrosaDB pods are ready.` After `stop` the count is 0.
+**Pass:** `start` exits non-zero within about 2 minutes. The error names a `ferrosa-<i>-0` pod and `ghcr.io/ferrosadb/ferrosa:<MISSING_TAG>`, with `ErrImagePull`, `ImagePullBackOff` or `InvalidImageName`. It never prints `All 3 FerrosaDB pods are ready.` After `stop` the count is 0.
 **Fail:** `start` exits 0, waits for the full 600-second timeout, or prints an error that omits the image or the tag.
 
 ### 9. A readiness timeout fails `start` and names the pods
@@ -291,7 +313,8 @@ $EDB ferrosa stop
 time $EDB ferrosa start --version="$FERROSA_TAG"; echo "exit=$?"
 k get pods -l easydblab/kit=ferrosa -o json > "$CLUSTER_DIR/ferrosa-pods.json"
 k get nodes -o json > "$CLUSTER_DIR/ferrosa-nodes.json"
-k get deployment -l easydblab/kit=ferrosa -o json | jq -r '.items[] | "\(.metadata.name) replicas=\(.spec.replicas) strategy=\(.spec.strategy.type)"'
+k get statefulset -l easydblab/kit=ferrosa -o json | jq -r '.items[] | "\(.metadata.name) replicas=\(.spec.replicas) serviceName=\(.spec.serviceName) claimTemplates=\(.spec.volumeClaimTemplates // [] | length)"'
+k get deployment -l easydblab/kit=ferrosa -o json | jq '.items | length'
 jq -r --slurpfile n "$CLUSTER_DIR/ferrosa-nodes.json" '
   ($n[0].items | map({key: .metadata.name, value: .metadata.labels}) | from_entries) as $labels
   | .items[]
@@ -312,7 +335,7 @@ jq -r --slurpfile n "$CLUSTER_DIR/ferrosa-nodes.json" '
 k get pvc -l easydblab/kit=ferrosa -o json | jq -r '.items[] | "\(.metadata.name) volume=\(.spec.volumeName) phase=\(.status.phase)"'
 for i in 0 1 2; do
   echo "--- ferrosa-$i"
-  k exec deploy/ferrosa-$i -c ferrosa -- env | grep -E '^(FERROSA_|RUST_LOG|MALLOC_CONF)' | sort
+  k exec sts/ferrosa-$i -c ferrosa -- env | grep -E '^(FERROSA_|RUST_LOG|MALLOC_CONF)' | sort
 done
 k get configmap cluster-config -o json | jq -r '.data.cluster_name'
 k get configmap ferrosa-settings -o json | jq -r '.data | to_entries[] | "\(.key)=\(.value)"' | grep -E 'BIND|BOLT_PORT'
@@ -323,7 +346,8 @@ done
 
 **Pass:**
 - `start` exits 0 and prints `All 3 FerrosaDB pods are ready.` just before it returns.
-- There are three Deployments, `ferrosa-0` to `ferrosa-2`, each with `replicas=1` and `strategy=Recreate`.
+- There are three StatefulSets, `ferrosa-0` to `ferrosa-2`, each with `replicas=1`, `serviceName=ferrosa-<i>` and `claimTemplates=0` (the claim is a plain pod volume). The Deployment count is `0`.
+- The pods are named `ferrosa-0-0`, `ferrosa-1-0` and `ferrosa-2-0`.
 - Each pod `i` has `nodeType` `db` and `nodeOrdinal` equal to `ord`. The three pods are on three different db nodes. No pod is on the control node or the app node.
 - Each pod has `images` `["ghcr.io/ferrosadb/ferrosa:<FERROSA_TAG>"]`, `pullPolicies` `["Always"]`, `pullSecrets` `[]`, `hostNetwork` `false`, `hostPorts` `[]`, `grace` `90`, `claim` `ferrosa-data-<ord>`, and `ready` `true`.
 - Each claim `ferrosa-data-<i>` has `volume=data-ferrosa-<i>` and `phase=Bound`.
@@ -349,15 +373,15 @@ Each pod is asked directly, on its pod IP, which host it is and which peers it k
 . "$(dirname "$EDB")/ferrosa-plan.env"
 for ip in $(jq -r '.items[].status.podIP' "$CLUSTER_DIR/ferrosa-pods.json"); do
   echo "--- $ip"
-  cq "$ip" 9042 <<'CQL'
+  cq "$ip" 9042 <<'CQL'; echo "cqlsh exit=$?"
 SELECT cluster_name, host_id, data_center, rack FROM system.local;
 SELECT peer, rpc_address, host_id, data_center FROM system.peers;
 CQL
 done
 ```
 
-**Pass:** each pod reports its own pinned `host_id` in `system.local`. Its `system.peers` lists exactly the two other pinned host ids, with their pod IPs as `rpc_address`. All three report the same `cluster_name` and `data_center` equal to `$REGION`.
-**Fail:** a pod with fewer than two peers, an unknown host id, or a different cluster name. Then the pods formed more than one ring.
+**Pass:** every `cqlsh exit=0`. Each pod reports its own pinned `host_id` in `system.local`. Its `system.peers` lists exactly the two other pinned host ids, with their pod IPs as `rpc_address`. All three report the same `cluster_name`. The `system.local` `data_center` and every `system.peers` `data_center` equal `$REGION` exactly.
+**Fail:** a pod with fewer than two peers, an unknown host id, or a different cluster name (then the pods formed more than one ring), or any `data_center` that differs from `$REGION` (then the stress driver would send that node no requests).
 
 ### 12. The seven listeners answer on every db node, and `kit info` and `status` list them
 
@@ -404,33 +428,45 @@ UIDS_AFTER=$(k get pods -l easydblab/kit=ferrosa -o json | jq -r '[.items[].meta
 
 This step settles the replication argument for the stress runs and for `docs/user-guide/ferrosa.md` (task 10.6). The kit sets each pod's data center to the cluster region, and cassandra-easy-stress sends its requests to that data center (`CASSANDRA_EASY_STRESS_DEFAULT_DC`). So the first choice is `NetworkTopologyStrategy` with 3 replicas in `$REGION`, one replica on each of the three pods.
 
+The data-center name must match exactly in three places: the pods' `FERROSA_DATA_CENTER`, the key in the replication map, and the stress driver's local data center. The driver sends no request to a remote data center, so a mismatch gives a run with no traffic that still exits 0.
+
+`cqlsh` in batch mode exits 2 when any statement fails. The first block chooses the strategy from the keyspace DDL alone. It tries `NetworkTopologyStrategy` first, and falls back to `SimpleStrategy` with 3 replicas only when that `CREATE KEYSPACE` fails. The second block is the round trip. `CONSISTENCY ALL` comes before the writes, so every write and the read need all three replicas.
+
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
 DB1_IP=$(echo "$DB_IPS" | cut -d, -f2)
-cq "$DB1_IP" 30942 <<CQL
-CREATE KEYSPACE IF NOT EXISTS edl_plan WITH replication = {'class': 'NetworkTopologyStrategy', '$REGION': 3};
+try_ks() {
+  cq "$DB1_IP" 30942 <<CQL
+DROP KEYSPACE IF EXISTS edl_plan;
+CREATE KEYSPACE edl_plan WITH replication = $1;
+CQL
+}
+CHOSEN="{'class': 'NetworkTopologyStrategy', '$REGION': 3}"
+try_ks "$CHOSEN"; RC=$?; echo "NetworkTopologyStrategy cqlsh exit=$RC"
+if [ "$RC" != "0" ]; then
+  CHOSEN="{'class': 'SimpleStrategy', 'replication_factor': 3}"
+  try_ks "$CHOSEN"; RC=$?; echo "SimpleStrategy cqlsh exit=$RC"
+fi
+[ "$RC" = "0" ] && echo "REPLICATION=\"$CHOSEN\"" >> "$CLUSTER_DIR/ferrosa-plan.env"
+. "$CLUSTER_DIR/ferrosa-plan.env"; echo "REPLICATION=$REPLICATION"
+```
+
+```bash
+. "$(dirname "$EDB")/ferrosa-plan.env"
+DB1_IP=$(echo "$DB_IPS" | cut -d, -f2)
+cq "$DB1_IP" 30942 <<'CQL'; echo "round trip cqlsh exit=$?"
+CONSISTENCY ALL;
 CREATE TABLE IF NOT EXISTS edl_plan.kv (k text PRIMARY KEY, v text);
 INSERT INTO edl_plan.kv (k, v) VALUES ('a', '1');
 INSERT INTO edl_plan.kv (k, v) VALUES ('b', '2');
 INSERT INTO edl_plan.kv (k, v) VALUES ('c', '3');
-CONSISTENCY ALL;
 SELECT * FROM edl_plan.kv;
-DESCRIBE KEYSPACE edl_plan;
+SELECT keyspace_name, replication FROM system_schema.keyspaces WHERE keyspace_name = 'edl_plan';
 CQL
 ```
 
-If `CREATE KEYSPACE` fails with `NetworkTopologyStrategy`, record the error in the journal and in `issues.md`. Then run the same block with `{'class': 'SimpleStrategy', 'replication_factor': 3}`. Write the strategy that worked into the plan file:
-
-```bash
-. "$(dirname "$EDB")/ferrosa-plan.env"
-# Use the SimpleStrategy line instead only when NetworkTopologyStrategy failed above.
-echo "REPLICATION=\"{'class': 'NetworkTopologyStrategy', '$REGION': 3}\"" >> "$CLUSTER_DIR/ferrosa-plan.env"
-# echo "REPLICATION=\"{'class': 'SimpleStrategy', 'replication_factor': 3}\"" >> "$CLUSTER_DIR/ferrosa-plan.env"
-. "$CLUSTER_DIR/ferrosa-plan.env"; echo "$REPLICATION"
-```
-
-**Pass:** the client connects with no username or password, through the CQL NodePort of `db1` (whose own pod is not the NodePort target, so the request crosses nodes). The `SELECT` at `CONSISTENCY ALL` returns the three rows, so all three replicas answered. `DESCRIBE` shows the chosen replication.
-**Fail:** an authentication error, a `CREATE` that fails with both strategies, or a `SELECT` that fails at `ALL`.
+**Pass:** one `CREATE KEYSPACE` attempt exits 0, and `REPLICATION` is set. If `NetworkTopologyStrategy` failed, record its error in the journal and in `issues.md`. The round trip connects with no username or password, through the CQL NodePort of `db1` (whose own pod is not the NodePort target, so the request crosses nodes), and prints `round trip cqlsh exit=0`. The `SELECT` at `CONSISTENCY ALL` returns the three rows, and `system_schema.keyspaces` shows the chosen replication.
+**Fail:** an authentication error, a `CREATE KEYSPACE` that fails with both strategies, or a non-zero round-trip exit. A failed write or read at `ALL` is a failure of the ring; it is not a reason to change the replication.
 
 ### 14. Metrics registration, one series for each pod, and logs in Loki
 
@@ -444,7 +480,7 @@ mq 'count(up{job="ferrosa"})' | jq -r '.data.result[].value[1]'
 mq 'up{job="ferrosa"}' | jq -r '.data.result[].metric.instance' | sort
 jq -r '.items[].metadata.name' "$CLUSTER_DIR/ferrosa-pods.json" | sort
 mq 'count by (instance) ({job="ferrosa", __name__=~"ferrosa_.+"})' | jq -r '.data.result[] | "\(.metric.instance) \(.value[1])"'
-$EDB logs query -q '{k8s_pod_name=~"ferrosa-[0-9]+-.*"}' --since 15m --limit 20
+$EDB logs query -q '{k8s_pod_name=~"ferrosa-[0-9]+-0"}' --since 2h --limit 20
 ```
 
 **Pass:**
@@ -461,48 +497,69 @@ $EDB logs query -q '{k8s_pod_name=~"ferrosa-[0-9]+-.*"}' --since 15m --limit 20
 
 This runs before any load, because the ring loses a member while the pod restarts. A deleted pod is how an eviction or a node drain restarts it, and the replacement gets a new pod IP.
 
-The Deployment's ReplicaSet creates the replacement as soon as the old pod starts to terminate, and the old pod drains for up to 30 seconds. Both pods mount the same local volume. The watch below records whether the two FerrosaDB containers ran at the same time.
+The StatefulSet `ferrosa-1` creates the replacement pod `ferrosa-1-0` only after the old pod has fully ended (its drain takes up to 30 seconds). The watch below lists every pod of ordinal 1 every 2 seconds, with its UID, its creation time and whether it is terminating. A line with `count=2` means two FerrosaDB pods for one host at the same time.
 
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
-OLD=$(k get pods -l easydblab/ferrosa-ordinal=1 -o json | jq -r '.items[0] | "\(.metadata.name) \(.status.podIP)"')
+OLD=$(k get pod ferrosa-1-0 -o json | jq -r '"\(.metadata.uid) \(.status.podIP) \(.metadata.creationTimestamp)"')
 SVC_IP_BEFORE=$(k get service ferrosa-1 -o json | jq -r '.spec.clusterIP')
-echo "old: $OLD  service: $SVC_IP_BEFORE"
-k delete pod "$(echo "$OLD" | cut -d' ' -f1)" --wait=false
-for n in $(seq 1 40); do
-  k get pods -l easydblab/ferrosa-ordinal=1 -o json | jq -r --arg t "$(date -u +%T)" '"\($t) " + ([.items[] | "\(.metadata.name)[deleting=\(.metadata.deletionTimestamp != null) running=\(any(.status.containerStatuses[]?; .name == "ferrosa" and .state.running != null)) ready=\(any(.status.containerStatuses[]?; .ready))]"] | join(" "))'
-  sleep 3
+echo "old uid/ip/created: $OLD  service: $SVC_IP_BEFORE"
+OLD_UID=$(echo "$OLD" | cut -d' ' -f1)
+echo "delete issued: $(sshn control0 'date -u +%Y-%m-%dT%H:%M:%SZ')"
+k delete pod ferrosa-1-0 --wait=false
+: > "$CLUSTER_DIR/restart-watch.txt"
+for n in $(seq 1 60); do
+  # Stamp with control0's clock (the K3s server), read before the get, never in the same pipeline.
+  t=$(sshn control0 'date -u +%Y-%m-%dT%H:%M:%SZ')
+  k get pods -l easydblab/ferrosa-ordinal=1 -o json | jq -r --arg t "$t" '"\($t) count=\(.items | length) " + ([.items[] | "\(.metadata.name)[uid=\(.metadata.uid) created=\(.metadata.creationTimestamp) deleting=\(.metadata.deletionTimestamp != null) ready=\(any(.status.containerStatuses[]?; .ready))]"] | join(" "))' | tee -a "$CLUSTER_DIR/restart-watch.txt"
+  sleep 2
 done
-k rollout status deployment/ferrosa-1 --timeout=600s
+echo "lines with two pods: $(grep -c 'count=2' "$CLUSTER_DIR/restart-watch.txt")"
+echo "last line with the old uid: $(grep "uid=$OLD_UID" "$CLUSTER_DIR/restart-watch.txt" | tail -1 | cut -d' ' -f1)"
+echo "first line with a new uid:  $(grep 'uid=' "$CLUSTER_DIR/restart-watch.txt" | grep -v "uid=$OLD_UID" | head -1 | cut -d' ' -f1)"
+k rollout status statefulset/ferrosa-1 --timeout=600s
 k get pods -l easydblab/kit=ferrosa -o json > "$CLUSTER_DIR/ferrosa-pods.json"
-NEW=$(jq -r '.items[] | select(.metadata.labels["easydblab/ferrosa-ordinal"] == "1") | "\(.metadata.name) \(.status.podIP)"' "$CLUSTER_DIR/ferrosa-pods.json")
-echo "new: $NEW  service: $(k get service ferrosa-1 -o json | jq -r '.spec.clusterIP')"
-jq -r '.items[] | "\(.metadata.name) ready=\([.status.containerStatuses[].ready] | all)"' "$CLUSTER_DIR/ferrosa-pods.json"
+NEW=$(jq -r '.items[] | select(.metadata.name == "ferrosa-1-0") | "\(.metadata.uid) \(.status.podIP) \(.metadata.creationTimestamp)"' "$CLUSTER_DIR/ferrosa-pods.json")
+echo "new uid/ip/created: $NEW  service: $(k get service ferrosa-1 -o json | jq -r '.spec.clusterIP')"
+LAST_OLD=$(grep "uid=$OLD_UID" "$CLUSTER_DIR/restart-watch.txt" | tail -1 | cut -d' ' -f1)
+NEW_CREATED=$(echo "$NEW" | cut -d' ' -f3)
+if [ -z "$LAST_OLD" ]; then echo "order: no watch line saw the old pod"; elif [[ "$NEW_CREATED" < "$LAST_OLD" ]]; then echo "order: FAIL new=$NEW_CREATED before last-old=$LAST_OLD"; else echo "order: PASS new=$NEW_CREATED last-old=$LAST_OLD"; fi
+jq -r '.items[] | "\(.metadata.name) ready=\((.status.containerStatuses // []) | length > 0 and all(.ready))"' "$CLUSTER_DIR/ferrosa-pods.json"
 for ip in $(jq -r '.items[] | select(.metadata.labels["easydblab/ferrosa-ordinal"] != "1") | .status.podIP' "$CLUSTER_DIR/ferrosa-pods.json"); do
   echo "--- peers seen by $ip"
-  cq "$ip" 9042 <<'CQL'
-SELECT peer, rpc_address, host_id FROM system.peers;
+  cq "$ip" 9042 <<'CQL'; echo "cqlsh exit=$?"
+SELECT peer, rpc_address, host_id, data_center FROM system.peers;
 CQL
 done
 DB0_IP=$(echo "$DB_IPS" | cut -d, -f1)
-cq "$DB0_IP" 30942 <<'CQL'
+cq "$DB0_IP" 30942 <<'CQL'; echo "cqlsh exit=$?"
 CONSISTENCY ALL;
 SELECT * FROM edl_plan.kv;
 CQL
 ```
 
+The new pod's creation time must not be earlier than the time on the last watch line that shows the old pod. Both times come from control0's clock (the K3s server), and each watch stamp is read before its `get`, so on correct behaviour the old pod was still there at that stamp. Both have one-second resolution, so the same second counts as a pass. The old pod drains for some seconds, so at least one watch line sees it. If none does (`order: no watch line saw the old pod`), repeat the delete once; if it happens again, record that the ordering was not observed.
+
 **Pass:**
-- The new pod's IP is different from the old one, and the Service `ferrosa-1` keeps its ClusterIP.
-- All three pods are `ready=true`. With `FERROSA_EXPECTED_CLUSTER_SIZE=3`, a pod reports ready only when the ring has three members.
-- `ferrosa-0` and `ferrosa-2` list host `00000000-0000-0000-0000-000000000002` with the new IP as `rpc_address`.
-- The `CONSISTENCY ALL` read returns the three rows.
-- No watch line shows two `ferrosa-1` pods with `running=true` at the same time.
+- **The replacement waits for the old pod.**
+  - The output shows `lines with two pods: 0`.
+  - Every watch line with a new UID comes after the last line with the old UID.
+  - The new pod's UID differs from the old one, and the output shows `order: PASS`: its creation time is not earlier than the time on the last watch line with the old UID (the same second counts).
+  - Record the old and new creation times, the delete time and the two key line times in the journal. The watch file stays in the workspace as evidence.
+- **It rejoins.**
+  - The new pod's IP differs from the old one, and the Service `ferrosa-1` keeps its ClusterIP.
+  - All three pods show `ready=true`. With `FERROSA_EXPECTED_CLUSTER_SIZE=3`, a pod is ready only when the ring has three members.
+  - `ferrosa-0-0` and `ferrosa-2-0` list host `00000000-0000-0000-0000-000000000002` with the new IP as `rpc_address` and `data_center` equal to `$REGION`.
+  - Every `cqlsh exit=0`, and the `CONSISTENCY ALL` read returns the three rows.
 
-**Fail:** the pod does not become ready in 600 seconds, a peer keeps the old IP, or the read at `ALL` fails.
+**Fail:**
+- Any of these is a kit defect, because it means two FerrosaDB pods for one host at the same time:
+  - a line with `count=2`;
+  - a new UID on a line before the last line with the old UID;
+  - `order: FAIL`: a new pod whose creation time is earlier than the time on the last watch line with the old UID.
+- The pod is not ready within 600 seconds, a peer keeps the old IP, or the read at `ALL` fails.
 
-If the new IP equals the old one, repeat the delete once. If it is still the same, record that the new-IP case was not exercised.
-
-If a watch line shows two containers running at the same time, record it as a kit defect (two FerrosaDB processes on one data directory) in `issues.md`. Tell the owner before step 16, whatever the other results are.
+If the new IP equals the old one, repeat the delete once. If it is still the same, record that the new-IP case was not exercised. The ordering check above still counts.
 
 ### 16. `--log-level` and repeated `--env` reach every container
 
@@ -512,10 +569,10 @@ $EDB ferrosa stop
 $EDB ferrosa start --version="$FERROSA_TAG" --log-level=debug --env EDL_PLAN_KEY1=value1 --env EDL_PLAN_KEY2=value2 --env EDL_PLAN_DUP=first --env EDL_PLAN_DUP=second
 for i in 0 1 2; do
   echo "--- ferrosa-$i"
-  k exec deploy/ferrosa-$i -c ferrosa -- env | grep -E '^(RUST_LOG|EDL_PLAN_)' | sort
+  k exec sts/ferrosa-$i -c ferrosa -- env | grep -E '^(RUST_LOG|EDL_PLAN_)' | sort
 done
 sleep 60
-$EDB logs query -q '{k8s_pod_name=~"ferrosa-[0-9]+-.*"} |= "DEBUG"' --since 3m --limit 5
+$EDB logs query -q '{k8s_pod_name=~"ferrosa-[0-9]+-0"} |= "DEBUG"' --since 3m --limit 5
 ```
 
 **Pass:** every container has `RUST_LOG=debug`, `EDL_PLAN_KEY1=value1`, `EDL_PLAN_KEY2=value2` and `EDL_PLAN_DUP=second`. Loki returns at least one `DEBUG` line from a `ferrosa-` pod in the last 3 minutes.
@@ -527,7 +584,7 @@ $EDB logs query -q '{k8s_pod_name=~"ferrosa-[0-9]+-.*"} |= "DEBUG"' --since 3m -
 . "$(dirname "$EDB")/ferrosa-plan.env"
 $EDB ferrosa stop
 $EDB ferrosa start --version="$FERROSA_TAG" --log-level=debug --env RUST_LOG=warn
-for i in 0 1 2; do k exec deploy/ferrosa-$i -c ferrosa -- printenv RUST_LOG; done
+for i in 0 1 2; do k exec sts/ferrosa-$i -c ferrosa -- printenv RUST_LOG; done
 $EDB ferrosa stop
 ```
 
@@ -539,7 +596,7 @@ $EDB ferrosa stop
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
 $EDB ferrosa start --version="$FERROSA_TAG" --heap-profile; echo "exit=$?"
-k exec deploy/ferrosa-0 -c ferrosa -- printenv MALLOC_CONF
+k exec sts/ferrosa-0 -c ferrosa -- printenv MALLOC_CONF
 k get configmap easydblab-metrics-ferrosa-ferrosa -o json; echo "exit=$?"
 $EDB ferrosa stop
 ```
@@ -555,7 +612,7 @@ This step proves three things: the ECR `--image` pull with no credential step, h
 . "$(dirname "$EDB")/ferrosa-plan.env"
 $EDB ferrosa start --image="$PROF_IMAGE" --heap-profile --heap-sample=17; echo "exit=$?"
 k get pods -l easydblab/kit=ferrosa -o json | jq -r '.items[] | "\(.metadata.name) images=\([.spec.initContainers[].image, .spec.containers[].image] | unique) pullSecrets=\(.spec.imagePullSecrets // [])"'
-for i in 0 1 2; do k exec deploy/ferrosa-$i -c ferrosa -- printenv MALLOC_CONF; done
+for i in 0 1 2; do k exec sts/ferrosa-$i -c ferrosa -- printenv MALLOC_CONF; done
 $EDB cassandra stress start --name kv-heap --image "$STRESS_IMAGE" -- KeyValue -d 5m --rate 5k -t 4 --host ferrosa-0.default.svc.cluster.local --replication "$REPLICATION"
 $EDB cassandra stress status
 k get pods -l app.kubernetes.io/name=cassandra-easy-stress -o json | jq -r '.items[] | "\(.metadata.name) phase=\(.status.phase) image=\(.spec.containers[] | select(.name == "stress") | .image) pullSecrets=\(.spec.imagePullSecrets // [])"'
@@ -566,7 +623,7 @@ Wait until `cassandra stress status` shows the job complete (about 6 minutes), t
 
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
-$EDB cassandra stress logs kv-heap --tail 30
+stress_check kv-heap
 $EDB ferrosa stop
 for h in db0 db1 db2; do
   echo "--- $h"
@@ -579,7 +636,7 @@ done
 - Every FerrosaDB container and init container runs `$PROF_IMAGE`, with `pullSecrets=[]`.
 - `MALLOC_CONF` is `prof:true,prof_active:true,prof_final:true,prof_prefix:/var/lib/ferrosa/heap-profiles/ferrosa,lg_prof_sample:17` on every pod.
 - The stress pod runs `$STRESS_IMAGE` with `pullSecrets=[]`, and the cluster has `0` Secrets named `ecr-pull-secret`.
-- The stress log shows traffic.
+- `stress_check kv-heap` shows a clean run (see Conventions), with about 1,500,000 operations. This is the first run that creates the stress schema (`CREATE TABLE ... WITH caching = {...} AND default_time_to_live = 0`). A rejected schema still exits 0. The schema line is printed before the statement runs, so `runner lines` 1, `complete lines` 1 and `error lines` 0 are the evidence that FerrosaDB accepted it.
 - After `stop`, each db node has at least one non-empty `ferrosa.*.heap` file, and its first line is `heap_v2/131072`.
 
 **Fail:** `ImagePullBackOff` or `no basic auth credentials` on either image (the credential provider did not work), an `ecr-pull-secret`, no `.heap` file on a node, an empty file, or a different `heap_v2` line.
@@ -594,7 +651,7 @@ The main run is long on purpose. It must outlast steps 21 to 23: about 30 minute
 . "$(dirname "$EDB")/ferrosa-plan.env"
 $EDB ferrosa start --version="$FERROSA_TAG"; echo "exit=$?"
 DB2_IP=$(echo "$DB_IPS" | cut -d, -f3)
-cq "$DB2_IP" 30942 <<'CQL'
+cq "$DB2_IP" 30942 <<'CQL'; echo "cqlsh exit=$?"
 CONSISTENCY ALL;
 SELECT * FROM edl_plan.kv;
 CQL
@@ -606,7 +663,7 @@ $EDB cassandra stress status
 **Pass:** `start` exits 0 with no step between `stop` and `start`. The three rows come back at `CONSISTENCY ALL`. Each db node still has at least one `.heap` file. The stress job starts and shows `Running`.
 **Fail:** a collision error, a claim that does not bind, missing rows, or a missing `.heap` file.
 
-`--rate 5k` is the global total, shared by the four threads. KeyValue keeps writing over its default 1,000,000 partitions, so the data set stays below a few GB for the whole run.
+`--rate 5k` is the global total, shared by the four threads. KeyValue keys are `<id>.<thread>.<n>` with `n` up to its default 1,000,000, so `-t 4` writes over at most 4,000,000 partitions (about 0.7 GB of raw data for each node at 3 replicas). The data set stops growing once the key space is covered.
 
 ### 21. Under load: request rates, CPU profiles, and data on the data disk
 
@@ -621,18 +678,28 @@ for h in db0 db1 db2; do
   echo "--- $h"
   sshn "$h" 'echo "db1=$(findmnt -n -o SOURCE /mnt/db1) ferrosa=$(findmnt -n -o SOURCE -T /mnt/db1/ferrosa) root=$(findmnt -n -o SOURCE /)"; sudo du -sh /mnt/db1/ferrosa; sudo find /mnt/db1/ferrosa -type f -size +0 | head -40'
 done
+# The driver logs protocol negotiation only at DEBUG, so ask each server which version its clients use.
+# Steps 16 to 20 restarted the pods, so refresh their IPs first.
+k get pods -l easydblab/kit=ferrosa -o json > "$CLUSTER_DIR/ferrosa-pods.json"
+for ip in $(jq -r '.items[].status.podIP' "$CLUSTER_DIR/ferrosa-pods.json"); do
+  cq "$ip" 9042 <<'CQL'; echo "cqlsh exit=$?"
+SELECT address, protocol_version, driver_name, driver_version FROM system_views.clients;
+CQL
+done
+$EDB logs query -q '{k8s_pod_name=~"ferrosa-[0-9]+-0"} |~ "(?i)protocol"' --since 30m --limit 10
 for i in 0 1 2; do
   echo "--- ferrosa-$i"
-  k exec deploy/ferrosa-$i -c ferrosa -- cat /proc/self/mountinfo | grep -E ' /var/lib/ferrosa | / '
+  k exec sts/ferrosa-$i -c ferrosa -- cat /proc/self/mountinfo | awk '$5 == "/" || $5 == "/var/lib/ferrosa" {sep=0; for (j=1;j<=NF;j++) if ($j=="-") sep=j; print "mount=" $5, "root=" $4, "fstype=" $(sep+1), "source=" $(sep+2)}'
 done
 ```
 
 **Pass:**
 - Each of the three pods has a request rate above 0. If `ferrosa_cql_requests_total` does not exist, use the request counter in the catalog from step 22, and record the name.
-- Pyroscope lists the three `ferrosa-` pods.
+- Pyroscope lists the three pods `ferrosa-0-0`, `ferrosa-1-0` and `ferrosa-2-0`.
+- Record which CQL protocol version the stress driver uses, from `system_views.clients` (the rows whose `driver_name` is the Java driver, not the Python driver that `cqlsh` uses; the stress pod runs on the host network, so both clients show the app node's address) or from the FerrosaDB pod logs. The Java driver pins no version and tries v5 first, and FerrosaDB's v5 is not complete. If FerrosaDB has no `system_views.clients` table and Loki shows nothing, record "protocol version not observable". This is an observation, not a pass condition, so a non-zero `cqlsh exit` from that query alone does not fail the step. First check that the pod IPs come from this step's refresh.
 - The render has `numTicks` above 0 and more than 10 names.
 - On each db node, `ferrosa` equals `db1`, both differ from `root`, and `/mnt/db1/ferrosa` holds FerrosaDB data files and the `heap-profiles` directory. Record the data-file names in the journal; step 29 uses them.
-- In each pod, the `/var/lib/ferrosa` mountinfo line has the root field `/ferrosa` and, after ` - `, the same device that `findmnt` printed for `db1` on that pod's node. The `/` line is the container's `overlay`.
+- In each pod there are exactly two lines. The `mount=/var/lib/ferrosa` line has `root=/ferrosa` and a `source` equal to the `db1` device that `findmnt` printed for that pod's node. The `mount=/` line has `fstype=overlay`.
 
 **Fail:** a pod with no requests, no CPU profile, data under a root-device path, or `/var/lib/ferrosa` on the container's overlay.
 
@@ -675,7 +742,7 @@ Then spawn the `dashboard-editor` agent with this brief:
 - Build `$KIT_SRC/dashboards/ferrosa.json` from `$KIT_SRC/metrics-catalog.json`. Every metric name in the dashboard must be in the catalog.
 - Name the datasources only through the `metrics_datasource` and `logs_datasource` pickers. Add no traces or profiles datasource.
 - Give the dashboard the fixed top-level `uid` `ferrosa`, so each install replaces it instead of adding a copy.
-- Include CQL throughput (requests per second, grouped by the request counter's labels as the catalog lists them), CQL latency (p50, p99 from the duration histogram), requests in flight, errors, and a logs panel for the FerrosaDB pods with the selector `{k8s_pod_name=~"ferrosa-[0-9]+-.*"}`. Show each pod (`instance`) as its own series where it helps.
+- Include CQL throughput (requests per second, grouped by the request counter's labels as the catalog lists them), CQL latency (p50, p99 from the duration histogram), requests in flight, errors, and a logs panel for the FerrosaDB pods with the selector `{k8s_pod_name=~"ferrosa-[0-9]+-0"}`. Show each pod (`instance`) as its own series where it helps.
 - Deploy with `$EDB grafana install "$KIT_SRC/dashboards/ferrosa.json" --folder=ferrosa` while `kv-main` runs, and read every panel back from Grafana with data.
 - Run `DashboardDatasourceVariablesTest`, `ClusterFilterTest` and `SeriesClusterTest` in a subagent.
 
@@ -699,7 +766,7 @@ The workspace kit directory is a copy made at install time, so the new dashboard
 
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
-$EDB cassandra stress stop kv-main --force
+$EDB cassandra stress stop --all --force
 $EDB ferrosa stop
 (cd "$REPO_ROOT" && ./gradlew --no-watch-fs installDist)
 $EDB kit install ferrosa --force
@@ -722,14 +789,14 @@ After the run ends (45 minutes), check its result:
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
 k get job kv-final -o json | jq -r '"succeeded=\(.status.succeeded // 0) failed=\(.status.failed // 0)"'
-$EDB cassandra stress logs kv-final --tail 60
+stress_check kv-final
 ```
 
 **Pass:**
 - The scaffolded dashboard has `uid` `ferrosa`. The search shows `before start: 0`. After `start` exits 0, the folder `ferrosa` holds exactly one dashboard, with `uid=ferrosa`.
 - During the run, every panel has at least one series with data.
 - The job reports `succeeded=1 failed=0`.
-- The stress log ends with a summary and shows no exceptions. Its error counts are 0 for reads and writes.
+- `stress_check kv-final` shows a clean run (see Conventions), with about 13,500,000 operations (45 minutes at 5,000 a second).
 - The throughput and latency panels show the run's 45-minute window.
 
 **Fail:** no dashboard in `ferrosa`, a panel with no data, a failed job, or any error or exception in the stress log.
@@ -738,12 +805,14 @@ $EDB cassandra stress logs kv-final --tail 60
 
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
-for h in db0 db1 db2; do sshn "$h" 'sudo find /mnt/db1/ferrosa -type f | wc -l'; done
+for h in db0 db1 db2; do sshn "$h" 'sudo ls -l /mnt/db1/ferrosa/heap-profiles/ | grep "\.heap$"'; done > "$CLUSTER_DIR/heap-before-stop.txt"
 $EDB ferrosa stop
-k get deployment,replicaset,pod,service,configmap -l easydblab/kit=ferrosa -o json | jq '.items | length'
+k get statefulset,deployment,replicaset,pod,service,configmap -l easydblab/kit=ferrosa -o json | jq '.items | length'
 k get pvc -l easydblab/kit=ferrosa -o json | jq -r '.items[] | "\(.metadata.name) \(.status.phase)"'
 k get pv -o json | jq -r '.items[] | select(.metadata.name | startswith("data-ferrosa-")) | "\(.metadata.name) \(.status.phase)"'
-for h in db0 db1 db2; do sshn "$h" 'sudo find /mnt/db1/ferrosa -type f | wc -l; sudo ls /mnt/db1/ferrosa/heap-profiles/'; done
+for h in db0 db1 db2; do sshn "$h" 'sudo ls -l /mnt/db1/ferrosa/heap-profiles/ | grep "\.heap$"'; done > "$CLUSTER_DIR/heap-after-stop.txt"
+diff "$CLUSTER_DIR/heap-before-stop.txt" "$CLUSTER_DIR/heap-after-stop.txt" && echo "heap files unchanged"
+for h in db0 db1 db2; do sshn "$h" 'sudo find /mnt/db1/ferrosa -type f -not -path "*/heap-profiles/*" | wc -l'; done
 k get configmap easydblab-metrics-ferrosa-ferrosa -o json; echo "exit=$?"
 k get configmap otel-collector-config -o json | jq -r '.data[]' | grep -c ferrosa
 # The user guide's copy-off command for .heap files works.
@@ -751,13 +820,13 @@ k get configmap otel-collector-config -o json | jq -r '.data[]' | grep -c ferros
 ```
 
 **Pass:**
-- No Deployment, ReplicaSet, pod, Service or ConfigMap of the kit is left (count 0).
+- No StatefulSet, Deployment, ReplicaSet, pod, Service or ConfigMap of the kit is left (count 0).
 - The three claims stay `Bound`, and the three PVs stay `Bound`.
-- Each node has at least as many files after `stop` as before it, and still has its `.heap` files.
+- The output shows `heap files unchanged`, and the list is not empty. Each node still holds at least one data file outside `heap-profiles`. (Step 20 already proved that rows survive a stop; the drain may remove log segments, so the file count can drop.)
 - `easydblab-metrics-ferrosa-ferrosa` is `NotFound`, and the collector config has 0 lines with `ferrosa`. Step 14 counted at least 1 while FerrosaDB ran.
 - Each tarball holds at least one `.heap` file.
 
-**Fail:** any kit object left, a claim or PV that is gone or `Released`, fewer files, missing `.heap` files, or a registration that is still there.
+**Fail:** any kit object left, a claim or PV that is gone or `Released`, no data file, a changed or empty `.heap` list, or a registration that is still there.
 
 ### 26. The default image is `ghcr.io/ferrosadb/ferrosa:nightly`
 
@@ -766,12 +835,12 @@ This is the only start with no image option. It runs now because step 27 wipes t
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
 $EDB ferrosa start; echo "exit=$?"
-k get pods -l easydblab/kit=ferrosa -o json | jq -r '.items[] | "\(.metadata.name) \([.spec.initContainers[].image, .spec.containers[].image] | unique)"'
-docker buildx imagetools inspect ghcr.io/ferrosadb/ferrosa:nightly | head -3
+k get pods -l easydblab/kit=ferrosa -o json | jq -r '.items[] | "\(.metadata.name) \([.spec.initContainers[].image, .spec.containers[].image] | unique) \([.status.containerStatuses[].imageID] | unique)"'
+docker buildx imagetools inspect "ghcr.io/ferrosadb/ferrosa:$FERROSA_TAG" --format '{{.Manifest.Digest}}'
 $EDB ferrosa stop
 ```
 
-**Pass:** `start` exits 0, and every container runs `ghcr.io/ferrosadb/ferrosa:nightly`. Record whether the `nightly` digest equals the `$FERROSA_TAG` digest.
+**Pass:** `start` exits 0, and every container runs `ghcr.io/ferrosadb/ferrosa:nightly`. Record whether the pods' `imageID` digest equals the `$FERROSA_TAG` index digest. A different digest means `nightly` moved during the run; that is not a failure.
 **Fail:** any other image.
 
 ### 27. Switch to S3 storage: uninstall, then install again
@@ -781,15 +850,20 @@ Switching `--storage` on a volume that holds data is not supported, and the kit 
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
 $EDB ferrosa uninstall
+# The PV delete returns before the PVs are gone. install skips a PV that still exists, so wait.
+for n in $(seq 1 20); do
+  LEFT=$(k get pv -o json | jq '[.items[] | select(.metadata.name | startswith("data-ferrosa-"))] | length')
+  echo "kit PVs left: $LEFT"; [ "$LEFT" = "0" ] && break; sleep 3
+done
 k get pvc -l easydblab/kit=ferrosa -o json | jq '.items | length'
-k get pv -o json | jq '[.items[] | select(.metadata.name | startswith("data-ferrosa-"))] | length'
 for h in db0 db1 db2; do sshn "$h" 'ls -d /mnt/db1/ferrosa 2>&1'; done
 $EDB kit install ferrosa
+k get pv -o json | jq -r '.items[] | select(.metadata.name | startswith("data-ferrosa-")) | "\(.metadata.name) phase=\(.status.phase)"'
 for h in db0 db1 db2; do sshn "$h" 'sudo find /mnt/db1/ferrosa -mindepth 1 | wc -l'; done
 ```
 
-**Pass:** after `uninstall`, there are 0 claims and 0 kit PVs, and `/mnt/db1/ferrosa` is gone on each node. After `install`, each node has an empty `/mnt/db1/ferrosa` (count 0).
-**Fail:** a claim, a PV or a directory is left, or the new directory is not empty.
+**Pass:** after `uninstall`, the kit PV count reaches 0 within 60 seconds, there are 0 claims, and `/mnt/db1/ferrosa` is gone on each node. After `install`, there are three PVs, `data-ferrosa-0` to `data-ferrosa-2`, all `Available`, and each node has an empty `/mnt/db1/ferrosa` (count 0).
+**Fail:** a claim, a PV or a directory is left, a PV is not `Available`, or the new directory is not empty.
 
 ### 28. An S3 failure fails `start` and does not fall back, and local mode wrote nothing to S3
 
@@ -799,7 +873,7 @@ for h in db0 db1 db2; do sshn "$h" 'sudo find /mnt/db1/ferrosa -mindepth 1 | wc 
 . "$(dirname "$EDB")/ferrosa-plan.env"
 MISSING_BUCKET="edl-missing-$(date +%s)"
 time $EDB ferrosa start --version="$FERROSA_TAG" --storage=s3 --env FERROSA_S3_BUCKET="$MISSING_BUCKET"; echo "exit=$?"
-k get pods -l easydblab/kit=ferrosa -o json | jq -r '.items[] | "\(.metadata.name) ready=\([.status.containerStatuses[]?.ready] | all) restarts=\([.status.containerStatuses[]?.restartCount] | add)"'
+k get pods -l easydblab/kit=ferrosa -o json | jq -r '.items[] | "\(.metadata.name) ready=\((.status.containerStatuses // []) | length > 0 and all(.ready)) restarts=\([.status.containerStatuses[]?.restartCount] | add)"'
 DATA_BUCKET=$(k get configmap ferrosa-settings -o json | jq -r '.data.FERROSA_S3_BUCKET')
 echo "DATA_BUCKET='$DATA_BUCKET'" >> "$CLUSTER_DIR/ferrosa-plan.env"
 aws s3 ls "s3://$DATA_BUCKET/ferrosa/" --recursive | wc -l
@@ -819,9 +893,10 @@ $EDB ferrosa stop
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
 $EDB ferrosa start --version="$FERROSA_TAG" --storage=s3; echo "exit=$?"
-for i in 0 1 2; do echo "--- ferrosa-$i"; k exec deploy/ferrosa-$i -c ferrosa -- env | grep '^FERROSA_S3_' | sort; done
+for i in 0 1 2; do echo "--- ferrosa-$i"; k exec sts/ferrosa-$i -c ferrosa -- env | grep -E '^(FERROSA_S3_|AWS_)|ACCESS_KEY|SECRET' | sed "s/$DATA_BUCKET/<data-bucket>/" | sort; done
 DB0_IP=$(echo "$DB_IPS" | cut -d, -f1)
-cq "$DB0_IP" 30942 <<CQL
+cq "$DB0_IP" 30942 <<CQL; echo "cqlsh exit=$?"
+CONSISTENCY ALL;
 CREATE KEYSPACE IF NOT EXISTS edl_plan WITH replication = $REPLICATION;
 CREATE TABLE IF NOT EXISTS edl_plan.kv (k text PRIMARY KEY, v text);
 INSERT INTO edl_plan.kv (k, v) VALUES ('s3a', '1');
@@ -835,35 +910,38 @@ After `kv-s3` completes (about 21 minutes):
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
 k get job kv-s3 -o json | jq -r '"succeeded=\(.status.succeeded // 0) failed=\(.status.failed // 0)"'
+stress_check kv-s3
 aws s3 ls "s3://$DATA_BUCKET/ferrosa/" --recursive > "$CLUSTER_DIR/s3-before-stop.txt"; wc -l < "$CLUSTER_DIR/s3-before-stop.txt"
 $EDB ferrosa stop
 aws s3 ls "s3://$DATA_BUCKET/ferrosa/" --recursive > "$CLUSTER_DIR/s3-after-stop.txt"; wc -l < "$CLUSTER_DIR/s3-after-stop.txt"
 head -20 "$CLUSTER_DIR/s3-after-stop.txt"
-awk '{print $4}' "$CLUSTER_DIR/s3-after-stop.txt" | xargs -n1 basename | sort -u > "$CLUSTER_DIR/s3-names.txt"
+# The last two parts of each path: the table directory and the file name.
+awk '{print $4}' "$CLUSTER_DIR/s3-after-stop.txt" | awk -F/ 'NF >= 2 {print $(NF-1) "/" $NF}' | sort -u > "$CLUSTER_DIR/s3-names.txt"
 for h in db0 db1 db2; do sshn "$h" 'sudo find /mnt/db1/ferrosa -type f -size +0'; done > "$CLUSTER_DIR/pv-files.txt"
 cat "$CLUSTER_DIR/pv-files.txt"
 aws s3api get-bucket-lifecycle-configuration --bucket "$DATA_BUCKET"; echo "exit=$?"
 ```
 
-From `pv-files.txt`, take the files whose names match the data-file names recorded in step 21 (the SSTable files). Check that each one's basename is in `s3-names.txt`.
+First read the `head -20` output to confirm the S3 key layout (the table directory, then the file name). From `pv-files.txt`, take the files whose names match the data-file names recorded in step 21 (the SSTable files). Check that the last two parts of each one's path (table directory and file name) are in `s3-names.txt`. A file name alone is not enough, because two tables can hold files with the same name.
 
 **Pass:**
-- Every container has `FERROSA_S3_ENDPOINT=https://s3.<REGION>.amazonaws.com`, `FERROSA_S3_REGION=<REGION>`, `FERROSA_S3_BUCKET=<DATA_BUCKET>`, `FERROSA_S3_PREFIX=ferrosa/` and `FERROSA_S3_REQUIRED=true`, and no access key.
-- The job reports `succeeded=1 failed=0`.
+- Every container has `FERROSA_S3_ENDPOINT=https://s3.<REGION>.amazonaws.com`, `FERROSA_S3_REGION=<REGION>`, `FERROSA_S3_BUCKET=<data-bucket>` (the sed replaced the value, so it equals `$DATA_BUCKET`; a line that shows any other bucket name is a fail, and you must redact it before you record it), `FERROSA_S3_PREFIX=ferrosa/` and `FERROSA_S3_REQUIRED=true`. No line shows an `AWS_` variable, an access key or a secret, so FerrosaDB uses the instance profile.
+- The job reports `succeeded=1 failed=0`, and `stress_check kv-s3` shows a clean run (see Conventions), with about 6,000,000 operations.
 - After `stop` (whose drain syncs the SSTables), the data bucket holds data objects under `ferrosa/`, not only the `.ferrosa/connectivity-check` probe.
-- The count after `stop` is at least the count before `stop`.
-- Every SSTable file on the volumes has an object with the same basename in S3. So the volume holds only the cache.
+- Every SSTable file on the volumes has an object with the same table directory and file name in S3. So the volume holds only the cache.
 - `get-bucket-lifecycle-configuration` fails with `NoSuchLifecycleConfiguration`, or it lists no rule whose filter covers `ferrosa/`.
 
-**Fail:** a missing `FERROSA_S3_*` variable or an access key, a failed job, no data objects in S3, fewer objects after `stop`, an SSTable on a volume with no S3 copy, or a lifecycle rule that covers `ferrosa/`.
+**Fail:** a missing `FERROSA_S3_*` variable or an access key, a failed job, no data objects in S3, an SSTable on a volume with no S3 copy, or a lifecycle rule that covers `ferrosa/`.
 
 ### 30. `start` again after `stop` in S3 mode, and the S3 objects stay
 
 ```bash
 . "$(dirname "$EDB")/ferrosa-plan.env"
+aws s3 ls "s3://$DATA_BUCKET/ferrosa/" --recursive > "$CLUSTER_DIR/s3-before-restart.txt"
+diff "$CLUSTER_DIR/s3-after-stop.txt" "$CLUSTER_DIR/s3-before-restart.txt" && echo "S3 unchanged while stopped"
 $EDB ferrosa start --version="$FERROSA_TAG" --storage=s3; echo "exit=$?"
 DB1_IP=$(echo "$DB_IPS" | cut -d, -f2)
-cq "$DB1_IP" 30942 <<'CQL'
+cq "$DB1_IP" 30942 <<'CQL'; echo "cqlsh exit=$?"
 CONSISTENCY ALL;
 SELECT * FROM edl_plan.kv;
 CQL
@@ -871,8 +949,8 @@ aws s3 ls "s3://$DATA_BUCKET/ferrosa/" --recursive | wc -l
 $EDB ferrosa status
 ```
 
-**Pass:** `start` exits 0 with no cleanup step. The rows `s3a` and `s3b` come back at `CONSISTENCY ALL`. The S3 count is at least the step 29 count after `stop`. `status` shows `Running (3/3 pods ready)`.
-**Fail:** a start error, missing rows, or fewer S3 objects.
+**Pass:** `start` exits 0 with no cleanup step. `cqlsh exit=0`, and the `SELECT` at `CONSISTENCY ALL` returns exactly the rows `s3a` and `s3b`, and none of `a`, `b` or `c` (those were on the local volumes that step 27 deleted). The output shows `S3 unchanged while stopped`, so nothing deleted the objects while FerrosaDB was stopped. The S3 count after `start` is above 0. (FerrosaDB may remove SSTables it merged by compaction while it runs; that is the database managing its own files, so the count may differ from step 29.) `status` shows `Running (3/3 pods ready)`.
+**Fail:** a start error, missing or extra rows, an S3 listing that changed while stopped, or no S3 objects.
 
 ### 31. Leave the cluster up
 
@@ -901,7 +979,7 @@ $EDB down --auto-approve
 
 - **Acceptance criteria and where they are checked.**
   - Image and version: default image (26), `--version` (10), ECR `--image` with no credential step (19), missing tag (8), `--image` with `--version` (7), stress ECR image with no pull secret (19, 20).
-  - Topology: N Deployments on db hosts with their own PVs (10), one ring (11), restart rejoin (15), readiness before return (10), readiness timeout (9), no pods off the db nodes (10), data on the data disk (21), `init` storage rule (3), the data disk on every node (2).
+  - Topology: N StatefulSets on db hosts with their own PVs (10), a replacement pod that waits for the old one (15), one ring (11), restart rejoin (15), readiness before return (10), readiness timeout (9), no pods off the db nodes (10), data on the data disk (21), `init` storage rule (3), the data disk on every node (2).
   - Storage: S3 mode (29), local mode writes nothing to S3 (28), invalid `--storage` (7), S3 failure (28), no lifecycle rule (29).
   - Client access: listeners on every db node (12), `kit info` endpoints and options (5, 12), NodePort uniqueness (12), CQL round trip (13), no host networking (10), no credentials (13).
   - Runtime settings: 16, 17, 7, 18 and 19.
@@ -914,9 +992,16 @@ $EDB down --auto-approve
   - `up` failing on a node with no data disk, or a failed mount (the `setup_instance.sh` shell tests).
   - `start` failing on a failed metrics registration or a rejected dashboard (`KitRunnerCommand` tests).
   - The sidecar ECR path (`cassandra start --sidecar-image`), whose code path is the same as stress.
-- **The settled stress command** for `docs/user-guide/ferrosa.md` (task 10.6) is the step 20 command with the `$REPLICATION` value that step 13 chose. The run reports it. The docs, the catalog, `METRICS.md` and the dashboard are committed after the run, not during it.
-- **Load totals.** `--rate 5k` is one global rate shared by `-t 4` threads. The main run is at most 4 hours at 5,000 operations a second; the final run is 45 minutes (about 13.5 million operations); the S3 run is 20 minutes. KeyValue writes over 1,000,000 partitions, so the data does not grow with the run length.
+  - Dashboards skipped after a failed `start` (`typed-install-steps`).
+  - Fewer than 3 db hosts: no `FERROSA_EXPECTED_CLUSTER_SIZE`, and no seeds with one host (`FerrosaKitTest`, N=1).
+  - A multi-target kit creating one metrics ConfigMap for each target (`kit-metrics-declaration`).
+  - The `kit-command-args` scenarios: help text, defaults, unset and boolean args, repeatable-arg rejections.
+  - `init` with the default instance types, and a data disk named outside the first three devices (`setup_instance.sh` shell test). Step 1 uses the default types, so it passes that check too.
+  - "User guide covers the kit" is a doc review, not a cluster check.
+- **The settled stress command** for `docs/user-guide/ferrosa.md` (task 10.6) is the step 20 command with the `$REPLICATION` value that step 13 chose. It has the `--` separator before `KeyValue`; the current doc command (`cassandra stress start KeyValue -d 10m --host ...`) has none, so picocli refuses `-d` and `--host`. The run reports the settled command. The docs, the catalog, `METRICS.md` and the dashboard are committed after the run, not during it.
+- **Pod selectors.** The stress Jobs are named `kv-*`, not `ferrosa-*`, so their pods never match a FerrosaDB pod filter. Every FerrosaDB log query in this plan uses `{k8s_pod_name=~"ferrosa-[0-9]+-0"}`. This is the same selector the user guide uses; LogQL anchors the regex, so it matches only the StatefulSet pods `ferrosa-<i>-0`.
+- **Load totals.** `--rate 5k` is one global rate shared by `-t 4` threads. The main run is at most 4 hours at 5,000 operations a second; the final run is 45 minutes (about 13.5 million operations); the S3 run is 20 minutes (about 6 million operations). The counts in the last report line are main-phase only: KeyValue has no populate phase by default (`--populate 0`), and with its default read rate of 0.5, writes and reads are each about half. With `-t 4`, KeyValue writes over at most 4,000,000 partitions (1,000,000 for each thread), so the data does not grow with the run length.
 - **Elapsed time.** Expect 6 to 8 hours: about 15 minutes to provision, 20 minutes for the images, 1 hour for steps 5 to 19, up to 3 hours for steps 20 to 23, 1 hour for step 24, and 1 hour for the S3 phase.
-- **Pod deletion and the shared volume.** A pod delete under a Deployment starts the replacement while the old pod drains. Step 15 records whether two FerrosaDB processes ran on one data directory. If they did, it is a kit defect for this patch, not a test artifact.
+- **Pod deletion and the shared volume.** Each db host runs a single-replica StatefulSet, so a deleted pod's replacement is created only after the old pod is gone. Step 15 checks that with a 2-second watch of the ordinal-1 pods (no line with two pods, no new UID before the last old UID) and the new pod's creation time against the last watch line that shows the old pod, both on control0's clock; two FerrosaDB pods for one ordinal at any time is a kit defect for this patch.
 - **`FERROSA_READY_TIMEOUT_SECONDS`** is a test knob of the start script, read from the environment. Users do not set it.
 - **Reporting.** Render the FerrosaDB dashboard to `docs/images/` during step 24, and the Pyroscope flame graph of the FerrosaDB pods during step 21. Report the step 24 throughput and p99 latency under Performance Results.

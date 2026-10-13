@@ -5,6 +5,14 @@
     "SPEC_FLOW_DEVELOPER_AGENT": "kotlin-dev",
     "SPEC_FLOW_REFACTOR_BREAKER": "ask"
   },
+ "permissions": {
+    "allow": [
+      "Bash(easy-db-lab:*)",
+      "Bash(bin/easy-db-lab:*)",
+      "Bash(./bin/easy-db-lab:*)",
+      "Bash(ssh control*)"
+    ]
+  },
   "enabledPlugins": {
     "cassandra-expert@rustyrazorblade-plugins": true,
     "easy-db-lab@rustyrazorblade-plugins": true,

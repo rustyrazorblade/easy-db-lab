@@ -271,7 +271,7 @@ The PID recorded in `.socks5-proxy-state` MUST be the script's. The CLI MUST ver
 
 The generated `<workspace>/sshConfig` MUST put every cluster-wide option (user, identity file, host-key settings, keepalives, connect timeout) under one host pattern built from the server types, `Host db* app* control* !*.*`. The `!*.*` excludes any name that contains a dot, including IP addresses, because OpenSSH host patterns have no character classes. Each cluster host MUST keep its own block with its `Hostname` and, under `ssm`, its `ProxyCommand`.
 
-The user's personal `~/.ssh/config` and the system `/etc/ssh/ssh_config` MUST NOT apply to cluster hosts, so no personal option (for example `ControlMaster`, `ControlPersist`, `ProxyJump`, `ProxyCommand`, `ForwardAgent`, or an extra `IdentityFile`) can reach a cluster host or the SOCKS tunnel. Every other host MUST resolve exactly as it would without `-F`: the file MUST include the personal config and then the system config only for names that are not cluster hosts.
+The user's personal `~/.ssh/config` and the system `/etc/ssh/ssh_config` MUST NOT apply to cluster hosts, so no personal option (for example `ControlMaster`, `ControlPersist`, `ProxyJump`, `ProxyCommand`, `ForwardAgent`, or an extra `IdentityFile`) can reach a cluster host or the SOCKS tunnel. A cluster host is any name the cluster pattern matches: every dot-free name that starts with a server-type prefix (for example `db0`, but also `appserver` or `dbprod`), because the workspace wrappers are for reaching the cluster, not other hosts (owner decision). Every other host MUST resolve exactly as it would without `-F`: the file MUST include the personal config and then the system config only for names that are not cluster hosts.
 
 #### Scenario: Another host resolves as without the workspace sshConfig
 
@@ -283,6 +283,12 @@ The user's personal `~/.ssh/config` and the system `/etc/ssh/ssh_config` MUST NO
 - **WHEN** `ssh -F <workspace>/sshConfig -G` resolves `db0`, `app0`, or `control0`
 - **THEN** each gets the cluster user, identity file, host-key settings, keepalives, connect timeout, and its own `Hostname`
 - **AND** under `ssm`, `control0` gets its `ProxyCommand`
+
+#### Scenario: A dot-free name with a cluster prefix counts as a cluster host
+
+- **WHEN** `ssh -F <workspace>/sshConfig -G` resolves `appserver`
+- **THEN** it gets the cluster user and identity file
+- **AND** it gets none of the personal or system settings
 
 #### Scenario: Personal settings never reach cluster hosts
 

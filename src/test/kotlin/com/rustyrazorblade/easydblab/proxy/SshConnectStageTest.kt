@@ -82,6 +82,13 @@ class SshConnectStageTest {
     }
 
     @Test
+    fun `a wait the wall clock stepped back on is reported as no wait, never a negative one`() {
+        val sentence = SshConnectStage.Connecting("54.1.2.3", 22).failureSentence("control0", Duration.ofMillis(-2500))
+
+        assertThat(sentence).isEqualTo("ssh could not connect to control0 (54.1.2.3) port 22 within 0s.")
+    }
+
+    @Test
     fun `a proxy command names the host and the wait`() {
         val sentence = SshConnectStage.ConnectingThroughProxyCommand.failureSentence("control0", Duration.ofSeconds(30))
 

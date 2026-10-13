@@ -203,9 +203,10 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
   (`Constants.Ssm.TERMINATE_SESSION_TIMEOUT_SECONDS`), with 6s per SDK attempt.
 - The route also supplies the SOCKS tunnel's verification budget (`SshRoute.tunnelVerifyAttempts`,
   read in `ProxyModule`): about 30s under `ssm`, about 5s under `direct`. It also supplies
-  `SshRoute.tunnelConnectFailureHint`, the sentence a tunnel failure adds when `ssh` never
-  connected (`SshConnectStage`): under `direct`, the security group's SSH rule for the public IP
-  recorded at `up`; none under `ssm`.
+  `SshRoute.tunnelConnectFailureHint(sshOpenToAll)`, the sentence a tunnel failure adds when
+  `ssh` never connected (`SshConnectStage`): under `direct`, the security group's SSH rule for the
+  public IP recorded at `up`, unless the cluster is `init --open`; none under `ssm`. `ProxyModule`
+  reads `open` from the cluster state when the failure is built, not at Koin start.
 - `Host.instanceId` is required under `ssm`. Any new place that builds a `Host` must populate it
   (`ClusterHost.toHost()` does).
 

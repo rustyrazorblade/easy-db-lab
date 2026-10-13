@@ -14,8 +14,12 @@ private val SSH_PROXY_COMMAND = Regex("""^debug1: Executing proxy command:""")
  */
 private val SSH_CONNECTED = Regex("""^debug1: (Connection established\.|Remote protocol version )""")
 
-/** [waited] in seconds, rounded up, so a part of a second is never reported as no wait. */
-private fun wholeSeconds(waited: Duration): Long = if (waited.toNanosPart() == 0) waited.toSeconds() else waited.toSeconds() + 1
+/**
+ * [waited] in seconds, rounded up, so a part of a second is never reported as no wait. A negative
+ * wait (the wall clock stepped back while the CLI waited) counts as none.
+ */
+private fun wholeSeconds(waited: Duration): Long =
+    waited.coerceAtLeast(Duration.ZERO).let { if (it.toNanosPart() == 0) it.toSeconds() else it.toSeconds() + 1 }
 
 /**
  * How far one `ssh -v` run got toward its server, read from its transcript.

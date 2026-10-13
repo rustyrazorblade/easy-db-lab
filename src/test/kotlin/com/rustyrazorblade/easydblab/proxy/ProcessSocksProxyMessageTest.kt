@@ -29,9 +29,9 @@ class ProcessSocksProxyMessageTest {
     private val unusedProbe = TunnelReachabilityProbe { _, _, _ -> false }
 
     private fun service(connectFailureHint: String? = null) =
-        ProcessSocksProxyService(Context.forCli(tempDir), unusedProbe, EventBus(), connectFailureHint = connectFailureHint)
+        ProcessSocksProxyService(Context.forCli(tempDir), unusedProbe, EventBus(), connectFailureHint = { connectFailureHint })
 
-    private val directHint = DirectSshRoute(sshPort = 22).tunnelConnectFailureHint
+    private val directHint = DirectSshRoute(sshPort = 22).tunnelConnectFailureHint(sshOpenToAll = false)
 
     private fun writeTranscript(vararg lines: String): File =
         File(tempDir, "socks5-proxy.log").apply { writeText(lines.joinToString("\n")) }
@@ -94,8 +94,9 @@ class ProcessSocksProxyMessageTest {
 
         assertThat(message)
             .contains("ssh could not connect to control0 (54.1.2.3) port 22 within 15s.")
-            .contains("security group allows SSH only from the public IP recorded when `up` ran")
-            .contains("See ${logFile.absolutePath}")
+            .contains(
+                "security group allows SSH only from the public IP recorded when `up` ran, so a changed public IP is the likely cause.",
+            ).contains("See ${logFile.absolutePath}")
             .contains("ssh reported:\n2026-10-13T03:44:03Z easy-db-lab: launching")
             .doesNotContain("ssh exited with code")
             .doesNotContain("debug1:")

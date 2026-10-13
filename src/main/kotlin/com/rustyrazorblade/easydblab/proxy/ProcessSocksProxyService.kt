@@ -101,7 +101,8 @@ private fun utcSeconds(instant: Instant): String = DateTimeFormatter.ISO_INSTANT
  * @param verifyAttempts how many times a fresh tunnel is probed before it counts as failed; the
  *   SSH route supplies it, because a tunnel over SSM Session Manager takes far longer to come up
  * @param connectFailureHint the SSH route's sentence on why ssh may never connect, added to the
- *   failure of a fresh tunnel whose ssh was still connecting when the verify window ended
+ *   failure of a fresh tunnel whose ssh was still connecting when the verify window ended; it is
+ *   asked for when that failure is built, so it reflects the cluster state at that time
  */
 class ProcessSocksProxyService(
     private val context: Context,
@@ -115,7 +116,7 @@ class ProcessSocksProxyService(
     private val tunnelProcesses: TunnelProcessControl = TunnelProcessControl(),
     private val clock: Clock = Clock.systemUTC(),
     private val toolWrappers: ToolWrapperInstaller = ToolWrapperInstaller(),
-    private val connectFailureHint: String? = null,
+    private val connectFailureHint: () -> String? = { null },
 ) : SocksProxyService {
     companion object {
         private const val VERIFY_DELAY_MS = 500L
@@ -721,7 +722,7 @@ class ProcessSocksProxyService(
             append("SOCKS5 proxy failed to establish a working tunnel$exitInfo. ")
             stalledConnect?.let { sentence ->
                 append("$sentence ")
-                connectFailureHint?.let { append("$it ") }
+                connectFailureHint()?.let { append("$it ") }
             }
             append("See ${logFile.absolutePath} for the full ssh -v transcript.")
             if (errors.isNotEmpty()) {

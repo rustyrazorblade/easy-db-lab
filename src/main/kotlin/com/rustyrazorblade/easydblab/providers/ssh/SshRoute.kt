@@ -30,10 +30,10 @@ interface SshRoute : AutoCloseable {
 
     /**
      * The sentence a SOCKS tunnel failure adds when ssh over this route never connected, naming the
-     * likely cause; null when the route has none to name.
+     * likely cause; null when the route has none to name. [sshOpenToAll] is whether the cluster's
+     * security group admits SSH from every address (`init --open`).
      */
-    val tunnelConnectFailureHint: String?
-        get() = null
+    fun tunnelConnectFailureHint(sshOpenToAll: Boolean): String? = null
 
     /**
      * How long the in-process client waits for key exchange and authentication over this route,
@@ -66,7 +66,15 @@ class DirectSshRoute(
 
     override val tunnelVerifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS
 
-    /** ssh dials the node's port 22 from this machine, which the cluster's security group admits from one address only. */
-    override val tunnelConnectFailureHint: String =
-        "The cluster's security group allows SSH only from the public IP recorded when `up` ran, so a changed public IP causes this."
+    /**
+     * ssh dials the node's port 22 from this machine. Unless the cluster is open, the security group
+     * admits that only from the public IP recorded at `up`.
+     */
+    override fun tunnelConnectFailureHint(sshOpenToAll: Boolean): String? =
+        when {
+            sshOpenToAll -> null
+            else ->
+                "The cluster's security group allows SSH only from the public IP recorded when `up` ran, " +
+                    "so a changed public IP is the likely cause."
+        }
 }

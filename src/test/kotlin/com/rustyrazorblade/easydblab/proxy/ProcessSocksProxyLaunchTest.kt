@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
@@ -451,6 +452,27 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
                 .verifyTunnelReachable(aliveProcess(), port = 52000, gatewayHost = testHost, logFile = log)
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("ssh could not connect to control0 (54.1.2.3) port 22 within 14s.")
+    }
+
+    @Test
+    fun `verify loop reports a dial that ended in an ssh exit by its exit code, not as a stalled connect`() {
+        // ssh dialed, was alive for the first checks, then gave up with 255: its own error explains it.
+        val log = logFile().apply { parentFile.mkdirs() }
+        log.writeText("debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.\n")
+        val process =
+            mock<Process> {
+                on { isAlive } doReturn true doReturn true doReturn false
+                on { exitValue() } doReturn 255
+                on { pid() } doReturn FAKE_PID
+            }
+
+        assertThatThrownBy {
+            service(connectFailureHint = DirectSshRoute(sshPort = 22).tunnelConnectFailureHint(sshOpenToAll = false))
+                .verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = log)
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("ssh exited with code 255")
+            .hasMessageNotContaining("could not connect")
+            .hasMessageNotContaining("security group")
     }
 
     @Test

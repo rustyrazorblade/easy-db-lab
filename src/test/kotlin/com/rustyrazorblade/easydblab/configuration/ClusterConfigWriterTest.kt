@@ -17,6 +17,11 @@ import java.io.StringWriter
  * cluster lifetimes.
  */
 internal class ClusterConfigWriterTest {
+    private companion object {
+        /** The closing lines that include the personal and system configs. */
+        const val LAST_LINES = 6
+    }
+
     private fun renderSshConfig(
         hosts: Map<ServerType, List<ClusterHost>>,
         proxyCommands: Map<String, String> = emptyMap(),
@@ -76,11 +81,18 @@ internal class ClusterConfigWriterTest {
     }
 
     @Test
-    fun `the config ends by including the developer's own ssh config for every host`() {
+    fun `the config ends by including the personal and system configs for names that are not cluster hosts`() {
         val config = renderSshConfig(mapOf(ServerType.Control to listOf(control)))
 
-        // Host * first: an Include inside the last host's block would apply to that host only.
-        assertThat(config.trimEnd().lines().takeLast(2)).containsExactly("Host *", "Include ~/.ssh/config")
+        // Two disjoint blocks: a name without a cluster prefix, and a dotted name with one.
+        assertThat(config.trimEnd().lines().takeLast(LAST_LINES)).containsExactly(
+            "Match !originalhost db*,app*,control*",
+            " Include ~/.ssh/config",
+            " Include /etc/ssh/ssh_config",
+            "Match originalhost db*.*,app*.*,control*.*",
+            " Include ~/.ssh/config",
+            " Include /etc/ssh/ssh_config",
+        )
     }
 
     @Test

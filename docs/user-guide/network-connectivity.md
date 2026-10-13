@@ -297,11 +297,18 @@ node the cluster grows to, and `!*.*`, which keeps out every name with a dot, su
 `User ubuntu`, the cluster's `IdentityFile`, the keepalives and `ConnectTimeout`. Each node then has
 its own `Host` block with its address and, under the `ssm` transport, its `ProxyCommand`.
 
-The file ends with `Host *` and `Include ~/.ssh/config`. Any other host, such as `github.com` for a
-`git` that runs through the workspace's `ssh` wrapper, a dotted name like `db.example.com`, or an IP
-address, resolves exactly as it would without `-F`: from your own `~/.ssh/config`. `ssh` keeps the first value it reads for an
-option, so your own config can add options for a cluster node but cannot change the ones the
-cluster block sets. To see what applies to a host, run `ssh -F <workspace>/sshConfig -G <host>`.
+Cluster hosts never read your personal `~/.ssh/config` or the system `/etc/ssh/ssh_config`, so no
+personal setting (such as `ControlMaster`, `ProxyJump`, `ForwardAgent` or another `IdentityFile`)
+reaches a node or the SOCKS tunnel. Every other host, such as `github.com` for a `git` that runs
+through the workspace's `ssh` wrapper, a dotted name like `db.example.com`, or an IP address, resolves
+exactly as it would without `-F`. The file ends with two `Match originalhost` blocks that include
+your personal config and then the system config for those names only. To see what applies to a
+host, run `ssh -F <workspace>/sshConfig -G <host>`.
+
+Because the patterns are wildcards, a name of your own with no dot that starts with `db`, `app` or
+`control`, such as a personal alias `dbprod`, counts as a cluster host through the workspace
+wrappers: it gets the cluster's SSH settings, and not your own settings for it. Call such a host by
+its dotted name, or with the real `ssh` (for example `/usr/bin/ssh dbprod`).
 
 ### Host Key Verification
 

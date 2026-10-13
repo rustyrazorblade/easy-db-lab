@@ -29,6 +29,13 @@ interface SshRoute : AutoCloseable {
     val tunnelVerifyAttempts: Int
 
     /**
+     * The sentence a SOCKS tunnel failure adds when ssh over this route never connected, naming the
+     * likely cause; null when the route has none to name.
+     */
+    val tunnelConnectFailureHint: String?
+        get() = null
+
+    /**
      * How long the in-process client waits for key exchange and authentication over this route,
      * or null for MINA's own default (120s).
      */
@@ -58,4 +65,8 @@ class DirectSshRoute(
     override fun proxyCommand(host: Host): String? = null
 
     override val tunnelVerifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS
+
+    /** ssh dials the node's port 22 from this machine, which the cluster's security group admits from one address only. */
+    override val tunnelConnectFailureHint: String =
+        "The cluster's security group allows SSH only from the public IP recorded when `up` ran, so a changed public IP causes this."
 }

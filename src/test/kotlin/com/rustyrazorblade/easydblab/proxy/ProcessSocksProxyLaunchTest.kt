@@ -416,7 +416,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         val probe = mock<TunnelReachabilityProbe>()
         whenever(probe.isReachable(any<Int>(), any<String>(), any<Int>())).thenReturn(false, false, true)
 
-        service(probe = probe).verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
+        service(probe = probe).verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = logFile())
 
         verify(probe, times(3)).isReachable(52000, "10.0.1.5", SSH_PORT)
     }
@@ -430,10 +430,22 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         whenever(probe.isReachable(any<Int>(), any<String>(), any<Int>())).thenReturn(false)
 
         assertThatThrownBy {
-            service(probe = probe).verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
+            service(probe = probe).verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("SOCKS5 proxy")
         verify(probe, times(Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS)).isReachable(52000, "10.0.1.5", SSH_PORT)
+    }
+
+    @Test
+    fun `verify loop timeout names the gateway alias when ssh is still connecting`() {
+        // The address comes from ssh's own dial line; the name must be the gateway's alias.
+        val log = logFile().apply { parentFile.mkdirs() }
+        log.writeText("debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.\n")
+
+        assertThatThrownBy {
+            service().verifyTunnelReachable(aliveProcess(), port = 52000, gatewayHost = testHost, logFile = log)
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("ssh could not connect to control0 (54.1.2.3) port 22 within 1s.")
     }
 
     @Test
@@ -445,7 +457,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
 
         assertThatThrownBy {
             service(probe = probe, verifyAttempts = Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)
-                .verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
+                .verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
 
         verify(probe, times(Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)).isReachable(52000, "10.0.1.5", SSH_PORT)
@@ -459,7 +471,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         val probe = mock<TunnelReachabilityProbe>()
 
         assertThatThrownBy {
-            service(probe = probe).verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
+            service(probe = probe).verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("ssh exited with code 255")
         verify(probe, never()).isReachable(any<Int>(), any<String>(), any<Int>())

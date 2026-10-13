@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.catchThrowable
@@ -16,6 +17,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.stream.Stream
@@ -416,7 +418,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         val probe = mock<TunnelReachabilityProbe>()
         whenever(probe.isReachable(any<Int>(), any<String>(), any<Int>())).thenReturn(false, false, true)
 
-        service(probe = probe).verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
+        service(probe = probe).verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = logFile())
 
         verify(probe, times(3)).isReachable(52000, "10.0.1.5", SSH_PORT)
     }
@@ -430,10 +432,65 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         whenever(probe.isReachable(any<Int>(), any<String>(), any<Int>())).thenReturn(false)
 
         assertThatThrownBy {
-            service(probe = probe).verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
+            service(probe = probe).verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("SOCKS5 proxy")
         verify(probe, times(Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS)).isReachable(52000, "10.0.1.5", SSH_PORT)
+    }
+
+    @Test
+    fun `verify loop timeout names the gateway alias and the time it really waited`() {
+        // The address comes from ssh's own dial line; the name must be the gateway's alias. Each
+        // probe runs to its own timeout, so the wait is what the clock measured, not attempts x delay.
+        val log = logFile().apply { parentFile.mkdirs() }
+        log.writeText("debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.\n")
+        val clock = ManualClock()
+        val slowProbe = TunnelReachabilityProbe { _, _, _ -> false.also { clock.advance(Duration.ofMillis(1_400)) } }
+
+        assertThatThrownBy {
+            service(probe = slowProbe, clock = clock)
+                .verifyTunnelReachable(aliveProcess(), port = 52000, gatewayHost = testHost, logFile = log)
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("ssh could not connect to control0 (54.1.2.3) port 22 within 14s.")
+    }
+
+    @Test
+    fun `verify loop reports a dial that ended in an ssh exit by its exit code, not as a stalled connect`() {
+        // ssh dialed, was alive for the first checks, then gave up with 255: its own error explains it.
+        val log = logFile().apply { parentFile.mkdirs() }
+        log.writeText("debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.\n")
+        val process =
+            mock<Process> {
+                on { isAlive } doReturn true doReturn true doReturn false
+                on { exitValue() } doReturn 255
+                on { pid() } doReturn FAKE_PID
+            }
+
+        assertThatThrownBy {
+            service(connectFailureHint = { DirectSshRoute(sshPort = 22).tunnelConnectFailureHint(sshOpenToAll = false) })
+                .verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = log)
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("ssh exited with code 255")
+            .hasMessageNotContaining("could not connect")
+            .hasMessageNotContaining("security group")
+    }
+
+    @Test
+    fun `a hint that cannot be looked up neither replaces the tunnel failure nor escapes the verify loop`() {
+        // The loop must still throw IllegalStateException, the one the launch catches to stop the
+        // script and its still-dialing ssh; a hint lookup that throws must not get past it.
+        val log = logFile().apply { parentFile.mkdirs() }
+        log.writeText("debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.\n")
+        val brokenHint: () -> String? = { throw java.io.UncheckedIOException(java.io.IOException("state.json is corrupt")) }
+
+        assertThatThrownBy {
+            service(
+                connectFailureHint = brokenHint,
+            ).verifyTunnelReachable(aliveProcess(), port = 52000, gatewayHost = testHost, logFile = log)
+        }.isExactlyInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("ssh could not connect to control0 (54.1.2.3) port 22 within")
+            .hasMessageNotContaining("security group")
+            .hasMessageNotContaining("corrupt")
     }
 
     @Test
@@ -445,7 +502,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
 
         assertThatThrownBy {
             service(probe = probe, verifyAttempts = Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)
-                .verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
+                .verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
 
         verify(probe, times(Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)).isReachable(52000, "10.0.1.5", SSH_PORT)
@@ -459,7 +516,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         val probe = mock<TunnelReachabilityProbe>()
 
         assertThatThrownBy {
-            service(probe = probe).verifyTunnelReachable(process, port = 52000, targetPrivateIp = "10.0.1.5", logFile = logFile())
+            service(probe = probe).verifyTunnelReachable(process, port = 52000, gatewayHost = testHost, logFile = logFile())
         }.isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("ssh exited with code 255")
         verify(probe, never()).isReachable(any<Int>(), any<String>(), any<Int>())

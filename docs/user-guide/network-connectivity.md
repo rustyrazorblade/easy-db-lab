@@ -338,6 +338,8 @@ attempt and is the fastest way to find the real cause (a host-key mismatch, a se
 blocking port 22, the control node not yet accepting SSH, and so on). The error quotes only the
 lines of the failed attempt.
 
+If `ssh` is still trying to connect when the CLI stops waiting, the error says so: it names the control node, the address and port that `ssh` was dialing (on the `ssm` transport, that it was connecting through its ProxyCommand), and the wait. On the `direct` transport, when the cluster was not created with `init --open`, the most likely cause is a changed public IP. The cluster's security group then allows SSH only from the public IP that was recorded when `up` ran, so after your public IP changes (a new network, a VPN, a new DHCP lease), `ssh` waits until its connect timeout and then fails.
+
 The log keeps the history of every tunnel in the workspace; nothing truncates it. Each launch adds
 a header line with a UTC timestamp, the port and the control node, and the tunnel script adds a
 timestamped line before each `ssh` run and each time `ssh` exits. Look for the last header to find

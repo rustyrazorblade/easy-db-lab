@@ -2,9 +2,14 @@ package com.rustyrazorblade.easydblab.proxy
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.providers.ssh.SshRoute
 import com.rustyrazorblade.easydblab.services.ResourceManager
 import org.koin.dsl.module
+
+/** Whether the workspace's cluster was created with `init --open`, so its SSH rule admits every address. */
+private fun isSshOpenToAll(clusterStateManager: ClusterStateManager): Boolean =
+    clusterStateManager.exists() && clusterStateManager.load().initConfig?.open == true
 
 /**
  * Koin module for proxy-related dependency injection.
@@ -31,7 +36,17 @@ val proxyModule =
         // Uses ProcessSocksProxyService which launches a detached OS process that
         // persists across JVM restarts and is reused via .socks5-proxy-state.
         single<SocksProxyService> {
-            ProcessSocksProxyService(get(), get(), get(), verifyAttempts = get<SshRoute>().tunnelVerifyAttempts, envFile = get())
+            val route = get<SshRoute>()
+            val clusterStateManager = get<ClusterStateManager>()
+            ProcessSocksProxyService(
+                get(),
+                get(),
+                get(),
+                verifyAttempts = route.tunnelVerifyAttempts,
+                envFile = get(),
+                // Read when a failure is reported, so it reflects the workspace's state at that time.
+                connectFailureHint = { route.tunnelConnectFailureHint(sshOpenToAll = isSshOpenToAll(clusterStateManager)) },
+            )
         }
 
         // The workspace's sourceable proxy state for the shell-side tool wrappers and env.sh.

@@ -16,6 +16,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.stream.Stream
@@ -437,15 +438,19 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
     }
 
     @Test
-    fun `verify loop timeout names the gateway alias when ssh is still connecting`() {
-        // The address comes from ssh's own dial line; the name must be the gateway's alias.
+    fun `verify loop timeout names the gateway alias and the time it really waited`() {
+        // The address comes from ssh's own dial line; the name must be the gateway's alias. Each
+        // probe runs to its own timeout, so the wait is what the clock measured, not attempts x delay.
         val log = logFile().apply { parentFile.mkdirs() }
         log.writeText("debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.\n")
+        val clock = ManualClock()
+        val slowProbe = TunnelReachabilityProbe { _, _, _ -> false.also { clock.advance(Duration.ofMillis(1_400)) } }
 
         assertThatThrownBy {
-            service().verifyTunnelReachable(aliveProcess(), port = 52000, gatewayHost = testHost, logFile = log)
+            service(probe = slowProbe, clock = clock)
+                .verifyTunnelReachable(aliveProcess(), port = 52000, gatewayHost = testHost, logFile = log)
         }.isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("ssh could not connect to control0 (54.1.2.3) port 22 within 1s.")
+            .hasMessageContaining("ssh could not connect to control0 (54.1.2.3) port 22 within 14s.")
     }
 
     @Test

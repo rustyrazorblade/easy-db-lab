@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.proxy
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
@@ -29,17 +28,8 @@ class ProcessSocksProxyMessageTest {
     /** Never invoked here — [ProcessSocksProxyService.verificationFailureMessage] does no probing. */
     private val unusedProbe = TunnelReachabilityProbe { _, _, _ -> false }
 
-    private fun service(
-        verifyAttempts: Int = Constants.Proxy.DIRECT_TUNNEL_VERIFY_ATTEMPTS,
-        connectFailureHint: String? = null,
-    ) = ProcessSocksProxyService(
-        Context.forCli(tempDir),
-        unusedProbe,
-        EventBus(),
-        verifyDelay = Duration.ofMillis(VERIFY_DELAY_MS),
-        verifyAttempts = verifyAttempts,
-        connectFailureHint = connectFailureHint,
-    )
+    private fun service(connectFailureHint: String? = null) =
+        ProcessSocksProxyService(Context.forCli(tempDir), unusedProbe, EventBus(), connectFailureHint = connectFailureHint)
 
     private val directHint = DirectSshRoute(sshPort = 22).tunnelConnectFailureHint
 
@@ -97,14 +87,13 @@ class ProcessSocksProxyMessageTest {
                 "debug1: Connecting to 54.1.2.3 [54.1.2.3] port 22.",
             )
 
+        // Ten direct attempts, each a probe of up to a second and a 500ms pause, took 14.2s.
         val message =
-            service(
-                connectFailureHint = directHint,
-            ).verificationFailureMessage(logFile, exitCode = null, gatewayAlias = "control0")
+            service(connectFailureHint = directHint)
+                .verificationFailureMessage(logFile, exitCode = null, gatewayAlias = "control0", stalledFor = Duration.ofMillis(14_200))
 
-        // The 10 direct attempts, 500ms apart, are the 5s the CLI waited.
         assertThat(message)
-            .contains("ssh could not connect to control0 (54.1.2.3) port 22 within 5s.")
+            .contains("ssh could not connect to control0 (54.1.2.3) port 22 within 15s.")
             .contains("security group allows SSH only from the public IP recorded when `up` ran")
             .contains("See ${logFile.absolutePath}")
             .contains("ssh reported:\n2026-10-13T03:44:03Z easy-db-lab: launching")
@@ -121,11 +110,10 @@ class ProcessSocksProxyMessageTest {
             )
 
         val message =
-            service(verifyAttempts = Constants.Proxy.SSM_TUNNEL_VERIFY_ATTEMPTS)
-                .verificationFailureMessage(logFile, exitCode = null, gatewayAlias = "control0")
+            service().verificationFailureMessage(logFile, exitCode = null, gatewayAlias = "control0", stalledFor = Duration.ofSeconds(31))
 
         assertThat(message)
-            .contains("ssh could not connect to control0 through its ProxyCommand within 30s.")
+            .contains("ssh could not connect to control0 through its ProxyCommand within 31s.")
             .doesNotContain("security group")
     }
 
@@ -159,18 +147,12 @@ class ProcessSocksProxyMessageTest {
             )
 
         val message =
-            service(
-                connectFailureHint = directHint,
-            ).verificationFailureMessage(logFile, exitCode = null, gatewayAlias = "control0")
+            service(connectFailureHint = directHint)
+                .verificationFailureMessage(logFile, exitCode = null, gatewayAlias = "control0", stalledFor = Duration.ofSeconds(15))
 
         assertThat(message)
             .startsWith("SOCKS5 proxy failed to establish a working tunnel. See ${logFile.absolutePath}")
             .doesNotContain("could not connect")
             .doesNotContain("security group")
-    }
-
-    private companion object {
-        /** The production delay between verify attempts, so the reported wait is the real window. */
-        const val VERIFY_DELAY_MS = 500L
     }
 }

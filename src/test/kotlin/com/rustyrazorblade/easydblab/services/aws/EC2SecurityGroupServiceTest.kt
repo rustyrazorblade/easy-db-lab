@@ -22,6 +22,7 @@ import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsResponse
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.IpPermission
 import software.amazon.awssdk.services.ec2.model.IpRange
+import software.amazon.awssdk.services.ec2.model.RevokeSecurityGroupIngressRequest
 import software.amazon.awssdk.services.ec2.model.SecurityGroup
 
 /**
@@ -46,6 +47,45 @@ internal class EC2SecurityGroupServiceTest {
         vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
 
         verify(mockEc2Client).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress retries a describe that fails with a server error`() {
+        val securityGroup = SecurityGroup.builder().groupId("sg-12345").build()
+        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>()))
+            .thenThrow(Ec2Exception.builder().statusCode(503).build())
+            .thenReturn(DescribeSecurityGroupsResponse.builder().securityGroups(securityGroup).build())
+
+        vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "203.0.113.7/32", "tcp")
+
+        verify(mockEc2Client).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
+    }
+
+    @Test
+    fun `revokeSecurityGroupRules retries a describe that fails with a server error`() {
+        val sshRule =
+            IpPermission
+                .builder()
+                .ipProtocol("tcp")
+                .fromPort(22)
+                .toPort(22)
+                .ipRanges(IpRange.builder().cidrIp("203.0.113.7/32").build())
+                .build()
+        val securityGroup =
+            SecurityGroup
+                .builder()
+                .groupId("sg-12345")
+                .ipPermissions(sshRule)
+                .build()
+        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>()))
+            .thenThrow(Ec2Exception.builder().statusCode(503).build())
+            .thenReturn(DescribeSecurityGroupsResponse.builder().securityGroups(securityGroup).build())
+
+        vpcService.revokeSecurityGroupRules("sg-12345")
+
+        val request = argumentCaptor<RevokeSecurityGroupIngressRequest>()
+        verify(mockEc2Client).revokeSecurityGroupIngress(request.capture())
+        assertThat(request.firstValue.ipPermissions()).containsExactly(sshRule)
     }
 
     @Test

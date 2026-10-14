@@ -26,6 +26,7 @@ import software.amazon.awssdk.services.ec2.model.IpPermission
 import software.amazon.awssdk.services.ec2.model.IpRange
 import software.amazon.awssdk.services.ec2.model.RevokeSecurityGroupEgressRequest
 import software.amazon.awssdk.services.ec2.model.RevokeSecurityGroupIngressRequest
+import software.amazon.awssdk.services.ec2.model.SecurityGroup
 
 /**
  * Security group management with the AWS EC2 SDK: find or create, ingress rules, describe,
@@ -104,20 +105,8 @@ class EC2SecurityGroupService(
         protocol: String,
     ) {
         // Check if rule already exists
-        val describeRequest =
-            DescribeSecurityGroupsRequest
-                .builder()
-                .groupIds(securityGroupId)
-                .build()
-
-        val securityGroups = ec2Client.describeSecurityGroups(describeRequest).securityGroups()
-        if (securityGroups.isEmpty()) {
-            log.error { "Security group not found: $securityGroupId" }
-            throw IllegalArgumentException("Security group not found: $securityGroupId")
-        }
-
         val existingRule =
-            securityGroups[0].ipPermissions().any { permission ->
+            describeGroup(securityGroupId).ipPermissions().any { permission ->
                 permission.fromPort() == fromPort &&
                     permission.toPort() == toPort &&
                     permission.ipProtocol() == protocol &&
@@ -173,18 +162,7 @@ class EC2SecurityGroupService(
     override fun revokeSecurityGroupRules(securityGroupId: SecurityGroupId) {
         log.info { "Revoking all rules from security group: $securityGroupId" }
 
-        val describeRequest =
-            DescribeSecurityGroupsRequest
-                .builder()
-                .groupIds(securityGroupId)
-                .build()
-
-        val securityGroups = ec2Client.describeSecurityGroups(describeRequest).securityGroups()
-        if (securityGroups.isEmpty()) {
-            return
-        }
-
-        val sg = securityGroups[0]
+        val sg = describeGroup(securityGroupId)
 
         // Revoke all ingress rules
         if (sg.ipPermissions().isNotEmpty()) {
@@ -238,20 +216,7 @@ class EC2SecurityGroupService(
     override fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails {
         log.debug { "Describing security group: $securityGroupId" }
 
-        val request =
-            DescribeSecurityGroupsRequest
-                .builder()
-                .groupIds(securityGroupId)
-                .build()
-
-        val response =
-            withAwsRetry("describe-security-group") {
-                ec2Client.describeSecurityGroups(request)
-            }
-
-        val sg =
-            response.securityGroups().firstOrNull()
-                ?: error("Security group $securityGroupId not found")
+        val sg = describeGroup(securityGroupId)
 
         val inboundRules =
             sg.ipPermissions().map { permission ->
@@ -309,8 +274,25 @@ class EC2SecurityGroupService(
                         .build(),
                 ).build()
 
-        val sgs = ec2Client.describeSecurityGroups(describeRequest).securityGroups()
+        val sgs = withAwsRetry("find-security-group") { ec2Client.describeSecurityGroups(describeRequest) }.securityGroups()
         return sgs.firstOrNull()?.groupId()
+    }
+
+    /**
+     * Describes one security group by ID.  EC2 answers `InvalidGroup.NotFound` for an ID it does
+     * not know, so an empty answer is not a real case; it still fails with a message naming the ID.
+     */
+    private fun describeGroup(securityGroupId: SecurityGroupId): SecurityGroup {
+        val request =
+            DescribeSecurityGroupsRequest
+                .builder()
+                .groupIds(securityGroupId)
+                .build()
+
+        return withAwsRetry("describe-security-group") { ec2Client.describeSecurityGroups(request) }
+            .securityGroups()
+            .firstOrNull()
+            ?: error("Security group $securityGroupId not found")
     }
 
     private fun formatProtocol(protocol: String): String =

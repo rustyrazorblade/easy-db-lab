@@ -253,6 +253,33 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
+    fun `install --help shows each declared default, and none for an arg without one or a boolean`() {
+        val cfg =
+            config(
+                arg("--suffix", "SUFFIX", default = "-prod").copy(description = "Name suffix"),
+                arg("--image", "IMAGE").copy(description = "Image to run"),
+                arg("--tls", "TLS", KitArgSpec.ArgType.BOOLEAN).copy(description = "Use TLS"),
+            )
+
+        val help = factory.build(cfg, directorySource).usageMessage.lines()
+
+        assertThat(help.option("--suffix")).contains("Name suffix (default: -prod)")
+        assertThat(help.option("--image")).doesNotContain("(default:")
+        assertThat(help.option("--tls")).doesNotContain("(default:")
+    }
+
+    /**
+     * The usage help that describes [flag]: its option line and the continuation lines picocli
+     * wraps a long description onto, joined with spaces. The synopsis, which also names the flag,
+     * is not included.
+     */
+    private fun List<String>.option(flag: String): String {
+        val start = indexOfFirst { it.trimStart().startsWith(flag) }
+        val block = drop(start).take(1) + drop(start + 1).takeWhile { it.isNotBlank() && !it.trimStart().startsWith("-") }
+        return block.joinToString(" ") { it.trim() }
+    }
+
+    @Test
     fun `an explicit empty install arg overrides its default`() {
         val cfg = config(arg("--suffix", "SUFFIX", default = "-prod"))
 

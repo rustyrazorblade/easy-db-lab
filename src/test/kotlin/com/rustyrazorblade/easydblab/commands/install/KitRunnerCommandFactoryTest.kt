@@ -538,6 +538,61 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
+    fun `start --help shows each declared default, and none for an arg without one or a boolean`() {
+        writeKitYaml(
+            """
+            name: mydb
+            commands:
+              start:
+                args:
+                  - flag: --storage
+                    variable: STORAGE_MODE
+                    description: Where data lives
+                    default: local
+                  - flag: --image
+                    variable: IMAGE
+                    description: Image to run
+                  - flag: --heap-profile
+                    variable: HEAP_PROFILE
+                    description: Heap profiling
+                    type: boolean
+                  - flag: --env
+                    variable: EXTRA_ENV
+                    description: Extra setting
+                    repeatable: true
+                    default: X=0
+            start:
+              - type: shell
+                script: echo start
+            """.trimIndent() + "\n",
+        )
+
+        val help =
+            factory
+                .buildKitGroup("mydb", kitDir)
+                .subcommands
+                .getValue("start")
+                .usageMessage
+                .lines()
+
+        assertThat(help.option("--storage")).contains("Where data lives (default: local)")
+        assertThat(help.option("--env")).contains("Extra setting (default: X=0)")
+        assertThat(help.option("--image")).doesNotContain("(default:")
+        assertThat(help.option("--heap-profile")).doesNotContain("(default:")
+    }
+
+    /**
+     * The usage help that describes [flag]: its option line and the continuation lines picocli
+     * wraps a long description onto, joined with spaces. The synopsis, which also names the flag,
+     * is not included.
+     */
+    private fun List<String>.option(flag: String): String {
+        val start = indexOfFirst { it.trimStart().startsWith(flag) }
+        val block = drop(start).take(1) + drop(start + 1).takeWhile { it.isNotBlank() && !it.trimStart().startsWith("-") }
+        return block.joinToString(" ") { it.trim() }
+    }
+
+    @Test
     fun `an explicit empty arg overrides its default`() {
         assertThat(startArgValues("- flag: --log-level\n  variable: LOG_LEVEL\n  default: info", "--log-level", ""))
             .containsEntry("LOG_LEVEL", "")

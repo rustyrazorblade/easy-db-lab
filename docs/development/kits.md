@@ -350,6 +350,8 @@ Install args and command args are parsed the same way:
 - An optional arg that is not given and has no default is not set at all; the script sees no
   variable, not the string `null`. Use `${VAR:-}` under `set -u`.
 - A boolean arg is `false` when its flag is not given and `true` when it is.
+- `--help` shows an arg's declared default after its description, as `(default: <value>)`. A
+  boolean flag's implicit `false` is not shown.
 - A string command arg can set `repeatable: true`. The flag can then be given any number of
   times, and the variable holds every value in order, one per line. Read it with
   `while IFS= read -r line; do ...; done <<< "${EXTRA_ENV}"`. A repeatable arg that is not given

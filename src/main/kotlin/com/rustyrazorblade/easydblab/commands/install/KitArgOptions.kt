@@ -29,11 +29,15 @@ internal object KitArgOptions {
         default: String,
         values: MutableMap<String, String>,
     ): OptionSpec {
+        val effectiveDefault = default.ifEmpty { if (arg.type == KitArgSpec.ArgType.BOOLEAN) "false" else "" }
+        // Picocli expands ${...} as a property lookup and returns null for an unknown key,
+        // so only a fully resolved default is handed to it.
+        val resolvedDefault = effectiveDefault.takeIf { it.isNotEmpty() && !it.contains("\${") }
         val builder =
             OptionSpec
                 .builder(arg.flag)
                 .paramLabel(arg.paramLabel)
-                .description(arg.description)
+                .description(helpDescription(arg, resolvedDefault))
         if (arg.repeatable) {
             val binding = RepeatedValues(arg.flag) { joined -> values.record(arg.variable, joined) }
             builder
@@ -53,15 +57,27 @@ internal object KitArgOptions {
                     },
                 )
         }
-        val effectiveDefault = default.ifEmpty { if (arg.type == KitArgSpec.ArgType.BOOLEAN) "false" else "" }
         when {
-            // Picocli expands ${...} as a property lookup and returns null for an unknown key,
-            // so only a fully resolved default is handed to it.
-            effectiveDefault.isNotEmpty() && !effectiveDefault.contains("\${") -> builder.defaultValue(effectiveDefault)
+            resolvedDefault != null -> builder.defaultValue(resolvedDefault)
             effectiveDefault.isEmpty() && arg.required -> builder.required(true)
         }
         return builder.build()
     }
+
+    /**
+     * The `--help` description of [arg]: its own description, then its default in the form the
+     * other commands use, `(default: <value>)`. A boolean flag's implicit `false` is not shown,
+     * and neither is a default that is not resolved yet.
+     */
+    private fun helpDescription(
+        arg: KitArgSpec,
+        resolvedDefault: String?,
+    ): String =
+        if (resolvedDefault == null || arg.type == KitArgSpec.ArgType.BOOLEAN) {
+            arg.description
+        } else {
+            listOf(arg.description, "(default: \${DEFAULT-VALUE})").filter { it.isNotBlank() }.joinToString(" ")
+        }
 
     /**
      * Records [value] for [variable], or removes it when there is no value, so a reparse starts

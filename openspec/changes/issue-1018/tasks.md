@@ -39,6 +39,6 @@
 ## 8. Docs, CLAUDE.md, verification
 
 - [x] 8.1 `docs/reference/commands.md`: `ingress allow` / `ingress revoke`; `docs/user-guide/network-connectivity.md`: the changed-public-IP text names `ingress allow`, and `ingress revoke` for the old IP
-- [ ] 8.2 Update `commands/CLAUDE.md` (`ingress/`, `SshIngressService`), `events/CLAUDE.md` (`Ingress` domain), `services/aws/CLAUDE.md` (`SshIngressService.kt`, `EC2SecurityGroupService.kt`)
+- [x] 8.2 Update `commands/CLAUDE.md` (`ingress/`, `SshIngressService`), `events/CLAUDE.md` (`Ingress` domain), `services/aws/CLAUDE.md` (`SshIngressService.kt`, `EC2SecurityGroupService.kt`)
 - [ ] 8.3 `./gradlew ktlintFormat`, `detekt`, `test`, `integrationTest` pass with no new suppressions
 - [ ] 8.4 Real cluster: `ingress allow` with no value; `allow --cidr` a `/24`; `revoke` it; `revoke` own IP and see SSH fail; `allow` again and see SSH work

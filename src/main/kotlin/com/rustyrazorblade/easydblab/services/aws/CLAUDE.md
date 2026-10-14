@@ -10,7 +10,10 @@ services/aws/
 ├── AwsS3BucketService.kt     # S3 bucket administration (creation, request metrics, policies, tags)
 ├── AWSResourceSetupService.kt # IAM resource setup (roles, instance profiles)
 ├── AwsInfrastructureService.kt # VPC infrastructure creation and teardown orchestration
-├── EC2VpcService.kt           # VPC resource management (implements VpcService)
+├── EC2VpcService.kt           # VPC resource management (implements VpcService; delegates SecurityGroupOperations to EC2SecurityGroupService)
+├── EC2SecurityGroupService.kt # Security groups: find/create, authorize, exact revoke, revoke-all, describe, delete (implements SecurityGroupOperations)
+├── Ec2TagSpecification.kt     # The tag specification both EC2 services put on what they create
+├── SshIngressService.kt       # SSH ingress for ingress allow / revoke: IngressResult, AllowOutcome, RevokeOutcome
 ├── EC2InstanceService.kt      # Instance lifecycle management
 ├── AMIService.kt              # AMI lifecycle: CRUD, pruning, validation (implements AMIValidator)
 ├── AMIValidationService.kt    # AMI validation types and exceptions
@@ -74,7 +77,13 @@ Services are organized by resource, not by operation type:
 - **AMIService** — all AMI operations (list, deregister, prune, validate) in one class
 - **EMRService** — all EMR operations (create, terminate, find, wait) in one class
 - **AwsInfrastructureService** — all VPC infrastructure (create and teardown) in one class
-- **EC2VpcService** — all VPC resource operations including security group describe
+- **EC2VpcService** — all VPC resource operations; it delegates the security group half of `VpcService` to **EC2SecurityGroupService** by interface delegation, so callers inject one `VpcService`
+
+## Security Group Rules
+
+- `authorizeSecurityGroupIngress` returns `IngressAuthorization` (`ADDED` / `ALREADY_PRESENT`) and `revokeSecurityGroupIngress` returns `IngressRevocation` (`REMOVED` / `NOT_FOUND`); both describe the group first, and the revoke removes only the one exact permission. Both throw `SecurityGroupNotFoundException` for `InvalidGroup.NotFound`. Every describe runs under `withAwsRetry`.
+- The provider emits no event for a rule. `AwsInfrastructureService` emits `Infra.SecurityGroupRuleConfigured` on `ADDED` (cluster, Packer and compactor paths, one `authorizeIngress` helper), and the `ingress` commands emit their own `Event.Ingress` events, so each rule is reported once.
+- `SshIngressService` owns the SSH binding (tcp, 22-22). Mock only `VpcService` in its tests; the rule round trips run against LocalStack in `EC2SecurityGroupServiceIntegrationTest`.
 
 ## Koin Registration
 

@@ -51,7 +51,7 @@ Every image in the generated stack SHALL be the image the cluster runs for that 
 
 ### Requirement: The live local stack reads the shared store directly
 
-In live mode, the stack SHALL read the live shared store in S3 with the owner's AWS profile.  It SHALL need no running cluster and no import step.  It SHALL show the metrics, logs and traces of every tenant, including clusters that are torn down.  The signer SHALL read the owner's `~/.aws` read-only, with the profile the tool is configured with.  Mimir SHALL run memcached for its caches, as on a cluster.  Tempo SHALL list the bucket when a tenant index is stale, so the last blocks of a cluster just torn down appear.
+In live mode, the stack SHALL read the live shared store in S3 with the owner's AWS profile.  It SHALL need no running cluster and no import step.  It SHALL show the metrics, logs and traces of every tenant, including clusters that are torn down.  The signer SHALL read the owner's `~/.aws` read-only, with the profile the tool is configured with.  Mimir SHALL run memcached for its caches, as on a cluster.  Tempo SHALL find blocks by listing the bucket, not only from the tenant index, so the last blocks of a cluster just torn down appear.
 
 #### Scenario: Torn-down clusters show with no cluster up
 - **WHEN** the live stack runs and no cluster is up
@@ -67,19 +67,21 @@ In live mode, the stack SHALL read the live shared store in S3 with the owner's 
 
 ### Requirement: The live local stack writes nothing to the bucket
 
-Every backend of the live stack SHALL reach S3 only through a read gate that passes `GET` and `HEAD` requests and refuses every other method.  The backends SHALL run read-only components only, and no compactor SHALL run in the stack.  An integration test SHALL list the bucket (key and ETag), run queries for metrics, logs and traces through the stack, list the bucket again, and fail if anything was written, rewritten or deleted.
+No component of the live stack SHALL write to the bucket.  Every backend SHALL reach S3 only through a read gate that passes `GET` and `HEAD` requests and refuses every other method.  No component SHALL compact, merge or delete data.  Mimir and Loki SHALL run read-path components only.  Tempo runs as its single binary, which always starts its backend scheduler and worker; they SHALL run inert, with compaction disabled and the scheduler's work file never written, so the only write Tempo attempts is its tenant index, which the gate refuses.  An integration test SHALL list the bucket (key and ETag), run queries for metrics, logs and traces of every tenant through the stack, list the bucket again, and fail if anything was written, rewritten or deleted.
 
 #### Scenario: The bucket listing is unchanged
-- **WHEN** the live stack runs and serves metrics, logs and traces queries
+- **WHEN** the live stack runs and serves metrics, logs and traces queries for every tenant
 - **THEN** the bucket listing, keys and ETags, is the same before and after
 
-#### Scenario: A write is refused by the gate
-- **WHEN** a backend in the live stack sends a `PUT`, `POST` or `DELETE` to S3, such as Tempo writing a tenant index
+#### Scenario: The gate refuses every write
+- **WHEN** any component of the live stack attempts a write to S3, such as Tempo writing its tenant index
 - **THEN** the gate refuses it and nothing reaches S3
+- **AND** the bucket listing is unchanged
 
-#### Scenario: No compactor runs
+#### Scenario: No component compacts, merges or deletes
 - **WHEN** the live stack runs
-- **THEN** no Mimir, Loki or Tempo compactor process runs
+- **THEN** no block is merged, marked compacted or deleted
+- **AND** the gate logs no `DELETE` or `POST`, and no write other than Tempo's tenant index
 
 ### Requirement: A store the stack cannot read fails loudly
 

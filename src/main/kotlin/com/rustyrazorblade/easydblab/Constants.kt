@@ -136,6 +136,15 @@ object Constants {
 
         /** EC2 port value meaning "all ICMP types/codes" when used as both fromPort and toPort. */
         const val ALL_ICMP_TYPES = -1
+
+        /** The service that answers with the caller's public IPv4 address as plain text. */
+        const val EXTERNAL_IP_URL = "https://api.ipify.org/"
+
+        /** How long public IP detection waits to connect before it fails. */
+        const val EXTERNAL_IP_CONNECT_TIMEOUT_MS = 5000
+
+        /** How long public IP detection waits for the answer once connected before it fails. */
+        const val EXTERNAL_IP_READ_TIMEOUT_MS = 10000
     }
 
     // HTTP Status Codes

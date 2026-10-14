@@ -18,8 +18,8 @@
 
 ## 4. Public IP detection timeouts
 
-- [ ] 4.1 Add `Constants.Network.EXTERNAL_IP_CONNECT_TIMEOUT_MS` (5000) and `EXTERNAL_IP_READ_TIMEOUT_MS` (10000); apply them in `DefaultExternalIpService`; make the URL injectable for tests
-- [ ] 4.2 Integration-tier test: a local server that accepts and then stalls makes detection fail after the read timeout
+- [x] 4.1 Add `Constants.Network.EXTERNAL_IP_CONNECT_TIMEOUT_MS` (5000) and `EXTERNAL_IP_READ_TIMEOUT_MS` (10000); apply them in `DefaultExternalIpService`; make the URL injectable for tests
+- [x] 4.2 Integration-tier test: a local server that accepts and then stalls makes detection fail after the read timeout
 
 ## 5. SshIngressService
 

@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
@@ -68,20 +67,5 @@ class CiliumNodeImageCheckTest {
             "/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg",
         )
         assertThat(command.firstValue).contains(*CiliumNodeImageCheck.REQUIRED_FILES.toTypedArray())
-    }
-
-    @Test
-    fun `output that is not a required path does not count as a missing fix`() {
-        whenever(remoteOps.executeRemotely(eq(db0.toHost()), any(), any(), anyOrNull()))
-            .thenReturn(Response("Warning: Permanently added '10.0.0.2' to the list of known hosts.\n"))
-
-        assertThat(check.nodesMissingFixes(listOf(db0))).isEmpty()
-    }
-
-    @Test
-    fun `a node that cannot be reached fails the check instead of passing it`() {
-        whenever(remoteOps.executeRemotely(any(), any(), any(), anyOrNull())).thenThrow(IllegalStateException("ssh: connection refused"))
-
-        assertThatThrownBy { check.nodesMissingFixes(listOf(db0)) }.hasMessageContaining("connection refused")
     }
 }

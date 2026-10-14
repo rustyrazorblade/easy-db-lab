@@ -21,6 +21,8 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import picocli.CommandLine
+import picocli.CommandLine.Model.CommandSpec
 import java.io.File
 
 class KitInstallCommandFactoryTest : BaseKoinTest() {
@@ -235,5 +237,79 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         val command = cl.commandSpec.userObject() as KitInstallCommand
         cl.parseArgs("--extension", "duckdb")
         assertThat(command.argValues["EXTENSION"]).isEqualTo("duckdb")
+    }
+
+    @Test
+    fun `an omitted boolean install arg is false and a given one is true`() {
+        val cfg = config(arg("--tls", "TLS", KitArgSpec.ArgType.BOOLEAN))
+
+        val omitted = factory.build(cfg, directorySource)
+        omitted.parseArgs()
+        val given = factory.build(cfg, directorySource)
+        given.parseArgs("--tls")
+
+        assertThat((omitted.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("TLS", "false")
+        assertThat((given.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("TLS", "true")
+    }
+
+    @Test
+    fun `install --help shows each declared default, and none for an arg without one or a boolean`() {
+        val cfg =
+            config(
+                arg("--suffix", "SUFFIX", default = "-prod").copy(description = "Name suffix"),
+                arg("--image", "IMAGE").copy(description = "Image to run"),
+                arg("--tls", "TLS", KitArgSpec.ArgType.BOOLEAN).copy(description = "Use TLS"),
+            )
+
+        val help = factory.build(cfg, directorySource).usageMessage.lines()
+
+        assertThat(help.option("--suffix")).contains("Name suffix (default: -prod)")
+        assertThat(help.option("--image")).doesNotContain("(default:")
+        assertThat(help.option("--tls")).doesNotContain("(default:")
+    }
+
+    /**
+     * The usage help that describes [flag]: its option line and the continuation lines picocli
+     * wraps a long description onto, joined with spaces. The synopsis, which also names the flag,
+     * is not included.
+     */
+    private fun List<String>.option(flag: String): String {
+        val start = indexOfFirst { it.trimStart().startsWith(flag) }
+        val block = drop(start).take(1) + drop(start + 1).takeWhile { it.isNotBlank() && !it.trimStart().startsWith("-") }
+        return block.joinToString(" ") { it.trim() }
+    }
+
+    @Test
+    fun `an explicit empty install arg overrides its default`() {
+        val cfg = config(arg("--suffix", "SUFFIX", default = "-prod"))
+
+        val cl = factory.build(cfg, directorySource)
+        cl.parseArgs("--suffix", "")
+
+        assertThat((cl.commandSpec.userObject() as KitInstallCommand).argValues).containsEntry("SUFFIX", "")
+    }
+
+    /** kit-command-args: "Install args and command args behave the same". */
+    @Test
+    fun `an install arg and a command arg with the same spec record the same values`() {
+        val specs =
+            listOf(
+                arg("--image", "IMAGE"),
+                arg("--level", "LEVEL", default = "info"),
+                arg("--count", "COUNT", KitArgSpec.ArgType.INT, default = "3"),
+                arg("--tls", "TLS", KitArgSpec.ArgType.BOOLEAN),
+            )
+        for (cliArgs in listOf(emptyArray(), arrayOf("--image", "x:1", "--level", "debug", "--count", "5", "--tls"))) {
+            val install = factory.build(config(*specs.toTypedArray()), directorySource)
+            install.parseArgs(*cliArgs)
+            val commandArgValues = mutableMapOf<String, String>()
+            val commandSpec = CommandSpec.create()
+            specs.forEach { commandSpec.addOption(KitArgOptions.optionSpec(it, it.default, commandArgValues)) }
+            CommandLine(commandSpec).parseArgs(*cliArgs)
+
+            assertThat((install.commandSpec.userObject() as KitInstallCommand).argValues)
+                .describedAs(cliArgs.joinToString(" "))
+                .isEqualTo(commandArgValues)
+        }
     }
 }

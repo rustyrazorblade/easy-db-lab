@@ -249,6 +249,14 @@ data class KitConfig(
     val capabilities: List<KitCapability> = emptyList(),
     val commands: Map<String, KitCommandSpec> = emptyMap(),
 ) {
+    init {
+        // resolved-args.env stores one KEY=VALUE per line, so a newline-joined value would corrupt it.
+        val repeatableInstallArg = args.firstOrNull { it.repeatable }
+        require(repeatableInstallArg == null) {
+            "Kit arg '${repeatableInstallArg?.flag}' is a top-level install arg and cannot be repeatable; declare it under commands"
+        }
+    }
+
     val kitRefArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.KIT_REF }
     val extensionArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.EXTENSION }
 
@@ -294,6 +302,11 @@ data class KitHooks(
     val postWorkloadStop: KitHook? = null,
 )
 
+/**
+ * One named CLI option a kit declares, either as a top-level install arg or under a command.
+ * The value reaches the kit's templates and steps as [variable]. A [repeatable] string command
+ * arg takes its flag any number of times and holds every value in order, one per line.
+ */
 @Serializable
 data class KitArgSpec(
     val flag: String,
@@ -303,7 +316,14 @@ data class KitArgSpec(
     val type: ArgType = ArgType.STRING,
     val default: String = "",
     val capability: String = "",
+    val repeatable: Boolean = false,
 ) {
+    init {
+        require(!repeatable || type == ArgType.STRING) {
+            "Kit arg '$flag' is repeatable, but only a string arg can repeat (it is ${type.name.lowercase()})"
+        }
+    }
+
     /**
      * The value placeholder `--help` and `commands` show for this arg, from its variable name
      * (`NUM_RECORDS` becomes `<num-records>`). Picocli omits it for a boolean flag.

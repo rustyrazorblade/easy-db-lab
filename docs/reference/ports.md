@@ -56,6 +56,13 @@ Kits publish client ports through NodePort Services, reachable on any node's pri
 |------|-----|---------|
 | 31211 | memcached | memcached client port (NodePort → 11211) |
 | 9150 | memcached | memcached-exporter metrics (pod port, scraped by pod discovery) |
+| 30942 | ferrosa | CQL (NodePort → 9042, first pod) |
+| 30909 | ferrosa | console, `/metrics` and `/readyz` (NodePort → 9090, first pod; metrics are scraped by pod discovery) |
+| 30787 | ferrosa | Bolt (NodePort → 7687, first pod) |
+| 30747 | ferrosa | graph HTTP API (NodePort → 7474, first pod) |
+| 30880 | ferrosa | SPARQL (NodePort → 8080, first pod) |
+| 30532 | ferrosa | Postgres wire stub (NodePort → 5432, first pod) |
+| 30815 | ferrosa | Arrow Flight (NodePort → 8815, first pod) |
 | 30687 | neo4j | Bolt (NodePort → 7687) |
 | 30474 | neo4j | HTTP (NodePort → 7474) |
 | 30432 | postgres | PostgreSQL (NodePort → 5432) |

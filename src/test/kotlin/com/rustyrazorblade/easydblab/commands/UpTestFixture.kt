@@ -29,6 +29,7 @@ import com.rustyrazorblade.easydblab.services.CiliumService
 import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.EcrCredentialProviderNodeCheck
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.K3sClusterService
@@ -37,6 +38,7 @@ import com.rustyrazorblade.easydblab.services.K8sService
 import com.rustyrazorblade.easydblab.services.LocalSsmTooling
 import com.rustyrazorblade.easydblab.services.LocalTailscaleClient
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
+import com.rustyrazorblade.easydblab.services.NodeImagePreflight
 import com.rustyrazorblade.easydblab.services.ObservabilityStackService
 import com.rustyrazorblade.easydblab.services.ProvisioningPreflight
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
@@ -140,6 +142,8 @@ abstract class UpTestFixture : BaseKoinTest() {
     /** Cilium node-fix paths the fake SSH reports missing, by host alias, and every alias asked */
     protected val missingCiliumFixes = mutableMapOf<String, List<String>>()
     protected val ciliumFixCheckedAliases = mutableListOf<String>()
+    protected val missingCredentialProviderFiles = mutableMapOf<String, List<String>>()
+    protected val credentialProviderCheckedAliases = mutableListOf<String>()
 
     protected val testControlHost =
         ClusterHost(
@@ -189,6 +193,8 @@ abstract class UpTestFixture : BaseKoinTest() {
             single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
             single<CiliumService> { mock<CiliumService>().also { mockCiliumService = it } }
             single { CiliumNodeImageCheck(get()) }
+            single { EcrCredentialProviderNodeCheck(get()) }
+            single { NodeImagePreflight(get(), get(), get()) }
             single { AWSResourceSetupService(get(), get(), get()) }
             single { ProvisioningPreflight(get(), get(), get(), get()) }
             single { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }
@@ -295,7 +301,7 @@ abstract class UpTestFixture : BaseKoinTest() {
 
     /**
      * What the fake SSH answers: it records readiness probes (`echo 1`) and Cilium node-fix checks
-     * by alias, throws [sshFailureException] for [sshFailureAlias], and reports [missingCiliumFixes].
+     * by alias, throws [sshFailureException] for [sshFailureAlias], and reports [missingCiliumFixes] and [missingCredentialProviderFiles].
      */
     private fun fakeRemoteResponse(
         host: Host,
@@ -306,6 +312,10 @@ abstract class UpTestFixture : BaseKoinTest() {
         if (failure != null && sshFailuresRemaining > 0) {
             sshFailuresRemaining--
             throw failure
+        }
+        if (command.contains(Constants.K3s.ECR_CREDENTIAL_PROVIDER_FILES.first())) {
+            credentialProviderCheckedAliases.add(host.alias)
+            return Response(missingCredentialProviderFiles[host.alias].orEmpty().joinToString(separator = "") { "$it\n" })
         }
         if (command.contains(Constants.Cilium.NODE_FIX_FILES.first())) {
             ciliumFixCheckedAliases.add(host.alias)
@@ -331,6 +341,8 @@ abstract class UpTestFixture : BaseKoinTest() {
         echoedCommands.clear()
         missingCiliumFixes.clear()
         ciliumFixCheckedAliases.clear()
+        missingCredentialProviderFiles.clear()
+        credentialProviderCheckedAliases.clear()
     }
 
     @BeforeEach

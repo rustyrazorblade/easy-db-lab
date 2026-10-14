@@ -9,7 +9,6 @@ import org.junit.jupiter.api.Test
 import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
-import software.amazon.awssdk.services.ecr.EcrClient
 
 /**
  * Verifies the Koin wiring declared in [servicesModule] can actually construct services whose
@@ -35,7 +34,6 @@ class ServicesModuleTest {
             single<ClusterStateManager> { mock() }
             single { EventBus() }
             single<User> { mock() }
-            single<EcrClient> { mock() }
         }
 
     @Test

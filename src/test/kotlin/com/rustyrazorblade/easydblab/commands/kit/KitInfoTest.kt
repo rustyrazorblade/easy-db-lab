@@ -8,8 +8,10 @@ import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
+import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
+import com.rustyrazorblade.easydblab.services.KitCommandSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitSourcesProvider
@@ -261,5 +263,42 @@ class KitInfoTest : BaseKoinTest() {
         val customEntry = commands.find { it.first == "custom-export" }
         assertThat(customEntry).isNotNull
         assertThat(customEntry!!.second).isEqualTo("(script)")
+    }
+
+    // ── Command args (kit-command-args: "kit info lists command args") ─────
+
+    private val startArgsConfig =
+        KitConfig(
+            name = "mykit",
+            args = listOf(KitArgSpec(flag = "--size", variable = "STORAGE_SIZE", default = "10Gi")),
+            commands =
+                mapOf(
+                    "start" to
+                        KitCommandSpec(
+                            args =
+                                listOf(
+                                    KitArgSpec(flag = "--log-level", variable = "LOG_LEVEL", description = "Log level", default = "info"),
+                                    KitArgSpec(flag = "--env", variable = "EXTRA_ENV", description = "Extra setting", repeatable = true),
+                                ),
+                        ),
+                ),
+        )
+
+    @Test
+    fun `start args are listed under start with flag, variable, description and default`() {
+        val lines = KitInfo.buildInfoText(startArgsConfig, emptyList()).lines()
+        val start = lines.indexOfFirst { it.trim() == "start:" }
+        val logLevel = lines.indexOfFirst { "--log-level" in it }
+
+        assertThat(start).isGreaterThan(lines.indexOfFirst { "--size" in it })
+        assertThat(logLevel).isGreaterThan(start)
+        assertThat(lines[logLevel]).contains("LOG_LEVEL", "Log level", "(default: info)")
+    }
+
+    @Test
+    fun `a repeatable command arg is marked repeatable`() {
+        val env = KitInfo.buildInfoText(startArgsConfig, emptyList()).lines().single { "--env" in it }
+
+        assertThat(env).contains("EXTRA_ENV", "Extra setting", "[repeatable]")
     }
 }

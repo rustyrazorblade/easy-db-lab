@@ -8,8 +8,8 @@ execute on a real cluster node:
 1. **S3 install path** (commit `27d0b39c`) — a Cassandra built locally by `cassandra build` and
    published to the account bucket is discovered by listing S3, and is fetched by each node over
    `s3://` using its instance profile through the new `cached_fetch` branch.
-2. **ECR pull secret** (commit `bd94fa8a`) — `cassandra stress --image <ECR image>` pulls from the
-   account's ECR, which was impossible before `EcrPullSecretService` was wired into the stress path.
+2. **ECR pull** — `cassandra stress --image <ECR image>` pulls from the account's ECR through the
+   kubelet ECR credential provider baked into the base AMI, with no image pull secret.
 
 Success is specific: the install log shows `s3 fetch:` (not `cache miss` + curl), the build lands on
 **every** db node with `java: 21` recorded, and the stress pod reaches `Running` rather than
@@ -143,7 +143,7 @@ Record a startup failure as a finding against the *branch*, capture
 `/var/log/cassandra/system.log`, and do not retroactively mark steps 3–5 failed. If Cassandra will
 not start, stop here and report — step 7 cannot run without a live cluster.
 
-### 7. Stress with the ECR image — the pull-secret check
+### 7. Stress with the ECR image — the ECR pull check
 
 First a **2-minute smoke run with the identical image and flags**. It costs 2 minutes and catches
 an argument-parse failure, a driver/protocol mismatch against a 6.0 trunk build, a schema failure,
@@ -167,24 +167,22 @@ $EDB cassandra stress start --image $IMG -- RandomPartitionAccess \
   --maxrlat 20 --maxwlat 20
 ```
 
-Immediately confirm the secret exists and is actually referenced, before waiting on the run:
+Immediately confirm the pod pulled with no pull secret, before waiting on the run:
 
 ```bash
 $EDB cassandra stress status
 
 CLUSTER_DIR=$(dirname "$EDB")
 ssh -F "$CLUSTER_DIR/sshConfig" control0 \
-  "sudo k3s kubectl get secret ecr-pull-secret -n default"
-ssh -F "$CLUSTER_DIR/sshConfig" control0 \
   "sudo k3s kubectl get pod -n default -l app.kubernetes.io/name=cassandra-easy-stress \
      -o jsonpath='{.items[*].spec.imagePullSecrets[*].name}'"
 ```
 
-**Pass:** the pod reaches `Running`, `ecr-pull-secret` exists in `default`, and the pod's
-`imagePullSecrets` names it.
-**Fail:** `ImagePullBackOff` or `ErrImagePull` — a hard failure of commit `bd94fa8a`. Capture
-`kubectl describe pod` for the pull error verbatim; a 401 means the secret was wrong, an absent
-secret means it was never created.
+**Pass:** the pod reaches `Running` and its `imagePullSecrets` is empty.
+**Fail:** `ImagePullBackOff` or `ErrImagePull`. Capture `kubectl describe pod` for the pull error
+verbatim; `no basic auth credentials` means the kubelet did not use the credential provider (check
+`/var/lib/rancher/credentialprovider/` on the node and the K3s log for "Kubelet image credential
+provider bin dir and configuration file found").
 
 **Every flag above is load-bearing. Do not simplify this command.**
 
@@ -242,8 +240,7 @@ $EDB down --auto-approve
 - **`:latest` in the ECR repo currently points at this branch build**, because the jib block in
   `build.gradle.kts` hardcodes `tags = setOf("latest")`. Pin the explicit tag in every command; do
   not rely on `:latest` meaning anything stable there.
-- The ECR authorization token expires after 12 hours. `EcrPullSecretService` rewrites the secret on
-  every submission, so a fresh run always re-mints it — but a pod restarting late in a much longer
-  soak could still hit an expired credential. Not a risk within this 60-minute run.
+- The kubelet asks the credential provider for an ECR token on each pull, so no stored credential
+  expires, even on a long soak.
 - Total expected cluster time is roughly 2 hours: ~15 min provisioning, ~15 min steps 2-6, 60 min
   stress, ~10 min teardown.

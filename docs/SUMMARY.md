@@ -17,6 +17,7 @@
 - [Kits](user-guide/kits.md)
   - [ClickHouse](user-guide/clickhouse.md)
   - [Kafka](user-guide/kafka.md)
+  - [FerrosaDB](user-guide/ferrosa.md)
   - [Apache Ignite 3](user-guide/ignite3.md)
   - [Neo4j](user-guide/neo4j.md)
   - [Presto](user-guide/install-presto.md)

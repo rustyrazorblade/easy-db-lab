@@ -23,8 +23,8 @@
 
 ## 5. SshIngressService
 
-- [ ] 5.1 Write `SshIngressServiceTest` first (`BaseKoinTest`, real `ClusterStateManager` on `@TempDir`, fake `ExternalIpService`, mocked `VpcService`): bad value among good → `InvalidCidrs` with every bad value and no `VpcService` call; no state / no security group → precondition result, no AWS call; detection throws or returns garbage → `DetectionFailed`; bare IP reaches AWS as `/32`; mixed revoke → `Removed` + `NotFound`; loop continues after `Failed`; duplicates collapse; `SecurityGroupNotFoundException` → `SecurityGroupGone`
-- [ ] 5.2 Add `services/aws/SshIngressService.kt` (interface, `DefaultSshIngressService`, `IngressResult`, `AllowOutcome`, `RevokeOutcome`); register it in `AWSModule`
+- [x] 5.1 Write `SshIngressServiceTest` first (`BaseKoinTest`, real `ClusterStateManager` on `@TempDir`, fake `ExternalIpService`, mocked `VpcService`): bad value among good → `InvalidCidrs` with every bad value and no `VpcService` call; no state / no security group → precondition result, no AWS call; detection throws or returns garbage → `DetectionFailed`; bare IP reaches AWS as `/32`; mixed revoke → `Removed` + `NotFound`; loop continues after `Failed`; duplicates collapse; `SecurityGroupNotFoundException` → `SecurityGroupGone`
+- [x] 5.2 Add `services/aws/SshIngressService.kt` (interface, `DefaultSshIngressService`, `IngressResult`, `AllowOutcome`, `RevokeOutcome`); register it in `AWSModule`
 
 ## 6. Events and commands
 

@@ -1,9 +1,19 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InfrastructureState
+import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.services.aws.DefaultSshIngressService
+import com.rustyrazorblade.easydblab.services.aws.IngressResult
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.verifyNoInteractions
+import java.io.File
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -36,6 +46,28 @@ class ExternalIpServiceIntegrationTest {
         val elapsedMs = (System.nanoTime() - started) / 1_000_000
 
         assertThat(elapsedMs).isBetween(250L, 5_000L)
+    }
+
+    @Test
+    fun `ingress allow with no value reports a detection failure when the server stalls`(
+        @TempDir workspace: File,
+    ) {
+        thread(isDaemon = true) { accepted.add(server.accept()) }
+        val stateManager = ClusterStateManager(File(workspace, "state.json"))
+        stateManager.save(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                infrastructure = InfrastructureState(vpcId = "vpc-1", region = "us-west-2", securityGroupId = "sg-1"),
+            ),
+        )
+        val vpcService = mock<VpcService>()
+        val externalIp = DefaultExternalIpService(url = serverUrl(), connectTimeoutMs = 1_000, readTimeoutMs = 300)
+
+        val result = DefaultSshIngressService(stateManager, externalIp, vpcService).allow(emptyList())
+
+        assertThat(result).isInstanceOf(IngressResult.DetectionFailed::class.java)
+        verifyNoInteractions(vpcService)
     }
 
     @Test

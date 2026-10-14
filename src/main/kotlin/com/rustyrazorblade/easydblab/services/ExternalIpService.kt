@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import java.net.URI
+import java.net.URL
 
 /**
  * Resolves the public IP address of the machine running easy-db-lab.
@@ -21,7 +23,20 @@ interface ExternalIpService {
 
 /**
  * Default [ExternalIpService] that resolves the public IP via api.ipify.org.
+ *
+ * Both the connect and the read are bounded, so a service that accepts the connection and then
+ * sends nothing fails detection with a [java.net.SocketTimeoutException] instead of waiting
+ * without end.  [url] and the timeouts are parameters so a test can point them at a local server.
  */
-class DefaultExternalIpService : ExternalIpService {
-    override fun getExternalIpAddress(): String = URI("https://api.ipify.org/").toURL().readText()
+class DefaultExternalIpService(
+    private val url: URL = URI(Constants.Network.EXTERNAL_IP_URL).toURL(),
+    private val connectTimeoutMs: Int = Constants.Network.EXTERNAL_IP_CONNECT_TIMEOUT_MS,
+    private val readTimeoutMs: Int = Constants.Network.EXTERNAL_IP_READ_TIMEOUT_MS,
+) : ExternalIpService {
+    override fun getExternalIpAddress(): String {
+        val connection = url.openConnection()
+        connection.connectTimeout = connectTimeoutMs
+        connection.readTimeout = readTimeoutMs
+        return connection.getInputStream().bufferedReader().use { it.readText() }
+    }
 }

@@ -141,6 +141,7 @@ determined fails at `init`, before any instance is created.
 | `--open` | Unrestricted SSH access | false |
 | `--tag` | Custom tags (key=value, repeatable) | - |
 | `--vpc` | Use existing VPC ID | - |
+| `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--up` | Auto-provision after init | false |
@@ -248,6 +249,43 @@ easy-db-lab socks stop
 ```
 
 If the tunnel process does not end after `socks stop` asks and then forces it to, `socks stop` prints its PID and exits non-zero.  The PID and port stay recorded, so stop the process with `kill <pid>` and run `socks stop` again.  If no tunnel runs, `socks stop` says so and succeeds.
+
+### ingress allow
+
+Allow SSH (tcp, port 22) to the cluster from an IPv4 address or CIDR.  Run it from the cluster's workspace.  It adds one rule per value to the cluster's security group.
+
+```bash
+easy-db-lab ingress allow                                   # this machine's public IP
+easy-db-lab ingress allow --cidr 203.0.113.7                # one address, as 203.0.113.7/32
+easy-db-lab ingress allow --cidr 203.0.113.7 --cidr 198.51.100.0/24
+```
+
+| Option | Description |
+|--------|-------------|
+| `--cidr` | An IPv4 address or CIDR. A bare address means `/32`. Repeat it for more than one value. With no `--cidr`, the command uses this machine's detected public IP. |
+
+Use it when your public IP changed and SSH and the SOCKS tunnel stopped working, or to let another person in.  It makes only AWS API calls, so it works when SSH does not, and it does not start the SOCKS tunnel.
+
+- The command checks every value before it calls AWS.  If one value is not valid, it names each bad value and its reason, changes nothing, and exits non-zero.  A value with host bits set, such as `198.51.100.7/24`, is not valid; the error names the network form, `198.51.100.0/24`.
+- Values that are the same CIDR, such as `203.0.113.7` and `203.0.113.7/32`, count as one.
+- A rule that already exists is reported and left as it is.
+- If AWS refuses one rule, for example because the security group has too many rules, the command still adds the others, reports AWS's reason, and exits non-zero.
+- If the public IP cannot be detected, the command tells you to give it with `--cidr`.  Detection waits up to 5 seconds to connect to `api.ipify.org` and up to 10 seconds for its answer.
+
+A security group allows a connection that is already open.  After a change, an SSH session or tunnel that is still connected can keep working until it reconnects.
+
+### ingress revoke
+
+Remove the SSH rule (tcp, port 22) for an IPv4 address or CIDR from the cluster's security group.  It takes the same `--cidr` values as `ingress allow`, and with none it uses this machine's detected public IP.
+
+```bash
+easy-db-lab ingress revoke --cidr 203.0.113.7
+easy-db-lab ingress revoke --cidr 0.0.0.0/0                 # the open rule of an init --open cluster
+```
+
+It removes only the exact SSH rule for each CIDR.  Every other rule stays: SSH rules for other CIDRs, the rules for traffic within the VPC, and egress.  It asks for no confirmation, even when the CIDR is your own public IP.
+
+If a CIDR has no SSH rule, the command names it and exits non-zero, but it still removes the rules that do exist.
 
 ### hosts
 

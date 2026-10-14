@@ -97,11 +97,15 @@ interface SecurityGroupOperations {
     /**
      * Adds an ingress rule to a security group if it doesn't already exist.
      *
+     * Emits no event for the rule: the caller reports the outcome, so each rule is reported once.
+     *
      * @param securityGroupId The security group ID
      * @param fromPort The starting port of the range
      * @param toPort The ending port of the range
      * @param cidr The CIDR block to allow traffic from
      * @param protocol The IP protocol (default: "tcp")
+     * @return whether the rule was added or was already present
+     * @throws SecurityGroupNotFoundException if AWS reports the security group does not exist
      */
     fun authorizeSecurityGroupIngress(
         securityGroupId: SecurityGroupId,
@@ -109,7 +113,24 @@ interface SecurityGroupOperations {
         toPort: Int,
         cidr: Cidr,
         protocol: String = "tcp",
-    )
+    ): IngressAuthorization
+
+    /**
+     * Removes the one ingress rule that matches [protocol], [fromPort], [toPort] and [cidr] exactly.
+     *
+     * Any other rule, including another CIDR on the same ports, and every egress rule stay as
+     * they are.
+     *
+     * @return whether the rule was removed or no such rule existed
+     * @throws SecurityGroupNotFoundException if AWS reports the security group does not exist
+     */
+    fun revokeSecurityGroupIngress(
+        securityGroupId: SecurityGroupId,
+        fromPort: Int,
+        toPort: Int,
+        cidr: Cidr,
+        protocol: String = "tcp",
+    ): IngressRevocation
 
     /**
      * Deletes a security group.
@@ -134,6 +155,35 @@ interface SecurityGroupOperations {
      */
     fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails
 }
+
+/** What [SecurityGroupOperations.authorizeSecurityGroupIngress] did with the rule it was given. */
+enum class IngressAuthorization {
+    /** The rule was not on the security group, and it is now. */
+    ADDED,
+
+    /** The security group already had the exact rule; nothing changed. */
+    ALREADY_PRESENT,
+}
+
+/** What [SecurityGroupOperations.revokeSecurityGroupIngress] did with the rule it was given. */
+enum class IngressRevocation {
+    /** The exact rule was on the security group, and it is gone. */
+    REMOVED,
+
+    /** The security group had no exact rule to remove; nothing changed. */
+    NOT_FOUND,
+}
+
+/**
+ * AWS reports that [securityGroupId] does not exist (`InvalidGroup.NotFound`).
+ *
+ * A missing group fails a whole command, not one rule, so it is an exception rather than an
+ * [IngressAuthorization] or [IngressRevocation] value.
+ */
+class SecurityGroupNotFoundException(
+    val securityGroupId: SecurityGroupId,
+    cause: Throwable? = null,
+) : RuntimeException("Security group $securityGroupId does not exist", cause)
 
 /**
  * Operations for discovering VPC resources.

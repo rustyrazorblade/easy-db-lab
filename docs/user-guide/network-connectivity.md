@@ -10,6 +10,8 @@ easy-db-lab clusters run in a private AWS VPC. By default, `up` picks a random `
 easy-db-lab init --cidr 10.14.0.0/20 ...
 ```
 
+The block must be `/20` or larger, and it must name its prefix length and be in network form: `init` rejects `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set; the error names `10.0.0.0/16`) before it calls AWS.
+
 There are two methods to access your cluster:
 
 | Method | Best For |
@@ -338,7 +340,15 @@ attempt and is the fastest way to find the real cause (a host-key mismatch, a se
 blocking port 22, the control node not yet accepting SSH, and so on). The error quotes only the
 lines of the failed attempt.
 
-If `ssh` is still trying to connect when the CLI stops waiting, the error says so: it names the control node, the address and port that `ssh` was dialing (on the `ssm` transport, that it was connecting through its ProxyCommand), and the wait. On the `direct` transport, when the cluster was not created with `init --open`, the most likely cause is a changed public IP. The cluster's security group then allows SSH only from the public IP that was recorded when `up` ran, so after your public IP changes (a new network, a VPN, a new DHCP lease), `ssh` waits until its connect timeout and then fails.
+If `ssh` is still trying to connect when the CLI stops waiting, the error says so: it names the control node, the address and port that `ssh` was dialing (on the `ssm` transport, that it was connecting through its ProxyCommand), and the wait. On the `direct` transport, when the cluster was not created with `init --open`, the most likely cause is a changed public IP. The cluster's security group allows SSH only from the IPs it lists, so after your public IP changes (a new network, a VPN, a new DHCP lease), `ssh` waits until its connect timeout and then fails.
+
+To fix it, run this from the cluster's workspace:
+
+```bash
+easy-db-lab ingress allow
+```
+
+It adds an SSH rule for this machine's current public IP; give `--cidr` to add another address or range.  It needs only AWS API access, not SSH.  When you no longer need the rule for the old IP, remove it with `easy-db-lab ingress revoke --cidr <old-ip>`.  See [ingress allow](../reference/commands.md#ingress-allow) and [ingress revoke](../reference/commands.md#ingress-revoke).
 
 The log keeps the history of every tunnel in the workspace; nothing truncates it. Each launch adds
 a header line with a UTC timestamp, the port and the control node, and the tunnel script adds a

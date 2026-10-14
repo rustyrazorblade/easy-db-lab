@@ -42,6 +42,31 @@ class CidrBlockTest {
     }
 
     @Test
+    fun `a bare address fails with an Invalid CIDR message naming it, not a number-format error`() {
+        assertThatThrownBy { CidrBlock("10.0.0.0") }
+            .isExactlyInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Invalid CIDR")
+            .hasMessageContaining("10.0.0.0")
+    }
+
+    @Test
+    fun `host bits set are rejected naming the network form`() {
+        assertThatThrownBy { CidrBlock("10.0.0.5/16") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Invalid CIDR")
+            .hasMessageContaining("10.0.0.0/16")
+    }
+
+    @Test
+    fun `a leading zero or sign is rejected`() {
+        listOf("010.0.0.0/16", "+10.0.0.0/16", "10.0.0.0/016").forEach { cidrStr ->
+            assertThatThrownBy { CidrBlock(cidrStr) }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("Invalid CIDR")
+        }
+    }
+
+    @Test
     fun `prefixLength and networkAddress return correct values`() {
         val cidr = CidrBlock("172.31.0.0/16")
         assertThat(cidr.prefixLength).isEqualTo(16)

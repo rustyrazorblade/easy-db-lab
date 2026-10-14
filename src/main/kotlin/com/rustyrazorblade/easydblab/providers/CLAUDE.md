@@ -18,7 +18,7 @@ providers/
 │   ├── IamPolicySerializers.kt # IAM policy serialization
 │   ├── AWSClientFactory.kt # Factory interface for AWS clients
 │   ├── AWSCredentialsManager.kt # Credentials management
-│   ├── VpcService.kt       # VPC service interface (contract)
+│   ├── VpcService.kt       # VPC service interface (contract); IngressAuthorization, IngressRevocation, SecurityGroupNotFoundException
 │   ├── VpcInfrastructure.kt # VPC infrastructure data types
 │   ├── InfrastructureConfig.kt # Infrastructure configuration
 │   ├── TeardownTypes.kt    # Data classes: DiscoveredResources, TeardownResult, TeardownMode
@@ -204,8 +204,9 @@ The transport is decided in exactly one place: the `SshRoute` binding in `SSHMod
 - The route also supplies the SOCKS tunnel's verification budget (`SshRoute.tunnelVerifyAttempts`,
   read in `ProxyModule`): about 30s under `ssm`, about 5s under `direct`. It also supplies
   `SshRoute.tunnelConnectFailureHint(sshOpenToAll)`, the sentence a tunnel failure adds when
-  `ssh` never connected (`SshConnectStage`): under `direct`, the security group's SSH rule for the
-  public IP recorded at `up`, unless the cluster is `init --open`; none under `ssm`. `ProxyModule`
+  `ssh` never connected (`SshConnectStage`): under `direct`, that the security group allows SSH only
+  from the IPs it lists and that `easy-db-lab ingress allow` adds the current public IP, unless the
+  cluster is `init --open`; none under `ssm`. `ProxyModule`
   reads `open` from the cluster state when the failure is built, not at Koin start.
 - `Host.instanceId` is required under `ssm`. Any new place that builds a `Host` must populate it
   (`ClusterHost.toHost()` does).

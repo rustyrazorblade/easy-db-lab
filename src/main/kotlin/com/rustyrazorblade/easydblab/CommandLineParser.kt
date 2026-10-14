@@ -27,6 +27,7 @@ import com.rustyrazorblade.easydblab.commands.aws.Aws
 import com.rustyrazorblade.easydblab.commands.cassandra.Cassandra
 import com.rustyrazorblade.easydblab.commands.exec.Exec
 import com.rustyrazorblade.easydblab.commands.grafana.Grafana
+import com.rustyrazorblade.easydblab.commands.ingress.Ingress
 import com.rustyrazorblade.easydblab.commands.install.KitInstallCommandFactory
 import com.rustyrazorblade.easydblab.commands.install.KitRunnerCommandFactory
 import com.rustyrazorblade.easydblab.commands.kit.Kit
@@ -94,6 +95,7 @@ import kotlin.system.exitProcess
         SetupInstance::class,
         Up::class,
         Socks::class,
+        Ingress::class,
         Repl::class,
         Server::class,
         // Parent command groups

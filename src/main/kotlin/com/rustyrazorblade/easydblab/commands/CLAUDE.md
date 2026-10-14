@@ -62,6 +62,7 @@ commands/
 ├── aws/                   # AWS-specific commands (e.g., PruneAMIs)
 ├── clickhouse/            # ClickHouse commands
 ├── grafana/               # Grafana commands
+├── ingress/               # ingress allow, ingress revoke — SSH rules on the cluster's security group; EC2 API calls only, never the SOCKS tunnel (@RequireProfileSetup, no @RequiresProxy)
 ├── install/               # Kit install internals (BaseInstallCommand, KitInstallCommand, KitRunnerCommand, KitStatusCommand, factories)
 ├── kit/                   # Kit management commands (kit install, kit list, kit uninstall) + <kit> sql
 │   ├── Kit.kt             # Parent command group
@@ -232,6 +233,7 @@ Commands should delegate to these services:
 | `AWSResourceSetupService` | IAM roles, security groups, VPC setup (`services.aws`) |
 | `AwsS3BucketService` | S3 bucket admin: creation, request metrics, policies (`services.aws`); never sets lifecycle rules |
 | `OpenSearchService` | OpenSearch domain management (`services.aws`) |
+| `SshIngressService` | SSH ingress rules on the workspace cluster's security group (`services.aws`), for `ingress allow` / `ingress revoke`: validates every `--cidr` with `network/Ipv4Cidr` before any AWS call (or uses the detected public IP), changes one exact tcp/22 rule per CIDR, and returns a sealed `IngressResult`; it emits no events |
 | `GrafanaDeployService` | Grafana deployment: datasources, the dashboard tree, the Grafana K8s resources |
 | `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
 | `TestDocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |

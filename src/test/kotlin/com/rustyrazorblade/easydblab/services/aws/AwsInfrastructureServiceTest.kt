@@ -1,10 +1,13 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
+import com.rustyrazorblade.easydblab.providers.aws.IngressAuthorization
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRule
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.assertj.core.api.Assertions.assertThat
@@ -19,6 +22,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Tests for AwsInfrastructureService.
@@ -31,6 +35,7 @@ class AwsInfrastructureServiceTest {
     private lateinit var emrService: EMRService
     private lateinit var openSearchService: OpenSearchService
     private lateinit var service: AwsInfrastructureService
+    private val eventBus = EventBus()
 
     @BeforeEach
     fun setup() {
@@ -42,9 +47,7 @@ class AwsInfrastructureServiceTest {
                 vpcService = vpcService,
                 emrService = emrService,
                 openSearchService = openSearchService,
-                eventBus =
-                    com.rustyrazorblade.easydblab.events
-                        .EventBus(),
+                eventBus = eventBus,
             )
     }
 
@@ -823,23 +826,55 @@ class AwsInfrastructureServiceTest {
         private val securityGroupId = "sg-cluster"
         private val vpcCidr = "10.42.0.0/16"
 
-        @Test
-        fun `security group allows ICMP of every type from within the VPC`() {
+        private val networkingConfig =
+            VpcNetworkingConfig(
+                vpcId = "vpc-1",
+                clusterName = "test",
+                clusterId = "id-1",
+                region = "us-west-2",
+                availabilityZones = listOf("a"),
+                isOpen = false,
+                vpcCidr = vpcCidr,
+            )
+
+        @BeforeEach
+        fun stubNetworking() {
             whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
             whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
             whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn(securityGroupId)
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any()))
+                .thenReturn(IngressAuthorization.ADDED)
+        }
 
-            service.setupVpcNetworking(
-                VpcNetworkingConfig(
-                    vpcId = "vpc-1",
-                    clusterName = "test",
-                    clusterId = "id-1",
-                    region = "us-west-2",
-                    availabilityZones = listOf("a"),
-                    isOpen = false,
-                    vpcCidr = vpcCidr,
-                ),
-            ) { "203.0.113.7" }
+        @Test
+        fun `reports each rule it adds once, with the same port descriptions as before`() {
+            val events = recordEvents()
+
+            service.setupVpcNetworking(networkingConfig) { "203.0.113.7" }
+
+            assertThat(events.ruleConfiguredLines()).containsExactly(
+                "Configured security group ingress rule for port 22",
+                "Configured security group ingress rule for ports 0-65535",
+                "Configured security group ingress rule for ports 0-65535",
+                "Configured security group ingress rule for all ICMP types",
+            )
+        }
+
+        @Test
+        fun `reports nothing for a rule the security group already has`() {
+            whenever(vpcService.authorizeSecurityGroupIngress(eq(securityGroupId), eq(22), eq(22), any(), any()))
+                .thenReturn(IngressAuthorization.ALREADY_PRESENT)
+            val events = recordEvents()
+
+            service.setupVpcNetworking(networkingConfig) { "203.0.113.7" }
+
+            assertThat(events.ruleConfiguredLines()).doesNotContain("Configured security group ingress rule for port 22")
+            assertThat(events.ruleConfiguredLines()).hasSize(3)
+        }
+
+        @Test
+        fun `security group allows ICMP of every type from within the VPC`() {
+            service.setupVpcNetworking(networkingConfig) { "203.0.113.7" }
 
             val protocols = argumentCaptor<String>()
             val fromPorts = argumentCaptor<Int>()
@@ -861,7 +896,76 @@ class AwsInfrastructureServiceTest {
         }
     }
 
+    @Nested
+    inner class ReusableInfrastructureRules {
+        private val packerSgId = "sg-packer"
+
+        @BeforeEach
+        fun stubExistingPackerVpc() {
+            whenever(vpcService.findVpcByName(any())).thenReturn("vpc-packer")
+            whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
+            whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
+            whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn(packerSgId)
+        }
+
+        @Test
+        fun `the Packer path reports its SSH rule when it adds it`() {
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any()))
+                .thenReturn(IngressAuthorization.ADDED)
+            val events = recordEvents()
+
+            service.ensurePackerInfrastructure(22, "203.0.113.7/32")
+
+            assertThat(events.ruleConfiguredLines()).containsExactly("Configured security group ingress rule for port 22")
+        }
+
+        @Test
+        fun `the Packer path reports nothing when its SSH rule is already there`() {
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any()))
+                .thenReturn(IngressAuthorization.ALREADY_PRESENT)
+            val events = recordEvents()
+
+            service.ensurePackerInfrastructure(22, "203.0.113.7/32")
+
+            assertThat(events.ruleConfiguredLines()).isEmpty()
+        }
+
+        @Test
+        fun `a new VPC reports a TCP range rule as a port range`() {
+            whenever(vpcService.findVpcByName(any())).thenReturn(null)
+            whenever(vpcService.createVpc(any(), any(), any())).thenReturn("vpc-new")
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any()))
+                .thenReturn(IngressAuthorization.ADDED)
+            val config =
+                InfrastructureConfig
+                    .forPacker(22, "203.0.113.7/32")
+                    .copy(securityGroupRules = listOf(SecurityGroupRule(9000, 9100, "10.0.0.0/16")))
+            val events = recordEvents()
+
+            service.ensureReusableInfrastructure(config)
+
+            assertThat(events.ruleConfiguredLines()).containsExactly("Configured security group ingress rule for ports 9000-9100")
+        }
+    }
+
     // Helper methods
+
+    private fun recordEvents(): List<Event> {
+        val events = CopyOnWriteArrayList<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return events
+    }
+
+    private fun List<Event>.ruleConfiguredLines(): List<String> =
+        filterIsInstance<Event.Infra.SecurityGroupRuleConfigured>().map { it.toDisplayString() }
 
     private fun setupEmptyVpcMocks(vpcId: String) {
         whenever(vpcService.getVpcName(vpcId)).thenReturn("test-vpc")

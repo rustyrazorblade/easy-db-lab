@@ -4,10 +4,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.Cidr
+import com.rustyrazorblade.easydblab.providers.aws.IngressAuthorization
+import com.rustyrazorblade.easydblab.providers.aws.IngressRevocation
 import com.rustyrazorblade.easydblab.providers.aws.ResourceDescription
 import com.rustyrazorblade.easydblab.providers.aws.ResourceName
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupId
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupNotFoundException
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupOperations
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
@@ -42,6 +45,10 @@ class EC2SecurityGroupService(
 ) : SecurityGroupOperations {
     companion object {
         private val log = KotlinLogging.logger {}
+
+        private const val GROUP_NOT_FOUND = "InvalidGroup.NotFound"
+        private const val PERMISSION_DUPLICATE = "InvalidPermission.Duplicate"
+        private const val PERMISSION_NOT_FOUND = "InvalidPermission.NotFound"
 
         private val PORT_DESCRIPTIONS =
             mapOf(
@@ -103,54 +110,64 @@ class EC2SecurityGroupService(
         toPort: Int,
         cidr: Cidr,
         protocol: String,
-    ) {
-        // Check if rule already exists
-        val existingRule =
-            describeGroup(securityGroupId).ipPermissions().any { permission ->
-                permission.fromPort() == fromPort &&
-                    permission.toPort() == toPort &&
-                    permission.ipProtocol() == protocol &&
-                    permission.ipRanges().any { it.cidrIp() == cidr }
-            }
-
-        if (existingRule) {
-            val portDesc = describeIngressPorts(fromPort, toPort, protocol)
+    ): IngressAuthorization {
+        val portDesc = describeIngressPorts(fromPort, toPort, protocol)
+        if (describeExistingGroup(securityGroupId).hasIngressRule(fromPort, toPort, cidr, protocol)) {
             log.info { "Ingress rule already exists for $portDesc from $cidr ($protocol)" }
-            return
+            return IngressAuthorization.ALREADY_PRESENT
         }
 
-        // Add ingress rule
-        try {
-            val ipPermission =
-                IpPermission
-                    .builder()
-                    .ipProtocol(protocol)
-                    .fromPort(fromPort)
-                    .toPort(toPort)
-                    .ipRanges(
-                        IpRange
-                            .builder()
-                            .cidrIp(cidr)
-                            .build(),
-                    ).build()
+        val authorizeRequest =
+            AuthorizeSecurityGroupIngressRequest
+                .builder()
+                .groupId(securityGroupId)
+                .ipPermissions(ingressPermission(fromPort, toPort, cidr, protocol))
+                .build()
 
-            val authorizeRequest =
-                AuthorizeSecurityGroupIngressRequest
-                    .builder()
-                    .groupId(securityGroupId)
-                    .ipPermissions(ipPermission)
-                    .build()
-
-            ec2Client.authorizeSecurityGroupIngress(authorizeRequest)
-            val portDesc = describeIngressPorts(fromPort, toPort, protocol)
+        return try {
+            requireGroup(securityGroupId) { ec2Client.authorizeSecurityGroupIngress(authorizeRequest) }
             log.info { "Added ingress rule for $portDesc from $cidr ($protocol)" }
-            eventBus.emit(Event.Infra.SecurityGroupRuleConfigured(portDesc))
+            IngressAuthorization.ADDED
         } catch (e: Ec2Exception) {
-            if (e.awsErrorDetails()?.errorCode() == "InvalidPermission.Duplicate") {
-                log.info { "Ingress rule already exists, continuing" }
-            } else {
-                throw e
-            }
+            if (e.awsErrorDetails()?.errorCode() != PERMISSION_DUPLICATE) throw e
+            log.info { "Ingress rule already exists, continuing" }
+            IngressAuthorization.ALREADY_PRESENT
+        }
+    }
+
+    /**
+     * Describes the group, then revokes only the exact permission asked for.  Describing first
+     * keeps the answer the same against EC2 and LocalStack, which report a revoke of a missing
+     * rule differently.
+     */
+    override fun revokeSecurityGroupIngress(
+        securityGroupId: SecurityGroupId,
+        fromPort: Int,
+        toPort: Int,
+        cidr: Cidr,
+        protocol: String,
+    ): IngressRevocation {
+        val portDesc = describeIngressPorts(fromPort, toPort, protocol)
+        if (!describeExistingGroup(securityGroupId).hasIngressRule(fromPort, toPort, cidr, protocol)) {
+            log.info { "No ingress rule for $portDesc from $cidr ($protocol) to revoke" }
+            return IngressRevocation.NOT_FOUND
+        }
+
+        val revokeRequest =
+            RevokeSecurityGroupIngressRequest
+                .builder()
+                .groupId(securityGroupId)
+                .ipPermissions(ingressPermission(fromPort, toPort, cidr, protocol))
+                .build()
+
+        return try {
+            requireGroup(securityGroupId) { ec2Client.revokeSecurityGroupIngress(revokeRequest) }
+            log.info { "Revoked ingress rule for $portDesc from $cidr ($protocol)" }
+            IngressRevocation.REMOVED
+        } catch (e: Ec2Exception) {
+            if (e.awsErrorDetails()?.errorCode() != PERMISSION_NOT_FOUND) throw e
+            log.info { "Ingress rule for $portDesc from $cidr ($protocol) was already gone" }
+            IngressRevocation.NOT_FOUND
         }
     }
 
@@ -294,6 +311,53 @@ class EC2SecurityGroupService(
             .firstOrNull()
             ?: error("Security group $securityGroupId not found")
     }
+
+    /** [describeGroup] for the rule changes, where a missing group is [SecurityGroupNotFoundException]. */
+    private fun describeExistingGroup(securityGroupId: SecurityGroupId): SecurityGroup =
+        requireGroup(securityGroupId) { describeGroup(securityGroupId) }
+
+    /** Runs [call], turning EC2's `InvalidGroup.NotFound` into [SecurityGroupNotFoundException]. */
+    private fun <T> requireGroup(
+        securityGroupId: SecurityGroupId,
+        call: () -> T,
+    ): T =
+        try {
+            call()
+        } catch (e: Ec2Exception) {
+            if (e.awsErrorDetails()?.errorCode() != GROUP_NOT_FOUND) throw e
+            throw SecurityGroupNotFoundException(securityGroupId, e)
+        }
+
+    private fun SecurityGroup.hasIngressRule(
+        fromPort: Int,
+        toPort: Int,
+        cidr: Cidr,
+        protocol: String,
+    ): Boolean =
+        ipPermissions().any { permission ->
+            permission.fromPort() == fromPort &&
+                permission.toPort() == toPort &&
+                permission.ipProtocol() == protocol &&
+                permission.ipRanges().any { it.cidrIp() == cidr }
+        }
+
+    private fun ingressPermission(
+        fromPort: Int,
+        toPort: Int,
+        cidr: Cidr,
+        protocol: String,
+    ): IpPermission =
+        IpPermission
+            .builder()
+            .ipProtocol(protocol)
+            .fromPort(fromPort)
+            .toPort(toPort)
+            .ipRanges(
+                IpRange
+                    .builder()
+                    .cidrIp(cidr)
+                    .build(),
+            ).build()
 
     private fun formatProtocol(protocol: String): String =
         when (protocol) {

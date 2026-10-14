@@ -11,10 +11,10 @@
 
 ## 3. Typed rule results
 
-- [ ] 3.1 Add `IngressAuthorization`, `IngressRevocation` and `SecurityGroupNotFoundException` to `providers/aws/VpcService.kt`; `authorizeSecurityGroupIngress` returns `IngressAuthorization`; map `InvalidGroup.NotFound` to the exception
-- [ ] 3.2 Add `revokeSecurityGroupIngress` (describe, then revoke one exact permission; `InvalidPermission.NotFound` → `NOT_FOUND`)
-- [ ] 3.3 LocalStack tests in `EC2VpcServiceIntegrationTest` (or its split successor): `ADDED` then `ALREADY_PRESENT`; revoke removes only its CIDR's tcp/22 rule, leaving another tcp/22 rule, the VPC tcp/udp/ICMP rules and egress; missing rule → `NOT_FOUND`; both methods throw `SecurityGroupNotFoundException` for a missing group
-- [ ] 3.4 Stop emitting `Infra.SecurityGroupRuleConfigured` in the provider; emit it from `AwsInfrastructureService` on `ADDED` at every call site (cluster, Packer, compactor), same description; move the event tests from `EC2VpcServiceTest` to `AwsInfrastructureService` tests; update tests that mock `VpcService` to stub the non-null result
+- [x] 3.1 Add `IngressAuthorization`, `IngressRevocation` and `SecurityGroupNotFoundException` to `providers/aws/VpcService.kt`; `authorizeSecurityGroupIngress` returns `IngressAuthorization`; map `InvalidGroup.NotFound` to the exception
+- [x] 3.2 Add `revokeSecurityGroupIngress` (describe, then revoke one exact permission; `InvalidPermission.NotFound` → `NOT_FOUND`)
+- [x] 3.3 LocalStack tests in `EC2VpcServiceIntegrationTest` (or its split successor): `ADDED` then `ALREADY_PRESENT`; revoke removes only its CIDR's tcp/22 rule, leaving another tcp/22 rule, the VPC tcp/udp/ICMP rules and egress; missing rule → `NOT_FOUND`; both methods throw `SecurityGroupNotFoundException` for a missing group
+- [x] 3.4 Stop emitting `Infra.SecurityGroupRuleConfigured` in the provider; emit it from `AwsInfrastructureService` on `ADDED` at every call site (cluster, Packer, compactor), same description; move the event tests from `EC2VpcServiceTest` to `AwsInfrastructureService` tests; update tests that mock `VpcService` to stub the non-null result
 
 ## 4. Public IP detection timeouts
 

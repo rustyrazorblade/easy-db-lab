@@ -4,6 +4,9 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.providers.aws.IngressAuthorization
+import com.rustyrazorblade.easydblab.providers.aws.IngressRevocation
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupNotFoundException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -37,16 +40,115 @@ internal class EC2SecurityGroupServiceTest {
     private val vpcService = EC2SecurityGroupService(mockEc2Client, eventBus)
 
     @Test
-    fun `authorizeSecurityGroupIngress should handle duplicate permission exception`() {
+    fun `authorizeSecurityGroupIngress reports a rule it adds as ADDED`() {
+        givenSecurityGroup()
+
+        val result = vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "203.0.113.7/32", "tcp")
+
+        assertThat(result).isEqualTo(IngressAuthorization.ADDED)
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress reports a duplicate raced in after the describe as ALREADY_PRESENT`() {
         givenSecurityGroup()
         whenever(mockEc2Client.authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())).thenThrow(
             ec2Exception("InvalidPermission.Duplicate"),
         )
 
-        // Should not throw exception - should handle duplicate gracefully
-        vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
+        val result = vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
 
-        verify(mockEc2Client).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
+        assertThat(result).isEqualTo(IngressAuthorization.ALREADY_PRESENT)
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress throws SecurityGroupNotFoundException when the describe finds no group`() {
+        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>()))
+            .thenThrow(ec2Exception("InvalidGroup.NotFound"))
+
+        assertThatThrownBy { vpcService.authorizeSecurityGroupIngress("sg-gone", 22, 22, "203.0.113.7/32", "tcp") }
+            .isInstanceOfSatisfying(SecurityGroupNotFoundException::class.java) {
+                assertThat(it.securityGroupId).isEqualTo("sg-gone")
+            }
+        verify(mockEc2Client, never()).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress throws SecurityGroupNotFoundException when the group goes after the describe`() {
+        givenSecurityGroup()
+        whenever(mockEc2Client.authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>()))
+            .thenThrow(ec2Exception("InvalidGroup.NotFound"))
+
+        assertThatThrownBy { vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "203.0.113.7/32", "tcp") }
+            .isInstanceOf(SecurityGroupNotFoundException::class.java)
+    }
+
+    @Test
+    fun `revokeSecurityGroupIngress removes one exact permission`() {
+        givenSecurityGroup(sshRule("203.0.113.7/32", "198.51.100.0/24"))
+
+        val result = vpcService.revokeSecurityGroupIngress("sg-12345", 22, 22, "203.0.113.7/32", "tcp")
+
+        assertThat(result).isEqualTo(IngressRevocation.REMOVED)
+        val request = argumentCaptor<RevokeSecurityGroupIngressRequest>()
+        verify(mockEc2Client).revokeSecurityGroupIngress(request.capture())
+        assertThat(request.firstValue.groupId()).isEqualTo("sg-12345")
+        val permission = request.firstValue.ipPermissions().single()
+        assertThat(permission.ipProtocol()).isEqualTo("tcp")
+        assertThat(permission.fromPort()).isEqualTo(22)
+        assertThat(permission.toPort()).isEqualTo(22)
+        assertThat(permission.ipRanges().map { it.cidrIp() }).containsExactly("203.0.113.7/32")
+    }
+
+    @Test
+    fun `revokeSecurityGroupIngress reports NOT_FOUND without a revoke call when no exact rule matches`() {
+        // A tcp/22 rule for another CIDR, and a rule for this CIDR on another port.
+        val otherPort =
+            IpPermission
+                .builder()
+                .ipProtocol("tcp")
+                .fromPort(0)
+                .toPort(65535)
+                .ipRanges(IpRange.builder().cidrIp("192.0.2.1/32").build())
+                .build()
+        givenSecurityGroup(sshRule("198.51.100.0/24"), otherPort)
+
+        val result = vpcService.revokeSecurityGroupIngress("sg-12345", 22, 22, "192.0.2.1/32", "tcp")
+
+        assertThat(result).isEqualTo(IngressRevocation.NOT_FOUND)
+        verify(mockEc2Client, never()).revokeSecurityGroupIngress(any<RevokeSecurityGroupIngressRequest>())
+    }
+
+    @Test
+    fun `revokeSecurityGroupIngress reports a rule removed after the describe as NOT_FOUND`() {
+        givenSecurityGroup(sshRule("203.0.113.7/32"))
+        whenever(mockEc2Client.revokeSecurityGroupIngress(any<RevokeSecurityGroupIngressRequest>()))
+            .thenThrow(ec2Exception("InvalidPermission.NotFound"))
+
+        val result = vpcService.revokeSecurityGroupIngress("sg-12345", 22, 22, "203.0.113.7/32", "tcp")
+
+        assertThat(result).isEqualTo(IngressRevocation.NOT_FOUND)
+    }
+
+    @Test
+    fun `revokeSecurityGroupIngress throws SecurityGroupNotFoundException for a missing group`() {
+        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>()))
+            .thenThrow(ec2Exception("InvalidGroup.NotFound"))
+
+        assertThatThrownBy { vpcService.revokeSecurityGroupIngress("sg-gone", 22, 22, "203.0.113.7/32", "tcp") }
+            .isInstanceOfSatisfying(SecurityGroupNotFoundException::class.java) {
+                assertThat(it.securityGroupId).isEqualTo("sg-gone")
+            }
+    }
+
+    @Test
+    fun `revokeSecurityGroupIngress passes on any other AWS error`() {
+        givenSecurityGroup(sshRule("203.0.113.7/32"))
+        whenever(mockEc2Client.revokeSecurityGroupIngress(any<RevokeSecurityGroupIngressRequest>()))
+            .thenThrow(ec2Exception("UnauthorizedOperation"))
+
+        assertThrows<Ec2Exception> {
+            vpcService.revokeSecurityGroupIngress("sg-12345", 22, 22, "203.0.113.7/32", "tcp")
+        }
     }
 
     @Test
@@ -89,10 +191,30 @@ internal class EC2SecurityGroupServiceTest {
     }
 
     @Test
-    fun `authorizeSecurityGroupIngress should throw on non-duplicate exception`() {
+    fun `authorizeSecurityGroupIngress emits no event for the rule it adds`() {
+        givenSecurityGroup()
+        val events = mutableListOf<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        val result = vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "203.0.113.7/32", "tcp")
+
+        assertThat(result).isEqualTo(IngressAuthorization.ADDED)
+        assertThat(events).isEmpty()
+    }
+
+    @Test
+    fun `authorizeSecurityGroupIngress passes on any other AWS error`() {
         givenSecurityGroup()
         whenever(mockEc2Client.authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())).thenThrow(
-            ec2Exception("InvalidGroup.NotFound"),
+            ec2Exception("RulesPerSecurityGroupLimitExceeded"),
         )
 
         assertThrows<Ec2Exception> {
@@ -112,8 +234,9 @@ internal class EC2SecurityGroupServiceTest {
                 .build()
         givenSecurityGroup(existingIcmpRule)
 
-        vpcService.authorizeSecurityGroupIngress("sg-12345", -1, -1, "10.0.0.0/16", "icmp")
+        val result = vpcService.authorizeSecurityGroupIngress("sg-12345", -1, -1, "10.0.0.0/16", "icmp")
 
+        assertThat(result).isEqualTo(IngressAuthorization.ALREADY_PRESENT)
         verify(mockEc2Client, never()).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
     }
 
@@ -132,49 +255,6 @@ internal class EC2SecurityGroupServiceTest {
         assertThat(permission.ipRanges().map { it.cidrIp() }).containsExactly("10.0.0.0/16")
     }
 
-    @Test
-    fun `authorizeSecurityGroupIngress reports an ICMP rule as all ICMP types`() {
-        assertThat(configuredRuleText(-1, -1, "icmp"))
-            .isEqualTo("Configured security group ingress rule for all ICMP types")
-    }
-
-    @Test
-    fun `authorizeSecurityGroupIngress reports a TCP range as a port range`() {
-        assertThat(configuredRuleText(9000, 9100, "tcp"))
-            .isEqualTo("Configured security group ingress rule for ports 9000-9100")
-    }
-
-    @Test
-    fun `authorizeSecurityGroupIngress reports a single TCP port`() {
-        assertThat(configuredRuleText(22, 22, "tcp"))
-            .isEqualTo("Configured security group ingress rule for port 22")
-    }
-
-    private fun configuredRuleText(
-        fromPort: Int,
-        toPort: Int,
-        protocol: String,
-    ): String {
-        givenSecurityGroup()
-        val events = mutableListOf<Event>()
-        eventBus.addListener(
-            object : EventListener {
-                override fun onEvent(envelope: EventEnvelope) {
-                    events.add(envelope.event)
-                }
-
-                override fun close() = Unit
-            },
-        )
-
-        vpcService.authorizeSecurityGroupIngress("sg-12345", fromPort, toPort, "10.0.0.0/16", protocol)
-
-        return events
-            .filterIsInstance<Event.Infra.SecurityGroupRuleConfigured>()
-            .single()
-            .toDisplayString()
-    }
-
     private fun givenSecurityGroup(vararg permissions: IpPermission) {
         val securityGroup =
             SecurityGroup
@@ -186,6 +266,15 @@ internal class EC2SecurityGroupServiceTest {
             DescribeSecurityGroupsResponse.builder().securityGroups(securityGroup).build(),
         )
     }
+
+    private fun sshRule(vararg cidrs: String): IpPermission =
+        IpPermission
+            .builder()
+            .ipProtocol("tcp")
+            .fromPort(22)
+            .toPort(22)
+            .ipRanges(cidrs.map { IpRange.builder().cidrIp(it).build() })
+            .build()
 
     private fun ec2Exception(errorCode: String): Ec2Exception =
         Ec2Exception
@@ -366,11 +455,11 @@ internal class EC2SecurityGroupServiceTest {
 
         val sshRule = result.inboundRules.find { it.fromPort == 22 }
         assertThat(sshRule).isNotNull
-        assertThat(sshRule!!.description).isEqualTo("SSH")
+        assertThat(sshRule?.description).isEqualTo("SSH")
 
         val cqlRule = result.inboundRules.find { it.fromPort == 9042 }
         assertThat(cqlRule).isNotNull
-        assertThat(cqlRule!!.description).isEqualTo("Cassandra CQL")
+        assertThat(cqlRule?.description).isEqualTo("Cassandra CQL")
     }
 
     @Test

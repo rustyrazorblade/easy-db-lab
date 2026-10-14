@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
+import com.rustyrazorblade.easydblab.providers.aws.IngressAuthorization
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
@@ -103,7 +104,7 @@ class AwsInfrastructureService(
 
         // Configure all security group rules
         config.securityGroupRules.forEach { rule ->
-            vpcService.authorizeSecurityGroupIngress(
+            authorizeIngress(
                 sgId,
                 rule.fromPort,
                 rule.toPort,
@@ -171,7 +172,7 @@ class AwsInfrastructureService(
                     config.tags,
                 )
             config.securityGroupRules.forEach { rule ->
-                vpcService.authorizeSecurityGroupIngress(sgId, rule.fromPort, rule.toPort, rule.cidr, rule.protocol)
+                authorizeIngress(sgId, rule.fromPort, rule.toPort, rule.cidr, rule.protocol)
             }
 
             eventBus.emit(Event.Infra.InfrastructureReady(config.vpcName))
@@ -266,17 +267,17 @@ class AwsInfrastructureService(
 
         // Configure SSH access - either from anywhere or from the user's external IP
         val sshCidr = if (config.isOpen) "0.0.0.0/0" else "${externalIpProvider()}/32"
-        vpcService.authorizeSecurityGroupIngress(securityGroupId, Constants.Network.SSH_PORT, Constants.Network.SSH_PORT, sshCidr)
+        authorizeIngress(securityGroupId, Constants.Network.SSH_PORT, Constants.Network.SSH_PORT, sshCidr)
 
         // Allow all traffic within the VPC (for Cassandra communication) - both TCP and UDP
-        vpcService.authorizeSecurityGroupIngress(
+        authorizeIngress(
             securityGroupId,
             Constants.Network.MIN_PORT,
             Constants.Network.MAX_PORT,
             config.vpcCidr,
             "tcp",
         )
-        vpcService.authorizeSecurityGroupIngress(
+        authorizeIngress(
             securityGroupId,
             Constants.Network.MIN_PORT,
             Constants.Network.MAX_PORT,
@@ -285,7 +286,7 @@ class AwsInfrastructureService(
         )
         // ICMP (all types/codes) within the VPC: ping between nodes and pods, and Cilium's
         // health checker, which probes every node with ICMP echo.
-        vpcService.authorizeSecurityGroupIngress(
+        authorizeIngress(
             securityGroupId,
             Constants.Network.ALL_ICMP_TYPES,
             Constants.Network.ALL_ICMP_TYPES,
@@ -301,6 +302,24 @@ class AwsInfrastructureService(
         eventBus.emit(Event.Infra.VpcNetworkingReady(config.clusterName))
 
         return infrastructure
+    }
+
+    /**
+     * Adds one ingress rule and reports it once, only when it was added. The provider emits no
+     * event, so `ingress allow` can report its own rules with its own events.
+     */
+    private fun authorizeIngress(
+        securityGroupId: String,
+        fromPort: Int,
+        toPort: Int,
+        cidr: String,
+        protocol: String = "tcp",
+    ) {
+        when (vpcService.authorizeSecurityGroupIngress(securityGroupId, fromPort, toPort, cidr, protocol)) {
+            IngressAuthorization.ADDED ->
+                eventBus.emit(Event.Infra.SecurityGroupRuleConfigured(describeIngressPorts(fromPort, toPort, protocol)))
+            IngressAuthorization.ALREADY_PRESENT -> Unit
+        }
     }
 
     // ==================== Infrastructure Teardown ====================

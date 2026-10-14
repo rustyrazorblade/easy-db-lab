@@ -68,13 +68,14 @@ class DirectSshRoute(
 
     /**
      * ssh dials the node's port 22 from this machine. Unless the cluster is open, the security group
-     * admits that only from the public IP recorded at `up`.
+     * admits that only from the IPs it lists: the one `up` detected, and any `ingress allow` added.
      */
     override fun tunnelConnectFailureHint(sshOpenToAll: Boolean): String? =
         when {
             sshOpenToAll -> null
             else ->
-                "The cluster's security group allows SSH only from the public IP recorded when `up` ran, " +
-                    "so a changed public IP is the likely cause."
+                "The cluster's security group allows SSH only from the IPs it lists, " +
+                    "so a changed public IP is the likely cause. " +
+                    "Run `easy-db-lab ingress allow` to add this machine's current public IP."
         }
 }

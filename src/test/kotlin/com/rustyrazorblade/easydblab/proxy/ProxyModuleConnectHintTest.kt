@@ -46,7 +46,9 @@ internal class ProxyModuleConnectHintTest : BaseKoinTest() {
 
         assertThat(message)
             .contains("ssh could not connect to control0 (54.1.2.3) port 22 within 15s.")
-            .contains("security group allows SSH only from the public IP recorded when `up` ran")
+            .contains("security group allows SSH only from the IPs it lists")
+            .contains("easy-db-lab ingress allow")
+            .doesNotContain("recorded when `up` ran")
     }
 
     @Test

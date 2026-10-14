@@ -95,8 +95,10 @@ class ProcessSocksProxyMessageTest {
         assertThat(message)
             .contains("ssh could not connect to control0 (54.1.2.3) port 22 within 15s.")
             .contains(
-                "security group allows SSH only from the public IP recorded when `up` ran, so a changed public IP is the likely cause.",
-            ).contains("See ${logFile.absolutePath}")
+                "security group allows SSH only from the IPs it lists, so a changed public IP is the likely cause.",
+            ).contains("Run `easy-db-lab ingress allow` to add this machine's current public IP.")
+            .doesNotContain("recorded when `up` ran")
+            .contains("See ${logFile.absolutePath}")
             .contains("ssh reported:\n2026-10-13T03:44:03Z easy-db-lab: launching")
             .doesNotContain("ssh exited with code")
             .doesNotContain("debug1:")

@@ -34,7 +34,7 @@
 
 ## 7. Hint
 
-- [ ] 7.1 Update `DirectSshRoute.tunnelConnectFailureHint` to name `easy-db-lab ingress allow` and drop "recorded when `up` ran"; update its tests
+- [x] 7.1 Update `DirectSshRoute.tunnelConnectFailureHint` to name `easy-db-lab ingress allow` and drop "recorded when `up` ran"; update its tests
 
 ## 8. Docs, CLAUDE.md, verification
 

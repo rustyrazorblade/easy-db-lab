@@ -1,8 +1,8 @@
 ## 1. Strict CIDR parsing
 
-- [ ] 1.1 Write `Ipv4CidrTest` first: bare IP → `/32`, `/0`, `/32`, exact `/24`; rejects `300.1.1.1`, `10.0.0.0/33`, `foo`, `+1.2.3.4/32`, `01.2.3.4/32`, `1.2.3/24`, leading/trailing whitespace, `::1`; host bits (`198.51.100.7/24`) rejected naming `198.51.100.0/24`; every error names the value
-- [ ] 1.2 Add `network/Ipv4Cidr.kt` (value class, private constructor, `parse(raw): Result<Ipv4Cidr>`)
-- [ ] 1.3 Make `CidrBlock` use `Ipv4Cidr`, require an explicit prefix, keep the `/20` rule; add `CidrBlockTest` cases asserting the "Invalid CIDR" message for `10.0.0.0` and the network form for `10.0.0.5/16`; fix any `init` caller that relied on the loose parse
+- [x] 1.1 Write `Ipv4CidrTest` first: bare IP → `/32`, `/0`, `/32`, exact `/24`; rejects `300.1.1.1`, `10.0.0.0/33`, `foo`, `+1.2.3.4/32`, `01.2.3.4/32`, `1.2.3/24`, leading/trailing whitespace, `::1`; host bits (`198.51.100.7/24`) rejected naming `198.51.100.0/24`; every error names the value
+- [x] 1.2 Add `network/Ipv4Cidr.kt` (value class, private constructor, `parse(raw): Result<Ipv4Cidr>`)
+- [x] 1.3 Make `CidrBlock` use `Ipv4Cidr`, require an explicit prefix, keep the `/20` rule; add `CidrBlockTest` cases asserting the "Invalid CIDR" message for `10.0.0.0` and the network form for `10.0.0.5/16`; fix any `init` caller that relied on the loose parse
 
 ## 2. Security-group code split (behavior-preserving move)
 

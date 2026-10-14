@@ -6,8 +6,9 @@ import kotlin.random.Random
 /**
  * A value class representing a CIDR block for VPC networking.
  *
- * Provides validation and subnet calculation for VPC CIDR blocks.
- * The CIDR block must be /20 or larger to support /24 subnets for availability zones.
+ * Provides validation and subnet calculation for VPC CIDR blocks.  The value is parsed strictly by
+ * [Ipv4Cidr], so it is in network form with no host bits set.  It must name its prefix length
+ * explicitly, and the CIDR block must be /20 or larger to support /24 subnets for availability zones.
  *
  * Example usage:
  * ```
@@ -21,7 +22,8 @@ value class CidrBlock(
     val value: String,
 ) {
     init {
-        require(isValidCidr(value)) { "Invalid CIDR: $value" }
+        require('/' in value) { "Invalid CIDR: $value has no prefix length; a VPC CIDR needs one, for example /16" }
+        Ipv4Cidr.parse(value).getOrThrow()
         require(prefixLength <= MAX_PREFIX_LENGTH) {
             "CIDR prefix must be /$MAX_PREFIX_LENGTH or larger to support /24 subnets, got /$prefixLength"
         }
@@ -71,17 +73,6 @@ value class CidrBlock(
         /** Maximum subnet index (third octet can be 1-254) */
         private const val MAX_SUBNET_INDEX = 254
 
-        /** Valid range for octets */
-        private const val MIN_OCTET = 0
-        private const val MAX_OCTET = 255
-
-        /** Valid range for prefix length */
-        private const val MIN_PREFIX = 0
-        private const val MAX_PREFIX = 32
-
-        /** Number of octets in an IPv4 address */
-        private const val IPV4_OCTET_COUNT = 4
-
         /** Maximum second octet value when scanning for available 10.X.0.0/16 blocks */
         private const val MAX_SECOND_OCTET = 254
 
@@ -112,34 +103,6 @@ value class CidrBlock(
             }
             val secondOctet = freeOctets.random(random)
             return CidrBlock("10.$secondOctet.0.0/16")
-        }
-
-        /**
-         * Validates whether a string is a valid IPv4 CIDR block.
-         *
-         * @param cidr The CIDR string to validate
-         * @return true if valid, false otherwise
-         */
-        fun isValidCidr(cidr: String): Boolean {
-            if (!cidr.contains("/")) return false
-
-            val parts = cidr.split("/")
-            if (parts.size != 2) return false
-
-            val (address, prefixStr) = parts
-
-            // Validate prefix
-            val prefix = prefixStr.toIntOrNull() ?: return false
-            if (prefix < MIN_PREFIX || prefix > MAX_PREFIX) return false
-
-            // Validate IP address
-            val octets = address.split(".")
-            if (octets.size != IPV4_OCTET_COUNT) return false
-
-            return octets.all { octet ->
-                val value = octet.toIntOrNull() ?: return false
-                value in MIN_OCTET..MAX_OCTET
-            }
         }
     }
 }

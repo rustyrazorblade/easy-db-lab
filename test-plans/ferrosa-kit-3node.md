@@ -45,6 +45,7 @@ Each step after step 2 starts with `. "$(dirname "$EDB")/ferrosa-plan.env"`. Tha
 
 **A stress job that "succeeded" is not a clean run.** cassandra-easy-stress exits 0 even when it cannot connect, when the server rejects its schema, when the data center does not match, or when every request fails. It writes request exceptions only to a log inside its container. So `succeeded=1` proves only that the arguments parsed. A clean run of a job with `-t 4` needs all of these in `stress_check`:
 
+- `consistency` shows the level the run used: `LOCAL_ONE` (the default) unless the step sets `--cl`;
 - `schema lines` at least 1, `runner lines` 1, `profile lines` 4 (one message for each thread; the helper counts messages, because the four can share one output line), and `complete lines` 1;
 - `error lines` 0. Read the printed lines: a line from the OTel agent (`[otel.javaagent`) or the Pyroscope agent is not a stress error. Record it in `issues.md` as an observability defect, and judge the run on the other lines;
 - in the `last report` line, the error count (the second-to-last column) is 0, and the write and read counts add up to about the duration in seconds times 5,000.
@@ -98,6 +99,7 @@ stress_check() {
   "$EDB" cassandra stress logs "$1" > "$log"
   echo "schema lines:   $(grep -c 'Creating cassandra_easy_stress' "$log")"
   echo "runner lines:   $(grep -c 'Starting main runner' "$log")"
+  echo "consistency:    $(grep -o 'with consistency level [A-Z_]*' "$log" | head -1)"
   echo "profile lines:  $(grep -o 'Running the profile for' "$log" | wc -l | tr -d ' ')"
   echo "complete lines: $(grep -c 'Stress complete, 4.' "$log")"
   echo "error lines:    $(grep -ciE 'exception|error with cassandra-easy-stress|NoNodeAvailable|AllNodesFailed' "$log")"
@@ -777,7 +779,7 @@ sshn control0 "curl -s -X DELETE http://localhost:3000/api/dashboards/uid/ferros
 sshn control0 "curl -s 'http://localhost:3000/api/search?type=dash-db'" | jq -r '[.[] | select(.folderTitle == "ferrosa")] | "before start: \(length)"'
 $EDB ferrosa start --version="$FERROSA_TAG"; echo "exit=$?"
 sshn control0 "curl -s 'http://localhost:3000/api/search?type=dash-db'" | jq -r '.[] | select(.folderTitle == "ferrosa") | "\(.folderTitle)/\(.title) uid=\(.uid)"'
-$EDB cassandra stress start --name kv-final --image "$STRESS_IMAGE" -- KeyValue -d 45m --rate 5k -t 4 --host ferrosa-0.default.svc.cluster.local --replication "$REPLICATION"
+$EDB cassandra stress start --name kv-final --image "$STRESS_IMAGE" -- KeyValue -d 45m --rate 5k -t 4 --cl LOCAL_QUORUM --host ferrosa-0.default.svc.cluster.local --replication "$REPLICATION"
 ```
 
 Use JDK 21 for `installDist`. If `java -version` is not 21, set `JAVA_HOME` to a JDK 21 first.
@@ -797,6 +799,7 @@ stress_check kv-final
 - During the run, every panel has at least one series with data.
 - The job reports `succeeded=1 failed=0`.
 - `stress_check kv-final` shows a clean run (see Conventions), with about 13,500,000 operations (45 minutes at 5,000 a second).
+- `stress_check kv-final` prints `consistency:    with consistency level LOCAL_QUORUM`. So every request asked for LOCAL_QUORUM (acknowledgements from 2 of the 3 replicas), and 0 errors shows FerrosaDB never answered Unavailable or Timeout at that level. It does not prove that FerrosaDB enforces the level; this plan does not test that.
 - The throughput and latency panels show the run's 45-minute window.
 
 **Fail:** no dashboard in `ferrosa`, a panel with no data, a failed job, or any error or exception in the stress log.
@@ -902,7 +905,7 @@ CREATE TABLE IF NOT EXISTS edl_plan.kv (k text PRIMARY KEY, v text);
 INSERT INTO edl_plan.kv (k, v) VALUES ('s3a', '1');
 INSERT INTO edl_plan.kv (k, v) VALUES ('s3b', '2');
 CQL
-$EDB cassandra stress start --name kv-s3 --image "$STRESS_IMAGE" -- KeyValue -d 20m --rate 5k -t 4 --host ferrosa-0.default.svc.cluster.local --replication "$REPLICATION"
+$EDB cassandra stress start --name kv-s3 --image "$STRESS_IMAGE" -- KeyValue -d 20m --rate 5k -t 4 --cl LOCAL_QUORUM --host ferrosa-0.default.svc.cluster.local --replication "$REPLICATION"
 ```
 
 After `kv-s3` completes (about 21 minutes):
@@ -926,7 +929,7 @@ First read the `head -20` output to confirm the S3 key layout (the table directo
 
 **Pass:**
 - Every container has `FERROSA_S3_ENDPOINT=https://s3.<REGION>.amazonaws.com`, `FERROSA_S3_REGION=<REGION>`, `FERROSA_S3_BUCKET=<data-bucket>` (the sed replaced the value, so it equals `$DATA_BUCKET`; a line that shows any other bucket name is a fail, and you must redact it before you record it), `FERROSA_S3_PREFIX=ferrosa/` and `FERROSA_S3_REQUIRED=true`. No line shows an `AWS_` variable, an access key or a secret, so FerrosaDB uses the instance profile.
-- The job reports `succeeded=1 failed=0`, and `stress_check kv-s3` shows a clean run (see Conventions), with about 6,000,000 operations.
+- The job reports `succeeded=1 failed=0`, and `stress_check kv-s3` shows a clean run (see Conventions), with about 6,000,000 operations. It prints `consistency:    with consistency level LOCAL_QUORUM`, so every request asked for LOCAL_QUORUM (acknowledgements from 2 of the 3 replicas), and 0 errors shows FerrosaDB never answered Unavailable or Timeout at that level. It does not prove that FerrosaDB enforces the level; this plan does not test that.
 - After `stop` (whose drain syncs the SSTables), the data bucket holds data objects under `ferrosa/`, not only the `.ferrosa/connectivity-check` probe.
 - Every SSTable file on the volumes has an object with the same table directory and file name in S3. So the volume holds only the cache.
 - `get-bucket-lifecycle-configuration` fails with `NoSuchLifecycleConfiguration`, or it lists no rule whose filter covers `ferrosa/`.

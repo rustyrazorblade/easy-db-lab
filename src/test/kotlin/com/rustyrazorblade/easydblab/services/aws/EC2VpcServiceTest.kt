@@ -1,37 +1,25 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.events.EventEnvelope
-import com.rustyrazorblade.easydblab.events.EventListener
-import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
-import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.any
-import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.services.ec2.Ec2Client
-import software.amazon.awssdk.services.ec2.model.AuthorizeSecurityGroupIngressRequest
 import software.amazon.awssdk.services.ec2.model.CreateRouteRequest
 import software.amazon.awssdk.services.ec2.model.DescribeRouteTablesRequest
 import software.amazon.awssdk.services.ec2.model.DescribeRouteTablesResponse
-import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsRequest
-import software.amazon.awssdk.services.ec2.model.DescribeSecurityGroupsResponse
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
-import software.amazon.awssdk.services.ec2.model.IpPermission
-import software.amazon.awssdk.services.ec2.model.IpRange
 import software.amazon.awssdk.services.ec2.model.RouteTable
-import software.amazon.awssdk.services.ec2.model.SecurityGroup
 
 /**
  * Unit tests for EC2VpcService error handling and race condition behavior
  * that can't be tested with LocalStack.
  *
  * For core CRUD and idempotent find-or-create operations, see EC2VpcServiceIntegrationTest.
+ * Security group behavior is tested in EC2SecurityGroupServiceTest.
  */
 internal class EC2VpcServiceTest {
     private val mockEc2Client: Ec2Client = mock()
@@ -51,143 +39,6 @@ internal class EC2VpcServiceTest {
         assertThrows<IllegalStateException> {
             vpcService.ensureRouteTable("vpc-12345", "subnet-12345", "igw-12345")
         }
-    }
-
-    @Test
-    fun `authorizeSecurityGroupIngress should handle duplicate permission exception`() {
-        val securityGroup =
-            SecurityGroup
-                .builder()
-                .groupId("sg-12345")
-                .ipPermissions(emptyList())
-                .build()
-
-        val describeResponse =
-            DescribeSecurityGroupsResponse
-                .builder()
-                .securityGroups(securityGroup)
-                .build()
-
-        val ec2Exception =
-            Ec2Exception
-                .builder()
-                .awsErrorDetails(
-                    software.amazon.awssdk.awscore.exception.AwsErrorDetails
-                        .builder()
-                        .errorCode("InvalidPermission.Duplicate")
-                        .build(),
-                ).build()
-
-        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(
-            describeResponse,
-        )
-        whenever(mockEc2Client.authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())).thenThrow(
-            ec2Exception,
-        )
-
-        // Should not throw exception - should handle duplicate gracefully
-        vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
-
-        verify(mockEc2Client).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
-    }
-
-    @Test
-    fun `authorizeSecurityGroupIngress skips an ICMP rule that already exists`() {
-        val existingIcmpRule =
-            IpPermission
-                .builder()
-                .ipProtocol("icmp")
-                .fromPort(-1)
-                .toPort(-1)
-                .ipRanges(IpRange.builder().cidrIp("10.0.0.0/16").build())
-                .build()
-        val securityGroup =
-            SecurityGroup
-                .builder()
-                .groupId("sg-12345")
-                .ipPermissions(existingIcmpRule)
-                .build()
-        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(
-            DescribeSecurityGroupsResponse.builder().securityGroups(securityGroup).build(),
-        )
-
-        vpcService.authorizeSecurityGroupIngress("sg-12345", -1, -1, "10.0.0.0/16", "icmp")
-
-        verify(mockEc2Client, never()).authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())
-    }
-
-    @Test
-    fun `authorizeSecurityGroupIngress builds an all-types ICMP permission`() {
-        val securityGroup =
-            SecurityGroup
-                .builder()
-                .groupId("sg-12345")
-                .ipPermissions(emptyList())
-                .build()
-        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(
-            DescribeSecurityGroupsResponse.builder().securityGroups(securityGroup).build(),
-        )
-
-        vpcService.authorizeSecurityGroupIngress("sg-12345", -1, -1, "10.0.0.0/16", "icmp")
-
-        val request = argumentCaptor<AuthorizeSecurityGroupIngressRequest>()
-        verify(mockEc2Client).authorizeSecurityGroupIngress(request.capture())
-        val permission = request.firstValue.ipPermissions().single()
-        assertThat(permission.ipProtocol()).isEqualTo("icmp")
-        assertThat(permission.fromPort()).isEqualTo(-1)
-        assertThat(permission.toPort()).isEqualTo(-1)
-        assertThat(permission.ipRanges().map { it.cidrIp() }).containsExactly("10.0.0.0/16")
-    }
-
-    @Test
-    fun `authorizeSecurityGroupIngress reports an ICMP rule as all ICMP types`() {
-        assertThat(configuredRuleText(-1, -1, "icmp"))
-            .isEqualTo("Configured security group ingress rule for all ICMP types")
-    }
-
-    @Test
-    fun `authorizeSecurityGroupIngress reports a TCP range as a port range`() {
-        assertThat(configuredRuleText(9000, 9100, "tcp"))
-            .isEqualTo("Configured security group ingress rule for ports 9000-9100")
-    }
-
-    @Test
-    fun `authorizeSecurityGroupIngress reports a single TCP port`() {
-        assertThat(configuredRuleText(22, 22, "tcp"))
-            .isEqualTo("Configured security group ingress rule for port 22")
-    }
-
-    private fun configuredRuleText(
-        fromPort: Int,
-        toPort: Int,
-        protocol: String,
-    ): String {
-        val securityGroup =
-            SecurityGroup
-                .builder()
-                .groupId("sg-12345")
-                .ipPermissions(emptyList())
-                .build()
-        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(
-            DescribeSecurityGroupsResponse.builder().securityGroups(securityGroup).build(),
-        )
-        val events = mutableListOf<Event>()
-        eventBus.addListener(
-            object : EventListener {
-                override fun onEvent(envelope: EventEnvelope) {
-                    events.add(envelope.event)
-                }
-
-                override fun close() = Unit
-            },
-        )
-
-        vpcService.authorizeSecurityGroupIngress("sg-12345", fromPort, toPort, "10.0.0.0/16", protocol)
-
-        return events
-            .filterIsInstance<Event.Infra.SecurityGroupRuleConfigured>()
-            .single()
-            .toDisplayString()
     }
 
     @Test
@@ -222,43 +73,6 @@ internal class EC2VpcServiceTest {
         vpcService.ensureRouteTable("vpc-12345", "subnet-12345", "igw-12345")
 
         verify(mockEc2Client).createRoute(any<CreateRouteRequest>())
-    }
-
-    @Test
-    fun `authorizeSecurityGroupIngress should throw on non-duplicate exception`() {
-        val securityGroup =
-            SecurityGroup
-                .builder()
-                .groupId("sg-12345")
-                .ipPermissions(emptyList())
-                .build()
-
-        val describeResponse =
-            DescribeSecurityGroupsResponse
-                .builder()
-                .securityGroups(securityGroup)
-                .build()
-
-        val ec2Exception =
-            Ec2Exception
-                .builder()
-                .awsErrorDetails(
-                    software.amazon.awssdk.awscore.exception.AwsErrorDetails
-                        .builder()
-                        .errorCode("InvalidGroup.NotFound")
-                        .build(),
-                ).build()
-
-        whenever(mockEc2Client.describeSecurityGroups(any<DescribeSecurityGroupsRequest>())).thenReturn(
-            describeResponse,
-        )
-        whenever(mockEc2Client.authorizeSecurityGroupIngress(any<AuthorizeSecurityGroupIngressRequest>())).thenThrow(
-            ec2Exception,
-        )
-
-        assertThrows<Ec2Exception> {
-            vpcService.authorizeSecurityGroupIngress("sg-12345", 22, 22, "0.0.0.0/0", "tcp")
-        }
     }
 
     @Test

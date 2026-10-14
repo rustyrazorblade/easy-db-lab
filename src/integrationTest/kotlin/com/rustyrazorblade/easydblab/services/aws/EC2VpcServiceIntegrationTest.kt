@@ -18,7 +18,7 @@ import kotlin.random.Random
  * Integration tests for EC2VpcService using LocalStack.
  *
  * Tests verify that VPC resource creation, idempotent find-or-create patterns,
- * security group ingress rules, route tables, and tag operations work correctly
+ * route tables, and tag operations work correctly
  * through real AWS SDK API calls against a LocalStack EC2 endpoint.
  *
  * Uses the JVM-wide [SharedLocalStack] EC2 backend, shared with the other EC2
@@ -122,79 +122,6 @@ class EC2VpcServiceIntegrationTest {
             val second = vpcService.findOrCreateInternetGateway(vpcId, "idem-igw", emptyMap())
 
             assertThat(first).isEqualTo(second)
-        }
-    }
-
-    @Nested
-    inner class FindOrCreateSecurityGroup {
-        @Test
-        fun `should create security group`() {
-            val vpcId = vpcService.createVpc("test-sg-create", "10.0.0.0/16", emptyMap())
-
-            val sgId =
-                vpcService.findOrCreateSecurityGroup(
-                    vpcId,
-                    "test-sg",
-                    "Test SG",
-                    emptyMap(),
-                )
-
-            assertThat(sgId).startsWith("sg-")
-        }
-
-        @Test
-        fun `should return existing SG on second call`() {
-            val vpcId = vpcService.createVpc("test-sg-idempotent", "10.0.0.0/16", emptyMap())
-
-            val first = vpcService.findOrCreateSecurityGroup(vpcId, "idem-sg", "Test", emptyMap())
-            val second = vpcService.findOrCreateSecurityGroup(vpcId, "idem-sg", "Test", emptyMap())
-
-            assertThat(first).isEqualTo(second)
-        }
-    }
-
-    @Nested
-    inner class AuthorizeSecurityGroupIngress {
-        @Test
-        fun `should add ingress rule and verify via describe`() {
-            val vpcId = vpcService.createVpc("test-sg-ingress", "10.0.0.0/16", emptyMap())
-            val sgId = vpcService.findOrCreateSecurityGroup(vpcId, "ingress-sg", "Test", emptyMap())
-
-            vpcService.authorizeSecurityGroupIngress(sgId, 22, 22, "0.0.0.0/0", "tcp")
-
-            val details = vpcService.describeSecurityGroup(sgId)
-            assertThat(details.inboundRules).anyMatch {
-                it.fromPort == 22 && it.toPort == 22 && it.protocol == "TCP"
-            }
-        }
-
-        @Test
-        fun `should be idempotent when adding same rule twice`() {
-            val vpcId = vpcService.createVpc("test-sg-ingress-idem", "10.0.0.0/16", emptyMap())
-            val sgId = vpcService.findOrCreateSecurityGroup(vpcId, "ingress-idem-sg", "Test", emptyMap())
-
-            vpcService.authorizeSecurityGroupIngress(sgId, 9042, 9042, "10.0.0.0/8", "tcp")
-            // Second call should not throw
-            vpcService.authorizeSecurityGroupIngress(sgId, 9042, 9042, "10.0.0.0/8", "tcp")
-
-            val details = vpcService.describeSecurityGroup(sgId)
-            val matchingRules =
-                details.inboundRules.filter {
-                    it.fromPort == 9042 && it.toPort == 9042
-                }
-            assertThat(matchingRules).hasSize(1)
-        }
-
-        @Test
-        fun `should add multiple different rules`() {
-            val vpcId = vpcService.createVpc("test-sg-multi-rules", "10.0.0.0/16", emptyMap())
-            val sgId = vpcService.findOrCreateSecurityGroup(vpcId, "multi-rules-sg", "Test", emptyMap())
-
-            vpcService.authorizeSecurityGroupIngress(sgId, 22, 22, "0.0.0.0/0", "tcp")
-            vpcService.authorizeSecurityGroupIngress(sgId, 9042, 9042, "10.0.0.0/8", "tcp")
-
-            val details = vpcService.describeSecurityGroup(sgId)
-            assertThat(details.inboundRules).hasSize(2)
         }
     }
 

@@ -6,7 +6,7 @@
 
 ## 2. Security-group code split (behavior-preserving move)
 
-- [ ] 2.1 Move the `SecurityGroupOperations` implementation and its helpers (including `describeIngressPorts`) from `EC2VpcService` into a new `services/aws/EC2SecurityGroupService`; `EC2VpcService` delegates `SecurityGroupOperations` to it; move the matching unit and integration tests; all existing tests pass unchanged in behavior
+- [x] 2.1 Move the `SecurityGroupOperations` implementation and its helpers (including `describeIngressPorts`) from `EC2VpcService` into a new `services/aws/EC2SecurityGroupService`; `EC2VpcService` delegates `SecurityGroupOperations` to it; move the matching unit and integration tests; all existing tests pass unchanged in behavior
 - [ ] 2.2 Remove the unreachable `securityGroups.isEmpty()` branches and wrap the describe calls in `withAwsRetry`
 
 ## 3. Typed rule results

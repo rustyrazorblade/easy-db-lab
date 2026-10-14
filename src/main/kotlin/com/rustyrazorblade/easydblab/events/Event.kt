@@ -6174,4 +6174,159 @@ sealed interface Event {
                 (documents.map { "Uploaded ${it.name} to ${it.uri}" } + "Rebuilt the test's index at $indexUri").joinToString("\n")
         }
     }
+
+    /**
+     * SSH ingress rules that `ingress allow` and `ingress revoke` change on the workspace cluster's
+     * security group: one event per CIDR, and one for each precondition that stops the command.
+     * A [cidr] is always canonical (`203.0.113.7/32`); `detected` is true when it is this
+     * machine's detected public IP rather than a value given with `--cidr`.
+     */
+    @Serializable
+    sealed interface Ingress : Event {
+        /** Which command a [RuleChangeFailed] came from. */
+        @Serializable
+        enum class Action(
+            val verb: String,
+        ) {
+            @SerialName("allow")
+            ALLOW("allow"),
+
+            @SerialName("revoke")
+            REVOKE("revoke"),
+        }
+
+        /** One rejected `--cidr` value and why it was rejected. */
+        @Serializable
+        data class InvalidCidrValue(
+            val value: String,
+            val reason: String,
+        )
+
+        /** An SSH rule for [cidr] was added to [securityGroupId]. */
+        @Serializable
+        @SerialName("Ingress.RuleAdded")
+        data class RuleAdded(
+            val securityGroupId: String,
+            val cidr: String,
+            val detected: Boolean,
+        ) : Ingress {
+            override fun toDisplayString(): String = "Allowed SSH from ${cidrLabel(cidr, detected)} on security group $securityGroupId."
+        }
+
+        /** [securityGroupId] already allowed SSH from [cidr]; nothing changed. */
+        @Serializable
+        @SerialName("Ingress.RuleAlreadyPresent")
+        data class RuleAlreadyPresent(
+            val securityGroupId: String,
+            val cidr: String,
+            val detected: Boolean,
+        ) : Ingress {
+            override fun toDisplayString(): String =
+                "SSH from ${cidrLabel(cidr, detected)} is already allowed on security group $securityGroupId; nothing changed."
+        }
+
+        /** The SSH rule for [cidr] was removed from [securityGroupId]. */
+        @Serializable
+        @SerialName("Ingress.RuleRemoved")
+        data class RuleRemoved(
+            val securityGroupId: String,
+            val cidr: String,
+            val detected: Boolean,
+        ) : Ingress {
+            override fun toDisplayString(): String = "Revoked SSH from ${cidrLabel(cidr, detected)} on security group $securityGroupId."
+        }
+
+        /** [securityGroupId] has no SSH rule for [cidr], so there was nothing to revoke. */
+        @Serializable
+        @SerialName("Ingress.RuleNotFound")
+        data class RuleNotFound(
+            val securityGroupId: String,
+            val cidr: String,
+        ) : Ingress {
+            override fun toDisplayString(): String = "Error: security group $securityGroupId has no SSH rule for $cidr to revoke."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** AWS refused to [action] SSH from [cidr] on [securityGroupId], for [reason]. */
+        @Serializable
+        @SerialName("Ingress.RuleChangeFailed")
+        data class RuleChangeFailed(
+            val securityGroupId: String,
+            val cidr: String,
+            val action: Action,
+            val reason: String,
+        ) : Ingress {
+            override fun toDisplayString(): String =
+                "Error: could not ${action.verb} SSH from $cidr on security group $securityGroupId: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** The [invalid] `--cidr` values stopped the command before any AWS call; nothing changed. */
+        @Serializable
+        @SerialName("Ingress.InvalidCidrs")
+        data class InvalidCidrs(
+            val invalid: List<InvalidCidrValue>,
+        ) : Ingress {
+            override fun toDisplayString(): String =
+                buildString {
+                    append("Error: invalid --cidr values; nothing was changed. ")
+                    append("Give an IPv4 address or CIDR, such as 203.0.113.7 or 198.51.100.0/24.")
+                    invalid.forEach { append("\n  '${it.value}': ${it.reason}") }
+                }
+
+            override fun isError(): Boolean = true
+        }
+
+        /** No `--cidr` was given and this machine's public IP could not be detected, for [reason]. */
+        @Serializable
+        @SerialName("Ingress.PublicIpDetectionFailed")
+        data class PublicIpDetectionFailed(
+            val reason: String,
+        ) : Ingress {
+            override fun toDisplayString(): String =
+                "Error: could not detect this machine's public IP ($reason). Give the address with --cidr."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** The working directory has no cluster state. */
+        @Serializable
+        @SerialName("Ingress.NotInWorkspace")
+        data object NotInWorkspace : Ingress {
+            override fun toDisplayString(): String =
+                "Error: this directory has no cluster state (state.json). Run the command from the cluster's workspace."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** The cluster state records no security group, so there is no rule to change. */
+        @Serializable
+        @SerialName("Ingress.NoSecurityGroupInState")
+        data object NoSecurityGroupInState : Ingress {
+            override fun toDisplayString(): String = "Error: the cluster state records no security group. Run 'easy-db-lab up' first."
+
+            override fun isError(): Boolean = true
+        }
+
+        /** AWS reports that [securityGroupId], named in the cluster state, does not exist. */
+        @Serializable
+        @SerialName("Ingress.SecurityGroupNotFound")
+        data class SecurityGroupNotFound(
+            val securityGroupId: String,
+        ) : Ingress {
+            override fun toDisplayString(): String =
+                "Error: security group $securityGroupId from the cluster state does not exist in AWS " +
+                    "(the cluster may be down, or the profile may use another region)."
+
+            override fun isError(): Boolean = true
+        }
+    }
 }
+
+/** A CIDR as the ingress events show it, naming it as this machine's public IP when it was detected. */
+private fun cidrLabel(
+    cidr: String,
+    detected: Boolean,
+): String = if (detected) "$cidr (this machine's public IP)" else cidr

@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.aws.Aws
 import com.rustyrazorblade.easydblab.commands.cassandra.Cassandra
 import com.rustyrazorblade.easydblab.commands.exec.Exec
+import com.rustyrazorblade.easydblab.commands.ingress.Ingress
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.profile.Profile
 import com.rustyrazorblade.easydblab.commands.socks.Socks
@@ -63,6 +64,7 @@ import java.util.function.Supplier
         SetupInstance::class,
         Up::class,
         Socks::class,
+        Ingress::class,
         // Parent command groups
         Spark::class,
         Cassandra::class,

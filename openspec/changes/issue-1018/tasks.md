@@ -28,9 +28,9 @@
 
 ## 6. Events and commands
 
-- [ ] 6.1 Add the `Event.Ingress` domain and its ten events to `events/Event.kt`, with serialization registration per `events/CLAUDE.md`
-- [ ] 6.2 Add `commands/mixins/SshCidrMixin.kt` (repeatable `--cidr`), `commands/ingress/Ingress.kt` (parent), `IngressAllow.kt`, `IngressRevoke.kt` (`@RequireProfileSetup`); map results to events; throw `CommandFailedException` naming failed CIDRs; register `Ingress` in `CommandLineParser` and `Repl`
-- [ ] 6.3 Small command test: `NotFound`, `Failed` and each precondition result exit non-zero; which event types are emitted
+- [x] 6.1 Add the `Event.Ingress` domain and its ten events to `events/Event.kt`, with serialization registration per `events/CLAUDE.md`
+- [x] 6.2 Add `commands/mixins/SshCidrMixin.kt` (repeatable `--cidr`), `commands/ingress/Ingress.kt` (parent), `IngressAllow.kt`, `IngressRevoke.kt` (`@RequireProfileSetup`); map results to events; throw `CommandFailedException` naming failed CIDRs; register `Ingress` in `CommandLineParser` and `Repl`
+- [x] 6.3 Small command test: `NotFound`, `Failed` and each precondition result exit non-zero; which event types are emitted
 
 ## 7. Hint
 

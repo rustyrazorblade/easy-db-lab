@@ -267,32 +267,7 @@ class AwsInfrastructureService(
 
         // Configure SSH access - either from anywhere or from the user's external IP
         val sshCidr = if (config.isOpen) "0.0.0.0/0" else "${externalIpProvider()}/32"
-        authorizeIngress(securityGroupId, Constants.Network.SSH_PORT, Constants.Network.SSH_PORT, sshCidr)
-
-        // Allow all traffic within the VPC (for Cassandra communication) - both TCP and UDP
-        authorizeIngress(
-            securityGroupId,
-            Constants.Network.MIN_PORT,
-            Constants.Network.MAX_PORT,
-            config.vpcCidr,
-            "tcp",
-        )
-        authorizeIngress(
-            securityGroupId,
-            Constants.Network.MIN_PORT,
-            Constants.Network.MAX_PORT,
-            config.vpcCidr,
-            "udp",
-        )
-        // ICMP (all types/codes) within the VPC: ping between nodes and pods, and Cilium's
-        // health checker, which probes every node with ICMP echo.
-        authorizeIngress(
-            securityGroupId,
-            Constants.Network.ALL_ICMP_TYPES,
-            Constants.Network.ALL_ICMP_TYPES,
-            config.vpcCidr,
-            Constants.Network.ICMP_PROTOCOL,
-        )
+        authorizeClusterRules(securityGroupId, sshCidr, config.vpcCidr)
 
         val infrastructure = VpcInfrastructure(config.vpcId, subnetIds, securityGroupId, igwId)
 
@@ -302,6 +277,28 @@ class AwsInfrastructureService(
         eventBus.emit(Event.Infra.VpcNetworkingReady(config.clusterName))
 
         return infrastructure
+    }
+
+    /** The cluster security group's rules: SSH from [sshCidr], and all traffic from within the VPC. */
+    private fun authorizeClusterRules(
+        securityGroupId: String,
+        sshCidr: String,
+        vpcCidr: String,
+    ) {
+        authorizeIngress(securityGroupId, Constants.Network.SSH_PORT, Constants.Network.SSH_PORT, sshCidr)
+
+        // Allow all traffic within the VPC (for Cassandra communication) - both TCP and UDP
+        authorizeIngress(securityGroupId, Constants.Network.MIN_PORT, Constants.Network.MAX_PORT, vpcCidr, "tcp")
+        authorizeIngress(securityGroupId, Constants.Network.MIN_PORT, Constants.Network.MAX_PORT, vpcCidr, "udp")
+        // ICMP (all types/codes) within the VPC: ping between nodes and pods, and Cilium's
+        // health checker, which probes every node with ICMP echo.
+        authorizeIngress(
+            securityGroupId,
+            Constants.Network.ALL_ICMP_TYPES,
+            Constants.Network.ALL_ICMP_TYPES,
+            vpcCidr,
+            Constants.Network.ICMP_PROTOCOL,
+        )
     }
 
     /**

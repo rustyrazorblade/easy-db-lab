@@ -114,12 +114,13 @@ Every export SHALL hold the docker compose stack in offline mode with its config
 
 ### Requirement: An export opens offline as the local stack
 
-An unpacked export SHALL open with plain `docker compose up` on a machine with no network and no AWS credentials, when the stack's images are already on it.  It SHALL read from a filesystem backend over the zip's data, with no import step.  It SHALL show the metrics, logs and traces, the annotations, the dashboards, and the report.  Every store SHALL run with retention off, and no compactor SHALL run.
+An unpacked export SHALL open with plain `docker compose up` on a machine with no network and no AWS credentials, when the stack's images are already on it.  It SHALL read from a filesystem backend over the zip's data, with no import step.  It SHALL show the metrics, logs and traces, the annotations, the dashboards, and the report.  The zip's data SHALL be mounted read-only into every backend.  Every store SHALL run with retention off, and no component SHALL compact, merge or delete data.
 
 #### Scenario: The zip opens with no network
 - **WHEN** the zip is opened on a machine with no network and no AWS credentials, and the stack's images are already on it
 - **THEN** `docker compose up` shows the metrics, logs and traces, the annotations, the dashboards and the report, with no import step
 
-#### Scenario: Retention is off and no compactor runs
+#### Scenario: The opened data is never changed
 - **WHEN** an opened export runs
-- **THEN** every store has retention off and no compactor runs
+- **THEN** every store has retention off
+- **AND** no block is merged, marked compacted or deleted, and the files under the zip's data are unchanged

@@ -25,14 +25,14 @@ Issue #902, "Local observability stack over the shared store, experiment label, 
 
 **Local stack (`local-observability-stack`, new)**
 - `observability local create <dir> [--tenant <home>]` writes a docker compose stack into `<dir>`: Mimir with its memcached, Loki, Tempo, Grafana, the documents view, and a read gate with a signer. Pyroscope comes with #1016. The directory is required.
-- The live stack reads the shared store in S3 directly with the owner's AWS profile, through a gate that passes only GET and HEAD. It runs read-only components and no compactor, and writes nothing to the bucket.
+- The live stack reads the shared store in S3 directly with the owner's AWS profile, through a gate that passes only GET and HEAD. No component writes to the bucket, and none compacts, merges or deletes data; the gate refuses every write, such as Tempo's tenant index.
 - Datasources come from `GrafanaDatasourceSet` with the same UIDs as a cluster; only the URLs change. Image tags are the cluster's pins, checked by a drift test. Everything comes from packaged resources.
 - `observability local dashboards <dir> [--from <dir>]` refreshes only the dashboards through Grafana's provisioning reload API.
 
 **Export (`observability-export`, new)**
 - `observability export <path>` takes exactly one selector: `--tenant <t>` (a file copy of the tenant's store), `--cluster <name-id>` (repeatable, an export by query), or `--experiment <name>` (an export by query of every cluster of that experiment in one tenant; `--tenant` names the tenant, default the workspace's tenant, or `default` outside a workspace).
 - The zip holds the raw metrics, logs and traces, the docker compose stack in offline mode, the dashboards, the annotations, and every report zip of each experiment it covers. It carries no images. It is written only to the local path. Every export says profiles are not included and names #1016.
-- An opened export runs with plain `docker compose up`, offline, from a filesystem backend, with retention off and no compactor.
+- An opened export runs with plain `docker compose up`, offline, from a filesystem backend mounted read-only, with retention off and no compaction, merging or deletion.
 
 **Grafana (`cluster-comparison-dashboard`, `multi-cluster-dashboards`, `tests-dashboard`, `observability`, `grafana-install-dashboard`)**
 - `dashboards/cassandra/cluster-comparison.json` becomes `dashboards/cassandra/experiment-cassandra.json`, "Experiment: Cassandra", keeping its uid. New `dashboards/infrastructure/experiment-system.json`, "Experiment: System", uid `experiment-system`. Both pick an experiment, then any set of its clusters, and show a per-cluster leaderboard, distributions, an elapsed-time overlay, a timeline, and the experiment's report.
@@ -96,6 +96,6 @@ Issue #902, "Local observability stack over the shared store, experiment label, 
 - Uploading an export anywhere.
 - A partial or time-ranged export.
 - Publishing a prebuilt image of the local stack, or images inside an export.
-- Any compactor in the local stack.
+- Any compaction, merging or deletion in the local stack. (Tempo 3.0.3's single binary always starts its backend scheduler and worker; they run inert, with compaction disabled.)
 - Fixing the MCAC histogram defect.
 - Splitting `events/Event.kt`, and the two meanings of `CLUSTER_NAME`. Left for later; no issue filed.

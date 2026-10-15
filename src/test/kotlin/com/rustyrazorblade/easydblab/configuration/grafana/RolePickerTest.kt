@@ -13,24 +13,33 @@ import org.junit.jupiter.api.Test
 import java.io.File
 
 /**
- * System Overview and System A/B Comparison have a `role` picker, so an operator shows every db
- * node, or every app node, without picking hosts one by one. A host's role is read from its name
- * (owner decision): db0 is `db`, app1 is `app`, control0 is `control`, and an EMR node, named
- * `ip-...` by EC2, is `spark`. The host pickers list only hosts of the selected roles, and every
- * panel filters by the role, so a panel never shows a host the picker hides.
+ * System Overview, System A/B Comparison and Experiment: System have a `role` picker, so an
+ * operator shows every db node, or every app node, without picking hosts one by one. A host's role
+ * is read from its name (owner decision): db0 is `db`, app1 is `app`, control0 is `control`, and an
+ * EMR node, named `ip-...` by EC2, is `spark`. The host pickers list only hosts of the selected
+ * roles, and every panel filters by the role, so a panel never shows a host the picker hides.
+ * Experiment: System compares whole clusters and has no host picker.
  */
 class RolePickerTest {
     private val dashboards =
-        listOf("dashboards/infrastructure/system-overview.json", "dashboards/infrastructure/system-ab-comparison.json")
+        listOf(
+            "dashboards/infrastructure/system-overview.json",
+            "dashboards/infrastructure/system-ab-comparison.json",
+            "dashboards/infrastructure/experiment-system.json",
+        )
 
     /** The host pickers of each dashboard. */
     private val hostPickers =
         mapOf(
             "system-overview.json" to listOf("hostname"),
-            "system-ab-comparison.json" to listOf("baseline", "candidate"),
+            "system-ab-comparison.json" to listOf("hosts_a", "hosts_b"),
+            "experiment-system.json" to emptyList(),
         )
 
-    private fun parse(path: String): JsonObject = Json.parseToJsonElement(File(path).readText()).jsonObject
+    private fun parse(path: String): JsonObject {
+        assertThat(File(path)).describedAs(path).exists()
+        return Json.parseToJsonElement(File(path).readText()).jsonObject
+    }
 
     private fun variables(dashboard: JsonObject): Map<String, JsonObject> =
         ((dashboard["templating"] as JsonObject)["list"] as JsonArray)
@@ -77,9 +86,21 @@ class RolePickerTest {
         for (path in dashboards) {
             val declared = variables(parse(path))
             for (picker in hostPickers.getValue(File(path).name)) {
+                assertThat(declared).describedAs("$path declares $picker").containsKey(picker)
                 val query = ((declared.getValue(picker)["query"] as JsonObject).string("query")).orEmpty()
                 assertThat(query).describedAs("$path $picker").contains(ROLE_MATCHER)
             }
+        }
+    }
+
+    @Test
+    fun `each dashboard declares its own host pickers and none of the others`() {
+        val every = hostPickers.values.flatten().toSet() + RETIRED_HOST_PICKERS
+        for (path in dashboards) {
+            val declared = variables(parse(path)).keys
+            val own = hostPickers.getValue(File(path).name)
+
+            assertThat(declared).describedAs(path).containsAll(own).doesNotContainAnyElementsOf(every - own.toSet())
         }
     }
 
@@ -111,6 +132,9 @@ class RolePickerTest {
         /** The CloudWatch series carry the host's name as `tag_Name`. */
         const val TAG_ROLE_MATCHER = "tag_Name=~\"\${role:pipe}\""
         val selectors = Regex("""\{[^{}]*}""")
-        val clusterMatcher = Regex("""cluster=~?"\$\{?(cluster|baseline_cluster|candidate_cluster)""")
+        val clusterMatcher = Regex("""cluster=~?"\$\{?(${DashboardVariables.CLUSTER_FILTERS.joinToString("|")})""")
+
+        /** The host pickers System A/B Comparison had before the A/B rename. */
+        val RETIRED_HOST_PICKERS = setOf("baseline", "candidate")
     }
 }

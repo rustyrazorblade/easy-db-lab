@@ -65,7 +65,7 @@
 
 ## 6. Phase 4: local stack
 
-- [ ] 6.1 Debt: `ObservabilityHttp` endpoint-and-tenant seam with a localhost implementation; existing callers keep the cluster one.
+- [x] 6.1 Debt: `ObservabilityHttp` endpoint-and-tenant seam with a localhost implementation; existing callers keep the cluster one.
 - [ ] 6.2 Debt: extract `GrafanaServerSettings` from `GrafanaManifestBuilder`; the builder and compose use it.
 - [ ] 6.3 `LocalImages` from the builder constants plus `Constants.K8s.MIMIR_MEMCACHED_IMAGE`, the gate nginx pin and the thanos pin `quay.io/thanos/thanos:v0.42.4` in `Constants`; drift test over the generated compose.
 - [ ] 6.4 Shared memcached size, connection and thread args (`-m 2048 -I 1m -c 4096 -t 4`) used by `MimirManifestBuilder` and compose; each caller adds its own listen address (the cluster keeps `-l 127.0.0.1`, compose has none). memcached is an ordinary compose service; Mimir gets the four `-...memcached.addresses=memcached:11211` overrides (index, chunks, metadata, results cache), with no shared network namespace.

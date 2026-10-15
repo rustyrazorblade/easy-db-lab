@@ -9,6 +9,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.Proxy
 import java.time.Duration
 
 /** A response from an observability service on the control node: its status code and body. */
@@ -158,3 +159,38 @@ class DefaultObservabilityHttp(
 ) : ObservabilityHttp by EndpointObservabilityHttp(
         ClusterObservabilityEndpoint(httpClientFactory, socksProxyService, clusterStateManager),
     )
+
+/** An HTTP client that never uses a proxy: a local stack is on this machine. */
+private fun directClient(): OkHttpClient = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).build()
+
+/**
+ * The [ObservabilityEndpoint] of a docker compose stack on this machine: each backend is reached on
+ * the localhost port the stack publishes for it, with no proxy, and every request carries one tenant
+ * (`a|b` for several). A backend the stack does not publish fails before any request is made.
+ *
+ * @property tenant the value of `X-Scope-OrgID` on every request.
+ * @property publishedPorts the published localhost port of each backend, by its cluster port
+ *   (for example `9009` to wherever the stack publishes Mimir).
+ * @property client the HTTP client; direct by default, so no request can enter the SOCKS tunnel.
+ */
+class LocalhostObservabilityEndpoint(
+    private val tenant: String,
+    private val publishedPorts: Map<Int, Int>,
+    private val client: OkHttpClient = directClient(),
+) : ObservabilityEndpoint {
+    override fun target(port: Int): ObservabilityTarget {
+        val published = requireNotNull(publishedPorts[port]) { "The local stack publishes no backend on port $port" }
+        return ObservabilityTarget("http://${Constants.LocalStack.LOOPBACK}:$published", tenant, client)
+    }
+}
+
+/**
+ * [ObservabilityHttp] to a docker compose stack on this machine: [EndpointObservabilityHttp] over a
+ * [LocalhostObservabilityEndpoint]. The local stack and the export's temporary reader and writer
+ * stacks use it.
+ */
+class LocalhostObservabilityHttp(
+    tenant: String,
+    publishedPorts: Map<Int, Int>,
+    client: OkHttpClient = directClient(),
+) : ObservabilityHttp by EndpointObservabilityHttp(LocalhostObservabilityEndpoint(tenant, publishedPorts, client))

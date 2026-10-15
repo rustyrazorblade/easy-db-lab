@@ -155,7 +155,12 @@ class S3ObjectStoreTest : BaseKoinTest() {
         }.isInstanceOf(S3Exception::class.java)
     }
 
-    private fun s3Error(status: Int): S3Exception = S3Exception.builder().message("status $status").statusCode(status).build() as S3Exception
+    private fun s3Error(status: Int): S3Exception =
+        S3Exception
+            .builder()
+            .message("status $status")
+            .statusCode(status)
+            .build() as S3Exception
 
     @Test
     fun `putIfAbsent reports a concurrent conditional write that won as AlreadyExists`() {

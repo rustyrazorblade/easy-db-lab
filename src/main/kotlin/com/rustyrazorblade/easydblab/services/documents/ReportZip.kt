@@ -104,6 +104,7 @@ object ReportZip {
         val links = entries.filter { it.isSymbolicLink() }.map { relative(root, it) }
         val files = entries.filter { it.isRegularFile(LinkOption.NOFOLLOW_LINKS) }.map { relative(root, it) }
         val reasons = mutableMapOf<String, MutableList<String>>()
+
         fun refuse(
             path: String,
             reason: String,

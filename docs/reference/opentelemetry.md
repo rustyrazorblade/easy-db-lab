@@ -131,8 +131,8 @@ The rules define these families:
 
 | Metric | Attributes | Source MBean |
 |--------|-----------|--------------|
-| `cassandra.client.request.latency.{p50,p99,p999,max}` | `cassandra.operation` | `type=ClientRequest,scope={Read,Write,RangeSlice},name=Latency` |
-| `cassandra.client.request.count` | `cassandra.operation` | the same three beans, `Count` |
+| `cassandra.client.request.latency.{p50,p99,p999,max}` | `cassandra.operation` | `type=ClientRequest,scope={Read,Write,RangeSlice,CASRead,CASWrite},name=Latency` |
+| `cassandra.client.request.count` | `cassandra.operation` | the same five beans, `Count` |
 | `cassandra.client.request.error` | `cassandra.operation`, `cassandra.status` | `name={Unavailables,Timeouts,Failures}` |
 | `cassandra.compaction.tasks.{completed,pending}` | — | `type=Compaction` |
 | `cassandra.storage.{load,hints.count,hints.in_progress}` | — | `type=Storage` |
@@ -143,8 +143,29 @@ The rules define these families:
 | `cassandra.table.sstables.per.read.{p50,p99,max}` | `keyspace`, `table` | `type=Table,name=SSTablesPerReadHistogram` |
 | `cassandra.thread_pool.tasks.{active,pending,blocked}` | `pool`, `pool_path` | `type=ThreadPools` |
 | `cassandra.messages.dropped` | `message_type` | `type=DroppedMessage` |
+| `cassandra.table.range.latency.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name=RangeLatency` |
+| `cassandra.table.live_rows.scanned.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name=LiveScannedHistogram` |
+| `cassandra.table.read_repair.requests` | `keyspace`, `table` | `type=Table,name=ReadRepairRequests` |
+| `cassandra.table.short_read_protection.requests` | `keyspace`, `table` | `type=Table,name=ShortReadProtectionRequests` |
+| `cassandra.table.replica_filtering_protection.requests` | `keyspace`, `table` | `type=Table,name=ReplicaFilteringProtectionRequests` |
+| `cassandra.table.replica_filtering_protection.rows_cached.{p50,p99,max}` | `keyspace`, `table` | `type=Table,name=ReplicaFilteringProtectionRowsCachedPerQuery` |
+| `cassandra.table.repaired_data.inconsistencies.{confirmed,unconfirmed}` | `keyspace`, `table` | `type=Table,name=RepairedDataInconsistencies{Confirmed,Unconfirmed}` |
+| `cassandra.table.repaired_data.overread.rows.{p50,p99,max}` | `keyspace`, `table` | `type=Table,name=RepairedDataTrackingOverreadRows` |
+| `cassandra.table.repaired_data.overread.time.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name=RepairedDataTrackingOverreadTime` |
+| `cassandra.read_repair.{blocking,reconcile_reads}` | — | `type=ReadRepair,name={RepairedBlocking,ReconcileRead}` |
+| `cassandra.buffer_pool.{hits,misses}` | `pool` | `type=BufferPool,name={Hits,Misses}` |
+| `cassandra.buffer_pool.{capacity,size,used,overflow}` | `pool` | `type=BufferPool,name={Capacity,Size,UsedSize,OverflowSize}` |
+| `cassandra.client.request.cas.contention.{p50,p99,p999,max}` | `cassandra.operation` | `type=ClientRequest,scope={CASRead,CASWrite},name=ContentionHistogram` |
+| `cassandra.client.request.cas.contended` | `cassandra.operation` | the same beans, `Count` |
+| `cassandra.client.request.cas.unfinished_commits` | `cassandra.operation` | `type=ClientRequest,scope={CASRead,CASWrite},name=UnfinishedCommit` |
+| `cassandra.client.request.cas.condition_not_met` | `cassandra.operation` | `type=ClientRequest,scope=CASWrite,name=ConditionNotMet` |
+| `cassandra.paxos.linearizability_violations` | — | `type=Paxos,name=LinearizabilityViolations` |
+| `cassandra.client.request.consistency.latency.{p50,p99,p999,max}` | `cassandra.operation`, `cassandra.consistency_level` | `type=ClientRequest,scope={Read-QUORUM,Write-QUORUM},name=Latency` |
+| `cassandra.table.cas.{prepare,propose,commit}.latency.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name=Cas{Prepare,Propose,Commit}Latency` |
 
 Latency is reported in microseconds.  The rules set `unit: us` and no `sourceUnit`, so the raw MBean value passes through unconverted.  That is the unit `nodetool proxyhistograms` and `nodetool tablehistograms` print, so a dashboard and the oracle compare directly: 86 against 86, not 86 against 0.000086.  The Prometheus suffix follows the unit, so these series end `_microseconds`, for example `cassandra_client_request_latency_p99_microseconds`.
+
+Lightweight transactions use the client request families as `cassandra_operation="casread"` and `"caswrite"`.  Cassandra also records a serial read in `scope=Read`, so a request total summed over every operation counts a serial read twice; filter `cassandra_operation!="casread"` for a total that counts each request once.  A CAS write is not recorded in `scope=Write`.  To see regular read latency without serial reads, read `cassandra_client_request_consistency_latency_*` with `cassandra_operation="read", cassandra_consistency_level="quorum"`.
 
 #### Latency is a percentile gauge, not a histogram
 

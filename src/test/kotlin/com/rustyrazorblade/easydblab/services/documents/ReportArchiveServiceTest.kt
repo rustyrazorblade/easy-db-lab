@@ -8,6 +8,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
+import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.File
 import java.time.Clock
 import java.time.Duration
@@ -294,6 +296,27 @@ class ReportArchiveServiceTest {
 
         assertThat(uploaded.pointerAdvanced).isTrue()
         assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("mine")
+    }
+
+    @Test
+    fun `an S3 error while waiting for a write in flight fails at once, without looking again`() {
+        file("results.md", "mine")
+        val zip = key("reports/acme/e1/report-20261014-120000.zip")
+        store.conflictAfterRetryAt(zip, landsAfterReads = Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS + 1)
+        val noSuchBucket =
+            S3Exception
+                .builder()
+                .statusCode(404)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("NoSuchBucket").build())
+                .build()
+        var writes = 0
+        store.beforeEveryWrite {
+            writes++
+            if (writes > 1) throw noSuchBucket
+        }
+
+        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }.isSameAs(noSuchBucket)
+        assertThat(writes).isEqualTo(2)
     }
 
     @Test

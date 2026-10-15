@@ -119,4 +119,26 @@ class RetryUtilPollUntilTest {
         }.isInstanceOf(IllegalStateException::class.java).hasMessage("connection reset")
         assertThat(looks.get()).isEqualTo(1)
     }
+
+    private fun pollResult(results: List<() -> String>): String =
+        pollResultUntil(
+            operationName = "test-result-poll",
+            maxAttempts = 5,
+            interval = Duration.ZERO,
+            done = { it == "ready" },
+        ) { results[looks.getAndIncrement()]() }
+
+    @Test
+    fun `a result poll awaits the result and returns the first accepted one`() {
+        assertThat(pollResult(listOf({ "pending" }, { "ready" }, { "never" }))).isEqualTo("ready")
+        assertThat(looks.get()).isEqualTo(2)
+    }
+
+    @Test
+    fun `a result poll fails at once on a look that throws`() {
+        assertThatThrownBy { pollResult(listOf({ error("no such bucket") }, { "ready" })) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("no such bucket")
+        assertThat(looks.get()).isEqualTo(1)
+    }
 }

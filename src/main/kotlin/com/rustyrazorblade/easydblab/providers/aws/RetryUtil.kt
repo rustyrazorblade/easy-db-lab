@@ -498,4 +498,30 @@ object RetryUtil {
             .retryOnException { it !is InterruptedException && beforeDeadline() }
             .build()
     }
+
+    /**
+     * Creates retry configuration for polling a result at a fixed interval, where only the result
+     * is awaited and any exception is a real failure.
+     *
+     * - A result for which [done] is false is retried, [interval] apart, up to [maxAttempts]
+     *   looks; after the last look that result is returned, not thrown
+     * - No exception is retried: a look that throws fails the poll at once (fail fast)
+     *
+     * @param maxAttempts the most looks to make
+     * @param interval how long to wait between looks
+     * @param done whether a look's result ends the poll
+     * @return RetryConfig configured for a fixed-interval poll on the result only
+     */
+    fun <T> createResultPollRetryConfig(
+        maxAttempts: Int,
+        interval: Duration,
+        done: (T) -> Boolean,
+    ): RetryConfig =
+        RetryConfig
+            .custom<T>()
+            .maxAttempts(maxAttempts)
+            .intervalFunction { _ -> interval.toMillis() }
+            .retryOnResult { result -> !done(result) }
+            .retryOnException { false }
+            .build()
 }

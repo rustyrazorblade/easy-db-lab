@@ -11,7 +11,7 @@ providers/
 │   ├── AWS.kt              # Low-level IAM, S3, STS operations
 │   ├── EC2.kt              # Low-level EC2 operations
 │   ├── RetryUtil.kt        # Centralized retry configuration
-│   ├── PollUntil.kt        # pollUntil: fixed-interval poll over createPollUntilRetryConfig
+│   ├── PollUntil.kt        # pollUntil (createPollUntilRetryConfig) and pollResultUntil (createResultPollRetryConfig): fixed-interval polls
 │   ├── AWSPolicy.kt        # Policy definitions and templates
 │   ├── InstanceRolePolicies.kt # EasyDBLabEC2Role's inline policy set (S3Access + SessionManagerInstance)
 │   ├── IamPolicy.kt        # IAM policy data model
@@ -74,6 +74,7 @@ Always use factory methods instead of creating manual retry configurations.
 | `createVpcAutoCidrRetryConfig()` | 3 | None | VPC creation on an auto-selected CIDR (`SdkException` only); `up` picks a new random unused block per attempt |
 | `createLocalPortBindRetryConfig()` | 3 | Fixed 100ms | Local listener lost its port between selection and bind (`BindException` only); the SOCKS proxy selects a new port per attempt |
 | `createPollUntilRetryConfig<T>(maxAttempts, interval, done, deadline?)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result. An optional wall-clock `deadline` ends the poll however many attempts remain (`waitForRollouts` passes `Int.MAX_VALUE` attempts and a deadline) |
+| `createResultPollRetryConfig<T>(maxAttempts, interval, done)` | caller | Fixed `interval` | Poll until a result condition holds; no exception is retried, so a look that throws fails at once; an unmet condition returns the last result. Run with `pollResultUntil`. Used by `report upload` to wait for a conditional write still in flight |
 
 ### Checked Exceptions Need The Checked Decorators
 

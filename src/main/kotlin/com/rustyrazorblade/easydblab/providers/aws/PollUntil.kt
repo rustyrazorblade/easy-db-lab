@@ -36,3 +36,21 @@ fun <T> pollUntil(
         throw e
     }
 }
+
+/**
+ * Runs [poll] under [RetryUtil.createResultPollRetryConfig] and returns the first result [done]
+ * accepts, or the last result when none is accepted within [maxAttempts] looks. Only the result is
+ * awaited: a look that throws ends the poll at once with that exception.
+ *
+ * @param operationName Name of the poll for logging and metrics
+ */
+fun <T> pollResultUntil(
+    operationName: String,
+    maxAttempts: Int,
+    interval: Duration,
+    done: (T) -> Boolean,
+    poll: () -> T,
+): T {
+    val retry = Retry.of(operationName, RetryUtil.createResultPollRetryConfig(maxAttempts, interval, done))
+    return Retry.decorateCheckedSupplier(retry) { poll() }.get()
+}

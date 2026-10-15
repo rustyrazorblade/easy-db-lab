@@ -155,6 +155,12 @@ object Constants {
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
+
+        /** S3's answer to a write whose conditional request (`If-Match`, `If-None-Match`) is concurrent with another. */
+        const val CONFLICT = 409
+
+        /** S3's answer to a conditional write whose condition does not hold. */
+        const val PRECONDITION_FAILED = 412
         const val SERVER_ERROR_MIN = 500
         const val SERVER_ERROR_MAX = 599
         const val CLIENT_ERROR_THRESHOLD = 500 // Errors >= 500 are server errors

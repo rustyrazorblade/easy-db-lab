@@ -35,7 +35,7 @@
 - [x] 3.3 `ReportZip` (validation and zip build): directory exists and is non-empty; segments `[A-Za-z0-9._-]+`; no symlinks; no `..`; root `_files.html` rejected; `X.md` with sibling `X.html` rejected at any depth; every offender named. Unit tests per rule with `@TempDir`.
 - [x] 3.4 `ReportUnpacker` (unpack from the zip itself, HTML per `.md`, `_files.html`) and `ReportPointer` (forward-only, timestamp comment, `If-Match`/`If-None-Match`, re-read on 412; `ensurePlaceholder` with "No report yet"). Tests: older upload does not move the pointer back; concurrent writer retry; `index.md` front page; `_files.html` fallback.
 - [x] 3.5 `ReportArchiveService` orchestrates; zip key `report-<yyyyMMdd-HHmmss>.zip` in UTC, next free second when taken. Replaces `TestDocumentService.upload`.
-- [ ] 3.6 `ReportUpload`: `@Parameters(arity = "1") dir: File`; `report upload a.md b.md` fails naming the directory form; experiment from workspace state; event `Report.Uploaded(zipKey, unpackedPrefix, pointerAdvanced, files)` in `events/Event.kt`.
+- [x] 3.6 `ReportUpload`: `@Parameters(arity = "1") dir: File`; `report upload a.md b.md` fails naming the directory form; experiment from workspace state; event `Report.Uploaded(zipKey, unpackedPrefix, pointerAdvanced, files)` in `events/Event.kt`.
 - [ ] 3.7 `Up.kt:162`: `ReportPointer.ensurePlaceholder(key)` only when absent.
 - [ ] 3.8 `AWSPolicy.denyDataDeletes` KDoc (`:217-222`): no report is replaced.
 - [ ] 3.9 Live check: two uploads for one experiment, both zips byte-identical to the local ones, pointer on the newer; a second cluster of the experiment shows the same report; upload after `down`.

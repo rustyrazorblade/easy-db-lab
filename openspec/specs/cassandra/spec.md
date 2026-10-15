@@ -129,6 +129,8 @@ AMI bake-time install process (no download/clone/build time spent at bake), whil
 written into the resulting AMI's `/etc/cassandra_versions.yaml` so `cassandra install` can resolve
 it later without the operator re-specifying its fields.
 
+The system MUST fetch a version that has a tarball `url:` (or a tarball given with `cassandra install --url`) from its origin on every install, at AMI bake time and at runtime.  It MUST NOT read that tarball from the S3 download cache, and it MUST NOT write it to the cache.  The contents of such a URL can change under the same name (for example, a nightly build), so a cached copy can be an old build.  When the URL is `s3://...`, the system MUST copy it directly from S3.  When the download fails, the system MUST fail with its existing download error and MUST NOT fall back to a cached copy.  An official release resolved from a version prefix does not change upstream, so the system MAY fetch it through the S3 download cache.
+
 #### Scenario: Install from a declared git branch entry
 
 - **GIVEN** a `cassandra_versions.yaml` entry for a version not yet present on the targeted node(s),
@@ -242,6 +244,45 @@ build runs under is `cassandra use --java`'s job.
 - **WHEN** the user runs `cassandra list`
 - **THEN** that version is shown, marked distinguishably from versions actually installed on the
   node.
+
+#### Scenario: A stale cache object for a URL version is ignored
+
+- **GIVEN** a version with a tarball `url:` whose origin now serves a newer nightly build
+- **AND** the S3 download cache holds an older tarball for that version
+- **WHEN** the version is installed at AMI bake time or with `cassandra install`
+- **THEN** the tarball is downloaded from the URL and the newer nightly build is installed
+- **AND** the S3 download cache is not read and not written for that tarball
+- **AND** the install log shows one `direct download (not cached): <url>` line for that tarball.
+
+#### Scenario: A URL version is not written to a cold cache
+
+- **GIVEN** a version with a tarball `url:` and an S3 download cache that holds no object for it
+- **WHEN** the version is installed
+- **THEN** the tarball is downloaded from the URL
+- **AND** no object for that tarball is written to the S3 download cache.
+
+#### Scenario: A failed URL download does not fall back to the cache
+
+- **GIVEN** a version with a tarball `url:` whose download fails
+- **AND** the S3 download cache holds a tarball for that version
+- **WHEN** the version is installed
+- **THEN** the install fails with the existing "Failed to download version" error
+- **AND** the cached tarball is not read.
+
+#### Scenario: Released versions still use the cache
+
+- **GIVEN** a version prefix (e.g. `5.0`) with no `url:` set and an S3 download cache configured
+- **WHEN** the version is installed
+- **THEN** the latest matching official release tarball is fetched through the S3 download cache, under a key named for the full release number
+- **AND** the install log shows a `cache hit:` or `cache miss:` line for that release.
+
+#### Scenario: An s3 URL is copied directly from S3
+
+- **GIVEN** a version with a tarball `url:` of the form `s3://...`
+- **WHEN** the version is installed
+- **THEN** the tarball is copied directly from that S3 location
+- **AND** the S3 download cache is not read and not written for that tarball
+- **AND** the install log shows one `direct download (not cached): <url>` line for that tarball.
 
 ## Success Criteria
 

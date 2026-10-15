@@ -31,9 +31,9 @@
 
 ## 5. Shared kit shell library (shell)
 
-- [ ] 5.1 Write `src/test/shell/kit-lib.test.sh` with stub `kubectl`, `curl` and `date` that report pod phases: no app node and app node; overrides JSON valid with and without a ConfigMap, bad names rejected; `edl_resource_name` and `edl_labels`; ConfigMap missing, empty and over 1,000,000 bytes, and the labelled one-call create; `edl_active_pods` field selector; pod Succeeded on the first poll; fast fail per pull reason; the timeout (test override of `EDL_POD_START_TIMEOUT_SECONDS`); NotFound during the wait, the follow and the exit wait; a failed `kubectl get` treated as a retry; resume after a cut stream while Running; a non-zero `logs -f` under `set -euo pipefail`; exit code 0 and non-zero; gauge body, non-numeric value as 0, failed POST returns 0; sourcing leaves `set -o` unchanged; a missing `EDL_KIT_LIB` gives the sourcing message.
-- [ ] 5.2 Write `src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh` (bash 3.2 compatible, no empty `"${arr[@]}"` under `set -u`, no `jq`) until the test passes.
-- [ ] 5.3 Add the Gradle task `testKitShellLib` to `testScripts`, and make it, and every kit script test task, also run under `/bin/bash` when it is 3.x.
+- [x] 5.1 Write `src/test/shell/kit-lib.test.sh` with stub `kubectl`, `curl` and `date` that report pod phases: no app node and app node; overrides JSON valid with and without a ConfigMap, bad names rejected; `edl_resource_name` and `edl_labels`; ConfigMap missing, empty and over 1,000,000 bytes, and the labelled one-call create; `edl_active_pods` field selector; pod Succeeded on the first poll; fast fail per pull reason; the timeout (test override of `EDL_POD_START_TIMEOUT_SECONDS`); NotFound during the wait, the follow and the exit wait; a failed `kubectl get` treated as a retry; resume after a cut stream while Running; a non-zero `logs -f` under `set -euo pipefail`; exit code 0 and non-zero; gauge body, non-numeric value as 0, failed POST returns 0; sourcing leaves `set -o` unchanged; a missing `EDL_KIT_LIB` gives the sourcing message.
+- [x] 5.2 Write `src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh` (bash 3.2 compatible, no empty `"${arr[@]}"` under `set -u`, no `jq`) until the test passes.
+- [x] 5.3 Add the Gradle task `testKitShellLib` to `testScripts`, and make it, and every kit script test task, also run under `/bin/bash` when it is 3.x.
 
 ## 6. clickhouse-benchmark kit resources
 

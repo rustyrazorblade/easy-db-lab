@@ -421,6 +421,7 @@ tasks.register("testScripts") {
         "testCassandraScripts",
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
+        "testKitShellLib",
         "testSysbenchStartScript",
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
@@ -446,13 +447,24 @@ tasks.register<Exec>("testPyroscopeKitLabels") {
     commandLine = listOf("bash", "src/test/shell/pyroscope-kit-labels.test.sh")
 }
 
+// Unit-test the shared kit shell library (configuration/edl-kit-lib.sh): app-node check, pod
+// overrides, labelled ConfigMaps, the pod waits, log following and the gauge push. kubectl, curl,
+// date and sleep are stubbed. Like every kit script test, it also runs under /bin/bash when that is
+// bash 3.x (run-with-bashes.sh), because kit scripts run under the macOS bash 3.2.
+tasks.register<Exec>("testKitShellLib") {
+    group = "Verification"
+    description = "Unit-test the shared kit shell library"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/kit-lib.test.sh")
+}
+
 // Unit-test the sysbench kit's start script: it pushes its figures as OTLP JSON to the collector,
 // which labels them with the cluster and sends them to Mimir. kubectl and curl are stubbed.
 tasks.register<Exec>("testSysbenchStartScript") {
     group = "Verification"
     description = "Unit-test the sysbench kit start script"
     workingDir = file(".")
-    commandLine = listOf("bash", "src/test/shell/sysbench-start.test.sh")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-start.test.sh")
 }
 
 // Unit-test the sysbench kit's stop script: it finishes and removes its cleanup pod when the target
@@ -461,7 +473,7 @@ tasks.register<Exec>("testSysbenchStopScript") {
     group = "Verification"
     description = "Unit-test the sysbench kit stop script"
     workingDir = file(".")
-    commandLine = listOf("bash", "src/test/shell/sysbench-stop.test.sh")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-stop.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,

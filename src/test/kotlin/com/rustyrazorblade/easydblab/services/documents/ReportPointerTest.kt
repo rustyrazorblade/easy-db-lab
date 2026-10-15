@@ -94,6 +94,23 @@ class ReportPointerTest {
     }
 
     @Test
+    fun `a write that stored the pointer but was reported refused counts as this upload's`() {
+        store.loseNextWriteResponse()
+
+        assertThat(pointer.advance(folder, newer, "index.html")).isTrue()
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+    }
+
+    @Test
+    fun `a replacing write that stored the pointer but was reported refused counts as this upload's`() {
+        pointer.advance(folder, older, "_files.html")
+        store.loseNextWriteResponse()
+
+        assertThat(pointer.advance(folder, newer, "index.html")).isTrue()
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+    }
+
+    @Test
     fun `a pointer that keeps changing under the writer fails instead of looping forever`() {
         store.beforeEveryWrite { store.overwrite(pointerPath, "changed ${System.nanoTime()}") }
 

@@ -174,6 +174,23 @@ class ReportPointerTest {
     }
 
     @Test
+    fun `a last write refused after a retry whose pointer names a newer upload leaves that pointer`() {
+        val newest = newer.next()
+        var writes = 0
+        store.beforeEveryWrite {
+            writes++
+            if (writes < Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) {
+                store.overwrite(pointerPath, "changed $writes")
+            } else {
+                store.refuseAfterRetryAt(pointerPath) { store.overwrite(pointerPath, ReportPointer.render(newest, "index.html")) }
+            }
+        }
+
+        assertThat(pointer.advance(folder, newer, "index.html")).isFalse()
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newest)
+    }
+
+    @Test
     fun `a last write refused after a retry whose pointer names another upload still fails`() {
         var writes = 0
         store.beforeEveryWrite {

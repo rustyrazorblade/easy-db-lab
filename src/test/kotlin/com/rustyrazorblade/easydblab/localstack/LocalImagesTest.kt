@@ -43,8 +43,11 @@ class LocalImagesTest : BaseKoinTest() {
                 GrafanaManifestBuilder(templates).buildAllResources(DocumentsBucket("acct", "us-west-2"))
         return resources
             .filterIsInstance<Deployment>()
-            .flatMap { it.spec.template.spec.containers + it.spec.template.spec.initContainers.orEmpty() }
-            .map { it.image }
+            .flatMap {
+                it.spec.template.spec.containers +
+                    it.spec.template.spec.initContainers
+                        .orEmpty()
+            }.map { it.image }
             .toSet()
     }
 

@@ -47,6 +47,10 @@ SHIM
 chmod +x "${BIN}"/*
 export PATH="${BIN}:${PATH}"
 
+# The tests above must not depend on the machine they run on: a node or a packer container has the
+# real cache library at its default path. The download-cache cases below load it explicitly.
+export EDL_CACHE_LIB=/nonexistent
+
 export CASSANDRA_INSTALL_DIR="${SANDBOX}/cassandra"
 export CASSANDRA_IN_SH_SNIPPET="${SANDBOX}/cassandra.in.sh"
 # The script's working directory comes from mktemp -d, so point that at the sandbox to make what
@@ -190,6 +194,166 @@ if grep -q 'netty' "$SCRIPT"; then
 else
   pass "no netty jar is downloaded for a metrics endpoint that no longer exists"
 fi
+
+# --- the S3 download cache holds only immutable releases ----------------------
+# A tarball url (the nightlies: 5.0-HEAD, 6.0-HEAD, trunk) serves a new build every night under the
+# same name, so a cached copy goes stale and every later install gets the old build. These cases
+# load the real cache library against stub aws/curl and read the transcript of what was fetched.
+CACHE_BIN="${SANDBOX}/cache-bin"
+CALLS="${SANDBOX}/calls.log"
+FIXTURE="${SANDBOX}/apache-cassandra-5.0.6-bin.tar.gz"
+mkdir -p "$CACHE_BIN" "${SANDBOX}/fixture/apache-cassandra-5.0.6/conf" "${SANDBOX}/fixture/apache-cassandra-5.0.6/bin"
+echo 'cluster_name: fixture' >"${SANDBOX}/fixture/apache-cassandra-5.0.6/conf/cassandra.yaml"
+echo '# fixture' >"${SANDBOX}/fixture/apache-cassandra-5.0.6/bin/cassandra.in.sh"
+tar -czf "$FIXTURE" -C "${SANDBOX}/fixture" apache-cassandra-5.0.6
+
+# aws s3 cp <src> <dest>: a read under download-cache/ is a miss unless AWS_CACHE_HIT=1, a local
+# destination gets the fixture tarball, and a destination under download-cache/ is a write-back.
+cat >"${CACHE_BIN}/aws" <<SHIM
+#!/bin/bash
+echo "aws \$*" >> "${CALLS}"
+[[ "\$1" == s3 && "\$2" == cp ]] || exit 1
+case "\$3" in
+  *download-cache/*) [[ "\${AWS_CACHE_HIT:-}" == 1 ]] || exit 1 ;;
+esac
+case "\$4" in
+  s3://*) exit 0 ;;
+esac
+cp "${FIXTURE}" "\$4"
+SHIM
+
+# curl lists one release on the dlcdn index, and with -o downloads the fixture tarball.
+cat >"${CACHE_BIN}/curl" <<SHIM
+#!/bin/bash
+echo "curl \$*" >> "${CALLS}"
+dest=""
+while [[ \$# -gt 0 ]]; do
+  case "\$1" in
+    -o) dest="\$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [[ -z "\$dest" ]]; then
+  echo '<a href="5.0.6/">5.0.6/</a>'
+  exit 0
+fi
+[[ "\${CURL_FAILS:-}" == 1 ]] && exit 22
+cp "${FIXTURE}" "\$dest"
+SHIM
+
+# There is no cassandra user here.
+cat >"${CACHE_BIN}/chown" <<'SHIM'
+#!/bin/bash
+exit 0
+SHIM
+chmod +x "${CACHE_BIN}"/*
+
+NIGHTLY_URL="https://github.com/example/cassandra/releases/download/6.0-HEAD/apache-cassandra-6.0-HEAD-bin.tar.gz"
+S3_URL="s3://test-bucket/cassandra-builds/my-build/apache-cassandra-my-build-bin.tar.gz"
+RELEASE_KEY="cassandra-dist/5.0.6/apache-cassandra-5.0.6-bin.tar.gz"
+
+case_number=0
+
+# Runs the script with the real cache library, a bucket configured, the cache stubs first on PATH,
+# and a new install directory (an earlier case leaves its version installed). Extra environment for
+# the stubs comes first as NAME=value arguments.
+run_cached() {
+  local env_args=()
+  while [[ "$1" == *=* ]]; do
+    env_args+=("$1")
+    shift
+  done
+  case_number=$((case_number + 1))
+  : >"$CALLS"
+  OUTPUT="$(env ${env_args[@]+"${env_args[@]}"} \
+    PATH="${CACHE_BIN}:${PATH}" \
+    EDL_CACHE_LIB="${SCRIPT_DIR}/../../base/install/edl-cache-lib.sh" \
+    EDL_S3_BUCKET=test-bucket \
+    CASSANDRA_INSTALL_DIR="${SANDBOX}/cached-install-${case_number}" \
+    bash "$SCRIPT" "$@" 2>&1)"
+  STATUS=$?
+}
+
+assert_calls_contain() {
+  local desc="$1" expected="$2"
+  if grep -qF -- "$expected" "$CALLS"; then
+    pass "$desc"
+  else
+    fail "$desc: expected [$expected] in calls, got [$(cat "$CALLS")]"
+  fi
+}
+
+assert_calls_lack() {
+  local desc="$1" unexpected="$2"
+  if grep -qF -- "$unexpected" "$CALLS"; then
+    fail "$desc: unexpected [$unexpected] in calls: $(grep -F -- "$unexpected" "$CALLS")"
+  else
+    pass "$desc"
+  fi
+}
+
+assert_output_contains() {
+  local desc="$1" expected="$2"
+  if [[ "$OUTPUT" == *"$expected"* ]]; then
+    pass "$desc"
+  else
+    fail "$desc: expected output to contain [$expected], got [$OUTPUT]"
+  fi
+}
+
+assert_output_lacks() {
+  local desc="$1" unexpected="$2"
+  if [[ "$OUTPUT" == *"$unexpected"* ]]; then
+    fail "$desc: output should not contain [$unexpected], got [$OUTPUT]"
+  else
+    pass "$desc"
+  fi
+}
+
+# A nightly url is fetched from its origin, never from the download cache.
+assert_fetched_from_origin_only() {
+  local desc="$1"
+  assert_calls_contain "$desc: the tarball is downloaded from its url" "curl -fsSL --retry 3 ${NIGHTLY_URL} -o"
+  assert_output_contains "$desc: the direct download is logged" "direct download (not cached): ${NIGHTLY_URL}"
+  assert_calls_lack "$desc: the download cache is not read or written" "download-cache/"
+  assert_output_lacks "$desc: no cache hit is reported" "cache hit:"
+  assert_output_lacks "$desc: no cache miss is reported" "cache miss:"
+}
+
+run_cached AWS_CACHE_HIT=1 6.0-HEAD --url "$NIGHTLY_URL"
+assert_fetched_from_origin_only "a url version with a stale cache object"
+
+run_cached 6.0-HEAD --url "$NIGHTLY_URL"
+assert_fetched_from_origin_only "a url version with a cold cache"
+
+run_cached AWS_CACHE_HIT=1 CURL_FAILS=1 6.0-HEAD --url "$NIGHTLY_URL"
+if [[ "$STATUS" -ne 0 ]]; then
+  pass "a failed url download exits non-zero"
+else
+  fail "a failed url download should exit non-zero, got 0: ${OUTPUT}"
+fi
+assert_output_contains "a failed url download reports the existing error" "Failed to download version 6.0-HEAD from ${NIGHTLY_URL}"
+assert_calls_contain "a failed url download was attempted from its url" "curl -fsSL --retry 3 ${NIGHTLY_URL} -o"
+assert_calls_lack "a failed url download does not fall back to the cache" "download-cache/"
+
+run_cached 5.0-my-build --url "$S3_URL"
+assert_calls_contain "an s3 url is copied directly from S3" "aws s3 cp ${S3_URL} "
+assert_output_contains "an s3 url logs the direct download" "direct download (not cached): ${S3_URL}"
+assert_calls_lack "an s3 url does not touch the download cache" "download-cache/"
+assert_calls_lack "an s3 url is not fetched with curl" "curl"
+
+run_cached 5.0
+assert_calls_contain "a released version reads the download cache under its full release number" \
+  "aws s3 cp s3://test-bucket/download-cache/${RELEASE_KEY} "
+assert_output_contains "a released version reports a cache miss" "cache miss: cassandra-dist/5.0.6/"
+assert_calls_contain "a released version is written back to the download cache" \
+  "s3://test-bucket/download-cache/${RELEASE_KEY} --no-progress"
+assert_calls_contain "a released cache miss downloads the release from dlcdn" \
+  "curl -fsSL --retry 3 https://dlcdn.apache.org/cassandra/5.0.6/apache-cassandra-5.0.6-bin.tar.gz -o"
+
+run_cached AWS_CACHE_HIT=1 5.0
+assert_output_contains "a released version reports a cache hit" "cache hit:  ${RELEASE_KEY}"
+assert_calls_lack "a released cache hit does not download the release from dlcdn" "apache-cassandra-5.0.6-bin.tar.gz -o"
 
 echo
 echo "${tests_run} tests, ${tests_failed} failed"

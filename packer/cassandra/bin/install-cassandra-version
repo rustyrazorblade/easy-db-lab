@@ -84,13 +84,26 @@ WORKDIR=""
 trap 'cd /; [ -n "$WORKDIR" ] && rm -rf "$WORKDIR"' EXIT
 
 # Shared S3 download cache (provides cached_fetch). Falls back to a direct download when the cache
-# lib is absent (local script tests / no cache).
-if [ -f /usr/local/lib/edl-cache.sh ]; then
-    # shellcheck disable=SC1091
-    source /usr/local/lib/edl-cache.sh
+# lib is absent (local script tests / no cache). Overridable so the tests can load the real lib.
+EDL_CACHE_LIB=${EDL_CACHE_LIB:-/usr/local/lib/edl-cache.sh}
+if [ -f "$EDL_CACHE_LIB" ]; then
+    # shellcheck disable=SC1090
+    source "$EDL_CACHE_LIB"
 else
     cached_fetch() { echo "no S3 cache; downloading $1"; curl -fsSL --retry 3 "$1" -o "$3"; }
 fi
+
+# direct_fetch <url> <dest>
+# Fetch <url> from its origin, never through the download cache. An s3:// url (a `cassandra build`
+# artifact) is copied straight from S3, as curl has no s3 protocol.
+direct_fetch() {
+    local url="$1" dest="$2"
+    echo "direct download (not cached): $url"
+    case "$url" in
+        s3://*) aws s3 cp "$url" "$dest" --no-progress ;;
+        *) curl -fsSL --retry 3 "$url" -o "$dest" ;;
+    esac
+}
 
 ## Downloads the latest patch release of a cassandra version
 ## This saves us from having to update cassandra_versions.yaml
@@ -233,17 +246,17 @@ install_cassandra_version() {
         return 1
     }
 
-  # if a URL is set and ends in .tar.gz, download it (via the S3 cache, version-keyed)
+  # if a URL is set and ends in .tar.gz, download it from its origin (never via the S3 cache)
   elif [[ $URL == *.tar.gz ]]; then
     echo "Downloading $URL for version $version"
 
     local archive_file
     archive_file=$(basename "$URL")
 
-    # Route the tarball through the S3 download cache (keyed by version) so it is not re-fetched
-    # cold from GitHub on every build. cached_fetch falls back to a direct download when no cache
-    # bucket is configured (local packer Docker tests).
-    cached_fetch "$URL" "cassandra-dist/$version/$archive_file" "$archive_file" || {
+    # Fetch the tarball from its origin on every install. A nightly url (5.0-HEAD, 6.0-HEAD,
+    # trunk) serves a new build under the same name, so a cached copy would go stale and install
+    # the old build forever. Only immutable releases (the path above) are cached.
+    direct_fetch "$URL" "$archive_file" || {
         echo "ERROR: Failed to download version $version from $URL" >&2
         return 1
     }

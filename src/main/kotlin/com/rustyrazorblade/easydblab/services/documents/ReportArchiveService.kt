@@ -5,7 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
-import com.rustyrazorblade.easydblab.providers.aws.pollUntil
+import com.rustyrazorblade.easydblab.providers.aws.pollResultUntil
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
@@ -171,7 +171,7 @@ class DefaultReportArchiveService(
         contentType: String,
     ): Boolean {
         val accepted =
-            pollUntil<Boolean?>(
+            pollResultUntil<Boolean?>(
                 "report-write-in-flight",
                 Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS,
                 inFlightLookInterval,

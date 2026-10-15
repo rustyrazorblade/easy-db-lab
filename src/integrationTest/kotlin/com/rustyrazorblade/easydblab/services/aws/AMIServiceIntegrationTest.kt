@@ -112,9 +112,9 @@ class AMIServiceIntegrationTest {
 
             val result = amiService.listPrivateAMIs("test-fields-populated")
 
-            assertThat(result).hasSize(1)
-            val ami = result.first()
-            assertThat(ami.id).isEqualTo(amiId)
+            // By ID, as in DeregisterAMI: LocalStack can hold a second image of this name.
+            assertThat(result.map { it.id }).contains(amiId)
+            val ami = result.single { it.id == amiId }
             assertThat(ami.name).isEqualTo("test-fields-populated")
             assertThat(ami.creationDate).isNotNull()
             assertThat(ami.ownerId).isNotBlank()
@@ -137,16 +137,20 @@ class AMIServiceIntegrationTest {
 
     @Nested
     inner class DeregisterAMI {
+        /**
+         * Asserts on the registered image's ID, not on the name being empty. LocalStack, unlike EC2,
+         * accepts a second image with the same name, and the SDK retries a RegisterImage whose response
+         * was lost after LocalStack had registered it, so one [registerTestAMI] call can leave two
+         * images of that name. Deregistering the one whose ID came back then left the other listed.
+         */
         @Test
         fun `should deregister an AMI without error`() {
             val amiId = registerTestAMI("test-deregister-ami")
+            assertThat(amiService.listPrivateAMIs("test-deregister-ami").map { it.id }).contains(amiId)
 
-            // Should not throw
             amiService.deregisterAMI(amiId)
 
-            // After deregistering, listing should not return it
-            val result = amiService.listPrivateAMIs("test-deregister-ami")
-            assertThat(result).isEmpty()
+            assertThat(amiService.listPrivateAMIs("test-deregister-ami").map { it.id }).doesNotContain(amiId)
         }
     }
 }

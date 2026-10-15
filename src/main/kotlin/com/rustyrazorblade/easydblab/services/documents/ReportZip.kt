@@ -61,14 +61,18 @@ object ReportZip {
     private const val HTML_SUFFIX = ".html"
     private const val PARENT = ".."
 
-    /** Every path of [dir] that breaks a rule, one entry per path, in path order; empty when [dir] is a valid report. */
+    /**
+     * Every path of [dir] that breaks a rule, one entry per path, in path order; empty when [dir] is
+     * a valid report. [dir] itself may be reached through a symbolic link; the entries inside it
+     * may not be links.
+     */
     fun problems(dir: File): List<ReportFileProblem> {
         val root = dir.toPath()
         val whole = "${dir.path}/"
         return when {
-            !Files.exists(root, LinkOption.NOFOLLOW_LINKS) -> listOf(ReportFileProblem(whole, "does not exist"))
-            !root.isDirectory(LinkOption.NOFOLLOW_LINKS) -> listOf(ReportFileProblem(whole, "is not a directory"))
-            else -> problemsIn(root, whole)
+            !Files.exists(root) -> listOf(ReportFileProblem(whole, "does not exist"))
+            !root.isDirectory() -> listOf(ReportFileProblem(whole, "is not a directory"))
+            else -> problemsIn(root.toRealPath(), whole)
         }
     }
 
@@ -81,7 +85,7 @@ object ReportZip {
     fun build(dir: File): ReportArchive {
         val problems = problems(dir)
         if (problems.isNotEmpty()) throw ReportRejectedException(problems)
-        val root = dir.toPath()
+        val root = dir.toPath().toRealPath()
         val files = filesUnder(root).map { relative(root, it) }.sorted()
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->

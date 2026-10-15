@@ -162,4 +162,15 @@ class ReportZipTest {
 
         assertThat(ReportZip.build(dir).bytes).isEqualTo(first)
     }
+
+    @Test
+    fun `a directory given through a symbolic link is the report, and its contents are checked`() {
+        val real = File(dir, "real").also { it.mkdirs() }
+        File(real, "results.md").writeText("# Results")
+        val link = File(dir, "results-link")
+        Files.createSymbolicLink(link.toPath(), real.toPath())
+
+        assertThat(ReportZip.problems(link)).isEmpty()
+        assertThat(ReportZip.build(link).files).containsExactly("results.md")
+    }
 }

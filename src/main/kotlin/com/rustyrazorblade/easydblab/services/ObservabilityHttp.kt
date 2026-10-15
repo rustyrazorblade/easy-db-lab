@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.Duration
@@ -17,13 +18,15 @@ data class ObservabilityResponse(
 )
 
 /**
- * The one path from this tool to the observability services on the control node (Mimir, Loki).
+ * The one path from this tool to the observability services (Mimir, Loki, Tempo).
  *
- * Every request goes to the control node's private address, carries the cluster's tenant in
- * `X-Scope-OrgID`, and — unless Tailscale reaches the private address directly — travels through
- * the SOCKS tunnel, which the per-client proxy selector of [HttpClientFactory] uses. The JVM-wide
- * socks properties are never touched. Readers (`logs query`, `spark logs`, MCP metrics) and the
- * teardown flush all go through it, so none of them can forget the tenant.
+ * Every request carries a tenant in `X-Scope-OrgID`; where it goes is an [ObservabilityEndpoint].
+ * On a cluster ([DefaultObservabilityHttp]) it goes to the control node's private address and —
+ * unless Tailscale reaches the private address directly — travels through the SOCKS tunnel, which
+ * the per-client proxy selector of [HttpClientFactory] uses. The JVM-wide socks properties are
+ * never touched. Readers (`logs query`, `spark logs`, MCP metrics) and the teardown flush all go
+ * through it, so none of them can forget the tenant. A docker compose stack on this machine is
+ * reached through [LocalhostObservabilityHttp].
  */
 interface ObservabilityHttp {
     /** GETs [pathAndQuery] from the service on [port], waiting up to [timeout] for the answer. */
@@ -49,16 +52,38 @@ interface ObservabilityHttp {
 }
 
 /**
- * [ObservabilityHttp] over the cluster's proxied OkHttp client.
+ * Where one observability request goes: the base URL of the service, the tenant it carries, and the
+ * HTTP client that reaches it.
  *
- * @property httpClientFactory the cluster HTTP client, with the SOCKS selector installed on it alone.
- * @property socksProxyService opens the tunnel when Tailscale is not active.
- * @property clusterStateManager the control node and the tenant.
+ * @property baseUrl scheme, host and port of the service, with no trailing slash.
+ * @property tenant the value of `X-Scope-OrgID`; `a|b` names several tenants.
+ * @property client the client that reaches [baseUrl] (proxied for a cluster, direct for localhost).
  */
-class DefaultObservabilityHttp(
-    private val httpClientFactory: HttpClientFactory,
-    private val socksProxyService: SocksProxyService,
-    private val clusterStateManager: ClusterStateManager,
+data class ObservabilityTarget(
+    val baseUrl: String,
+    val tenant: String,
+    val client: OkHttpClient,
+)
+
+/**
+ * The endpoint-and-tenant seam of [ObservabilityHttp]: it decides, per request, which host serves a
+ * backend port, which tenant the request carries and which client reaches it. The cluster resolves
+ * the control node through the tunnel ([ClusterObservabilityEndpoint]); a docker compose stack on
+ * this machine resolves a published localhost port ([LocalhostObservabilityEndpoint]).
+ */
+fun interface ObservabilityEndpoint {
+    /** The target that serves the backend listening on [port] (its cluster port, such as 3100). */
+    fun target(port: Int): ObservabilityTarget
+}
+
+/**
+ * [ObservabilityHttp] over OkHttp: every request goes to the [ObservabilityEndpoint]'s target for its
+ * port and carries the target's tenant in `X-Scope-OrgID`.
+ *
+ * @property endpoint where each request goes.
+ */
+class EndpointObservabilityHttp(
+    private val endpoint: ObservabilityEndpoint,
 ) : ObservabilityHttp {
     override fun get(
         port: Int,
@@ -80,19 +105,13 @@ class DefaultObservabilityHttp(
         timeout: Duration,
         method: (Request.Builder) -> Request.Builder,
     ): ObservabilityResponse {
-        val clusterState = clusterStateManager.load()
-        val controlHost: ClusterHost =
-            clusterState.getControlHost() ?: error("No control node found. Please ensure the environment is running.")
-        if (!clusterState.isTailscaleEnabled()) {
-            socksProxyService.ensureRunning(controlHost)
-        }
+        val target = endpoint.target(port)
         val request =
-            method(Request.Builder().url("http://${controlHost.privateIp}:$port$pathAndQuery"))
-                .header(Constants.Observability.TENANT_HEADER, clusterState.tenant())
+            method(Request.Builder().url("${target.baseUrl}$pathAndQuery"))
+                .header(Constants.Observability.TENANT_HEADER, target.tenant)
                 .build()
         val client =
-            httpClientFactory
-                .createClient()
+            target.client
                 .newBuilder()
                 .readTimeout(timeout)
                 .callTimeout(Duration.ZERO)
@@ -102,3 +121,40 @@ class DefaultObservabilityHttp(
         }
     }
 }
+
+/**
+ * The cluster's [ObservabilityEndpoint]: the control node's private address, the cluster's tenant,
+ * and the cluster HTTP client. Unless Tailscale reaches the private address directly, it opens the
+ * SOCKS tunnel first, which the client's per-client proxy selector uses.
+ *
+ * @property httpClientFactory the cluster HTTP client, with the SOCKS selector installed on it alone.
+ * @property socksProxyService opens the tunnel when Tailscale is not active.
+ * @property clusterStateManager the control node and the tenant.
+ */
+class ClusterObservabilityEndpoint(
+    private val httpClientFactory: HttpClientFactory,
+    private val socksProxyService: SocksProxyService,
+    private val clusterStateManager: ClusterStateManager,
+) : ObservabilityEndpoint {
+    override fun target(port: Int): ObservabilityTarget {
+        val clusterState = clusterStateManager.load()
+        val controlHost: ClusterHost =
+            clusterState.getControlHost() ?: error("No control node found. Please ensure the environment is running.")
+        if (!clusterState.isTailscaleEnabled()) {
+            socksProxyService.ensureRunning(controlHost)
+        }
+        return ObservabilityTarget("http://${controlHost.privateIp}:$port", clusterState.tenant(), httpClientFactory.createClient())
+    }
+}
+
+/**
+ * [ObservabilityHttp] to the cluster's control node: [EndpointObservabilityHttp] over a
+ * [ClusterObservabilityEndpoint]. Every existing reader and the teardown flush use it.
+ */
+class DefaultObservabilityHttp(
+    httpClientFactory: HttpClientFactory,
+    socksProxyService: SocksProxyService,
+    clusterStateManager: ClusterStateManager,
+) : ObservabilityHttp by EndpointObservabilityHttp(
+        ClusterObservabilityEndpoint(httpClientFactory, socksProxyService, clusterStateManager),
+    )

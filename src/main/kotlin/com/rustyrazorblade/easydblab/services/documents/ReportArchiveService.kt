@@ -51,7 +51,9 @@ interface ReportArchiveService {
      * Checks [dir], zips it, and stores the zip as `report-<yyyyMMdd-HHmmss>.zip` (UTC) in the
      * experiment's folder of [clusterState], only where no object is, moving to the next free
      * second when that second is taken. Then unpacks the same zip to `report-<ts>/` and moves the
-     * pointer forward to it. Nothing earlier is replaced or removed.
+     * pointer forward to it. Nothing earlier is replaced or removed. A refused write whose object
+     * holds exactly this upload's bytes is this upload's own (a retried write that had committed),
+     * so it is neither stored again nor treated as a conflict.
      *
      * @throws ReportRejectedException naming every offender, before anything is stored, if [dir]
      *   breaks the report rules.

@@ -22,6 +22,7 @@ import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectResponse
 import software.amazon.awssdk.services.s3.model.S3Exception
@@ -335,6 +336,53 @@ class S3ObjectStoreTest : BaseKoinTest() {
         assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.AlreadyExists)
         assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.PreconditionFailed)
         assertThat(putCalls()).isEqualTo(4)
+    }
+
+    private fun readFails(error: S3Exception) {
+        objectStore = get()
+        whenever(mockS3Client.getObjectAsBytes(any<GetObjectRequest>())).thenThrow(error)
+    }
+
+    @Test
+    fun `a read of a missing key is null for both reads`() {
+        readFails(NoSuchKeyException.builder().statusCode(404).message("no such key").build() as S3Exception)
+
+        assertThat(objectStore.readVersioned(path)).isNull()
+        assertThat(objectStore.readBytes(path)).isNull()
+    }
+
+    @Test
+    fun `a read that S3 denies is an error naming the key and code and keeping the status, for both reads`() {
+        val denied =
+            S3Exception
+                .builder()
+                .message("denied")
+                .statusCode(403)
+                .requestId("req-1")
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("AccessDenied").serviceName("S3").build())
+                .build() as S3Exception
+        readFails(denied)
+
+        listOf({ objectStore.readVersioned(path) }, { objectStore.readBytes(path) }).forEach { read ->
+            assertThatThrownBy { read() }
+                .isInstanceOfSatisfying(S3Exception::class.java) {
+                    assertThat(it.statusCode()).isEqualTo(403)
+                    assertThat(it.awsErrorDetails().errorCode()).isEqualTo("AccessDenied")
+                    assertThat(it.requestId()).isEqualTo("req-1")
+                }.hasMessageContaining("Read of s3://b/k failed with S3 error AccessDenied (HTTP 403)")
+                .hasCause(denied)
+        }
+    }
+
+    @Test
+    fun `a read of a missing bucket is an error naming the key and code and keeping the status, for both reads`() {
+        readFails(s3Error(404, "NoSuchBucket"))
+
+        listOf({ objectStore.readVersioned(path) }, { objectStore.readBytes(path) }).forEach { read ->
+            assertThatThrownBy { read() }
+                .isInstanceOfSatisfying(S3Exception::class.java) { assertThat(it.statusCode()).isEqualTo(404) }
+                .hasMessageContaining("Read of s3://b/k failed with S3 error NoSuchBucket (HTTP 404)")
+        }
     }
 
     @Test

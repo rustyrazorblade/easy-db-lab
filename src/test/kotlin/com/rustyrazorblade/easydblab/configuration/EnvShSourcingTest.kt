@@ -29,7 +29,7 @@ internal class EnvShSourcingTest {
                 ServerType.Cassandra to listOf(ClusterHost("54.1.1.2", "10.0.0.2", "db0", "us-west-2a")),
             )
         File(workspace, "sshConfig").bufferedWriter().use { ClusterConfigWriter.writeSshConfig(it, "/path/to/key", hosts) }
-        File(workspace, "env.sh").bufferedWriter().use { ClusterConfigWriter.writeEnvironmentFile(it, hosts, "lab") }
+        File(workspace, "env.sh").bufferedWriter().use { ClusterConfigWriter.writeEnvironmentFile(it, hosts, "lab", "lab") }
         ToolWrapperInstaller().install(workspace)
     }
 

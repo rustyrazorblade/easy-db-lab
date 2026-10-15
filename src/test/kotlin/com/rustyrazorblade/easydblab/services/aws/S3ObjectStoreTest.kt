@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import org.assertj.core.api.Assertions.assertThat
@@ -163,7 +164,7 @@ class S3ObjectStoreTest : BaseKoinTest() {
 
         val result = objectStore.putIfAbsent("x".toByteArray(), ClusterS3Path.fromKey("b", "k"), "text/plain")
 
-        assertThat(result).isEqualTo(ObjectStore.AlreadyExists)
+        assertThat(result).isEqualTo(ConditionalObjectStore.AlreadyExists)
     }
 
     @Test
@@ -173,7 +174,7 @@ class S3ObjectStoreTest : BaseKoinTest() {
 
         val result = objectStore.putIfMatch("x".toByteArray(), ClusterS3Path.fromKey("b", "k"), "\"e\"", "text/html")
 
-        assertThat(result).isEqualTo(ObjectStore.PreconditionFailed)
+        assertThat(result).isEqualTo(ConditionalObjectStore.PreconditionFailed)
     }
 
     @Test

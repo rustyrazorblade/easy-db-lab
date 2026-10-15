@@ -30,7 +30,7 @@ import java.nio.file.Path
  * val result = objectStore.uploadFile(localJar, s3Path, showProgress = true)
  * ```
  */
-interface ObjectStore {
+interface ObjectStore : ConditionalObjectStore {
     /**
      * Uploads a local file to cloud storage with retry logic.
      *
@@ -166,67 +166,6 @@ interface ObjectStore {
     fun directoryExists(remotePath: ClusterS3Path): Boolean
 
     /**
-     * Writes [content] to [remotePath] only if no object is there, in one conditional request
-     * (`If-None-Match: *`), so it can never replace an object, not even one another writer stores
-     * at the same moment.
-     *
-     * @return [Written], or [AlreadyExists] when an object is already at [remotePath] (it is left
-     *   unchanged).
-     */
-    fun putIfAbsent(
-        content: ByteArray,
-        remotePath: ClusterS3Path,
-        contentType: String,
-    ): PutIfAbsentResult
-
-    /**
-     * Replaces the object at [remotePath] with [content] only while its version is still [etag]
-     * (`If-Match`), as read with [readVersioned].
-     *
-     * @return [Written], or [PreconditionFailed] when another writer changed or removed the object
-     *   since it was read (it is left as that writer left it).
-     */
-    fun putIfMatch(
-        content: ByteArray,
-        remotePath: ClusterS3Path,
-        etag: String,
-        contentType: String,
-    ): PutIfMatchResult
-
-    /**
-     * Reads the object at [remotePath] as UTF-8 together with the version it was read at.
-     *
-     * @return the content and its ETag, or null when no object is there.
-     */
-    fun readVersioned(remotePath: ClusterS3Path): Versioned?
-
-    /** The outcome of [putIfAbsent]. */
-    sealed interface PutIfAbsentResult
-
-    /** The outcome of [putIfMatch]. */
-    sealed interface PutIfMatchResult
-
-    /** A conditional write stored its content. */
-    data object Written : PutIfAbsentResult, PutIfMatchResult
-
-    /** [putIfAbsent] found an object already at the path and wrote nothing. */
-    data object AlreadyExists : PutIfAbsentResult
-
-    /** [putIfMatch] found the object changed since it was read and wrote nothing. */
-    data object PreconditionFailed : PutIfMatchResult
-
-    /**
-     * An object's content and the version it was read at.
-     *
-     * @property content The object, as UTF-8.
-     * @property etag The object's ETag, for [putIfMatch].
-     */
-    data class Versioned(
-        val content: String,
-        val etag: String,
-    )
-
-    /**
      * Represents a file in cloud storage with metadata.
      *
      * @property path The cloud storage path to this file
@@ -285,5 +224,76 @@ interface ObjectStore {
         val remotePath: ClusterS3Path,
         val filesUploaded: Int,
         val totalBytes: Long,
+    )
+}
+
+/**
+ * The conditional writes of an object store: write only if absent, replace only the version that
+ * was read, and read with that version.
+ *
+ * They are what lets a writer never replace an object it did not mean to, even when another
+ * writer acts at the same moment. It is its own interface so that code that needs only these,
+ * such as the report pointer, depends on nothing more; [ObjectStore] offers them too.
+ */
+interface ConditionalObjectStore {
+    /**
+     * Writes [content] to [remotePath] only if no object is there, in one conditional request
+     * (`If-None-Match: *`), so it can never replace an object, not even one another writer stores
+     * at the same moment.
+     *
+     * @return [Written], or [AlreadyExists] when an object is already at [remotePath] (it is left
+     *   unchanged).
+     */
+    fun putIfAbsent(
+        content: ByteArray,
+        remotePath: ClusterS3Path,
+        contentType: String,
+    ): PutIfAbsentResult
+
+    /**
+     * Replaces the object at [remotePath] with [content] only while its version is still [etag]
+     * (`If-Match`), as read with [readVersioned].
+     *
+     * @return [Written], or [PreconditionFailed] when another writer changed or removed the object
+     *   since it was read (it is left as that writer left it).
+     */
+    fun putIfMatch(
+        content: ByteArray,
+        remotePath: ClusterS3Path,
+        etag: String,
+        contentType: String,
+    ): PutIfMatchResult
+
+    /**
+     * Reads the object at [remotePath] as UTF-8 together with the version it was read at.
+     *
+     * @return the content and its ETag, or null when no object is there.
+     */
+    fun readVersioned(remotePath: ClusterS3Path): Versioned?
+
+    /** The outcome of [putIfAbsent]. */
+    sealed interface PutIfAbsentResult
+
+    /** The outcome of [putIfMatch]. */
+    sealed interface PutIfMatchResult
+
+    /** A conditional write stored its content. */
+    data object Written : PutIfAbsentResult, PutIfMatchResult
+
+    /** [putIfAbsent] found an object already at the path and wrote nothing. */
+    data object AlreadyExists : PutIfAbsentResult
+
+    /** [putIfMatch] found the object changed since it was read and wrote nothing. */
+    data object PreconditionFailed : PutIfMatchResult
+
+    /**
+     * An object's content and the version it was read at.
+     *
+     * @property content The object, as UTF-8.
+     * @property etag The object's ETag, for [putIfMatch].
+     */
+    data class Versioned(
+        val content: String,
+        val etag: String,
     )
 }

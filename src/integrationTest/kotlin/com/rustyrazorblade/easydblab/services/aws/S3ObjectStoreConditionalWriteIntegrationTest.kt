@@ -3,7 +3,7 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.SharedMinio
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.services.ObjectStore
+import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -62,7 +62,7 @@ class S3ObjectStoreConditionalWriteIntegrationTest {
 
         val result = objectStore.putIfAbsent(bytes, path, "application/zip")
 
-        assertThat(result).isEqualTo(ObjectStore.Written)
+        assertThat(result).isEqualTo(ConditionalObjectStore.Written)
         assertThat(bytesAt(path)).isEqualTo(bytes)
         assertThat(contentTypeAt(path)).isEqualTo("application/zip")
     }
@@ -74,7 +74,7 @@ class S3ObjectStoreConditionalWriteIntegrationTest {
 
         val result = objectStore.putIfAbsent("second".toByteArray(), path, "text/plain")
 
-        assertThat(result).isEqualTo(ObjectStore.AlreadyExists)
+        assertThat(result).isEqualTo(ConditionalObjectStore.AlreadyExists)
         assertThat(String(bytesAt(path))).isEqualTo("first")
     }
 
@@ -98,7 +98,7 @@ class S3ObjectStoreConditionalWriteIntegrationTest {
 
         val result = objectStore.putIfMatch("new".toByteArray(), path, etag, "text/html")
 
-        assertThat(result).isEqualTo(ObjectStore.Written)
+        assertThat(result).isEqualTo(ConditionalObjectStore.Written)
         assertThat(String(bytesAt(path))).isEqualTo("new")
         assertThat(contentTypeAt(path)).isEqualTo("text/html")
     }
@@ -112,7 +112,7 @@ class S3ObjectStoreConditionalWriteIntegrationTest {
 
         val result = objectStore.putIfMatch("v3".toByteArray(), path, stale, "text/html")
 
-        assertThat(result).isEqualTo(ObjectStore.PreconditionFailed)
+        assertThat(result).isEqualTo(ConditionalObjectStore.PreconditionFailed)
         assertThat(String(bytesAt(path))).isEqualTo("v2")
     }
 }

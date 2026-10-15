@@ -422,6 +422,10 @@ tasks.register("testScripts") {
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
         "testKitShellLib",
+        "testClickhouseBenchmarkReport",
+        "testClickhouseBenchmarkStart",
+        "testClickhouseBenchmarkPrepare",
+        "testClickhouseBenchmarkStop",
         "testSysbenchStartScript",
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
@@ -456,6 +460,41 @@ tasks.register<Exec>("testKitShellLib") {
     description = "Unit-test the shared kit shell library"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/kit-lib.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's report parser against reports captured from real runs.
+tasks.register<Exec>("testClickhouseBenchmarkReport") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit report parser"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-report.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's start script, its arg checks and the pod-side runner.
+// kubectl, curl, date, sleep and clickhouse-benchmark are stubbed.
+tasks.register<Exec>("testClickhouseBenchmarkStart") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-start.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's prepare script and the pod-side loader. kubectl, curl,
+// date, sleep and clickhouse-client are stubbed.
+tasks.register<Exec>("testClickhouseBenchmarkPrepare") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit prepare script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-prepare.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's stop script: it deletes only the instance's pods and
+// ConfigMaps. kubectl is stubbed.
+tasks.register<Exec>("testClickhouseBenchmarkStop") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-stop.test.sh")
 }
 
 // Unit-test the sysbench kit's start script: it pushes its figures as OTLP JSON to the collector,

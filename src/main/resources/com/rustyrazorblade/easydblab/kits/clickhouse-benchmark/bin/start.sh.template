@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+#
+# Runs clickhouse-benchmark against the target in a pod on an app node, pushes a set of gauges for
+# every report the tool prints, and writes last-run.txt into the kit directory. Exits non-zero when
+# the run fails.
+set -euo pipefail
+
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KIT_DIR="$(dirname "${SCRIPT_DIR}")"
+. "${KIT_DIR}/lib/args.sh"
+. "${KIT_DIR}/lib/clickhouse.sh"
+. "${KIT_DIR}/lib/report.sh"
+
+ROLE="benchmark-run"
+IMAGE="clickhouse/clickhouse-server:${VERSION}"
+# The tool prints a report this often; the gauges follow it.
+REPORT_INTERVAL_SECONDS=10
+LAST_RUN_TXT="${KIT_DIR}/last-run.txt"
+
+[ -n "${TARGET_NATIVE_HOST:-}" ] || edl_fail "TARGET_NATIVE_HOST is empty: the target kit declares no native endpoint"
+[ -n "${TARGET_NATIVE_PORT:-}" ] || edl_fail "TARGET_NATIVE_PORT is empty: the target kit declares no native endpoint"
+
+ch_select_queries "${WORKLOAD}" "${QUERIES}" "${KIT_DIR}"
+SETTING_FLAGS="$(ch_settings_flags "${SETTINGS}")"
+
+ARGV=(--host "${TARGET_NATIVE_HOST}" --port "${TARGET_NATIVE_PORT}" --database "${TARGET_NATIVE_DATABASE:-default}")
+[ -z "${TARGET_NATIVE_USER:-}" ] || ARGV+=(--user "${TARGET_NATIVE_USER}")
+ARGV+=(-c "${CONCURRENCY}" --timelimit "${DURATION}" -i "${ITERATIONS}" --delay "${REPORT_INTERVAL_SECONDS}")
+[ "${RANDOMIZE}" != true ] || ARGV+=(--randomize)
+[ "${CONTINUE_ON_ERRORS}" != true ] || ARGV+=(--continue_on_errors)
+while IFS= read -r flag; do
+  [ -z "${flag}" ] || ARGV+=("${flag}")
+done <<< "${SETTING_FLAGS}"
+
+edl_require_app_node clickhouse-benchmark
+
+if [ "${CH_NEEDS_HITS}" = true ]; then
+  # Assigned on its own line, so a failed query ends the script with the server's error.
+  HITS_POLICY="$(ch_hits_storage_policy)"
+  [ -n "${HITS_POLICY}" ] ||
+    edl_fail "Table hits does not exist in ${TARGET_NATIVE_DATABASE:-default} on ${TARGET:-the target}; run prepare first"
+fi
+
+POD="$(edl_resource_name "${ROLE}")"
+edl_create_configmap "${POD}" "${ROLE}" "queries.sql=${CH_QUERIES_FILE}" "run-benchmark.sh=${KIT_DIR}/pod/run-benchmark.sh"
+trap 'kubectl delete configmap "${POD}" --ignore-not-found > /dev/null 2>&1 || true' EXIT
+
+echo "Starting clickhouse-benchmark against ${TARGET_NATIVE_HOST}:${TARGET_NATIVE_PORT} (${IMAGE}): queries=${CH_QUERIES_FILE}, concurrency=${CONCURRENCY}, duration=${DURATION}s, iterations=${ITERATIONS}..."
+STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+kubectl run "${POD}" \
+  --image="${IMAGE}" \
+  --restart=Never \
+  --labels="$(edl_labels "${ROLE}")" \
+  --overrides="$(edl_pod_overrides "${POD}" /edl "${POD}")" \
+  --override-type=strategic \
+  --command -- sh /edl/run-benchmark.sh "${ARGV[@]}"
+
+edl_wait_for_pod_running "${POD}"
+edl_follow_pod_logs "${POD}" ch_report_handle_line
+EXIT_CODE="$(edl_wait_for_pod_exit "${POD}")"
+
+# The live stream can be cut and resumed, so the results come from the full log.
+FULL_LOG="$(mktemp)"
+kubectl logs "${POD}" > "${FULL_LOG}" 2>&1 || true
+{
+  echo "clickhouse-benchmark run"
+  echo "queries:            ${CH_QUERIES_FILE}"
+  echo "target:             ${TARGET_NATIVE_HOST}:${TARGET_NATIVE_PORT}"
+  echo "image:              ${IMAGE}"
+  echo "concurrency:        ${CONCURRENCY}"
+  echo "duration:           ${DURATION}s"
+  echo "iterations:         ${ITERATIONS}"
+  echo "randomize:          ${RANDOMIZE}"
+  echo "continue-on-errors: ${CONTINUE_ON_ERRORS}"
+  echo "settings:           ${SETTINGS}"
+  echo "started:            ${STARTED}"
+  echo "pod:                ${POD}"
+  echo "exit code:          ${EXIT_CODE}"
+  echo
+  FINAL_REPORT="$(ch_final_report < "${FULL_LOG}")"
+  if [ -n "${FINAL_REPORT}" ]; then
+    printf '%s\n' "${FINAL_REPORT}"
+  else
+    echo "The run printed no report. The end of its log:"
+    tail -n 20 "${FULL_LOG}"
+  fi
+} > "${LAST_RUN_TXT}"
+rm -f "${FULL_LOG}"
+
+if [ "${EXIT_CODE}" != 0 ]; then
+  edl_fail "The clickhouse-benchmark run failed with exit code ${EXIT_CODE}. Its settings and log are in ${LAST_RUN_TXT}"
+fi
+echo "Run results written to ${LAST_RUN_TXT}"

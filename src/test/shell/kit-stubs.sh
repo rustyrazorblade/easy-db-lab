@@ -160,6 +160,7 @@ pushed_gauges() {
   local call
   for call in "${STUB_STATE}"/curl.[0-9]*; do
     [ -e "${call}" ] || continue
+    grep -q '/v1/metrics$' "${call}" || continue
     awk 'prev == "--data-binary" { print; exit } { prev = $0 }' "${call}" | jq -r '
       .resourceMetrics[].scopeMetrics[].metrics[]
       | .name as $name

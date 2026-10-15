@@ -37,18 +37,18 @@
 
 ## 6. clickhouse-benchmark kit resources
 
-- [ ] 6.1 Capture a report fixture and an error-run fixture from a real `clickhouse-benchmark` run (stderr included, with `--delay 10`), and confirm the flag spellings and binary name in the image (R2).
-- [ ] 6.2 Write the report parser test (`src/test/shell/clickhouse-benchmark-report.test.sh`, Gradle `testClickhouseBenchmarkReport`): QPS, rows/s, MiB/s, query count, error count, the five percentiles in ms (p999 from `99.900%`), a missing or non-numeric field gives 0.
-- [ ] 6.3 Write `lib/report.sh` until the parser test passes.
-- [ ] 6.4 Write `lib/args.sh` tests (inside the start test or their own file): settings mapping, entry without `=`, key pattern, every denylist key; workload or queries choice; unknown workload lists valid ones; `--source` with `'` or `\` rejected; storage policy pattern.
-- [ ] 6.5 Write `lib/args.sh` and `lib/clickhouse.sh` (`ch_http_query`).
-- [ ] 6.6 Add `workloads/clickbench/queries.sql` (43 queries, one per line) and `workloads/clickbench/create-hits.sql`, verbatim from ClickBench.
+- [x] 6.1 Capture a report fixture and an error-run fixture from a real `clickhouse-benchmark` run (stderr included, with `--delay 10`), and confirm the flag spellings and binary name in the image (R2).
+- [x] 6.2 Write the report parser test (`src/test/shell/clickhouse-benchmark-report.test.sh`, Gradle `testClickhouseBenchmarkReport`): QPS, rows/s, MiB/s, query count, error count, the five percentiles in ms (p999 from `99.900%`), a missing or non-numeric field gives 0.
+- [x] 6.3 Write `lib/report.sh` until the parser test passes.
+- [x] 6.4 Write `lib/args.sh` tests (inside the start test or their own file): settings mapping, entry without `=`, key pattern, every denylist key; workload or queries choice; unknown workload lists valid ones; `--source` with `'` or `\` rejected; storage policy pattern.
+- [x] 6.5 Write `lib/args.sh` and `lib/clickhouse.sh` (`ch_http_query`).
+- [x] 6.6 Add `workloads/clickbench/queries.sql` (43 queries, one per line) and `workloads/clickbench/create-hits.sql`, verbatim from ClickBench.
 - [ ] 6.7 Write `pod/run-benchmark.sh` and `pod/prepare-load.sh` (POSIX sh) with stub-binary tests: queries on stdin and exit code passthrough; drop with `--recreate`, `ON CLUSTER clickhouse`, the storage policy in the DDL, negative `distributed_ddl_task_timeout`, `SYSTEM SYNC REPLICA ON CLUSTER clickhouse hits`, client timeouts and `max_execution_time=0`, replica mismatch fails with counts, a failed `INSERT` prints the partial-load message and never drops.
 - [ ] 6.8 Write `src/test/shell/clickhouse-benchmark-start.test.sh` (Gradle `testClickhouseBenchmarkStart`): missing TARGET_NATIVE vars; arg mapping; `--randomize=false`; exclusivity; missing and empty `--queries`; no app node runs no `kubectl run`; `hits` missing; `--queries` skips the hits check; `nodeSelector` in the overrides; image from `VERSION`; names and labels; non-zero exit prints the failure and the code and exits non-zero; exit 0; pod deleted mid-run; `last-run.txt` written and replaced, failed runs included, and no `last-run.json`; own ConfigMap deleted.
-- [ ] 6.9 Write `src/test/shell/clickhouse-benchmark-prepare.test.sh` (Gradle `testClickhouseBenchmarkPrepare`): active run pod refuses and names it; `hits` exists without `--recreate` names the table and policy; `--recreate` order; no app node; bad source and policy fail before a pod; non-zero pod exit fails.
-- [ ] 6.10 Write `src/test/shell/clickhouse-benchmark-stop.test.sh` (Gradle `testClickhouseBenchmarkStop`): deletes `pods,configmaps -l easydblab/kit=${KIT_NAME}` only.
-- [ ] 6.11 Write `kit.yaml` and `bin/prepare.sh.template`, `bin/start.sh.template`, `bin/stop.sh.template` until the shell tests pass.
-- [ ] 6.12 Write `ClickHouseBenchmarkKitTest` (via `BuiltinKitFixture`): the args, commands, defaults, runtime probe and `endpoints: [native, http]`; only `prepare`, `start` and `stop` become subcommands.
+- [x] 6.9 Write `src/test/shell/clickhouse-benchmark-prepare.test.sh` (Gradle `testClickhouseBenchmarkPrepare`): active run pod refuses and names it; `hits` exists without `--recreate` names the table and policy; `--recreate` order; no app node; bad source and policy fail before a pod; non-zero pod exit fails.
+- [x] 6.10 Write `src/test/shell/clickhouse-benchmark-stop.test.sh` (Gradle `testClickhouseBenchmarkStop`): deletes `pods,configmaps -l easydblab/kit=${KIT_NAME}` only.
+- [x] 6.11 Write `kit.yaml` and `bin/prepare.sh.template`, `bin/start.sh.template`, `bin/stop.sh.template` until the shell tests pass.
+- [x] 6.12 Write `ClickHouseBenchmarkKitTest` (via `BuiltinKitFixture`): the args, commands, defaults, runtime probe and `endpoints: [native, http]`; only `prepare`, `start` and `stop` become subcommands.
 
 ## 7. sysbench adopts the library
 

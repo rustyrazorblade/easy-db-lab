@@ -303,8 +303,8 @@ object Constants {
         /** S3's error code for a 409 that a concurrent conditional write to the same key caused. */
         const val CONDITIONAL_REQUEST_CONFLICT = "ConditionalRequestConflict"
 
-        /** S3's error code for a request to a bucket that does not exist. */
-        const val NO_SUCH_BUCKET = "NoSuchBucket"
+        /** S3's error code for a request naming an object that does not exist. */
+        const val NO_SUCH_KEY = "NoSuchKey"
     }
 
     /**

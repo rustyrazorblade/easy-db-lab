@@ -224,6 +224,28 @@ class S3ObjectStoreTest : BaseKoinTest() {
     }
 
     @Test
+    fun `putIfMatch on a 404 with no error code is an error naming the key and status`() {
+        putFails(s3Error(404))
+
+        assertThatThrownBy { putIfMatch() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("s3://b/k")
+            .hasMessageContaining("unknown")
+            .hasMessageContaining("HTTP 404")
+    }
+
+    @Test
+    fun `putIfMatch on a 404 with an unknown error code is an error naming the key, code and status`() {
+        putFails(s3Error(404, "NoSuchUpload"))
+
+        assertThatThrownBy { putIfMatch() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("s3://b/k")
+            .hasMessageContaining("NoSuchUpload")
+            .hasMessageContaining("HTTP 404")
+    }
+
+    @Test
     fun `putIfAbsent on a missing bucket is an error naming the S3 error code`() {
         putFails(s3Error(404, "NoSuchBucket"))
 

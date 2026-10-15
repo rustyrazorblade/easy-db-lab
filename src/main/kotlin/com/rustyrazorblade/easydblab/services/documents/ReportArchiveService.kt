@@ -5,7 +5,6 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
-import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
@@ -58,12 +57,10 @@ interface ReportArchiveService {
      * pointer forward to it. Nothing earlier is replaced or removed, and a second taken by another
      * upload is never shared, even by an upload of the same unchanged directory: every upload's zip
      * carries its own random id in the zip comment, so no other upload's zip has its bytes. The zip
-     * is built once and those exact bytes are stored. A write refused on a retried attempt of its
-     * own request whose object holds exactly this upload's bytes is this upload's own (an earlier
-     * attempt committed and lost its response), so it is neither stored again nor treated as a
-     * conflict. When that retried attempt met a write still in flight at the key, which may be
-     * this upload's own earlier attempt, the key is looked at again until it holds an object before
-     * it is decided, so the earlier attempt never lands later as an orphan zip.
+     * is built once and those exact bytes are stored. A refused write is decided by what its key
+     * holds ([ImmutableObjectWriter]): exactly this upload's bytes are its own, so the zip keeps its
+     * second; other bytes move the zip to the next second and fail an unpacked file; a key still
+     * empty after every look moves the zip on too, and fails an unpacked file.
      *
      * @throws ReportRejectedException naming every offender, before anything is stored, if [dir]
      *   breaks the report rules.
@@ -76,16 +73,18 @@ interface ReportArchiveService {
 }
 
 /**
- * Default [ReportArchiveService]: [ReportZip] builds, [ReportUnpacker] unpacks, [ReportPointer]
- * moves the pointer. Every object is written with a conditional write that never replaces one;
- * only the pointer is ever replaced, and only by a newer upload.
+ * Default [ReportArchiveService]: [ReportZip] builds, [ImmutableObjectWriter] stores each object,
+ * [ReportUnpacker] unpacks, [ReportPointer] moves the pointer. Every object is written with a
+ * conditional write that never replaces one; only the pointer is ever replaced, and only by a newer
+ * upload.
  */
 class DefaultReportArchiveService(
-    private val store: ConditionalObjectStore,
+    store: ConditionalObjectStore,
     private val clock: Clock = Clock.systemUTC(),
-    private val inFlightLookInterval: Duration = Duration.ofMillis(Constants.Observability.REPORT_IN_FLIGHT_LOOK_INTERVAL_MS),
+    inFlightLookInterval: Duration = Duration.ofMillis(Constants.Observability.REPORT_IN_FLIGHT_LOOK_INTERVAL_MS),
     private val uploadIds: () -> String = { UUID.randomUUID().toString() },
 ) : ReportArchiveService {
+    private val writer = ImmutableObjectWriter(store, inFlightLookInterval)
     private val pointer = ReportPointer(store, inFlightLookInterval)
 
     override fun upload(
@@ -115,11 +114,30 @@ class DefaultReportArchiveService(
                 .take(Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS)
                 .toList()
         return candidates.firstOrNull { stamp ->
-            storedAsOwn(archive.bytes, folder.resolve(stamp.zipName), ZIP_CONTENT_TYPE)
+            zipStoredAt(folder.resolve(stamp.zipName), archive.bytes)
         } ?: error(
             "Every report name for ${Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS} seconds up to " +
                 "${candidates.last().zipName} is taken in ${folder.toUri()}; nothing was uploaded.",
         )
+    }
+
+    /** Whether [path] now holds this upload's zip [bytes]; any other outcome moves to the next second. */
+    private fun zipStoredAt(
+        path: ClusterS3Path,
+        bytes: ByteArray,
+    ): Boolean {
+        val decision = writer.write(bytes, path, ZIP_CONTENT_TYPE)
+        return when (decision.holder) {
+            KeyHolder.OWN -> true.also { logRefused(path, decision) }
+            KeyHolder.OTHER -> false.also { logRefused(path, decision) }
+            KeyHolder.EMPTY -> {
+                log.warn {
+                    "Zip ${path.toUri()} refused and still empty after ${decision.looks} looks; moving to the next second. " +
+                        "The abandoned key may still receive a write in flight."
+                }
+                false
+            }
+        }
     }
 
     private fun put(
@@ -127,62 +145,28 @@ class DefaultReportArchiveService(
         content: ByteArray,
         contentType: String,
     ) {
-        check(storedAsOwn(content, path, contentType)) {
-            "${path.toUri()} already exists; an upload never replaces an object, so it was left unchanged."
+        val decision = writer.write(content, path, contentType)
+        when (decision.holder) {
+            KeyHolder.OWN -> logRefused(path, decision)
+            KeyHolder.OTHER -> {
+                logRefused(path, decision)
+                error("${path.toUri()}: another object holds that key; an upload never replaces an object, so it was left unchanged.")
+            }
+            KeyHolder.EMPTY -> {
+                log.warn { "Write to ${path.toUri()} refused and still empty after ${decision.looks} looks; failing the upload." }
+                error("${path.toUri()} was refused and the key was still empty after ${decision.looks} looks.")
+            }
         }
     }
 
-    /**
-     * Writes [content] to [path] only where no object is, and tells whether [path] now holds this
-     * writer's [content]. Only a write refused on a retried attempt of this same request may be
-     * this writer's own (an earlier attempt committed and lost only its response), so only then is
-     * the object read back and accepted when it has exactly these bytes. That is sound because no
-     * other upload writes these bytes there: each zip is unique to its upload (its comment holds
-     * the upload id), and an unpacked file lands under the folder of the second whose zip this
-     * upload holds. A write refused on its first attempt found another upload's object there, even
-     * one with the same bytes.
-     */
-    private fun storedAsOwn(
-        content: ByteArray,
+    /** Logs how a refused write to [path] was decided; a write that landed at once is not logged here. */
+    private fun logRefused(
         path: ClusterS3Path,
-        contentType: String,
-    ): Boolean =
-        when (store.putIfAbsent(content, path, contentType)) {
-            ConditionalObjectStore.Written -> true
-            ConditionalObjectStore.AlreadyExists -> false
-            ConditionalObjectStore.RefusedAfterRetry -> {
-                val accepted = store.readBytes(path)?.contentEquals(content) == true
-                log.info { "Write to ${path.toUri()} refused after a retry; read back, accepted=$accepted" }
-                accepted
-            }
-            ConditionalObjectStore.ConflictAfterRetry -> settledAsOwn(content, path, contentType)
+        decision: WriteDecision,
+    ) {
+        if (decision.looks > 0) {
+            log.info { "Write to ${path.toUri()} refused; read back: ${decision.holder.name.lowercase()}, looks=${decision.looks}" }
         }
-
-    /**
-     * Decides a write to [path] refused after a retry because a conditional write was still in
-     * flight there. That write may be this writer's own earlier attempt, not yet committed, so an
-     * empty key is not given up at once: each look reads [path] back and, while it holds nothing,
-     * writes [content] there again, until the key holds an object (accepted when it has exactly
-     * these bytes) or this writer's write lands. A key still empty after every look is given up.
-     */
-    private fun settledAsOwn(
-        content: ByteArray,
-        path: ClusterS3Path,
-        contentType: String,
-    ): Boolean {
-        val accepted =
-            pollUntil<Boolean?>(
-                "report-write-in-flight",
-                Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS,
-                inFlightLookInterval,
-                transient = { false },
-                done = { it != null },
-            ) {
-                store.readBytes(path)?.contentEquals(content)
-                    ?: true.takeIf { store.putIfAbsent(content, path, contentType) == ConditionalObjectStore.Written }
-            } == true
-        log.info { "Write to ${path.toUri()} met a write in flight after a retry; looked again, accepted=$accepted" }
-        return accepted
     }
 
     private companion object {

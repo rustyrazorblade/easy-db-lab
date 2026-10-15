@@ -1,0 +1,143 @@
+package com.rustyrazorblade.easydblab.services.documents
+
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.InitConfig
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.File
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+
+/**
+ * Tests for [DefaultReportArchiveService]: where an upload lands, that it never replaces an
+ * earlier one, that a taken second moves to the next free one, and that the pointer only moves
+ * forward. The store is the in-memory [InMemoryConditionalObjectStore]; the same flow runs against
+ * MinIO in `ReportArchiveServiceIntegrationTest`.
+ */
+class ReportArchiveServiceTest {
+    @TempDir
+    lateinit var dir: File
+
+    private val store = InMemoryConditionalObjectStore()
+    private val state =
+        ClusterState(
+            name = "lab",
+            versions = mutableMapOf(),
+            clusterId = "abc",
+            s3Bucket = "acct",
+            initConfig = InitConfig(tenant = "acme", experiment = "e1"),
+        )
+
+    private fun service(at: String): DefaultReportArchiveService =
+        DefaultReportArchiveService(store, Clock.fixed(Instant.parse(at), ZoneOffset.UTC))
+
+    private fun file(
+        path: String,
+        text: String,
+    ) {
+        File(dir, path).also { it.parentFile.mkdirs() }.writeText(text)
+    }
+
+    private fun key(path: String) = ClusterS3Path.fromKey("acct", path)
+
+    private fun text(path: String): String = checkNotNull(store.bytesAt(key(path))).decodeToString()
+
+    @Test
+    fun `an upload stores the zip as built, unpacks it beside it and points at it`() {
+        file("results.md", "# Results")
+        file("graph.png", "png")
+
+        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120000.zip")
+        assertThat(uploaded.unpacked.getKey()).isEqualTo("reports/acme/e1/report-20261014-120000")
+        assertThat(uploaded.pointerAdvanced).isTrue()
+        assertThat(uploaded.files).containsExactly("graph.png", "results.md")
+        assertThat(store.bytesAt(uploaded.zip)).isEqualTo(ReportZip.build(dir).bytes)
+        assertThat(store.contentTypeAt(uploaded.zip)).isEqualTo("application/zip")
+        assertThat(store.keys()).containsExactly(
+            "reports/acme/e1/index.html",
+            "reports/acme/e1/report-20261014-120000.zip",
+            "reports/acme/e1/report-20261014-120000/_files.html",
+            "reports/acme/e1/report-20261014-120000/graph.png",
+            "reports/acme/e1/report-20261014-120000/results.html",
+            "reports/acme/e1/report-20261014-120000/results.md",
+        )
+        assertThat(text("reports/acme/e1/index.html")).contains("report-20261014-120000/_files.html")
+        assertThat(store.contentTypeAt(key("reports/acme/e1/report-20261014-120000/results.html"))).startsWith("text/html")
+    }
+
+    @Test
+    fun `an upload with an index md leads the pointer to its index page`() {
+        file("index.md", "# Front")
+
+        service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(text("reports/acme/e1/index.html")).contains("report-20261014-120000/index.html")
+    }
+
+    @Test
+    fun `a second upload keeps the first and the pointer shows the newer`() {
+        file("results.md", "first")
+        val first = service("2026-10-14T12:00:00Z").upload(state, dir)
+        val firstZip = checkNotNull(store.bytesAt(first.zip))
+        file("results.md", "second")
+
+        val second = service("2026-10-14T13:00:00Z").upload(state, dir)
+
+        assertThat(store.bytesAt(first.zip)).isEqualTo(firstZip)
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("first")
+        assertThat(text("reports/acme/e1/report-20261014-130000/results.md")).isEqualTo("second")
+        assertThat(second.pointerAdvanced).isTrue()
+        assertThat(ReportPointer.target(text("reports/acme/e1/index.html"))).isEqualTo(ReportStamp("20261014-130000"))
+    }
+
+    @Test
+    fun `an upload in a second that is taken moves to the next free second`() {
+        file("results.md", "first")
+        service("2026-10-14T12:00:00Z").upload(state, dir)
+        service("2026-10-14T12:00:00Z").upload(state, dir)
+        file("results.md", "third")
+
+        val third = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(third.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120002.zip")
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("first")
+        assertThat(text("reports/acme/e1/report-20261014-120002/results.md")).isEqualTo("third")
+    }
+
+    @Test
+    fun `an upload named for an earlier second does not move the pointer back`() {
+        file("results.md", "later")
+        service("2026-10-14T13:00:00Z").upload(state, dir)
+
+        val earlier = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(earlier.pointerAdvanced).isFalse()
+        assertThat(store.bytesAt(earlier.zip)).isNotNull()
+        assertThat(ReportPointer.target(text("reports/acme/e1/index.html"))).isEqualTo(ReportStamp("20261014-130000"))
+    }
+
+    @Test
+    fun `a rejected directory writes nothing`() {
+        file("my notes.md", "x")
+
+        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+            .isInstanceOf(ReportRejectedException::class.java)
+            .hasMessageContaining("my notes.md")
+        assertThat(store.keys()).isEmpty()
+    }
+
+    @Test
+    fun `a cluster from before experiments uploads into its own folder`() {
+        file("results.md", "x")
+
+        val uploaded = service("2026-10-14T12:00:00Z").upload(state.copy(initConfig = InitConfig(tenant = "acme")), dir)
+
+        assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/lab-abc/report-20261014-120000.zip")
+    }
+}

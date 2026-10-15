@@ -130,7 +130,10 @@ object ReportZip {
             refuse(Constants.Observability.REPORT_FILE_LIST, "is reserved for the file list report upload generates")
         }
         if (FILE_LIST_SOURCE in files) {
-            refuse(FILE_LIST_SOURCE, "has an HTML copy named ${Constants.Observability.REPORT_FILE_LIST}, the file list report upload generates")
+            refuse(
+                FILE_LIST_SOURCE,
+                "has an HTML copy named ${Constants.Observability.REPORT_FILE_LIST}, the file list report upload generates",
+            )
         }
         markdownBesideHtml(files.toSet()).forEach { (markdown, html) ->
             refuse(markdown, "has a sibling $html, which its HTML copy would replace")

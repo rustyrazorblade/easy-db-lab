@@ -432,8 +432,8 @@ class S3ObjectStore(
      * [ConditionalPutOutcome.REFUSED] on the request's first attempt, and
      * [ConditionalPutOutcome.REFUSED_AFTER_RETRY] when an earlier attempt was sent and failed, here
      * or inside the SDK's own retries: that earlier attempt may have committed and lost only its
-     * response. Any other error is thrown as an [S3Exception] whose message names the key and S3's
-     * error code.
+     * response. Any other error is thrown as an [S3Exception] whose message names the key, S3's
+     * error code and how many attempts were made.
      */
     private fun conditionalPut(
         request: PutObjectRequest,
@@ -458,17 +458,20 @@ class S3ObjectStore(
         } catch (e: S3Exception) {
             val uri = "s3://${request.bucket()}/${request.key()}"
             val code = e.awsErrorDetails()?.errorCode() ?: "unknown"
+            val attemptsMade = maxOf(attempts, e.numAttempts() ?: 1)
             if (!ConditionalWriteRefusal.isRefused(condition, e)) {
                 throw S3Exception
                     .builder()
-                    .message("Conditional write to $uri failed with S3 error $code (HTTP ${e.statusCode()})")
+                    .message(
+                        "Conditional write to $uri failed with S3 error $code (HTTP ${e.statusCode()}), attempts: $attemptsMade",
+                    )
                     .statusCode(e.statusCode())
                     .awsErrorDetails(e.awsErrorDetails())
                     .requestId(e.requestId())
                     .cause(e)
                     .build()
             }
-            val retried = attempts > 1 || (e.numAttempts() ?: 1) > 1
+            val retried = attemptsMade > 1
             log.info { "Conditional write to $uri refused: S3 error $code (HTTP ${e.statusCode()}), retried: $retried" }
             if (retried) ConditionalPutOutcome.REFUSED_AFTER_RETRY else ConditionalPutOutcome.REFUSED
         }

@@ -289,6 +289,30 @@ class S3ObjectStoreTest : BaseKoinTest() {
     }
 
     @Test
+    fun `an error on the first attempt says one attempt was made`() {
+        putFails(s3Error(403, "AccessDenied"))
+
+        assertThatThrownBy { putIfAbsent() }.hasMessageContaining("attempts: 1")
+    }
+
+    @Test
+    fun `an error after a server-error retry says how many attempts were made`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()))
+            .thenThrow(s3Error(500, "InternalError"))
+            .thenThrow(s3Error(403, "AccessDenied"))
+
+        assertThatThrownBy { putIfAbsent() }.hasMessageContaining("attempts: 2")
+    }
+
+    @Test
+    fun `an error on an attempt the SDK retried itself counts the SDK's attempts`() {
+        putFails(s3Error(403, "AccessDenied", sdkAttempts = 3))
+
+        assertThatThrownBy { putIfMatch() }.hasMessageContaining("attempts: 3")
+    }
+
+    @Test
     fun `a conditional write that fails with a server error is retried and written`() {
         objectStore = get()
         whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()))

@@ -366,10 +366,10 @@ class S3ObjectStore(
         contentType: String,
     ): ConditionalObjectStore.PutIfAbsentResult {
         val request = putRequest(remotePath, contentType).ifNoneMatch("*").build()
-        return if (conditionalPut(request, content, WriteCondition.IF_NONE_MATCH)) {
-            ConditionalObjectStore.Written
-        } else {
-            ConditionalObjectStore.AlreadyExists
+        return when (conditionalPut(request, content, WriteCondition.IF_NONE_MATCH)) {
+            ConditionalPutOutcome.WRITTEN -> ConditionalObjectStore.Written
+            ConditionalPutOutcome.REFUSED -> ConditionalObjectStore.AlreadyExists
+            ConditionalPutOutcome.REFUSED_AFTER_RETRY -> ConditionalObjectStore.RefusedAfterRetry
         }
     }
 
@@ -380,10 +380,10 @@ class S3ObjectStore(
         contentType: String,
     ): ConditionalObjectStore.PutIfMatchResult {
         val request = putRequest(remotePath, contentType).ifMatch(etag).build()
-        return if (conditionalPut(request, content, WriteCondition.IF_MATCH)) {
-            ConditionalObjectStore.Written
-        } else {
-            ConditionalObjectStore.PreconditionFailed
+        return when (conditionalPut(request, content, WriteCondition.IF_MATCH)) {
+            ConditionalPutOutcome.WRITTEN -> ConditionalObjectStore.Written
+            ConditionalPutOutcome.REFUSED -> ConditionalObjectStore.PreconditionFailed
+            ConditionalPutOutcome.REFUSED_AFTER_RETRY -> ConditionalObjectStore.RefusedAfterRetry
         }
     }
 
@@ -427,23 +427,26 @@ class S3ObjectStore(
             .contentType(contentType)
 
     /**
-     * Sends a conditional PUT carrying [condition], retrying only server errors. Returns false when
-     * S3 refused it because its condition does not hold ([ConditionalWriteRefusal]). Any other
-     * error is thrown as an [S3Exception] whose message names the key and S3's error code.
-     *
-     * A retried write whose first attempt committed is refused, although this writer stored it;
-     * callers that must tell the two apart read the object back.
+     * Sends a conditional PUT carrying [condition], retrying only server errors. S3 refusing it
+     * because its condition does not hold ([ConditionalWriteRefusal]) is
+     * [ConditionalPutOutcome.REFUSED] on the request's first attempt, and
+     * [ConditionalPutOutcome.REFUSED_AFTER_RETRY] when an earlier attempt was sent and failed, here
+     * or inside the SDK's own retries: that earlier attempt may have committed and lost only its
+     * response. Any other error is thrown as an [S3Exception] whose message names the key and S3's
+     * error code.
      */
     private fun conditionalPut(
         request: PutObjectRequest,
         content: ByteArray,
         condition: WriteCondition,
-    ): Boolean {
+    ): ConditionalPutOutcome {
         val retryName = "s3-put-${condition.name.lowercase().replace('_', '-')}"
         val retry = Retry.of(retryName, RetryUtil.createAwsRetryConfig<Unit>())
+        var attempts = 0
         return try {
             Retry
                 .decorateRunnable(retry) {
+                    attempts++
                     s3Client.putObject(
                         request,
                         software.amazon.awssdk.core.sync.RequestBody
@@ -451,7 +454,7 @@ class S3ObjectStore(
                     )
                 }.run()
             log.info { "Wrote ${content.size} bytes to s3://${request.bucket()}/${request.key()}" }
-            true
+            ConditionalPutOutcome.WRITTEN
         } catch (e: S3Exception) {
             val uri = "s3://${request.bucket()}/${request.key()}"
             val code = e.awsErrorDetails()?.errorCode() ?: "unknown"
@@ -465,9 +468,17 @@ class S3ObjectStore(
                     .cause(e)
                     .build()
             }
-            log.info { "Conditional write to $uri refused: S3 error $code (HTTP ${e.statusCode()})" }
-            false
+            val retried = attempts > 1 || (e.numAttempts() ?: 1) > 1
+            log.info { "Conditional write to $uri refused: S3 error $code (HTTP ${e.statusCode()}), retried: $retried" }
+            if (retried) ConditionalPutOutcome.REFUSED_AFTER_RETRY else ConditionalPutOutcome.REFUSED
         }
+    }
+
+    /** What one conditional PUT came to, before it is named for its condition. */
+    private enum class ConditionalPutOutcome {
+        WRITTEN,
+        REFUSED,
+        REFUSED_AFTER_RETRY,
     }
 
     override fun directoryExists(remotePath: ClusterS3Path): Boolean {

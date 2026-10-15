@@ -21,6 +21,8 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 
 /**
  * [DefaultReportArchiveService] and `up`'s [ReportPointer.ensurePlaceholder] against MinIO, which
@@ -132,6 +134,50 @@ class ReportArchiveServiceIntegrationTest {
         assertThat(sameSecond.pointerAdvanced).isTrue()
         assertThat(earlier.pointerAdvanced).isFalse()
         assertThat(pointer(state)).contains("report-20261014-120001/index.html")
+    }
+
+    @Test
+    fun `a second upload of an unchanged directory in the same second keeps the first and takes the next second`(
+        @TempDir dir: File,
+    ) {
+        val state = cluster()
+        File(dir, "results.md").writeText("# Same")
+        val first = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        val second = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(first.zip.getKey()).endsWith("report-20261014-120000.zip")
+        assertThat(second.zip.getKey()).endsWith("report-20261014-120001.zip")
+        assertThat(bytes(second.zip)).isEqualTo(bytes(first.zip))
+        assertThat(String(bytes(second.unpacked.resolve("results.md")))).isEqualTo("# Same")
+        assertThat(pointer(state)).contains("report-20261014-120001/_files.html")
+    }
+
+    @Test
+    fun `two concurrent uploads of an unchanged directory in the same second both complete under their own seconds`(
+        @TempDir dir: File,
+    ) {
+        val state = cluster()
+        File(dir, "results.md").writeText("# Same")
+        val pool = Executors.newFixedThreadPool(2)
+        val start = CountDownLatch(1)
+
+        val uploads =
+            try {
+                List(2) {
+                    pool.submit<UploadedReport> {
+                        start.await()
+                        service("2026-10-14T12:00:00Z").upload(state, dir)
+                    }
+                }.also { start.countDown() }.map { it.get() }
+            } finally {
+                pool.shutdown()
+            }
+
+        assertThat(uploads.map { it.zip.getKey().substringAfterLast('/') })
+            .containsExactlyInAnyOrder("report-20261014-120000.zip", "report-20261014-120001.zip")
+        uploads.forEach { assertThat(String(bytes(it.unpacked.resolve("results.md")))).isEqualTo("# Same") }
+        assertThat(pointer(state)).contains("report-20261014-120001/_files.html")
     }
 
     @Test

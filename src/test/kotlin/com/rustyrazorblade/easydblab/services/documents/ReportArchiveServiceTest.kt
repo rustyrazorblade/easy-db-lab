@@ -113,6 +113,31 @@ class ReportArchiveServiceTest {
     }
 
     @Test
+    fun `a second upload of an unchanged directory in the same second keeps the first and takes the next second`() {
+        file("results.md", "same")
+        val first = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        val second = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(first.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120000.zip")
+        assertThat(second.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
+        assertThat(store.bytesAt(second.zip)).isEqualTo(store.bytesAt(first.zip))
+        assertThat(text("reports/acme/e1/report-20261014-120001/results.md")).isEqualTo("same")
+        assertThat(second.pointerAdvanced).isTrue()
+        assertThat(ReportPointer.target(text("reports/acme/e1/index.html"))).isEqualTo(ReportStamp("20261014-120001"))
+    }
+
+    @Test
+    fun `an unpacked file refused on its first attempt fails the upload even when it holds the same bytes`() {
+        file("results.md", "mine")
+        store.overwrite(key("reports/acme/e1/report-20261014-120000/results.md"), "mine")
+
+        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+            .isInstanceOf(ReportUploadIncompleteException::class.java)
+            .hasMessageContaining("already exists")
+    }
+
+    @Test
     fun `an upload named for an earlier second does not move the pointer back`() {
         file("results.md", "later")
         service("2026-10-14T13:00:00Z").upload(state, dir)

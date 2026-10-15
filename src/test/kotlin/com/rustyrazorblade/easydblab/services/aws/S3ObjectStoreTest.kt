@@ -161,11 +161,13 @@ class S3ObjectStoreTest : BaseKoinTest() {
     private fun s3Error(
         status: Int,
         code: String? = null,
+        sdkAttempts: Int? = null,
     ): S3Exception =
         S3Exception
             .builder()
             .message("status $status")
             .statusCode(status)
+            .numAttempts(sdkAttempts)
             .apply {
                 code?.let {
                     awsErrorDetails(
@@ -295,5 +297,42 @@ class S3ObjectStoreTest : BaseKoinTest() {
 
         assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.Written)
         assertThat(putCalls()).isEqualTo(2)
+    }
+
+    @Test
+    fun `a refusal after a server-error retry is RefusedAfterRetry, since the first attempt may have committed`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()))
+            .thenThrow(s3Error(500, "InternalError"))
+            .thenThrow(s3Error(412, "PreconditionFailed"))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.RefusedAfterRetry)
+        assertThat(putCalls()).isEqualTo(2)
+    }
+
+    @Test
+    fun `a replacing write refused after a server-error retry is RefusedAfterRetry`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()))
+            .thenThrow(s3Error(503, "SlowDown"))
+            .thenThrow(s3Error(412, "PreconditionFailed"))
+
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.RefusedAfterRetry)
+    }
+
+    @Test
+    fun `a refusal on an attempt the SDK retried itself is RefusedAfterRetry`() {
+        putFails(s3Error(412, "PreconditionFailed", sdkAttempts = 2))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.RefusedAfterRetry)
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.RefusedAfterRetry)
+    }
+
+    @Test
+    fun `a refusal on the SDK's first and only attempt is a real conflict`() {
+        putFails(s3Error(409, "ConditionalRequestConflict", sdkAttempts = 1))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.AlreadyExists)
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.PreconditionFailed)
     }
 }

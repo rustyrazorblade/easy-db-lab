@@ -241,8 +241,8 @@ interface ConditionalObjectStore {
      * (`If-None-Match: *`), so it can never replace an object, not even one another writer stores
      * at the same moment.
      *
-     * @return [Written], or [AlreadyExists] when an object is already at [remotePath] (it is left
-     *   unchanged).
+     * @return [Written]; [AlreadyExists] when an object is already at [remotePath] (it is left
+     *   unchanged); or [RefusedAfterRetry] when only a retried attempt was refused.
      */
     fun putIfAbsent(
         content: ByteArray,
@@ -254,8 +254,9 @@ interface ConditionalObjectStore {
      * Replaces the object at [remotePath] with [content] only while its version is still [etag]
      * (`If-Match`), as read with [readVersioned].
      *
-     * @return [Written], or [PreconditionFailed] when another writer changed or removed the object
-     *   since it was read (it is left as that writer left it).
+     * @return [Written]; [PreconditionFailed] when another writer changed or removed the object
+     *   since it was read (it is left as that writer left it); or [RefusedAfterRetry] when only a
+     *   retried attempt was refused.
      */
     fun putIfMatch(
         content: ByteArray,
@@ -292,6 +293,14 @@ interface ConditionalObjectStore {
 
     /** [putIfMatch] found the object changed since it was read and wrote nothing. */
     data object PreconditionFailed : PutIfMatchResult
+
+    /**
+     * A conditional write was refused on a retried attempt of this same request. An earlier
+     * attempt may have committed and lost only its response, so the object now at the path may be
+     * this writer's own; a caller that must tell the two apart reads it back. A refusal of the
+     * first attempt is never this: it is [AlreadyExists] or [PreconditionFailed].
+     */
+    data object RefusedAfterRetry : PutIfAbsentResult, PutIfMatchResult
 
     /**
      * An object's content and the version it was read at.

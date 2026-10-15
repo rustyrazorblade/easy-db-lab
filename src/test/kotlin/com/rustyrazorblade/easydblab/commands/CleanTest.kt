@@ -155,6 +155,17 @@ class CleanTest : BaseKoinTest() {
     }
 
     @Test
+    fun `clean removes the kit library`() {
+        ToolWrapperInstaller().install(context.workingDirectory)
+        val bin = File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY)
+        File(bin, "my-script").writeText("#!/bin/sh\n")
+
+        get<Clean>().execute()
+
+        assertThat(File(bin, Constants.ToolWrappers.KIT_LIBRARY)).doesNotExist()
+    }
+
+    @Test
     fun `clean leaves a bin without the marker alone`() {
         val bin = File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY).apply { mkdirs() }
         val own = File(bin, "kubectl").apply { writeText("#!/bin/sh\necho mine\n") }

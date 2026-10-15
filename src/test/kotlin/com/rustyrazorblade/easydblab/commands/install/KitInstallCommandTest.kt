@@ -403,16 +403,21 @@ class KitInstallCommandTest : BaseKoinTest() {
                 type = null,
                 install =
                     listOf(
-                        InstallStep.Shell("echo \"\$KUBECONFIG\" > '${seen.absolutePath}'\necho \"\$PATH\" >> '${seen.absolutePath}'"),
+                        InstallStep.Shell(
+                            "echo \"\$KUBECONFIG\" > '${seen.absolutePath}'\necho \"\$PATH\" >> '${seen.absolutePath}'\n" +
+                                "echo \"\$${Constants.Kit.LIBRARY_ENV}\" >> '${seen.absolutePath}'",
+                        ),
                     ),
             )
 
         val exitCode = (factory.build(config, source).commandSpec.userObject() as KitInstallCommand).call()
 
         assertThat(exitCode).isZero()
-        val (kubeconfig, path) = seen.readLines()
+        val (kubeconfig, path, library) = seen.readLines()
+        val bin = File(workingDir, Constants.ToolWrappers.DIRECTORY)
         assertThat(kubeconfig).isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
-        assertThat(path.split(File.pathSeparator).first()).isEqualTo(File(workingDir, Constants.ToolWrappers.DIRECTORY).absolutePath)
+        assertThat(path.split(File.pathSeparator).first()).isEqualTo(bin.absolutePath)
+        assertThat(library).isEqualTo(File(bin, Constants.ToolWrappers.KIT_LIBRARY).absolutePath)
     }
 
     /**

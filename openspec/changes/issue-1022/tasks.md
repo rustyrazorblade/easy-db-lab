@@ -22,12 +22,12 @@
 
 ## 4. Shared kit shell library plumbing (Kotlin)
 
-- [ ] 4.1 Add `Constants.ToolWrappers.KIT_LIBRARY`, `Constants.ToolWrappers.KIT_LIBRARY_RESOURCE` and `Constants.Kit.LIBRARY_ENV`.
-- [ ] 4.2 Write `ToolWrapperInstaller` tests: the library is written when absent and equals the resource; an existing library with different content is left as it is; a foreign `bin/` (no marker) holding `edl-kit-lib.sh` fails and writes nothing; `remove` deletes it.
-- [ ] 4.3 In `ToolWrapperInstaller`, add the `kitLibrary` `PackagedExecutable`, write it only when absent, add it to the foreign-file list and the remove list, and state the write-once rule in the KDoc.
-- [ ] 4.4 Write `KitProcessEnvironment` tests that `EDL_KIT_LIB` holds the absolute `<workspace>/bin/edl-kit-lib.sh`, and extend the install shell-step test in `KitInstallCommandTest` to assert it.
-- [ ] 4.5 Set `EDL_KIT_LIB` in `KitProcessEnvironment.applyTo`.
-- [ ] 4.6 Write a test that `clean` removes the library.
+- [x] 4.1 Add `Constants.ToolWrappers.KIT_LIBRARY`, `Constants.ToolWrappers.KIT_LIBRARY_RESOURCE` and `Constants.Kit.LIBRARY_ENV`.
+- [x] 4.2 Write `ToolWrapperInstaller` tests: the library is written when absent and equals the resource; an existing library with different content is left as it is; a foreign `bin/` (no marker) holding `edl-kit-lib.sh` fails and writes nothing; `remove` deletes it.
+- [x] 4.3 In `ToolWrapperInstaller`, add the `kitLibrary` `PackagedExecutable`, write it only when absent, add it to the foreign-file list and the remove list, and state the write-once rule in the KDoc.
+- [x] 4.4 Write `KitProcessEnvironment` tests that `EDL_KIT_LIB` holds the absolute `<workspace>/bin/edl-kit-lib.sh`, and extend the install shell-step test in `KitInstallCommandTest` to assert it.
+- [x] 4.5 Set `EDL_KIT_LIB` in `KitProcessEnvironment.applyTo`.
+- [x] 4.6 Write a test that `clean` removes the library.
 
 ## 5. Shared kit shell library (shell)
 

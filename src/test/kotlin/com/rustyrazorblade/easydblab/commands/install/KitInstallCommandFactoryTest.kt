@@ -122,7 +122,11 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         default: String,
         vararg args: String,
     ): String? {
-        val cl = factory.build(config(arg("--s3-cache-on-write", "S3_CACHE_ON_WRITE", KitArgSpec.ArgType.BOOLEAN, default)), directorySource)
+        val cl =
+            factory.build(
+                config(arg("--s3-cache-on-write", "S3_CACHE_ON_WRITE", KitArgSpec.ArgType.BOOLEAN, default)),
+                directorySource,
+            )
         cl.parseArgs(*args)
         return (cl.commandSpec.userObject() as KitInstallCommand).argValues["S3_CACHE_ON_WRITE"]
     }

@@ -126,7 +126,8 @@ class ClusterConfigurationServiceTest {
             assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
             val bin = File(tempDir.toFile(), Constants.ToolWrappers.DIRECTORY)
             assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(
-                Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER,
+                Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.KIT_LIBRARY +
+                    Constants.ToolWrappers.MARKER,
             )
         }
 

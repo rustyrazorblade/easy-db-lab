@@ -520,7 +520,10 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
         File(File(kitDir, "bin").also { it.mkdirs() }, "start.sh").writeText("#!/bin/sh\n")
         val groupCl = factory.buildKitGroup("bench", kitDir)
         groupCl.parseArgs("start", *args)
-        return groupCl.subcommands.getValue("start").commandSpec.userObject() as KitRunnerCommand
+        return groupCl.subcommands
+            .getValue("start")
+            .commandSpec
+            .userObject() as KitRunnerCommand
     }
 
     @Test

@@ -475,6 +475,9 @@ object Constants {
         // phases (start, stop, etc.) so they use the installed values instead of kit defaults.
         const val RESOLVED_ARGS_FILE = "kit-resolved-args.env"
 
+        /** The variable that holds the absolute path of the workspace's kit shell library, for every kit process. */
+        const val LIBRARY_ENV = "EDL_KIT_LIB"
+
         // After the stop of a kit that declares a runtime, how often and how many times to look for its
         // pods before reporting the stop incomplete: 2s x 150 = 5 minutes, enough for a
         // StatefulSet's or operator's cascading delete plus each pod's termination grace period.
@@ -1224,6 +1227,12 @@ object Constants {
 
         /** The packaged tunnel script. */
         const val TUNNEL_RESOURCE = "/com/rustyrazorblade/easydblab/configuration/edl-socks-tunnel.sh"
+
+        /** The shared kit shell library written into `bin/` once, and never rewritten, which kit scripts source. */
+        const val KIT_LIBRARY = "edl-kit-lib.sh"
+
+        /** The packaged kit shell library; outside `kits/`, so the built-in kit scan never lists it as a kit. */
+        const val KIT_LIBRARY_RESOURCE = "/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
     }
 
     // Container Registry configuration

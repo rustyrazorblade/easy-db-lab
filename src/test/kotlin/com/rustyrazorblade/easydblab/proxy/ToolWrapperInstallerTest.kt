@@ -21,8 +21,55 @@ internal class ToolWrapperInstallerTest {
         requireNotNull(javaClass.getResource(Constants.ToolWrappers.TUNNEL_RESOURCE)).readText()
     }
 
+    private val packagedLibrary: String by lazy {
+        requireNotNull(javaClass.getResource(Constants.ToolWrappers.KIT_LIBRARY_RESOURCE)).readText()
+    }
+    private val library: File get() = File(bin, Constants.ToolWrappers.KIT_LIBRARY)
+
     /** Everything an install writes into `bin/`. */
-    private val written = Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER
+    private val written =
+        Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.KIT_LIBRARY +
+            Constants.ToolWrappers.MARKER
+
+    @Test
+    fun `the kit library is written when absent and equals the packaged resource`() {
+        installer.install(workspace)
+
+        assertThat(library).hasContent(packagedLibrary)
+    }
+
+    @Test
+    fun `an existing kit library with different content is left as it is`() {
+        installer.install(workspace)
+        library.writeText("# an older library\n")
+
+        installer.install(workspace)
+
+        assertThat(library).hasContent("# an older library\n")
+    }
+
+    @Test
+    fun `a kit library without the marker fails, names the file, and writes nothing`() {
+        bin.mkdirs()
+        val foreign = File(bin, Constants.ToolWrappers.KIT_LIBRARY).apply { writeText("# mine\n") }
+
+        assertThatThrownBy { installer.install(workspace) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(foreign.path)
+
+        assertThat(bin.list()).containsExactly(Constants.ToolWrappers.KIT_LIBRARY)
+        assertThat(foreign).hasContent("# mine\n")
+    }
+
+    @Test
+    fun `remove deletes the kit library`() {
+        installer.install(workspace)
+        File(bin, "notes.txt").writeText("kept")
+
+        installer.remove(workspace)
+
+        assertThat(library).doesNotExist()
+    }
 
     @Test
     fun `writes the ten executable wrappers, the tunnel script and the marker`() {

@@ -104,7 +104,8 @@ internal class BackupRestoreServiceTest {
             assertThat(ProxyEnvFile(tempDir).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
             assertThat(File(tempDir, Constants.ToolWrappers.DIRECTORY).list())
                 .containsExactlyInAnyOrderElementsOf(
-                    Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER,
+                    Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.KIT_LIBRARY +
+                        Constants.ToolWrappers.MARKER,
                 )
         }
 

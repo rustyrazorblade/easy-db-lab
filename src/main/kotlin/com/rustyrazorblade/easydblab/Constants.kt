@@ -369,6 +369,12 @@ object Constants {
          */
         const val REPORT_ZIP_KEY_MAX_ATTEMPTS = 60
 
+        /**
+         * The start of every report zip's comment, which ends with its upload's random id: two
+         * uploads of the same directory never build the same bytes.
+         */
+        const val REPORT_ZIP_COMMENT_PREFIX = "easy-db-lab report upload "
+
         /** The suffix of a report file that gets an HTML copy. */
         const val REPORT_MARKDOWN_SUFFIX = ".md"
 

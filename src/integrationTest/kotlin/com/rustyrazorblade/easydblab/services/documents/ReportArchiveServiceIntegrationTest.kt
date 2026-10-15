@@ -59,6 +59,12 @@ class ReportArchiveServiceIntegrationTest {
 
     private fun service(at: String) = DefaultReportArchiveService(objectStore, Clock.fixed(Instant.parse(at), ZoneOffset.UTC))
 
+    /** A service whose upload is [uploadId], so the zip it builds is `ReportZip.build(dir, uploadId)`. */
+    private fun service(
+        at: String,
+        uploadId: String,
+    ) = DefaultReportArchiveService(objectStore, Clock.fixed(Instant.parse(at), ZoneOffset.UTC)) { uploadId }
+
     private fun folder(state: ClusterState): ClusterS3Path = ObservabilityStore.from(state).documentsRoot(ExperimentKey.of(state))
 
     private fun bytes(path: ClusterS3Path): ByteArray =
@@ -90,12 +96,12 @@ class ReportArchiveServiceIntegrationTest {
         val state = cluster()
         File(dir, "results.md").writeText("# Results\n\n| op | p99 |\n|---|---|\n| read | 4 |\n")
         File(dir, "graph.png").writeBytes(byteArrayOf(-119, 80, 78, 71))
-        val firstBuilt = ReportZip.build(dir).bytes
-        val first = service("2026-10-14T12:00:00Z").upload(state, dir)
+        val firstBuilt = ReportZip.build(dir, "upload-1").bytes
+        val first = service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir)
         File(dir, "results.md").writeText("# Second run")
-        val secondBuilt = ReportZip.build(dir).bytes
+        val secondBuilt = ReportZip.build(dir, "upload-2").bytes
 
-        val second = service("2026-10-14T13:00:00Z").upload(state, dir)
+        val second = service("2026-10-14T13:00:00Z", "upload-2").upload(state, dir)
 
         assertThat(bytes(first.zip)).isEqualTo(firstBuilt)
         assertThat(bytes(second.zip)).isEqualTo(secondBuilt)
@@ -148,7 +154,7 @@ class ReportArchiveServiceIntegrationTest {
 
         assertThat(first.zip.getKey()).endsWith("report-20261014-120000.zip")
         assertThat(second.zip.getKey()).endsWith("report-20261014-120001.zip")
-        assertThat(bytes(second.zip)).isEqualTo(bytes(first.zip))
+        assertThat(bytes(second.zip)).isNotEqualTo(bytes(first.zip))
         assertThat(String(bytes(second.unpacked.resolve("results.md")))).isEqualTo("# Same")
         assertThat(pointer(state)).contains("report-20261014-120001/_files.html")
     }

@@ -36,6 +36,12 @@ class ReportArchiveServiceTest {
     private fun service(at: String): DefaultReportArchiveService =
         DefaultReportArchiveService(store, Clock.fixed(Instant.parse(at), ZoneOffset.UTC))
 
+    /** A service whose upload is [uploadId], so the zip it builds is `ReportZip.build(dir, uploadId)`. */
+    private fun service(
+        at: String,
+        uploadId: String,
+    ): DefaultReportArchiveService = DefaultReportArchiveService(store, Clock.fixed(Instant.parse(at), ZoneOffset.UTC)) { uploadId }
+
     private fun file(
         path: String,
         text: String,
@@ -52,13 +58,13 @@ class ReportArchiveServiceTest {
         file("results.md", "# Results")
         file("graph.png", "png")
 
-        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
+        val uploaded = service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir)
 
         assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120000.zip")
         assertThat(uploaded.unpacked.getKey()).isEqualTo("reports/acme/e1/report-20261014-120000")
         assertThat(uploaded.pointerAdvanced).isTrue()
         assertThat(uploaded.files).containsExactly("graph.png", "results.md")
-        assertThat(store.bytesAt(uploaded.zip)).isEqualTo(ReportZip.build(dir).bytes)
+        assertThat(store.bytesAt(uploaded.zip)).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
         assertThat(store.contentTypeAt(uploaded.zip)).isEqualTo("application/zip")
         assertThat(store.keys()).containsExactly(
             "reports/acme/e1/index.html",
@@ -121,7 +127,7 @@ class ReportArchiveServiceTest {
 
         assertThat(first.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120000.zip")
         assertThat(second.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
-        assertThat(store.bytesAt(second.zip)).isEqualTo(store.bytesAt(first.zip))
+        assertThat(store.bytesAt(second.zip)).isNotEqualTo(store.bytesAt(first.zip))
         assertThat(text("reports/acme/e1/report-20261014-120001/results.md")).isEqualTo("same")
         assertThat(second.pointerAdvanced).isTrue()
         assertThat(ReportPointer.target(text("reports/acme/e1/index.html"))).isEqualTo(ReportStamp("20261014-120001"))
@@ -175,12 +181,12 @@ class ReportArchiveServiceTest {
         file("results.md", "mine")
         store.overwrite(key("reports/acme/e1/report-20261014-120000/results.md"), "another writer's")
 
-        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+        assertThatThrownBy { service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir) }
             .isInstanceOfSatisfying(ReportUploadIncompleteException::class.java) {
                 assertThat(it.zip.toUri()).isEqualTo(zipUri)
             }.hasMessageContaining(zipUri)
             .hasMessageContaining("Run report upload again")
-        assertThat(store.bytesAt(key("reports/acme/e1/report-20261014-120000.zip"))).isEqualTo(ReportZip.build(dir).bytes)
+        assertThat(store.bytesAt(key("reports/acme/e1/report-20261014-120000.zip"))).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
         assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("another writer's")
     }
 
@@ -190,12 +196,12 @@ class ReportArchiveServiceTest {
         val pointer = key("reports/acme/e1/index.html")
         store.beforeEveryWrite { store.overwrite(pointer, "<html>another writer's page</html>") }
 
-        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+        assertThatThrownBy { service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir) }
             .isInstanceOfSatisfying(ReportUploadIncompleteException::class.java) {
                 assertThat(it.zip.toUri()).isEqualTo(zipUri)
             }.hasMessageContaining(zipUri)
             .hasMessageContaining("Run report upload again")
-        assertThat(store.bytesAt(key("reports/acme/e1/report-20261014-120000.zip"))).isEqualTo(ReportZip.build(dir).bytes)
+        assertThat(store.bytesAt(key("reports/acme/e1/report-20261014-120000.zip"))).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
         assertThat(text("reports/acme/e1/index.html")).isEqualTo("<html>another writer's page</html>")
     }
 
@@ -233,6 +239,20 @@ class ReportArchiveServiceTest {
         assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
         assertThat(store.bytesAt(taken)?.decodeToString()).isEqualTo("another upload's zip")
         assertThat(text("reports/acme/e1/report-20261014-120001/results.md")).isEqualTo("mine")
+    }
+
+    @Test
+    fun `a zip write refused after a retry because another upload of the same directory got there moves to the next second`() {
+        file("results.md", "same")
+        val taken = key("reports/acme/e1/report-20261014-120000.zip")
+        val othersZip = ReportZip.build(dir, "another-upload").bytes
+        store.refuseAfterRetryAt(taken) { store.overwrite(taken, othersZip) }
+
+        val uploaded = service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir)
+
+        assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
+        assertThat(store.bytesAt(taken)).isEqualTo(othersZip)
+        assertThat(store.bytesAt(uploaded.zip)).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
     }
 
     @Test

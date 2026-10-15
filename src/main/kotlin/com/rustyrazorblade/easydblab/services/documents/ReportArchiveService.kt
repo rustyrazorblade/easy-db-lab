@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import java.io.File
 import java.time.Clock
+import java.util.UUID
 
 /**
  * One stored upload.
@@ -52,10 +53,12 @@ interface ReportArchiveService {
      * experiment's folder of [clusterState], only where no object is, moving to the next free
      * second when that second is taken. Then unpacks the same zip to `report-<ts>/` and moves the
      * pointer forward to it. Nothing earlier is replaced or removed, and a second taken by another
-     * upload is never shared, even by an upload of the same unchanged directory. A write refused on
-     * a retried attempt of its own request whose object holds exactly this upload's bytes is this
-     * upload's own (an earlier attempt committed and lost its response), so it is neither stored
-     * again nor treated as a conflict.
+     * upload is never shared, even by an upload of the same unchanged directory: every upload's zip
+     * carries its own random id in the zip comment, so no other upload's zip has its bytes. The zip
+     * is built once and those exact bytes are stored. A write refused on a retried attempt of its
+     * own request whose object holds exactly this upload's bytes is this upload's own (an earlier
+     * attempt committed and lost its response), so it is neither stored again nor treated as a
+     * conflict.
      *
      * @throws ReportRejectedException naming every offender, before anything is stored, if [dir]
      *   breaks the report rules.
@@ -75,6 +78,7 @@ interface ReportArchiveService {
 class DefaultReportArchiveService(
     private val store: ConditionalObjectStore,
     private val clock: Clock = Clock.systemUTC(),
+    private val uploadIds: () -> String = { UUID.randomUUID().toString() },
 ) : ReportArchiveService {
     private val pointer = ReportPointer(store)
 
@@ -82,7 +86,7 @@ class DefaultReportArchiveService(
         clusterState: ClusterState,
         dir: File,
     ): UploadedReport {
-        val archive = ReportZip.build(dir)
+        val archive = ReportZip.build(dir, uploadIds())
         val folder = ObservabilityStore.from(clusterState).documentsRoot(ExperimentKey.of(clusterState))
         val stamp = storeZip(folder, archive)
         val zip = folder.resolve(stamp.zipName)
@@ -126,8 +130,11 @@ class DefaultReportArchiveService(
      * Writes [content] to [path] only where no object is, and tells whether [path] now holds this
      * writer's [content]. Only a write refused on a retried attempt of this same request may be
      * this writer's own (an earlier attempt committed and lost only its response), so only then is
-     * the object read back and accepted when it has exactly these bytes. A write refused on its
-     * first attempt found another upload's object there, even one with the same bytes.
+     * the object read back and accepted when it has exactly these bytes. That is sound because no
+     * other upload writes these bytes there: each zip is unique to its upload (its comment holds
+     * the upload id), and an unpacked file lands under the folder of the second whose zip this
+     * upload holds. A write refused on its first attempt found another upload's object there, even
+     * one with the same bytes.
      */
     private fun storedAsOwn(
         content: ByteArray,

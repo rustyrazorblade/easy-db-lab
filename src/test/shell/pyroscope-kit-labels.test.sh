@@ -3,9 +3,10 @@
 # Unit tests for the Pyroscope labels the presto and trino kits' bin/start.sh.template put on their
 # profiles.
 #
-# Every profile must carry cluster=<name>-<id>, the value every other signal carries, or the
-# profiling dashboards' cluster filter hides it. The kit's CLUSTER_NAME is the bare name, so the
-# script reads cluster_name from the cluster-config ConfigMap instead.
+# Every profile must carry cluster=<name>-<id>, experiment and edl_tenant, the values every other
+# signal carries, or the profiling dashboards' filters hide it. The kit's CLUSTER_NAME is the bare
+# name, so the script reads cluster_name and experiment from the cluster-config ConfigMap; the tenant
+# comes from the kit environment (TENANT).
 #
 # kubectl is stubbed: it answers the ConfigMap read and records every patch. update-catalogs.sh and
 # helm are stubbed too. No cluster, no network.
@@ -18,6 +19,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KITS="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits"
 LABEL="lab1-0f3c2a1e-1111-2222-3333-444455556666"
+EXPERIMENT="2026-10-13-ab"
 
 tests_run=0
 tests_failed=0
@@ -29,7 +31,7 @@ fail() {
   tests_failed=$((tests_failed + 1))
 }
 
-# setup <kit> <configmap cluster_name>
+# setup <kit> <configmap cluster_name> <configmap experiment>
 setup() {
   [ -n "${WORK}" ] && rm -rf "${WORK}"
   WORK="$(mktemp -d)"
@@ -40,7 +42,8 @@ setup() {
   cat > "${WORK}/stubs/kubectl" <<EOF
 #!/usr/bin/env bash
 case " \$* " in
-  *" get configmap cluster-config "*) printf '%s' "$2" ;;
+  *" get configmap cluster-config "*"{.data.cluster_name}"*) printf '%s' "$2" ;;
+  *" get configmap cluster-config "*"{.data.experiment}"*) printf '%s' "$3" ;;
   *" get deployment "*) printf '[]' ;;
   *" patch deployment "*)
     for arg in "\$@"; do
@@ -68,22 +71,30 @@ labels() {
 
 for kit in presto trino; do
   tests_run=$((tests_run + 1))
-  setup "${kit}" "${LABEL}"
+  setup "${kit}" "${LABEL}" "${EXPERIMENT}"
   run_script
   got="$(labels)"
-  want="cluster=${LABEL},component=coordinator
-cluster=${LABEL},component=worker"
+  want="cluster=${LABEL},experiment=${EXPERIMENT},edl_tenant=default,component=coordinator
+cluster=${LABEL},experiment=${EXPERIMENT},edl_tenant=default,component=worker"
   if [ "${got}" != "${want}" ]; then
-    fail "${kit}: labels are not the cluster label from cluster-config: '${got}'"
+    fail "${kit}: labels are not the cluster, experiment and tenant: '${got}'"
     cat "${WORK}/out.txt"
   fi
 
   tests_run=$((tests_run + 1))
-  setup "${kit}" ""
+  setup "${kit}" "" "${EXPERIMENT}"
   if run_script; then
     fail "${kit}: start succeeded without a cluster_name in cluster-config"
   elif [ -s "${WORK}/patches/all.json" ]; then
     fail "${kit}: patched a deployment without a cluster label"
+  fi
+
+  tests_run=$((tests_run + 1))
+  setup "${kit}" "${LABEL}" ""
+  if run_script; then
+    fail "${kit}: start succeeded without an experiment in cluster-config"
+  elif [ -s "${WORK}/patches/all.json" ]; then
+    fail "${kit}: patched a deployment without an experiment label"
   fi
 done
 

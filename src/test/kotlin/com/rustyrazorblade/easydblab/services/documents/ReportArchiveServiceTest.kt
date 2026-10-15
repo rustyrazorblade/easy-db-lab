@@ -173,8 +173,10 @@ class ReportArchiveServiceTest {
 
     private val zipUri = "s3://acct/reports/acme/e1/report-20261014-120000.zip"
 
+    private val runAgain = "Running report upload again stores and points at a new upload."
+
     @Test
-    fun `an upload that cannot unpack keeps its zip and says to run again`() {
+    fun `an upload that cannot unpack keeps its zip and says what running again does`() {
         file("results.md", "mine")
         store.overwrite(key("reports/acme/e1/report-20261014-120000/results.md"), "another writer's")
 
@@ -182,13 +184,13 @@ class ReportArchiveServiceTest {
             .isInstanceOfSatisfying(ReportUploadIncompleteException::class.java) {
                 assertThat(it.zip.toUri()).isEqualTo(zipUri)
             }.hasMessageContaining(zipUri)
-            .hasMessageContaining("Run report upload again")
+            .hasMessageEndingWith("left unchanged. $runAgain")
         assertThat(store.bytesAt(key("reports/acme/e1/report-20261014-120000.zip"))).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
         assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("another writer's")
     }
 
     @Test
-    fun `an upload whose pointer keeps changing keeps its zip and says to run again`() {
+    fun `an upload whose pointer keeps changing keeps its upload, says it is not pointed at and gives the advice once`() {
         file("results.md", "mine")
         val pointer = key("reports/acme/e1/index.html")
         store.beforeEveryWrite { store.overwrite(pointer, "<html>another writer's page</html>") }
@@ -196,8 +198,11 @@ class ReportArchiveServiceTest {
         assertThatThrownBy { service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir) }
             .isInstanceOfSatisfying(ReportUploadIncompleteException::class.java) {
                 assertThat(it.zip.toUri()).isEqualTo(zipUri)
+                assertThat(it.message).containsOnlyOnce("report upload again")
             }.hasMessageContaining(zipUri)
-            .hasMessageContaining("Run report upload again")
+            .hasMessageContaining("this upload is stored at s3://acct/reports/acme/e1/report-20261014-120000 but not pointed at")
+            .hasMessageEndingWith(runAgain)
+            .hasMessageNotContaining("..")
         assertThat(store.bytesAt(key("reports/acme/e1/report-20261014-120000.zip"))).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
         assertThat(text("reports/acme/e1/index.html")).isEqualTo("<html>another writer's page</html>")
     }

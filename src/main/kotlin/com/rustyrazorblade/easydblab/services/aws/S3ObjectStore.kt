@@ -370,6 +370,7 @@ class S3ObjectStore(
             ConditionalPutOutcome.WRITTEN -> ConditionalObjectStore.Written
             ConditionalPutOutcome.REFUSED -> ConditionalObjectStore.AlreadyExists
             ConditionalPutOutcome.REFUSED_AFTER_RETRY -> ConditionalObjectStore.RefusedAfterRetry
+            ConditionalPutOutcome.CONFLICT_AFTER_RETRY -> ConditionalObjectStore.ConflictAfterRetry
         }
     }
 
@@ -384,6 +385,7 @@ class S3ObjectStore(
             ConditionalPutOutcome.WRITTEN -> ConditionalObjectStore.Written
             ConditionalPutOutcome.REFUSED -> ConditionalObjectStore.PreconditionFailed
             ConditionalPutOutcome.REFUSED_AFTER_RETRY -> ConditionalObjectStore.RefusedAfterRetry
+            ConditionalPutOutcome.CONFLICT_AFTER_RETRY -> ConditionalObjectStore.ConflictAfterRetry
         }
     }
 
@@ -432,7 +434,9 @@ class S3ObjectStore(
      * [ConditionalPutOutcome.REFUSED] on the request's first attempt, and
      * [ConditionalPutOutcome.REFUSED_AFTER_RETRY] when an earlier attempt was sent and failed, here
      * or inside the SDK's own retries: that earlier attempt may have committed and lost only its
-     * response. Any other error is thrown as an [S3Exception] whose message names the key, S3's
+     * response. A refusal after a retry that is a conflict with a write still in flight
+     * ([ConditionalWriteRefusal.isInFlightConflict]) is [ConditionalPutOutcome.CONFLICT_AFTER_RETRY]:
+     * that earlier attempt may not have committed yet. Any other error is thrown as an [S3Exception] whose message names the key, S3's
      * error code and how many attempts were made.
      */
     private fun conditionalPut(
@@ -472,7 +476,11 @@ class S3ObjectStore(
             }
             val retried = attemptsMade > 1
             log.info { "Conditional write to $uri refused: S3 error $code (HTTP ${e.statusCode()}), retried: $retried" }
-            if (retried) ConditionalPutOutcome.REFUSED_AFTER_RETRY else ConditionalPutOutcome.REFUSED
+            when {
+                !retried -> ConditionalPutOutcome.REFUSED
+                ConditionalWriteRefusal.isInFlightConflict(e) -> ConditionalPutOutcome.CONFLICT_AFTER_RETRY
+                else -> ConditionalPutOutcome.REFUSED_AFTER_RETRY
+            }
         }
     }
 
@@ -481,6 +489,7 @@ class S3ObjectStore(
         WRITTEN,
         REFUSED,
         REFUSED_AFTER_RETRY,
+        CONFLICT_AFTER_RETRY,
     }
 
     override fun directoryExists(remotePath: ClusterS3Path): Boolean {

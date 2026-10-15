@@ -24,6 +24,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     private var hookEveryWrite = false
     private var loseResponse: ((String) -> Boolean)? = null
     private var refusal: Pair<String, () -> Unit>? = null
+    private var conflict: InFlight? = null
 
     /** How many conditional writes were refused. */
     var refusedWrites = 0
@@ -69,6 +70,22 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         refusal = path.toUri() to otherWriter
     }
 
+    /**
+     * Makes the next conditional write to [path] report [ConditionalObjectStore.ConflictAfterRetry]
+     * without storing anything, as S3 does when a retried attempt meets a conditional write to the
+     * key that is still in flight. That write lands only once [path] has been read [landsAfterReads]
+     * times, holding [inFlight] applied to the refused write's content: its own content for this
+     * writer's earlier attempt, other bytes for another writer's. Until it lands, every conditional
+     * write to [path] is refused as S3 refuses a write that meets one in flight.
+     */
+    fun conflictAfterRetryAt(
+        path: ClusterS3Path,
+        landsAfterReads: Int,
+        inFlight: (ByteArray) -> ByteArray = { it },
+    ) {
+        conflict = InFlight(path.toUri(), landsAfterReads, inFlight)
+    }
+
     /** Stores [content] at [path] unconditionally, as another writer would. */
     fun overwrite(
         path: ClusterS3Path,
@@ -104,6 +121,11 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     ): ConditionalObjectStore.PutIfAbsentResult {
         runHook()
         if (refusedAfterRetry(remotePath)) return ConditionalObjectStore.RefusedAfterRetry
+        when (conflicting(remotePath, content, contentType)) {
+            InFlightConflict.FIRST -> return ConditionalObjectStore.ConflictAfterRetry
+            InFlightConflict.PENDING -> return ConditionalObjectStore.AlreadyExists
+            null -> Unit
+        }
         if (objects.containsKey(remotePath.toUri())) {
             refusedWrites++
             return ConditionalObjectStore.AlreadyExists
@@ -120,6 +142,11 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     ): ConditionalObjectStore.PutIfMatchResult {
         runHook()
         if (refusedAfterRetry(remotePath)) return ConditionalObjectStore.RefusedAfterRetry
+        when (conflicting(remotePath, content, contentType)) {
+            InFlightConflict.FIRST -> return ConditionalObjectStore.ConflictAfterRetry
+            InFlightConflict.PENDING -> return ConditionalObjectStore.PreconditionFailed
+            null -> Unit
+        }
         if (objects[remotePath.toUri()]?.etag != etag) {
             refusedWrites++
             return ConditionalObjectStore.PreconditionFailed
@@ -128,10 +155,56 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         return if (responseLost(remotePath)) ConditionalObjectStore.RefusedAfterRetry else ConditionalObjectStore.Written
     }
 
-    override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? =
-        objects[remotePath.toUri()]?.let { ConditionalObjectStore.Versioned(it.bytes.decodeToString(), it.etag) }
+    override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? {
+        landAfterRead(remotePath)
+        return objects[remotePath.toUri()]?.let { ConditionalObjectStore.Versioned(it.bytes.decodeToString(), it.etag) }
+    }
 
-    override fun readBytes(remotePath: ClusterS3Path): ByteArray? = bytesAt(remotePath)
+    override fun readBytes(remotePath: ClusterS3Path): ByteArray? {
+        landAfterRead(remotePath)
+        return bytesAt(remotePath)
+    }
+
+    /** A conditional write to one key that is in flight, landing after a number of reads. */
+    private class InFlight(
+        val uri: String,
+        var readsLeft: Int,
+        val content: (ByteArray) -> ByteArray,
+    ) {
+        var bytes: ByteArray? = null
+        var contentType = ""
+    }
+
+    /** How a conditional write meets the write in flight at its key. */
+    private enum class InFlightConflict {
+        /** The write the conflict was arranged for: refused after a retry; its content goes in flight. */
+        FIRST,
+
+        /** A later write while it is still in flight: refused as on a first attempt. */
+        PENDING,
+    }
+
+    private fun conflicting(
+        path: ClusterS3Path,
+        content: ByteArray,
+        contentType: String,
+    ): InFlightConflict? {
+        val inFlight = conflict?.takeIf { it.uri == path.toUri() } ?: return null
+        refusedWrites++
+        if (inFlight.bytes != null) return InFlightConflict.PENDING
+        inFlight.bytes = inFlight.content(content)
+        inFlight.contentType = contentType
+        return InFlightConflict.FIRST
+    }
+
+    private fun landAfterRead(path: ClusterS3Path) {
+        val inFlight = conflict?.takeIf { it.uri == path.toUri() } ?: return
+        val bytes = inFlight.bytes ?: return
+        inFlight.readsLeft--
+        if (inFlight.readsLeft > 0) return
+        conflict = null
+        store(path, bytes, inFlight.contentType)
+    }
 
     private fun store(
         path: ClusterS3Path,

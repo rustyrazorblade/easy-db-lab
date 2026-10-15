@@ -39,4 +39,12 @@ object ConditionalWriteRefusal {
             else -> false
         }
     }
+
+    /**
+     * Whether [error], already a refusal, is S3's 409 `ConditionalRequestConflict`: another
+     * conditional write to the key was still in flight, so the key may hold no object yet.
+     */
+    fun isInFlightConflict(error: S3Exception): Boolean =
+        error.statusCode() == Constants.HttpStatus.CONFLICT &&
+            error.awsErrorDetails()?.errorCode() == Constants.S3.CONDITIONAL_REQUEST_CONFLICT
 }

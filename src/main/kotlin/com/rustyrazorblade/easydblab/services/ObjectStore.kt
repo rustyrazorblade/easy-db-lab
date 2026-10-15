@@ -242,7 +242,8 @@ interface ConditionalObjectStore {
      * at the same moment.
      *
      * @return [Written]; [AlreadyExists] when an object is already at [remotePath] (it is left
-     *   unchanged); or [RefusedAfterRetry] when only a retried attempt was refused.
+     *   unchanged); or [RefusedAfterRetry] or [ConflictAfterRetry] when only a retried attempt was
+     *   refused.
      */
     fun putIfAbsent(
         content: ByteArray,
@@ -255,8 +256,8 @@ interface ConditionalObjectStore {
      * (`If-Match`), as read with [readVersioned].
      *
      * @return [Written]; [PreconditionFailed] when another writer changed or removed the object
-     *   since it was read (it is left as that writer left it); or [RefusedAfterRetry] when only a
-     *   retried attempt was refused.
+     *   since it was read (it is left as that writer left it); or [RefusedAfterRetry] or
+     *   [ConflictAfterRetry] when only a retried attempt was refused.
      */
     fun putIfMatch(
         content: ByteArray,
@@ -301,6 +302,15 @@ interface ConditionalObjectStore {
      * first attempt is never this: it is [AlreadyExists] or [PreconditionFailed].
      */
     data object RefusedAfterRetry : PutIfAbsentResult, PutIfMatchResult
+
+    /**
+     * A conditional write was refused on a retried attempt of this same request because another
+     * conditional write to the path was still in flight (S3's 409 `ConditionalRequestConflict`).
+     * That write may be this writer's own earlier attempt, not yet committed, so the path may hold
+     * no object yet and later hold this writer's content; a caller that must tell the two apart
+     * waits for the object and reads it back. Otherwise it means what [RefusedAfterRetry] does.
+     */
+    data object ConflictAfterRetry : PutIfAbsentResult, PutIfMatchResult
 
     /**
      * An object's content and the version it was read at.

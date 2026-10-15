@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -34,13 +35,16 @@ class ReportArchiveServiceTest {
         )
 
     private fun service(at: String): DefaultReportArchiveService =
-        DefaultReportArchiveService(store, Clock.fixed(Instant.parse(at), ZoneOffset.UTC))
+        DefaultReportArchiveService(store, Clock.fixed(Instant.parse(at), ZoneOffset.UTC), Duration.ZERO)
 
     /** A service whose upload is [uploadId], so the zip it builds is `ReportZip.build(dir, uploadId)`. */
     private fun service(
         at: String,
         uploadId: String,
-    ): DefaultReportArchiveService = DefaultReportArchiveService(store, Clock.fixed(Instant.parse(at), ZoneOffset.UTC)) { uploadId }
+    ): DefaultReportArchiveService =
+        DefaultReportArchiveService(store, Clock.fixed(Instant.parse(at), ZoneOffset.UTC), Duration.ZERO) {
+            uploadId
+        }
 
     private fun file(
         path: String,
@@ -260,6 +264,57 @@ class ReportArchiveServiceTest {
         file("results.md", "mine")
         val taken = key("reports/acme/e1/report-20261014-120000/results.md")
         store.refuseAfterRetryAt(taken) { store.overwrite(taken, "another writer's") }
+
+        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+            .isInstanceOf(ReportUploadIncompleteException::class.java)
+            .hasMessageContaining("already exists")
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("another writer's")
+    }
+
+    @Test
+    fun `a zip write that meets its own earlier attempt still in flight keeps its second`() {
+        file("results.md", "mine")
+        val zip = key("reports/acme/e1/report-20261014-120000.zip")
+        store.conflictAfterRetryAt(zip, landsAfterReads = 3)
+
+        val uploaded = service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir)
+
+        assertThat(uploaded.zip).isEqualTo(zip)
+        assertThat(store.bytesAt(zip)).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
+        assertThat(store.keys()).noneMatch { it.startsWith("reports/acme/e1/report-20261014-120001") }
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("mine")
+    }
+
+    @Test
+    fun `an unpacked file write that meets its own earlier attempt still in flight completes the upload`() {
+        file("results.md", "mine")
+        store.conflictAfterRetryAt(key("reports/acme/e1/report-20261014-120000/results.md"), landsAfterReads = 3)
+
+        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(uploaded.pointerAdvanced).isTrue()
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("mine")
+    }
+
+    @Test
+    fun `a zip write that meets another upload's write in flight moves to the next second`() {
+        file("results.md", "same")
+        val taken = key("reports/acme/e1/report-20261014-120000.zip")
+        val othersZip = ReportZip.build(dir, "another-upload").bytes
+        store.conflictAfterRetryAt(taken, landsAfterReads = 1) { othersZip }
+
+        val uploaded = service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir)
+
+        assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
+        assertThat(store.bytesAt(taken)).isEqualTo(othersZip)
+        assertThat(store.bytesAt(uploaded.zip)).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
+    }
+
+    @Test
+    fun `an unpacked file write that meets another writer's write in flight fails the upload`() {
+        file("results.md", "mine")
+        val taken = key("reports/acme/e1/report-20261014-120000/results.md")
+        store.conflictAfterRetryAt(taken, landsAfterReads = 1) { "another writer's".toByteArray() }
 
         assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
             .isInstanceOf(ReportUploadIncompleteException::class.java)

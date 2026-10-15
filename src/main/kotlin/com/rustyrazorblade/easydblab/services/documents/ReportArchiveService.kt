@@ -5,10 +5,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.time.Clock
+import java.time.Duration
 import java.util.UUID
 
 /**
@@ -59,7 +61,9 @@ interface ReportArchiveService {
      * is built once and those exact bytes are stored. A write refused on a retried attempt of its
      * own request whose object holds exactly this upload's bytes is this upload's own (an earlier
      * attempt committed and lost its response), so it is neither stored again nor treated as a
-     * conflict.
+     * conflict. When that retried attempt met a write still in flight at the key, which may be
+     * this upload's own earlier attempt, the key is looked at again until it holds an object before
+     * it is decided, so the earlier attempt never lands later as an orphan zip.
      *
      * @throws ReportRejectedException naming every offender, before anything is stored, if [dir]
      *   breaks the report rules.
@@ -79,6 +83,7 @@ interface ReportArchiveService {
 class DefaultReportArchiveService(
     private val store: ConditionalObjectStore,
     private val clock: Clock = Clock.systemUTC(),
+    private val inFlightLookInterval: Duration = Duration.ofMillis(Constants.Observability.REPORT_IN_FLIGHT_LOOK_INTERVAL_MS),
     private val uploadIds: () -> String = { UUID.randomUUID().toString() },
 ) : ReportArchiveService {
     private val pointer = ReportPointer(store)
@@ -150,7 +155,34 @@ class DefaultReportArchiveService(
                 log.info { "Write to ${path.toUri()} refused after a retry; read back, accepted=$accepted" }
                 accepted
             }
+            ConditionalObjectStore.ConflictAfterRetry -> settledAsOwn(content, path, contentType)
         }
+
+    /**
+     * Decides a write to [path] refused after a retry because a conditional write was still in
+     * flight there. That write may be this writer's own earlier attempt, not yet committed, so an
+     * empty key is not given up at once: each look reads [path] back and, while it holds nothing,
+     * writes [content] there again, until the key holds an object (accepted when it has exactly
+     * these bytes) or this writer's write lands. A key still empty after every look is given up.
+     */
+    private fun settledAsOwn(
+        content: ByteArray,
+        path: ClusterS3Path,
+        contentType: String,
+    ): Boolean {
+        val accepted =
+            pollUntil<Boolean?>(
+                "report-write-in-flight",
+                Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS,
+                inFlightLookInterval,
+                done = { it != null },
+            ) {
+                store.readBytes(path)?.contentEquals(content)
+                    ?: true.takeIf { store.putIfAbsent(content, path, contentType) == ConditionalObjectStore.Written }
+            } == true
+        log.info { "Write to ${path.toUri()} met a write in flight after a retry; looked again, accepted=$accepted" }
+        return accepted
+    }
 
     private companion object {
         private const val ZIP_CONTENT_TYPE = "application/zip"

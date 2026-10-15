@@ -353,6 +353,27 @@ class S3ObjectStoreTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a conditional conflict after a server-error retry is ConflictAfterRetry, since the first attempt may still be in flight`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()))
+            .thenThrow(s3Error(500, "InternalError"))
+            .thenThrow(s3Error(409, "ConditionalRequestConflict"))
+            .thenThrow(s3Error(500, "InternalError"))
+            .thenThrow(s3Error(409, "ConditionalRequestConflict"))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.ConflictAfterRetry)
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.ConflictAfterRetry)
+    }
+
+    @Test
+    fun `a conditional conflict on an attempt the SDK retried itself is ConflictAfterRetry`() {
+        putFails(s3Error(409, "ConditionalRequestConflict", sdkAttempts = 2))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.ConflictAfterRetry)
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.ConflictAfterRetry)
+    }
+
+    @Test
     fun `a refusal on the SDK's first and only attempt is a real conflict`() {
         putFails(s3Error(409, "ConditionalRequestConflict", sdkAttempts = 1))
 

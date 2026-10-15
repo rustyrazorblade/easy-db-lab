@@ -39,7 +39,7 @@
 - [x] 3.7 `Up.kt:162`: `ReportPointer.ensurePlaceholder(key)` only when absent.
 - [x] 3.8 `AWSPolicy.denyDataDeletes` KDoc (`:217-222`): no report is replaced.
 - [ ] 3.9 Live check: two uploads for one experiment, both zips byte-identical to the local ones, pointer on the newer; a second cluster of the experiment shows the same report; upload after `down`.
-- [ ] 3.10 Docs: `help/observability.md` report section; `docs/reference/commands.md` `report upload`; `docs/user-guide/monitoring.md` documents section and the storage layout table.
+- [x] 3.10 Docs: `help/observability.md` report section; `docs/reference/commands.md` `report upload`; `docs/user-guide/monitoring.md` documents section and the storage layout table.
 
 ## 4. Phase 3a: shared variables, defaults, guards (tests first)
 

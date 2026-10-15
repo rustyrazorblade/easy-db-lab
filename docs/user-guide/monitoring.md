@@ -39,19 +39,21 @@ A/B Comparison compares builds within one cluster, so its deltas are per cluster
 
 These rows need the dashboard's relative time range (the default, ending now); an absolute range turns their own time ranges off. In the overlay, annotations sit at their real time, so they line up only with a run that did not move.
 
-### Test documents
+### Reports
 
-Attach notes and results to a test as markdown files:
+Attach notes, results and graphs to an experiment by uploading a directory:
 
 ```bash
-easy-db-lab report upload results.md notes.md
+easy-db-lab report upload results/
 ```
 
-The files go to the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, each with an HTML copy, and one `index.html` holds them all, each under its own heading. Only `.md` files named with letters, digits, `.`, `_` and `-` are accepted, and `index.md` is refused.  Each name can occur only one time in a command.  The command names every file it refuses and uploads nothing.  If an upload fails, the command names the failed file and each document it already stored; run the command again. A file with the name of a stored document replaces it. The command uses your own AWS credentials and needs only the workspace, so it works after `down`. `up` writes the index of a new test, which says "No documents yet".
+The directory can hold any file types. It is zipped, and the zip is stored unchanged as `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip` in the account bucket, named for the upload time in UTC. The report belongs to the experiment, so every cluster of the experiment shows the same report. A cluster initialized without `--experiment` is an experiment of its own, `<name>-<id>`. No upload replaces another: if an upload already took that second, the next one takes the next free second, and every zip is kept.
 
-The Tests dashboard and the comparison dashboards show the documents through a read-only web server in the Grafana pod (port 3080 of the control node).  The server answers only `GET` requests for document paths under `/reports/`; it answers 400 for a path with other characters, and it drops the query string.  Pick the tenant folder with **Documents tenant**; it defaults to the cluster's own tenant.
+Each upload is also unpacked next to its zip, to `report-<yyyyMMdd-HHmmss>/`, with an HTML copy of each `.md` file and a generated `_files.html` that lists the upload's files. The experiment's `index.html` leads to the newest upload: to its `index.html` when the directory holds `index.md` or `index.html` at its root, and to `_files.html` otherwise. An upload named for an earlier second than the one shown does not move it back. `up` writes "No report yet" there only for an experiment that has no report, so a cluster that joins an experiment never hides its report.
 
-Two `report upload` runs for one test at the same moment can each rebuild the index without the other's document. The document itself is stored; the next upload puts it back in the index.
+Before it uploads anything, the command checks the whole directory and names every file that fails: every part of every path may hold only letters, digits, `.`, `_` and `-`, with no `..`; no symbolic links; no `_files.html` at the root; and no `X.md` beside an `X.html`. A missing or empty directory is refused too. The command uses your own AWS credentials and needs only the workspace, so it works after `down`. See [`report upload`](../reference/commands.md#report-upload).
+
+The Tests dashboard and the comparison dashboards show the reports through a read-only web server in the Grafana pod (port 3080 of the control node).  The server answers only `GET` requests for paths under `/reports/`; it answers 400 for a path with other characters, and it drops the query string.  Pick the tenant folder with **Documents tenant**; it defaults to the cluster's own tenant.
 
 ### System Dashboard
 
@@ -206,7 +208,9 @@ All of a cluster's observability data lands in the account bucket. Each backend 
 | `mimir/<tenant>/` | Mimir blocks | Mimir, while the cluster runs, and its flush at `down` |
 | `loki/` | Loki chunks (under the tenant) and TSDB index (under `index/`) | Loki, while the cluster runs, and its flush at `down` |
 | `grafana/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json` | Grafana annotations | `grafana backup`, and `down` |
-| `reports/<tenant>/<name>-<id>/` | Test documents: your `.md` files, an HTML copy of each, and `index.html` | `report upload`, and `up` (the index) |
+| `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip` | One report upload, stored unchanged and never replaced | `report upload` |
+| `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>/` | That zip unpacked, with an HTML copy of each `.md` and `_files.html` | `report upload` |
+| `reports/<tenant>/<experiment>/index.html` | The pointer to the newest upload, the only object under `reports/` that is rewritten | `report upload`, and `up` ("No report yet", only when absent) |
 
 An annotations backup never overwrites another: when one of the same cluster already exists under that second's name (a `grafana backup` just before `down`, say), the new one takes the next free second.
 

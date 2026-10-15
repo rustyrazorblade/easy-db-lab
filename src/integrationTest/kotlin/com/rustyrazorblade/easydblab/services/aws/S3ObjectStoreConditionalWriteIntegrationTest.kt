@@ -79,6 +79,17 @@ class S3ObjectStoreConditionalWriteIntegrationTest {
     }
 
     @Test
+    fun `readBytes returns the stored bytes unchanged, or null for a missing object`() {
+        val path = freshPath()
+        assertThat(objectStore.readBytes(path)).isNull()
+        val bytes = byteArrayOf(0x50, 0x4b, 0x03, 0x04, 0xff.toByte(), 0xfe.toByte(), 0x00)
+
+        objectStore.putIfAbsent(bytes, path, "application/zip")
+
+        assertThat(objectStore.readBytes(path)).isEqualTo(bytes)
+    }
+
+    @Test
     fun `readVersioned returns the content and an etag, or null for a missing object`() {
         val path = freshPath()
         assertThat(objectStore.readVersioned(path)).isNull()

@@ -413,6 +413,20 @@ class S3ObjectStore(
         }
     }
 
+    override fun readBytes(remotePath: ClusterS3Path): ByteArray? {
+        val getRequest =
+            GetObjectRequest
+                .builder()
+                .bucket(remotePath.bucket)
+                .key(remotePath.getKey())
+                .build()
+        return try {
+            s3Client.getObjectAsBytes(getRequest).asByteArray()
+        } catch (_: NoSuchKeyException) {
+            null
+        }
+    }
+
     private fun putRequest(
         remotePath: ClusterS3Path,
         contentType: String,

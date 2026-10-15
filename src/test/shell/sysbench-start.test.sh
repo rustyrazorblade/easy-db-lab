@@ -56,6 +56,7 @@ SQL statistics:
     queries performed:
 EOF
   sed 's/^/2026-10-15T10:00:00Z /' "${WORK}/sysbench.log" > "${STUB_STATE}/log.1"
+  cp "${WORK}/sysbench.log" "${STUB_STATE}/full-log"
 }
 
 run_script() {
@@ -138,6 +139,7 @@ test_a_pull_error_fails_fast() {
   grep -q "ErrImagePull" "${WORK}/out.txt" || fail "no reason: $(cat "${WORK}/out.txt")"
   grep -q "Events: stub describe events" "${WORK}/out.txt" || fail "no events: $(cat "${WORK}/out.txt")"
   [ "$(grep -c '^get pod ' "${STUB_STATE}/kubectl.calls")" -eq 1 ] || fail "did not fail on the first poll"
+  grep -q "delete pod sysbench-sb1-.* --ignore-not-found" "${STUB_STATE}/kubectl.calls" || fail "left the pending pod behind"
 }
 
 test_a_non_zero_run_fails_without_the_summary_line() {
@@ -155,8 +157,30 @@ test_a_zero_run_prints_the_summary_line() {
   grep -q "^SQL statistics:" "${WORK}/kit/last-run.txt" || fail "no summary block: $(cat "${WORK}/kit/last-run.txt")"
 }
 
+test_a_repeated_stream_does_not_repeat_the_summary_or_the_histogram() {
+  start_test "resumed stream repeats lines"
+  # The stream is cut after the summary and resumes with the last second again.
+  printf '%s\n' "Running|||" "Running|||" "Succeeded|||0" > "${STUB_STATE}/state.default"
+  printf '%s\n' "2026-10-15T10:00:20Z Latency histogram (values are in milliseconds)" \
+    "2026-10-15T10:00:20Z        10.000 |****  10" "2026-10-15T10:00:20Z SQL statistics:" > "${STUB_STATE}/log.2"
+  # The full log, which the summary and the percentiles must come from, has p50 at 30 ms.
+  cat > "${STUB_STATE}/full-log" <<'EOF'
+Latency histogram (values are in milliseconds)
+       10.000 |****                                     10
+       30.000 |****************************************  80
+       45.000 |****                                      10
+SQL statistics:
+    queries performed:
+EOF
+  run_script || { fail "script exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  [ "$(grep -c '^SQL statistics:' "${WORK}/kit/last-run.txt")" -eq 1 ] || fail "summary repeated: $(cat "${WORK}/kit/last-run.txt")"
+  grep -Fqx "sysbench_lat_p50_ms sb1 30" <<< "$(pushed_gauges)" || fail "percentiles not from the full log: $(pushed_gauges)"
+  grep -q "logs sysbench-sb1-" "${STUB_STATE}/kubectl.calls" || fail "did not read the full log"
+}
+
 test_pushes_otlp_json_to_the_collector
 test_pushes_interval_and_run_figures_labelled_with_the_kit
+test_a_repeated_stream_does_not_repeat_the_summary_or_the_histogram
 test_the_run_pod_is_pinned_to_an_app_node
 test_no_app_node_runs_no_pod
 test_a_pod_failed_on_the_first_poll_reports_the_exit_code

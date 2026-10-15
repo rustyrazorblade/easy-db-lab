@@ -130,8 +130,15 @@ edl_pod_get() {
   printf '%s\n' "${out#*|}"
 }
 
+# Deletes pod $1 that never started. Left Pending, it would keep its role label, so the start guard
+# and edl_active_pods would refuse the next run until `stop`. Its events were printed already.
+edl_delete_unstarted_pod() {
+  kubectl delete pod "$1" --ignore-not-found > /dev/null 2>&1 ||
+    printf 'warning: could not delete pod %s; run stop to remove it\n' "$1" >&2
+}
+
 # Returns once pod $1 has left Pending: Running, or already Succeeded or Failed. Fails at once on an
-# image pull error, and after EDL_POD_START_TIMEOUT_SECONDS otherwise.
+# image pull error, and after EDL_POD_START_TIMEOUT_SECONDS otherwise, and deletes the pod first.
 edl_wait_for_pod_running() {
   local pod="$1" started status rc phase rest reason message
   started="$(date +%s)"
@@ -155,6 +162,7 @@ edl_wait_for_pod_running() {
           ErrImagePull | ImagePullBackOff | InvalidImageName)
             printf 'pod %s cannot start: %s: %s\n' "${pod}" "${reason}" "${message}" >&2
             kubectl describe pod "${pod}" >&2 || true
+            edl_delete_unstarted_pod "${pod}"
             edl_fail "pod ${pod} cannot pull its image (${reason})"
             ;;
         esac
@@ -162,6 +170,7 @@ edl_wait_for_pod_running() {
     esac
     if [ $(($(date +%s) - started)) -ge "${EDL_POD_START_TIMEOUT_SECONDS}" ]; then
       kubectl describe pod "${pod}" >&2 || true
+      edl_delete_unstarted_pod "${pod}"
       edl_fail "pod ${pod} did not start within ${EDL_POD_START_TIMEOUT_SECONDS} seconds"
     fi
     sleep "${EDL_POLL_SECONDS}"
@@ -189,18 +198,19 @@ edl_follow_pod_logs() {
       "${handler}" "${line}"
     done < <(kubectl logs -f --timestamps ${since:+"--since-time=${since}"} "${pod}" || true)
 
+    # The phase is read after the pause, right before a resume, so a pod that ended during the
+    # pause is not streamed again.
     while :; do
+      sleep "${EDL_POLL_SECONDS}"
       if phase="$(edl_pod_get "${pod}" '{.status.phase}')"; then rc=0; else rc=$?; fi
       case "${rc}" in
         0) break ;;
         3) edl_fail "pod ${pod} was deleted" ;;
       esac
-      sleep "${EDL_POLL_SECONDS}"
     done
     case "${phase}" in
       Succeeded | Failed) return 0 ;;
     esac
-    sleep "${EDL_POLL_SECONDS}"
   done
 }
 
@@ -230,9 +240,11 @@ edl_wait_for_pod_exit() {
 
 # Pushes gauges labelled kit=${KIT_NAME} to the collector on the control node as OTLP JSON, under
 # service name $1. Usage: edl_push_gauges <service-name> <name> <value> [<name> <value> ...]. A value
-# that is missing or not a number is sent as 0. A failed push never fails the calling script.
+# that is missing or not a number is sent as 0. A failed push never fails the calling script; the
+# first one prints a warning, and EDL_GAUGE_PUSH_WARNED keeps the rest quiet.
 edl_push_gauges() {
-  local service="$1" now points="" sep="" value
+  local service="$1" now points="" sep="" value code=0
+  local url="http://${CONTROL_HOST_PRIVATE}:4318/v1/metrics"
   shift
   now="$(date +%s)000000000"
   while [ "$#" -ge 1 ]; do
@@ -242,9 +254,14 @@ edl_push_gauges() {
     sep=","
     if [ "$#" -ge 2 ]; then shift 2; else shift; fi
   done
-  curl -sf --max-time 2 -X POST "http://${CONTROL_HOST_PRIVATE}:4318/v1/metrics" \
+  curl -sf --max-time 2 -X POST "${url}" \
     -H 'Content-Type: application/json' \
     --data-binary "{\"resourceMetrics\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"${service}\"}}]},\"scopeMetrics\":[{\"metrics\":[${points}]}]}]}" \
-    > /dev/null 2>&1 || true
+    > /dev/null 2>&1 || code=$?
+  if [ "${code}" -ne 0 ] && [ -z "${EDL_GAUGE_PUSH_WARNED:-}" ]; then
+    EDL_GAUGE_PUSH_WARNED=1
+    printf 'warning: could not push %s gauges to %s (curl exit %s); the dashboard will not show this run\n' \
+      "${service}" "${url}" "${code}" >&2
+  fi
   return 0
 }

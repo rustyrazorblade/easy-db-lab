@@ -176,6 +176,8 @@ test_each_pull_error_fails_fast_with_reason_message_and_events() {
     grep -q "Back-off pulling image clickhouse/clickhouse-server:25.44" <<< "${err}" || fail "did not print the message: ${err}"
     grep -q "Events: stub describe events for p1" <<< "${err}" || fail "did not print the events: ${err}"
     [ "$(grep -c '^get pod' <<< "$(calls)")" -eq 1 ] || fail "did not fail on the first poll: $(calls)"
+    # A pod left Pending would keep its role label and block the next start or prepare.
+    grep -Fqx "delete pod p1 --ignore-not-found" <<< "$(calls)" || fail "did not delete the pod: $(calls)"
   done
 }
 
@@ -188,6 +190,7 @@ test_a_pod_pending_past_the_limit_fails_and_is_described() {
   [ "${rc}" -ne 0 ] || fail "exited 0"
   grep -q "pod p1 did not start within 3 seconds" <<< "${err}" || fail "no limit message: ${err}"
   grep -q "Events: stub describe events for p1" <<< "${err}" || fail "did not describe the pod: ${err}"
+  grep -Fqx "delete pod p1 --ignore-not-found" <<< "$(calls)" || fail "did not delete the pod: $(calls)"
 }
 
 test_a_failed_get_is_a_retry_not_a_phase() {
@@ -225,6 +228,19 @@ test_a_cut_stream_resumes_from_the_last_timestamp_while_the_pod_runs() {
   [ "$(cat "${STUB_STATE}/since-times")" = "2026-10-15T10:00:11.000000002Z" ] || fail "since-time: $(cat "${STUB_STATE}/since-times" 2>/dev/null)"
 }
 
+test_the_phase_is_read_again_after_the_pause_before_a_resume() {
+  start_test "phase checked after the pause"
+  echo "2026-10-15T10:00:01Z one" > "${STUB_STATE}/log.1"
+  printf '%s\n' "Running|||" "Succeeded|||0" > "${STUB_STATE}/state.default"
+  run_lib "${handler_code}; edl_follow_pod_logs p1 seen"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  # Every resumed stream must come right after a phase read, never right after a pause, so a pod
+  # that ended during the pause is not streamed again.
+  awk '/^logs -f/ && n++ && prev !~ /^get pod / { bad = 1 } { prev = $0 } END { exit bad }' "${STUB_STATE}/kubectl.calls" ||
+    fail "resumed without reading the phase after the pause: $(calls)"
+  [ "$(grep -c '^logs -f' "${STUB_STATE}/kubectl.calls")" -eq 2 ] || fail "streams: $(calls)"
+}
+
 test_a_failed_log_stream_does_not_end_a_pipefail_script() {
   start_test "non-zero logs -f"
   echo "2026-10-15T10:00:01Z one" > "${STUB_STATE}/log.1"
@@ -248,6 +264,12 @@ test_exit_codes_are_reported() {
   echo "Succeeded|||0" > "${STUB_STATE}/state.default"
   run_lib 'edl_wait_for_pod_exit p1'
   [ "${out}" = 0 ] || fail "printed ${out}"
+
+  start_test "Failed with no exit code"
+  echo "Failed|||" > "${STUB_STATE}/state.default"
+  run_lib 'edl_wait_for_pod_exit p1'
+  [ "${rc}" -eq 0 ] || fail "exited ${rc}: ${err}"
+  [ "${out}" = unknown ] || fail "printed ${out}"
 }
 
 test_gauges_are_pushed_as_otlp_json_labelled_with_the_kit() {
@@ -269,9 +291,11 @@ test_gauges_are_pushed_as_otlp_json_labelled_with_the_kit() {
 test_a_failed_push_returns_0() {
   start_test "collector unreachable"
   echo 7 > "${STUB_STATE}/curl-exit"
-  run_lib 'edl_push_gauges sysbench sysbench_tps 1; echo after'
+  run_lib 'edl_push_gauges sysbench sysbench_tps 1; edl_push_gauges sysbench sysbench_tps 2; echo after'
   [ "${rc}" -eq 0 ] || fail "exited ${rc}"
   [ "${out}" = after ] || fail "the script did not continue: ${out}"
+  [ "${err}" = "warning: could not push sysbench gauges to http://10.0.0.5:4318/v1/metrics (curl exit 7); the dashboard will not show this run" ] ||
+    fail "not one warning on stderr across two failed pushes: ${err}"
 }
 
 test_sourcing_changes_no_option_and_defines_only_edl_names() {
@@ -316,6 +340,7 @@ test_a_pod_pending_past_the_limit_fails_and_is_described
 test_a_failed_get_is_a_retry_not_a_phase
 test_a_deleted_pod_fails_every_wait
 test_a_cut_stream_resumes_from_the_last_timestamp_while_the_pod_runs
+test_the_phase_is_read_again_after_the_pause_before_a_resume
 test_a_failed_log_stream_does_not_end_a_pipefail_script
 test_exit_codes_are_reported
 test_gauges_are_pushed_as_otlp_json_labelled_with_the_kit

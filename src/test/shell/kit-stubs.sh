@@ -151,7 +151,8 @@ if [ "$*" = "+%s" ]; then
 fi
 exec /bin/date "$@"
 EOF
-  printf '#!/usr/bin/env bash\nexit 0\n' > "${dir}/sleep"
+  # sleep records itself among the kubectl calls, so a test can check what a wait does after it.
+  printf '#!/usr/bin/env bash\nprintf "sleep %%s\\n" "$*" >> "${STUB_STATE:?}/kubectl.calls"\nexit 0\n' > "${dir}/sleep"
   chmod +x "${dir}/kubectl" "${dir}/curl" "${dir}/date" "${dir}/sleep"
 }
 

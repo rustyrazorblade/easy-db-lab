@@ -346,7 +346,13 @@ object ClusterFilterGuards {
     }
 
     /** The datasource and expression of each query in the Explore links (`/explore?...panes=`) of [panel]. */
-    private fun exploreQueries(panel: JsonObject): List<Pair<JsonElement?, String>> {
+    private fun exploreQueries(panel: JsonObject): List<Pair<JsonElement?, String>> =
+        linkUrls(panel)
+            .filter { "/explore" in it && "panes=" in it }
+            .flatMap { url -> paneQueries(url) }
+
+    /** Every `url` string of [panel] and its links, without descending into a row's nested panels. */
+    private fun linkUrls(panel: JsonObject): List<String> {
         val urls = mutableListOf<String>()
 
         fun collect(element: JsonElement) {
@@ -363,18 +369,39 @@ object ClusterFilterGuards {
         }
         collect(panel)
         return urls
-            .filter { "/explore" in it && "panes=" in it }
-            .flatMap { url ->
-                val panes = json.parseToJsonElement(URLDecoder.decode(url.substringAfter("panes="), Charsets.UTF_8)) as JsonObject
-                panes.values.filterIsInstance<JsonObject>().flatMap { pane ->
-                    (pane["queries"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { query ->
-                        (query.string("expr") ?: query.string("labelSelector") ?: query.string("query"))
-                            ?.let { (query["datasource"] ?: pane["datasource"]) to it }
-                    }
-                }
-            }
     }
 
+    /** The datasource and query text of each query in the decoded `panes=` of an Explore [url]. */
+    private fun paneQueries(url: String): List<Pair<JsonElement?, String>> {
+        val panes = json.parseToJsonElement(URLDecoder.decode(url.substringAfter("panes="), Charsets.UTF_8)) as JsonObject
+        return panes.values.filterIsInstance<JsonObject>().flatMap { pane ->
+            (pane["queries"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { query ->
+                // PromQL and LogQL in `expr`, a profile selector in `labelSelector`, TraceQL in `query`.
+                (query.string("expr") ?: query.string("labelSelector") ?: query.string("query"))
+                    ?.let { (query["datasource"] ?: pane["datasource"]) to it }
+            }
+        }
+    }
+
+    /** The language of each datasource type a dashboard names. */
+    private val languageByType =
+        mapOf(
+            "prometheus" to Language.PROMQL,
+            "loki" to Language.LOGQL,
+            PYROSCOPE_TYPE to Language.PROFILES,
+            "tempo" to Language.TRACEQL,
+        )
+
+    /** The language of each datasource a dashboard names by uid alone: a picker, or Pyroscope's fixed uid. */
+    private val languageByUid =
+        mapOf(
+            "pyroscope" to Language.PROFILES,
+            "\${${DashboardVariables.LOGS_DATASOURCE}}" to Language.LOGQL,
+            "\${${DashboardVariables.TRACES_DATASOURCE}}" to Language.TRACEQL,
+            "\${${DashboardVariables.METRICS_DATASOURCE}}" to Language.PROMQL,
+        )
+
+    /** The language of [datasource]: by its type when it has one, else by its uid; none at all is the default, Mimir. */
     private fun languageOf(datasource: JsonElement?): Language? {
         val (uid, type) =
             when (datasource) {
@@ -383,16 +410,9 @@ object ClusterFilterGuards {
                 else -> null to null
             }
         return when {
-            type == "prometheus" -> Language.PROMQL
-            type == "loki" -> Language.LOGQL
-            type == PYROSCOPE_TYPE -> Language.PROFILES
-            type == "tempo" -> Language.TRACEQL
-            type != null -> null
-            uid == "pyroscope" -> Language.PROFILES
-            uid == "\${${DashboardVariables.LOGS_DATASOURCE}}" -> Language.LOGQL
-            uid == "\${${DashboardVariables.TRACES_DATASOURCE}}" -> Language.TRACEQL
-            uid == null || uid == "\${${DashboardVariables.METRICS_DATASOURCE}}" -> Language.PROMQL
-            else -> null
+            type != null -> languageByType[type]
+            uid == null -> Language.PROMQL
+            else -> languageByUid[uid]
         }
     }
 

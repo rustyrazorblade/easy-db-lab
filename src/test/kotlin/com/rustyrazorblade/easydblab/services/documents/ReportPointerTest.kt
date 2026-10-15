@@ -149,6 +149,14 @@ class ReportPointerTest {
     }
 
     @Test
+    fun `a write that meets its own earlier attempt in flight counts as this upload's once it lands`() {
+        store.conflictAfterRetryAt(pointerPath, landsAfterReads = 1)
+
+        assertThat(pointer.advance(folder, newer, "index.html")).isTrue()
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+    }
+
+    @Test
     fun `a last write refused after a retry whose pointer names this upload counts as written`() {
         var writes = 0
         store.beforeEveryWrite {

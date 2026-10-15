@@ -370,6 +370,16 @@ object Constants {
         const val REPORT_ZIP_KEY_MAX_ATTEMPTS = 60
 
         /**
+         * How many times an upload looks at a key whose write met a conditional write still in
+         * flight there (possibly its own earlier attempt) before it gives the key up: each look
+         * reads the key back and, while it holds nothing, writes it again.
+         */
+        const val REPORT_IN_FLIGHT_MAX_LOOKS = 10
+
+        /** How long an upload waits between looks at a key with a write in flight. */
+        const val REPORT_IN_FLIGHT_LOOK_INTERVAL_MS = 1000L
+
+        /**
          * The start of every report zip's comment, which ends with its upload's random id: two
          * uploads of the same directory never build the same bytes.
          */

@@ -59,7 +59,9 @@ class ReportPointer(
                     store.putIfMatch(content, path, current.etag, CONTENT_TYPE)
                 }
             if (result == ConditionalObjectStore.Written) return true
-            refusedAfterRetry = result == ConditionalObjectStore.RefusedAfterRetry
+            refusedAfterRetry =
+                result == ConditionalObjectStore.RefusedAfterRetry ||
+                result == ConditionalObjectStore.ConflictAfterRetry
         }
         // The last write may have committed and lost its response too: read once more before failing.
         if (refusedAfterRetry && acceptedAsOwn(path, store.readVersioned(path)?.let { target(it.content) }, stamp)) return true

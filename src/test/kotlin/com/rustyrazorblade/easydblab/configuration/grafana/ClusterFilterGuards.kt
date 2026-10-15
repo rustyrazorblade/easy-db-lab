@@ -9,17 +9,19 @@ import kotlinx.serialization.json.contentOrNull
 import java.net.URLDecoder
 
 /**
- * Finds the metrics, logs and profile queries of a dashboard that read more than the selected clusters.
+ * Finds the metrics, logs, traces and profile queries of a dashboard that read more than the
+ * selected clusters.
  *
- * Clusters of one tenant share Mimir's, Loki's and Pyroscope's store, so a selector without a `cluster` matcher
- * mixes every cluster that ran in the dashboard's time range. A query is scoped only when each of
- * its selectors is, since `a{cluster=~"$cluster"} / b` still divides by every cluster's `b`. A
- * selector is scoped when it matches `cluster` against `$cluster`, or, on the comparison
- * dashboards, against `$baseline_cluster` or `$candidate_cluster`.
+ * Clusters of one tenant share Mimir's, Loki's, Tempo's and Pyroscope's store, so a selector without
+ * a `cluster` matcher mixes every cluster that ran in the dashboard's time range. A query is scoped
+ * only when each of its selectors is, since `a{cluster=~"$cluster"} / b` still divides by every
+ * cluster's `b`. A selector is scoped when it matches `cluster` against `$cluster`, or, on the pair
+ * dashboards, against `$cluster_a` or `$cluster_b`. A TraceQL spanset is scoped when it matches
+ * `resource.cluster` against one of them.
  */
 object ClusterFilterGuards {
     /** Which backend a query is for. */
-    enum class Language { PROMQL, LOGQL, PROFILES }
+    enum class Language { PROMQL, LOGQL, PROFILES, TRACEQL }
 
     /**
      * One query of a dashboard: where it is and its text as the file holds it. A panel target also
@@ -33,11 +35,12 @@ object ClusterFilterGuards {
         val panelType: String? = null,
     )
 
-    /** The variables whose own query lists clusters, so it must read every cluster. */
-    val CLUSTER_LISTS = setOf("cluster", "baseline_cluster", "candidate_cluster")
+    /** The variables whose own query lists clusters or experiments, so it must read every cluster. */
+    val CLUSTER_LISTS = DashboardVariables.CLUSTER_LISTS
 
-    private val clusterMatcher =
-        Regex("""(^|[{,\s])cluster\s*=~?\s*"\$\{?(cluster|baseline_cluster|candidate_cluster)(:regex)?\b""")
+    private val clusterVariables = DashboardVariables.CLUSTER_FILTERS.joinToString("|")
+    private val clusterMatcher = Regex("""(^|[{,\s])cluster\s*=~?\s*"\$\{?($clusterVariables)(:regex)?\b""")
+    private val spansetClusterMatcher = Regex("""(^|[{(\s&|])resource\.cluster\s*=~?\s*"\$\{?($clusterVariables)(:regex)?\b""")
     private val variableRegexMatcher = Regex("""\w+\s*=~\s*"\$\{?\w+(:\w+)?}?"""")
     private val labelValues = Regex("""^label_values\((.*)\)$""", RegexOption.DOT_MATCHES_ALL)
     private val json = Json { ignoreUnknownKeys = true }
@@ -73,6 +76,9 @@ object ClusterFilterGuards {
             // A Pyroscope label selector is one `{...}`.
             Language.LOGQL, Language.PROFILES -> selectors(query.text).filter { it.braced && !it.scoped }.map { it.text }
             Language.PROMQL -> unscopedPromQl(query.text)
+            // A TraceQL query is spansets joined by operators and followed by a pipeline; each `{...}` selects spans.
+            Language.TRACEQL ->
+                SelectorScanner(query.text, spansetClusterMatcher).scan().filter { it.braced && !it.scoped }.map { it.text }
         }
 
     /**
@@ -110,11 +116,15 @@ object ClusterFilterGuards {
      * The vector selectors (PromQL) or stream selectors (LogQL) of [text]. Strings, ranges and the
      * label lists of `by (...)` and its kin are skipped; an identifier followed by `(` is a function.
      */
-    private fun selectors(text: String): List<Selector> = SelectorScanner(text).scan()
+    private fun selectors(text: String): List<Selector> = SelectorScanner(text, clusterMatcher).scan()
 
-    /** One pass over a query's text, collecting its selectors; [selectors] describes what it skips. */
+    /**
+     * One pass over a query's text, collecting its selectors; [selectors] describes what it skips.
+     * A `{...}` is scoped when [scopedBy] finds a cluster matcher in it.
+     */
     private class SelectorScanner(
         private val text: String,
+        private val scopedBy: Regex,
     ) {
         private val found = mutableListOf<Selector>()
         private var i = 0
@@ -143,7 +153,7 @@ object ClusterFilterGuards {
         private fun braced(): Int {
             val end = skipGroup(text, i, '{', '}')
             val body = text.substring(i, end)
-            found += Selector((pendingName ?: "") + body, clusterMatcher.containsMatchIn(body), braced = true)
+            found += Selector((pendingName ?: "") + body, scopedBy.containsMatchIn(body), braced = true)
             pendingName = null
             return end
         }
@@ -259,11 +269,12 @@ object ClusterFilterGuards {
     }
 
     /**
-     * Every metrics, logs and profile query of [dashboard]: panel targets (rows included), Explore
-     * links, annotation queries, and the queries of template variables. A target with no datasource
-     * of its own uses its panel's, and a panel with none uses the default, Mimir. A profile query is
-     * its label selector, and a profile variable the selector its profile type makes; one with none
-     * reads every cluster and is reported as `{}`.
+     * Every metrics, logs, traces and profile query of [dashboard]: panel targets (rows included),
+     * Explore links (URL-decoded), annotation queries, and the queries of template variables. A
+     * target with no datasource of its own uses its panel's, and a panel with none uses the default,
+     * Mimir. A profile query is its label selector, and a profile variable the selector its profile
+     * type makes; one with none reads every cluster and is reported as `{}`. A trace query is its
+     * TraceQL, and a Tempo variable its filter, `{}` when it has none.
      */
     fun queries(dashboard: JsonObject): List<Query> {
         val found = mutableListOf<Query>()
@@ -279,6 +290,11 @@ object ClusterFilterGuards {
             val query = variable["query"]
             if (language == Language.PROFILES) {
                 found += Query(where, language, profileVariableSelector(query as? JsonObject))
+                return@forEach
+            }
+            if (language == Language.TRACEQL) {
+                // A Tempo label-values variable lists over its TraceQL filter, and over every span without one.
+                found += Query(where, language, (query as? JsonObject)?.string("query")?.takeIf { it.isNotBlank() } ?: NO_SELECTOR)
                 return@forEach
             }
             val texts =
@@ -311,7 +327,13 @@ object ClusterFilterGuards {
             val datasource = panel["datasource"] ?: inherited
             (panel["targets"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().forEach { target ->
                 val language = languageOf(target["datasource"] ?: datasource) ?: return@forEach
-                val text = if (language == Language.PROFILES) target.string("labelSelector") ?: NO_SELECTOR else target.string("expr")
+                val text =
+                    when (language) {
+                        Language.PROFILES -> target.string("labelSelector") ?: NO_SELECTOR
+                        // A service map or other non-TraceQL Tempo target carries no query.
+                        Language.TRACEQL -> target.string("query")
+                        else -> target.string("expr")
+                    }
                 text?.takeIf { it.isNotBlank() }?.let {
                     found += Query("panel '$title'", language, it, target.string("legendFormat"), panel.string("type"))
                 }
@@ -346,7 +368,8 @@ object ClusterFilterGuards {
                 val panes = json.parseToJsonElement(URLDecoder.decode(url.substringAfter("panes="), Charsets.UTF_8)) as JsonObject
                 panes.values.filterIsInstance<JsonObject>().flatMap { pane ->
                     (pane["queries"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>().mapNotNull { query ->
-                        (query.string("expr") ?: query.string("labelSelector"))?.let { (query["datasource"] ?: pane["datasource"]) to it }
+                        (query.string("expr") ?: query.string("labelSelector") ?: query.string("query"))
+                            ?.let { (query["datasource"] ?: pane["datasource"]) to it }
                     }
                 }
             }
@@ -363,10 +386,12 @@ object ClusterFilterGuards {
             type == "prometheus" -> Language.PROMQL
             type == "loki" -> Language.LOGQL
             type == PYROSCOPE_TYPE -> Language.PROFILES
+            type == "tempo" -> Language.TRACEQL
             type != null -> null
             uid == "pyroscope" -> Language.PROFILES
-            uid == "\${logs_datasource}" -> Language.LOGQL
-            uid == null || uid == "\${metrics_datasource}" -> Language.PROMQL
+            uid == "\${${DashboardVariables.LOGS_DATASOURCE}}" -> Language.LOGQL
+            uid == "\${${DashboardVariables.TRACES_DATASOURCE}}" -> Language.TRACEQL
+            uid == null || uid == "\${${DashboardVariables.METRICS_DATASOURCE}}" -> Language.PROMQL
             else -> null
         }
     }

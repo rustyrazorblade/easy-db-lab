@@ -397,6 +397,9 @@ data class ClusterState(
         return experiment
     }
 
+    /** This cluster's experiment as a key: [tenant] and [experiment] together. */
+    fun experimentKey(): ExperimentKey = ExperimentKey(tenant(), experiment())
+
     /** Returns the S3 metrics config ID: "edl-{name}-{clusterId}", truncated to API limit. */
     fun metricsConfigId(): String = "edl-$name-$clusterId".take(Constants.S3.MAX_METRICS_CONFIG_ID_LENGTH)
 

@@ -326,7 +326,7 @@ object Constants {
         /** Directory of the Grafana annotation backups under [GRAFANA_ROOT]; the tenant follows it. */
         const val ANNOTATIONS_DIR = "annotations"
 
-        /** Root of the test documents: `reports/<tenant>/<name>-<id>/`, one folder per test. */
+        /** Root of the reports: `reports/<tenant>/<experiment>/`, one folder per experiment. */
         const val REPORTS_ROOT = "reports"
 
         /** The tenant of a cluster that was initialized without `--tenant`. */

@@ -80,17 +80,17 @@ class DefaultTestDocumentService(
         if (rejected.isNotEmpty()) throw DocumentsRejectedException(rejected)
 
         val store = ObservabilityStore.from(clusterState)
-        val cluster = clusterState.clusterLabelName()
+        val folder = store.documentsRoot(clusterState.experimentKey())
         val uploaded =
             withScratch { scratch ->
                 val stored = mutableListOf<Pair<String, ClusterS3Path>>()
                 files.forEach { file ->
                     runCatching {
-                        val markdown = store.document(cluster, file.name)
+                        val markdown = folder.resolve(file.name)
                         objectStore.uploadFile(file, markdown, showProgress = false)
                         val page = File(scratch, DocumentNames.htmlName(file.name))
                         page.writeText(DocumentIndex.page(DocumentNames.stem(file.name), MarkdownRenderer.toHtml(file.readText())))
-                        objectStore.uploadFile(page, store.document(cluster, page.name), showProgress = false)
+                        objectStore.uploadFile(page, folder.resolve(page.name), showProgress = false)
                         stored += file.name to markdown
                     }.getOrElse { e -> throw DocumentUploadFailedException(file.name, stored.map { it.first }, e) }
                 }
@@ -101,17 +101,17 @@ class DefaultTestDocumentService(
 
     override fun rebuildIndex(clusterState: ClusterState): ClusterS3Path {
         val store = ObservabilityStore.from(clusterState)
-        val cluster = clusterState.clusterLabelName()
+        val folder = store.documentsRoot(clusterState.experimentKey())
         val documents =
             objectStore
-                .listFiles(store.documentsRoot(cluster), recursive = false)
+                .listFiles(folder, recursive = false)
                 .map { it.path }
                 .filter { it.getKey().endsWith(DocumentNames.MARKDOWN_SUFFIX) }
                 .map { path ->
                     val name = path.getKey().substringAfterLast('/')
                     RenderedDocument(DocumentNames.stem(name), MarkdownRenderer.toHtml(objectStore.readContent(path)))
                 }
-        val index = store.document(cluster, DocumentNames.INDEX_HTML)
+        val index = folder.resolve(DocumentNames.INDEX_HTML)
         withScratch { scratch ->
             val page = File(scratch, DocumentNames.INDEX_HTML).also { it.writeText(DocumentIndex.render(documents)) }
             objectStore.uploadFile(page, index, showProgress = false)

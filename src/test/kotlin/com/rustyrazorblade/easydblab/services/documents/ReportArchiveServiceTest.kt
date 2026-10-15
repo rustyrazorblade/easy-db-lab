@@ -446,7 +446,11 @@ class ReportArchiveServiceTest {
                 .take(Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS)
                 .toList()
         stamps.drop(1).forEach { store.overwrite(key("reports/acme/e1/${it.zipName}"), "another upload") }
-        store.writeInFlightAt(key("reports/acme/e1/${stamps.first().zipName}"), endsOnRead = Int.MAX_VALUE, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+        store.writeInFlightAt(
+            key("reports/acme/e1/${stamps.first().zipName}"),
+            endsOnRead = Int.MAX_VALUE,
+            InMemoryConditionalObjectStore.InFlightEnd.Aborts,
+        )
         val held = Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS - 1
 
         assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }

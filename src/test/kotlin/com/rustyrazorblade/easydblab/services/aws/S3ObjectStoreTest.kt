@@ -345,7 +345,13 @@ class S3ObjectStoreTest : BaseKoinTest() {
 
     @Test
     fun `a read of a missing key is null for both reads`() {
-        readFails(NoSuchKeyException.builder().statusCode(404).message("no such key").build() as S3Exception)
+        readFails(
+            NoSuchKeyException
+                .builder()
+                .statusCode(404)
+                .message("no such key")
+                .build() as S3Exception,
+        )
 
         assertThat(objectStore.readVersioned(path)).isNull()
         assertThat(objectStore.readBytes(path)).isNull()
@@ -359,8 +365,13 @@ class S3ObjectStoreTest : BaseKoinTest() {
                 .message("denied")
                 .statusCode(403)
                 .requestId("req-1")
-                .awsErrorDetails(AwsErrorDetails.builder().errorCode("AccessDenied").serviceName("S3").build())
-                .build() as S3Exception
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .errorCode("AccessDenied")
+                        .serviceName("S3")
+                        .build(),
+                ).build() as S3Exception
         readFails(denied)
 
         listOf({ objectStore.readVersioned(path) }, { objectStore.readBytes(path) }).forEach { read ->

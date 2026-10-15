@@ -64,6 +64,38 @@ run_prepare() {
 run_call() { grep '^run ' "${STUB_STATE}/kubectl.calls" 2>/dev/null; }
 no_pod() { [ -z "$(run_call)" ] || fail "created a pod: $(run_call)"; }
 
+test_missing_target_variables_fail_before_a_pod() {
+  local var
+  for var in TARGET_NATIVE_HOST TARGET_NATIVE_PORT TARGET_HTTP_URL; do
+    start_test "missing ${var}"
+    run_prepare "${var}="
+    [ "${rc}" -eq 1 ] || fail "exited ${rc}"
+    grep -q "${var}" <<< "${out}" || fail "did not name ${var}: ${out}"
+    no_pod
+  done
+}
+
+test_a_failed_hits_check_shows_the_server_error() {
+  start_test "hits check fails"
+  echo 22 > "${STUB_STATE}/curl-exit"
+  echo "Code: 516. DB::Exception: default: Authentication failed" > "${STUB_STATE}/curl-out"
+  run_prepare
+  [ "${rc}" -ne 0 ] || fail "exited 0"
+  grep -q "The query against http://10.0.1.5:30123 failed" <<< "${out}" || fail "message: ${out}"
+  grep -q "Code: 516. DB::Exception: default: Authentication failed" <<< "${out}" || fail "no server error: ${out}"
+  no_pod
+  if grep -q "create configmap" "${STUB_STATE}/kubectl.calls"; then fail "created a ConfigMap"; fi
+}
+
+test_a_prepare_pod_that_cannot_pull_its_image_is_deleted() {
+  start_test "pull error deletes the pod"
+  echo "Pending|ErrImagePull|pull access denied|" > "${STUB_STATE}/state.default"
+  run_prepare
+  [ "${rc}" -ne 0 ] || fail "exited 0"
+  grep -Eq "^delete pod ${INSTANCE}-prepare-[0-9]+ --ignore-not-found$" "${STUB_STATE}/kubectl.calls" ||
+    fail "left the pod: $(cat "${STUB_STATE}/kubectl.calls")"
+}
+
 test_an_active_run_refuses_and_names_the_pod() {
   start_test "active run"
   echo "${INSTANCE}-benchmark-run-1700000000 Running" > "${STUB_STATE}/pods"
@@ -222,6 +254,9 @@ test_a_failed_insert_says_partly_loaded_and_never_drops() {
   if statements | grep -q '^SYSTEM SYNC'; then fail "went on after the failed load: $(statements)"; fi
 }
 
+test_missing_target_variables_fail_before_a_pod
+test_a_failed_hits_check_shows_the_server_error
+test_a_prepare_pod_that_cannot_pull_its_image_is_deleted
 test_an_active_run_refuses_and_names_the_pod
 test_a_finished_run_does_not_block
 test_existing_hits_without_recreate_names_table_and_policy

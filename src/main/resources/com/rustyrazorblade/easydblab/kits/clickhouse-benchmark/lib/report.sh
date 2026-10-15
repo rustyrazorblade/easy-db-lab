@@ -48,10 +48,29 @@ parse_report_block() {
   '
 }
 
-# Pushes the ten gauges of the report in $1, each labelled with the kit instance.
+# Set when a report has begun, when one has been pushed, and when the parse warning was printed.
+CH_REPORT_SEEN=""
+CH_REPORT_PUSHED=""
+CH_REPORT_PARSE_WARNED=""
+
+# The image the reports come from, named in a warning: a changed report format is a new release.
+ch_report_image() {
+  printf 'clickhouse/clickhouse-server:%s\n' "${VERSION:-unknown}"
+}
+
+# Pushes the ten gauges of the report in $1, each labelled with the kit instance. Warns once when a
+# report that ran queries parses to no QPS and no latency, which means its format changed.
 ch_push_report() {
   local qps rps mibs queries errors p50 p90 p95 p99 p999
   read -r qps rps mibs queries errors p50 p90 p95 p99 p999 <<< "$(printf '%s\n' "$1" | parse_report_block)"
+  CH_REPORT_PUSHED=1
+  if [ -z "${CH_REPORT_PARSE_WARNED}" ] &&
+    awk -v q="${queries}" -v rest="${qps} ${p50} ${p90} ${p95} ${p99} ${p999}" \
+      'BEGIN { n = split(rest, v, " "); for (i = 1; i <= n; i++) if (v[i] + 0 != 0) exit 1; exit !(q + 0 > 0) }'; then
+    CH_REPORT_PARSE_WARNED=1
+    printf 'warning: a clickhouse-benchmark report from %s parsed to 0 QPS and 0 latency although it ran %s queries; its format may have changed, so the dashboard shows 0\n' \
+      "$(ch_report_image)" "${queries}" >&2
+  fi
   edl_push_gauges clickhouse-benchmark \
     clickhouse_benchmark_qps "${qps}" \
     clickhouse_benchmark_rows_per_second "${rps}" \
@@ -74,6 +93,7 @@ ch_report_handle_line() {
   case "$1" in
     "Queries executed:"*)
       CH_REPORT_BLOCK="$1"
+      CH_REPORT_SEEN=1
       return 0
       ;;
   esac
@@ -86,6 +106,16 @@ $1"
       CH_REPORT_BLOCK=""
       ;;
   esac
+  return 0
+}
+
+# Called when the stream ends: warns when a report began but none ended with its last percentile
+# line, so no gauge was pushed for the run.
+ch_report_check_pushed() {
+  if [ -n "${CH_REPORT_SEEN}" ] && [ -z "${CH_REPORT_PUSHED}" ]; then
+    printf 'warning: clickhouse-benchmark from %s printed a report, but no report was pushed: none ended with a 99.99%% line; its format may have changed, so the dashboard shows nothing for this run\n' \
+      "$(ch_report_image)" >&2
+  fi
   return 0
 }
 

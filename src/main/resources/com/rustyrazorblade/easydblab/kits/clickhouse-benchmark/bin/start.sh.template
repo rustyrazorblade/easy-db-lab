@@ -59,6 +59,7 @@ kubectl run "${POD}" \
 
 edl_wait_for_pod_running "${POD}"
 edl_follow_pod_logs "${POD}" ch_report_handle_line
+ch_report_check_pushed
 EXIT_CODE="$(edl_wait_for_pod_exit "${POD}")"
 
 # The live stream can be cut and resumed, so the results come from the full log.

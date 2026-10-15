@@ -105,8 +105,48 @@ test_the_stream_handler_pushes_one_set_of_gauges_per_report() {
   rm -f "${printed}"
 }
 
+# Feeds the lines in $1 through the stream handler in a subshell, as start does, then calls
+# ch_report_check_pushed; prints its stderr.
+handler_stderr() {
+  (
+    VERSION=99.1
+    while IFS= read -r line; do ch_report_handle_line "${line}"; done <<< "$1"
+    ch_report_check_pushed
+  ) 2>&1 > /dev/null
+}
+
+test_a_report_that_parses_to_zero_warns_once_naming_the_version() {
+  start_test "unreadable report"
+  local block err
+  block="$(printf '%s\n' "Queries executed: 40." "h:9000, queries: 40, QPS= 12" "50 pct 0.010 sec." "99.99%		later")"
+  err="$(handler_stderr "${block}
+${block}")"
+  [ "$(grep -c '^warning: ' <<< "${err}")" -eq 1 ] || fail "not one warning: ${err}"
+  grep -q "clickhouse/clickhouse-server:99.1" <<< "${err}" || fail "did not name the image: ${err}"
+  grep -q "parsed to 0" <<< "${err}" || fail "message: ${err}"
+}
+
+test_a_good_report_does_not_warn() {
+  start_test "readable report"
+  local err
+  err="$(handler_stderr "$(cat "${FIXTURES}/report.txt")")"
+  [ -z "${err}" ] || fail "warned: ${err}"
+}
+
+test_a_run_that_printed_no_complete_report_warns_at_the_end() {
+  start_test "no report pushed"
+  local err
+  err="$(handler_stderr "$(printf '%s\n' "Queries executed: 3." "h:9000, queries: 3, QPS: 1.0, RPS: 1, MiB/s: 1.")")"
+  [ "$(grep -c '^warning: ' <<< "${err}")" -eq 1 ] || fail "not one warning: ${err}"
+  grep -q "no report was pushed" <<< "${err}" || fail "message: ${err}"
+  grep -q "clickhouse/clickhouse-server:99.1" <<< "${err}" || fail "did not name the image: ${err}"
+}
+
 test_the_final_report_of_a_real_run
 test_an_interval_report_of_a_real_run
+test_a_report_that_parses_to_zero_warns_once_naming_the_version
+test_a_good_report_does_not_warn
+test_a_run_that_printed_no_complete_report_warns_at_the_end
 test_the_error_count_of_a_real_error_run
 test_p999_from_the_three_decimal_spelling
 test_a_missing_or_non_numeric_field_is_0

@@ -46,7 +46,8 @@ ch_select_queries() {
 
 # Prints one clickhouse-benchmark flag per line for the --settings value $1, a comma-separated list
 # of key=value entries: max_threads=8 becomes --max_threads=8. Fails, naming the entry, on an entry
-# with no '=', a key that is not letters, digits and '_', or a key on CH_SETTINGS_DENYLIST.
+# that holds a line break, has no '=', has a key that is not letters, digits and '_', or has a key
+# on CH_SETTINGS_DENYLIST.
 ch_settings_flags() {
   local settings="$1" entry key rest
   [ -n "${settings}" ] || return 0
@@ -55,6 +56,11 @@ ch_settings_flags() {
     entry="${rest%%,*}"
     rest="${rest#*,}"
     [ -n "${entry}" ] || continue
+    # The flags are printed one per line, so a line break would make a second flag that skipped
+    # these checks.
+    case "${entry}" in
+      *$'\n'* | *$'\r'*) edl_fail "--settings entry '${entry}' holds a line break" ;;
+    esac
     case "${entry}" in
       *=*) ;;
       *) edl_fail "--settings entry '${entry}' has no '='; give each setting as key=value" ;;

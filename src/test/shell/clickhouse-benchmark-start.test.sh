@@ -150,6 +150,29 @@ test_missing_hits_fails_and_says_to_prepare() {
   grep -Fqx "http://10.0.1.5:30123/?database=default" "${STUB_STATE}/curl.1" || fail "not asked over the HTTP endpoint: $(cat "${STUB_STATE}/curl.1")"
 }
 
+test_a_failed_hits_check_shows_the_server_error() {
+  start_test "hits check fails"
+  echo 22 > "${STUB_STATE}/curl-exit"
+  echo "Code: 516. DB::Exception: default: Authentication failed" > "${STUB_STATE}/curl-out"
+  run_start
+  [ "${rc}" -ne 0 ] || fail "exited 0"
+  grep -q "The query against http://10.0.1.5:30123 failed" <<< "${out}" || fail "message: ${out}"
+  grep -q "Code: 516. DB::Exception: default: Authentication failed" <<< "${out}" || fail "no server error: ${out}"
+  if grep -q "run prepare first" <<< "${out}"; then fail "said hits is missing: ${out}"; fi
+  no_pod
+  if grep -q "create configmap" <<< "$(calls)"; then fail "created a ConfigMap: $(calls)"; fi
+}
+
+test_a_pod_that_cannot_pull_its_image_is_deleted() {
+  start_test "pull error deletes the pod"
+  echo "Pending|ImagePullBackOff|Back-off pulling image clickhouse/clickhouse-server:25.44|" > "${STUB_STATE}/state.default"
+  run_start
+  [ "${rc}" -ne 0 ] || fail "exited 0"
+  grep -q "ImagePullBackOff" <<< "${out}" || fail "no reason: ${out}"
+  grep -Eq "^delete pod ${INSTANCE}-benchmark-run-[0-9]+ --ignore-not-found$" <<< "$(calls)" || fail "left the pod: $(calls)"
+  grep -Eq "^delete configmap ${INSTANCE}-benchmark-run-[0-9]+ --ignore-not-found$" <<< "$(calls)" || fail "left the ConfigMap: $(calls)"
+}
+
 test_own_queries_skip_the_hits_check_and_reach_the_pod() {
   start_test "--queries skips the hits check"
   : > "${STUB_STATE}/curl-out"
@@ -238,6 +261,14 @@ test_settings_entries_are_checked() {
     grep -Fq "'${entry}'" <<< "${out}" || fail "did not name ${entry}: ${out}"
     no_pod
   done
+  # A line break would split one entry into a second flag that the checks never saw.
+  start_test "--settings with a line break"
+  run_start SETTINGS="max_threads=8
+host=10.0.0.9"
+  [ "${rc}" -ne 0 ] || fail "exited 0"
+  grep -q "holds a line break" <<< "${out}" || fail "message: ${out}"
+  grep -q "max_threads=8" <<< "${out}" || fail "did not name the entry: ${out}"
+  no_pod
   for key in host port user password database secure queries_file query concurrency iterations timelimit delay json \
     randomize continue_on_errors cumulative reconnect query_id confidence stage max_consecutive_errors help; do
     current_test="--settings ${key}=1"
@@ -300,6 +331,8 @@ test_missing_or_empty_queries_file_fails_naming_it
 test_unknown_workload_lists_the_valid_ones
 test_no_app_node_runs_no_pod
 test_missing_hits_fails_and_says_to_prepare
+test_a_failed_hits_check_shows_the_server_error
+test_a_pod_that_cannot_pull_its_image_is_deleted
 test_own_queries_skip_the_hits_check_and_reach_the_pod
 test_queries_over_the_configmap_limit_fail_before_a_pod
 test_the_pod_runs_on_an_app_node_with_the_queries_mounted

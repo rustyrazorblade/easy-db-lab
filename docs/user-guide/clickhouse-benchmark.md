@@ -94,7 +94,10 @@ With no `--source`, the server reads the public ClickBench files,
 `https://clickhouse-public-datasets.s3.amazonaws.com/hits_compatible/athena_partitioned/hits_{0..99}.parquet`,
 anonymously. A `--source` you give is read with the cluster's IAM role
 (`use_environment_credentials`), so it must be in a bucket that role can read; the role can read
-the `easy-db-lab-*` buckets. The files must have the ClickBench `hits` columns. A `--source` that
+the `easy-db-lab-*` buckets. Recent ClickHouse servers refuse to use the server's own credentials
+in a query unless the setting `s3_allow_server_credentials_in_user_queries` is on, so for a
+`--source` load `prepare` turns that setting on for the `INSERT` on servers that have it. The
+anonymous default load never uses it. The files must have the ClickBench `hits` columns. A `--source` that
 holds a `'` or a `\` is refused before any pod is created.
 
 ### start

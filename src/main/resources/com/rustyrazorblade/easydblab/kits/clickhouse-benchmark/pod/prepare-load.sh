@@ -54,8 +54,25 @@ echo "Creating hits on every replica of ${CH_CLUSTER} with storage policy ${poli
   exit 1
 }
 
+# A --source is read with the server's own credentials, the cluster's IAM role. Since 26.x the
+# server refuses that in a user query unless s3_allow_server_credentials_in_user_queries is on;
+# older servers lack the setting and reject an unknown one, so it is set only where it exists. The
+# anonymous (NOSIGN) default uses no credentials and never needs it. A --source cannot hold a
+# quote, so only the default holds ', NOSIGN, '.
+set --
+case "${source}" in
+  *"', NOSIGN, '"*) ;;
+  *)
+    present="$(client --format TSV --query "SELECT count() FROM system.settings WHERE name = 's3_allow_server_credentials_in_user_queries'")" || {
+      echo "Could not read the server's settings." >&2
+      exit 1
+    }
+    [ "${present}" = 0 ] || set -- --s3_allow_server_credentials_in_user_queries=1
+    ;;
+esac
+
 echo "Loading hits from ${source}..."
-client --query "INSERT INTO hits SELECT * FROM ${source}" || {
+client "$@" --query "INSERT INTO hits SELECT * FROM ${source}" || {
   echo "The load failed. hits may be partly loaded; run prepare --recreate to reload it." >&2
   exit 1
 }

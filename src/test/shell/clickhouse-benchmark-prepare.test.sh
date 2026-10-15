@@ -194,6 +194,7 @@ printf '%s\n---\n' "\${query}" >> "${LOADER}/statements"
 case "\${query}" in
   *"\${FAIL_ON:-<never>}"*) echo "Code: 999. DB::Exception: stub failure" >&2; exit 1 ;;
   *clusterAllReplicas*) printf '%s' "\${COUNTS}" ;;
+  *system.settings*) printf '%s' "\${SETTING_PRESENT:-0}" ;;
 esac
 exit 0
 EOF
@@ -203,7 +204,7 @@ chmod +x "${LOADER}/bin/clickhouse-client"
 run_loader() {
   rm -f "${LOADER}/argv" "${LOADER}/statements"
   (PATH="${LOADER}/bin:${PATH}" COUNTS="$2" sh "${LOADER}/prepare-load.sh" 10.0.1.5 30900 default default s3_main "$1" \
-    "s3('https://x/hits.parquet', NOSIGN, 'Parquet')") > "${LOADER}/out" 2>&1
+    "${3:-s3('https://x/hits.parquet', NOSIGN, 'Parquet')}") > "${LOADER}/out" 2>&1
   rc=$?
   out="$(cat "${LOADER}/out")"
 }
@@ -224,6 +225,36 @@ test_the_loader_drops_creates_loads_syncs_and_counts_in_order() {
     fail "a statement without the negative DDL timeout: $(cat "${LOADER}/argv")"
   grep -q -- "--receive_timeout=86400 --send_timeout=86400 --max_execution_time=0" "${LOADER}/argv" || fail "client timeouts: $(cat "${LOADER}/argv")"
   grep -q "hits holds 100 rows on every replica (3 replicas)" <<< "${out}" || fail "output: ${out}"
+}
+
+# The client argv line of the INSERT, which holds its settings.
+insert_argv() { grep -- "--query INSERT INTO hits" "${LOADER}/argv"; }
+
+test_a_role_source_load_allows_server_credentials_when_the_server_has_the_setting() {
+  current_test="loader --source, setting present"
+  tests_run=$((tests_run + 1))
+  SETTING_PRESENT=1 FAIL_ON="" run_loader false "$(printf 'r0\t5\n')" "s3('https://easy-db-lab-x.s3.amazonaws.com/h.parquet', 'Parquet')"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${out}"; return; }
+  statements | grep -Fq "FROM system.settings WHERE name = 's3_allow_server_credentials_in_user_queries'" || fail "did not ask: $(statements)"
+  insert_argv | grep -Fq -- "--s3_allow_server_credentials_in_user_queries=1" || fail "INSERT argv: $(insert_argv)"
+}
+
+test_a_role_source_load_on_a_server_without_the_setting_does_not_pass_it() {
+  current_test="loader --source, setting absent"
+  tests_run=$((tests_run + 1))
+  SETTING_PRESENT=0 FAIL_ON="" run_loader false "$(printf 'r0\t5\n')" "s3('https://easy-db-lab-x.s3.amazonaws.com/h.parquet', 'Parquet')"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${out}"; return; }
+  if insert_argv | grep -q "s3_allow_server_credentials_in_user_queries"; then fail "INSERT argv: $(insert_argv)"; fi
+}
+
+test_the_anonymous_default_load_never_allows_server_credentials() {
+  current_test="loader NOSIGN default"
+  tests_run=$((tests_run + 1))
+  SETTING_PRESENT=1 FAIL_ON="" run_loader false "$(printf 'r0\t5\n')"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${out}"; return; }
+  if grep -q "s3_allow_server_credentials_in_user_queries" "${LOADER}/argv" "${LOADER}/statements"; then
+    fail "the NOSIGN load used server credentials: $(cat "${LOADER}/argv")"
+  fi
 }
 
 test_the_loader_never_drops_without_recreate() {
@@ -267,6 +298,9 @@ test_bad_values_fail_before_a_pod
 test_a_failed_prepare_pod_fails
 test_the_loader_drops_creates_loads_syncs_and_counts_in_order
 test_the_loader_never_drops_without_recreate
+test_a_role_source_load_allows_server_credentials_when_the_server_has_the_setting
+test_a_role_source_load_on_a_server_without_the_setting_does_not_pass_it
+test_the_anonymous_default_load_never_allows_server_credentials
 test_replica_count_mismatch_fails_with_each_count
 test_a_failed_insert_says_partly_loaded_and_never_drops
 

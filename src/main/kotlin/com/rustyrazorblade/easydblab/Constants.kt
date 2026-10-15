@@ -538,6 +538,16 @@ object Constants {
         const val MAX_POLL_TIMEOUT_MS = 45 * 60 * 1000L // 45 minutes max wait
         const val LOG_INTERVAL_POLLS = 2 // Log every 2 polls (60 seconds at 30s interval)
         const val DOMAIN_NAME_MAX_LENGTH = 28 // AWS OpenSearch domain names must be 3-28 lowercase chars
+
+        // CreateDomain's refusal while OpenSearch cannot yet see a just-created service-linked
+        // role. Both the code and this part of the message must match before it is retried.
+        const val VALIDATION_ERROR_CODE = "ValidationException"
+        const val SERVICE_LINKED_ROLE_NOT_VISIBLE = "you must enable a service-linked role"
+
+        // CreateDomain right after this run created the service-linked role: OpenSearch does
+        // not see the new role at once. 12 attempts, 5s apart (about a minute in all).
+        const val SERVICE_LINKED_ROLE_MAX_ATTEMPTS = 12
+        const val SERVICE_LINKED_ROLE_RETRY_INTERVAL_MS = 5_000L
     }
 
     // Kit configuration

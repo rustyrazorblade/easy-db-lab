@@ -624,9 +624,24 @@ class AWS(
     }
 
     /**
-     * Ensures the OpenSearch service-linked role exists.
+     * Whether [ensureOpenSearchServiceLinkedRole] created the role or found it in place.
+     *
+     * A role created moments ago is not yet visible to OpenSearch (IAM is eventually
+     * consistent), so a caller that just created it must expect CreateDomain to refuse it
+     * for a while.
      */
-    fun ensureOpenSearchServiceLinkedRole() {
+    enum class ServiceLinkedRoleStatus {
+        CREATED,
+        ALREADY_EXISTED,
+    }
+
+    /**
+     * Ensures the OpenSearch service-linked role exists.
+     *
+     * @return [ServiceLinkedRoleStatus.CREATED] when this call created it,
+     *   [ServiceLinkedRoleStatus.ALREADY_EXISTED] when it was already there
+     */
+    fun ensureOpenSearchServiceLinkedRole(): ServiceLinkedRoleStatus {
         val serviceName = "opensearchservice.amazonaws.com"
         log.info { "Ensuring OpenSearch service-linked role exists..." }
 
@@ -640,11 +655,13 @@ class AWS(
 
             iamClient.createServiceLinkedRole(request)
             log.info { "Created OpenSearch service-linked role" }
+            return ServiceLinkedRoleStatus.CREATED
         } catch (e: InvalidInputException) {
             if (e.message?.contains("has been taken") == true ||
                 e.message?.contains("already exists") == true
             ) {
                 log.info { "OpenSearch service-linked role already exists" }
+                return ServiceLinkedRoleStatus.ALREADY_EXISTED
             } else {
                 log.error(e) { "Failed to create OpenSearch service-linked role: ${e.message}" }
                 throw e

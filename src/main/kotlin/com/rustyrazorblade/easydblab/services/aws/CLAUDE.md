@@ -20,7 +20,7 @@ services/aws/
 ├── AMIResolver.kt             # AMI resolution interface and implementations
 ├── EMRService.kt              # EMR cluster management (find, terminate, wait)
 ├── EMRSparkService.kt         # Spark job execution (implements SparkService)
-├── OpenSearchService.kt       # OpenSearch domain management
+├── OpenSearchService.kt       # OpenSearch domain management; after creating the service-linked role, retries CreateDomain until OpenSearch sees it
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
 ├── CompactorService.kt        # The account compactor on ECS Fargate (ensureRunning, stop, stopIfLastCluster, status); composes the classes below
 ├── CompactorStatusReader.kt   # Read-only status: counts, service events, the latest task and why it stopped, its log lines

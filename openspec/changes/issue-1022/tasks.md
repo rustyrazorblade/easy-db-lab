@@ -77,13 +77,13 @@
 
 ## 11. Build checks
 
-- [ ] 11.1 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21), `./gradlew test`, `./gradlew testScripts` and `./gradlew integrationTest` in a subagent, and fix every failure.
+- [x] 11.1 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21), `./gradlew test`, `./gradlew testScripts` and `./gradlew integrationTest` in a subagent, and fix every failure.
 
 ## 12. Real cluster check
 
-- [ ] 12.1 Provision a cluster with 1 app node and 3 db nodes, install `clickhouse` and `clickhouse-benchmark --target clickhouse`.
-- [ ] 12.2 Run `prepare --storage-policy s3_main`; confirm `system.tables` shows `s3_main` and every replica has the same count; confirm the parquet casts work (R5).
-- [ ] 12.3 Run `start` once to install the dashboard, then run it again and check every panel shows non-zero data, read back from Grafana; confirm `last-run.txt`.
-- [ ] 12.4 Run `prepare --recreate --source <private s3 url in a bucket the role can read>` and confirm the role credentials work (R6); if not, add the `config.d` `<s3>` block with `use_environment_credentials` to the `clickhouse` kit.
-- [ ] 12.5 Run a `start` that fails (bad query without `--continue-on-errors`) and confirm the exit code report.
-- [ ] 12.6 Install and run `sysbench --target clickhouse`, and confirm its run, prepare and cleanup pods are on the app node.
+- [x] 12.1 Provision a cluster with 1 app node and 3 db nodes, install `clickhouse` and `clickhouse-benchmark --target clickhouse`.
+- [x] 12.2 Run `prepare --storage-policy s3_main`; confirm `system.tables` shows `s3_main` and every replica has the same count; confirm the parquet casts work (R5).
+- [x] 12.3 Run `start` once to install the dashboard, then run it again and check every panel shows non-zero data, read back from Grafana; confirm `last-run.txt`.
+- [x] 12.4 Run `prepare --recreate --source <private s3 url in a bucket the role can read>` and confirm the role credentials work (R6); if not, add the `config.d` `<s3>` block with `use_environment_credentials` to the `clickhouse` kit.
+- [x] 12.5 Run a `start` that fails (bad query without `--continue-on-errors`) and confirm the exit code report.
+- [x] 12.6 Install and run `sysbench --target clickhouse`, and confirm its run, prepare and cleanup pods are on the app node.

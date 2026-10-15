@@ -21,8 +21,9 @@ enum class WriteCondition {
  * A refused condition is a result the caller decides on; every other failure is an error and must
  * not be mistaken for one, or a missing bucket or an aborted operation would look like an object
  * that is already there. S3 refuses with 412, with 409 `ConditionalRequestConflict` when a
- * concurrent conditional write to the key won, and, for `If-Match` only, with 404 when the object
- * it named was removed.
+ * concurrent conditional write to the key won, and, for `If-Match` only, with 404 `NoSuchKey` when
+ * the object it named was removed. Every other 404 (a missing bucket, an unknown code, no code at
+ * all) is an error.
  */
 object ConditionalWriteRefusal {
     /** Whether [error], from a PUT carrying [condition], is S3 refusing that condition. */
@@ -34,7 +35,7 @@ object ConditionalWriteRefusal {
         return when (error.statusCode()) {
             Constants.HttpStatus.PRECONDITION_FAILED -> true
             Constants.HttpStatus.CONFLICT -> code == Constants.S3.CONDITIONAL_REQUEST_CONFLICT
-            Constants.HttpStatus.NOT_FOUND -> condition == WriteCondition.IF_MATCH && code != Constants.S3.NO_SUCH_BUCKET
+            Constants.HttpStatus.NOT_FOUND -> condition == WriteCondition.IF_MATCH && code == Constants.S3.NO_SUCH_KEY
             else -> false
         }
     }

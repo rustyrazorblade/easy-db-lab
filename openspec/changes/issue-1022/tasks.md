@@ -1,16 +1,16 @@
 ## 1. Kit-ref endpoints and the install check
 
-- [ ] 1.1 Write `KitConfigTest` cases: `endpoints: [native, http]` parses to `[NATIVE, HTTP]`; an unknown type in `endpoints` fails at parse.
-- [ ] 1.2 Add `KitArgSpec.endpoints: List<KitEndpoint.EndpointType> = emptyList()` in `services/KitConfig.kt`, with KDoc.
-- [ ] 1.3 Write `KitRefTargetValidatorTest`: no capability and no endpoints means no target load; target not installed keeps the "is not installed (expected ...)" message; missing capability keeps its message; one missing endpoint type; two missing types in one message ("the 'native' and 'http' endpoints"); all types present passes.
-- [ ] 1.4 Extract the pure `KitRefTargetValidator` from `KitInstallCommand.validateKitRefCapability`, add the endpoint check, and call it before `renderAndWrite`.  Keep the existing `KitInstallCommandTest` kit-ref cases green.
+- [x] 1.1 Write `KitConfigTest` cases: `endpoints: [native, http]` parses to `[NATIVE, HTTP]`; an unknown type in `endpoints` fails at parse.
+- [x] 1.2 Add `KitArgSpec.endpoints: List<KitEndpoint.EndpointType> = emptyList()` in `services/KitConfig.kt`, with KDoc.
+- [x] 1.3 Write `KitRefTargetValidatorTest`: no capability and no endpoints means no target load; target not installed keeps the "is not installed (expected ...)" message; missing capability keeps its message; one missing endpoint type; two missing types in one message ("the 'native' and 'http' endpoints"); all types present passes.
+- [x] 1.4 Extract the pure `KitRefTargetValidator` from `KitInstallCommand.validateKitRefCapability`, add the endpoint check, and call it before `renderAndWrite`.  Keep the existing `KitInstallCommandTest` kit-ref cases green.
 
 ## 2. TARGET_NATIVE_* variables
 
-- [ ] 2.1 Change the `KitConfigTest` NATIVE empty-map case: a native endpoint gives `TARGET_NATIVE_HOST`, `TARGET_NATIVE_PORT`, `TARGET_NATIVE_USER` (from the `sql` capability user, empty with no capability) and `TARGET_NATIVE_DATABASE`; HTTPS and CQL give no variables.
-- [ ] 2.2 Add the `NATIVE` branch to `KitEndpoint.toTargetVars`, make the `when` exhaustive (no `else`), and update its KDoc.
-- [ ] 2.3 Write a test that the built-in `clickhouse/kit.yaml` Native endpoint has `database` `default` and that `formatUrl` still returns `host:port`.
-- [ ] 2.4 Add `database: "default"` to the `Native` endpoint in `kits/clickhouse/kit.yaml`.
+- [x] 2.1 Change the `KitConfigTest` NATIVE empty-map case: a native endpoint gives `TARGET_NATIVE_HOST`, `TARGET_NATIVE_PORT`, `TARGET_NATIVE_USER` (from the `sql` capability user, empty with no capability) and `TARGET_NATIVE_DATABASE`; HTTPS and CQL give no variables.
+- [x] 2.2 Add the `NATIVE` branch to `KitEndpoint.toTargetVars`, make the `when` exhaustive (no `else`), and update its KDoc.
+- [x] 2.3 Write a test that the built-in `clickhouse/kit.yaml` Native endpoint has `database` `default` and that `formatUrl` still returns `host:port`.
+- [x] 2.4 Add `database: "default"` to the `Native` endpoint in `kits/clickhouse/kit.yaml`.
 
 ## 3. Unset args as empty strings and boolean arity
 

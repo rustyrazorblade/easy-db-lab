@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -168,6 +169,40 @@ class KitInstallCommandTest : BaseKoinTest() {
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("sql")
             .hasMessageContaining("presto")
+    }
+
+    @Test
+    fun `kit-ref with endpoints fails before writing when the target lacks one`() {
+        val benchConfig =
+            KitConfig(
+                name = "clickhouse-benchmark",
+                type = null,
+                args =
+                    listOf(
+                        KitArgSpec(
+                            flag = "--target",
+                            variable = "TARGET",
+                            type = KitArgSpec.ArgType.KIT_REF,
+                            endpoints = listOf(KitEndpoint.EndpointType.NATIVE, KitEndpoint.EndpointType.HTTP),
+                        ),
+                    ),
+            )
+        val targetDir = File(workingDir, "tidb").also { it.mkdirs() }
+        File(targetDir, "kit.yaml").writeText(
+            """
+            name: tidb
+            endpoints:
+              - name: HTTP
+                node-type: db
+                port: 10080
+                type: http
+            """.trimIndent(),
+        )
+
+        assertThatThrownBy { buildAndRun(benchConfig, mapOf("TARGET" to "tidb")) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("Target kit 'tidb' does not have the 'native' endpoint required by clickhouse-benchmark")
+        assertThat(File(workingDir, "clickhouse-benchmark-tidb")).doesNotExist()
     }
 
     private val extensionsYaml =

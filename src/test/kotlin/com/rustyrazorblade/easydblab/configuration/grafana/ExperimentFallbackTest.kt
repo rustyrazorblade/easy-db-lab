@@ -20,7 +20,10 @@ import org.junit.jupiter.api.Test
  * - (b) a PromQL query that outputs `edl_tenant` holds `"${'$'}{home_tenant}"`;
  * - (c) a dashboard that references `home_tenant` declares it as a hidden custom variable;
  * - (d) no LogQL or TraceQL query names `experiment` or `edl_tenant`: logs and traces filter on the
- *   cluster only.
+ *   cluster only;
+ * - (e) every `up{...experiment=""...}` selector keeps out a series with no `cluster` label
+ *   (`cluster!=""`, or a matcher bound to a picker), or that series becomes an empty-cluster row:
+ *   in the experiment picker, a bogus newest option `<tenant>/`.
  */
 class ExperimentFallbackTest {
     private fun promql(text: String) = Query("sample", Language.PROMQL, text)
@@ -113,6 +116,31 @@ class ExperimentFallbackTest {
     }
 
     @Test
+    fun `an unlabelled branch that admits a series with no cluster label is reported`() {
+        val bare = PICKER.replace("""up{experiment="", cluster!=""}""", """up{experiment=""}""")
+        val anyCluster = """count by (cluster) (up{experiment!=""}) or count by (cluster) (up{experiment="", cluster=~".*"})"""
+
+        assertThat(ExperimentFallbackGuards.unlabelledWithoutCluster(promql(bare))).containsExactly("""up{experiment=""}""")
+        assertThat(ExperimentFallbackGuards.unlabelledWithoutCluster(promql(anyCluster)))
+            .containsExactly("""up{experiment="", cluster=~".*"}""")
+        assertThat(ExperimentFallbackGuards.unlabelledWithoutCluster(promql("""count(up{experiment="", cluster=""})"""))).hasSize(1)
+    }
+
+    @Test
+    fun `an unlabelled branch that names its cluster passes`() {
+        assertThat(ExperimentFallbackGuards.unlabelledWithoutCluster(promql(PICKER))).isEmpty()
+        assertThat(ExperimentFallbackGuards.unlabelledWithoutCluster(promql(EXPERIMENT_CLUSTERS))).isEmpty()
+        assertThat(ExperimentFallbackGuards.unlabelledWithoutCluster(promql(A_REPORT))).isEmpty()
+        assertThat(ExperimentFallbackGuards.unlabelledWithoutCluster(promql("""count(up{experiment="", cluster=~".+"})"""))).isEmpty()
+        assertThat(ExperimentFallbackGuards.unlabelledWithoutCluster(Query("s", Language.LOGQL, """{experiment=""}"""))).isEmpty()
+    }
+
+    @Test
+    fun `every unlabelled branch on a dashboard keeps out a series with no cluster`() {
+        assertThat(scan { query -> ExperimentFallbackGuards.unlabelledWithoutCluster(query) }).isEmpty()
+    }
+
+    @Test
     fun `every experiment matcher on a dashboard has the unlabelled branch`() {
         assertThat(scan { query -> ExperimentFallbackGuards.missingUnlabelledBranch(query) }).isEmpty()
     }
@@ -160,12 +188,13 @@ class ExperimentFallbackTest {
                 """[${'$'}lookback]), "t", "${'$'}1", "__tenant_id__", "(.+)"), "t", "${'$'}{home_tenant}", "t", ""), """ +
                 """"exp_key", "/", "t", "cluster")))"""
 
-        /** Design 8.1: the experiment picker, newest first, with the synthetic All last. */
+        /** Design 8.1: the experiment picker, newest first, with the synthetic All last; its pre-label branch keeps out `up` with no cluster. */
         const val PICKER =
             """query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(""" +
                 """count by (edl_tenant, experiment) (up{experiment!=""}))[${'$'}lookback:${'$'}{resolution}s]), "exp_key", "/", """ +
                 """"edl_tenant", "experiment"), "exp_text", "/", "edl_tenant", "experiment") or label_join(label_join(""" +
-                """label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=""}))""" +
+                """label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) """ +
+                """(up{experiment="", cluster!=""}))""" +
                 """[${'$'}lookback:${'$'}{resolution}s]), "t", "${'$'}1", "__tenant_id__", "(.+)"), """ +
                 """"t", "${'$'}{home_tenant}", "t", ""), """ +
                 """"exp_key", "/", "t", "cluster"), "exp_text", "/", "t", "cluster") or label_replace(label_replace(vector(0), """ +

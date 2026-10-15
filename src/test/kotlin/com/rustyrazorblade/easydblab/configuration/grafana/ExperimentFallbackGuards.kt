@@ -29,6 +29,9 @@ object ExperimentFallbackGuards {
     /** The selector of the unlabelled series, `up{... experiment="" ...}`. */
     private val unlabelledUp = Regex("""\bup\s*\{[^}]*(?<![\w.])experiment\s*=\s*""[^}]*}""")
     private val orOperator = Regex("""\bor\b""")
+
+    /** A `cluster` matcher inside a selector: its operator and value. */
+    private val clusterMatcher = Regex("""(?<![\w.])cluster\s*(=~|!~|!=|=)\s*"([^"]*)"""")
     private val labelWord = Regex("""(?<![\w.$])(${labels.joinToString("|")})(?!\w)""")
     private val tracesOrLogsWord = Regex("""(?<!\w)(${labels.joinToString("|")})(?!\w)""")
     private val homeTenantReference = Regex("""\$\{?${DashboardVariables.HOME_TENANT}\b""")
@@ -77,6 +80,34 @@ object ExperimentFallbackGuards {
             variable.string("type") != "custom" || variable.string("hide") != HIDDEN ->
                 listOf("${DashboardVariables.HOME_TENANT} is not a hidden custom variable (type custom, hide $HIDDEN)")
             else -> emptyList()
+        }
+    }
+
+    /**
+     * Rule (e): each `up{...experiment=""...}` selector of a PromQL [query] that admits a series
+     * with no `cluster` label. The pre-label branch names each row after its cluster, so an `up`
+     * series with neither label (a scrape target outside every cluster) becomes a row with an empty
+     * cluster: in the experiment picker, a bogus newest option `<tenant>/`. The selector excludes it
+     * with `cluster!=""`, or with a `cluster` matcher bound to a picker or to a value that cannot be
+     * empty (`cluster="${'$'}cluster_a"`, `cluster=~"${'$'}exp_name"`).
+     */
+    fun unlabelledWithoutCluster(query: Query): List<String> {
+        if (query.language != Language.PROMQL) return emptyList()
+        return unlabelledUp
+            .findAll(query.text)
+            .map { it.value }
+            .filterNot { selector -> clusterMatcher.findAll(selector).any { excludesAbsentCluster(it) } }
+            .toList()
+    }
+
+    /** Whether a `cluster` [matcher] keeps out a series that has no `cluster` label. */
+    private fun excludesAbsentCluster(matcher: MatchResult): Boolean {
+        val (operator, value) = matcher.destructured
+        return when (operator) {
+            "!=" -> value.isEmpty()
+            "=" -> value.isNotEmpty()
+            "=~" -> '$' in value || !Regex(value).matches("")
+            else -> false
         }
     }
 

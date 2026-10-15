@@ -21,6 +21,8 @@ import org.junit.jupiter.api.Test
  * - The picker lists newest first (`sort_desc`, kept by `sort: 0`) and ends with a synthetic "All"
  *   (its value matches every tenant and name; its timestamp is 0), not Grafana's `includeAll`, which would open on the most
  *   expensive query. Tests has no "All".
+ * - Its pre-label branch reads `up{experiment="", cluster!=""}`: an `up` series with no `cluster`
+ *   label would otherwise list as a bogus newest option `<tenant>/`.
  * - `exp_tenant` and `exp_name` split the selection; with "All" both are `.*`.
  * - Every cluster list on such a dashboard filters by `edl_tenant=~"$exp_tenant"`, so two
  *   experiments of one name in two tenants never merge.
@@ -140,11 +142,14 @@ class ExperimentPickerTest {
             parse(
                 """
                 {"name": "experiment", "type": "query", "sort": 0, "regex": "${PICKER_REGEX.replace("\"", "\\\"")}",
-                 "query": {"query": "query_result(sort_desc(max by (exp_key, exp_text) (x[${'$'}lookback:300s])))"}}
+                 "query": {"query": "query_result(sort_desc(max by (exp_key, exp_text) (x[${'$'}lookback:300s] or up{experiment=\"\", cluster!=\"\"})))"}}
                 """,
             )
+        val bareBranch = "query_result(sort_desc(max by (exp_key, exp_text) (x[\$lookback:300s] or up{experiment=\"\"})))"
 
         assertThat(pickerProblems(good)).isEmpty()
+        assertThat(pickerProblems(JsonObject(good + ("query" to JsonPrimitive(bareBranch)))))
+            .containsExactly("experiment's pre-label branch does not read $PRE_LABEL_UP")
         assertThat(pickerProblems(null)).containsExactly("declares no experiment")
         assertThat(pickerProblems(JsonObject(good + ("multi" to JsonPrimitive(true))))).containsExactly("experiment is multi-select")
         assertThat(pickerProblems(JsonObject(good + ("includeAll" to JsonPrimitive(true)))))
@@ -153,7 +158,7 @@ class ExperimentPickerTest {
         assertThat(
             pickerProblems(JsonObject(good + ("regex" to JsonPrimitive("/x/")))),
         ).containsExactly("experiment regex is not $PICKER_REGEX")
-        assertThat(pickerProblems(JsonObject(good + ("query" to JsonPrimitive("query_result(up)")))))
+        assertThat(pickerProblems(JsonObject(good + ("query" to JsonPrimitive("query_result($PRE_LABEL_UP)")))))
             .containsExactly("experiment does not list newest first over lookback")
     }
 
@@ -167,6 +172,9 @@ class ExperimentPickerTest {
             "experiment regex is not $PICKER_REGEX".takeUnless { picker.string("regex") == PICKER_REGEX },
             "experiment does not list newest first over lookback".takeUnless {
                 queries.isNotEmpty() && queries.all { it.startsWith("query_result(sort_desc(") && "[\$lookback:" in it }
+            },
+            "experiment's pre-label branch does not read $PRE_LABEL_UP".takeUnless {
+                queries.isNotEmpty() && queries.all { PRE_LABEL_UP in it && BARE_PRE_LABEL_UP !in it }
             },
         )
     }
@@ -278,6 +286,13 @@ class ExperimentPickerTest {
         const val SPLIT_QUERY = """query_result(label_replace(vector(1), "k", "${'$'}experiment", "", ""))"""
         const val EXP_TENANT_REGEX = """/k="(?<value>[^/"]*)\//"""
         const val EXP_NAME_REGEX = """/k="[^/"]*\/(?<value>[^"]*)"/"""
+
+        /**
+         * The picker's pre-label branch: an `up` series with no `cluster` label would otherwise
+         * list as the newest option `<tenant>/`.
+         */
+        const val PRE_LABEL_UP = """up{experiment="", cluster!=""}"""
+        const val BARE_PRE_LABEL_UP = """up{experiment=""}"""
         const val SYNTHETIC_ALL = """label_replace(label_replace(vector(0), "exp_key", ".*/.*", "", ""), "exp_text", "All", "", "")"""
 
         /** A label value's closing quote, a comma, whitespace, and the next label: Grafana writes no space there. */

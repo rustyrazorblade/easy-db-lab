@@ -7,9 +7,11 @@ import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
+import software.amazon.awssdk.core.ResponseBytes
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.GetObjectResponse
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException
@@ -387,22 +389,17 @@ class S3ObjectStore(
         }
     }
 
-    override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? {
-        val getRequest =
-            GetObjectRequest
-                .builder()
-                .bucket(remotePath.bucket)
-                .key(remotePath.getKey())
-                .build()
-        return try {
-            val response = s3Client.getObjectAsBytes(getRequest)
-            ConditionalObjectStore.Versioned(response.asUtf8String(), response.response().eTag())
-        } catch (_: NoSuchKeyException) {
-            null
-        }
-    }
+    override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? =
+        readObject(remotePath)?.let { ConditionalObjectStore.Versioned(it.asUtf8String(), it.response().eTag()) }
 
-    override fun readBytes(remotePath: ClusterS3Path): ByteArray? {
+    override fun readBytes(remotePath: ClusterS3Path): ByteArray? = readObject(remotePath)?.asByteArray()
+
+    /**
+     * Reads [remotePath]: null when no object is there. Any other S3 error is thrown as an
+     * [S3Exception] whose message names the key, S3's error code and the HTTP status, keeping the
+     * status, error details, request id and the original as its cause.
+     */
+    private fun readObject(remotePath: ClusterS3Path): ResponseBytes<GetObjectResponse>? {
         val getRequest =
             GetObjectRequest
                 .builder()
@@ -410,9 +407,19 @@ class S3ObjectStore(
                 .key(remotePath.getKey())
                 .build()
         return try {
-            s3Client.getObjectAsBytes(getRequest).asByteArray()
+            s3Client.getObjectAsBytes(getRequest)
         } catch (_: NoSuchKeyException) {
             null
+        } catch (e: S3Exception) {
+            val code = e.awsErrorDetails()?.errorCode() ?: "unknown"
+            throw S3Exception
+                .builder()
+                .message("Read of ${remotePath.toUri()} failed with S3 error $code (HTTP ${e.statusCode()})")
+                .statusCode(e.statusCode())
+                .awsErrorDetails(e.awsErrorDetails())
+                .requestId(e.requestId())
+                .cause(e)
+                .build()
         }
     }
 

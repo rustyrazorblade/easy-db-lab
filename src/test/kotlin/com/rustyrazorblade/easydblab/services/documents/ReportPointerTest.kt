@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.documents
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import org.assertj.core.api.Assertions.assertThat
@@ -145,6 +146,41 @@ class ReportPointerTest {
         assertThatThrownBy { pointer.advance(folder, newer, "index.html") }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining(pointerPath.toUri())
+    }
+
+    @Test
+    fun `a last write refused after a retry whose pointer names this upload counts as written`() {
+        var writes = 0
+        store.beforeEveryWrite {
+            writes++
+            if (writes < Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) {
+                store.overwrite(pointerPath, "changed $writes")
+            } else {
+                store.loseNextWriteResponse()
+            }
+        }
+
+        assertThat(pointer.advance(folder, newer, "index.html")).isTrue()
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+        assertThat(writes).isEqualTo(Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS)
+    }
+
+    @Test
+    fun `a last write refused after a retry whose pointer names another upload still fails`() {
+        var writes = 0
+        store.beforeEveryWrite {
+            writes++
+            if (writes < Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) {
+                store.overwrite(pointerPath, "changed $writes")
+            } else {
+                store.refuseAfterRetryAt(pointerPath) { store.overwrite(pointerPath, ReportPointer.render(older, "index.html")) }
+            }
+        }
+
+        assertThatThrownBy { pointer.advance(folder, newer, "index.html") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(pointerPath.toUri())
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(older)
     }
 
     @Test

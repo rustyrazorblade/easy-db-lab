@@ -61,6 +61,8 @@ class ReportPointer(
             if (result == ConditionalObjectStore.Written) return true
             refusedAfterRetry = result == ConditionalObjectStore.RefusedAfterRetry
         }
+        // The last write may have committed and lost its response too: read once more before failing.
+        if (refusedAfterRetry && acceptedAsOwn(path, store.readVersioned(path)?.let { target(it.content) }, stamp)) return true
         error(
             "The report pointer ${path.toUri()} changed under every one of " +
                 "${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} writes; the upload is stored, run report upload again to point at it.",

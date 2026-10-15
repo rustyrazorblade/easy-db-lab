@@ -223,6 +223,31 @@ class ReportArchiveServiceTest {
     }
 
     @Test
+    fun `a zip write refused after a retry because another upload's zip got there moves to the next second`() {
+        file("results.md", "mine")
+        val taken = key("reports/acme/e1/report-20261014-120000.zip")
+        store.refuseAfterRetryAt(taken) { store.overwrite(taken, "another upload's zip") }
+
+        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
+        assertThat(store.bytesAt(taken)?.decodeToString()).isEqualTo("another upload's zip")
+        assertThat(text("reports/acme/e1/report-20261014-120001/results.md")).isEqualTo("mine")
+    }
+
+    @Test
+    fun `an unpacked file write refused after a retry because another writer's file got there fails the upload`() {
+        file("results.md", "mine")
+        val taken = key("reports/acme/e1/report-20261014-120000/results.md")
+        store.refuseAfterRetryAt(taken) { store.overwrite(taken, "another writer's") }
+
+        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+            .isInstanceOf(ReportUploadIncompleteException::class.java)
+            .hasMessageContaining("already exists")
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("another writer's")
+    }
+
+    @Test
     fun `an upload whose every name is taken fails, names the last name tried and writes nothing`() {
         file("results.md", "x")
         generateSequence(ReportStamp("20261014-120000")) { it.next() }

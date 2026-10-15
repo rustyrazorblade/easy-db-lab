@@ -120,6 +120,25 @@ class ReportPointerTest {
     }
 
     @Test
+    fun `a write refused after a retry whose re-read names an older upload is decided again and written`() {
+        pointer.advance(folder, older, "_files.html")
+        store.refuseAfterRetryAt(pointerPath) { store.overwrite(pointerPath, ReportPointer.render(older, "index.html")) }
+
+        assertThat(pointer.advance(folder, newer, "_files.html")).isTrue()
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+    }
+
+    @Test
+    fun `a write refused after a retry whose re-read names a newer upload leaves that pointer`() {
+        val newest = newer.next()
+        pointer.advance(folder, older, "_files.html")
+        store.refuseAfterRetryAt(pointerPath) { store.overwrite(pointerPath, ReportPointer.render(newest, "index.html")) }
+
+        assertThat(pointer.advance(folder, newer, "_files.html")).isFalse()
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newest)
+    }
+
+    @Test
     fun `a pointer that keeps changing under the writer fails instead of looping forever`() {
         store.beforeEveryWrite { store.overwrite(pointerPath, "changed ${System.nanoTime()}") }
 

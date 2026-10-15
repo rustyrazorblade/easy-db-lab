@@ -23,6 +23,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     private var hook: (() -> Unit)? = null
     private var hookEveryWrite = false
     private var loseResponse: ((String) -> Boolean)? = null
+    private var refusal: Pair<String, () -> Unit>? = null
 
     /** How many conditional writes were refused. */
     var refusedWrites = 0
@@ -55,12 +56,33 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         loseResponse = { it == path.toUri() }
     }
 
+    /**
+     * Makes the next conditional write to [path] run [otherWriter] and then report
+     * [ConditionalObjectStore.RefusedAfterRetry] without storing anything, as S3 does when an
+     * attempt fails with no commit, another writer's object lands between the attempts, and the
+     * retried attempt is refused because of it.
+     */
+    fun refuseAfterRetryAt(
+        path: ClusterS3Path,
+        otherWriter: () -> Unit,
+    ) {
+        refusal = path.toUri() to otherWriter
+    }
+
     /** Stores [content] at [path] unconditionally, as another writer would. */
     fun overwrite(
         path: ClusterS3Path,
         content: String,
     ) {
-        store(path, content.toByteArray(), "text/html")
+        overwrite(path, content.toByteArray())
+    }
+
+    /** Stores [content] at [path] unconditionally, as another writer would. */
+    fun overwrite(
+        path: ClusterS3Path,
+        content: ByteArray,
+    ) {
+        store(path, content, "text/html")
     }
 
     /** Every stored key, without its bucket, in order. */
@@ -81,6 +103,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         contentType: String,
     ): ConditionalObjectStore.PutIfAbsentResult {
         runHook()
+        if (refusedAfterRetry(remotePath)) return ConditionalObjectStore.RefusedAfterRetry
         if (objects.containsKey(remotePath.toUri())) {
             refusedWrites++
             return ConditionalObjectStore.AlreadyExists
@@ -96,6 +119,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         contentType: String,
     ): ConditionalObjectStore.PutIfMatchResult {
         runHook()
+        if (refusedAfterRetry(remotePath)) return ConditionalObjectStore.RefusedAfterRetry
         if (objects[remotePath.toUri()]?.etag != etag) {
             refusedWrites++
             return ConditionalObjectStore.PreconditionFailed
@@ -115,6 +139,15 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         contentType: String,
     ) {
         objects[path.toUri()] = Stored(bytes, contentType, "\"v${++version}\"")
+    }
+
+    private fun refusedAfterRetry(path: ClusterS3Path): Boolean {
+        val (uri, otherWriter) = refusal ?: return false
+        if (uri != path.toUri()) return false
+        refusal = null
+        otherWriter()
+        refusedWrites++
+        return true
     }
 
     private fun responseLost(path: ClusterS3Path): Boolean {

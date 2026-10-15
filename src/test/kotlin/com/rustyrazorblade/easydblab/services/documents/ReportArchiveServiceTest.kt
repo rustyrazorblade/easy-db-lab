@@ -142,6 +142,37 @@ class ReportArchiveServiceTest {
         assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/lab-abc/report-20261014-120000.zip")
     }
 
+    private val zipUri = "s3://acct/reports/acme/e1/report-20261014-120000.zip"
+
+    @Test
+    fun `an upload that cannot unpack keeps its zip and says to run again`() {
+        file("results.md", "mine")
+        store.overwrite(key("reports/acme/e1/report-20261014-120000/results.md"), "another writer's")
+
+        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+            .isInstanceOfSatisfying(ReportUploadIncompleteException::class.java) {
+                assertThat(it.zip.toUri()).isEqualTo(zipUri)
+            }.hasMessageContaining(zipUri)
+            .hasMessageContaining("Run report upload again")
+        assertThat(store.bytesAt(key("reports/acme/e1/report-20261014-120000.zip"))).isEqualTo(ReportZip.build(dir).bytes)
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("another writer's")
+    }
+
+    @Test
+    fun `an upload whose pointer keeps changing keeps its zip and says to run again`() {
+        file("results.md", "mine")
+        val pointer = key("reports/acme/e1/index.html")
+        store.beforeEveryWrite { store.overwrite(pointer, "<html>another writer's page</html>") }
+
+        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+            .isInstanceOfSatisfying(ReportUploadIncompleteException::class.java) {
+                assertThat(it.zip.toUri()).isEqualTo(zipUri)
+            }.hasMessageContaining(zipUri)
+            .hasMessageContaining("Run report upload again")
+        assertThat(store.bytesAt(key("reports/acme/e1/report-20261014-120000.zip"))).isEqualTo(ReportZip.build(dir).bytes)
+        assertThat(text("reports/acme/e1/index.html")).isEqualTo("<html>another writer's page</html>")
+    }
+
     @Test
     fun `an upload whose every name is taken fails, names the last name tried and writes nothing`() {
         file("results.md", "x")

@@ -107,7 +107,7 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a declared value arg shows a value placeholder and a boolean arg shows none`() {
+    fun `a declared value arg shows a value placeholder and a boolean arg shows an optional one`() {
         val cl =
             factory.build(
                 config(arg("--size", "STORAGE_SIZE"), arg("--cache-on-write", "CACHE_ON_WRITE", KitArgSpec.ArgType.BOOLEAN)),
@@ -115,7 +115,31 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
             )
 
         assertThat(cl.usageMessage).contains("--size=<storage-size>")
-        assertThat(cl.usageMessage).doesNotContain("--cache-on-write=")
+        assertThat(cl.usageMessage).contains("--cache-on-write[=<cache-on-write>]")
+    }
+
+    private fun parsedBoolean(
+        default: String,
+        vararg args: String,
+    ): String? {
+        val cl = factory.build(config(arg("--s3-cache-on-write", "S3_CACHE_ON_WRITE", KitArgSpec.ArgType.BOOLEAN, default)), directorySource)
+        cl.parseArgs(*args)
+        return (cl.commandSpec.userObject() as KitInstallCommand).argValues["S3_CACHE_ON_WRITE"]
+    }
+
+    @Test
+    fun `a boolean install arg given false as a separate value records false`() {
+        assertThat(parsedBoolean("true", "--s3-cache-on-write", "false")).isEqualTo("false")
+    }
+
+    @Test
+    fun `a boolean install arg given false with an equals sign records false`() {
+        assertThat(parsedBoolean("true", "--s3-cache-on-write=false")).isEqualTo("false")
+    }
+
+    @Test
+    fun `a bare boolean install arg records true over a false default`() {
+        assertThat(parsedBoolean("false", "--s3-cache-on-write")).isEqualTo("true")
     }
 
     @Test
@@ -222,10 +246,11 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         // that has no default. Stringifying that null recorded the literal "null" in argValues,
         // which then passed isNotBlank() downstream and was treated as a real value — e.g. the
         // postgres kit looked it up as the extension alias "null" and aborted the install.
+        // The install itself records the empty string after it applies the defaults
+        // (KitInstallCommandTest), so an unresolved ${VAR} default is not lost at parse time.
         val cl = factory.build(config(arg("--extension", "EXTENSION")), directorySource)
         val command = cl.commandSpec.userObject() as KitInstallCommand
         cl.parseArgs()
-        assertThat(command.argValues["EXTENSION"]).isNull()
         assertThat(command.argValues).doesNotContainValue("null")
     }
 

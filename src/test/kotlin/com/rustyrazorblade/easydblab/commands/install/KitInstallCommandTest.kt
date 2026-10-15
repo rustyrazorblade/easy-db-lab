@@ -313,6 +313,76 @@ class KitInstallCommandTest : BaseKoinTest() {
         assertThat(resolvedArgs("store")).containsEntry("STORAGE_SIZE", "100Gi")
     }
 
+    /** Parses [args] as the user would type them, then runs the install. */
+    private fun parseAndRun(
+        config: KitConfig,
+        vararg args: String,
+    ) {
+        val cl = factory.build(config, source)
+        cl.parseArgs(*args)
+        (cl.commandSpec.userObject() as KitInstallCommand).execute()
+    }
+
+    @Test
+    fun `an install arg with no value and no default is recorded as an empty string`() {
+        val config =
+            KitConfig(name = "pg", type = null, args = listOf(KitArgSpec(flag = "--extension", variable = "EXTENSION")))
+
+        parseAndRun(config)
+
+        assertThat(File(workingDir, "pg/${Constants.Kit.RESOLVED_ARGS_FILE}").readLines()).contains("EXTENSION=")
+    }
+
+    @Test
+    fun `an unresolved default is kept rather than replaced by an empty string`() {
+        val config =
+            KitConfig(
+                name = "sized",
+                type = null,
+                args = listOf(KitArgSpec(flag = "--nodes", variable = "NODES", default = "\${NOT_A_CLUSTER_VAR}")),
+            )
+
+        parseAndRun(config)
+
+        assertThat(resolvedArgs("sized")).containsEntry("NODES", "\${NOT_A_CLUSTER_VAR}")
+    }
+
+    private val cacheConfig =
+        KitConfig(
+            name = "cache",
+            type = null,
+            args =
+                listOf(
+                    KitArgSpec(
+                        flag = "--s3-cache-on-write",
+                        variable = "S3_CACHE_ON_WRITE",
+                        type = KitArgSpec.ArgType.BOOLEAN,
+                        default = "true",
+                    ),
+                ),
+        )
+
+    @Test
+    fun `a boolean install arg given false as a separate value records false`() {
+        parseAndRun(cacheConfig, "--s3-cache-on-write", "false")
+
+        assertThat(resolvedArgs("cache")).containsEntry("S3_CACHE_ON_WRITE", "false")
+    }
+
+    @Test
+    fun `a boolean install arg given false with an equals sign records false`() {
+        parseAndRun(cacheConfig, "--s3-cache-on-write=false")
+
+        assertThat(resolvedArgs("cache")).containsEntry("S3_CACHE_ON_WRITE", "false")
+    }
+
+    @Test
+    fun `a bare boolean install arg records true`() {
+        parseAndRun(cacheConfig, "--s3-cache-on-write")
+
+        assertThat(resolvedArgs("cache")).containsEntry("S3_CACHE_ON_WRITE", "true")
+    }
+
     @Test
     fun `a failed install step exits non-zero and removes the kit directory instead of throwing`() {
         val config = KitConfig(name = "broken", type = null, install = listOf(InstallStep.Shell("exit 2")))

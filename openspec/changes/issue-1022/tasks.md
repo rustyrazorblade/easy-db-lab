@@ -14,11 +14,11 @@
 
 ## 3. Unset args as empty strings and boolean arity
 
-- [ ] 3.1 Write `KitRunnerCommandFactory` tests: an unset arg with no default reaches the environment as `""`, not `null`; an exported shell variable of the same name does not leak in (through `KitProcessEnvironment`); a boolean arg gives `true` for a bare flag and `false` for `--flag=false` and `--flag false`.
-- [ ] 3.2 In `KitRunnerCommandFactory`, record `value?.toString() ?: ""` and give `BOOLEAN` args arity `0..1`.
-- [ ] 3.3 Write `KitInstallCommandFactoryTest` and `KitInstallCommandTest` cases: an install arg with no value and no default is written to `resolved-args.env` as `""`; an unresolved `${VAR}` default is kept; `--s3-cache-on-write false`, `--s3-cache-on-write=false` and a bare `--s3-cache-on-write` record `false`, `false` and `true`.  Change the case that asserts `isNull()` and rename the misleading boolean test.
-- [ ] 3.4 In `KitInstallCommandFactory`, give `BOOLEAN` args arity `0..1`.  In `KitInstallCommand`, fill `""` for every declared top-level arg with no value after the `putIfAbsent` default loop.
-- [ ] 3.5 Update the `KitArgSpec` KDoc for boolean args (help now shows `--flag[=<value>]`).
+- [x] 3.1 Write `KitRunnerCommandFactory` tests: an unset arg with no default reaches the environment as `""`, not `null`; an exported shell variable of the same name does not leak in (through `KitProcessEnvironment`); a boolean arg gives `true` for a bare flag and `false` for `--flag=false` and `--flag false`.
+- [x] 3.2 In `KitRunnerCommandFactory`, record `value?.toString() ?: ""` and give `BOOLEAN` args arity `0..1`.
+- [x] 3.3 Write `KitInstallCommandFactoryTest` and `KitInstallCommandTest` cases: an install arg with no value and no default is written to `resolved-args.env` as `""`; an unresolved `${VAR}` default is kept; `--s3-cache-on-write false`, `--s3-cache-on-write=false` and a bare `--s3-cache-on-write` record `false`, `false` and `true`.  Change the case that asserts `isNull()` and rename the misleading boolean test.
+- [x] 3.4 In `KitInstallCommandFactory`, give `BOOLEAN` args arity `0..1`.  In `KitInstallCommand`, fill `""` for every declared top-level arg with no value after the `putIfAbsent` default loop.
+- [x] 3.5 Update the `KitArgSpec` KDoc for boolean args (help now shows `--flag[=<value>]`).
 
 ## 4. Shared kit shell library plumbing (Kotlin)
 

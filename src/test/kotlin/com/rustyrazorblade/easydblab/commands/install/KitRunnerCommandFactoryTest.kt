@@ -8,10 +8,12 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.DashboardInstallContextFactory
 import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
+import com.rustyrazorblade.easydblab.services.KitProcessEnvironment
 import com.rustyrazorblade.easydblab.services.MetricsRegistryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.TenantDirectory
@@ -486,5 +488,82 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
 
         val groupCl = factory.buildKitGroup("mydb", kitDir)
         assertThat(groupCl.subcommands.keys).doesNotContain("sql")
+    }
+
+    // -------------------------------------------------------------------------
+    // unset args and boolean arity (kit-command-args)
+    // -------------------------------------------------------------------------
+
+    private val benchYaml =
+        """
+        name: bench
+        commands:
+          start:
+            args:
+              - flag: --queries
+                variable: QUERIES
+              - flag: --settings
+                variable: SETTINGS
+              - flag: --randomize
+                variable: RANDOMIZE
+                type: boolean
+                default: "true"
+              - flag: --continue-on-errors
+                variable: CONTINUE_ON_ERRORS
+                type: boolean
+                default: "false"
+        """.trimIndent()
+
+    /** Parses [args] into the bench kit's `start` command and returns the values it recorded. */
+    private fun parseStart(vararg args: String): KitRunnerCommand {
+        writeKitYaml(benchYaml)
+        File(File(kitDir, "bin").also { it.mkdirs() }, "start.sh").writeText("#!/bin/sh\n")
+        val groupCl = factory.buildKitGroup("bench", kitDir)
+        groupCl.parseArgs("start", *args)
+        return groupCl.subcommands.getValue("start").commandSpec.userObject() as KitRunnerCommand
+    }
+
+    @Test
+    fun `an unset arg with no default is recorded as an empty string, never null`() {
+        val command = parseStart()
+
+        assertThat(command.runtimeArgValues).containsEntry("QUERIES", "")
+        assertThat(command.runtimeArgValues).doesNotContainValue("null")
+    }
+
+    @Test
+    fun `an unset arg overwrites an exported shell variable of the same name`() {
+        val command = parseStart()
+        File(kitDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
+        val builder = ProcessBuilder("true").also { it.environment()["SETTINGS"] = "host=x" }
+
+        KitProcessEnvironment(ToolWrapperInstaller()).applyTo(builder, kitDir, command.runtimeArgValues)
+
+        assertThat(builder.environment()).containsEntry("SETTINGS", "")
+    }
+
+    @Test
+    fun `a bare boolean flag records true over a false default`() {
+        assertThat(parseStart("--continue-on-errors").runtimeArgValues).containsEntry("CONTINUE_ON_ERRORS", "true")
+    }
+
+    @Test
+    fun `a boolean flag given false with an equals sign records false`() {
+        assertThat(parseStart("--randomize=false").runtimeArgValues).containsEntry("RANDOMIZE", "false")
+    }
+
+    @Test
+    fun `a boolean flag given false as a separate value records false`() {
+        assertThat(parseStart("--randomize", "false").runtimeArgValues).containsEntry("RANDOMIZE", "false")
+    }
+
+    @Test
+    fun `a boolean flag shows an optional value in the usage`() {
+        writeKitYaml(benchYaml)
+        File(File(kitDir, "bin").also { it.mkdirs() }, "start.sh").writeText("#!/bin/sh\n")
+
+        val startCl = factory.buildKitGroup("bench", kitDir).subcommands.getValue("start")
+
+        assertThat(startCl.usageMessage).contains("--randomize[=<randomize>]")
     }
 }

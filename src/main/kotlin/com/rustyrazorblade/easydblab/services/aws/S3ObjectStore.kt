@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
@@ -364,9 +365,9 @@ class S3ObjectStore(
         content: ByteArray,
         remotePath: ClusterS3Path,
         contentType: String,
-    ): ObjectStore.PutIfAbsentResult {
+    ): ConditionalObjectStore.PutIfAbsentResult {
         val request = putRequest(remotePath, contentType).ifNoneMatch("*").build()
-        return if (conditionalPut(request, content, "s3-put-if-absent")) ObjectStore.Written else ObjectStore.AlreadyExists
+        return if (conditionalPut(request, content, "s3-put-if-absent")) ConditionalObjectStore.Written else ConditionalObjectStore.AlreadyExists
     }
 
     override fun putIfMatch(
@@ -374,12 +375,12 @@ class S3ObjectStore(
         remotePath: ClusterS3Path,
         etag: String,
         contentType: String,
-    ): ObjectStore.PutIfMatchResult {
+    ): ConditionalObjectStore.PutIfMatchResult {
         val request = putRequest(remotePath, contentType).ifMatch(etag).build()
-        return if (conditionalPut(request, content, "s3-put-if-match")) ObjectStore.Written else ObjectStore.PreconditionFailed
+        return if (conditionalPut(request, content, "s3-put-if-match")) ConditionalObjectStore.Written else ConditionalObjectStore.PreconditionFailed
     }
 
-    override fun readVersioned(remotePath: ClusterS3Path): ObjectStore.Versioned? {
+    override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? {
         val getRequest =
             GetObjectRequest
                 .builder()
@@ -388,7 +389,7 @@ class S3ObjectStore(
                 .build()
         return try {
             val response = s3Client.getObjectAsBytes(getRequest)
-            ObjectStore.Versioned(response.asUtf8String(), response.response().eTag())
+            ConditionalObjectStore.Versioned(response.asUtf8String(), response.response().eTag())
         } catch (_: NoSuchKeyException) {
             null
         }

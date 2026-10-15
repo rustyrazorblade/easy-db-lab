@@ -70,21 +70,21 @@ object ReportUnpacker {
 
     private fun htmlCopy(markdown: ReportObject): ReportObject {
         val title = markdown.path.substringAfterLast('/').removeSuffix(Constants.Observability.REPORT_MARKDOWN_SUFFIX)
-        val page = DocumentIndex.page(title, MarkdownRenderer.toHtml(markdown.content.decodeToString()))
+        val page = ReportHtml.page(title, MarkdownRenderer.toHtml(markdown.content.decodeToString()))
         return ReportObject(htmlName(markdown.path), page.toByteArray(), GENERATED_HTML)
     }
 
     private fun fileList(paths: List<String>): String {
         val items =
             paths.sorted().joinToString("\n") { path ->
-                val name = DocumentIndex.escape(path)
+                val name = ReportHtml.escape(path)
                 if (isMarkdown(path)) {
-                    "<li><a href=\"${DocumentIndex.escape(htmlName(path))}\">$name</a> (<a href=\"$name\">source</a>)</li>"
+                    "<li><a href=\"${ReportHtml.escape(htmlName(path))}\">$name</a> (<a href=\"$name\">source</a>)</li>"
                 } else {
                     "<li><a href=\"$name\">$name</a></li>"
                 }
             }
-        return DocumentIndex.page(FILE_LIST_TITLE, "<h1>$FILE_LIST_TITLE</h1>\n<ul>\n$items\n</ul>")
+        return ReportHtml.page(FILE_LIST_TITLE, "<h1>$FILE_LIST_TITLE</h1>\n<ul>\n$items\n</ul>")
     }
 }
 

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.report
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
@@ -10,33 +9,34 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
-import com.rustyrazorblade.easydblab.services.ObjectStore
-import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
-import com.rustyrazorblade.easydblab.services.documents.DocumentsRejectedException
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.DefaultReportArchiveService
+import com.rustyrazorblade.easydblab.services.documents.InMemoryConditionalObjectStore
+import com.rustyrazorblade.easydblab.services.documents.ReportArchiveService
+import com.rustyrazorblade.easydblab.services.documents.ReportRejectedException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
-import org.mockito.kotlin.any
-import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.never
-import org.mockito.kotlin.times
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import picocli.CommandLine
 import java.io.File
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 
 /**
- * Tests for `report upload`: the name rule stops the whole upload, and a cluster that is down (no
- * hosts, infrastructure DOWN) still takes documents, because only the state file and S3 are needed.
+ * Tests for `report upload <dir>`: it takes one directory, reads the experiment from the
+ * workspace state, works on a cluster that is down (only the state file and S3 are needed), and
+ * reports the upload in one typed event.
  *
- * S3 is faked at the [ObjectStore] boundary; the key layout and the index are the real code's.
+ * S3 is the in-memory conditional store; the archive service, the zip and the pointer are the real
+ * code.
  */
 class ReportUploadTest : BaseKoinTest() {
-    private val objectStore = mock<ObjectStore>()
+    private val store = InMemoryConditionalObjectStore()
     private val stateManager = mock<ClusterStateManager>()
     private val events = mutableListOf<Event>()
 
@@ -46,7 +46,7 @@ class ReportUploadTest : BaseKoinTest() {
             versions = mutableMapOf(),
             clusterId = "abc",
             s3Bucket = "acct",
-            initConfig = InitConfig(tenant = "acme"),
+            initConfig = InitConfig(tenant = "acme", experiment = "e1"),
             infrastructureStatus = InfrastructureStatus.DOWN,
         )
 
@@ -54,7 +54,9 @@ class ReportUploadTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { stateManager }
-                single<TestDocumentService> { DefaultTestDocumentService(objectStore) }
+                single<ReportArchiveService> {
+                    DefaultReportArchiveService(store, Clock.fixed(Instant.parse("2026-10-14T12:00:00Z"), ZoneOffset.UTC))
+                }
             },
         )
 
@@ -72,42 +74,66 @@ class ReportUploadTest : BaseKoinTest() {
         )
     }
 
-    private fun command(vararg files: File) = ReportUpload().also { it.files = files.toList() }
+    private fun parsed(vararg args: String): ReportUpload = ReportUpload().also { CommandLine(it).parseArgs(*args) }
+
+    private fun reportDir(): File =
+        File(tempDir, "results").also { dir ->
+            dir.mkdirs()
+            File(dir, "results.md").writeText("# Results")
+            File(dir, "graph.png").writeText("png")
+        }
 
     @Test
-    fun `rejected files are named and nothing is uploaded`() {
-        val good = File(tempDir, "results.md").also { it.writeText("ok") }
-        val bad = File(tempDir, "my notes.md").also { it.writeText("x") }
-        val png = File(tempDir, "graph.png").also { it.writeText("x") }
+    fun `a cluster that is down uploads a directory into its experiment's folder`() {
+        val dir = reportDir()
 
-        assertThatThrownBy { command(good, bad, png).execute() }
-            .isInstanceOf(DocumentsRejectedException::class.java)
-            .hasMessageContaining("my notes.md")
-            .hasMessageContaining("graph.png")
-            .satisfies({
-                assertThat(
-                    (it as DocumentsRejectedException).rejected.map { r ->
-                        r.name
-                    },
-                ).containsExactly("my notes.md", "graph.png")
-            })
-        verify(objectStore, never()).uploadFile(any(), any(), any())
+        parsed(dir.path).execute()
+
+        val uploaded = events.filterIsInstance<Event.Report.Uploaded>().single()
+        assertThat(uploaded.zipKey).isEqualTo("reports/acme/e1/report-20261014-120000.zip")
+        assertThat(uploaded.unpackedPrefix).isEqualTo("reports/acme/e1/report-20261014-120000/")
+        assertThat(uploaded.pointerAdvanced).isTrue()
+        assertThat(uploaded.files).containsExactly("graph.png", "results.md")
+        assertThat(store.keys()).contains("reports/acme/e1/report-20261014-120000.zip", "reports/acme/e1/index.html")
     }
 
     @Test
-    fun `a cluster that is down takes documents into its own folder`() {
-        val results = File(tempDir, "results.md").also { it.writeText("# Results") }
+    fun `the event says when a newer upload is already shown`() {
+        val event = Event.Report.Uploaded("reports/acme/e1/report-1.zip", "reports/acme/e1/report-1/", false, listOf("a.md"))
 
-        command(results).execute()
+        assertThat(event.toDisplayString()).contains("reports/acme/e1/report-1.zip", "newer upload")
+        assertThat(event.copy(pointerAdvanced = true).toDisplayString()).doesNotContain("newer upload")
+    }
 
-        val keys = argumentCaptor<ClusterS3Path>()
-        verify(objectStore, times(3)).uploadFile(any(), keys.capture(), any())
-        assertThat(keys.allValues.map { it.getKey() })
-            .containsExactly("reports/acme/lab-abc/results.md", "reports/acme/lab-abc/results.html", "reports/acme/lab-abc/index.html")
-        val uploaded = events.filterIsInstance<Event.Report.DocumentsUploaded>().single()
-        assertThat(
-            uploaded.documents,
-        ).containsExactly(Event.Report.StoredDocument("results.md", "s3://acct/reports/acme/lab-abc/results.md"))
-        assertThat(uploaded.indexUri).isEqualTo("s3://acct/reports/acme/lab-abc/index.html")
+    @Test
+    fun `the file list form fails, says it takes one directory, and uploads nothing`() {
+        val a = File(tempDir, "a.md").also { it.writeText("a") }
+        val b = File(tempDir, "b.md").also { it.writeText("b") }
+
+        assertThatThrownBy { parsed(a.path, b.path).execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("one directory")
+        assertThat(store.keys()).isEmpty()
+    }
+
+    @Test
+    fun `a missing directory is named and nothing is uploaded`() {
+        val missing = File(tempDir, "missing")
+
+        assertThatThrownBy { parsed(missing.path).execute() }
+            .isInstanceOf(ReportRejectedException::class.java)
+            .hasMessageContaining("${missing.path}/")
+        assertThat(store.keys()).isEmpty()
+    }
+
+    @Test
+    fun `a directory with an unservable name names it and uploads nothing`() {
+        val dir = reportDir()
+        File(dir, "my notes.md").writeText("x")
+
+        assertThatThrownBy { parsed(dir.path).execute() }
+            .isInstanceOf(ReportRejectedException::class.java)
+            .hasMessageContaining("my notes.md")
+        assertThat(store.keys()).isEmpty()
     }
 }

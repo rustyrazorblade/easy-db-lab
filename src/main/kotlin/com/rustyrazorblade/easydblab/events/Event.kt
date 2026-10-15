@@ -6151,27 +6151,38 @@ sealed interface Event {
     }
 
     /**
-     * Test documents: the markdown files `report upload` stores in a test's folder, `reports/<tenant>/<name>-<id>/`,
-     * with an HTML copy of each and one `index.html` that holds them all.
+     * Reports: `report upload` stores each upload of a directory as one zip in its experiment's
+     * folder, `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip`, unpacks it beside the zip
+     * and moves the folder's pointer forward to it.
      */
     @Serializable
     sealed interface Report : Event {
-        /** One stored document: its file name and its S3 URI. */
+        /**
+         * One upload was stored.
+         *
+         * @property zipKey The zip's S3 key; the zip is never replaced.
+         * @property unpackedPrefix The key prefix of the folder it was unpacked to, ending in `/`.
+         * @property pointerAdvanced Whether the experiment's pointer now leads to this upload; false
+         *   when an upload of the same or a later second is already shown.
+         * @property files The directory's files, relative to it.
+         */
         @Serializable
-        data class StoredDocument(
-            val name: String,
-            val uri: String,
-        )
-
-        /** [documents] were stored in the test's folder and its index at [indexUri] was rebuilt. */
-        @Serializable
-        @SerialName("Report.DocumentsUploaded")
-        data class DocumentsUploaded(
-            val documents: List<StoredDocument>,
-            val indexUri: String,
+        @SerialName("Report.Uploaded")
+        data class Uploaded(
+            val zipKey: String,
+            val unpackedPrefix: String,
+            val pointerAdvanced: Boolean,
+            val files: List<String>,
         ) : Report {
-            override fun toDisplayString(): String =
-                (documents.map { "Uploaded ${it.name} to ${it.uri}" } + "Rebuilt the test's index at $indexUri").joinToString("\n")
+            override fun toDisplayString(): String {
+                val shown =
+                    if (pointerAdvanced) {
+                        "The documents panels now show this upload."
+                    } else {
+                        "A newer upload of this experiment is already shown; this one is kept beside it."
+                    }
+                return "Uploaded ${files.size} files as $zipKey\nUnpacked to $unpackedPrefix\n$shown"
+            }
         }
     }
 

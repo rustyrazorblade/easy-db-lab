@@ -22,6 +22,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     private var version = 0
     private var hook: (() -> Unit)? = null
     private var hookEveryWrite = false
+    private var loseNextResponse = false
 
     /** How many conditional writes were refused. */
     var refusedWrites = 0
@@ -36,6 +37,15 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     fun beforeEveryWrite(action: () -> Unit) {
         hook = action
         hookEveryWrite = true
+    }
+
+    /**
+     * Makes the next conditional write whose condition holds store its content and then report its
+     * condition refused, as S3 does when a write commits, its response is lost, and the retried
+     * request finds the object already there.
+     */
+    fun loseNextWriteResponse() {
+        loseNextResponse = true
     }
 
     /** Stores [content] at [path] unconditionally, as another writer would. */
@@ -69,7 +79,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
             return ConditionalObjectStore.AlreadyExists
         }
         store(remotePath, content, contentType)
-        return ConditionalObjectStore.Written
+        return if (responseLost()) ConditionalObjectStore.AlreadyExists else ConditionalObjectStore.Written
     }
 
     override fun putIfMatch(
@@ -84,7 +94,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
             return ConditionalObjectStore.PreconditionFailed
         }
         store(remotePath, content, contentType)
-        return ConditionalObjectStore.Written
+        return if (responseLost()) ConditionalObjectStore.PreconditionFailed else ConditionalObjectStore.Written
     }
 
     override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? =
@@ -97,6 +107,8 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     ) {
         objects[path.toUri()] = Stored(bytes, contentType, "\"v${++version}\"")
     }
+
+    private fun responseLost(): Boolean = loseNextResponse.also { loseNextResponse = false }
 
     private fun runHook() {
         val action = hook ?: return

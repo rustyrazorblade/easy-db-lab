@@ -39,7 +39,7 @@ class ReportPointer(
      *
      * @return whether the pointer now leads to this upload: true when it names [stamp], false when
      *   it names a newer upload.
-     * @throws IllegalStateException if the pointer still named an older upload after
+     * @throws IllegalStateException if the pointer led to neither this upload nor a newer one after
      *   [Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS] refused writes and one final re-read.
      */
     fun advance(
@@ -51,8 +51,8 @@ class ReportPointer(
         val content = render(stamp, frontPage).toByteArray()
         var current = store.readVersioned(path)
         var waitsGivenUp = 0
-        repeat(Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) {
-            decided(current, stamp)?.let { return it }
+        repeat(Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) { refusals ->
+            decided(current, stamp)?.let { return logged(path, it, refusals) }
             if (write(path, content, current)) return true
             val reread = reread(path, current)
             if (reread?.etag == current?.etag) waitsGivenUp++
@@ -60,13 +60,26 @@ class ReportPointer(
         }
         // The last re-read is the final one: it may show this upload's write, whose response was
         // lost, or a newer upload's pointer.
-        decided(current, stamp)?.let { return it }
+        decided(current, stamp)?.let { return logged(path, it, Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) }
         val waits = if (waitsGivenUp == 0) "no wait" else "$waitsGivenUp waits"
         error(
             "The report pointer ${path.toUri()} led to neither this upload nor a newer one after " +
                 "${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} refused writes; $waits for a write in flight gave up. " +
                 "The upload is stored, run report upload again to point at it.",
         )
+    }
+
+    /** Logs how the pointer at [path] was decided after [refusals] refused writes, when there was one; returns [advanced]. */
+    private fun logged(
+        path: ClusterS3Path,
+        advanced: Boolean,
+        refusals: Int,
+    ): Boolean {
+        if (refusals > 0) {
+            val outcome = if (advanced) "own" else "newer"
+            log.info { "Pointer ${path.toUri()} decided after $refusals refused writes: $outcome" }
+        }
+        return advanced
     }
 
     /** Writes [content] to [path] on the version [current] was read at; whether it was written. */

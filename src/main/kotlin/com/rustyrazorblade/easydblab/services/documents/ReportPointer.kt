@@ -61,11 +61,11 @@ class ReportPointer(
         // The last re-read is the final one: it may show this upload's write, whose response was
         // lost, or a newer upload's pointer.
         decided(current, stamp)?.let { return logged(path, it, Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) }
-        val waits = if (waitsGivenUp == 0) "no wait" else "$waitsGivenUp waits"
         error(
             "The report pointer ${path.toUri()} led to neither this upload nor a newer one after " +
-                "${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} refused writes; $waits for a write in flight gave up. " +
-                "The upload is stored, run report upload again to point at it.",
+                "${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} refused writes " +
+                "(waits for a write in flight that gave up: $waitsGivenUp); " +
+                "this upload is stored at ${folder.resolve(stamp.folderName).toUri()} but not pointed at.",
         )
     }
 

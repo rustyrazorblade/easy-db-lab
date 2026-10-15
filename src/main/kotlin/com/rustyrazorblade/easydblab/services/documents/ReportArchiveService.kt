@@ -30,14 +30,15 @@ data class UploadedReport(
 
 /**
  * An upload stopped after its zip was stored: the zip at [zip] is kept, but its folder or the
- * pointer is not complete. Running `report upload` again stores a new upload.
+ * pointer is not complete. Running `report upload` again stores a new upload and points at it;
+ * this one stays stored and is not pointed at. The message gives that advice once, here.
  */
 class ReportUploadIncompleteException(
     val zip: ClusterS3Path,
     cause: Throwable,
 ) : IllegalStateException(
         "The report zip is stored at ${zip.toUri()}, but unpacking it or moving the report pointer failed: " +
-            "${cause.message}. Run report upload again.",
+            "${cause.message?.removeSuffix(".")}. Running report upload again stores and points at a new upload.",
         cause,
     )
 

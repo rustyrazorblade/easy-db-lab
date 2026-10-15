@@ -132,7 +132,9 @@ class ReportPointerTest {
         assertThatThrownBy { pointer.advance(folder, newer, "index.html") }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining(pointerPath.toUri())
-            .hasMessageContaining("no wait for a write in flight gave up")
+            .hasMessageContaining("waits for a write in flight that gave up: 0")
+            .hasMessageContaining("this upload is stored at ${folder.resolve(newer.folderName).toUri()} but not pointed at")
+            .hasMessageNotContaining("report upload again")
     }
 
     @Test
@@ -186,7 +188,7 @@ class ReportPointerTest {
         assertThatThrownBy { pointer.advance(folder, newer, "index.html") }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining(pointerPath.toUri())
-            .hasMessageContaining("${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} waits for a write in flight gave up")
+            .hasMessageContaining("waits for a write in flight that gave up: ${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS}")
         assertThat(ReportPointer.target(pointerText())).isEqualTo(older)
     }
 

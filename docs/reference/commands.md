@@ -112,6 +112,11 @@ tool wrappers into the workspace's `bin/`. This also keeps a source checkout fro
 workspace. With `--clean`, the check runs after the cleanup, which removes a `bin/` that holds only
 easy-db-lab's wrappers.
 
+The cluster name must match `^[a-z][a-z0-9_-]{0,39}$`: it starts with a lowercase letter, then
+lowercase letters, digits, `_` or `-`, at most 40 characters. `_` lets a cluster be named for the
+variant it tests, such as `unthrottled_cursor`; the OpenSearch domain name, which does not accept
+`_`, turns it into `-`.
+
 The database and application node groups are configured through a namespaced
 `--db.*` / `--app.*` scheme. Every pre-existing flag continues to work as an
 **alias** carrying its established default. When both a namespaced option and its
@@ -146,6 +151,7 @@ determined fails at `init`, before any instance is created.
 | `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
+| `--experiment` | Experiment the cluster belongs to: one test, grouping one or more clusters of the tenant. Must match `^[a-z0-9][a-z0-9_-]{0,79}$` (a `YYYY-MM-DD` prefix sorts experiments by date); checked before anything is created. Names are unique within a tenant, so the same name in two tenants is two experiments; `init` makes no check against other tenants. Fixed for the life of the cluster. See [Experiment and tenant labels](../user-guide/monitoring.md#experiment-and-tenant-labels) | the cluster's `<name>-<id>` |
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
 

@@ -226,6 +226,22 @@ Cluster configuration stays under `clusters/<name>-<id>/config/`. The observabil
 
 **Versions.** Tempo 3.0.3, Pyroscope 2.3.1, Grafana 13.2.2 with image renderer v5.12.4, Alloy v1.20.0, Beyla 3.36.0, Mimir 3.2.1, Loki 3.7.8, the OpenTelemetry collector 0.161.0 (cluster, stress-job sidecar and EMR), and Fluent Bit 5.1.2. No observability image runs `latest`. The collector also scrapes its own telemetry (`:8888`, job `otel-collector`), so exporter send failures are visible in Mimir. In local mode it also scrapes the Mimir (`:9009`, job `mimir`), Loki (`:3100`, job `loki`), Tempo (`:3200`, job `tempo`) and Pyroscope (`:4040`, job `pyroscope`) servers' own metrics. Only the collector on the node running each server scrapes it, so each job has one target, and `instance` is the server's pod name. A redirect cluster runs none of these servers and renders none of these jobs.
 
+### Experiment and tenant labels
+
+Every cluster also belongs to an **experiment**: one test, which groups one or more clusters of one tenant. Choose it at `init --experiment <name>`; the name matches `^[a-z0-9][a-z0-9_-]{0,79}$`, so a `YYYY-MM-DD` prefix such as `2026-10-13-ab` sorts experiments by date. Without `--experiment`, the experiment is the cluster's own `<name>-<id>`, an experiment of one. An experiment is identified by its tenant and its name together: names are unique within a tenant, and the same name in two tenants is two experiments. The experiment is fixed for the life of the cluster.
+
+Every metric series, log line, span, eBPF profile, JFR profile and mirrored annotation a cluster produces carries three labels:
+
+| Label | Value |
+|-------|-------|
+| `cluster` | the cluster's `<name>-<id>` |
+| `experiment` | the cluster's experiment |
+| `edl_tenant` | the cluster's tenant |
+
+Spans carry them as the resource attributes `cluster`, `experiment` and `edl_tenant`. Loki indexes all three, beside `host.name`, `node_role` and `source`, so `{experiment="2026-10-13-ab"}` selects every log line of an experiment. The tenant label is `edl_tenant`, not `tenant`, because Tempo's own metrics already carry a `tenant` label. The `cluster-config` ConfigMap holds the experiment under the key `experiment`, beside `tenant`. Data written by a cluster from before experiments existed has no `experiment` or `edl_tenant` label.
+
+Cluster names may hold `_` (`^[a-z][a-z0-9_-]{0,39}$`), so a cluster can be named for the variant it tests, such as `unthrottled_cursor`. The OpenSearch domain name, which does not accept `_`, turns it into `-`.
+
 ## eBPF Observability
 
 The cluster deploys eBPF-based agents on all nodes for deep system observability:

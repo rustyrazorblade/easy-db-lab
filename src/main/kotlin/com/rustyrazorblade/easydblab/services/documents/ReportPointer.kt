@@ -47,11 +47,7 @@ class ReportPointer(
         var refusedAfterRetry = false
         repeat(Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) {
             val current = store.readVersioned(path)
-            val shown = current?.let { target(it.content) }
-            // A write refused on a retried attempt that already shows this upload is this writer's
-            // own: an earlier attempt committed and its response was lost.
-            if (refusedAfterRetry && acceptedAsOwn(path, shown, stamp)) return true
-            if (shown != null && shown >= stamp) return false
+            decided(path, current, stamp, refusedAfterRetry)?.let { return it }
             val result =
                 if (current == null) {
                     store.putIfAbsent(content, path, CONTENT_TYPE)
@@ -63,12 +59,33 @@ class ReportPointer(
                 result == ConditionalObjectStore.RefusedAfterRetry ||
                 result == ConditionalObjectStore.ConflictAfterRetry
         }
-        // The last write may have committed and lost its response too: read once more before failing.
-        if (refusedAfterRetry && acceptedAsOwn(path, store.readVersioned(path)?.let { target(it.content) }, stamp)) return true
+        // The last write may have committed and lost its response, or another writer may have moved
+        // the pointer to a newer upload: read once more before failing.
+        decided(path, store.readVersioned(path), stamp, refusedAfterRetry)?.let { return it }
         error(
             "The report pointer ${path.toUri()} changed under every one of " +
                 "${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} writes; the upload is stored, run report upload again to point at it.",
         )
+    }
+
+    /**
+     * What the pointer [current], just read at [path], settles for the upload [stamp]: true when
+     * the last write was refused after a retry and the pointer names this upload (an earlier
+     * attempt committed and its response was lost), false when it already names an equal or newer
+     * upload, and null when this upload must still write it.
+     */
+    private fun decided(
+        path: ClusterS3Path,
+        current: ConditionalObjectStore.Versioned?,
+        stamp: ReportStamp,
+        refusedAfterRetry: Boolean,
+    ): Boolean? {
+        val shown = current?.let { target(it.content) }
+        return when {
+            refusedAfterRetry && acceptedAsOwn(path, shown, stamp) -> true
+            shown != null && shown >= stamp -> false
+            else -> null
+        }
     }
 
     /** Whether the pointer at [path], re-read after a write refused on a retry and naming [shown], is this upload's [stamp]. */

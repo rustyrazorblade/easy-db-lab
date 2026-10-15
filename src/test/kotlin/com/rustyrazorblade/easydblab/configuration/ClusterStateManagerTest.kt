@@ -115,7 +115,18 @@ class ClusterStateManagerTest {
 
         assertThatThrownBy { ClusterStateManager(stateFile).load() }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
+            .hasMessageContaining("^[a-z][a-z0-9_-]{0,39}$")
+    }
+
+    /** A cluster can be named for the variant it tests, such as `unthrottled_cursor`. */
+    @Test
+    fun `a state whose cluster name holds an underscore loads`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        ClusterStateManager(stateFile).save(ClusterState(name = "unthrottled_cursor", versions = mutableMapOf()))
+
+        assertThat(ClusterStateManager(stateFile).load().name).isEqualTo("unthrottled_cursor")
     }
 
     /**

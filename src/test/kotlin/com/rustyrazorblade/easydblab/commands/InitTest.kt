@@ -480,7 +480,7 @@ class InitTest : BaseKoinTest() {
     inner class ClusterName {
         /** 40 characters is the longest name the rule allows. */
         @ParameterizedTest
-        @ValueSource(strings = ["abcdefghijabcdefghijabcdefghijabcdefghij", "lab-1", "z"])
+        @ValueSource(strings = ["abcdefghijabcdefghijabcdefghijabcdefghij", "lab-1", "z", "unthrottled_cursor", "lab_1"])
         fun `a valid cluster name at the edge of the rule is saved`(name: String) {
             val command = Init()
             picocli.CommandLine(command).parseArgs(name)
@@ -497,7 +497,7 @@ class InitTest : BaseKoinTest() {
                 "db:1",
                 "Lab",
                 "1lab",
-                "lab_1",
+                "_lab",
                 // 41 characters: one past the limit.
                 "abcdefghijabcdefghijabcdefghijabcdefghijk",
             ],
@@ -509,7 +509,7 @@ class InitTest : BaseKoinTest() {
 
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
+                .hasMessageContaining("^[a-z][a-z0-9_-]{0,39}$")
             verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
         }
     }

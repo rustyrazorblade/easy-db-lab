@@ -389,7 +389,7 @@ class Init : PicoBaseCommand() {
         cidr?.let { CidrBlock(it) }
         require(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(name)) {
             "Invalid cluster name '$name': a cluster name must match ${Constants.Observability.CLUSTER_NAME_PATTERN} " +
-                "(start with a lowercase letter; then lowercase letters, digits or '-'; at most 40 characters)."
+                "(start with a lowercase letter; then lowercase letters, digits, '_' or '-'; at most 40 characters)."
         }
         require(Regex(Constants.Observability.TENANT_PATTERN).matches(tenant)) {
             "Invalid tenant '$tenant': a tenant must match ${Constants.Observability.TENANT_PATTERN} " +

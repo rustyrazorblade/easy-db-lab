@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.documents
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -139,5 +140,20 @@ class ReportArchiveServiceTest {
         val uploaded = service("2026-10-14T12:00:00Z").upload(state.copy(initConfig = InitConfig(tenant = "acme")), dir)
 
         assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/lab-abc/report-20261014-120000.zip")
+    }
+
+    @Test
+    fun `an upload whose every name is taken fails, names the last name tried and writes nothing`() {
+        file("results.md", "x")
+        generateSequence(ReportStamp("20261014-120000")) { it.next() }
+            .take(Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS)
+            .forEach { store.overwrite(key("reports/acme/e1/${it.zipName}"), "another upload") }
+        val before = store.keys()
+
+        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("nothing was uploaded")
+            .hasMessageContaining("up to report-20261014-120059.zip")
+        assertThat(store.keys()).isEqualTo(before)
     }
 }

@@ -96,15 +96,15 @@ class DefaultReportArchiveService(
         folder: ClusterS3Path,
         archive: ReportArchive,
     ): ReportStamp {
-        var stamp = ReportStamp.of(clock.instant())
-        repeat(Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS) {
-            val written = store.putIfAbsent(archive.bytes, folder.resolve(stamp.zipName), ZIP_CONTENT_TYPE)
-            if (written == ConditionalObjectStore.Written) return stamp
-            stamp = stamp.next()
-        }
-        error(
-            "Every report name for ${Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS} seconds up to ${stamp.zipName} " +
-                "is taken in ${folder.toUri()}; nothing was uploaded.",
+        val candidates =
+            generateSequence(ReportStamp.of(clock.instant())) { it.next() }
+                .take(Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS)
+                .toList()
+        return candidates.firstOrNull { stamp ->
+            store.putIfAbsent(archive.bytes, folder.resolve(stamp.zipName), ZIP_CONTENT_TYPE) == ConditionalObjectStore.Written
+        } ?: error(
+            "Every report name for ${Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS} seconds up to " +
+                "${candidates.last().zipName} is taken in ${folder.toUri()}; nothing was uploaded.",
         )
     }
 

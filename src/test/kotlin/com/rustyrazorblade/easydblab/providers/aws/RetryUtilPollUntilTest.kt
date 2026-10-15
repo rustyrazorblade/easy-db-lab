@@ -120,25 +120,32 @@ class RetryUtilPollUntilTest {
         assertThat(looks.get()).isEqualTo(1)
     }
 
-    private fun pollResult(results: List<() -> String>): String =
-        pollResultUntil(
-            operationName = "test-result-poll",
-            maxAttempts = 5,
-            interval = Duration.ZERO,
-            done = { it == "ready" },
-        ) { results[looks.getAndIncrement()]() }
-
     @Test
-    fun `a result poll awaits the result and returns the first accepted one`() {
-        assertThat(pollResult(listOf({ "pending" }, { "ready" }, { "never" }))).isEqualTo("ready")
-        assertThat(looks.get()).isEqualTo(2)
+    fun `a look whose exception is not transient fails the poll at once`() {
+        assertThatThrownBy {
+            pollUntil<String>(
+                operationName = "test-poll",
+                maxAttempts = 5,
+                interval = Duration.ZERO,
+                transient = { false },
+                done = { it == "ready" },
+            ) { listOf({ error("no such bucket") }, { "ready" })[looks.getAndIncrement()]() }
+        }.isInstanceOf(IllegalStateException::class.java).hasMessage("no such bucket")
+        assertThat(looks.get()).isEqualTo(1)
     }
 
     @Test
-    fun `a result poll fails at once on a look that throws`() {
-        assertThatThrownBy { pollResult(listOf({ error("no such bucket") }, { "ready" })) }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessage("no such bucket")
-        assertThat(looks.get()).isEqualTo(1)
+    fun `a poll whose exceptions are not transient still awaits its result`() {
+        val result =
+            pollUntil(
+                operationName = "test-poll",
+                maxAttempts = 5,
+                interval = Duration.ZERO,
+                transient = { false },
+                done = { it == "ready" },
+            ) { listOf("pending", "ready", "never")[looks.getAndIncrement()] }
+
+        assertThat(result).isEqualTo("ready")
+        assertThat(looks.get()).isEqualTo(2)
     }
 }

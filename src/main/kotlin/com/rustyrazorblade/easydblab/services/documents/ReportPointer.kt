@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.services.documents
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
-import com.rustyrazorblade.easydblab.providers.aws.pollResultUntil
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Duration
@@ -82,10 +82,11 @@ class ReportPointer(
         path: ClusterS3Path,
         read: ConditionalObjectStore.Versioned?,
     ) {
-        pollResultUntil(
+        pollUntil(
             "report-pointer-write-in-flight",
             Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS,
             inFlightLookInterval,
+            transient = { false },
             done = { it?.etag != read?.etag },
         ) { store.readVersioned(path) }
     }

@@ -11,20 +11,24 @@ private val log = KotlinLogging.logger {}
  * Runs [poll] under [RetryUtil.createPollUntilRetryConfig] and returns the first result [done]
  * accepts, or the last result when none is accepted within [maxAttempts] looks or before
  * [deadline]. Each failed look that is retried is logged; the last look's exception is rethrown.
- * An interrupted look ends the poll at once, with the thread's interrupt flag set again.
+ * An interrupted look ends the poll at once, with the thread's interrupt flag set again, and so
+ * does a look whose exception [transient] rejects.
  *
  * @param operationName Name of the poll for logging and metrics
  * @param deadline when set, no look starts after it, however many attempts remain
+ * @param transient which exceptions from a look are retried; every one but an interrupt by
+ *   default. A poll that awaits only its result passes `{ false }`, so any error fails at once.
  */
 fun <T> pollUntil(
     operationName: String,
     maxAttempts: Int,
     interval: Duration,
     deadline: Instant? = null,
+    transient: (Throwable) -> Boolean = { true },
     done: (T) -> Boolean,
     poll: () -> T,
 ): T {
-    val retry = Retry.of(operationName, RetryUtil.createPollUntilRetryConfig(maxAttempts, interval, done, deadline))
+    val retry = Retry.of(operationName, RetryUtil.createPollUntilRetryConfig(maxAttempts, interval, done, deadline, transient))
     retry.eventPublisher.onRetry { event ->
         event.lastThrowable?.let { e -> log.warn(e) { "$operationName: a look failed; retrying" } }
     }
@@ -35,22 +39,4 @@ fun <T> pollUntil(
         Thread.currentThread().interrupt()
         throw e
     }
-}
-
-/**
- * Runs [poll] under [RetryUtil.createResultPollRetryConfig] and returns the first result [done]
- * accepts, or the last result when none is accepted within [maxAttempts] looks. Only the result is
- * awaited: a look that throws ends the poll at once with that exception.
- *
- * @param operationName Name of the poll for logging and metrics
- */
-fun <T> pollResultUntil(
-    operationName: String,
-    maxAttempts: Int,
-    interval: Duration,
-    done: (T) -> Boolean,
-    poll: () -> T,
-): T {
-    val retry = Retry.of(operationName, RetryUtil.createResultPollRetryConfig(maxAttempts, interval, done))
-    return Retry.decorateCheckedSupplier(retry) { poll() }.get()
 }

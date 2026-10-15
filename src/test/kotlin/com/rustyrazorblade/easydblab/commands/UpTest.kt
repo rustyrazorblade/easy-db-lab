@@ -4,8 +4,10 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -28,6 +30,8 @@ import com.rustyrazorblade.easydblab.services.TailscaleApiException
 import com.rustyrazorblade.easydblab.services.TailscaleAuthKey
 import com.rustyrazorblade.easydblab.services.TailscaleService
 import com.rustyrazorblade.easydblab.services.aws.CompactorService
+import com.rustyrazorblade.easydblab.services.documents.ReportPointer
+import com.rustyrazorblade.easydblab.services.documents.ReportStamp
 import org.apache.sshd.common.SshException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
@@ -89,17 +93,31 @@ class UpTest : UpTestFixture() {
         verify(compactor).ensureRunning(any())
     }
 
-    /** The test's document index is rebuilt with the operator's credentials once the account bucket is configured. */
+    /** A new experiment gets a "No report yet" pointer in the account bucket `up` configured. */
     @Test
-    fun `up rebuilds the test's document index after the account bucket is configured`() {
+    fun `up writes the experiment's placeholder pointer when it has none`() {
         newUp().execute()
 
-        val state = argumentCaptor<ClusterState>()
-        val order = inOrder(mockS3BucketService, mockDocumentService)
-        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
-        order.verify(mockDocumentService).rebuildIndex(state.capture())
-        assertThat(state.firstValue.s3Bucket).isEqualTo("easy-db-lab-test-bucket")
+        val pointer = reportPointerOf(mockClusterStateManager.load())
+        assertThat(reportStore.uris()).containsExactly(pointer.toUri())
+        assertThat(pointer.toUri()).startsWith("s3://easy-db-lab-test-bucket/reports/")
+        assertThat(checkNotNull(reportStore.readVersioned(pointer)).content).contains("No report yet")
     }
+
+    /** A cluster that joins an experiment never hides the report another cluster of it uploaded. */
+    @Test
+    fun `up leaves an existing pointer of the experiment unchanged`() {
+        val pointer = reportPointerOf(mockClusterStateManager.load())
+        val existing = ReportPointer.render(ReportStamp("20261014-120000"), "index.html")
+        reportStore.overwrite(pointer, existing)
+
+        newUp().execute()
+
+        assertThat(checkNotNull(reportStore.readVersioned(pointer)).content).isEqualTo(existing)
+    }
+
+    private fun reportPointerOf(state: ClusterState): ClusterS3Path =
+        ObservabilityStore("easy-db-lab-test-bucket", state.tenant()).documentsRoot(state.experimentKey()).resolve("index.html")
 
     // =========================================================================
     // Group 4: cluster shape invariants

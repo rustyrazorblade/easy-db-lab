@@ -46,14 +46,17 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         store(path, content.toByteArray(), "text/html")
     }
 
-    /** Every stored key, in key order. */
-    fun keys(): List<String> = objects.keys.toList()
+    /** Every stored key, without its bucket, in order. */
+    fun keys(): List<String> = objects.keys.map { it.removePrefix("s3://").substringAfter('/') }
+
+    /** Every stored object's `s3://bucket/key` URI, in order. */
+    fun uris(): List<String> = objects.keys.toList()
 
     /** The bytes stored at [path], or null. */
-    fun bytesAt(path: ClusterS3Path): ByteArray? = objects[path.getKey()]?.bytes
+    fun bytesAt(path: ClusterS3Path): ByteArray? = objects[path.toUri()]?.bytes
 
     /** The content type [path] was stored with, or null. */
-    fun contentTypeAt(path: ClusterS3Path): String? = objects[path.getKey()]?.contentType
+    fun contentTypeAt(path: ClusterS3Path): String? = objects[path.toUri()]?.contentType
 
     override fun putIfAbsent(
         content: ByteArray,
@@ -61,7 +64,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         contentType: String,
     ): ConditionalObjectStore.PutIfAbsentResult {
         runHook()
-        if (objects.containsKey(remotePath.getKey())) {
+        if (objects.containsKey(remotePath.toUri())) {
             refusedWrites++
             return ConditionalObjectStore.AlreadyExists
         }
@@ -76,7 +79,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         contentType: String,
     ): ConditionalObjectStore.PutIfMatchResult {
         runHook()
-        if (objects[remotePath.getKey()]?.etag != etag) {
+        if (objects[remotePath.toUri()]?.etag != etag) {
             refusedWrites++
             return ConditionalObjectStore.PreconditionFailed
         }
@@ -85,14 +88,14 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     }
 
     override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? =
-        objects[remotePath.getKey()]?.let { ConditionalObjectStore.Versioned(it.bytes.decodeToString(), it.etag) }
+        objects[remotePath.toUri()]?.let { ConditionalObjectStore.Versioned(it.bytes.decodeToString(), it.etag) }
 
     private fun store(
         path: ClusterS3Path,
         bytes: ByteArray,
         contentType: String,
     ) {
-        objects[path.getKey()] = Stored(bytes, contentType, "\"v${++version}\"")
+        objects[path.toUri()] = Stored(bytes, contentType, "\"v${++version}\"")
     }
 
     private fun runHook() {

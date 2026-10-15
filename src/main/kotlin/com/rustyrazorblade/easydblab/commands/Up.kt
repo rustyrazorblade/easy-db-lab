@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
 import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
+import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -52,7 +53,7 @@ import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
-import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.ReportPointer
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import org.koin.core.component.inject
@@ -121,7 +122,7 @@ class Up(
     private val commandExecutor: CommandExecutor by inject()
     private val externalIpService: ExternalIpService by inject()
     private val provisioningPreflight: ProvisioningPreflight by inject()
-    private val testDocumentService: TestDocumentService by inject()
+    private val reportPointer: ReportPointer by inject()
     private val tcpReachabilityProbe: TcpReachabilityProbe by inject()
 
     // Working copy loaded during execute() - modified and saved
@@ -159,7 +160,8 @@ class Up(
         provisioningPreflight.verify(workingState, initConfig)
 
         accountBucketSetup.prepare(workingState)
-        testDocumentService.rebuildIndex(workingState)
+        // Only when the experiment has no pointer: a cluster that joins an experiment never hides its report.
+        reportPointer.ensurePlaceholder(ObservabilityStore.from(workingState).documentsRoot(workingState.experimentKey()))
         provisionInfrastructure(initConfig)
         writeConfigurationFiles()
         runNestedCommand { WriteConfig() }

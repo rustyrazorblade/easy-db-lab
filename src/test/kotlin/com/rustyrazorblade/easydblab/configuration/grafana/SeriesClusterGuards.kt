@@ -300,9 +300,15 @@ object SeriesClusterGuards {
      * instance, such as `cluster_instance`. Every target writes it with `label_join` or
      * `label_replace`, and builds it from the long `cluster`, because two clusters can share a
      * short `cluster_name`.
+     *
+     * A join that a `partitionByValues` on `cluster` precedes in the chain is exempt: that
+     * transformation splits the data into one frame per cluster, so every frame the join sees
+     * holds one cluster, and the join lines the frames up side by side (the Trend overlay joins
+     * the clusters on their elapsed time). A partition after the join, or one on other fields,
+     * does not exempt it.
      */
     fun joinProblems(panel: JsonObject): List<String> =
-        joins(panel).flatMap { join ->
+        joins(panel).filterNot { partitionedByCluster(panel, it) }.flatMap { join ->
             val id = join.string("id")
             val key = (join["options"] as? JsonObject)?.string("byField").orEmpty()
             listOfNotNull("$id joins on '$key', which does not hold the cluster".takeUnless { CLUSTER in key }) +
@@ -507,6 +513,20 @@ object SeriesClusterGuards {
     }
 
     private fun joins(panel: JsonObject): List<JsonObject> = transformations(panel).filter { it.string("id") in joinTransformations }
+
+    /** Whether a `partitionByValues` whose fields include `cluster` comes before [join] in [panel]'s chain. */
+    private fun partitionedByCluster(
+        panel: JsonObject,
+        join: JsonObject,
+    ): Boolean {
+        val chain = transformations(panel)
+        return chain.take(chain.indexOf(join)).any { step ->
+            step.string("id") == "partitionByValues" &&
+                ((step["options"] as? JsonObject)?.get("fields") as? JsonArray).orEmpty().any {
+                    (it as? JsonPrimitive)?.content == CLUSTER
+                }
+        }
+    }
 
     private fun transformations(panel: JsonObject): List<JsonObject> =
         (panel["transformations"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()

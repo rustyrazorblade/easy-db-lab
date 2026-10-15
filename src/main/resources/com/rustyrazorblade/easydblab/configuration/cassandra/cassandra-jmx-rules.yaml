@@ -104,9 +104,19 @@ rules:
   # p999 lives in this block rather than one of its own so it cannot drift from its siblings: it
   # shares their attribute, their unit and their bean list, and a panel plots all four together.
   #
-  # The three beans are enumerated rather than matched with scope=*. A wildcard also picks up
-  # CASRead, CASWrite and ViewWrite, which do not belong in the read/write/rangeslice contract.
+  # The beans are enumerated rather than matched with scope=*. A wildcard also picks up ViewWrite,
+  # AccordRead, AccordWrite and one Read-<CL> and Write-<CL> scope per consistency level, each of
+  # which would land in cassandra.operation as if it were an operation of its own.
+  #
+  # CASRead and CASWrite are the lightweight transaction scopes (cassandra_operation="casread" and
+  # "caswrite"). They are ClientRequestMetrics like the other three, so they carry the same
+  # attributes. One overlap to know: a serial read is also recorded in scope=Read
+  # (service/paxos/Paxos.java:976-977, service/StorageProxy.java:2438-2439), so a sum over every
+  # operation counts it twice. A CAS write is not recorded in scope=Write. A total that should count
+  # each request once filters cassandra_operation!="casread".
   - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASRead,name=Latency
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=Latency
       - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Latency
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Latency
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Latency
@@ -129,6 +139,8 @@ rules:
         desc: Maximum request latency by operation.
 
   - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASRead,name=Latency
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=Latency
       - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Latency
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Latency
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Latency
@@ -144,7 +156,13 @@ rules:
   # --- client request errors ---------------------------------------------------------------------
   # One rule per error type, with the status hardcoded. Written out longhand rather than with the
   # YAML anchors the built-in uses, so every rule reads on its own.
+  #
+  # A CAS error is marked in its CAS scope and in the Read-/Write-<serial CL> scope, never in Read
+  # or Write, so the five operations here do not overlap. paxos_variant v2:
+  # service/paxos/Paxos.java:1196-1207; v1: service/StorageProxy.java:505-530 and :2404-2428.
   - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASRead,name=Unavailables
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=Unavailables
       - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Unavailables
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Unavailables
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Unavailables
@@ -159,6 +177,8 @@ rules:
         desc: Number of request errors by operation.
 
   - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASRead,name=Timeouts
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=Timeouts
       - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Timeouts
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Timeouts
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Timeouts
@@ -173,6 +193,8 @@ rules:
         desc: Number of request errors by operation.
 
   - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASRead,name=Failures
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=Failures
       - org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Failures
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Failures
       - org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Failures
@@ -691,3 +713,505 @@ rules:
       Max:
         metric: cassandra.messaging.datacenter.latency.max
         desc: Longest round trip to a datacenter.
+
+  # ==============================================================================================
+  # Read-path correctness and repair. Every ObjectName and attribute below is checked against the
+  # Cassandra 6.0 source (src/java/org/apache/cassandra/...), cited on each rule. Per-table beans
+  # are built by TableMetrics.TableMetricNameFactory (metrics/TableMetrics.java:1327), which gives
+  # type=Table,keyspace=<ks>,scope=<table>,name=<metric>.
+  #
+  # Per table only, like every other per-table family here. Cassandra also registers a
+  # type=Keyspace aggregate for most of these; it is left out, since sum by (keyspace) gives the
+  # same answer from the per-table series.
+  # ==============================================================================================
+
+  # --- per-table range read latency --------------------------------------------------------------
+  # The local side of range scans, the third of read/write/range. Same four percentiles, unit and
+  # attributes as ReadLatency and WriteLatency, so a panel can plot all three together.
+  # Source: metrics/TableMetrics.java:655 createLatencyMetrics("Range", ...); LatencyMetrics.java:94
+  # appends "Latency", so the bean is name=RangeLatency. Updated by PartitionRangeReadCommand.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=RangeLatency
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.range.latency.p50
+        desc: Local range read latency, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.range.latency.p99
+        desc: Local range read latency, 99th percentile.
+      999thPercentile:
+        metric: cassandra.table.range.latency.p999
+        desc: Local range read latency, 99.9th percentile.
+      Max:
+        metric: cassandra.table.range.latency.max
+        desc: Maximum local range read latency.
+
+  # --- live rows scanned -------------------------------------------------------------------------
+  # The other half of the tombstone histogram: live rows read per query. Together they show how
+  # much of a read was useful work. A Histogram of rows, not a Timer, so the unit is {row}.
+  # Source: metrics/TableMetrics.java:820 createTableHistogram("LiveScannedHistogram", ...).
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=LiveScannedHistogram
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    type: gauge
+    unit: "{row}"
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.live_rows.scanned.p50
+        desc: Live rows scanned per read, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.live_rows.scanned.p99
+        desc: Live rows scanned per read, 99th percentile.
+      999thPercentile:
+        metric: cassandra.table.live_rows.scanned.p999
+        desc: Live rows scanned per read, 99.9th percentile.
+      Max:
+        metric: cassandra.table.live_rows.scanned.max
+        desc: Maximum live rows scanned in a single read.
+
+  # --- replica reconciliation --------------------------------------------------------------------
+  # What the coordinator did when replicas disagreed. All three are Meters, so the read attribute
+  # is Count.
+  #
+  # ReadRepairRequests: marked once per blocking read repair mutation sent for this table
+  # (service/reads/repair/BlockingPartitionRepair.java). Source: metrics/TableMetrics.java:883.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=ReadRepairRequests
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.read_repair.requests
+        type: counter
+        unit: "{request}"
+        desc: Read repair mutations sent for this table since startup.
+
+  # ShortReadProtectionRequests: extra reads issued because a replica returned fewer rows or
+  # partitions than the limit after reconciliation. Source: metrics/TableMetrics.java:884.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=ShortReadProtectionRequests
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.short_read_protection.requests
+        type: counter
+        unit: "{request}"
+        desc: Short read protection requests since startup.
+
+  # ReplicaFilteringProtectionRequests: extra reads issued to complete rows for a filtering query
+  # (ALLOW FILTERING, 2i) at a consistency level above ONE. Source: metrics/TableMetrics.java:885.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=ReplicaFilteringProtectionRequests
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.replica_filtering_protection.requests
+        type: counter
+        unit: "{request}"
+        desc: Replica filtering protection requests since startup.
+
+  # Rows replica filtering protection held in memory for one query, the number its warn and fail
+  # thresholds act on. A Histogram of rows. Table level only: Cassandra registers no keyspace
+  # aggregate for it. Source: metrics/TableMetrics.java:886
+  # createHistogram("ReplicaFilteringProtectionRowsCachedPerQuery", true).
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=ReplicaFilteringProtectionRowsCachedPerQuery
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    type: gauge
+    unit: "{row}"
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.replica_filtering_protection.rows_cached.p50
+        desc: Rows cached by replica filtering protection per query, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.replica_filtering_protection.rows_cached.p99
+        desc: Rows cached by replica filtering protection per query, 99th percentile.
+      Max:
+        metric: cassandra.table.replica_filtering_protection.rows_cached.max
+        desc: Most rows cached by replica filtering protection for one query.
+
+  # --- repaired data tracking --------------------------------------------------------------------
+  # Replicas whose repaired data digests disagreed on a read. Confirmed means every replica's
+  # repaired set was conclusive, so the mismatch is real; unconfirmed means at least one was not
+  # (for example, pending repair sessions), so it may be a false alarm. Both are Meters. They only
+  # move when repaired_data_tracking_for_*_enabled is on.
+  # Source: metrics/TableMetrics.java:888 and :889.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=RepairedDataInconsistenciesConfirmed
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.repaired_data.inconsistencies.confirmed
+        type: counter
+        unit: "{inconsistency}"
+        desc: Confirmed repaired data inconsistencies since startup.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=RepairedDataInconsistenciesUnconfirmed
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.repaired_data.inconsistencies.unconfirmed
+        type: counter
+        unit: "{inconsistency}"
+        desc: Unconfirmed repaired data inconsistencies since startup.
+
+  # The cost of tracking: rows read past the query limit, and the time spent doing it, so the
+  # repaired data digest covers enough. Rows is a Histogram of rows. Time is a plain Timer, which
+  # reports in DEFAULT_TIMER_UNIT, microseconds (metrics/CassandraMetricsRegistry.java:104), so it
+  # takes the same no-conversion `us` as every other latency here.
+  # Source: metrics/TableMetrics.java:891 and :892.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=RepairedDataTrackingOverreadRows
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    type: gauge
+    unit: "{row}"
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.repaired_data.overread.rows.p50
+        desc: Rows overread for repaired data tracking per read, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.repaired_data.overread.rows.p99
+        desc: Rows overread for repaired data tracking per read, 99th percentile.
+      Max:
+        metric: cassandra.table.repaired_data.overread.rows.max
+        desc: Most rows overread for repaired data tracking in one read.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=RepairedDataTrackingOverreadTime
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.repaired_data.overread.time.p50
+        desc: Time spent overreading for repaired data tracking, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.repaired_data.overread.time.p99
+        desc: Time spent overreading for repaired data tracking, 99th percentile.
+      999thPercentile:
+        metric: cassandra.table.repaired_data.overread.time.p999
+        desc: Time spent overreading for repaired data tracking, 99.9th percentile.
+      Max:
+        metric: cassandra.table.repaired_data.overread.time.max
+        desc: Longest overread for repaired data tracking.
+
+  # --- read repair, node wide --------------------------------------------------------------------
+  # type=ReadRepair has no scope (metrics/ReadRepairMetrics.java:29-30). Both are Meters.
+  #
+  # RepairedBlocking: reads that had to block on a read repair before answering
+  # (service/reads/repair/BlockingReadRepair.java). Source: metrics/ReadRepairMetrics.java:32.
+  - bean: org.apache.cassandra.metrics:type=ReadRepair,name=RepairedBlocking
+    mapping:
+      Count:
+        metric: cassandra.read_repair.blocking
+        type: counter
+        unit: "{read}"
+        desc: Reads that blocked on read repair since startup.
+
+  # ReconcileRead: reads that found a digest mismatch and reconciled replicas without writing a
+  # repair (read_repair = NONE, service/reads/repair/ReadOnlyReadRepair.java).
+  # Source: metrics/ReadRepairMetrics.java:51.
+  - bean: org.apache.cassandra.metrics:type=ReadRepair,name=ReconcileRead
+    mapping:
+      Count:
+        metric: cassandra.read_repair.reconcile_reads
+        type: counter
+        unit: "{read}"
+        desc: Reads reconciled without a repair write since startup.
+
+  # --- buffer pools ------------------------------------------------------------------------------
+  # Cassandra's off-heap buffer pools. There are two, named by scope: chunk-cache (SSTable reads
+  # and the chunk cache) and networking (internode and native transport), created at
+  # utils/memory/BufferPools.java:39 and :45. Each registers the same six metrics under
+  # type=BufferPool,scope=<pool> (metrics/BufferPoolMetrics.java:29 and :54), so `pool` keeps the
+  # two apart. scope=* matches only those two, so it adds 12 series per node, at any table count.
+  #
+  # Overflow is memory allocated outside the pool, because a buffer was too large or the pool was
+  # at capacity; a rising overflow with flat misses is a pool too small for the load.
+  #
+  # Hits and Misses are Meters (metrics/BufferPoolMetrics.java:56, :58).
+  - bean: org.apache.cassandra.metrics:type=BufferPool,scope=*,name=Hits
+    metricAttribute:
+      pool: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.buffer_pool.hits
+        type: counter
+        unit: "{allocation}"
+        desc: Buffer allocations served from the pool since startup.
+
+  - bean: org.apache.cassandra.metrics:type=BufferPool,scope=*,name=Misses
+    metricAttribute:
+      pool: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.buffer_pool.misses
+        type: counter
+        unit: "{allocation}"
+        desc: Buffer allocations the pool could not serve since startup.
+
+  # The four sizes are Gauges in bytes, read as Value (metrics/BufferPoolMetrics.java:60-66).
+  - bean: org.apache.cassandra.metrics:type=BufferPool,scope=*,name=Capacity
+    metricAttribute:
+      pool: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.buffer_pool.capacity
+        type: gauge
+        unit: By
+        desc: Configured memory limit for the pool.
+
+  - bean: org.apache.cassandra.metrics:type=BufferPool,scope=*,name=Size
+    metricAttribute:
+      pool: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.buffer_pool.size
+        type: gauge
+        unit: By
+        desc: Memory allocated by the pool, including overflow.
+
+  - bean: org.apache.cassandra.metrics:type=BufferPool,scope=*,name=UsedSize
+    metricAttribute:
+      pool: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.buffer_pool.used
+        type: gauge
+        unit: By
+        desc: Memory in buffers currently handed out, including overflow.
+
+  - bean: org.apache.cassandra.metrics:type=BufferPool,scope=*,name=OverflowSize
+    metricAttribute:
+      pool: param(scope)
+    mapping:
+      Value:
+        metric: cassandra.buffer_pool.overflow
+        type: gauge
+        unit: By
+        desc: Memory allocated outside the pool.
+
+  # ==============================================================================================
+  # Lightweight transactions (Paxos). CAS latency, errors and request counts are in the client
+  # request families above, as cassandra_operation="casread" and "caswrite". The families below
+  # exist only for CAS. Every ObjectName is checked against the Cassandra 6.0 source.
+  #
+  # The CAS client request beans are built by CASClientRequestMetrics and
+  # CASClientWriteRequestMetrics, registered as scope=CASRead and scope=CASWrite
+  # (metrics/ClientRequestsMetricsHolder.java:30-31). Both scopes are enumerated, never scope=*.
+  # ==============================================================================================
+
+  # --- CAS contention ----------------------------------------------------------------------------
+  # Paxos rounds a CAS request lost to a competing ballot before it succeeded. A Histogram of
+  # attempts, not a Timer, so the unit is {attempt}. Updated only for a request that saw contention
+  # at least once (service/paxos/Paxos.java:871 and :981), so the percentiles describe contended
+  # requests only, and Count is the number of contended requests.
+  # Source: metrics/CASClientRequestMetrics.java:40 histogram("ContentionHistogram").
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASRead,name=ContentionHistogram
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=ContentionHistogram
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+    type: gauge
+    unit: "{attempt}"
+    mapping:
+      50thPercentile:
+        metric: cassandra.client.request.cas.contention.p50
+        desc: Paxos attempts lost to contention per contended CAS request, 50th percentile.
+      99thPercentile:
+        metric: cassandra.client.request.cas.contention.p99
+        desc: Paxos attempts lost to contention per contended CAS request, 99th percentile.
+      999thPercentile:
+        metric: cassandra.client.request.cas.contention.p999
+        desc: Paxos attempts lost to contention per contended CAS request, 99.9th percentile.
+      Max:
+        metric: cassandra.client.request.cas.contention.max
+        desc: Most Paxos attempts lost to contention by one CAS request.
+      Count:
+        metric: cassandra.client.request.cas.contended
+        type: counter
+        unit: "{request}"
+        desc: CAS requests that lost at least one Paxos attempt to contention, since startup.
+
+  # --- CAS unfinished commits --------------------------------------------------------------------
+  # Times a CAS request found an accepted but uncommitted proposal from an earlier round and had to
+  # finish it before its own. A Counter, so the read attribute is Count.
+  # Source: metrics/CASClientRequestMetrics.java:41 counter("UnfinishedCommit"); incremented at
+  # service/paxos/Paxos.java:1081-1083.
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASRead,name=UnfinishedCommit
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=UnfinishedCommit
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+    mapping:
+      Count:
+        metric: cassandra.client.request.cas.unfinished_commits
+        type: counter
+        unit: "{commit}"
+        desc: Earlier uncommitted Paxos proposals a CAS request had to finish, since startup.
+
+  # --- CAS condition not met ---------------------------------------------------------------------
+  # CAS writes whose IF condition did not match the current row, so nothing was written. A Counter.
+  # CASWrite only. Cassandra also registers the same counter under scope=CASRead as a pre-4.0 alias
+  # (metrics/CASClientWriteRequestMetrics.java:44-46); matching it too would count every write twice.
+  # Source: metrics/CASClientWriteRequestMetrics.java:45 counter("ConditionNotMet").
+  - bean: org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=ConditionNotMet
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+    mapping:
+      Count:
+        metric: cassandra.client.request.cas.condition_not_met
+        type: counter
+        unit: "{request}"
+        desc: CAS writes whose condition did not apply, since startup.
+
+  # --- Paxos linearizability violations ----------------------------------------------------------
+  # A Paxos prepare saw a committed value older than one it had already witnessed. Any non-zero
+  # value is a correctness bug. type=Paxos has no scope (DefaultNameFactory, type=Paxos,name=...).
+  # Source: metrics/PaxosMetrics.java:30 counter("LinearizabilityViolations"); incremented at
+  # service/paxos/PaxosPrepare.java:814.
+  - bean: org.apache.cassandra.metrics:type=Paxos,name=LinearizabilityViolations
+    mapping:
+      Count:
+        metric: cassandra.paxos.linearizability_violations
+        type: counter
+        unit: "{violation}"
+        desc: Paxos linearizability violations detected since startup.
+
+  # --- latency at one consistency level ----------------------------------------------------------
+  # ClientRequestMetrics also keeps one scope per consistency level, Read-<CL> and Write-<CL>
+  # (metrics/ClientRequestsMetricsHolder.java:41-45). Plain scope=Read includes serial reads, so it
+  # cannot show regular read latency apart from LWT reads; Read-QUORUM can. A serial read is
+  # recorded under Read-SERIAL or Read-LOCAL_SERIAL (service/paxos/Paxos.java:978), and a CAS write
+  # under Write-SERIAL or Write-LOCAL_SERIAL (:879).
+  #
+  # One rule per scope, with operation and consistency level as constants, because no attribute
+  # expression can split "Read-QUORUM" into two values. Add a rule here for another level.
+  #
+  # One caveat, on paxos_variant: v1 only. Its CAS write reads the current row with readOne at
+  # QUORUM or LOCAL_QUORUM (service/StorageProxy.java:450-455), which records that read under
+  # Read-QUORUM too. paxos_variant: v2 reads during the prepare, which records nothing here.
+  - bean: org.apache.cassandra.metrics:type=ClientRequest,scope=Read-QUORUM,name=Latency
+    metricAttribute:
+      cassandra.operation: const(read)
+      cassandra.consistency_level: const(quorum)
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.client.request.consistency.latency.p50
+        desc: Request latency 50th percentile by operation and consistency level.
+      99thPercentile:
+        metric: cassandra.client.request.consistency.latency.p99
+        desc: Request latency 99th percentile by operation and consistency level.
+      999thPercentile:
+        metric: cassandra.client.request.consistency.latency.p999
+        desc: Request latency 99.9th percentile by operation and consistency level.
+      Max:
+        metric: cassandra.client.request.consistency.latency.max
+        desc: Maximum request latency by operation and consistency level.
+
+  - bean: org.apache.cassandra.metrics:type=ClientRequest,scope=Write-QUORUM,name=Latency
+    metricAttribute:
+      cassandra.operation: const(write)
+      cassandra.consistency_level: const(quorum)
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.client.request.consistency.latency.p50
+        desc: Request latency 50th percentile by operation and consistency level.
+      99thPercentile:
+        metric: cassandra.client.request.consistency.latency.p99
+        desc: Request latency 99th percentile by operation and consistency level.
+      999thPercentile:
+        metric: cassandra.client.request.consistency.latency.p999
+        desc: Request latency 99.9th percentile by operation and consistency level.
+      Max:
+        metric: cassandra.client.request.consistency.latency.max
+        desc: Maximum request latency by operation and consistency level.
+
+  # --- per-table Paxos phase latency -------------------------------------------------------------
+  # Replica-side time for each Paxos phase on this table: prepare (promise and read), propose
+  # (accept) and commit. They are the local half of CAS latency, as ReadLatency is for reads.
+  # Timers in microseconds (LatencyMetrics.java:89), like every other latency here.
+  # Source: metrics/TableMetrics.java:847-849 createLatencyMetrics("CasPrepare" / "CasPropose" /
+  # "CasCommit"); LatencyMetrics.java:94 appends "Latency". Updated in service/paxos/PaxosState.java
+  # (:740, :784, :830), PaxosPrepare.java:1148 and PaxosPropose.java:444.
+  #
+  # Thread pool and dropped message metrics need no rule of their own here. The PAXOS2_* request
+  # verbs run on MutationStage (net/Verb.java:281-290), which the type=ThreadPools rules cover, and
+  # every verb has a DroppedMessage bean (metrics/MessagingMetrics.java:111-112), which the
+  # type=DroppedMessage rule covers as message_type="PAXOS2_PREPARE_REQ" and so on.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=CasPrepareLatency
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.cas.prepare.latency.p50
+        desc: Local Paxos prepare latency, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.cas.prepare.latency.p99
+        desc: Local Paxos prepare latency, 99th percentile.
+      999thPercentile:
+        metric: cassandra.table.cas.prepare.latency.p999
+        desc: Local Paxos prepare latency, 99.9th percentile.
+      Max:
+        metric: cassandra.table.cas.prepare.latency.max
+        desc: Maximum local Paxos prepare latency.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=CasProposeLatency
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.cas.propose.latency.p50
+        desc: Local Paxos propose latency, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.cas.propose.latency.p99
+        desc: Local Paxos propose latency, 99th percentile.
+      999thPercentile:
+        metric: cassandra.table.cas.propose.latency.p999
+        desc: Local Paxos propose latency, 99.9th percentile.
+      Max:
+        metric: cassandra.table.cas.propose.latency.max
+        desc: Maximum local Paxos propose latency.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=CasCommitLatency
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.table.cas.commit.latency.p50
+        desc: Local Paxos commit latency, 50th percentile.
+      99thPercentile:
+        metric: cassandra.table.cas.commit.latency.p99
+        desc: Local Paxos commit latency, 99th percentile.
+      999thPercentile:
+        metric: cassandra.table.cas.commit.latency.p999
+        desc: Local Paxos commit latency, 99.9th percentile.
+      Max:
+        metric: cassandra.table.cas.commit.latency.max
+        desc: Maximum local Paxos commit latency.

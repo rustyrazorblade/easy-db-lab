@@ -100,7 +100,7 @@ class CassandraJmxRulesTest {
     }
 
     @Test
-    fun `all four latency percentiles live in one rule, on the same three beans`() {
+    fun `all four latency percentiles live in one rule, on the same five beans`() {
         // p999 used to be a rule of its own, and drifted from its siblings in three ways at once:
         // a different attribute name, an un-normalized value, and a wider bean pattern. Sharing a
         // rule is what makes a single panel able to plot p50, p99, p999 and max together, and is
@@ -115,9 +115,11 @@ class CassandraJmxRulesTest {
         )
         assertThat(rule.metricAttribute).containsEntry("cassandra.operation", "lowercase(param(scope))")
 
-        // Enumerated, never scope=*: a wildcard also matches CASRead, CASWrite and ViewWrite, which
-        // are not part of the read/write/rangeslice contract.
+        // Enumerated, never scope=*: a wildcard also matches ViewWrite, the Accord scopes and one
+        // Read-<CL>/Write-<CL> scope per consistency level, none of which is an operation.
         assertThat(rule.beans).containsExactlyInAnyOrder(
+            "org.apache.cassandra.metrics:type=ClientRequest,scope=CASRead,name=Latency",
+            "org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=Latency",
             "org.apache.cassandra.metrics:type=ClientRequest,scope=RangeSlice,name=Latency",
             "org.apache.cassandra.metrics:type=ClientRequest,scope=Read,name=Latency",
             "org.apache.cassandra.metrics:type=ClientRequest,scope=Write,name=Latency",
@@ -138,11 +140,12 @@ class CassandraJmxRulesTest {
     fun `no rule emits a raw MBean scope where a normalized one is intended`() {
         // The p999 defect in one line: it carried param(scope) and produced operation="CASRead",
         // while its siblings produced cassandra_operation="rangeslice". Every attribute that names
-        // a Cassandra operation or status must be normalized. The three families below are the
-        // deliberate exceptions - keyspace, table, thread-pool, verb and cache names are all
-        // case-sensitive identifiers, and lowercasing them would merge distinct series or stop
-        // matching what `nodetool` prints.
-        val casePreserving = listOf("type=Table", "type=ThreadPools", "type=DroppedMessage", "type=Cache")
+        // a Cassandra operation or status must be normalized. The families below are the
+        // deliberate exceptions - keyspace, table, thread-pool, verb, cache and buffer pool names
+        // are all identifiers, and lowercasing them would merge distinct series or stop matching
+        // what `nodetool` prints.
+        val casePreserving =
+            listOf("type=Table", "type=ThreadPools", "type=DroppedMessage", "type=Cache", "type=BufferPool")
 
         val offenders =
             rules.rules
@@ -217,7 +220,167 @@ class CassandraJmxRulesTest {
             "cassandra.repair.retries",
             "cassandra.messaging.cross_node.latency.p99",
             "cassandra.messaging.datacenter.latency.p99",
+            // Read-path correctness and repair families. Each bean name is checked against the
+            // Cassandra 6.0 source, cited next to its rule.
+            "cassandra.table.range.latency.p99",
+            "cassandra.table.live_rows.scanned.p99",
+            "cassandra.table.read_repair.requests",
+            "cassandra.table.short_read_protection.requests",
+            "cassandra.table.replica_filtering_protection.requests",
+            "cassandra.table.replica_filtering_protection.rows_cached.p99",
+            "cassandra.table.repaired_data.inconsistencies.confirmed",
+            "cassandra.table.repaired_data.inconsistencies.unconfirmed",
+            "cassandra.table.repaired_data.overread.rows.p99",
+            "cassandra.table.repaired_data.overread.time.p99",
+            "cassandra.read_repair.blocking",
+            "cassandra.read_repair.reconcile_reads",
+            "cassandra.buffer_pool.hits",
+            "cassandra.buffer_pool.misses",
+            "cassandra.buffer_pool.capacity",
+            "cassandra.buffer_pool.size",
+            "cassandra.buffer_pool.used",
+            "cassandra.buffer_pool.overflow",
+            // Lightweight transaction families. Each bean name is checked against the Cassandra 6.0
+            // source, cited next to its rule.
+            "cassandra.client.request.cas.contention.p99",
+            "cassandra.client.request.cas.contended",
+            "cassandra.client.request.cas.unfinished_commits",
+            "cassandra.client.request.cas.condition_not_met",
+            "cassandra.paxos.linearizability_violations",
+            "cassandra.client.request.consistency.latency.p99",
+            "cassandra.table.cas.prepare.latency.p99",
+            "cassandra.table.cas.propose.latency.p99",
+            "cassandra.table.cas.commit.latency.p99",
         )
+    }
+
+    @Test
+    fun `lightweight transactions report through the client request families`() {
+        // CAS latency, request counts and errors use the same names as reads and writes, told apart
+        // by cassandra_operation, so one panel can put a CAS write beside a regular write.
+        val families =
+            setOf(
+                "cassandra.client.request.latency.p99",
+                "cassandra.client.request.count",
+                "cassandra.client.request.error",
+            )
+        val clientRequestRules = rules.rules.filter { rule -> rule.mapping.values.any { it.metric in families } }
+
+        assertThat(clientRequestRules).hasSize(5)
+        assertThat(clientRequestRules).allSatisfy { rule ->
+            assertThat(rule.beans).anySatisfy { assertThat(it).contains("scope=CASRead,") }
+            assertThat(rule.beans).anySatisfy { assertThat(it).contains("scope=CASWrite,") }
+            assertThat(rule.metricAttribute).containsEntry("cassandra.operation", "lowercase(param(scope))")
+        }
+    }
+
+    @Test
+    fun `condition not met is read from the CASWrite scope only`() {
+        // Cassandra registers the same counter again under scope=CASRead, as a pre-4.0 alias.
+        // Matching both would report every CAS write whose condition failed twice.
+        val rule =
+            rules.rules.single { r -> r.mapping.values.any { it.metric == "cassandra.client.request.cas.condition_not_met" } }
+
+        assertThat(rule.bean).isEqualTo("org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=ConditionNotMet")
+        assertThat(rule.beans).isEmpty()
+    }
+
+    @Test
+    fun `CAS contention counts attempts, so it is not measured in microseconds`() {
+        // ContentionHistogram is a plain Histogram of lost Paxos attempts per request. A `us` unit
+        // would give it a time suffix and put it on a latency axis.
+        val rule =
+            rules.rules.single { r -> r.mapping.values.any { it.metric == "cassandra.client.request.cas.contention.p99" } }
+
+        assertThat(rule.unit).isEqualTo("{attempt}")
+        assertThat(rule.beans).containsExactlyInAnyOrder(
+            "org.apache.cassandra.metrics:type=ClientRequest,scope=CASRead,name=ContentionHistogram",
+            "org.apache.cassandra.metrics:type=ClientRequest,scope=CASWrite,name=ContentionHistogram",
+        )
+        assertThat(rule.mapping.getValue("Count").type).isEqualTo("counter")
+    }
+
+    @Test
+    fun `the linearizability violation counter is the node wide Paxos bean`() {
+        val rule =
+            rules.rules.single { r -> r.mapping.values.any { it.metric == "cassandra.paxos.linearizability_violations" } }
+
+        assertThat(rule.bean).isEqualTo("org.apache.cassandra.metrics:type=Paxos,name=LinearizabilityViolations")
+        assertThat(rule.mapping.keys).containsExactly("Count")
+        assertThat(rule.mapping.getValue("Count").type).isEqualTo("counter")
+    }
+
+    @Test
+    fun `each consistency level latency rule names one operation at one level`() {
+        // Read-QUORUM is what separates regular reads from serial reads, which plain scope=Read
+        // also counts. Each rule reads one scope and names its operation and level as constants;
+        // two rules giving the same pair would give one series two sources.
+        val consistencyRules =
+            rules.rules.filter { r -> r.mapping.values.any { it.metric == "cassandra.client.request.consistency.latency.p99" } }
+
+        assertThat(consistencyRules.map { it.bean }).containsExactlyInAnyOrder(
+            "org.apache.cassandra.metrics:type=ClientRequest,scope=Read-QUORUM,name=Latency",
+            "org.apache.cassandra.metrics:type=ClientRequest,scope=Write-QUORUM,name=Latency",
+        )
+        assertThat(consistencyRules.map { it.metricAttribute }).containsExactlyInAnyOrder(
+            mapOf("cassandra.operation" to "const(read)", "cassandra.consistency_level" to "const(quorum)"),
+            mapOf("cassandra.operation" to "const(write)", "cassandra.consistency_level" to "const(quorum)"),
+        )
+        assertThat(consistencyRules).allSatisfy { rule ->
+            assertThat(rule.mapping.keys).containsExactlyInAnyOrder(
+                "50thPercentile",
+                "99thPercentile",
+                "999thPercentile",
+                "Max",
+            )
+            assertThat(rule.unit).isEqualTo(latencyRule.unit)
+            assertThat(rule.sourceUnit).isEmpty()
+        }
+    }
+
+    @Test
+    fun `row-count histograms are not measured in microseconds`() {
+        // Like the tombstone histogram, these count rows per read, not time. A `us` unit would give
+        // them a time suffix and put them on a latency axis.
+        listOf(
+            "cassandra.table.live_rows.scanned.p99",
+            "cassandra.table.replica_filtering_protection.rows_cached.p99",
+            "cassandra.table.repaired_data.overread.rows.p99",
+        ).forEach { metric ->
+            val rule = rules.rules.single { r -> r.mapping.values.any { it.metric == metric } }
+
+            assertThat(rule.unit).describedAs(metric).isEqualTo("{row}")
+        }
+    }
+
+    @Test
+    fun `the repaired data overread timer is in microseconds like every other latency`() {
+        // A plain Cassandra Timer reports in DEFAULT_TIMER_UNIT, microseconds, the same as the
+        // LatencyMetrics timers, so it takes the same unit and no conversion.
+        val rule =
+            rules.rules.single { r -> r.mapping.values.any { it.metric == "cassandra.table.repaired_data.overread.time.p99" } }
+
+        assertThat(rule.unit).isEqualTo(latencyRule.unit)
+        assertThat(rule.sourceUnit).isEmpty()
+        assertThat(rule.mapping.keys).containsExactlyInAnyOrder(
+            "50thPercentile",
+            "99thPercentile",
+            "999thPercentile",
+            "Max",
+        )
+    }
+
+    @Test
+    fun `buffer pool rules name the pool from the MBean scope`() {
+        // Two pools share every bean name: chunk-cache and networking. Without the pool attribute
+        // their sizes would collide into one series.
+        val bufferPoolRules = rules.rules.filter { it.bean.contains("type=BufferPool") }
+
+        assertThat(bufferPoolRules).hasSize(6)
+        assertThat(bufferPoolRules).allSatisfy { rule ->
+            assertThat(rule.bean).contains("scope=*")
+            assertThat(rule.metricAttribute).containsEntry("pool", "param(scope)")
+        }
     }
 
     @Test
@@ -246,12 +409,12 @@ class CassandraJmxRulesTest {
     }
 
     @Test
-    fun `per-table local latency is mapped for both reads and writes`() {
+    fun `per-table local latency is mapped for reads, writes, range reads and Paxos phases`() {
         // Coordinator latency alone cannot show network and coordination overhead: that is
-        // coordinator minus local, and local is what these two families supply. They carry the same
+        // coordinator minus local, and local is what these families supply. They carry the same
         // four percentiles and the same unit as the ClientRequest family so a panel can subtract
         // one from the other without relabelling anything.
-        listOf("read", "write").forEach { operation ->
+        listOf("read", "write", "range", "cas.prepare", "cas.propose", "cas.commit").forEach { operation ->
             val rule =
                 rules.rules.single { r -> r.mapping.values.any { it.metric == "cassandra.table.$operation.latency.p99" } }
 
@@ -301,16 +464,24 @@ class CassandraJmxRulesTest {
     }
 
     @Test
-    fun `only the error family repeats a metric name`() {
-        // Two rules emitting one name give the same series conflicting attribute sets. The error
-        // family is the deliberate exception: three rules feed it, separated by cassandra.status.
+    fun `only the error and consistency level families repeat a metric name`() {
+        // Two rules emitting one name give the same series conflicting attribute sets. Two families
+        // are the deliberate exceptions: three rules feed the error family, separated by
+        // cassandra.status, and one rule per scope feeds the consistency level latency family,
+        // separated by cassandra.operation and cassandra.consistency_level.
         val repeated =
             metricNames
                 .groupingBy { it }
                 .eachCount()
                 .filterValues { it > 1 }
 
-        assertThat(repeated).containsOnlyKeys("cassandra.client.request.error")
+        assertThat(repeated).containsOnlyKeys(
+            "cassandra.client.request.error",
+            "cassandra.client.request.consistency.latency.p50",
+            "cassandra.client.request.consistency.latency.p99",
+            "cassandra.client.request.consistency.latency.p999",
+            "cassandra.client.request.consistency.latency.max",
+        )
     }
 
     @Test

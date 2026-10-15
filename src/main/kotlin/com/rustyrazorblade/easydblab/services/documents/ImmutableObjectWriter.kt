@@ -24,10 +24,13 @@ enum class KeyHolder {
  * @property holder Whose object the key holds.
  * @property looks How many times the key was looked at after the write was refused; 0 when it
  *   was written at once.
+ * @property rewritten Whether a look found the key empty and this writer's write again landed
+ *   there; false when the bytes read back decided, or nothing did.
  */
 data class WriteDecision(
     val holder: KeyHolder,
     val looks: Int,
+    val rewritten: Boolean = false,
 )
 
 /**
@@ -59,8 +62,8 @@ class ImmutableObjectWriter(
             return WriteDecision(KeyHolder.OWN, 0)
         }
         var looks = 0
-        val holder =
-            pollUntil<KeyHolder?>(
+        val decided =
+            pollUntil<Look?>(
                 "report-write-refused",
                 Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS,
                 lookInterval,
@@ -70,21 +73,32 @@ class ImmutableObjectWriter(
                 looks++
                 look(content, path, contentType)
             }
-        return WriteDecision(holder ?: KeyHolder.EMPTY, looks)
+        return WriteDecision(decided?.holder ?: KeyHolder.EMPTY, looks, decided?.rewritten ?: false)
     }
 
-    /** One look at [path]: its holder, or null while it is still empty after writing [content] again. */
+    /** What one look decided: whose object the key holds, and whether this writer's write again put it there. */
+    private data class Look(
+        val holder: KeyHolder,
+        val rewritten: Boolean,
+    )
+
+    /** One look at [path]: what it decided, or null while it is still empty after writing [content] again. */
     private fun look(
         content: ByteArray,
         path: ClusterS3Path,
         contentType: String,
-    ): KeyHolder? =
-        holderOf(store.readBytes(path), content)
+    ): Look? =
+        readBack(path, content)
             ?: if (store.putIfAbsent(content, path, contentType) == ConditionalObjectStore.Written) {
-                KeyHolder.OWN
+                Look(KeyHolder.OWN, rewritten = true)
             } else {
-                holderOf(store.readBytes(path), content)
+                readBack(path, content)
             }
+
+    private fun readBack(
+        path: ClusterS3Path,
+        content: ByteArray,
+    ): Look? = holderOf(store.readBytes(path), content)?.let { Look(it, rewritten = false) }
 
     private fun holderOf(
         stored: ByteArray?,

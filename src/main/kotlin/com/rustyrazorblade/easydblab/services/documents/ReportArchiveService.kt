@@ -173,7 +173,8 @@ class DefaultReportArchiveService(
         decision: WriteDecision,
     ) {
         if (decision.looks > 0) {
-            log.info { "Write to ${path.toUri()} refused; read back: ${decision.holder.name.lowercase()}, looks=${decision.looks}" }
+            val how = if (decision.rewritten) "rewritten" else "read back"
+            log.info { "Write to ${path.toUri()} refused; decided: ${decision.holder.name.lowercase()} ($how), looks=${decision.looks}" }
         }
     }
 

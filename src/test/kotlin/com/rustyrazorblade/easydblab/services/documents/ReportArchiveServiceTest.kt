@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services.documents
 
+import ch.qos.logback.classic.Level
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
@@ -140,16 +141,6 @@ class ReportArchiveServiceTest {
     }
 
     @Test
-    fun `an unpacked file refused on its first attempt fails the upload even when it holds the same bytes`() {
-        file("results.md", "mine")
-        store.overwrite(key("reports/acme/e1/report-20261014-120000/results.md"), "mine")
-
-        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
-            .isInstanceOf(ReportUploadIncompleteException::class.java)
-            .hasMessageContaining("already exists")
-    }
-
-    @Test
     fun `an upload named for an earlier second does not move the pointer back`() {
         file("results.md", "later")
         service("2026-10-14T13:00:00Z").upload(state, dir)
@@ -211,138 +202,201 @@ class ReportArchiveServiceTest {
         assertThat(text("reports/acme/e1/index.html")).isEqualTo("<html>another writer's page</html>")
     }
 
+    private val zipKey = key("reports/acme/e1/report-20261014-120000.zip")
+    private val fileKey = key("reports/acme/e1/report-20261014-120000/results.md")
+    private val maxLooks = Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS
+
+    private fun noSuchBucket(): S3Exception =
+        S3Exception
+            .builder()
+            .statusCode(404)
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode("NoSuchBucket").build())
+            .build() as S3Exception
+
+    private fun upload(): UploadedReport = service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir)
+
+    private fun assertKeptItsSecond(uploaded: UploadedReport) {
+        assertThat(uploaded.zip).isEqualTo(zipKey)
+        assertThat(store.bytesAt(zipKey)).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
+        assertThat(store.keys()).noneMatch { it.startsWith("reports/acme/e1/report-20261014-120001") }
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("mine")
+        assertThat(uploaded.pointerAdvanced).isTrue()
+    }
+
+    private fun assertMovedToNextSecond(uploaded: UploadedReport) {
+        assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
+        assertThat(store.bytesAt(uploaded.zip)).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
+        assertThat(text("reports/acme/e1/report-20261014-120001/results.md")).isEqualTo("mine")
+    }
+
+    // A refused zip write: what the key holds decides.
+
     @Test
     fun `a zip write that was stored but reported refused keeps its name and is not stored again`() {
         file("results.md", "mine")
-        store.loseWriteResponseAt(key("reports/acme/e1/report-20261014-120000.zip"))
+        store.loseWriteResponseAt(zipKey)
 
-        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
-
-        assertThat(uploaded.zip.toUri()).isEqualTo(zipUri)
-        assertThat(uploaded.pointerAdvanced).isTrue()
-        assertThat(store.keys()).noneMatch { it.startsWith("reports/acme/e1/report-20261014-120001") }
+        assertKeptItsSecond(upload())
     }
+
+    @Test
+    fun `a zip key that already holds exactly this upload's bytes is this upload's own`() {
+        file("results.md", "mine")
+        store.overwrite(zipKey, ReportZip.build(dir, "upload-1").bytes)
+
+        assertKeptItsSecond(upload())
+    }
+
+    @Test
+    fun `a zip key that holds another upload's zip of the same directory moves the upload to the next second`() {
+        file("results.md", "mine")
+        val othersZip = ReportZip.build(dir, "another-upload").bytes
+        store.beforeNextWrite { store.overwrite(zipKey, othersZip) }
+
+        assertMovedToNextSecond(upload())
+        assertThat(store.bytesAt(zipKey)).isEqualTo(othersZip)
+    }
+
+    @Test
+    fun `a zip key that is empty until this upload's own write in flight lands keeps its second`() {
+        file("results.md", "mine")
+        store.writeInFlightAt(zipKey, endsOnRead = 3, InMemoryConditionalObjectStore.InFlightEnd.LandsOwn)
+
+        assertKeptItsSecond(upload())
+    }
+
+    @Test
+    fun `a zip key whose write in flight aborts is written again by this upload and keeps its second`() {
+        file("results.md", "mine")
+        store.writeInFlightAt(zipKey, endsOnRead = 1, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+
+        assertKeptItsSecond(upload())
+    }
+
+    @Test
+    fun `a zip key whose write in flight lands as another upload's moves the upload to the next second`() {
+        file("results.md", "mine")
+        store.writeInFlightAt(zipKey, endsOnRead = 3, InMemoryConditionalObjectStore.InFlightEnd.LandsOther("other".toByteArray()))
+
+        assertMovedToNextSecond(upload())
+        assertThat(store.bytesAt(zipKey)?.decodeToString()).isEqualTo("other")
+    }
+
+    @Test
+    fun `a zip key still empty after every look moves the upload on and warns that the key may still be written`() {
+        file("results.md", "mine")
+        store.writeInFlightAt(zipKey, endsOnRead = Int.MAX_VALUE, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+        lateinit var uploaded: UploadedReport
+
+        val logs = CapturedLogs.during(DOCUMENTS_LOGGER) { uploaded = upload() }
+
+        assertMovedToNextSecond(uploaded)
+        assertThat(logs.at(Level.WARN)).anySatisfy {
+            assertThat(it).contains(zipKey.toUri(), "$maxLooks looks", "may still receive a write in flight")
+        }
+    }
+
+    @Test
+    fun `a zip re-put refused on the last look is read back in that look`() {
+        file("results.md", "mine")
+        // Each look reads the empty key, writes it again and, refused, reads it back: this upload's
+        // own write lands on the read back of the last look.
+        store.writeInFlightAt(zipKey, endsOnRead = 2 * maxLooks, InMemoryConditionalObjectStore.InFlightEnd.LandsOwn)
+
+        assertKeptItsSecond(upload())
+    }
+
+    @Test
+    fun `an S3 error while waiting on an empty zip key fails at once, without looking again`() {
+        file("results.md", "mine")
+        val error = noSuchBucket()
+        store.writeInFlightAt(zipKey, endsOnRead = Int.MAX_VALUE, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+        store.failReadAt(zipKey, readNumber = 1, error)
+
+        assertThatThrownBy { upload() }.isSameAs(error)
+        assertThat(store.readsOf(zipKey)).isEqualTo(1)
+    }
+
+    // A refused unpacked-file write: what the key holds decides the same way.
 
     @Test
     fun `an unpacked file write that was stored but reported refused is this upload's own`() {
         file("results.md", "mine")
-        store.loseWriteResponseAt(key("reports/acme/e1/report-20261014-120000/results.md"))
+        store.loseWriteResponseAt(fileKey)
 
-        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
-
-        assertThat(uploaded.pointerAdvanced).isTrue()
-        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("mine")
+        assertKeptItsSecond(upload())
     }
 
     @Test
-    fun `a zip write refused after a retry because another upload's zip got there moves to the next second`() {
+    fun `an unpacked file key that holds another writer's object fails the upload and is left unchanged`() {
         file("results.md", "mine")
-        val taken = key("reports/acme/e1/report-20261014-120000.zip")
-        store.refuseAfterRetryAt(taken) { store.overwrite(taken, "another upload's zip") }
+        store.overwrite(fileKey, "another writer's")
 
-        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
-
-        assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
-        assertThat(store.bytesAt(taken)?.decodeToString()).isEqualTo("another upload's zip")
-        assertThat(text("reports/acme/e1/report-20261014-120001/results.md")).isEqualTo("mine")
-    }
-
-    @Test
-    fun `a zip write refused after a retry because another upload of the same directory got there moves to the next second`() {
-        file("results.md", "same")
-        val taken = key("reports/acme/e1/report-20261014-120000.zip")
-        val othersZip = ReportZip.build(dir, "another-upload").bytes
-        store.refuseAfterRetryAt(taken) { store.overwrite(taken, othersZip) }
-
-        val uploaded = service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir)
-
-        assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
-        assertThat(store.bytesAt(taken)).isEqualTo(othersZip)
-        assertThat(store.bytesAt(uploaded.zip)).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
-    }
-
-    @Test
-    fun `an unpacked file write refused after a retry because another writer's file got there fails the upload`() {
-        file("results.md", "mine")
-        val taken = key("reports/acme/e1/report-20261014-120000/results.md")
-        store.refuseAfterRetryAt(taken) { store.overwrite(taken, "another writer's") }
-
-        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+        assertThatThrownBy { upload() }
             .isInstanceOf(ReportUploadIncompleteException::class.java)
-            .hasMessageContaining("already exists")
+            .hasMessageContaining(fileKey.toUri())
+            .hasMessageContaining("another object holds that key")
         assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("another writer's")
     }
 
     @Test
-    fun `a zip write that meets its own earlier attempt still in flight keeps its second`() {
+    fun `an unpacked file key that is empty until this upload's own write in flight lands completes the upload`() {
         file("results.md", "mine")
-        val zip = key("reports/acme/e1/report-20261014-120000.zip")
-        store.conflictAfterRetryAt(zip, landsAfterReads = 3)
+        store.writeInFlightAt(fileKey, endsOnRead = 3, InMemoryConditionalObjectStore.InFlightEnd.LandsOwn)
 
-        val uploaded = service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir)
-
-        assertThat(uploaded.zip).isEqualTo(zip)
-        assertThat(store.bytesAt(zip)).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
-        assertThat(store.keys()).noneMatch { it.startsWith("reports/acme/e1/report-20261014-120001") }
-        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("mine")
+        assertKeptItsSecond(upload())
     }
 
     @Test
-    fun `an unpacked file write that meets its own earlier attempt still in flight completes the upload`() {
+    fun `an unpacked file key whose write in flight aborts is written again and completes the upload`() {
         file("results.md", "mine")
-        store.conflictAfterRetryAt(key("reports/acme/e1/report-20261014-120000/results.md"), landsAfterReads = 3)
+        store.writeInFlightAt(fileKey, endsOnRead = 1, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
 
-        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
-
-        assertThat(uploaded.pointerAdvanced).isTrue()
-        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("mine")
+        assertKeptItsSecond(upload())
     }
 
     @Test
-    fun `an S3 error while waiting for a write in flight fails at once, without looking again`() {
+    fun `an unpacked file key whose write in flight lands as another writer's fails the upload`() {
         file("results.md", "mine")
-        val zip = key("reports/acme/e1/report-20261014-120000.zip")
-        store.conflictAfterRetryAt(zip, landsAfterReads = Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS + 1)
-        val noSuchBucket =
-            S3Exception
-                .builder()
-                .statusCode(404)
-                .awsErrorDetails(AwsErrorDetails.builder().errorCode("NoSuchBucket").build())
-                .build()
-        var writes = 0
-        store.beforeEveryWrite {
-            writes++
-            if (writes > 1) throw noSuchBucket
-        }
+        store.writeInFlightAt(fileKey, endsOnRead = 3, InMemoryConditionalObjectStore.InFlightEnd.LandsOther("other".toByteArray()))
 
-        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }.isSameAs(noSuchBucket)
-        assertThat(writes).isEqualTo(2)
-    }
-
-    @Test
-    fun `a zip write that meets another upload's write in flight moves to the next second`() {
-        file("results.md", "same")
-        val taken = key("reports/acme/e1/report-20261014-120000.zip")
-        val othersZip = ReportZip.build(dir, "another-upload").bytes
-        store.conflictAfterRetryAt(taken, landsAfterReads = 1) { othersZip }
-
-        val uploaded = service("2026-10-14T12:00:00Z", "upload-1").upload(state, dir)
-
-        assertThat(uploaded.zip.getKey()).isEqualTo("reports/acme/e1/report-20261014-120001.zip")
-        assertThat(store.bytesAt(taken)).isEqualTo(othersZip)
-        assertThat(store.bytesAt(uploaded.zip)).isEqualTo(ReportZip.build(dir, "upload-1").bytes)
-    }
-
-    @Test
-    fun `an unpacked file write that meets another writer's write in flight fails the upload`() {
-        file("results.md", "mine")
-        val taken = key("reports/acme/e1/report-20261014-120000/results.md")
-        store.conflictAfterRetryAt(taken, landsAfterReads = 1) { "another writer's".toByteArray() }
-
-        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+        assertThatThrownBy { upload() }
             .isInstanceOf(ReportUploadIncompleteException::class.java)
-            .hasMessageContaining("already exists")
-        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("another writer's")
+            .hasMessageContaining("another object holds that key")
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("other")
+    }
+
+    @Test
+    fun `an unpacked file key still empty after every look fails the upload saying so`() {
+        file("results.md", "mine")
+        store.writeInFlightAt(fileKey, endsOnRead = Int.MAX_VALUE, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+
+        assertThatThrownBy { upload() }
+            .isInstanceOf(ReportUploadIncompleteException::class.java)
+            .hasMessageContaining(fileKey.toUri())
+            .hasMessageContaining("still empty after $maxLooks looks")
+            .hasMessageNotContaining("already exists")
+    }
+
+    @Test
+    fun `an unpacked file re-put refused on the last look is read back in that look`() {
+        file("results.md", "mine")
+        store.writeInFlightAt(fileKey, endsOnRead = 2 * maxLooks, InMemoryConditionalObjectStore.InFlightEnd.LandsOwn)
+
+        assertKeptItsSecond(upload())
+    }
+
+    @Test
+    fun `an S3 error while waiting on an empty unpacked file key fails the upload at once`() {
+        file("results.md", "mine")
+        val error = noSuchBucket()
+        store.writeInFlightAt(fileKey, endsOnRead = Int.MAX_VALUE, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+        store.failReadAt(fileKey, readNumber = 1, error)
+
+        assertThatThrownBy { upload() }
+            .isInstanceOf(ReportUploadIncompleteException::class.java)
+            .hasCause(error)
+        assertThat(store.readsOf(fileKey)).isEqualTo(1)
     }
 
     @Test
@@ -358,5 +412,9 @@ class ReportArchiveServiceTest {
             .hasMessageContaining("nothing was uploaded")
             .hasMessageContaining("up to report-20261014-120059.zip")
         assertThat(store.keys()).isEqualTo(before)
+    }
+
+    private companion object {
+        private const val DOCUMENTS_LOGGER = "com.rustyrazorblade.easydblab.services.documents"
     }
 }

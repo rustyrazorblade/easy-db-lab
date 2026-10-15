@@ -43,7 +43,7 @@ start_test() {
   current_test="$1"
   tests_run=$((tests_run + 1))
   reset_kit_stub_state
-  rm -f "${WORK}/kit/last-run.txt"
+  rm -f "${WORK}/kit/last-run.txt" "${WORK}/kit/last-run.json"
   echo "node/app0" > "${STUB_STATE}/app-nodes"
   echo "default" > "${STUB_STATE}/curl-out"
   printf '%s\n' "Running|||" "Succeeded|||0" > "${STUB_STATE}/state.default"
@@ -197,6 +197,8 @@ test_a_successful_run_pushes_gauges_and_writes_last_run() {
   grep -q "^concurrency: *4$" "${WORK}/kit/last-run.txt" || fail "no settings: $(cat "${WORK}/kit/last-run.txt")"
   grep -q "^Queries executed: 513 " "${WORK}/kit/last-run.txt" || fail "no final report: $(cat "${WORK}/kit/last-run.txt")"
   if grep -q "^Queries executed: 134 " "${WORK}/kit/last-run.txt"; then fail "an interval report in last-run.txt"; fi
+  [ ! -e "${WORK}/kit/last-run.json" ] || fail "wrote last-run.json"
+  if run_call | grep -q -- "--json"; then fail "passed --json, which clickhouse-benchmark does not have: $(run_call)"; fi
   local gauges
   gauges="$(pushed_gauges)"
   grep -Fqx "clickhouse_benchmark_qps ${INSTANCE} 127.443" <<< "${gauges}" || fail "final QPS not pushed: ${gauges}"
@@ -216,6 +218,7 @@ test_a_failed_run_reports_the_exit_code_and_exits_non_zero() {
   if grep -q "Run results written" <<< "${out}"; then fail "printed the success line"; fi
   grep -q "^exit code: *60$" "${WORK}/kit/last-run.txt" || fail "last-run.txt not replaced: $(cat "${WORK}/kit/last-run.txt")"
   grep -q "UNKNOWN_TABLE" "${WORK}/kit/last-run.txt" || fail "no log in last-run.txt: $(cat "${WORK}/kit/last-run.txt")"
+  [ ! -e "${WORK}/kit/last-run.json" ] || fail "wrote last-run.json"
 }
 
 test_a_pod_deleted_mid_run_fails() {

@@ -11,15 +11,23 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
 /**
- * A documents iframe fills its Text panel. Grafana's Text panel sanitizer keeps only `src`, `width`
- * and `height` on an iframe and strips `style`, so the size must be in those attributes: a styled
- * iframe falls back to the browser default of 300x150.
+ * A documents iframe fills its Text panel and shows a report pointer. Grafana's Text panel
+ * sanitizer keeps only `src`, `width` and `height` on an iframe and strips `style`, so the size
+ * must be in those attributes: a styled iframe falls back to the browser default of 300x150.
+ *
+ * Every iframe opens an experiment's report pointer, `reports/<tenant>/<experiment>/index.html`,
+ * through the documents web server: the selected experiment's (`${'$'}{experiment}`, whose value is
+ * `<tenant>/<name>`), or on a pair dashboard the experiment of side A or B (`${'$'}{a_report}`,
+ * `${'$'}{b_report}`).
  */
 class DocumentsIframeTest {
     private val iframe = Regex("""<iframe\b[^>]*>""")
     private val height = Regex("""\bheight="(\d+)"""")
+    private val src = Regex("""\bsrc="([^"]*)"""")
+    private val reportPointer = Regex("""^__DOCUMENTS_URL__/reports/\$\{(experiment|a_report|b_report)}/index\.html$""")
 
     private data class IframePanel(
+        val file: String,
         val location: String,
         val gridHeight: Int,
         val tag: String,
@@ -51,13 +59,27 @@ class DocumentsIframeTest {
                         .jsonObject
                         .getValue("h")
                         .jsonPrimitive.int
-                iframe.findAll(content).map { IframePanel("${file.path} panel ${panel["id"]}", gridHeight, it.value) }.toList()
+                iframe.findAll(content).map { IframePanel(file.path, "${file.path} panel ${panel["id"]}", gridHeight, it.value) }.toList()
             }
         }
 
     @Test
     fun `the documents panels hold iframes`() {
-        assertThat(iframePanels().map { it.location }).hasSize(DOCUMENTS_IFRAMES)
+        val counts = iframePanels().groupingBy { it.file }.eachCount()
+
+        assertThat(counts).containsExactlyInAnyOrderEntriesOf(DOCUMENTS_IFRAMES)
+        assertThat(DOCUMENTS_IFRAMES.values.sum()).isEqualTo(TOTAL_IFRAMES)
+    }
+
+    @Test
+    fun `every iframe opens an experiment's report pointer`() {
+        val wrong =
+            iframePanels().mapNotNull { panel ->
+                val path = src.find(panel.tag)?.groupValues?.get(1)
+                "${panel.location}: $path".takeUnless { path != null && reportPointer.matches(path) }
+            }
+
+        assertThat(wrong).isEmpty()
     }
 
     @Test
@@ -85,8 +107,20 @@ class DocumentsIframeTest {
     }
 
     private companion object {
-        /** Tests has one; each of the three comparison dashboards has a baseline and a candidate. */
-        const val DOCUMENTS_IFRAMES = 7
+        /**
+         * Tests and the two Experiment dashboards show one report; each of the three pair dashboards
+         * shows the reports of A and B.
+         */
+        val DOCUMENTS_IFRAMES =
+            mapOf(
+                "dashboards/infrastructure/tests.json" to 1,
+                "dashboards/cassandra/experiment-cassandra.json" to 1,
+                "dashboards/infrastructure/experiment-system.json" to 1,
+                "dashboards/cassandra/cluster-pair.json" to 2,
+                "dashboards/cassandra/ab-comparison.json" to 2,
+                "dashboards/infrastructure/system-ab-comparison.json" to 2,
+            )
+        const val TOTAL_IFRAMES = 9
 
         /** Grafana's grid: a row unit is 30 px tall with an 8 px gap between units. */
         const val GRID_CELL_HEIGHT = 30

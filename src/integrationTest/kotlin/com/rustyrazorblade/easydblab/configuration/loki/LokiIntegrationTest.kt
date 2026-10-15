@@ -205,8 +205,13 @@ class LokiIntegrationTest : BaseKoinTest() {
 
     private fun keysUnder(prefix: String): List<String> =
         s3
-            .listObjectsV2Paginator(ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build())
-            .contents()
+            .listObjectsV2Paginator(
+                ListObjectsV2Request
+                    .builder()
+                    .bucket(bucket)
+                    .prefix(prefix)
+                    .build(),
+            ).contents()
             .map { it.key() }
 
     @Test

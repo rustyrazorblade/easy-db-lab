@@ -79,4 +79,41 @@ class DashboardLinkTimeTest {
 
         assertThat(dropped).isEmpty()
     }
+
+    /**
+     * System A/B Comparison's link to the Cassandra A/B Comparison carried `from` and `to` and
+     * `keepTime`, so the target opened on an absolute range and its overlay and side-by-side
+     * panels lost their `timeFrom`: a run that ended earlier drew no line.
+     */
+    @Test
+    fun `no link into an own-range dashboard carries a time range`() {
+        val carried =
+            DashboardFiles.all().flatMap { file ->
+                dashboardLinks(Json.parseToJsonElement(file.readText()))
+                    .filter { (url, keepTime) -> target(url) in ownRangeDashboards && carriesTime(url, keepTime) }
+                    .map { (url, _) -> "${file.path}: $url" }
+            }
+
+        assertThat(carried).isEmpty()
+    }
+
+    @Test
+    fun `a time range on a link into an own-range dashboard is caught`() {
+        val link =
+            Json.parseToJsonElement(
+                """{"links": [{"keepTime": false, "url": "/d/ab-comparison/a-b-comparison?from=${'$'}{__from}&to=${'$'}{__to}"},
+                   {"keepTime": true, "url": "/d/cluster-pair/cluster-pair?var-cluster_a=x"},
+                   {"keepTime": false, "url": "/d/tests/tests?var-experiment=x"}]}""",
+            )
+
+        val carried =
+            dashboardLinks(link)
+                .filter { (url, keepTime) -> target(url) in ownRangeDashboards && carriesTime(url, keepTime) }
+                .map { it.first }
+
+        assertThat(carried).containsExactly(
+            "/d/ab-comparison/a-b-comparison?from=\${__from}&to=\${__to}",
+            "/d/cluster-pair/cluster-pair?var-cluster_a=x",
+        )
+    }
 }

@@ -519,7 +519,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(avg_over_time((max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg_over_time((max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))) >= 0)[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "range": false,
@@ -531,7 +531,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(avg_over_time((max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"write\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(avg_over_time((max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"write\"}[${resolution}s])))) >= 0)[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1180,7 +1180,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(quantile_over_time(0.5, (max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(quantile_over_time(0.5, (max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))) >= 0)[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1192,7 +1192,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(quantile_over_time(0.9, (max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(quantile_over_time(0.9, (max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))) >= 0)[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1204,7 +1204,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(quantile_over_time(0.99, (max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(quantile_over_time(0.99, (max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))) >= 0)[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "range": false,
@@ -1406,7 +1406,25 @@
           "displayName": "${__field.labels.cluster_name}",
           "unit": "percent"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Hours since start"
+              },
+              {
+                "id": "unit",
+                "value": "h"
+              }
+            ]
+          }
+        ]
+
       },
       "gridPos": {
         "h": 9,
@@ -1517,7 +1535,25 @@
           "displayName": "${__field.labels.cluster_name}",
           "unit": "percent"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Hours since start"
+              },
+              {
+                "id": "unit",
+                "value": "h"
+              }
+            ]
+          }
+        ]
+
       },
       "gridPos": {
         "h": 9,
@@ -1628,7 +1664,25 @@
           "displayName": "${__field.labels.cluster_name}",
           "unit": "percent"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Hours since start"
+              },
+              {
+                "id": "unit",
+                "value": "h"
+              }
+            ]
+          }
+        ]
+
       },
       "gridPos": {
         "h": 9,
@@ -1739,7 +1793,25 @@
           "displayName": "${__field.labels.cluster_name}",
           "unit": "Bps"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value #A"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Hours since start"
+              },
+              {
+                "id": "unit",
+                "value": "h"
+              }
+            ]
+          }
+        ]
+
       },
       "gridPos": {
         "h": 9,

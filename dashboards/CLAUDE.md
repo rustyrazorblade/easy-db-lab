@@ -74,7 +74,7 @@ drill-down keeps the tenant and the cluster:
 /d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${cluster:queryparam}
 ```
 
-Every `/d/` link also keeps the time range: `from=${__from}&to=${__to}` in its URL, `${__url_time_range}`, or `keepTime`. Links into Tests and the comparison dashboards are the exception, because those open on their own relative ranges. `DashboardLinkTimeTest` checks this for core and kit dashboards.
+Every `/d/` link also keeps the time range: `from=${__from}&to=${__to}` in its URL, `${__url_time_range}`, or `keepTime`. Links into Tests, the Experiment dashboards and the pair dashboards are the exception, because those open on their own relative ranges: such a link carries no `from`/`to`, no `${__url_time_range}` and no `keepTime`, since an absolute range turns their panel `timeFrom` off. `DashboardLinkTimeTest` checks both rules for core and kit dashboards.
 
 ### The cluster variable
 
@@ -188,6 +188,10 @@ The Text panel sanitizer keeps only `src`, `width` and `height` on an iframe and
 ## Rows are placed by position, not by file order
 
 Grafana sorts a dashboard's top-level panels by `gridPos` (y, then x) and gives each panel to the row above it in that order. A collapsed row keeps its own panels in its `panels` array, so a top-level panel that sorts under a collapsed row is hidden in it, and the row it was written under renders empty. Give every row its own `y`, below the panels of the row before it. `DashboardRowOrderTest` fails when a top-level panel sorts under a collapsed row or two rows share a `y`, for core and kit dashboards.
+
+## Trend panels name their x axis
+
+A Trend panel draws its `xField` with the panel's default unit unless a `byName` override on that field gives it one, so an elapsed-hours axis on a `percent` panel reads "0% ... 2.5%". Every Trend panel overrides its `xField` with a `displayName` and `unit: h` (the Experiment dashboards' "Hours since ..." axes). `TrendAxisTest` checks core and kit dashboards.
 
 ## Label Name Conventions
 

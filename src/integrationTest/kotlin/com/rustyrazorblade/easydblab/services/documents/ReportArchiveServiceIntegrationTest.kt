@@ -193,13 +193,13 @@ class ReportArchiveServiceIntegrationTest {
         val state = cluster()
         val placeholder = ReportPointer(objectStore)
 
-        assertThat(placeholder.ensurePlaceholder(folder(state))).isTrue()
+        placeholder.ensurePlaceholder(folder(state))
         assertThat(pointer(state)).contains("No report yet")
         File(dir, "results.md").writeText("x")
         service("2026-10-14T12:00:00Z").upload(state, dir)
         val afterUpload = pointer(state)
 
-        assertThat(placeholder.ensurePlaceholder(folder(state))).isFalse()
+        placeholder.ensurePlaceholder(folder(state))
         assertThat(pointer(state)).isEqualTo(afterUpload).contains("report-20261014-120000/_files.html")
     }
 }

@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -19,9 +20,13 @@ class DashboardDefaultsTest {
     private val context =
         DashboardInstallContext(
             cluster = "lab-abc123",
+            experiment = ExperimentKey("acme", "e1"),
             tenants = TenantSet.of("acme", listOf("default")),
             documentsUrl = "http://10.0.0.5:3080",
         )
+
+    /** The live local stack: no current cluster and no experiment, only a home tenant. */
+    private val liveLocal = context.copy(cluster = null, experiment = null)
 
     private fun parse(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
 
@@ -59,18 +64,71 @@ class DashboardDefaultsTest {
     }
 
     @Test
-    fun `both run variables default to the current cluster`() {
+    fun `cluster_b defaults to the current cluster and cluster_a gets no default`() {
         val out =
             DashboardDefaults.apply(
                 dashboardWith(
-                    """{"name":"baseline_cluster","type":"query"}""",
-                    """{"name":"candidate_cluster","type":"query"}""",
+                    """{"name":"cluster_a","type":"query"}""",
+                    """{"name":"cluster_b","type":"query"}""",
                 ),
                 context,
             )
 
-        assertThat(current(out, "baseline_cluster").jsonPrimitive.content).isEqualTo("lab-abc123")
-        assertThat(current(out, "candidate_cluster").jsonPrimitive.content).isEqualTo("lab-abc123")
+        assertThat(variable(out, "cluster_a")).doesNotContainKey("current")
+        assertThat(current(out, "cluster_b").jsonPrimitive.content).isEqualTo("lab-abc123")
+    }
+
+    @Test
+    fun `on a dashboard that declares experiment, cluster gets no default so it opens on All`() {
+        val out =
+            DashboardDefaults.apply(
+                dashboardWith(
+                    """{"name":"experiment","type":"query"}""",
+                    """{"name":"cluster","type":"query","multi":true,"includeAll":true}""",
+                    """{"name":"cluster_b","type":"query"}""",
+                ),
+                context,
+            )
+
+        assertThat(variable(out, "cluster")).doesNotContainKey("current")
+        assertThat(current(out, "cluster_b").jsonPrimitive.content).isEqualTo("lab-abc123")
+    }
+
+    @Test
+    fun `experiment defaults to the cluster's tenant and name`() {
+        val out = DashboardDefaults.apply(dashboardWith("""{"name":"experiment","type":"query"}"""), context)
+
+        val selected = variable(out, "experiment").getValue("current").jsonObject
+        assertThat(selected.getValue("value").jsonPrimitive.content).isEqualTo("acme/e1")
+        assertThat(selected.getValue("text").jsonPrimitive.content).isEqualTo("acme/e1")
+    }
+
+    @Test
+    fun `the live local stack sets no cluster, cluster_b or experiment default`() {
+        val dashboard =
+            dashboardWith(
+                """{"name":"cluster","type":"query","multi":true}""",
+                """{"name":"cluster_b","type":"query"}""",
+                """{"name":"experiment","type":"query"}""",
+            )
+
+        assertThat(DashboardDefaults.apply(dashboard, liveLocal)).isEqualTo(dashboard)
+    }
+
+    @Test
+    fun `an export with an experiment sets that experiment and no cluster`() {
+        val export = liveLocal.copy(experiment = ExperimentKey("acme", "e2"))
+        val out =
+            DashboardDefaults.apply(
+                dashboardWith(
+                    """{"name":"experiment","type":"query"}""",
+                    """{"name":"cluster_b","type":"query"}""",
+                ),
+                export,
+            )
+
+        assertThat(current(out, "experiment").jsonPrimitive.content).isEqualTo("acme/e2")
+        assertThat(variable(out, "cluster_b")).doesNotContainKey("current")
     }
 
     @Test
@@ -81,7 +139,7 @@ class DashboardDefaultsTest {
             DashboardDefaults.apply(
                 dashboardWith(
                     """{"name":"cluster","type":"query","multi":true}""",
-                    """{"name":"baseline_cluster","type":"query"}""",
+                    """{"name":"cluster_b","type":"query"}""",
                 ),
                 full,
             )
@@ -89,7 +147,7 @@ class DashboardDefaultsTest {
         val multi = variable(out, "cluster").getValue("current").jsonObject
         assertThat(multi.getValue("text")).isEqualTo(JsonArray(listOf(JsonPrimitive("lab-1a2b3c4d"))))
         assertThat(multi.getValue("value")).isEqualTo(JsonArray(listOf(JsonPrimitive(id))))
-        val single = variable(out, "baseline_cluster").getValue("current").jsonObject
+        val single = variable(out, "cluster_b").getValue("current").jsonObject
         assertThat(single.getValue("text").jsonPrimitive.content).isEqualTo("lab-1a2b3c4d")
         assertThat(single.getValue("value").jsonPrimitive.content).isEqualTo(id)
     }
@@ -121,19 +179,30 @@ class DashboardDefaultsTest {
     }
 
     @Test
-    fun `doc_tenant offers every tenant and defaults to the home tenant`() {
-        val out = DashboardDefaults.apply(dashboardWith("""{"name":"doc_tenant","type":"custom","query":"","options":[]}"""), context)
+    fun `home_tenant holds one option, the home tenant, and selects it`() {
+        val out =
+            DashboardDefaults.apply(
+                dashboardWith("""{"name":"home_tenant","type":"custom","hide":2,"query":"","options":[]}"""),
+                liveLocal,
+            )
 
-        val docTenant = variable(out, "doc_tenant")
+        val homeTenant = variable(out, "home_tenant")
         assertThat(
-            docTenant.getValue("options").jsonArray.map {
+            homeTenant.getValue("options").jsonArray.map {
                 it.jsonObject
                     .getValue("value")
                     .jsonPrimitive.content
             },
-        ).containsExactly("acme", "default")
-        assertThat(docTenant.getValue("query").jsonPrimitive.content).isEqualTo("acme,default")
-        assertThat(current(out, "doc_tenant").jsonPrimitive.content).isEqualTo("acme")
+        ).containsExactly("acme")
+        assertThat(homeTenant.getValue("query").jsonPrimitive.content).isEqualTo("acme")
+        assertThat(current(out, "home_tenant").jsonPrimitive.content).isEqualTo("acme")
+    }
+
+    @Test
+    fun `doc_tenant is retired and passes through unchanged`() {
+        val dashboard = dashboardWith("""{"name":"doc_tenant","type":"custom","query":"","options":[]}""")
+
+        assertThat(DashboardDefaults.apply(dashboard, context)).isEqualTo(dashboard)
     }
 
     @Test
@@ -185,7 +254,7 @@ class DashboardDefaultsTest {
                         ?.jsonArray
                         .orEmpty()
                 ).map { it.jsonObject }
-                    .filter { it["name"]?.jsonPrimitive?.content != DashboardDefaults.DOC_TENANT_VARIABLE }
+                    .filter { it["name"]?.jsonPrimitive?.content != DashboardVariables.HOME_TENANT }
                     .map { it["query"] }
             }
             assertThat(queries(out)).describedAs(file.path).isEqualTo(queries(dashboard))

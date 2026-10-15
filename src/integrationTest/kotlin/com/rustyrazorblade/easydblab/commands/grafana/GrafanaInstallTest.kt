@@ -14,6 +14,7 @@ import com.rustyrazorblade.easydblab.services.GrafanaClient
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.TenantDirectory
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -52,7 +53,7 @@ class GrafanaInstallTest : BaseKoinTest() {
             name = "test-cluster",
             versions = mutableMapOf(),
             s3Bucket = "acct-bucket",
-            initConfig = InitConfig(region = "us-west-2"),
+            initConfig = InitConfig(region = "us-west-2", tenant = "acme", experiment = "e1"),
             hosts = mapOf(ServerType.Control to listOf(controlHost)),
         )
 
@@ -140,9 +141,39 @@ class GrafanaInstallTest : BaseKoinTest() {
             {"title": "T", "panels": [], "templating": {"list": [
               {"name": "metrics_datasource", "type": "datasource", "query": "prometheus", "current": {}},
               {"name": "cluster", "type": "query", "multi": true, "current": {}},
-              {"name": "doc_tenant", "type": "custom", "query": "", "options": []}
+              {"name": "home_tenant", "type": "custom", "hide": 2, "query": "", "options": []}
             ]}}
             """.trimIndent()
+
+        val variables = installedCurrents(dashboardJson)
+
+        assertThat(variables["metrics_datasource"]?.jsonPrimitive?.content).isEqualTo("mimir")
+        assertThat(variables["cluster"]?.jsonArray?.map { it.jsonPrimitive.content }).containsExactly(testClusterState.clusterLabelName())
+        assertThat(variables["home_tenant"]?.jsonPrimitive?.content).isEqualTo("acme")
+    }
+
+    @Test
+    fun `execute sets the workspace cluster's experiment on an experiment dashboard`() {
+        val dashboardJson =
+            """
+            {"title": "Experiment: Cassandra", "panels": [], "templating": {"list": [
+              {"name": "experiment", "type": "query"},
+              {"name": "cluster", "type": "query", "multi": true, "includeAll": true},
+              {"name": "cluster_b", "type": "query"},
+              {"name": "home_tenant", "type": "custom", "hide": 2, "query": "", "options": []}
+            ]}}
+            """.trimIndent()
+
+        val variables = installedCurrents(dashboardJson)
+
+        assertThat(variables["experiment"]?.jsonPrimitive?.content).isEqualTo("acme/e1")
+        assertThat(variables["home_tenant"]?.jsonPrimitive?.content).isEqualTo("acme")
+        assertThat(variables["cluster_b"]?.jsonPrimitive?.content).isEqualTo(testClusterState.clusterLabelName())
+        assertThat(variables).doesNotContainKey("cluster")
+    }
+
+    /** Installs [dashboardJson] and returns the `current` value of each variable that has one, by name. */
+    private fun installedCurrents(dashboardJson: String): Map<String, JsonElement?> {
         val dashboardFile = File(tempDir, "dashboard.json").also { it.writeText(dashboardJson) }
         mockWebServer.enqueue(MockResponse(code = 200, body = """[{"uid":"f1","title":"General"}]"""))
         mockWebServer.enqueue(MockResponse(code = 200, body = """{"status":"success"}"""))
@@ -153,22 +184,16 @@ class GrafanaInstallTest : BaseKoinTest() {
 
         mockWebServer.takeRequest() // GET /api/folders
         val body = Json.parseToJsonElement(requireNotNull(mockWebServer.takeRequest().body).utf8()).jsonObject
-        val variables =
-            body
-                .getValue("dashboard")
-                .jsonObject
-                .getValue("templating")
-                .jsonObject
-                .getValue("list")
-                .jsonArray
-                .associate {
-                    it.jsonObject
-                        .getValue("name")
-                        .jsonPrimitive.content to it.jsonObject.getValue("current").jsonObject["value"]
-                }
-        assertThat(variables["metrics_datasource"]?.jsonPrimitive?.content).isEqualTo("mimir")
-        assertThat(variables["cluster"]?.jsonArray?.map { it.jsonPrimitive.content }).containsExactly(testClusterState.clusterLabelName())
-        assertThat(variables["doc_tenant"]?.jsonPrimitive?.content).isEqualTo("default")
+        return body
+            .getValue("dashboard")
+            .jsonObject
+            .getValue("templating")
+            .jsonObject
+            .getValue("list")
+            .jsonArray
+            .map { it.jsonObject }
+            .filter { "current" in it }
+            .associate { it.getValue("name").jsonPrimitive.content to it.getValue("current").jsonObject["value"] }
     }
 
     @Test

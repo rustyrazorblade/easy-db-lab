@@ -329,6 +329,22 @@ object Constants {
         /** Root of the reports: `reports/<tenant>/<experiment>/`, one folder per experiment. */
         const val REPORTS_ROOT = "reports"
 
+        /**
+         * The rule every segment of every path in a report must match. The path travels through a
+         * URL, the documents web server and a signing proxy, and these characters need no encoding
+         * in any of them.
+         */
+        const val REPORT_PATH_SEGMENT_PATTERN = "[A-Za-z0-9._-]+"
+
+        /** The file list `report upload` generates at the root of every upload; no report may hold one there. */
+        const val REPORT_FILE_LIST = "_files.html"
+
+        /** The front page of an upload that holds `index.md` or `index.html` at its root. */
+        const val REPORT_FRONT_PAGE = "index.html"
+
+        /** The suffix of a report file that gets an HTML copy. */
+        const val REPORT_MARKDOWN_SUFFIX = ".md"
+
         /** The tenant of a cluster that was initialized without `--tenant`. */
         const val DEFAULT_TENANT = "default"
 

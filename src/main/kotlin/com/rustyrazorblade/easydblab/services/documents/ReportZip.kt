@@ -73,7 +73,8 @@ object ReportZip {
     }
 
     /**
-     * The zip of [dir]: every file under its relative path, in path order.
+     * The zip of [dir]: every file under its relative path, in path order, dated with its own
+     * modification time, so building the same directory twice gives the same bytes.
      *
      * @throws ReportRejectedException naming every offender, before anything is built, if [dir] breaks a rule.
      */
@@ -85,8 +86,10 @@ object ReportZip {
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->
             files.forEach { path ->
-                zip.putNextEntry(ZipEntry(path))
-                zip.write(root.resolve(path).readBytes())
+                val file = root.resolve(path)
+                // The file's own time, never the clock, so the same directory always gives the same zip.
+                zip.putNextEntry(ZipEntry(path).apply { time = Files.getLastModifiedTime(file).toMillis() })
+                zip.write(file.readBytes())
                 zip.closeEntry()
             }
         }

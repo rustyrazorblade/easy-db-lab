@@ -152,4 +152,14 @@ class ReportZipTest {
         assertThat(entries(archive))
             .containsExactlyEntriesOf(mapOf("index.md" to "front", "results.md" to "# Results", "runs/r1/graph.png" to "png-bytes"))
     }
+
+    @Test
+    fun `building the same directory twice gives the same bytes`() {
+        file("results.md", "# Results")
+        file("runs/r1/graph.png", "png-bytes")
+        val first = ReportZip.build(dir).bytes
+        Thread.sleep(2_100)
+
+        assertThat(ReportZip.build(dir).bytes).isEqualTo(first)
+    }
 }

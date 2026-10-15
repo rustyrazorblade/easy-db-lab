@@ -18,12 +18,22 @@ import java.nio.file.StandardCopyOption
 fun File.writeTextAtomically(
     text: String,
     beforeRename: (File) -> Unit = {},
+) = writeBytesAtomically(text.toByteArray(), beforeRename)
+
+/**
+ * Replaces this file's content with [bytes] in one step, as [writeTextAtomically] does for text.
+ *
+ * @param beforeRename runs on the staged file before the rename; an exception from it aborts the write
+ */
+fun File.writeBytesAtomically(
+    bytes: ByteArray,
+    beforeRename: (File) -> Unit = {},
 ) {
     val directory = absoluteFile.parentFile
     directory.mkdirs()
     val staged = Files.createTempFile(directory.toPath(), ".$name.", ".tmp").toFile()
     try {
-        staged.writeText(text)
+        staged.writeBytes(bytes)
         beforeRename(staged)
         Files.move(staged.toPath(), toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
     } finally {

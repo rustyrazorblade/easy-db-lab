@@ -1,0 +1,97 @@
+package com.rustyrazorblade.easydblab.localstack
+
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.writeBytesAtomically
+import com.rustyrazorblade.easydblab.writeTextAtomically
+import java.io.File
+import java.security.MessageDigest
+
+/**
+ * A stack directory the tool will not write into: it is not empty and holds no manifest of the tool,
+ * so its files are someone else's.
+ *
+ * @property directory the refused directory.
+ */
+class LocalStackDirectoryRefused(
+    val directory: File,
+) : IllegalStateException(
+        "$directory is not empty and was not created by observability local create; " +
+            "choose an empty or new directory",
+    )
+
+/**
+ * What one write of a stack did.
+ *
+ * @property written every owned file, by relative path, in the order written.
+ * @property edited the owned files whose content on disk was not what the last write left there:
+ *   the user edited them, and this write replaced the edit.
+ */
+data class LocalStackWriteResult(
+    val written: List<String>,
+    val edited: List<String>,
+)
+
+/**
+ * Writes a composed stack ([LocalStackComposer]) into its directory and records it in the manifest
+ * ([LocalStackManifest]).
+ *
+ * The directory contract:
+ * - a missing directory is created, and an empty one is used as it is;
+ * - a directory that is not empty and holds no manifest is refused before anything is written;
+ * - every owned file is replaced atomically, and the manifest is written last;
+ * - an owned file the user edited is overwritten and reported;
+ * - nothing else is opened, written or removed: not `compose.override.yml`, not `data/`, `cache/`
+ *   or `grafana-data/`, not the dashboard tree. A file set that names one of them is refused.
+ *
+ * @property toolVersion the version recorded in the manifest.
+ */
+class LocalStackWriter(
+    private val toolVersion: String,
+) {
+    /** Writes [files] (by path relative to [directory]) for [spec] into [directory]. */
+    fun write(
+        directory: File,
+        spec: LocalStackSpec,
+        files: Map<String, ByteArray>,
+    ): LocalStackWriteResult {
+        files.keys.forEach(::requireOwnable)
+        val manifestFile = File(directory, Constants.LocalStack.MANIFEST_FILE)
+        val previous = if (manifestFile.isFile) LocalStackManifest.read(manifestFile) else null
+        if (previous == null && !directory.list().isNullOrEmpty()) throw LocalStackDirectoryRefused(directory)
+        directory.mkdirs()
+
+        val edited =
+            files.keys.filter { path ->
+                val recorded = previous?.files?.get(path)
+                val onDisk = File(directory, path)
+                recorded != null && onDisk.isFile && sha256(onDisk.readBytes()) != recorded
+            }
+        files.forEach { (path, bytes) -> File(directory, path).writeBytesAtomically(bytes) }
+        manifestFile.writeTextAtomically(
+            LocalStackManifest(
+                toolVersion = toolVersion,
+                mode = spec.mode.manifestName,
+                homeTenant = spec.mode.home,
+                tenants = spec.tenantSet.all,
+                grafanaPort = spec.grafanaPort,
+                files = files.mapValues { sha256(it.value) },
+            ).toJson(),
+        )
+        return LocalStackWriteResult(written = files.keys.toList(), edited = edited)
+    }
+
+    private fun requireOwnable(path: String) {
+        val segments = path.split('/')
+        require(path.isNotEmpty() && !path.startsWith("/") && ".." !in segments && "" !in segments) {
+            "$path is not a plain path inside the stack directory"
+        }
+        require(path != Constants.LocalStack.OVERRIDE_FILE && path != Constants.LocalStack.MANIFEST_FILE) {
+            "$path is not a file the stack may own"
+        }
+        require(segments.first() !in Constants.LocalStack.PROTECTED_DIRS + Constants.LocalStack.DASHBOARDS_DIR) {
+            "$path is under a directory the stack never writes"
+        }
+    }
+
+    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+}

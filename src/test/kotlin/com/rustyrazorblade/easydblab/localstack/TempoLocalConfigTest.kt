@@ -25,7 +25,13 @@ class TempoLocalConfigTest {
         root: YamlMap,
         vararg path: String,
     ): YamlNode? =
-        path.fold(root as YamlNode?) { node, key -> (node as? YamlMap)?.entries?.entries?.firstOrNull { it.key.content == key }?.value }
+        path.fold(root as YamlNode?) { node, key ->
+            (node as? YamlMap)
+                ?.entries
+                ?.entries
+                ?.firstOrNull { it.key.content == key }
+                ?.value
+        }
 
     /** The node's content as plain maps, lists and strings: kaml's own equality includes source lines. */
     private fun plain(node: YamlNode?): Any? =
@@ -88,11 +94,20 @@ class TempoLocalConfigTest {
         val cluster = parse(clusterYaml)
         val local = parse(rendered)
 
-        for (key in listOf("live_store", "distributor", "metrics_generator", "server", "multitenancy_enabled", "stream_over_http_enabled")) {
+        for (key in listOf(
+            "live_store",
+            "distributor",
+            "metrics_generator",
+            "server",
+            "multitenancy_enabled",
+            "stream_over_http_enabled",
+        )) {
             assertThat(plain(nodeAt(local, key))).describedAs(key).isEqualTo(plain(nodeAt(cluster, key)))
         }
         assertThat(plain(nodeAt(local, "storage", "trace", "wal"))).isEqualTo(plain(nodeAt(cluster, "storage", "trace", "wal")))
-        assertThat(plain(nodeAt(local, "overrides", "defaults", "ingestion"))).isEqualTo(plain(nodeAt(cluster, "overrides", "defaults", "ingestion")))
+        assertThat(
+            plain(nodeAt(local, "overrides", "defaults", "ingestion")),
+        ).isEqualTo(plain(nodeAt(cluster, "overrides", "defaults", "ingestion")))
         val processors = nodeAt(local, "overrides", "defaults", "metrics_generator", "processors") as YamlList
         assertThat(processors.items).isEmpty()
     }

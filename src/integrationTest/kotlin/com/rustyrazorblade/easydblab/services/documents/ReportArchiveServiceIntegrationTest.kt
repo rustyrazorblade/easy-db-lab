@@ -123,6 +123,7 @@ class ReportArchiveServiceIntegrationTest {
         val state = cluster()
         File(dir, "index.md").writeText("# Front")
         service("2026-10-14T12:00:00Z").upload(state, dir)
+        File(dir, "index.md").writeText("# Front, revised")
 
         val sameSecond = service("2026-10-14T12:00:00Z").upload(state, dir)
         val earlier = service("2026-10-14T11:00:00Z").upload(state, dir)

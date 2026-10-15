@@ -22,7 +22,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     private var version = 0
     private var hook: (() -> Unit)? = null
     private var hookEveryWrite = false
-    private var loseNextResponse = false
+    private var loseResponse: ((String) -> Boolean)? = null
 
     /** How many conditional writes were refused. */
     var refusedWrites = 0
@@ -45,7 +45,12 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
      * request finds the object already there.
      */
     fun loseNextWriteResponse() {
-        loseNextResponse = true
+        loseResponse = { true }
+    }
+
+    /** As [loseNextWriteResponse], for the next conditional write to [path] only. */
+    fun loseWriteResponseAt(path: ClusterS3Path) {
+        loseResponse = { it == path.toUri() }
     }
 
     /** Stores [content] at [path] unconditionally, as another writer would. */
@@ -79,7 +84,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
             return ConditionalObjectStore.AlreadyExists
         }
         store(remotePath, content, contentType)
-        return if (responseLost()) ConditionalObjectStore.AlreadyExists else ConditionalObjectStore.Written
+        return if (responseLost(remotePath)) ConditionalObjectStore.AlreadyExists else ConditionalObjectStore.Written
     }
 
     override fun putIfMatch(
@@ -94,11 +99,13 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
             return ConditionalObjectStore.PreconditionFailed
         }
         store(remotePath, content, contentType)
-        return if (responseLost()) ConditionalObjectStore.PreconditionFailed else ConditionalObjectStore.Written
+        return if (responseLost(remotePath)) ConditionalObjectStore.PreconditionFailed else ConditionalObjectStore.Written
     }
 
     override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? =
         objects[remotePath.toUri()]?.let { ConditionalObjectStore.Versioned(it.bytes.decodeToString(), it.etag) }
+
+    override fun readBytes(remotePath: ClusterS3Path): ByteArray? = bytesAt(remotePath)
 
     private fun store(
         path: ClusterS3Path,
@@ -108,7 +115,11 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
         objects[path.toUri()] = Stored(bytes, contentType, "\"v${++version}\"")
     }
 
-    private fun responseLost(): Boolean = loseNextResponse.also { loseNextResponse = false }
+    private fun responseLost(path: ClusterS3Path): Boolean {
+        val lost = loseResponse?.invoke(path.toUri()) == true
+        if (lost) loseResponse = null
+        return lost
+    }
 
     private fun runHook() {
         val action = hook ?: return

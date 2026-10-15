@@ -271,6 +271,13 @@ interface ConditionalObjectStore {
      */
     fun readVersioned(remotePath: ClusterS3Path): Versioned?
 
+    /**
+     * Reads the object at [remotePath] as bytes, exactly as stored.
+     *
+     * @return its bytes, or null when no object is there.
+     */
+    fun readBytes(remotePath: ClusterS3Path): ByteArray?
+
     /** The outcome of [putIfAbsent]. */
     sealed interface PutIfAbsentResult
 

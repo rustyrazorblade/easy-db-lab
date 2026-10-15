@@ -101,6 +101,7 @@ class ReportArchiveServiceTest {
     fun `an upload in a second that is taken moves to the next free second`() {
         file("results.md", "first")
         service("2026-10-14T12:00:00Z").upload(state, dir)
+        file("results.md", "second")
         service("2026-10-14T12:00:00Z").upload(state, dir)
         file("results.md", "third")
 
@@ -171,6 +172,29 @@ class ReportArchiveServiceTest {
             .hasMessageContaining("Run report upload again")
         assertThat(store.bytesAt(key("reports/acme/e1/report-20261014-120000.zip"))).isEqualTo(ReportZip.build(dir).bytes)
         assertThat(text("reports/acme/e1/index.html")).isEqualTo("<html>another writer's page</html>")
+    }
+
+    @Test
+    fun `a zip write that was stored but reported refused keeps its name and is not stored again`() {
+        file("results.md", "mine")
+        store.loseWriteResponseAt(key("reports/acme/e1/report-20261014-120000.zip"))
+
+        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(uploaded.zip.toUri()).isEqualTo(zipUri)
+        assertThat(uploaded.pointerAdvanced).isTrue()
+        assertThat(store.keys()).noneMatch { it.startsWith("reports/acme/e1/report-20261014-120001") }
+    }
+
+    @Test
+    fun `an unpacked file write that was stored but reported refused is this upload's own`() {
+        file("results.md", "mine")
+        store.loseWriteResponseAt(key("reports/acme/e1/report-20261014-120000/results.md"))
+
+        val uploaded = service("2026-10-14T12:00:00Z").upload(state, dir)
+
+        assertThat(uploaded.pointerAdvanced).isTrue()
+        assertThat(text("reports/acme/e1/report-20261014-120000/results.md")).isEqualTo("mine")
     }
 
     @Test

@@ -101,7 +101,7 @@ class DefaultReportArchiveService(
                 .take(Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS)
                 .toList()
         return candidates.firstOrNull { stamp ->
-            store.putIfAbsent(archive.bytes, folder.resolve(stamp.zipName), ZIP_CONTENT_TYPE) == ConditionalObjectStore.Written
+            storedAsOwn(archive.bytes, folder.resolve(stamp.zipName), ZIP_CONTENT_TYPE)
         } ?: error(
             "Every report name for ${Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS} seconds up to " +
                 "${candidates.last().zipName} is taken in ${folder.toUri()}; nothing was uploaded.",
@@ -113,10 +113,25 @@ class DefaultReportArchiveService(
         content: ByteArray,
         contentType: String,
     ) {
-        check(store.putIfAbsent(content, path, contentType) == ConditionalObjectStore.Written) {
+        check(storedAsOwn(content, path, contentType)) {
             "${path.toUri()} already exists; an upload never replaces an object, so it was left unchanged."
         }
     }
+
+    /**
+     * Writes [content] to [path] only where no object is, and tells whether [path] now holds this
+     * writer's [content]. A refused write whose object has exactly these bytes is this writer's
+     * own: the store retried a write that had committed and only lost its response.
+     */
+    private fun storedAsOwn(
+        content: ByteArray,
+        path: ClusterS3Path,
+        contentType: String,
+    ): Boolean =
+        when (store.putIfAbsent(content, path, contentType)) {
+            ConditionalObjectStore.Written -> true
+            ConditionalObjectStore.AlreadyExists -> store.readBytes(path)?.contentEquals(content) == true
+        }
 
     private companion object {
         private const val ZIP_CONTENT_TYPE = "application/zip"

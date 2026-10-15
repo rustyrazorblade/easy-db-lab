@@ -21,7 +21,7 @@ Reports:
 - An experiment is one test: one or more clusters of one tenant, named at `init --experiment <name>` (default: the cluster's own `<name>-<id>`). A report belongs to the experiment, so every cluster of it shows the same report.
 - `easy-db-lab report upload <dir>` — zips the directory (any file types) and stores the zip as `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip`, timestamped with the upload time in UTC. No upload ever overwrites an earlier one; every zip is kept. Works after `down`, with your own AWS credentials.
 - Each upload is unpacked beside its zip, with an HTML copy of each `.md` and a `_files.html` list. The documents panels show the newest upload: its `index.md` (or `index.html`) at the root, else `_files.html`.
-- The command checks the whole directory first and names every file that fails: path parts hold only letters, digits, `.`, `_`, `-` (no `..`), no symlinks, no root `_files.html`, no `X.md` beside `X.html`. It takes one directory, never a list of files.
+- The command checks the whole directory first and names every file that fails: path parts hold only letters, digits, `.`, `_`, `-` (no `..`), no symlinks, no root `_files.html` or `_files.md`, no `X.md` beside `X.html`. It takes one directory, never a list of files.
 
 Dashboards:
 - `easy-db-lab grafana update-config` — redeploy all core dashboards.

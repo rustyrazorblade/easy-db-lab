@@ -105,6 +105,18 @@ class ReportZipTest {
     }
 
     @Test
+    fun `a root markdown file whose HTML copy is the generated file list is refused`() {
+        file("_files.md")
+        file("sub/_files.md")
+        file("ok.md")
+
+        assertThat(ReportZip.problems(dir)).singleElement().satisfies({
+            assertThat(it.path).isEqualTo("_files.md")
+            assertThat(it.reason).contains("_files.html")
+        })
+    }
+
+    @Test
     fun `a markdown file beside an HTML file of the same stem names both, at any depth`() {
         file("x.md")
         file("x.html")

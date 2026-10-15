@@ -101,6 +101,8 @@ Integration tests live in the slow tier under `src/integrationTest/kotlin/.../se
 - Use `@TestInstance(TestInstance.Lifecycle.PER_CLASS)` to share the container across tests
 - Test the full behavior end-to-end: upload data, call the service method, assert on results
 
+**Conditional writes are the exception: test them against MinIO (`SharedMinio`), not LocalStack.** LocalStack 3.0 ignores `If-None-Match` and `If-Match` and overwrites the object, so a conditional-write test passes against it whether or not the write is conditional. `ObjectStore.putIfAbsent`, `putIfMatch` and `readVersioned` are covered by `S3ObjectStoreConditionalWriteIntegrationTest`, and the report upload (`ReportArchiveServiceIntegrationTest`) runs against MinIO for the same reason. A refused condition is a result, not an exception: 412, a 409 from a concurrent conditional write, and a 404 on `If-Match` give `AlreadyExists` or `PreconditionFailed`; every other error is thrown.
+
 Services that call S3 indirectly (via `ObjectStore`) also need integration tests — see `ClusterBackupServiceS3IntegrationTest` as an example of testing a higher-level service against LocalStack.
 
 ## Account compactor

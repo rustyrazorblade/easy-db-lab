@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -14,6 +15,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
 import software.amazon.awssdk.core.exception.SdkClientException
+import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
@@ -150,5 +152,36 @@ class S3ObjectStoreTest : BaseKoinTest() {
         assertThatThrownBy {
             objectStore.downloadFile(s3Path, localPath)
         }.isInstanceOf(S3Exception::class.java)
+    }
+
+    private fun s3Error(status: Int): S3Exception = S3Exception.builder().message("status $status").statusCode(status).build() as S3Exception
+
+    @Test
+    fun `putIfAbsent reports a concurrent conditional write that won as AlreadyExists`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>())).thenThrow(s3Error(409))
+
+        val result = objectStore.putIfAbsent("x".toByteArray(), ClusterS3Path.fromKey("b", "k"), "text/plain")
+
+        assertThat(result).isEqualTo(ObjectStore.AlreadyExists)
+    }
+
+    @Test
+    fun `putIfMatch reports a removed object as PreconditionFailed`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>())).thenThrow(s3Error(404))
+
+        val result = objectStore.putIfMatch("x".toByteArray(), ClusterS3Path.fromKey("b", "k"), "\"e\"", "text/html")
+
+        assertThat(result).isEqualTo(ObjectStore.PreconditionFailed)
+    }
+
+    @Test
+    fun `a conditional write that S3 denies is an error, not a refused condition`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>())).thenThrow(s3Error(403))
+
+        assertThatThrownBy { objectStore.putIfAbsent("x".toByteArray(), ClusterS3Path.fromKey("b", "k"), "text/plain") }
+            .isInstanceOf(S3Exception::class.java)
     }
 }

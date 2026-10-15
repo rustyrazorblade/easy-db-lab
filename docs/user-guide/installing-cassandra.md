@@ -17,6 +17,8 @@ easy-db-lab supports the following Cassandra versions:
 | 6.0-HEAD | 21 | Nightly build from 6.0 branch |
 | trunk | 21 | Development branch |
 
+A released version downloads once and is then served from your account's S3 download cache.  A nightly (`5.0-HEAD`, `6.0-HEAD`, `trunk`) and any `cassandra install --url` tarball always download from their origin, so each bake or install gets the current build.
+
 ## Quick Start
 
 ```bash

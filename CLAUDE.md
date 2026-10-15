@@ -311,7 +311,7 @@ Before pushing code, verify it passes all checks:
 
 **`build-image` / `build-base` / `build-cassandra` bake from `build/install/easy-db-lab/packer/`, not from the working tree.** `Context.appHome` points at the Gradle `installDist` output, so a change under `packer/` does not reach an AMI until `./gradlew installDist` has run — committing it is not enough, and nothing in the build output says which copy it used. Always run `./gradlew installDist` before baking, exactly as you would after changing Kotlin source.
 
-The images are stacked: `cassandra = base + Cassandra tarballs`, and `cassandra.pkr.hcl` selects the most recent base AMI. A change under `packer/base/` therefore needs **both** images rebuilt (`build-image`), not just the Cassandra one.
+The images are stacked: `cassandra = base + Cassandra tarballs`, and `cassandra.pkr.hcl` selects the most recent `available` base AMI, so a base AMI that a parallel bake is still registering is skipped. A change under `packer/base/` therefore needs **both** images rebuilt (`build-image`), not just the Cassandra one.
 
 Under the `ssm` SSH transport, Packer reaches the builder with `ssh_interface = "session_manager"` and runs in a derived image (`containers/PackerImage.kt`), built locally from the packaged `containers/packer-ssm.Dockerfile` resource and tagged by its content hash. Editing that Dockerfile is enough to get a rebuild on the next `ssm` AMI build. The Dockerfile pins the Packer base image by digest and the Session Manager plugin by version and per-architecture SHA-256; upgrading either means changing the pin and its checksum together.
 

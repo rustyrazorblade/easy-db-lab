@@ -10,7 +10,7 @@ LAST_RUN_FILE="${KIT_DIR}/last-run.txt"
 
 SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
 POD_NAME="sysbench-${KIT_NAME}-$(date +%s)"
-ROLE="sysbench-run"
+LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
   DB_ARGS="--db-driver=mysql \
@@ -36,7 +36,7 @@ echo "Starting sysbench: workload=${WORKLOAD}, threads=${THREADS}, duration=${DU
 kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
   --image="${SYSBENCH_IMAGE}" \
   --restart=Never \
-  --labels="$(edl_labels "${ROLE}")" \
+  --labels="${LABELS}" \
   --overrides="$(edl_pod_overrides)" \
   --override-type=strategic \
   --command -- sysbench \

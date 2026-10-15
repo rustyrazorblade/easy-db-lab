@@ -30,7 +30,7 @@
       }
     ]
   },
-  "description": "Every test (cluster) of the tenant the Metrics picker selects, with its window, links to its dashboards, and its documents. A test's window is its first and last `up` sample in Mimir within Lookback, so torn-down clusters are listed too.",
+  "description": "Every experiment of the tenant the Metrics picker selects, with its window, its clusters, links to its dashboards, and its report. An experiment's window runs from its clusters' first to their last `up` sample in Mimir within Lookback, so torn-down clusters are listed too. A cluster from before the experiment label is an experiment of one, named for the cluster.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -42,7 +42,224 @@
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "One row per cluster with `up` samples within Lookback. Start and End are the first and last `up` sample, found at the Resolution step, so the window is the whole life of the cluster. Click a cluster for its dashboards, a comparison with the current cluster, or its documents.",
+      "description": "One row per experiment with `up` samples within Lookback: its tenant, its name, the first start and last end of its clusters (found at the Resolution step), how many clusters it has, and their short names. A cluster from before the experiment label is its own experiment, with its tenant from Mimir's tenant (when the Metrics picker spans tenants) or the home tenant. Click an experiment for its newest report, Experiment: Cassandra on all of its clusters, or this dashboard on it.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "edl_tenant"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Tenant"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "experiment"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Experiment"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "targetBlank": true,
+                    "title": "Newest report",
+                    "url": "__DOCUMENTS_URL__/reports/${__data.fields.edl_tenant}/${__data.fields.experiment}/index.html"
+                  },
+                  {
+                    "title": "Compare clusters",
+                    "url": "/d/c09599ec-8d87-4fe5-9346-9e85c41d33af/experiment-cassandra?var-experiment=${__data.fields.edl_tenant}/${__data.fields.experiment}&var-cluster=$__all&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
+                  },
+                  {
+                    "title": "Show here",
+                    "url": "/d/tests/tests?var-experiment=${__data.fields.edl_tenant}/${__data.fields.experiment}&var-cluster=$__all&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "First start|Last end"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * min by (cluster, edl_tenant, experiment) (min_over_time(timestamp(count by (cluster, edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]) or label_replace(label_replace(label_replace(min_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"edl_tenant\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"edl_tenant\", \"${home_tenant}\", \"edl_tenant\", \"\"), \"experiment\", \"$1\", \"cluster\", \"(.+)\")), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * max by (cluster, edl_tenant, experiment) (max_over_time(timestamp(count by (cluster, edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]) or label_replace(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"edl_tenant\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"edl_tenant\", \"${home_tenant}\", \"edl_tenant\", \"\"), \"experiment\", \"$1\", \"cluster\", \"(.+)\")), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "B"
+        }
+      ],
+      "title": "Experiments",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "cluster": true
+            },
+            "indexByName": {},
+            "renameByName": {
+              "cluster_name": "Cluster"
+            }
+          }
+        },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Cluster": {
+                "aggregations": [
+                  "count",
+                  "allValues"
+                ],
+                "operation": "aggregate"
+              },
+              "Value #A": {
+                "aggregations": [
+                  "min"
+                ],
+                "operation": "aggregate"
+              },
+              "Value #B": {
+                "aggregations": [
+                  "max"
+                ],
+                "operation": "aggregate"
+              },
+              "edl_tenant": {
+                "aggregations": [],
+                "operation": "groupby"
+              },
+              "experiment": {
+                "aggregations": [],
+                "operation": "groupby"
+              }
+            }
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "edl_tenant": 0,
+              "experiment": 1,
+              "Value #A (min)": 2,
+              "Value #B (max)": 3,
+              "Cluster (count)": 4,
+              "Cluster (allValues)": 5
+            },
+            "renameByName": {
+              "Value #A (min)": "First start",
+              "Value #B (max)": "Last end",
+              "Cluster (count)": "Clusters",
+              "Cluster (allValues)": "Cluster names"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": true,
+                "field": "Last end"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "One row per cluster of the selected experiment. Start and End are the cluster's first and last `up` sample within Lookback, found at the Resolution step, so the window is the whole life of the cluster. Click a cluster for its dashboards over its window, or for the cluster pair with this cluster as A and the current cluster as B.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -91,19 +308,15 @@
                 "value": [
                   {
                     "title": "System Overview",
-                    "url": "/d/system-overview/system-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${doc_tenant:queryparam}"
+                    "url": "/d/system-overview/system-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${experiment:queryparam}"
                   },
                   {
                     "title": "Cassandra Overview",
-                    "url": "/d/1e7b6436-9a13-44cf-bdae-7528a9a7f537/cassandra-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${doc_tenant:queryparam}"
+                    "url": "/d/1e7b6436-9a13-44cf-bdae-7528a9a7f537/cassandra-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${experiment:queryparam}"
                   },
                   {
                     "title": "Compare with the current cluster",
-                    "url": "/d/c09599ec-8d87-4fe5-9346-9e85c41d33af/cluster-comparison?var-baseline_cluster=${__data.fields.cluster}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}&${doc_tenant:queryparam}&${lookback:queryparam}"
-                  },
-                  {
-                    "title": "Show documents",
-                    "url": "/d/tests/tests?var-cluster=${__data.fields.cluster}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${doc_tenant:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
+                    "url": "/d/cluster-pair/cluster-pair?var-cluster_a=${__data.fields.cluster}&${experiment:queryparam}&${cluster:queryparam}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
                   }
                 ]
               }
@@ -148,12 +361,12 @@
         ]
       },
       "gridPos": {
-        "h": 12,
+        "h": 8,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 10
       },
-      "id": 1,
+      "id": 3,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -173,7 +386,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(1000 * min by (cluster) (min_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(1000 * min by (cluster) (min_over_time(timestamp(count by (cluster) (up{cluster=~\"$cluster\"}))[$lookback:${resolution}s])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -186,7 +399,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(1000 * max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(1000 * max by (cluster) (max_over_time(timestamp(count by (cluster) (up{cluster=~\"$cluster\"}))[$lookback:${resolution}s])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -199,7 +412,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(1000 * (min by (cluster) (min_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])) - $resolution), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(1000 * (min by (cluster) (min_over_time(timestamp(count by (cluster) (up{cluster=~\"$cluster\"}))[$lookback:${resolution}s])) - $resolution), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -212,7 +425,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(1000 * (max by (cluster) (max_over_time(timestamp(count by (cluster) (up))[$lookback:${resolution}s])) + $resolution), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(1000 * (max by (cluster) (max_over_time(timestamp(count by (cluster) (up{cluster=~\"$cluster\"}))[$lookback:${resolution}s])) + $resolution), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -220,7 +433,7 @@
           "refId": "D"
         }
       ],
-      "title": "Tests",
+      "title": "Clusters of ${experiment:text}",
       "transformations": [
         {
           "id": "merge",
@@ -293,12 +506,12 @@
       "type": "table"
     },
     {
-      "description": "The documents of the selected test, `reports/<doc_tenant>/<cluster>/index.html` in the account bucket, served read-only by the documents web server on the control node. Upload them with `easy-db-lab report upload FILE...`. A test that has none shows \"No documents yet\".",
+      "description": "The newest report of the selected experiment, `reports/<tenant>/<experiment>/index.html` in the account bucket, served read-only by the documents web server on the control node. Upload one from a cluster of the experiment with `easy-db-lab report upload DIR`. An experiment with no report shows \"No report yet\".",
       "gridPos": {
         "h": 20,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 18
       },
       "id": 2,
       "options": {
@@ -307,10 +520,10 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${doc_tenant}/${cluster}/index.html\" width=\"100%\" height=\"696\"></iframe>",
+        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${experiment}/index.html\" width=\"100%\" height=\"696\"></iframe>",
         "mode": "html"
       },
-      "title": "Documents: ${cluster:text}",
+      "title": "Report: ${experiment:text}",
       "type": "text"
     }
   ],
@@ -367,29 +580,28 @@
         "type": "datasource"
       },
       {
-        "allowCustomValue": true,
         "current": {},
         "datasource": {
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(count by (cluster) (last_over_time(up[$lookback])))",
-        "description": "The selected test, whose documents the Documents panel shows. A row's Show documents link selects it.",
+        "definition": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\"))))",
+        "description": "The selected experiment, as <tenant>/<name>, newest first. Its clusters fill the Clusters table, the markers and the Report panel. An experiment row's Show here link selects it.",
         "hide": 0,
         "includeAll": false,
-        "label": "Test",
+        "label": "Experiment",
         "multi": false,
-        "name": "cluster",
+        "name": "experiment",
         "options": [],
         "query": {
           "qryType": 3,
-          "query": "query_result(count by (cluster) (last_over_time(up[$lookback])))",
+          "query": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\"))))",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,
-        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
+        "regex": "/exp_key=\"(?<value>[^\"]+)\",exp_text=\"(?<text>[^\"]+)\"/",
         "skipUrlSync": false,
-        "sort": 1,
+        "sort": 0,
         "type": "query"
       },
       {
@@ -398,7 +610,7 @@
           "text": "180d",
           "value": "180d"
         },
-        "description": "How far back to look for tests.",
+        "description": "How far back to look for experiments.",
         "hide": 0,
         "includeAll": false,
         "label": "Lookback",
@@ -441,7 +653,7 @@
           "text": "5m",
           "value": "300"
         },
-        "description": "The step, in seconds, at which a test's first and last up sample is found. A finer step is more exact and costs more.",
+        "description": "The step, in seconds, at which a cluster's first and last up sample is found. A finer step is more exact and costs more.",
         "hide": 0,
         "includeAll": false,
         "label": "Resolution",
@@ -475,12 +687,84 @@
       },
       {
         "current": {},
-        "description": "The tenant folder the documents are read from. The installer lists every tenant and selects the cluster's own; set it with the pickers.",
-        "hide": 0,
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "description": "The tenant part of the selected experiment.",
+        "hide": 2,
         "includeAll": false,
-        "label": "Documents tenant",
         "multi": false,
-        "name": "doc_tenant",
+        "name": "exp_tenant",
+        "options": [],
+        "query": {
+          "qryType": 3,
+          "query": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "/k=\"(?<value>[^/\"]*)\\//",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "description": "The name part of the selected experiment.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_name",
+        "options": [],
+        "query": {
+          "qryType": 3,
+          "query": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "/k=\"[^/\"]*\\/(?<value>[^\"]*)\"/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s])))",
+        "description": "The clusters of the selected experiment, within Lookback. All is the experiment's clusters; the Clusters table and the markers read it.",
+        "hide": 2,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 3,
+          "query": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s])))",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "description": "The home tenant, filled in at install: the tenant of a cluster from before the tenant label, when the Metrics picker reads one tenant.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "home_tenant",
         "options": [],
         "query": "",
         "skipUrlSync": false,

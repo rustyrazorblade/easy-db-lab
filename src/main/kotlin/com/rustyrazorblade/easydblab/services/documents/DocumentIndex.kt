@@ -5,17 +5,6 @@ import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 
 /**
- * One test document rendered to HTML.
- *
- * @property name The document's heading: its file name without `.md`.
- * @property html The rendered body.
- */
-data class RenderedDocument(
-    val name: String,
-    val html: String,
-)
-
-/**
  * Renders a test document's markdown to HTML, GitHub-flavored tables included.
  *
  * The documents are the operator's own notes, so raw HTML in them is kept.
@@ -30,15 +19,12 @@ object MarkdownRenderer {
 }
 
 /**
- * Builds the HTML pages of a test's documents: each document's own page, and the one `index.html`
- * Grafana shows, which holds every document in its own section, headed with its name, in name order.
+ * Builds the HTML pages of a report: each markdown file's HTML copy, the generated file list and
+ * the pointer.
  *
- * Every page declares UTF-8, because S3 serves it as `text/html` with no charset.
+ * Every page declares UTF-8, so it reads correctly whatever charset S3 serves it with.
  */
 object DocumentIndex {
-    /** What the index of a test with no documents says. */
-    const val EMPTY = "No documents yet"
-
     private const val STYLE =
         "body { font-family: sans-serif; margin: 1em; color: #222; background: #fff; } " +
             "section { margin-bottom: 2em; } " +
@@ -65,21 +51,6 @@ object DocumentIndex {
         |</html>
         |
         """.trimMargin()
-
-    /**
-     * The index of a test holding [documents]. A name given twice appears once, with its last
-     * content, so a replaced document is shown once.
-     */
-    fun render(documents: List<RenderedDocument>): String {
-        val latest = documents.associateBy { it.name }.values.sortedBy { it.name }
-        val body =
-            if (latest.isEmpty()) {
-                "<p>$EMPTY</p>"
-            } else {
-                latest.joinToString("\n") { "<section id=\"${escape(it.name)}\">\n<h1>${escape(it.name)}</h1>\n${it.html}</section>" }
-            }
-        return page("Test documents", body)
-    }
 
     /** [text] with the characters HTML treats as markup escaped. */
     fun escape(text: String): String =

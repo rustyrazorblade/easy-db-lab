@@ -63,8 +63,8 @@
 
 ## 9. Dashboard
 
-- [ ] 9.1 Use the `dashboard-editor` agent to build `kits/clickhouse-benchmark/dashboards/clickhouse-benchmark.json`: panels for the ten gauges, an instance filter, the `metrics_datasource` picker, and a link to the `clickhouse` dashboard that carries the pickers and the selected cluster.
-- [ ] 9.2 Run `DashboardDatasourceVariablesTest` and confirm the new dashboard passes.
+- [x] 9.1 Use the `dashboard-editor` agent to build `kits/clickhouse-benchmark/dashboards/clickhouse-benchmark.json`: panels for the ten gauges, an instance filter, the `metrics_datasource` picker, and a link to the `clickhouse` dashboard that carries the pickers and the selected cluster.
+- [x] 9.2 Run `DashboardDatasourceVariablesTest` and confirm the new dashboard passes.
 
 ## 10. Docs and specs
 

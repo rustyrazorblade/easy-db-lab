@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.documents
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import java.io.File
@@ -78,7 +79,7 @@ class DefaultReportArchiveService(
         dir: File,
     ): UploadedReport {
         val archive = ReportZip.build(dir)
-        val folder = ObservabilityStore.from(clusterState).documentsRoot(clusterState.experimentKey())
+        val folder = ObservabilityStore.from(clusterState).documentsRoot(ExperimentKey.of(clusterState))
         val stamp = storeZip(folder, archive)
         val zip = folder.resolve(stamp.zipName)
         val unpacked = folder.resolve(stamp.folderName)

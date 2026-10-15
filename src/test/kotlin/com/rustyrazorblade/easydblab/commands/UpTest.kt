@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -117,7 +118,7 @@ class UpTest : UpTestFixture() {
     }
 
     private fun reportPointerOf(state: ClusterState): ClusterS3Path =
-        ObservabilityStore("easy-db-lab-test-bucket", state.tenant()).documentsRoot(state.experimentKey()).resolve("index.html")
+        ObservabilityStore("easy-db-lab-test-bucket", state.tenant()).documentsRoot(ExperimentKey.of(state)).resolve("index.html")
 
     // =========================================================================
     // Group 4: cluster shape invariants

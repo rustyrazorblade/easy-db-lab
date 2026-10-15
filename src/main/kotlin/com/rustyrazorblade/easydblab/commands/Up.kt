@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
@@ -161,7 +162,7 @@ class Up(
 
         accountBucketSetup.prepare(workingState)
         // Only when the experiment has no pointer: a cluster that joins an experiment never hides its report.
-        reportPointer.ensurePlaceholder(ObservabilityStore.from(workingState).documentsRoot(workingState.experimentKey()))
+        reportPointer.ensurePlaceholder(ObservabilityStore.from(workingState).documentsRoot(ExperimentKey.of(workingState)))
         provisionInfrastructure(initConfig)
         writeConfigurationFiles()
         runNestedCommand { WriteConfig() }

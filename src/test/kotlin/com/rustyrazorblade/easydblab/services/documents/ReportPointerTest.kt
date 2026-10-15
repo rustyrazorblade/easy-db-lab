@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.time.Duration
 import java.time.Instant
 
 /**
@@ -19,7 +20,7 @@ class ReportPointerTest {
     private val folder = ClusterS3Path.fromKey("acct", "reports/acme/e1")
     private val pointerPath = folder.resolve("index.html")
     private val store = InMemoryConditionalObjectStore()
-    private val pointer = ReportPointer(store)
+    private val pointer = ReportPointer(store, Duration.ZERO)
 
     private val older = ReportStamp.of(Instant.parse("2026-10-14T10:00:00Z"))
     private val newer = ReportStamp.of(Instant.parse("2026-10-14T11:30:05Z"))
@@ -151,6 +152,15 @@ class ReportPointerTest {
     @Test
     fun `a write that meets its own earlier attempt in flight counts as this upload's once it lands`() {
         store.conflictAfterRetryAt(pointerPath, landsAfterReads = 1)
+
+        assertThat(pointer.advance(folder, newer, "index.html")).isTrue()
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+    }
+
+    @Test
+    fun `a replacing write that meets its own earlier attempt in flight waits for it to land and counts it as this upload's`() {
+        pointer.advance(folder, older, "_files.html")
+        store.conflictAfterRetryAt(pointerPath, landsAfterReads = 3)
 
         assertThat(pointer.advance(folder, newer, "index.html")).isTrue()
         assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)

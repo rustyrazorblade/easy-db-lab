@@ -86,7 +86,7 @@ class DefaultReportArchiveService(
     private val inFlightLookInterval: Duration = Duration.ofMillis(Constants.Observability.REPORT_IN_FLIGHT_LOOK_INTERVAL_MS),
     private val uploadIds: () -> String = { UUID.randomUUID().toString() },
 ) : ReportArchiveService {
-    private val pointer = ReportPointer(store)
+    private val pointer = ReportPointer(store, inFlightLookInterval)
 
     override fun upload(
         clusterState: ClusterState,

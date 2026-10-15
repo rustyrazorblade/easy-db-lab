@@ -202,6 +202,17 @@ class ReportArchiveServiceTest {
         assertThat(text("reports/acme/e1/index.html")).isEqualTo("<html>another writer's page</html>")
     }
 
+    @Test
+    fun `an interrupt while unpacking reaches the caller as an interrupt, not as an incomplete upload`() {
+        file("results.md", "mine")
+        val interrupt = InterruptedException("interrupted while waiting on a write in flight")
+        var writes = 0
+        // The first write is the zip; the second, an unpacked file, is interrupted.
+        store.beforeEveryWrite { if (++writes == 2) throw interrupt }
+
+        assertThatThrownBy { upload() }.isSameAs(interrupt)
+    }
+
     private val zipKey = key("reports/acme/e1/report-20261014-120000.zip")
     private val fileKey = key("reports/acme/e1/report-20261014-120000/results.md")
     private val maxLooks = Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS

@@ -96,12 +96,16 @@ class DefaultReportArchiveService(
         val stamp = storeZip(folder, archive)
         val zip = folder.resolve(stamp.zipName)
         val unpacked = folder.resolve(stamp.folderName)
+        // An interrupt is the caller's to handle, and an Error is not an incomplete upload: only
+        // an ordinary failure becomes one.
         val advanced =
-            runCatching {
+            try {
                 val report = ReportUnpacker.unpack(archive.bytes)
                 report.objects.forEach { put(unpacked.resolve(it.path), it.content, it.contentType) }
                 pointer.advance(folder, stamp, report.frontPage)
-            }.getOrElse { throw ReportUploadIncompleteException(zip, it) }
+            } catch (e: Exception) {
+                throw (e as? InterruptedException) ?: ReportUploadIncompleteException(zip, e)
+            }
         return UploadedReport(zip, unpacked, advanced, archive.files)
     }
 

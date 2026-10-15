@@ -60,7 +60,7 @@
 - [x] 5.5 `infrastructure/system-ab-comparison.json`: the same with `hosts_a`/`hosts_b`; link to `ab-comparison` carries `experiment`, `cluster_a`, `cluster_b` and drops `doc_tenant`.
 - [x] 5.6 `infrastructure/tests.json`: `experiment` replaces `cluster`; experiments table with tenant, name, first start, last end, cluster count and short names; row links "Newest report", "Compare clusters", "Show here"; "Clusters of `$experiment`" table with System Overview, Cassandra Overview and "Compare with the current cluster" (cluster pair, `var-cluster_a`); documents panel `reports/${experiment}/index.html`; annotations filtered on the experiment's clusters; pre-label branch.
 - [x] 5.7 TraceQL audit: fix every TraceQL use (system-overview, observability/tempo, clickhouse-logs, tidb and any other) to hold `resource.cluster` against the cluster variable.
-- [ ] 5.8 Unit tier green: every guard from section 4 passes on every core and kit dashboard.
+- [x] 5.8 Unit tier green: every guard from section 4 passes on every core and kit dashboard.
 - [ ] 5.9 Live check with `installDist`, `grafana update-config` and read-back from Grafana: newest experiment on open; cluster picker lists only the experiment; pair defaults (A oldest, B current); kept dashboards work with A/B pickers; same-named experiments in two tenants stay apart; All on `mimir--all` shows both tenants; a pre-label cluster shows as an experiment of one and opens its documents.
 
 ## 6. Phase 4: local stack

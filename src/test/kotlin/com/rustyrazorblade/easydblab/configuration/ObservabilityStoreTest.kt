@@ -37,13 +37,25 @@ class ObservabilityStoreTest {
     }
 
     @Test
-    fun `a test's documents live under reports, the tenant and the cluster label`() {
+    fun `an experiment's reports live under reports, its tenant and its name`() {
         val store = ObservabilityStore.from(state)
-        val cluster = state.clusterLabelName()
 
-        assertThat(store.documentsRoot(cluster).getKey()).isEqualTo("reports/acme/lab-0f1e2d3c-aaaa-bbbb-cccc-123456789abc")
-        assertThat(store.document(cluster, "results.md").getKey())
-            .isEqualTo("reports/acme/lab-0f1e2d3c-aaaa-bbbb-cccc-123456789abc/results.md")
+        assertThat(store.documentsRoot(ExperimentKey("acme", "e1")).toString()).isEqualTo("s3://acct-bucket/reports/acme/e1")
+    }
+
+    @Test
+    fun `a cluster from before experiments keeps its documents in its own folder`() {
+        val store = ObservabilityStore.from(state)
+
+        assertThat(store.documentsRoot(state.experimentKey()).getKey())
+            .isEqualTo("reports/acme/lab-0f1e2d3c-aaaa-bbbb-cccc-123456789abc")
+    }
+
+    @Test
+    fun `a cluster's reports folder is its experiment's`() {
+        val joined = state.copy(initConfig = InitConfig(tenant = "acme", experiment = "2026-10-13-ab"))
+
+        assertThat(ObservabilityStore.from(joined).documentsRoot(joined.experimentKey()).getKey()).isEqualTo("reports/acme/2026-10-13-ab")
     }
 
     @Test

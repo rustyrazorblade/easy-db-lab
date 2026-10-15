@@ -52,7 +52,8 @@ class ReportArchive(
  * A report is one directory of any file types. Every file is served by the documents web server,
  * so each path segment must match [Constants.Observability.REPORT_PATH_SEGMENT_PATTERN] and hold no
  * `..`; no entry may be a symbolic link (it is never followed); the root may not hold the generated
- * file list, [Constants.Observability.REPORT_FILE_LIST]; and no `X.md` may sit beside an `X.html`,
+ * file list, [Constants.Observability.REPORT_FILE_LIST], nor the `.md` whose HTML copy would be
+ * named for it; and no `X.md` may sit beside an `X.html`,
  * because its HTML copy would replace that file. The whole directory is checked before anything is
  * built, so every offender is named in one failure.
  */
@@ -60,6 +61,10 @@ object ReportZip {
     private val SEGMENT = Regex(Constants.Observability.REPORT_PATH_SEGMENT_PATTERN)
     private const val HTML_SUFFIX = ".html"
     private const val PARENT = ".."
+
+    /** The root markdown file whose HTML copy would be the generated file list. */
+    private val FILE_LIST_SOURCE =
+        Constants.Observability.REPORT_FILE_LIST.removeSuffix(HTML_SUFFIX) + Constants.Observability.REPORT_MARKDOWN_SUFFIX
 
     /**
      * Every path of [dir] that breaks a rule, one entry per path, in path order; empty when [dir] is
@@ -123,6 +128,9 @@ object ReportZip {
         }
         if (Constants.Observability.REPORT_FILE_LIST in files) {
             refuse(Constants.Observability.REPORT_FILE_LIST, "is reserved for the file list report upload generates")
+        }
+        if (FILE_LIST_SOURCE in files) {
+            refuse(FILE_LIST_SOURCE, "has an HTML copy named ${Constants.Observability.REPORT_FILE_LIST}, the file list report upload generates")
         }
         markdownBesideHtml(files.toSet()).forEach { (markdown, html) ->
             refuse(markdown, "has a sibling $html, which its HTML copy would replace")

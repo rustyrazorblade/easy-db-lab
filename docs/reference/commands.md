@@ -993,7 +993,7 @@ easy-db-lab report upload results/
 - the directory exists and holds at least one file;
 - every part of every path holds only letters, digits, `.`, `_` and `-`, and no path holds `..`;
 - nothing is a symbolic link;
-- the root holds no `_files.html`, which the command generates;
+- the root holds no `_files.html`, which the command generates, and no `_files.md`, whose HTML copy would be named for it;
 - no `X.md` sits beside an `X.html` at any depth, because the HTML copy would replace it. Both files are named.
 
 `report upload a.md b.md` fails: the command takes one directory. Put the files in a directory and upload that.

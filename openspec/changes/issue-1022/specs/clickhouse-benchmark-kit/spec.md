@@ -330,7 +330,7 @@ The kit SHALL ship `dashboards/clickhouse-benchmark.json`.  Its panels SHALL sho
 - **THEN** each dashboard panel shows non-zero data, as read back from Grafana
 
 ### Requirement: Run results in the kit directory
-After the run pod ends, `start` SHALL read the full log with `kubectl logs <pod>` (not `-f`) and SHALL write, in the kit directory, `last-run.txt` (the run settings, the exit code and the final report).  The kit SHALL NOT write a JSON result file; the run's numbers are in the metrics.  It SHALL write the file for every ended run, failed runs included, and each run SHALL replace the previous file.  The final report is printed last, so they stay in the current log file when the kubelet rotates the log at about 10 MiB; early interval blocks can be lost from `last-run.txt`.
+After the run pod ends, `start` SHALL read the full log with `kubectl logs <pod>` (not `-f`) and SHALL write, in the kit directory, `last-run.txt` (the run settings, the exit code and the final report).  The kit SHALL NOT write a JSON result file; the run's numbers are in the metrics.  It SHALL write the file for every ended run, failed runs included, and each run SHALL replace the previous file.  The final report is printed last, so it stays in the current log file when the kubelet rotates the log at about 10 MiB; early interval blocks can be lost from `last-run.txt`.
 
 #### Scenario: Text result
 - **WHEN** a run finishes
@@ -372,4 +372,4 @@ The kit SHALL be checked on a real cluster with 1 app node and 3 db nodes before
 
 #### Scenario: End-to-end run
 - **WHEN** the kit runs on a cluster with 1 app node and 3 db nodes, with `clickhouse` installed, `prepare --storage-policy s3_main` and then `start`
-- **THEN** the run finishes, the gauges show in Grafana, and both result files are written
+- **THEN** the run finishes, the gauges show in Grafana, and `last-run.txt` is written

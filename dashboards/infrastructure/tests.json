@@ -146,7 +146,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(1000 * min by (cluster, edl_tenant, experiment) (min_over_time(timestamp(count by (cluster, edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]) or label_replace(label_replace(label_replace(min_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"edl_tenant\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"edl_tenant\", \"${home_tenant}\", \"edl_tenant\", \"\"), \"experiment\", \"$1\", \"cluster\", \"(.+)\")), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(1000 * min by (cluster, edl_tenant, experiment) (min_over_time(timestamp(count by (cluster, edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]) or label_replace(label_replace(label_replace(min_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\", cluster!=\"\"}))[$lookback:${resolution}s]), \"edl_tenant\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"edl_tenant\", \"${home_tenant}\", \"edl_tenant\", \"\"), \"experiment\", \"$1\", \"cluster\", \"(.+)\")), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -159,7 +159,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(1000 * max by (cluster, edl_tenant, experiment) (max_over_time(timestamp(count by (cluster, edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]) or label_replace(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"edl_tenant\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"edl_tenant\", \"${home_tenant}\", \"edl_tenant\", \"\"), \"experiment\", \"$1\", \"cluster\", \"(.+)\")), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(1000 * max by (cluster, edl_tenant, experiment) (max_over_time(timestamp(count by (cluster, edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]) or label_replace(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\", cluster!=\"\"}))[$lookback:${resolution}s]), \"edl_tenant\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"edl_tenant\", \"${home_tenant}\", \"edl_tenant\", \"\"), \"experiment\", \"$1\", \"cluster\", \"(.+)\")), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "format": "table",
           "instant": true,
           "legendFormat": "__auto",
@@ -585,7 +585,7 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\"))))",
+        "definition": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\", cluster!=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\"))))",
         "description": "The selected experiment, as <tenant>/<name>, newest first. Its clusters fill the Clusters table, the markers and the Report panel. An experiment row's Show here link selects it.",
         "hide": 0,
         "includeAll": false,
@@ -595,7 +595,7 @@
         "options": [],
         "query": {
           "qryType": 3,
-          "query": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\"))))",
+          "query": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\", cluster!=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\"))))",
           "refId": "PrometheusVariableQueryEditor-VariableQuery"
         },
         "refresh": 2,

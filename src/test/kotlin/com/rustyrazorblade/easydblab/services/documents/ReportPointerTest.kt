@@ -17,7 +17,7 @@ import java.time.Instant
 class ReportPointerTest {
     private val folder = ClusterS3Path.fromKey("acct", "reports/acme/e1")
     private val pointerPath = folder.resolve("index.html")
-    private val store = InMemoryConditionalStore()
+    private val store = InMemoryConditionalObjectStore()
     private val pointer = ReportPointer(store)
 
     private val older = ReportStamp.of(Instant.parse("2026-10-14T10:00:00Z"))
@@ -118,72 +118,5 @@ class ReportPointerTest {
 
         assertThat(pointer.ensurePlaceholder(folder)).isFalse()
         assertThat(pointerText()).isEqualTo(before)
-    }
-
-    /**
-     * A [ConditionalObjectStore] in memory with S3's semantics: each write gets a new ETag, a
-     * conditional write whose condition fails changes nothing. A hook runs just before a
-     * conditional write, standing in for another writer that acts between the read and the write.
-     */
-    private class InMemoryConditionalStore : ConditionalObjectStore {
-        private val objects = mutableMapOf<String, ConditionalObjectStore.Versioned>()
-        private var version = 0
-        private var hook: (() -> Unit)? = null
-        private var hookEveryWrite = false
-        var refusedWrites = 0
-            private set
-
-        fun beforeNextWrite(action: () -> Unit) {
-            hook = action
-        }
-
-        fun beforeEveryWrite(action: () -> Unit) {
-            hook = action
-            hookEveryWrite = true
-        }
-
-        fun overwrite(
-            path: ClusterS3Path,
-            content: String,
-        ) {
-            objects[path.toUri()] = ConditionalObjectStore.Versioned(content, "\"v${++version}\"")
-        }
-
-        private fun runHook() {
-            val action = hook ?: return
-            if (!hookEveryWrite) hook = null
-            action()
-        }
-
-        override fun putIfAbsent(
-            content: ByteArray,
-            remotePath: ClusterS3Path,
-            contentType: String,
-        ): ConditionalObjectStore.PutIfAbsentResult {
-            runHook()
-            if (objects.containsKey(remotePath.toUri())) {
-                refusedWrites++
-                return ConditionalObjectStore.AlreadyExists
-            }
-            overwrite(remotePath, content.decodeToString())
-            return ConditionalObjectStore.Written
-        }
-
-        override fun putIfMatch(
-            content: ByteArray,
-            remotePath: ClusterS3Path,
-            etag: String,
-            contentType: String,
-        ): ConditionalObjectStore.PutIfMatchResult {
-            runHook()
-            if (objects[remotePath.toUri()]?.etag != etag) {
-                refusedWrites++
-                return ConditionalObjectStore.PreconditionFailed
-            }
-            overwrite(remotePath, content.decodeToString())
-            return ConditionalObjectStore.Written
-        }
-
-        override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? = objects[remotePath.toUri()]
     }
 }

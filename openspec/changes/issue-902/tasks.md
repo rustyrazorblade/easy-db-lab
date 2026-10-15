@@ -26,7 +26,7 @@
 - [x] 2.9 Loki integration test (`src/integrationTest/`, TestContainers): ingester id `acme.unthrottled_cursor-<id>` accepts lines, flushes, and the uploaded index file name carries it.
 - [ ] 2.10 Run `./gradlew installDist`, then rebuild the Cassandra AMI with `build-cassandra` (only `packer/cassandra/` changed).
 - [ ] 2.11 Live check on a throwaway cluster named with `_` and `--experiment`: `cluster-config` holds `experiment`; a metric, a log line, a span, an eBPF profile, a JFR profile and a mirrored annotation each carry `experiment` and `edl_tenant`; an OpenSearch domain provisions.
-- [ ] 2.12 Docs: `help/provisioning.md` (`init --experiment`, the rule, the default, unique within a tenant, `_` in cluster names); `docs/reference/commands.md` `init` section; `docs/user-guide/monitoring.md` labels section.
+- [x] 2.12 Docs: `help/provisioning.md` (`init --experiment`, the rule, the default, unique within a tenant, `_` in cluster names); `docs/reference/commands.md` `init` section; `docs/user-guide/monitoring.md` labels section.
 
 ## 3. Phase 2: report zip and pointer
 

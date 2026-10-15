@@ -15,6 +15,15 @@ Steps:
 4. `easy-db-lab status` / `easy-db-lab hosts` — verify; `hosts` lists node aliases.
 5. `easy-db-lab down --auto-approve` — destroy everything. Run from the same workspace dir.
 
+Cluster names match `^[a-z][a-z0-9_-]{0,39}$`, so they may hold `_`: name a cluster for the variant it tests, such as `unthrottled_cursor`.
+
+Experiments:
+- An experiment is one test; it groups one or more clusters of one tenant. Choose it at init: `easy-db-lab init <name> --experiment <experiment>`. It is fixed after init.
+- The name must match `^[a-z0-9][a-z0-9_-]{0,79}$`; it may start with a digit, so a `YYYY-MM-DD` prefix (`2026-10-13-ab`) sorts experiments by date. A bad name fails init before anything is created.
+- Default: the cluster's own `<name>-<id>`, an experiment of one.
+- Names are unique within a tenant (`--tenant`): the same name in two tenants is two experiments. Init makes no check against other tenants.
+- Every metric, log line, span, profile and mirrored annotation the cluster produces carries `cluster`, `experiment` and `edl_tenant`.
+
 Notes:
 - Db nodes need a data disk: use an NVMe instance type (`d` suffix, e.g. `i4i.xlarge`) or attach EBS with `--ebs.type`; otherwise `up` fails.
 

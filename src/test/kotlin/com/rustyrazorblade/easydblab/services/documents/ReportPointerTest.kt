@@ -95,16 +95,20 @@ class ReportPointerTest {
     fun `a concurrent writer of a newer upload is re-read and kept`() {
         store.beforeNextWrite { store.overwrite(pointerPath, ReportPointer.render(newer, "index.html")) }
 
-        assertThat(pointer.advance(folder, older, "_files.html")).isFalse()
+        val logs = CapturedLogs.during(DOCUMENTS_LOGGER) { assertThat(pointer.advance(folder, older, "_files.html")).isFalse() }
+
         assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+        assertThat(logs.at(Level.INFO)).contains("Pointer ${pointerPath.toUri()} decided after 1 refused writes: newer")
     }
 
     @Test
     fun `a write that stored the pointer but was reported refused counts as this upload's`() {
         store.loseNextWriteResponse()
 
-        assertThat(pointer.advance(folder, newer, "index.html")).isTrue()
+        val logs = CapturedLogs.during(DOCUMENTS_LOGGER) { assertThat(pointer.advance(folder, newer, "index.html")).isTrue() }
+
         assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+        assertThat(logs.at(Level.INFO)).contains("Pointer ${pointerPath.toUri()} decided after 1 refused writes: own")
     }
 
     @Test

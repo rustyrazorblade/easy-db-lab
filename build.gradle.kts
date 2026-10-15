@@ -427,6 +427,7 @@ tasks.register("testScripts") {
         "testClickhouseBenchmarkPrepare",
         "testClickhouseBenchmarkStop",
         "testSysbenchStartScript",
+        "testSysbenchPrepareScript",
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
@@ -504,6 +505,15 @@ tasks.register<Exec>("testSysbenchStartScript") {
     description = "Unit-test the sysbench kit start script"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-start.test.sh")
+}
+
+// Unit-test the sysbench kit's prepare script: its createdb, cleanup and prepare pods run on an app
+// node, a pod that ends at once does not make it wait, and a failed pod fails it. kubectl is stubbed.
+tasks.register<Exec>("testSysbenchPrepareScript") {
+    group = "Verification"
+    description = "Unit-test the sysbench kit prepare script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-prepare.test.sh")
 }
 
 // Unit-test the sysbench kit's stop script: it finishes and removes its cleanup pod when the target

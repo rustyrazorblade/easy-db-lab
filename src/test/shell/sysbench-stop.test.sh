@@ -15,6 +15,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
 TEMPLATE="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/stop.sh.template"
 
 tests_run=0
@@ -36,6 +37,7 @@ setup() {
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "${WORK}/kubectl.calls"
 case " \$* " in
+  *" get nodes "*) printf "%s" "\${STUB_APP_NODES-node/app0}" ;;
   *" get pod "*) printf '%s' "\${STUB_PHASE}" ;;
   *" logs "*) echo "FATAL: stub cleanup log" ;;
   *" describe pod "*) echo "Events: stub ErrImagePull" ;;
@@ -51,9 +53,9 @@ EOF
 run_script() {
   (
     cd "${WORK}" &&
-      PATH="${WORK}/stubs:${PATH}" STUB_PHASE="$1" KIT_NAME=sb1 KUBECONFIG="${WORK}/kubeconfig" \
+      PATH="${WORK}/stubs:${PATH}" EDL_KIT_LIB="${LIB}" STUB_PHASE="$1" KIT_NAME=sb1 KUBECONFIG="${WORK}/kubeconfig" \
         TARGET_PG_HOST=10.0.0.9 TARGET_PG_PORT=5432 TARGET_PG_USER=u TARGET_PG_DATABASE=d \
-        bash "${WORK}/kit/bin/stop.sh"
+        "${BASH}" "${WORK}/kit/bin/stop.sh"
   ) > "${WORK}/out.txt" 2>&1
 }
 
@@ -89,8 +91,26 @@ test_a_live_target_drops_the_tables_and_removes_the_cleanup_pod() {
   grep -q 'data cleaned up' "${WORK}/out.txt" || fail "stop did not report the cleanup: $(cat "${WORK}/out.txt")"
 }
 
+test_the_cleanup_pod_runs_on_an_app_node() {
+  tests_run=$((tests_run + 1))
+  setup
+  run_script Succeeded || { fail "stop exited non-zero: $(cat "${WORK}/out.txt")"; return; }
+  grep ' run sysbench-cleanup-' "${WORK}/kubectl.calls" | grep -Fq -- '--overrides={"spec":{"nodeSelector":{"type":"app"}}} --override-type=strategic' ||
+    fail "the cleanup pod is not pinned to an app node: $(cat "${WORK}/kubectl.calls")"
+}
+
+test_no_app_node_fails_stop_with_the_app_node_message() {
+  tests_run=$((tests_run + 1))
+  setup
+  STUB_APP_NODES="" run_script Succeeded && fail "stop exited 0 with no app node"
+  grep -q 'sysbench needs an app node (type=app); this cluster has none' "${WORK}/out.txt" || fail "message: $(cat "${WORK}/out.txt")"
+  if grep -q ' run ' "${WORK}/kubectl.calls"; then fail "created a pod: $(cat "${WORK}/kubectl.calls")"; fi
+}
+
 test_a_gone_target_still_stops_and_removes_the_cleanup_pod
 test_a_live_target_drops_the_tables_and_removes_the_cleanup_pod
+test_the_cleanup_pod_runs_on_an_app_node
+test_no_app_node_fails_stop_with_the_app_node_message
 test_a_cleanup_pod_that_never_starts_is_described_and_removed
 
 echo "${tests_run} tests, ${tests_failed} failed"

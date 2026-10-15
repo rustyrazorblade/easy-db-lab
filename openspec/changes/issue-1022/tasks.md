@@ -52,10 +52,10 @@
 
 ## 7. sysbench adopts the library
 
-- [ ] 7.1 Extend `src/test/shell/sysbench-start.test.sh`: `nodeSelector` `type=app`; no app node runs no `kubectl run`; a pod Failed on the first poll reports the exit code; pull error fails fast; non-zero exit prints the failure and the code, not `Run summary written to ...`, and exits non-zero; exit 0 as today.
-- [ ] 7.2 Add a sysbench prepare test: createdb and prepare pods pinned, Succeeded on the first poll goes on at once, non-zero pod exit fails, no app node fails.
-- [ ] 7.3 Extend `src/test/shell/sysbench-stop.test.sh`: cleanup pod pinned; no app node fails with the app-node message and exits non-zero.
-- [ ] 7.4 Change `kits/sysbench/bin/{prepare,start,stop}.sh.template` to source the library and use `edl_require_app_node`, `edl_pod_overrides`, `edl_wait_for_pod_running`, `edl_follow_pod_logs`, `edl_wait_for_pod_exit` and `edl_push_gauges`; remove the local `push_gauges` and the 60-second Ready wait.
+- [x] 7.1 Extend `src/test/shell/sysbench-start.test.sh`: `nodeSelector` `type=app`; no app node runs no `kubectl run`; a pod Failed on the first poll reports the exit code; pull error fails fast; non-zero exit prints the failure and the code, not `Run summary written to ...`, and exits non-zero; exit 0 as today.
+- [x] 7.2 Add a sysbench prepare test: createdb and prepare pods pinned, Succeeded on the first poll goes on at once, non-zero pod exit fails, no app node fails.
+- [x] 7.3 Extend `src/test/shell/sysbench-stop.test.sh`: cleanup pod pinned; no app node fails with the app-node message and exits non-zero.
+- [x] 7.4 Change `kits/sysbench/bin/{prepare,start,stop}.sh.template` to source the library and use `edl_require_app_node`, `edl_pod_overrides`, `edl_wait_for_pod_running`, `edl_follow_pod_logs`, `edl_wait_for_pod_exit` and `edl_push_gauges`; remove the local `push_gauges` and the 60-second Ready wait.
 
 ## 8. Kit flags documented test
 

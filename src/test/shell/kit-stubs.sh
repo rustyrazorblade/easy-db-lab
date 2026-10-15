@@ -47,6 +47,12 @@ pod_state() {
   [ -n "${line}" ] || line="$(tail -n 1 "${file}")"
   echo "${line}"
 }
+while :; do
+  case "${1:-}" in
+    --kubeconfig=*) shift ;;
+    *) break ;;
+  esac
+done
 case "$1" in
   get)
     case "$2" in

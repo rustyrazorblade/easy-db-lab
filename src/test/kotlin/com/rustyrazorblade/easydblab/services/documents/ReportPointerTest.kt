@@ -111,6 +111,15 @@ class ReportPointerTest {
     }
 
     @Test
+    fun `a first-attempt refusal whose re-read names this stamp is another writer's pointer, not this upload's`() {
+        pointer.advance(folder, older, "_files.html")
+        store.beforeNextWrite { store.overwrite(pointerPath, ReportPointer.render(newer, "index.html")) }
+
+        assertThat(pointer.advance(folder, newer, "_files.html")).isFalse()
+        assertThat(pointerText()).contains("report-20261014-113005/index.html")
+    }
+
+    @Test
     fun `a pointer that keeps changing under the writer fails instead of looping forever`() {
         store.beforeEveryWrite { store.overwrite(pointerPath, "changed ${System.nanoTime()}") }
 

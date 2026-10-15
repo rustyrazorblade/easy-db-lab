@@ -12,8 +12,9 @@ import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
  * only moves forward: it names its upload's [ReportStamp] in a comment line, and an upload leaves a
  * pointer that names an equal or newer one. Every write is conditional on the version that was
  * read, so of two uploads that finish together the newer wins whatever their order; a refused write
- * is re-read and decided again, and one whose re-read already names this upload counts as written
- * (the store retried a write that had committed).
+ * is re-read and decided again. Only a write refused on a retried attempt whose re-read already
+ * names this upload counts as written (an earlier attempt committed and lost its response); after
+ * a first-attempt refusal, a pointer naming this upload's second is another writer's.
  */
 class ReportPointer(
     private val store: ConditionalObjectStore,
@@ -41,22 +42,22 @@ class ReportPointer(
     ): Boolean {
         val path = pointerOf(folder)
         val content = render(stamp, frontPage).toByteArray()
-        var refused = false
+        var refusedAfterRetry = false
         repeat(Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) {
             val current = store.readVersioned(path)
             val shown = current?.let { target(it.content) }
-            // A refused write that already shows this upload is this writer's own: the write
-            // committed, its response was lost, and the retried request found it there.
-            if (refused && shown == stamp) return true
+            // A write refused on a retried attempt that already shows this upload is this writer's
+            // own: an earlier attempt committed and its response was lost.
+            if (refusedAfterRetry && shown == stamp) return true
             if (shown != null && shown >= stamp) return false
-            val written =
+            val result =
                 if (current == null) {
-                    store.putIfAbsent(content, path, CONTENT_TYPE) == ConditionalObjectStore.Written
+                    store.putIfAbsent(content, path, CONTENT_TYPE)
                 } else {
-                    store.putIfMatch(content, path, current.etag, CONTENT_TYPE) == ConditionalObjectStore.Written
+                    store.putIfMatch(content, path, current.etag, CONTENT_TYPE)
                 }
-            if (written) return true
-            refused = true
+            if (result == ConditionalObjectStore.Written) return true
+            refusedAfterRetry = result == ConditionalObjectStore.RefusedAfterRetry
         }
         error(
             "The report pointer ${path.toUri()} changed under every one of " +

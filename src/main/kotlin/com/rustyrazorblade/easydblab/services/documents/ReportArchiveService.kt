@@ -51,9 +51,11 @@ interface ReportArchiveService {
      * Checks [dir], zips it, and stores the zip as `report-<yyyyMMdd-HHmmss>.zip` (UTC) in the
      * experiment's folder of [clusterState], only where no object is, moving to the next free
      * second when that second is taken. Then unpacks the same zip to `report-<ts>/` and moves the
-     * pointer forward to it. Nothing earlier is replaced or removed. A refused write whose object
-     * holds exactly this upload's bytes is this upload's own (a retried write that had committed),
-     * so it is neither stored again nor treated as a conflict.
+     * pointer forward to it. Nothing earlier is replaced or removed, and a second taken by another
+     * upload is never shared, even by an upload of the same unchanged directory. A write refused on
+     * a retried attempt of its own request whose object holds exactly this upload's bytes is this
+     * upload's own (an earlier attempt committed and lost its response), so it is neither stored
+     * again nor treated as a conflict.
      *
      * @throws ReportRejectedException naming every offender, before anything is stored, if [dir]
      *   breaks the report rules.
@@ -122,8 +124,10 @@ class DefaultReportArchiveService(
 
     /**
      * Writes [content] to [path] only where no object is, and tells whether [path] now holds this
-     * writer's [content]. A refused write whose object has exactly these bytes is this writer's
-     * own: the store retried a write that had committed and only lost its response.
+     * writer's [content]. Only a write refused on a retried attempt of this same request may be
+     * this writer's own (an earlier attempt committed and lost only its response), so only then is
+     * the object read back and accepted when it has exactly these bytes. A write refused on its
+     * first attempt found another upload's object there, even one with the same bytes.
      */
     private fun storedAsOwn(
         content: ByteArray,
@@ -132,7 +136,8 @@ class DefaultReportArchiveService(
     ): Boolean =
         when (store.putIfAbsent(content, path, contentType)) {
             ConditionalObjectStore.Written -> true
-            ConditionalObjectStore.AlreadyExists -> store.readBytes(path)?.contentEquals(content) == true
+            ConditionalObjectStore.AlreadyExists -> false
+            ConditionalObjectStore.RefusedAfterRetry -> store.readBytes(path)?.contentEquals(content) == true
         }
 
     private companion object {

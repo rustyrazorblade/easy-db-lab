@@ -40,9 +40,11 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
     }
 
     /**
-     * Makes the next conditional write whose condition holds store its content and then report its
-     * condition refused, as S3 does when a write commits, its response is lost, and the retried
-     * request finds the object already there.
+     * Makes the next conditional write whose condition holds store its content and then report
+     * [ConditionalObjectStore.RefusedAfterRetry], as S3 does when a write commits, its response is
+     * lost, and the retried attempt of the same request finds the object already there. A write
+     * refused on its first attempt reports [ConditionalObjectStore.AlreadyExists] or
+     * [ConditionalObjectStore.PreconditionFailed].
      */
     fun loseNextWriteResponse() {
         loseResponse = { true }
@@ -84,7 +86,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
             return ConditionalObjectStore.AlreadyExists
         }
         store(remotePath, content, contentType)
-        return if (responseLost(remotePath)) ConditionalObjectStore.AlreadyExists else ConditionalObjectStore.Written
+        return if (responseLost(remotePath)) ConditionalObjectStore.RefusedAfterRetry else ConditionalObjectStore.Written
     }
 
     override fun putIfMatch(
@@ -99,7 +101,7 @@ class InMemoryConditionalObjectStore : ConditionalObjectStore {
             return ConditionalObjectStore.PreconditionFailed
         }
         store(remotePath, content, contentType)
-        return if (responseLost(remotePath)) ConditionalObjectStore.PreconditionFailed else ConditionalObjectStore.Written
+        return if (responseLost(remotePath)) ConditionalObjectStore.RefusedAfterRetry else ConditionalObjectStore.Written
     }
 
     override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? =

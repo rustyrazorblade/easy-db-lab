@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpec
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainName
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
@@ -427,7 +428,7 @@ class DefaultClusterProvisioningService(
     ): OpenSearchClusterState {
         eventBus.emit(Event.Provision.OpenSearchCreating)
 
-        val domainName = "${initConfig.name}-os".take(Constants.OpenSearch.DOMAIN_NAME_MAX_LENGTH)
+        val domainName = OpenSearchDomainName.of(initConfig.name)
 
         val config =
             OpenSearchDomainConfig(

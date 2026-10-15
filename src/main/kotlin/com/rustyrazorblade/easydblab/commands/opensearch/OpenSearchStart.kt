@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainName
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -78,7 +79,7 @@ class OpenSearchStart : PicoBaseCommand() {
             infrastructure.securityGroupId
                 ?: error("No security group found in infrastructure. Please run 'up' first.")
 
-        val domainName = generateDomainName(clusterState.name)
+        val domainName = OpenSearchDomainName.of(clusterState.name)
         log.info { "Creating OpenSearch domain: $domainName" }
 
         eventBus.emit(Event.OpenSearch.ServiceLinkedRoleEnsuring)
@@ -148,20 +149,6 @@ class OpenSearchStart : PicoBaseCommand() {
         clusterStateManager.save(clusterState)
 
         displayAccessInfo(activeResult.endpoint, activeResult.dashboardsEndpoint)
-    }
-
-    private fun generateDomainName(clusterName: String): String {
-        // OpenSearch domain names must be 3-28 lowercase characters
-        val baseName = clusterName.lowercase().replace(Regex("[^a-z0-9-]"), "-")
-        val suffix = "-os"
-        val maxBaseLength = Constants.OpenSearch.DOMAIN_NAME_MAX_LENGTH - suffix.length
-        val truncatedBase =
-            if (baseName.length > maxBaseLength) {
-                baseName.take(maxBaseLength)
-            } else {
-                baseName
-            }
-        return "$truncatedBase$suffix".trimEnd('-')
     }
 
     private fun displayAccessInfo(

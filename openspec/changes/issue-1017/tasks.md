@@ -29,7 +29,7 @@
 
 - [x] 4.1 Run `./gradlew testCassandraScripts` and confirm that it passes.
 - [x] 4.2 Run `edl-cache-lib.test.sh` and confirm that the existing tests pass unchanged.
-- [ ] 4.3 Run `./gradlew testPackerCassandra` if the change touches what it covers, and confirm that it passes.
+- [x] 4.3 Run `./gradlew testPackerCassandra` if the change touches what it covers, and confirm that it passes.
 
 ## 5. Docs
 
@@ -42,8 +42,8 @@
 
 ## 7. Real AWS test
 
-- [ ] 7.1 Run `./gradlew installDist`.
-- [ ] 7.2 Rebake the base image and the Cassandra image with the S3 cache configured, with the owner's AWS profile.
-- [ ] 7.3 From the bake log, confirm that `5.0-HEAD`, `6.0-HEAD` and `trunk` each show `direct download (not cached):` and no `cache hit:` or `cache miss:` line.
-- [ ] 7.4 From the bake log, confirm that released versions show `cache hit:` or `cache miss:` under `cassandra-dist/<x.y.z>/`.
-- [ ] 7.5 Read the installed `6.0-HEAD` commit from `GitSHA` in `version.properties` inside the installed Cassandra jar.  Confirm that it matches the commit of the current nightly, from the per-commit release (`build-cassandra-ref.yml`) or from the OCI revision label of the GHCR image.
+- [x] 7.1 Run `./gradlew installDist`.
+- [x] 7.2 Rebake the base image and the Cassandra image with the S3 cache configured, with the owner's AWS profile.
+- [x] 7.3 From the bake log, confirm that `5.0-HEAD`, `6.0-HEAD` and `trunk` each show `direct download (not cached):` and no `cache hit:` or `cache miss:` line.
+- [x] 7.4 From the bake log, confirm that released versions show `cache hit:` or `cache miss:` under `cassandra-dist/<x.y.z>/`.
+- [x] 7.5 Read the installed `6.0-HEAD` commit from `GitSHA` in `version.properties` inside the installed Cassandra jar.  Confirm that it matches the commit of the current nightly, from the per-commit release (`build-cassandra-ref.yml`) or from the OCI revision label of the GHCR image.

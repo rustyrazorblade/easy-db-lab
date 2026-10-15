@@ -37,7 +37,10 @@ import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.documents.DefaultReportArchiveService
 import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.ReportArchiveService
+import com.rustyrazorblade.easydblab.services.documents.ReportPointer
 import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
 import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
@@ -129,6 +132,8 @@ val servicesModule =
         factory { ConfigChangeReport(get<K8sService>(), get()) }
         factory { TenantDirectory(get()) }
         factory<TestDocumentService> { DefaultTestDocumentService(get()) }
+        factory<ReportArchiveService> { DefaultReportArchiveService(get<ObjectStore>()) }
+        factory { ReportPointer(get<ObjectStore>()) }
         factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
         factory<GrafanaAnnotationBackupService> {

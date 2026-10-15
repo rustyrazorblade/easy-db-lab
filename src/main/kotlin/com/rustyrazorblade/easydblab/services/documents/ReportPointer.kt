@@ -2,8 +2,10 @@ package com.rustyrazorblade.easydblab.services.documents
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.providers.aws.pollResultUntil
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.time.Duration
 
 /**
  * The pointer of an experiment's report folder, `<folder>/index.html`: the page the documents
@@ -15,10 +17,12 @@ import io.github.oshai.kotlinlogging.KotlinLogging
  * read, so of two uploads that finish together the newer wins whatever their order; a refused write
  * is re-read and decided again. Only a write refused on a retried attempt whose re-read already
  * names this upload counts as written (an earlier attempt committed and lost its response); after
- * a first-attempt refusal, a pointer naming this upload's second is another writer's.
+ * a first-attempt refusal, a pointer naming this upload's second is another writer's. A write that
+ * met a write in flight after a retry waits for it to land before the pointer is decided again.
  */
 class ReportPointer(
     private val store: ConditionalObjectStore,
+    private val inFlightLookInterval: Duration = Duration.ofMillis(Constants.Observability.REPORT_IN_FLIGHT_LOOK_INTERVAL_MS),
 ) {
     /**
      * Writes the "No report yet" pointer into [folder] only if no pointer is there; an existing
@@ -55,6 +59,7 @@ class ReportPointer(
                     store.putIfMatch(content, path, current.etag, CONTENT_TYPE)
                 }
             if (result == ConditionalObjectStore.Written) return true
+            if (result == ConditionalObjectStore.ConflictAfterRetry) awaitInFlightWrite(path, current)
             refusedAfterRetry =
                 result == ConditionalObjectStore.RefusedAfterRetry ||
                 result == ConditionalObjectStore.ConflictAfterRetry
@@ -66,6 +71,23 @@ class ReportPointer(
             "The report pointer ${path.toUri()} changed under every one of " +
                 "${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} writes; the upload is stored, run report upload again to point at it.",
         )
+    }
+
+    /**
+     * Waits, a bounded number of looks, for the conditional write in flight at [path] to land: it
+     * may be this writer's own earlier attempt, so the pointer is decided only once it is no longer
+     * the version [read] was. Any S3 error fails at once.
+     */
+    private fun awaitInFlightWrite(
+        path: ClusterS3Path,
+        read: ConditionalObjectStore.Versioned?,
+    ) {
+        pollResultUntil(
+            "report-pointer-write-in-flight",
+            Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS,
+            inFlightLookInterval,
+            done = { it?.etag != read?.etag },
+        ) { store.readVersioned(path) }
     }
 
     /**

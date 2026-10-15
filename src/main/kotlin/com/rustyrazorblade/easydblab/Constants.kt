@@ -338,8 +338,26 @@ object Constants {
         /**
          * The rule every cluster name must match. The name flows raw into configuration files, Loki
          * index file names, S3 keys and metric labels, so it holds only characters all of them accept.
+         * `_` is allowed, so a cluster can be named for the variant it tests (`unthrottled_cursor`);
+         * a derived name that does not accept `_`, such as the OpenSearch domain name, converts it.
          */
-        const val CLUSTER_NAME_PATTERN = "^[a-z][a-z0-9-]{0,39}$"
+        const val CLUSTER_NAME_PATTERN = "^[a-z][a-z0-9_-]{0,39}$"
+
+        /**
+         * The rule every experiment name must match. A name may start with a digit, so a
+         * `YYYY-MM-DD` prefix sorts experiments by date. No `/`: the picker value joins tenant and
+         * name with one.
+         */
+        const val EXPERIMENT_PATTERN = "^[a-z0-9][a-z0-9_-]{0,79}$"
+
+        /** The label every signal carries naming its experiment. */
+        const val EXPERIMENT_LABEL = "experiment"
+
+        /**
+         * The label every signal carries naming its tenant. Not `tenant`: Tempo's own metrics
+         * already carry a `tenant` label that the collector scrapes.
+         */
+        const val TENANT_LABEL = "edl_tenant"
 
         /** The header Tempo and Pyroscope read the tenant from. */
         const val TENANT_HEADER = "X-Scope-OrgID"

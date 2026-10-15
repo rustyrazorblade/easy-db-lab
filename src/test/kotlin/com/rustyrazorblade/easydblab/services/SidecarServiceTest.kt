@@ -155,7 +155,7 @@ class SidecarServiceTest : BaseKoinTest() {
      * profiles had no cluster and no host. The cluster is `<name>-<id>`, as on every other signal.
      */
     @Test
-    fun `deploy labels the sidecar's profiles with its host and the cluster label`() {
+    fun `deploy labels the sidecar's profiles with its host and the cluster, experiment and tenant labels`() {
         val resources = argumentCaptor<HasMetadata>()
 
         sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest").getOrThrow()
@@ -167,6 +167,9 @@ class SidecarServiceTest : BaseKoinTest() {
                 .flatMap { it.env }
                 .single { it.name == "JAVA_TOOL_OPTIONS" }
                 .value
-        assertThat(javaToolOptions).contains("-Dpyroscope.labels=hostname=\$(NODE_NAME),cluster=${testClusterState.clusterLabelName()} ")
+        val labels =
+            "cluster=${testClusterState.clusterLabelName()},experiment=${testClusterState.experiment()}," +
+                "edl_tenant=${testClusterState.tenant()}"
+        assertThat(javaToolOptions).contains("-Dpyroscope.labels=hostname=\$(NODE_NAME),$labels ")
     }
 }

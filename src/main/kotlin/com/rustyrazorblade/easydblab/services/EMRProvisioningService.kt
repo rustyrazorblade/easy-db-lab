@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterLabels
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.EMRClusterState
@@ -238,8 +239,8 @@ class DefaultEMRProvisioningService(
      * Builds a spark-env EMR classification that exports PYROSCOPE_LABELS with the node hostname.
      * spark-env.sh is sourced by YARN before launching Spark processes, so $(hostname) resolves
      * per-node at runtime. This allows the Pyroscope Java agent to tag profiles with hostname,
-     * and with the cluster label every other signal carries, so the dashboards' cluster filter
-     * finds Spark's profiles.
+     * and with the cluster, experiment and tenant labels every other signal carries, so the
+     * dashboards' cluster filter finds Spark's profiles.
      */
     private fun buildSparkEnvConfiguration(clusterState: ClusterState): EMRConfiguration =
         EMRConfiguration(
@@ -250,7 +251,7 @@ class DefaultEMRProvisioningService(
                         classification = "export",
                         properties =
                             mapOf(
-                                "PYROSCOPE_LABELS" to "hostname=\$(hostname -s),cluster=${clusterState.clusterLabelName()}",
+                                "PYROSCOPE_LABELS" to "hostname=\$(hostname -s),${ClusterLabels.of(clusterState).pyroscopePairs()}",
                             ),
                     ),
                 ),

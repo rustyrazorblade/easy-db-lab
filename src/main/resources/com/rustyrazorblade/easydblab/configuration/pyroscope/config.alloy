@@ -59,7 +59,7 @@ discovery.process "all" {
   join             = discovery.relabel.kubernetes_pods.output
 }
 
-// Add the node-level hostname and cluster labels to every target.
+// Add the node-level hostname, cluster, experiment and tenant labels to every target.
 discovery.relabel "ebpf_targets" {
   targets = discovery.process.all.targets
 
@@ -70,6 +70,14 @@ discovery.relabel "ebpf_targets" {
   rule {
     target_label = "cluster"
     replacement   = sys.env("CLUSTER_NAME")
+  }
+  rule {
+    target_label = "experiment"
+    replacement   = sys.env("EXPERIMENT")
+  }
+  rule {
+    target_label = "edl_tenant"
+    replacement   = sys.env("TENANT")
   }
 }
 

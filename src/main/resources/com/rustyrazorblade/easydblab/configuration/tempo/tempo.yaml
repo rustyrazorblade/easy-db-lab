@@ -62,6 +62,8 @@ metrics_generator:
     external_labels:
       source: tempo
       cluster: ${CLUSTER_NAME}
+      experiment: ${EXPERIMENT}
+      edl_tenant: ${TENANT}
   storage:
     path: /var/tempo/generator/wal
     # Mimir runs native multi-tenancy: each write carries the tenant of the spans it came from.

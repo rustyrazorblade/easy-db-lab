@@ -37,7 +37,7 @@
 - [x] 3.5 `ReportArchiveService` orchestrates; zip key `report-<yyyyMMdd-HHmmss>.zip` in UTC, next free second when taken. Replaces `TestDocumentService.upload`.
 - [x] 3.6 `ReportUpload`: `@Parameters(arity = "1") dir: File`; `report upload a.md b.md` fails naming the directory form; experiment from workspace state; event `Report.Uploaded(zipKey, unpackedPrefix, pointerAdvanced, files)` in `events/Event.kt`.
 - [x] 3.7 `Up.kt:162`: `ReportPointer.ensurePlaceholder(key)` only when absent.
-- [ ] 3.8 `AWSPolicy.denyDataDeletes` KDoc (`:217-222`): no report is replaced.
+- [x] 3.8 `AWSPolicy.denyDataDeletes` KDoc (`:217-222`): no report is replaced.
 - [ ] 3.9 Live check: two uploads for one experiment, both zips byte-identical to the local ones, pointer on the newer; a second cluster of the experiment shows the same report; upload after `down`.
 - [ ] 3.10 Docs: `help/observability.md` report section; `docs/reference/commands.md` `report upload`; `docs/user-guide/monitoring.md` documents section and the storage layout table.
 

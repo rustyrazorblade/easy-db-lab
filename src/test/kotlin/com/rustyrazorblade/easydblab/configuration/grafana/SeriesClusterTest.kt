@@ -285,6 +285,29 @@ class SeriesClusterTest {
     }
 
     @Test
+    fun `a join after a partition by cluster joins one-cluster frames and is accepted`() {
+        val merge = """{"id": "merge", "options": {}}"""
+        val join = """{"id": "joinByField", "options": {"byField": "Value #A", "mode": "outer"}}"""
+
+        fun partition(vararg fields: String) =
+            """{"id": "partitionByValues", "options": {"fields": [${fields.joinToString(", ") { "\"$it\"" }}]}}"""
+
+        fun trend(vararg chain: String) =
+            parse(
+                """{"type": "trend", "targets": [{"refId": "A", "expr": "up"}, {"refId": "B", "expr": "up"}], """ +
+                    """"transformations": [${chain.joinToString(", ")}]}""",
+            )
+
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, partition("cluster", "cluster_name"), join))).isEmpty()
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, join)))
+            .contains("joinByField joins on 'Value #A', which does not hold the cluster")
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, join, partition("cluster"))))
+            .contains("joinByField joins on 'Value #A', which does not hold the cluster")
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, partition("host_name"), join)))
+            .contains("joinByField joins on 'Value #A', which does not hold the cluster")
+    }
+
+    @Test
     fun `every target of a join writes the key, and writes it from the long cluster`() {
         fun target(
             refId: String,

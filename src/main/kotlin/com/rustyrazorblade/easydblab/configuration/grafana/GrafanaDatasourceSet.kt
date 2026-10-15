@@ -47,6 +47,19 @@ data class BackendUrls(
                 traces = "http://localhost:${Constants.K8s.TEMPO_PORT}",
                 profiles = "http://localhost:${Constants.K8s.PYROSCOPE_PORT}",
             )
+
+        /**
+         * The backends of the local docker compose stack, by service name on the project network.
+         * No profiles service runs there until issue 1016; its datasource keeps its uid and answers
+         * nothing.
+         */
+        val LOCAL_COMPOSE =
+            BackendUrls(
+                metrics = "http://${Constants.LocalStack.Services.MIMIR}:${Constants.K8s.MIMIR_HTTP_PORT}/prometheus",
+                logs = "http://${Constants.LocalStack.Services.LOKI}:${Constants.K8s.LOKI_HTTP_PORT}",
+                traces = "http://${Constants.LocalStack.Services.TEMPO}:${Constants.K8s.TEMPO_PORT}",
+                profiles = "http://${Constants.LocalStack.Services.PYROSCOPE}:${Constants.K8s.PYROSCOPE_PORT}",
+            )
     }
 }
 

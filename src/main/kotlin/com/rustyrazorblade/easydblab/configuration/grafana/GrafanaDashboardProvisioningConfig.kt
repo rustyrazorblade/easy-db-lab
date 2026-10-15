@@ -28,14 +28,17 @@ data class GrafanaDashboardProvisioningConfig(
     companion object {
         private val YAML = Yaml(configuration = YamlConfiguration(encodeDefaults = true))
 
-        /** Builds the config with its single provider over the copied dashboard tree. */
-        fun forDashboardTree(): GrafanaDashboardProvisioningConfig =
+        /**
+         * Builds the config with its single provider over the dashboard tree at [path] inside the
+         * Grafana container: the copied tree on a cluster, the provisioned tree in the local stack.
+         */
+        fun forDashboardTree(path: String = GRAFANA_DASHBOARD_ROOT): GrafanaDashboardProvisioningConfig =
             GrafanaDashboardProvisioningConfig(
                 providers =
                     listOf(
                         GrafanaDashboardProvider(
                             name = "dashboards",
-                            options = GrafanaDashboardProviderOptions(path = GRAFANA_DASHBOARD_ROOT),
+                            options = GrafanaDashboardProviderOptions(path = path),
                         ),
                     ),
             )

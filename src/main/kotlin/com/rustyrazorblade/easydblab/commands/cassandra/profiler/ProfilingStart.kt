@@ -104,6 +104,7 @@ class ProfilingStart : ProfilingHostCommand() {
                 pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodePrivateIp(), clusterState.initConfig?.telemetryRedirect),
                 clusterName = clusterState.clusterLabelName(),
                 tenant = clusterState.tenant(),
+                experiment = clusterState.experiment(),
                 updatedAt = Instant.now().toString(),
             )
 

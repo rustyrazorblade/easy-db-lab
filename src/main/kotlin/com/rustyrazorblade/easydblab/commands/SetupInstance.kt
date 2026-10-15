@@ -95,6 +95,7 @@ class SetupInstance : PicoBaseCommand() {
                     pyroscopeUrl = pyroscopeIngestBaseUrl(controlNodeIp, clusterState.initConfig?.telemetryRedirect),
                     clusterName = clusterName,
                     tenant = clusterState.tenant(),
+                    experiment = clusterState.experiment(),
                     updatedAt = Instant.now().toString(),
                 ),
             )

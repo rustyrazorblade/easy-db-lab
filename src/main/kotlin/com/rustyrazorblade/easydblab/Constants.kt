@@ -370,9 +370,10 @@ object Constants {
         const val REPORT_ZIP_KEY_MAX_ATTEMPTS = 60
 
         /**
-         * How many times an upload looks at a key whose write met a conditional write still in
-         * flight there (possibly its own earlier attempt) before it gives the key up: each look
-         * reads the key back and, while it holds nothing, writes it again.
+         * How many times an upload looks at a key whose write was refused while the key holds
+         * nothing (a write in flight there, possibly its own earlier attempt, or one that aborted)
+         * before it gives the key up: each look reads the key back and, while it holds nothing,
+         * writes it again. The pointer waits as many looks for a refused pointer to change.
          */
         const val REPORT_IN_FLIGHT_MAX_LOOKS = 10
 

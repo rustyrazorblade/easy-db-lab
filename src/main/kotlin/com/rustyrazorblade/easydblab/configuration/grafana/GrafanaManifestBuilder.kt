@@ -37,7 +37,7 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 class GrafanaManifestBuilder(
     private val templateService: TemplateService,
 ) {
-    private val documentsSidecars = GrafanaDocumentsSidecars(templateService)
+    private val documentsSidecars = GrafanaDocumentsSidecars()
 
     companion object {
         /** The Grafana Deployment's name, which the deploy waits on to finish rolling out. */

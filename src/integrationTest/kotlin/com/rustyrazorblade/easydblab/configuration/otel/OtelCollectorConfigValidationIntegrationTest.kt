@@ -95,6 +95,7 @@ class OtelCollectorConfigValidationIntegrationTest : BaseKoinTest() {
                 .withEnv("HOSTNAME", "node0")
                 .withEnv("CLUSTER_NAME", "test-cluster")
                 .withEnv("TENANT", "acme")
+                .withEnv("EXPERIMENT", "e1")
                 .withEnv("STRESS_PROM_PORT", "9500")
                 .withEnv("K8S_NODE_NAME", "node0")
                 .withEnv("HOST_IP", "10.0.0.1")

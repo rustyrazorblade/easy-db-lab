@@ -251,8 +251,12 @@ class ReportArchiveServiceTest {
     fun `a zip write that was stored but reported refused keeps its name and is not stored again`() {
         file("results.md", "mine")
         store.loseWriteResponseAt(zipKey)
+        lateinit var uploaded: UploadedReport
 
-        assertKeptItsSecond(upload())
+        val logs = CapturedLogs.during(DOCUMENTS_LOGGER) { uploaded = upload() }
+
+        assertKeptItsSecond(uploaded)
+        assertThat(logs.at(Level.INFO)).contains("Write to ${zipKey.toUri()} refused; decided: own (read back), looks=1")
     }
 
     @Test
@@ -285,8 +289,12 @@ class ReportArchiveServiceTest {
     fun `a zip key whose write in flight aborts is written again by this upload and keeps its second`() {
         file("results.md", "mine")
         store.writeInFlightAt(zipKey, endsOnRead = 1, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+        lateinit var uploaded: UploadedReport
 
-        assertKeptItsSecond(upload())
+        val logs = CapturedLogs.during(DOCUMENTS_LOGGER) { uploaded = upload() }
+
+        assertKeptItsSecond(uploaded)
+        assertThat(logs.at(Level.INFO)).contains("Write to ${zipKey.toUri()} refused; decided: own (rewritten), looks=1")
     }
 
     @Test

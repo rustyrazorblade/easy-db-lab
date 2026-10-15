@@ -105,7 +105,9 @@ class ExperimentFallbackTest {
             ),
         ).containsExactly("edl_tenant")
         assertThat(
-            ExperimentFallbackGuards.experimentInLogsOrTraces(Query("s", Language.LOGQL, """{cluster=~"${'$'}cluster"} |= "experimental"""")),
+            ExperimentFallbackGuards.experimentInLogsOrTraces(
+                Query("s", Language.LOGQL, """{cluster=~"${'$'}cluster"} |= "experimental""""),
+            ),
         ).isEmpty()
         assertThat(ExperimentFallbackGuards.experimentInLogsOrTraces(promql(PICKER))).isEmpty()
     }
@@ -164,7 +166,8 @@ class ExperimentFallbackTest {
                 """count by (edl_tenant, experiment) (up{experiment!=""}))[${'$'}lookback:${'$'}{resolution}s]), "exp_key", "/", """ +
                 """"edl_tenant", "experiment"), "exp_text", "/", "edl_tenant", "experiment") or label_join(label_join(""" +
                 """label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=""}))""" +
-                """[${'$'}lookback:${'$'}{resolution}s]), "t", "${'$'}1", "__tenant_id__", "(.+)"), "t", "${'$'}{home_tenant}", "t", ""), """ +
+                """[${'$'}lookback:${'$'}{resolution}s]), "t", "${'$'}1", "__tenant_id__", "(.+)"), """ +
+                """"t", "${'$'}{home_tenant}", "t", ""), """ +
                 """"exp_key", "/", "t", "cluster"), "exp_text", "/", "t", "cluster") or label_replace(label_replace(vector(0), """ +
                 """"exp_key", ".*/.*", "", ""), "exp_text", "All", "", ""))))"""
     }

@@ -148,17 +148,19 @@ class ComparisonDashboardsTest {
         val missing = REQUIRED_PAIR_VARIABLES - variables.keys
         val retired = RETIRED_VARIABLES intersect variables.keys
         val sides =
-            listOf("cluster_a" to "query_result(sort(min by (cluster) (min_over_time(", "cluster_b" to "query_result(sort_desc(max by (cluster) (max_over_time(")
-                .flatMap { (side, order) ->
-                    val variable = variables[side] ?: return@flatMap emptyList()
-                    listOfNotNull(
-                        "$side is multi-select".takeIf { variable.string("multi") == "true" },
-                        "$side does not list over lookback".takeUnless { "[\$lookback:" in queryOf(variable) },
-                        "$side does not list ${if (side == "cluster_a") "oldest" else "newest"} first with $order"
-                            .takeUnless { queryOf(variable).startsWith(order) },
-                        "$side sort is not 0".takeUnless { variable.string("sort") == "0" },
-                    )
-                }
+            listOf(
+                "cluster_a" to "query_result(sort(min by (cluster) (min_over_time(",
+                "cluster_b" to "query_result(sort_desc(max by (cluster) (max_over_time(",
+            ).flatMap { (side, order) ->
+                val variable = variables[side] ?: return@flatMap emptyList()
+                listOfNotNull(
+                    "$side is multi-select".takeIf { variable.string("multi") == "true" },
+                    "$side does not list over lookback".takeUnless { "[\$lookback:" in queryOf(variable) },
+                    "$side does not list ${if (side == "cluster_a") "oldest" else "newest"} first with $order"
+                        .takeUnless { queryOf(variable).startsWith(order) },
+                    "$side sort is not 0".takeUnless { variable.string("sort") == "0" },
+                )
+            }
         val reports =
             listOf("a_report" to "cluster_a", "b_report" to "cluster_b").mapNotNull { (report, side) ->
                 val variable = variables[report] ?: return@mapNotNull null
@@ -196,7 +198,13 @@ class ComparisonDashboardsTest {
                 val older = filters.takeIf { it.isNotEmpty() }?.let { Regex("""\$\{?(${it.joinToString("|")})(?![A-Za-z0-9_])""") }
                 val targets =
                     runViewPanels(dashboard).flatMap { panel -> exprs(panel).map { panel.string("title") to it } }
-                val undeclared = (filters - variables(dashboard).keys).map { "declares no $it, so the run views are not checked against it" }
+                val undeclared =
+                    (
+                        filters -
+                            variables(
+                                dashboard,
+                            ).keys
+                    ).map { "declares no $it, so the run views are not checked against it" }
                 undeclared + listOfNotNull("has no run view targets".takeIf { targets.isEmpty() }) +
                     targets.mapNotNull { (title, expr) ->
                         when {
@@ -255,7 +263,12 @@ class ComparisonDashboardsTest {
             problems(pairDashboards) { _, dashboard ->
                 val summary =
                     runViewPanels(dashboard).singleOrNull { it.string("type") == "table" } ?: return@problems listOf("has no summary table")
-                val terms = exprs(summary).firstOrNull().orEmpty().split("\nor ").filter { "\"run\", \"$DIFFERENCE_RUN\"" in it }
+                val terms =
+                    exprs(summary)
+                        .firstOrNull()
+                        .orEmpty()
+                        .split("\nor ")
+                        .filter { "\"run\", \"$DIFFERENCE_RUN\"" in it }
                 listOfNotNull(
                     "summary has no \"$DIFFERENCE_RUN\" term".takeIf { terms.isEmpty() },
                     "summary description does not say the difference is empty when A is 0"

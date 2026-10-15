@@ -285,7 +285,7 @@ class ClusterFilterTest {
     }
 
     @Test
-    fun `every metrics, logs and profile query filters by the selected clusters`() {
+    fun `every metrics, logs, traces and profile query filters by the selected clusters`() {
         val unscoped =
             DashboardFiles.all().flatMap { file ->
                 val dashboard = parse(file.readText())

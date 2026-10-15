@@ -27,7 +27,8 @@ class GrafanaDashboardTreeWriterTest {
     private val catalog = TestDashboardCatalog.catalog
     private val writer = GrafanaDashboardTreeWriter(catalog)
     private val pyroscopeUrl = "http://10.0.0.1:4040"
-    private val context = DashboardInstallContext("lab-abc123", ExperimentKey("acme", "e1"), TenantSet.of("acme", listOf("default")), "http://10.0.0.1:3080")
+    private val context =
+        DashboardInstallContext("lab-abc123", ExperimentKey("acme", "e1"), TenantSet.of("acme", listOf("default")), "http://10.0.0.1:3080")
 
     private fun writtenFiles(root: Path): Set<String> =
         root

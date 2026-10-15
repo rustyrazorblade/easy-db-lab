@@ -14,13 +14,16 @@ import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.mockingDetails
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.PutObjectResponse
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.nio.file.Path
 
@@ -155,39 +158,120 @@ class S3ObjectStoreTest : BaseKoinTest() {
         }.isInstanceOf(S3Exception::class.java)
     }
 
-    private fun s3Error(status: Int): S3Exception =
+    private fun s3Error(
+        status: Int,
+        code: String? = null,
+    ): S3Exception =
         S3Exception
             .builder()
             .message("status $status")
             .statusCode(status)
-            .build() as S3Exception
+            .apply {
+                code?.let {
+                    awsErrorDetails(
+                        AwsErrorDetails
+                            .builder()
+                            .errorCode(it)
+                            .serviceName("S3")
+                            .build(),
+                    )
+                }
+            }.build() as S3Exception
+
+    private val path = ClusterS3Path.fromKey("b", "k")
+
+    private fun putFails(vararg errors: S3Exception) {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>())).thenThrow(*errors)
+    }
+
+    private fun putIfAbsent() = objectStore.putIfAbsent("x".toByteArray(), path, "text/plain")
+
+    private fun putIfMatch() = objectStore.putIfMatch("x".toByteArray(), path, "\"e\"", "text/html")
+
+    private fun putCalls(): Int = mockingDetails(mockS3Client).invocations.count { it.method.name == "putObject" }
 
     @Test
-    fun `putIfAbsent reports a concurrent conditional write that won as AlreadyExists`() {
-        objectStore = get()
-        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>())).thenThrow(s3Error(409))
+    fun `putIfAbsent refused with 412 is AlreadyExists after one request`() {
+        putFails(s3Error(412, "PreconditionFailed"))
 
-        val result = objectStore.putIfAbsent("x".toByteArray(), ClusterS3Path.fromKey("b", "k"), "text/plain")
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.AlreadyExists)
+        assertThat(putCalls()).isEqualTo(1)
+    }
 
-        assertThat(result).isEqualTo(ConditionalObjectStore.AlreadyExists)
+    @Test
+    fun `putIfAbsent losing to a concurrent conditional write is AlreadyExists after one request`() {
+        putFails(s3Error(409, "ConditionalRequestConflict"))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.AlreadyExists)
+        assertThat(putCalls()).isEqualTo(1)
+    }
+
+    @Test
+    fun `putIfMatch refused with 412 is PreconditionFailed after one request`() {
+        putFails(s3Error(412, "PreconditionFailed"))
+
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.PreconditionFailed)
+        assertThat(putCalls()).isEqualTo(1)
     }
 
     @Test
     fun `putIfMatch reports a removed object as PreconditionFailed`() {
-        objectStore = get()
-        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>())).thenThrow(s3Error(404))
+        putFails(s3Error(404, "NoSuchKey"))
 
-        val result = objectStore.putIfMatch("x".toByteArray(), ClusterS3Path.fromKey("b", "k"), "\"e\"", "text/html")
-
-        assertThat(result).isEqualTo(ConditionalObjectStore.PreconditionFailed)
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.PreconditionFailed)
+        assertThat(putCalls()).isEqualTo(1)
     }
 
     @Test
-    fun `a conditional write that S3 denies is an error, not a refused condition`() {
-        objectStore = get()
-        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>())).thenThrow(s3Error(403))
+    fun `putIfAbsent on a missing bucket is an error naming the S3 error code`() {
+        putFails(s3Error(404, "NoSuchBucket"))
 
-        assertThatThrownBy { objectStore.putIfAbsent("x".toByteArray(), ClusterS3Path.fromKey("b", "k"), "text/plain") }
+        assertThatThrownBy { putIfAbsent() }
             .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("NoSuchBucket")
+            .hasMessageContaining("s3://b/k")
+    }
+
+    @Test
+    fun `putIfMatch on a missing bucket is an error, not a removed object`() {
+        putFails(s3Error(404, "NoSuchBucket"))
+
+        assertThatThrownBy { putIfMatch() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("NoSuchBucket")
+    }
+
+    @Test
+    fun `a 409 that is not a conditional conflict is an error naming the S3 error code`() {
+        putFails(s3Error(409, "OperationAborted"))
+
+        assertThatThrownBy { putIfAbsent() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("OperationAborted")
+        assertThatThrownBy { putIfMatch() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("OperationAborted")
+    }
+
+    @Test
+    fun `a conditional write that S3 denies is an error naming the S3 error code`() {
+        putFails(s3Error(403, "AccessDenied"))
+
+        assertThatThrownBy { putIfAbsent() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("AccessDenied")
+            .satisfies({ assertThat((it as S3Exception).statusCode()).isEqualTo(403) })
+    }
+
+    @Test
+    fun `a conditional write that fails with a server error is retried and written`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()))
+            .thenThrow(s3Error(500, "InternalError"))
+            .thenReturn(PutObjectResponse.builder().build())
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.Written)
+        assertThat(putCalls()).isEqualTo(2)
     }
 }

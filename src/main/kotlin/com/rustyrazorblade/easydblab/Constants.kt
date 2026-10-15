@@ -299,6 +299,12 @@ object Constants {
 
         /** Maximum length for S3 metrics configuration IDs */
         const val MAX_METRICS_CONFIG_ID_LENGTH = 32
+
+        /** S3's error code for a 409 that a concurrent conditional write to the same key caused. */
+        const val CONDITIONAL_REQUEST_CONFLICT = "ConditionalRequestConflict"
+
+        /** S3's error code for a request to a bucket that does not exist. */
+        const val NO_SUCH_BUCKET = "NoSuchBucket"
     }
 
     /**

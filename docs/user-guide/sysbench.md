@@ -8,7 +8,11 @@ pushed to Mimir so you can watch throughput and latency live in Grafana.
 
 ## Prerequisites
 
-- Cluster is up (`easy-db-lab up`)
+- Cluster is up (`easy-db-lab up`) and has an app node (`init --app.count 1` or more). Every
+  sysbench pod (the run, prepare, createdb and cleanup pods) runs on an app node (`type=app`), so
+  it does not compete with the database it measures. With no app node, `prepare`, `start` and
+  `stop` fail before they create a pod, with `sysbench needs an app node (type=app); this cluster
+  has none`. A `stop` that fails this way leaves the kit marked as running.
 - A database kit with the `sql` capability is installed and running (e.g. [TiDB](tidb.md))
 - The target kit exposes a MySQL or PostgreSQL wire protocol endpoint — sysbench connects
   over the wire protocol, not JDBC
@@ -83,6 +87,12 @@ percentiles, and errors) is written to `last-run.txt` in the kit's workspace dir
 (e.g. `sysbench-tidb/last-run.txt`), prefixed with the run's parameters. Each run
 overwrites the file, so a completed run's numbers survive after the terminal output
 scrolls away.
+
+When the run pod ends, `start` reads its exit code. When sysbench exits non-zero (for example after
+`FATAL: event queue is full`), `start` says the run failed, gives the exit code and exits
+non-zero, and does not print `Run summary written to ...`. A run pod that cannot pull its image
+fails `start` at once, with the reason and the pod's events; one that stays Pending fails it after
+10 minutes.
 
 Only one run per instance can be in progress. `start` fails with a collision error while a
 run pod for the same instance (e.g. `sysbench-tidb`) is still pending or running; a finished

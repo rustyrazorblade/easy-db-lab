@@ -59,7 +59,7 @@
 
 ## 8. Kit flags documented test
 
-- [ ] 8.1 Turn `SysbenchFlagsDocumentedTest` into a parameterised kit-flags-documented test for `sysbench` and `clickhouse-benchmark`, and add `docs/user-guide/clickhouse-benchmark.md` to the test inputs in `build.gradle.kts`.
+- [x] 8.1 Turn `SysbenchFlagsDocumentedTest` into a parameterised kit-flags-documented test for `sysbench` and `clickhouse-benchmark`, and add `docs/user-guide/clickhouse-benchmark.md` to the test inputs in `build.gradle.kts`.
 
 ## 9. Dashboard
 
@@ -68,11 +68,11 @@
 
 ## 10. Docs and specs
 
-- [ ] 10.1 Write `docs/user-guide/clickhouse-benchmark.md`: install, `prepare`, `start`, `stop`, a Flags table of every arg, `--source` and the IAM note (`use_environment_credentials`), `--queries` (one query per line, relative to the current directory), `--settings` (no commas in values, the denylist), the app-node requirement, results and log rotation, the reload after the target restarts (issue 985), and how to read the dashboard (first `start` installs it).
-- [ ] 10.2 Add the page to `docs/SUMMARY.md` near Sysbench and add `clickhouse-benchmark` to the kit list in `docs/user-guide/kits.md`.
-- [ ] 10.3 Add the app-node note to `docs/user-guide/sysbench.md`.
-- [ ] 10.4 Update `docs/development/kits.md`: the `endpoints` field, the `native` TARGET_* row, the `lib/` and `pod/` layout note, and a "Shared shell library" section (the sourcing line, each function, bash 3.2 rules including the empty-array rule, written once and never rewritten, and the dev-loop note: use a fresh workspace or delete `<workspace>/bin/edl-kit-lib.sh` after each library edit).
-- [ ] 10.5 Update the root `CLAUDE.md`: the bin/ paragraph lists `edl-kit-lib.sh` (written once, removed by `clean`, `EDL_KIT_LIB`), and the Kit Development section points kit authors at the library.
+- [x] 10.1 Write `docs/user-guide/clickhouse-benchmark.md`: install, `prepare`, `start`, `stop`, a Flags table of every arg, `--source` and the IAM note (`use_environment_credentials`), `--queries` (one query per line, relative to the current directory), `--settings` (no commas in values, the denylist), the app-node requirement, results and log rotation, the reload after the target restarts (issue 985), and how to read the dashboard (first `start` installs it).
+- [x] 10.2 Add the page to `docs/SUMMARY.md` near Sysbench and add `clickhouse-benchmark` to the kit list in `docs/user-guide/kits.md`.
+- [x] 10.3 Add the app-node note to `docs/user-guide/sysbench.md`.
+- [x] 10.4 Update `docs/development/kits.md`: the `endpoints` field, the `native` TARGET_* row, the `lib/` and `pod/` layout note, and a "Shared shell library" section (the sourcing line, each function, bash 3.2 rules including the empty-array rule, written once and never rewritten, and the dev-loop note: use a fresh workspace or delete `<workspace>/bin/edl-kit-lib.sh` after each library edit).
+- [x] 10.5 Update the root `CLAUDE.md`: the bin/ paragraph lists `edl-kit-lib.sh` (written once, removed by `clean`, `EDL_KIT_LIB`), and the Kit Development section points kit authors at the library.
 - [ ] 10.6 Check the delta specs in `openspec/changes/issue-1022/specs/` against the built behaviour (messages, names, constants) and correct any that differ.
 
 ## 11. Build checks

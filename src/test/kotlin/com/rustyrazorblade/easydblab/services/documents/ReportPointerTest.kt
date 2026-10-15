@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.services.documents
 
+import ch.qos.logback.classic.Level
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import software.amazon.awssdk.services.s3.model.S3Exception
 import java.time.Duration
 import java.time.Instant
 
@@ -24,6 +26,7 @@ class ReportPointerTest {
 
     private val older = ReportStamp.of(Instant.parse("2026-10-14T10:00:00Z"))
     private val newer = ReportStamp.of(Instant.parse("2026-10-14T11:30:05Z"))
+    private val maxLooks = Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS
 
     private fun pointerText(): String = checkNotNull(store.readVersioned(pointerPath)).content
 
@@ -70,11 +73,12 @@ class ReportPointerTest {
     }
 
     @Test
-    fun `an upload of the same second leaves the pointer`() {
+    fun `a pointer that already names this upload's stamp counts as written and is left unchanged`() {
         pointer.advance(folder, newer, "index.html")
+        val before = pointerText()
 
-        assertThat(pointer.advance(folder, newer, "_files.html")).isFalse()
-        assertThat(pointerText()).contains("index.html")
+        assertThat(pointer.advance(folder, newer, "_files.html")).isTrue()
+        assertThat(pointerText()).isEqualTo(before)
     }
 
     @Test
@@ -113,31 +117,12 @@ class ReportPointerTest {
     }
 
     @Test
-    fun `a first-attempt refusal whose re-read names this stamp is another writer's pointer, not this upload's`() {
+    fun `a refused write whose re-read names this upload's stamp counts as written, whatever the refusal`() {
         pointer.advance(folder, older, "_files.html")
         store.beforeNextWrite { store.overwrite(pointerPath, ReportPointer.render(newer, "index.html")) }
 
-        assertThat(pointer.advance(folder, newer, "_files.html")).isFalse()
-        assertThat(pointerText()).contains("report-20261014-113005/index.html")
-    }
-
-    @Test
-    fun `a write refused after a retry whose re-read names an older upload is decided again and written`() {
-        pointer.advance(folder, older, "_files.html")
-        store.refuseAfterRetryAt(pointerPath) { store.overwrite(pointerPath, ReportPointer.render(older, "index.html")) }
-
         assertThat(pointer.advance(folder, newer, "_files.html")).isTrue()
-        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
-    }
-
-    @Test
-    fun `a write refused after a retry whose re-read names a newer upload leaves that pointer`() {
-        val newest = newer.next()
-        pointer.advance(folder, older, "_files.html")
-        store.refuseAfterRetryAt(pointerPath) { store.overwrite(pointerPath, ReportPointer.render(newest, "index.html")) }
-
-        assertThat(pointer.advance(folder, newer, "_files.html")).isFalse()
-        assertThat(ReportPointer.target(pointerText())).isEqualTo(newest)
+        assertThat(pointerText()).contains("report-20261014-113005/index.html")
     }
 
     @Test
@@ -147,27 +132,84 @@ class ReportPointerTest {
         assertThatThrownBy { pointer.advance(folder, newer, "index.html") }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining(pointerPath.toUri())
+            .hasMessageContaining("no wait for a write in flight gave up")
     }
 
     @Test
-    fun `a write that meets its own earlier attempt in flight counts as this upload's once it lands`() {
-        store.conflictAfterRetryAt(pointerPath, landsAfterReads = 1)
-
-        assertThat(pointer.advance(folder, newer, "index.html")).isTrue()
-        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
-    }
-
-    @Test
-    fun `a replacing write that meets its own earlier attempt in flight waits for it to land and counts it as this upload's`() {
+    fun `a write that meets this upload's own write in flight waits for it to land and counts it as written`() {
         pointer.advance(folder, older, "_files.html")
-        store.conflictAfterRetryAt(pointerPath, landsAfterReads = 3)
+        store.writeInFlightAt(pointerPath, endsOnRead = 4, InMemoryConditionalObjectStore.InFlightEnd.LandsOwn)
+
+        val logs = CapturedLogs.during(DOCUMENTS_LOGGER) { assertThat(pointer.advance(folder, newer, "index.html")).isTrue() }
+
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+        assertThat(logs.at(Level.INFO)).anySatisfy { assertThat(it).contains(pointerPath.toUri(), "settled") }
+    }
+
+    @Test
+    fun `a first write that meets this upload's own write in flight counts it as written once it lands`() {
+        store.writeInFlightAt(pointerPath, endsOnRead = 3, InMemoryConditionalObjectStore.InFlightEnd.LandsOwn)
 
         assertThat(pointer.advance(folder, newer, "index.html")).isTrue()
         assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
     }
 
     @Test
-    fun `a last write refused after a retry whose pointer names this upload counts as written`() {
+    fun `a write in flight that lands as a newer upload's pointer is left alone`() {
+        val newest = ReportPointer.render(newer.next(), "index.html").toByteArray()
+        pointer.advance(folder, older, "_files.html")
+        store.writeInFlightAt(pointerPath, endsOnRead = 3, InMemoryConditionalObjectStore.InFlightEnd.LandsOther(newest))
+
+        assertThat(pointer.advance(folder, newer, "index.html")).isFalse()
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer.next())
+    }
+
+    @Test
+    fun `a wait for a write in flight that gives up logs it and the next attempt writes the pointer`() {
+        pointer.advance(folder, older, "_files.html")
+        // The top read, then every look of the wait: the write in flight aborts on the last look.
+        store.writeInFlightAt(pointerPath, endsOnRead = 1 + maxLooks, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+
+        val logs = CapturedLogs.during(DOCUMENTS_LOGGER) { assertThat(pointer.advance(folder, newer, "index.html")).isTrue() }
+
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(newer)
+        assertThat(logs.at(Level.WARN)).anySatisfy {
+            assertThat(it).contains(pointerPath.toUri(), "gave up", "$maxLooks looks")
+        }
+    }
+
+    @Test
+    fun `a pointer whose write in flight never lands fails saying the in-flight waits gave up`() {
+        pointer.advance(folder, older, "_files.html")
+        store.writeInFlightAt(pointerPath, endsOnRead = Int.MAX_VALUE, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+
+        assertThatThrownBy { pointer.advance(folder, newer, "index.html") }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(pointerPath.toUri())
+            .hasMessageContaining("${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} waits for a write in flight gave up")
+        assertThat(ReportPointer.target(pointerText())).isEqualTo(older)
+    }
+
+    @Test
+    fun `an S3 error on a read while waiting for a write in flight fails at once, after exactly that read`() {
+        val error =
+            S3Exception
+                .builder()
+                .statusCode(500)
+                .message("read failed")
+                .build()
+        pointer.advance(folder, older, "_files.html")
+        val readsBefore = store.readsOf(pointerPath)
+        store.writeInFlightAt(pointerPath, endsOnRead = Int.MAX_VALUE, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+        // The top read, then the first look of the wait, which fails.
+        store.failReadAt(pointerPath, readNumber = readsBefore + 2, error)
+
+        assertThatThrownBy { pointer.advance(folder, newer, "index.html") }.isSameAs(error)
+        assertThat(store.readsOf(pointerPath)).isEqualTo(readsBefore + 2)
+    }
+
+    @Test
+    fun `a last write whose response was lost counts as written on the final re-read`() {
         var writes = 0
         store.beforeEveryWrite {
             writes++
@@ -184,16 +226,20 @@ class ReportPointerTest {
     }
 
     @Test
-    fun `a last write refused after a retry whose pointer names a newer upload leaves that pointer`() {
+    fun `a final re-read that names a newer upload leaves that pointer`() {
         val newest = newer.next()
         var writes = 0
         store.beforeEveryWrite {
             writes++
-            if (writes < Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) {
-                store.overwrite(pointerPath, "changed $writes")
-            } else {
-                store.refuseAfterRetryAt(pointerPath) { store.overwrite(pointerPath, ReportPointer.render(newest, "index.html")) }
-            }
+            val page =
+                if (writes <
+                    Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS
+                ) {
+                    "changed $writes"
+                } else {
+                    ReportPointer.render(newest, "index.html")
+                }
+            store.overwrite(pointerPath, page)
         }
 
         assertThat(pointer.advance(folder, newer, "index.html")).isFalse()
@@ -201,15 +247,19 @@ class ReportPointerTest {
     }
 
     @Test
-    fun `a last write refused after a retry whose pointer names another upload still fails`() {
+    fun `a final re-read that names an older upload still fails`() {
         var writes = 0
         store.beforeEveryWrite {
             writes++
-            if (writes < Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) {
-                store.overwrite(pointerPath, "changed $writes")
-            } else {
-                store.refuseAfterRetryAt(pointerPath) { store.overwrite(pointerPath, ReportPointer.render(older, "index.html")) }
-            }
+            val page =
+                if (writes <
+                    Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS
+                ) {
+                    "changed $writes"
+                } else {
+                    ReportPointer.render(older, "index.html")
+                }
+            store.overwrite(pointerPath, page)
         }
 
         assertThatThrownBy { pointer.advance(folder, newer, "index.html") }
@@ -245,5 +295,9 @@ class ReportPointerTest {
         pointer.ensurePlaceholder(folder)
 
         assertThat(pointerText()).contains("No report yet")
+    }
+
+    private companion object {
+        private const val DOCUMENTS_LOGGER = "com.rustyrazorblade.easydblab.services.documents"
     }
 }

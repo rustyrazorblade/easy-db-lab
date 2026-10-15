@@ -13,12 +13,12 @@ import java.time.Duration
  *
  * The pointer is derived, and it is the only object under the folder that is ever rewritten. It
  * only moves forward: it names its upload's [ReportStamp] in a comment line, and an upload leaves a
- * pointer that names an equal or newer one. Every write is conditional on the version that was
- * read, so of two uploads that finish together the newer wins whatever their order; a refused write
- * is re-read and decided again. Only a write refused on a retried attempt whose re-read already
- * names this upload counts as written (an earlier attempt committed and lost its response); after
- * a first-attempt refusal, a pointer naming this upload's second is another writer's. A write that
- * met a write in flight after a retry waits for it to land before the pointer is decided again.
+ * pointer that names an equal or newer one. A pointer that names this upload's own stamp always
+ * counts as written: a stamp belongs to the one upload that holds its zip key, so no other writer
+ * writes it. Every write is conditional on the version that was read, so of two uploads that
+ * finish together the newer wins whatever their order. A refused write is re-read and decided
+ * again; when the re-read still shows the version the write was refused on, a write is in flight
+ * there, and the pointer waits a bounded number of looks for it to land before deciding.
  */
 class ReportPointer(
     private val store: ConditionalObjectStore,
@@ -37,9 +37,10 @@ class ReportPointer(
      * Points [folder]'s pointer at the upload [stamp], whose front page is [frontPage], unless it
      * already names an equal or newer upload.
      *
-     * @return whether the pointer now leads to this upload.
-     * @throws IllegalStateException if other writers changed the pointer between every read and
-     *   write, [Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS] times.
+     * @return whether the pointer now leads to this upload: true when it names [stamp], false when
+     *   it names a newer upload.
+     * @throws IllegalStateException if the pointer still named an older upload after
+     *   [Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS] refused writes and one final re-read.
      */
     fun advance(
         folder: ClusterS3Path,
@@ -48,80 +49,83 @@ class ReportPointer(
     ): Boolean {
         val path = pointerOf(folder)
         val content = render(stamp, frontPage).toByteArray()
-        var refusedAfterRetry = false
+        var current = store.readVersioned(path)
+        var waitsGivenUp = 0
         repeat(Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS) {
-            val current = store.readVersioned(path)
-            decided(path, current, stamp, refusedAfterRetry)?.let { return it }
-            val result =
-                if (current == null) {
-                    store.putIfAbsent(content, path, CONTENT_TYPE)
-                } else {
-                    store.putIfMatch(content, path, current.etag, CONTENT_TYPE)
-                }
-            if (result == ConditionalObjectStore.Written) return true
-            if (result == ConditionalObjectStore.ConflictAfterRetry) awaitInFlightWrite(path, current)
-            refusedAfterRetry =
-                result == ConditionalObjectStore.RefusedAfterRetry ||
-                result == ConditionalObjectStore.ConflictAfterRetry
+            decided(current, stamp)?.let { return it }
+            if (write(path, content, current)) return true
+            val reread = reread(path, current)
+            if (reread?.etag == current?.etag) waitsGivenUp++
+            current = reread
         }
-        // The last write may have committed and lost its response, or another writer may have moved
-        // the pointer to a newer upload: read once more before failing.
-        decided(path, store.readVersioned(path), stamp, refusedAfterRetry)?.let { return it }
+        // The last re-read is the final one: it may show this upload's write, whose response was
+        // lost, or a newer upload's pointer.
+        decided(current, stamp)?.let { return it }
+        val waits = if (waitsGivenUp == 0) "no wait" else "$waitsGivenUp waits"
         error(
-            "The report pointer ${path.toUri()} changed under every one of " +
-                "${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} writes; the upload is stored, run report upload again to point at it.",
+            "The report pointer ${path.toUri()} led to neither this upload nor a newer one after " +
+                "${Constants.Observability.REPORT_POINTER_MAX_ATTEMPTS} refused writes; $waits for a write in flight gave up. " +
+                "The upload is stored, run report upload again to point at it.",
         )
     }
 
-    /**
-     * Waits, a bounded number of looks, for the conditional write in flight at [path] to land: it
-     * may be this writer's own earlier attempt, so the pointer is decided only once it is no longer
-     * the version [read] was. Any S3 error fails at once.
-     */
-    private fun awaitInFlightWrite(
+    /** Writes [content] to [path] on the version [current] was read at; whether it was written. */
+    private fun write(
         path: ClusterS3Path,
-        read: ConditionalObjectStore.Versioned?,
-    ) {
-        pollUntil(
-            "report-pointer-write-in-flight",
-            Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS,
-            inFlightLookInterval,
-            transient = { false },
-            done = { it?.etag != read?.etag },
-        ) { store.readVersioned(path) }
+        content: ByteArray,
+        current: ConditionalObjectStore.Versioned?,
+    ): Boolean =
+        if (current == null) {
+            store.putIfAbsent(content, path, CONTENT_TYPE) == ConditionalObjectStore.Written
+        } else {
+            store.putIfMatch(content, path, current.etag, CONTENT_TYPE) == ConditionalObjectStore.Written
+        }
+
+    /**
+     * Re-reads [path] after a write refused on the version [refusedOn]. A re-read that still shows
+     * that version means a write is in flight there, so it looks again, a bounded number of times,
+     * until the pointer changes; any S3 error fails at once. Returns the last read.
+     */
+    private fun reread(
+        path: ClusterS3Path,
+        refusedOn: ConditionalObjectStore.Versioned?,
+    ): ConditionalObjectStore.Versioned? {
+        var looks = 0
+        val last =
+            pollUntil(
+                "report-pointer-write-in-flight",
+                Constants.Observability.REPORT_IN_FLIGHT_MAX_LOOKS,
+                inFlightLookInterval,
+                transient = { false },
+                done = { it?.etag != refusedOn?.etag },
+            ) {
+                looks++
+                store.readVersioned(path)
+            }
+        val from = refusedOn?.etag ?: "none"
+        when {
+            looks == 1 -> Unit
+            last?.etag != refusedOn?.etag ->
+                log.info { "Pointer ${path.toUri()}: write in flight settled after $looks looks, etag $from -> ${last?.etag ?: "none"}" }
+            else -> log.warn { "Pointer ${path.toUri()}: wait for a write in flight gave up after $looks looks, etag still $from" }
+        }
+        return last
     }
 
     /**
-     * What the pointer [current], just read at [path], settles for the upload [stamp]: true when
-     * the last write was refused after a retry and the pointer names this upload (an earlier
-     * attempt committed and its response was lost), false when it already names an equal or newer
-     * upload, and null when this upload must still write it.
+     * What the pointer [current] settles for the upload [stamp]: true when it names [stamp], false
+     * when it names a newer upload, and null when this upload must still write it.
      */
     private fun decided(
-        path: ClusterS3Path,
         current: ConditionalObjectStore.Versioned?,
         stamp: ReportStamp,
-        refusedAfterRetry: Boolean,
     ): Boolean? {
         val shown = current?.let { target(it.content) }
         return when {
-            refusedAfterRetry && acceptedAsOwn(path, shown, stamp) -> true
-            shown != null && shown >= stamp -> false
+            shown == stamp -> true
+            shown != null && shown > stamp -> false
             else -> null
         }
-    }
-
-    /** Whether the pointer at [path], re-read after a write refused on a retry and naming [shown], is this upload's [stamp]. */
-    private fun acceptedAsOwn(
-        path: ClusterS3Path,
-        shown: ReportStamp?,
-        stamp: ReportStamp,
-    ): Boolean {
-        val accepted = shown == stamp
-        log.info {
-            "Pointer write to ${path.toUri()} refused after a retry; it names ${shown?.timestamp ?: "no upload"}, accepted=$accepted"
-        }
-        return accepted
     }
 
     /** Renders pointers and reads them back. */

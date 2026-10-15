@@ -974,21 +974,31 @@ This backup also runs automatically before teardown; see [`down`](#down).
 
 ### report upload
 
-Attach markdown documents to the current test. Each file is stored in the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, with an HTML copy, and the test's `index.html` is rebuilt to hold every document, each under its own heading, in name order. The Tests and comparison dashboards show that index. A file with the name of a stored document replaces it.
-
-The command accepts only `.md` files whose names hold letters, digits, `.`, `_` and `-`, and refuses `index.md` and a name given twice. It checks every file first; if it refuses any, it names each one and uploads nothing. It uses your own AWS credentials and needs only the workspace's `state.json`, so it works before and after `down`.
-
-If an upload fails, the command names the failed file and each document it already stored.  Those documents are in the bucket but not yet in the index.  Run the command again.
+Upload one directory as a report of the current experiment. The directory is zipped, and the zip is stored unchanged as `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip` in the account bucket, where the timestamp is the upload time in UTC. The report belongs to the experiment, not to one cluster, so every cluster of the experiment shows it. The tenant and the experiment come from the workspace's `state.json` (`init --tenant` and `init --experiment`); there is no option for them.
 
 ```bash
-easy-db-lab report upload results.md notes.md
+easy-db-lab report upload results/
 ```
 
 | Argument | Description |
 |----------|-------------|
-| `FILE...` | One or more markdown files (required) |
+| `DIR` | The one directory to upload (required). Any file types; subdirectories are kept. |
 
-Two uploads for one test at the same moment can each rebuild the index without the other's document; the next upload restores it.
+**No upload replaces another.** The zip is written only if no object exists at its key; if another upload already took that second, it takes the next free second. Every upload is kept.
+
+**What is stored.** Next to the zip, the same zip is unpacked to `report-<yyyyMMdd-HHmmss>/`, with an HTML copy of each `.md` file and a generated `_files.html` that lists the upload's files. The experiment's `index.html` is a pointer that the documents panels show. It leads to the newest upload: to the upload's `index.html` when the directory holds `index.md` or `index.html` at its root, or to its `_files.html` otherwise. The pointer only moves forward. An upload named for an earlier second than the one shown leaves the pointer alone, and its zip is still kept. The pointer is the only object in the folder that is ever rewritten. Uploads are ordered by the clock of the machine that ran them, so two machines whose clocks differ can, within a few seconds, leave the older of their uploads shown. Both are kept.
+
+**What the directory may hold.** The command checks the whole directory before it uploads anything. If any check fails, it names every file that fails and uploads nothing:
+
+- the directory exists and holds at least one file;
+- every part of every path holds only letters, digits, `.`, `_` and `-`, and no path holds `..`;
+- nothing is a symbolic link;
+- the root holds no `_files.html`, which the command generates;
+- no `X.md` sits beside an `X.html` at any depth, because the HTML copy would replace it. Both files are named.
+
+`report upload a.md b.md` fails: the command takes one directory. Put the files in a directory and upload that.
+
+The command uses your own AWS credentials and needs only the workspace's `state.json`, so it works before and after `down`. `up` writes the experiment's pointer, saying "No report yet", only when the experiment has none, so a second cluster of an experiment never hides its report. If unpacking or the pointer fails after the zip is stored, the command names the stored zip; run it again to make a new upload.
 
 ---
 

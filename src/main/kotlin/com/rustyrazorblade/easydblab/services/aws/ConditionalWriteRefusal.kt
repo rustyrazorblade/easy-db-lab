@@ -24,6 +24,10 @@ enum class WriteCondition {
  * concurrent conditional write to the key won, and, for `If-Match` only, with 404 `NoSuchKey` when
  * the object it named was removed. Every other 404 (a missing bucket, an unknown code, no code at
  * all) is an error.
+ *
+ * A refusal does not say why: the key may hold another writer's object, the writer's own (an
+ * earlier attempt committed and lost its response), or nothing yet (a write is in flight there).
+ * A caller that must tell these apart reads the key back.
  */
 object ConditionalWriteRefusal {
     /** Whether [error], from a PUT carrying [condition], is S3 refusing that condition. */
@@ -39,12 +43,4 @@ object ConditionalWriteRefusal {
             else -> false
         }
     }
-
-    /**
-     * Whether [error], already a refusal, is S3's 409 `ConditionalRequestConflict`: another
-     * conditional write to the key was still in flight, so the key may hold no object yet.
-     */
-    fun isInFlightConflict(error: S3Exception): Boolean =
-        error.statusCode() == Constants.HttpStatus.CONFLICT &&
-            error.awsErrorDetails()?.errorCode() == Constants.S3.CONDITIONAL_REQUEST_CONFLICT
 }

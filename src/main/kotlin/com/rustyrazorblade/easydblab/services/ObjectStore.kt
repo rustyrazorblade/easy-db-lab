@@ -241,9 +241,10 @@ interface ConditionalObjectStore {
      * (`If-None-Match: *`), so it can never replace an object, not even one another writer stores
      * at the same moment.
      *
-     * @return [Written]; [AlreadyExists] when an object is already at [remotePath] (it is left
-     *   unchanged); or [RefusedAfterRetry] or [ConflictAfterRetry] when only a retried attempt was
-     *   refused.
+     * @return [Written], or [AlreadyExists] when the write was refused and wrote nothing. A refusal
+     *   does not say whose object is there: it may be another writer's, this writer's own (an
+     *   earlier attempt of the request committed and lost its response), or none yet (a write is
+     *   still in flight at the key). A caller that must tell them apart reads the key back.
      */
     fun putIfAbsent(
         content: ByteArray,
@@ -255,9 +256,10 @@ interface ConditionalObjectStore {
      * Replaces the object at [remotePath] with [content] only while its version is still [etag]
      * (`If-Match`), as read with [readVersioned].
      *
-     * @return [Written]; [PreconditionFailed] when another writer changed or removed the object
-     *   since it was read (it is left as that writer left it); or [RefusedAfterRetry] or
-     *   [ConflictAfterRetry] when only a retried attempt was refused.
+     * @return [Written], or [PreconditionFailed] when the write was refused and wrote nothing: the
+     *   object was changed or removed since it was read, by another writer, by this writer's own
+     *   earlier attempt whose response was lost, or by a write still in flight. A caller that must
+     *   tell them apart reads the key back.
      */
     fun putIfMatch(
         content: ByteArray,
@@ -289,28 +291,11 @@ interface ConditionalObjectStore {
     /** A conditional write stored its content. */
     data object Written : PutIfAbsentResult, PutIfMatchResult
 
-    /** [putIfAbsent] found an object already at the path and wrote nothing. */
+    /** [putIfAbsent] was refused because the path was not free, and wrote nothing. */
     data object AlreadyExists : PutIfAbsentResult
 
-    /** [putIfMatch] found the object changed since it was read and wrote nothing. */
+    /** [putIfMatch] was refused because the object was not the version read, and wrote nothing. */
     data object PreconditionFailed : PutIfMatchResult
-
-    /**
-     * A conditional write was refused on a retried attempt of this same request. An earlier
-     * attempt may have committed and lost only its response, so the object now at the path may be
-     * this writer's own; a caller that must tell the two apart reads it back. A refusal of the
-     * first attempt is never this: it is [AlreadyExists] or [PreconditionFailed].
-     */
-    data object RefusedAfterRetry : PutIfAbsentResult, PutIfMatchResult
-
-    /**
-     * A conditional write was refused on a retried attempt of this same request because another
-     * conditional write to the path was still in flight (S3's 409 `ConditionalRequestConflict`).
-     * That write may be this writer's own earlier attempt, not yet committed, so the path may hold
-     * no object yet and later hold this writer's content; a caller that must tell the two apart
-     * waits for the object and reads it back. Otherwise it means what [RefusedAfterRetry] does.
-     */
-    data object ConflictAfterRetry : PutIfAbsentResult, PutIfMatchResult
 
     /**
      * An object's content and the version it was read at.

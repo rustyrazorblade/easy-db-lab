@@ -272,9 +272,9 @@ misattribute each other's failure.
 
 ## Invoking AMI-Baked Scripts At Runtime
 
-Some scripts under `packer/` are not bake-time-only. `packer/cassandra/bin/install-cassandra-version`
-and `use-cassandra` are installed onto the node's `PATH` by the AMI build and then invoked at
-runtime over SSH by `CassandraInstall` and `UseCassandra`. This is deliberate: one install code path
+Some scripts under `packer/` are not bake-time-only. The AMI build installs `packer/cassandra/bin/install-cassandra-version`
+and `use-cassandra` onto the node's `PATH`. At runtime, `CassandraInstall` (`cassandra install`) runs
+`install-cassandra-version` over SSH, and `UseCassandra` (`cassandra use`) runs `use-cassandra`. This is deliberate: one install code path
 serves both the bake and a running cluster, instead of two that have to be kept in sync by hand.
 
 Consequences when editing those scripts:

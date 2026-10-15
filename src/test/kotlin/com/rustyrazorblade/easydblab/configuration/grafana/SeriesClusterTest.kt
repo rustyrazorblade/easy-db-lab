@@ -97,7 +97,9 @@ class SeriesClusterTest {
         val retired = """sum(rate(a{cluster="${'$'}baseline_cluster"}[5m]))"""
 
         assertThat(SeriesClusterGuards.exempt(Query("variable 'cluster'", Language.PROMQL, "count by (cluster) (up)"), false)).isTrue()
-        assertThat(SeriesClusterGuards.exempt(Query("variable 'experiment'", Language.PROMQL, "count by (experiment) (up)"), false)).isTrue()
+        assertThat(
+            SeriesClusterGuards.exempt(Query("variable 'experiment'", Language.PROMQL, "count by (experiment) (up)"), false),
+        ).isTrue()
         assertThat(SeriesClusterGuards.exempt(Query("panel 'p'", Language.PROMQL, side), false)).isTrue()
         assertThat(SeriesClusterGuards.exempt(Query("panel 'p'", Language.PROMQL, retired), false)).isFalse()
         assertThat(SeriesClusterGuards.exempt(Query("panel 'p'", Language.PROMQL, both), false)).isFalse()

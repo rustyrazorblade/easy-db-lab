@@ -49,7 +49,8 @@ class GrafanaDashboardTreeUploaderTest : BaseKoinTest() {
     private val host = controlHost.toHost()
     private val hostPath = GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH
     private val grafanaUid = GrafanaManifestBuilder.GRAFANA_UID
-    private val installContext = DashboardInstallContext("test-abc", ExperimentKey("default", "test-abc"), TenantSet.of("default"), "http://10.0.1.5:3080")
+    private val installContext =
+        DashboardInstallContext("test-abc", ExperimentKey("default", "test-abc"), TenantSet.of("default"), "http://10.0.1.5:3080")
 
     override fun additionalTestModules(): List<Module> =
         listOf(

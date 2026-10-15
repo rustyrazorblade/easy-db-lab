@@ -216,7 +216,10 @@ class DashboardDatasourceVariablesTest {
 
         @Test
         fun `the retired doc_tenant is no longer carried`() {
-            val violations = DashboardDatasourceGuards.linkViolations(dashboard(listOf("doc_tenant", "cluster"), "/d/x/x?\${cluster:queryparam}"))
+            val violations =
+                DashboardDatasourceGuards.linkViolations(
+                    dashboard(listOf("doc_tenant", "cluster"), "/d/x/x?\${cluster:queryparam}"),
+                )
 
             assertThat(violations).isEmpty()
         }

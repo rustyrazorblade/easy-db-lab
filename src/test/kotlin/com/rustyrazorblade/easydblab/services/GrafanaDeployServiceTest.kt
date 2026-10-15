@@ -94,7 +94,8 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
                 .thenReturn(GetBucketLocationResponse.builder().locationConstraint(region).build())
         }
 
-    private fun context(tenant: String) = DashboardInstallContext("test-abc", ExperimentKey(tenant, "test-abc"), TenantSet.of(tenant), "http://10.0.1.5:3080")
+    private fun context(tenant: String) =
+        DashboardInstallContext("test-abc", ExperimentKey(tenant, "test-abc"), TenantSet.of(tenant), "http://10.0.1.5:3080")
 
     private fun service() =
         DefaultGrafanaDeployService(

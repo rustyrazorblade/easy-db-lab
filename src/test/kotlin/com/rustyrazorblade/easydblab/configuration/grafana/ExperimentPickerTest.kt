@@ -84,7 +84,8 @@ class ExperimentPickerTest {
                   {"name": "host", "type": "query", "query": "label_values(up, host_name)"}]}}
                 """,
             )
-        val noExperiment = parse("""{"templating": {"list": [{"name": "cluster", "type": "query", "query": "label_values(up, cluster)"}]}}""")
+        val noExperiment =
+            parse("""{"templating": {"list": [{"name": "cluster", "type": "query", "query": "label_values(up, cluster)"}]}}""")
 
         assertThat(untenantedClusterLists(unfiltered)).containsExactly("cluster")
         assertThat(untenantedClusterLists(noExperiment)).isEmpty()
@@ -149,7 +150,9 @@ class ExperimentPickerTest {
         assertThat(pickerProblems(JsonObject(good + ("includeAll" to JsonPrimitive(true)))))
             .containsExactly("experiment uses Grafana's includeAll")
         assertThat(pickerProblems(JsonObject(good + ("sort" to JsonPrimitive(1))))).containsExactly("experiment sort is not 0")
-        assertThat(pickerProblems(JsonObject(good + ("regex" to JsonPrimitive("/x/"))))).containsExactly("experiment regex is not $PICKER_REGEX")
+        assertThat(
+            pickerProblems(JsonObject(good + ("regex" to JsonPrimitive("/x/")))),
+        ).containsExactly("experiment regex is not $PICKER_REGEX")
         assertThat(pickerProblems(JsonObject(good + ("query" to JsonPrimitive("query_result(up)")))))
             .containsExactly("experiment does not list newest first over lookback")
     }
@@ -226,14 +229,20 @@ class ExperimentPickerTest {
 
     @Test
     fun `no query_result variable query holds a line break`() {
-        val found = DashboardFiles.all().flatMap { file -> multiLineQueryResults(parse(file.readText())).map { "${file.path} variable '$it'" } }
+        val found =
+            DashboardFiles.all().flatMap { file ->
+                multiLineQueryResults(parse(file.readText())).map { "${file.path} variable '$it'" }
+            }
 
         assertThat(found).isEmpty()
     }
 
     @Test
     fun `no two-label variable regex has a space after the comma`() {
-        val found = DashboardFiles.all().flatMap { file -> spacedTwoLabelRegexes(parse(file.readText())).map { "${file.path} variable '$it'" } }
+        val found =
+            DashboardFiles.all().flatMap { file ->
+                spacedTwoLabelRegexes(parse(file.readText())).map { "${file.path} variable '$it'" }
+            }
 
         assertThat(found).isEmpty()
     }

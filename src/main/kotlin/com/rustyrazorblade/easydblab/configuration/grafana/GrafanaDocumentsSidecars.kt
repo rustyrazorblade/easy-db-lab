@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -32,9 +33,7 @@ data class DocumentsBucket(
  *   dropped. Its configuration is a classpath resource and ships in its own ConfigMap, so a change to
  *   it rolls the pod through the config hash.
  */
-class GrafanaDocumentsSidecars(
-    private val templateService: TemplateService,
-) {
+class GrafanaDocumentsSidecars {
     companion object {
         /** The ConfigMap holding the web server's configuration. */
         const val CONFIGMAP_NAME = "grafana-documents-web"
@@ -42,26 +41,38 @@ class GrafanaDocumentsSidecars(
         /** The resource the web server's configuration is rendered from. */
         const val CONFIG_RESOURCE = "documents-nginx.conf"
 
+        /**
+         * The web server's configuration for [bucket]: it listens on [listenPort] and forwards to
+         * [upstream] (`host:port`), which signs the request. Read from the classpath with no cluster
+         * state, so the local stack, which runs outside a workspace, renders the same file.
+         */
+        fun renderWebServerConfig(
+            bucket: String,
+            upstream: String,
+            listenPort: Int,
+        ): String =
+            TemplateService
+                .Template(CompactorTaskDefinition.resource(GrafanaDocumentsSidecars::class.java, CONFIG_RESOURCE), emptyMap())
+                .substitute(
+                    mapOf(
+                        "DOCUMENTS_WEB_PORT" to listenPort.toString(),
+                        "DOCUMENTS_UPSTREAM" to upstream,
+                        "DOCUMENTS_BUCKET" to bucket,
+                    ),
+                )
+
         private const val CONFIG_KEY = "nginx.conf"
         private const val VOLUME = "documents-web-config"
         private const val NAMESPACE = "default"
     }
 
-    /** The web server's rendered configuration for [documents]. */
+    /** The web server's rendered configuration for [documents], forwarding to the signing proxy on loopback. */
     fun webServerConfig(documents: DocumentsBucket): String =
-        templateService
-            .fromResource(GrafanaDocumentsSidecars::class.java, CONFIG_RESOURCE)
-            .substitute(
-                mapOf(
-                    "DOCUMENTS_WEB_PORT" to
-                        Constants.Grafana.Documents.WEB_PORT
-                            .toString(),
-                    "DOCUMENTS_PROXY_PORT" to
-                        Constants.Grafana.Documents.PROXY_PORT
-                            .toString(),
-                    "DOCUMENTS_BUCKET" to documents.bucket,
-                ),
-            )
+        renderWebServerConfig(
+            bucket = documents.bucket,
+            upstream = "127.0.0.1:${Constants.Grafana.Documents.PROXY_PORT}",
+            listenPort = Constants.Grafana.Documents.WEB_PORT,
+        )
 
     /** The ConfigMap with the web server's configuration. */
     fun configMap(documents: DocumentsBucket): ConfigMap =

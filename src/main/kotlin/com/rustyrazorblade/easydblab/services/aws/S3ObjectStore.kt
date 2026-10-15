@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
@@ -367,12 +366,7 @@ class S3ObjectStore(
         contentType: String,
     ): ConditionalObjectStore.PutIfAbsentResult {
         val request = putRequest(remotePath, contentType).ifNoneMatch("*").build()
-        return if (conditionalPut(
-                request,
-                content,
-                "s3-put-if-absent",
-            )
-        ) {
+        return if (conditionalPut(request, content, WriteCondition.IF_NONE_MATCH)) {
             ConditionalObjectStore.Written
         } else {
             ConditionalObjectStore.AlreadyExists
@@ -386,12 +380,7 @@ class S3ObjectStore(
         contentType: String,
     ): ConditionalObjectStore.PutIfMatchResult {
         val request = putRequest(remotePath, contentType).ifMatch(etag).build()
-        return if (conditionalPut(
-                request,
-                content,
-                "s3-put-if-match",
-            )
-        ) {
+        return if (conditionalPut(request, content, WriteCondition.IF_MATCH)) {
             ConditionalObjectStore.Written
         } else {
             ConditionalObjectStore.PreconditionFailed
@@ -438,15 +427,19 @@ class S3ObjectStore(
             .contentType(contentType)
 
     /**
-     * Sends a conditional PUT, retrying only server errors. Returns false when S3 refused it
-     * because its condition does not hold: 412, or 409 when a concurrent conditional write to
-     * the key won, or 404 when an `If-Match` object was removed. Any other error is thrown.
+     * Sends a conditional PUT carrying [condition], retrying only server errors. Returns false when
+     * S3 refused it because its condition does not hold ([ConditionalWriteRefusal]). Any other
+     * error is thrown as an [S3Exception] whose message names the key and S3's error code.
+     *
+     * A retried write whose first attempt committed is refused, although this writer stored it;
+     * callers that must tell the two apart read the object back.
      */
     private fun conditionalPut(
         request: PutObjectRequest,
         content: ByteArray,
-        retryName: String,
+        condition: WriteCondition,
     ): Boolean {
+        val retryName = "s3-put-${condition.name.lowercase().replace('_', '-')}"
         val retry = Retry.of(retryName, RetryUtil.createAwsRetryConfig<Unit>())
         return try {
             Retry
@@ -460,19 +453,21 @@ class S3ObjectStore(
             log.info { "Wrote ${content.size} bytes to s3://${request.bucket()}/${request.key()}" }
             true
         } catch (e: S3Exception) {
-            if (e.statusCode() !in CONDITION_REFUSED) throw e
-            log.info { "Conditional write to s3://${request.bucket()}/${request.key()} refused (${e.statusCode()})" }
+            val uri = "s3://${request.bucket()}/${request.key()}"
+            val code = e.awsErrorDetails()?.errorCode() ?: "unknown"
+            if (!ConditionalWriteRefusal.isRefused(condition, e)) {
+                throw S3Exception
+                    .builder()
+                    .message("Conditional write to $uri failed with S3 error $code (HTTP ${e.statusCode()})")
+                    .statusCode(e.statusCode())
+                    .awsErrorDetails(e.awsErrorDetails())
+                    .requestId(e.requestId())
+                    .cause(e)
+                    .build()
+            }
+            log.info { "Conditional write to $uri refused: S3 error $code (HTTP ${e.statusCode()})" }
             false
         }
-    }
-
-    private companion object {
-        private val CONDITION_REFUSED =
-            setOf(
-                Constants.HttpStatus.PRECONDITION_FAILED,
-                Constants.HttpStatus.CONFLICT,
-                Constants.HttpStatus.NOT_FOUND,
-            )
     }
 
     override fun directoryExists(remotePath: ClusterS3Path): Boolean {

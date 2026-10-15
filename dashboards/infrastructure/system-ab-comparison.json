@@ -55,13 +55,13 @@
       "asDropdown": false,
       "icon": "external link",
       "includeVars": false,
-      "keepTime": true,
+      "keepTime": false,
       "tags": [],
       "targetBlank": false,
       "title": "Cassandra A/B Comparison",
       "tooltip": "The database side of the comparison, on a Cassandra cluster",
       "type": "link",
-      "url": "/d/ab-comparison/a-b-comparison?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}&${logs_datasource:queryparam}&${experiment:queryparam}&${cluster_a:queryparam}&${cluster_b:queryparam}&${role:queryparam}"
+      "url": "/d/ab-comparison/a-b-comparison?${metrics_datasource:queryparam}&${cluster:queryparam}&${logs_datasource:queryparam}&${experiment:queryparam}&${cluster_a:queryparam}&${cluster_b:queryparam}&${role:queryparam}"
     }
   ],
   "liveNow": false,

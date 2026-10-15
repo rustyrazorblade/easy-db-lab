@@ -148,6 +148,7 @@ class DefaultClusterConfigurationService(
                 writer,
                 clusterState.hosts,
                 clusterState.clusterLabelName(),
+                clusterState.experiment(),
                 proxyCommands,
             )
         }

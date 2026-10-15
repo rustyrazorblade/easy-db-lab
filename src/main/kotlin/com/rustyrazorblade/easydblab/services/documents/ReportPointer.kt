@@ -73,7 +73,10 @@ class ReportPointer(
             val target = ReportHtml.escape("${stamp.folderName}/$frontPage")
             return ReportHtml
                 .page(TITLE, "<p><a href=\"$target\">The newest report, uploaded ${stamp.timestamp} UTC</a></p>")
-                .replaceFirst("<head>", "<head>\n<!-- $MARKER ${stamp.timestamp} -->\n<meta http-equiv=\"refresh\" content=\"0; url=$target\">")
+                .replaceFirst(
+                    "<head>",
+                    "<head>\n<!-- $MARKER ${stamp.timestamp} -->\n<meta http-equiv=\"refresh\" content=\"0; url=$target\">",
+                )
         }
 
         /** The upload the pointer [content] leads to, or null for the placeholder or any page this class did not write. */

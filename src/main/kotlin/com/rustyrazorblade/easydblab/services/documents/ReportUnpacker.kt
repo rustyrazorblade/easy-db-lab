@@ -42,7 +42,8 @@ object ReportUnpacker {
     private const val HTML_SUFFIX = ".html"
     private const val GENERATED_HTML = "text/html; charset=utf-8"
     private const val FILE_LIST_TITLE = "Report files"
-    private val FRONT_PAGE_SOURCES = setOf("index${Constants.Observability.REPORT_MARKDOWN_SUFFIX}", Constants.Observability.REPORT_FRONT_PAGE)
+    private val FRONT_PAGE_SOURCES =
+        setOf("index${Constants.Observability.REPORT_MARKDOWN_SUFFIX}", Constants.Observability.REPORT_FRONT_PAGE)
 
     /** The objects of the upload whose zip is [zip]. */
     fun unpack(zip: ByteArray): UnpackedReport {

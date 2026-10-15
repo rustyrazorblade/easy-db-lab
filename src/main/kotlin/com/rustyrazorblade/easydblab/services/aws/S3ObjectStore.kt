@@ -367,7 +367,16 @@ class S3ObjectStore(
         contentType: String,
     ): ConditionalObjectStore.PutIfAbsentResult {
         val request = putRequest(remotePath, contentType).ifNoneMatch("*").build()
-        return if (conditionalPut(request, content, "s3-put-if-absent")) ConditionalObjectStore.Written else ConditionalObjectStore.AlreadyExists
+        return if (conditionalPut(
+                request,
+                content,
+                "s3-put-if-absent",
+            )
+        ) {
+            ConditionalObjectStore.Written
+        } else {
+            ConditionalObjectStore.AlreadyExists
+        }
     }
 
     override fun putIfMatch(
@@ -377,7 +386,16 @@ class S3ObjectStore(
         contentType: String,
     ): ConditionalObjectStore.PutIfMatchResult {
         val request = putRequest(remotePath, contentType).ifMatch(etag).build()
-        return if (conditionalPut(request, content, "s3-put-if-match")) ConditionalObjectStore.Written else ConditionalObjectStore.PreconditionFailed
+        return if (conditionalPut(
+                request,
+                content,
+                "s3-put-if-match",
+            )
+        ) {
+            ConditionalObjectStore.Written
+        } else {
+            ConditionalObjectStore.PreconditionFailed
+        }
     }
 
     override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? {

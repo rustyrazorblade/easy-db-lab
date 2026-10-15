@@ -101,6 +101,7 @@ abstract class UpTestFixture : BaseKoinTest() {
     protected lateinit var mockK8sService: K8sService
     protected lateinit var mockCommandExecutor: CommandExecutor
     protected lateinit var mockObservabilityStackService: ObservabilityStackService
+
     /** The S3 side of the report pointer `up` writes; the pointer is the real [ReportPointer]. */
     protected val reportStore = InMemoryConditionalObjectStore()
     protected lateinit var outputHandler: BufferedOutputHandler

@@ -37,14 +37,14 @@
 
 ## 6. clickhouse-benchmark kit resources
 
-- [ ] 6.1 Capture a report fixture and an error-run fixture from a real `clickhouse-benchmark` run (stderr included, with `--delay 10` and `--json`), and confirm the flag spellings and binary name in the image (R2).
+- [ ] 6.1 Capture a report fixture and an error-run fixture from a real `clickhouse-benchmark` run (stderr included, with `--delay 10`), and confirm the flag spellings and binary name in the image (R2).
 - [ ] 6.2 Write the report parser test (`src/test/shell/clickhouse-benchmark-report.test.sh`, Gradle `testClickhouseBenchmarkReport`): QPS, rows/s, MiB/s, query count, error count, the five percentiles in ms (p999 from `99.900%`), a missing or non-numeric field gives 0.
 - [ ] 6.3 Write `lib/report.sh` until the parser test passes.
 - [ ] 6.4 Write `lib/args.sh` tests (inside the start test or their own file): settings mapping, entry without `=`, key pattern, every denylist key; workload or queries choice; unknown workload lists valid ones; `--source` with `'` or `\` rejected; storage policy pattern.
 - [ ] 6.5 Write `lib/args.sh` and `lib/clickhouse.sh` (`ch_http_query`).
 - [ ] 6.6 Add `workloads/clickbench/queries.sql` (43 queries, one per line) and `workloads/clickbench/create-hits.sql`, verbatim from ClickBench.
-- [ ] 6.7 Write `pod/run-benchmark.sh` and `pod/prepare-load.sh` (POSIX sh) with stub-binary tests: marker block and exit code passthrough; drop with `--recreate`, `ON CLUSTER clickhouse`, the storage policy in the DDL, negative `distributed_ddl_task_timeout`, `SYSTEM SYNC REPLICA ON CLUSTER clickhouse hits`, client timeouts and `max_execution_time=0`, replica mismatch fails with counts, a failed `INSERT` prints the partial-load message and never drops.
-- [ ] 6.8 Write `src/test/shell/clickhouse-benchmark-start.test.sh` (Gradle `testClickhouseBenchmarkStart`): missing TARGET_NATIVE vars; arg mapping; `--randomize=false`; exclusivity; missing and empty `--queries`; no app node runs no `kubectl run`; `hits` missing; `--queries` skips the hits check; `nodeSelector` in the overrides; image from `VERSION`; names and labels; non-zero exit prints the failure and the code and exits non-zero; exit 0; pod deleted mid-run; `last-run.txt` and `last-run.json` written and replaced, failed runs included; own ConfigMap deleted.
+- [ ] 6.7 Write `pod/run-benchmark.sh` and `pod/prepare-load.sh` (POSIX sh) with stub-binary tests: queries on stdin and exit code passthrough; drop with `--recreate`, `ON CLUSTER clickhouse`, the storage policy in the DDL, negative `distributed_ddl_task_timeout`, `SYSTEM SYNC REPLICA ON CLUSTER clickhouse hits`, client timeouts and `max_execution_time=0`, replica mismatch fails with counts, a failed `INSERT` prints the partial-load message and never drops.
+- [ ] 6.8 Write `src/test/shell/clickhouse-benchmark-start.test.sh` (Gradle `testClickhouseBenchmarkStart`): missing TARGET_NATIVE vars; arg mapping; `--randomize=false`; exclusivity; missing and empty `--queries`; no app node runs no `kubectl run`; `hits` missing; `--queries` skips the hits check; `nodeSelector` in the overrides; image from `VERSION`; names and labels; non-zero exit prints the failure and the code and exits non-zero; exit 0; pod deleted mid-run; `last-run.txt` written and replaced, failed runs included, and no `last-run.json`; own ConfigMap deleted.
 - [ ] 6.9 Write `src/test/shell/clickhouse-benchmark-prepare.test.sh` (Gradle `testClickhouseBenchmarkPrepare`): active run pod refuses and names it; `hits` exists without `--recreate` names the table and policy; `--recreate` order; no app node; bad source and policy fail before a pod; non-zero pod exit fails.
 - [ ] 6.10 Write `src/test/shell/clickhouse-benchmark-stop.test.sh` (Gradle `testClickhouseBenchmarkStop`): deletes `pods,configmaps -l easydblab/kit=${KIT_NAME}` only.
 - [ ] 6.11 Write `kit.yaml` and `bin/prepare.sh.template`, `bin/start.sh.template`, `bin/stop.sh.template` until the shell tests pass.
@@ -83,7 +83,7 @@
 
 - [ ] 12.1 Provision a cluster with 1 app node and 3 db nodes, install `clickhouse` and `clickhouse-benchmark --target clickhouse`.
 - [ ] 12.2 Run `prepare --storage-policy s3_main`; confirm `system.tables` shows `s3_main` and every replica has the same count; confirm the parquet casts work (R5).
-- [ ] 12.3 Run `start` once to install the dashboard, then run it again and check every panel shows non-zero data, read back from Grafana; confirm `last-run.txt` and `last-run.json`.
+- [ ] 12.3 Run `start` once to install the dashboard, then run it again and check every panel shows non-zero data, read back from Grafana; confirm `last-run.txt`.
 - [ ] 12.4 Run `prepare --recreate --source <private s3 url in a bucket the role can read>` and confirm the role credentials work (R6); if not, add the `config.d` `<s3>` block with `use_environment_credentials` to the `clickhouse` kit.
 - [ ] 12.5 Run a `start` that fails (bad query without `--continue-on-errors`) and confirm the exit code report.
 - [ ] 12.6 Install and run `sysbench --target clickhouse`, and confirm its run, prepare and cleanup pods are on the app node.

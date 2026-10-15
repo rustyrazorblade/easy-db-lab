@@ -52,7 +52,7 @@ Notes:
 | AC | `DashboardDatasourceVariablesTest` passes | clickhouse-benchmark-kit: Datasource variables test | ✅ Covered |
 | AC | Panels show non-zero data on a real cluster, read from Grafana | clickhouse-benchmark-kit: Panels show data on a real cluster | ✅ Covered |
 | AC | `last-run.txt` holds settings and final report | clickhouse-benchmark-kit: Text result | ✅ Covered |
-| AC | `last-run.json` holds the `--json` output | clickhouse-benchmark-kit: JSON result | ✅ Covered |
+| AC | `last-run.json` holds the `--json` output | clickhouse-benchmark-kit: No JSON result | ⚠️ Excluded — the tool has no `--json` option in current images (24.8, 25.8, 26.9); at the Seam 1 redirect the owner dropped the JSON file because the run's numbers are in the metrics |
 | AC | A new run replaces both files | clickhouse-benchmark-kit: Results replaced | ✅ Covered |
 | AC | User guide page covers install, commands, every arg, `--source`, `--queries`, app node, dashboard | clickhouse-benchmark-kit: User guide content; clickhouse-benchmark-kit: Every flag documented | ✅ Covered |
 | AC | Page states the IAM role note (`use_environment_credentials`) | clickhouse-benchmark-kit: IAM note for a private source | ✅ Covered |

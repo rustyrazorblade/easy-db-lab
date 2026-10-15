@@ -46,7 +46,7 @@ New kit `kits/clickhouse-benchmark/`, `type: app`, on the sysbench pattern.  Fil
 - `lib/args.sh`: pure functions for the `--settings` mapping, key pattern and denylist, the workload or queries choice, the `--source` and `--storage-policy` checks, and the `clickhouse-benchmark` argv.
 - `lib/report.sh`: `parse_report_block` (awk, seconds to milliseconds) and the stream handler that calls `edl_push_gauges`.
 - `lib/clickhouse.sh`: `ch_http_query` over `TARGET_HTTP_URL` through the `curl` workspace wrapper, used for the `hits` checks.  The per-kit `lib/common.sh` of the first design is gone; its functions moved to the shared library.
-- `pod/run-benchmark.sh`: POSIX sh in the run pod.  It runs the tool with `--json /tmp/report.json`, keeps the exit code, prints the JSON between `=== EDL BENCHMARK JSON BEGIN ===` and `=== EDL BENCHMARK JSON END ===`, and exits with the tool's code.  `kubectl cp` cannot read a completed pod, so the JSON goes through the log.
+- `pod/run-benchmark.sh`: POSIX sh in the run pod.  It runs the tool with the queries file on stdin (the tool has no `--queries-file`) and exits with the tool's code.  The tool has no `--json` option in current images (checked in 24.8, 25.8 and 26.9), so there is no JSON result; the run's numbers are in the metrics (Seam 1 redirect, owner decision).
 - `pod/prepare-load.sh`: POSIX sh in the prepare pod.  It runs the optional drop, the `CREATE ... ON CLUSTER clickhouse`, the `INSERT ... SELECT FROM s3()`, `SYSTEM SYNC REPLICA ON CLUSTER clickhouse hits` and the per-replica count.
 - `workloads/clickbench/queries.sql` (43 queries, one per line) and `workloads/clickbench/create-hits.sql` (the ClickBench columns, ReplicatedMergeTree, ORDER BY), verbatim from ClickBench.  `prepare-load.sh` adds `ON CLUSTER clickhouse` and `SETTINGS storage_policy = '<p>'` after it checks `<p>` against `^[A-Za-z0-9_]+$`.
 - `dashboards/clickhouse-benchmark.json`.
@@ -55,7 +55,7 @@ Kit code lives in `lib/` and `pod/`, not `bin/`, because `KitRunnerCommandFactor
 
 Each `prepare` and `start` run makes one ConfigMap (the queries file, the pod-side runner, and for `prepare` the DDL) mounted at `/edl`.  One code path serves the packaged ClickBench file and the operator's own file.  Pods are made with `kubectl run ... --overrides=<json> --override-type=strategic` (strategic merge, so `volumeMounts` merge by container name) and argv after `--command --`; no user value goes inside the JSON.
 
-After the log stream ends, `start` waits for the pod to exit and reads the exit code.  It then fetches the full log with `kubectl logs <pod>` (not `-f`) to build `last-run.txt` and `last-run.json`, because a SOCKS reconnect can cut `logs -f` short.  The live stream drives display and gauges only.
+After the log stream ends, `start` waits for the pod to exit and reads the exit code.  It then fetches the full log with `kubectl logs <pod>` (not `-f`) to build `last-run.txt`, because a SOCKS reconnect can cut `logs -f` short.  The live stream drives display and gauges only.
 
 `TARGET_NATIVE_USER` comes from the target's `sql` capability `user`.  With no `sql` capability it is empty and the script omits `--user`.  The `clickhouse` Native endpoint gains `database: "default"`; `formatUrl` ignores the database for `native`.  The cluster name `clickhouse` is literal in the target template and cannot be read reliably from `system.clusters` (which lists operator clusters too), so it is a script constant `CH_CLUSTER=clickhouse` with a comment.  One table, `default.hits`, ReplicatedMergeTree `ON CLUSTER clickhouse`; the target is 1 shard with N replicas, so every replica holds the full table.  Nothing is added to `ClusterState`.
 
@@ -85,8 +85,8 @@ Adopters: `sysbench` (prepare, start, stop) and `clickhouse-benchmark` only.
 - Names `${KIT_NAME}-run-$(date +%s)` and `${KIT_NAME}-prepare-$(date +%s)`, labels `easydblab/kit` and `easydblab/role=benchmark-run|prepare`.
 - `stop` deletes `pods,configmaps -l easydblab/kit=${KIT_NAME}`; `start` deletes its own ConfigMap after the run.  Metrics ConfigMaps use the `easydblab.com/kit` label, so the delete does not reach them.
 - Every DDL runs with a negative `--distributed_ddl_task_timeout` (no limit).  The recreate drop is `DROP TABLE IF EXISTS hits ON CLUSTER clickhouse SYNC`.
-- `last-run.*` are written for every ended run, failures included, with the exit code recorded.  `last-run.json` comes from the marker block with `awk`; no `jq` at run time.
-- The kubelet rotates pod logs at about 10 MiB.  The final report and JSON print last, so they are always in the current file; early interval blocks can be lost from `last-run.txt`.  The user guide says so.
+- `last-run.txt` is written for every ended run, failures included, with the exit code recorded.  No JSON result file is written.
+- The kubelet rotates pod logs at about 10 MiB.  The final report prints last, so they are always in the current file; early interval blocks can be lost from `last-run.txt`.  The user guide says so.
 
 ### Tests
 
@@ -191,7 +191,7 @@ Each entry lists the options presented at that decision point, the choice, and w
 - [Critic 9] `prepare --recreate` during a `start`. → `prepare` refuses during an active run.
 - [Critic 10] Inputs reaching flags or SQL. → Settings key pattern and denylist; `--source` with `'` or `\` rejected (validate, not escape); `--storage-policy` pattern; `DROP TABLE IF EXISTS`.
 - [Critic 11] sysbench gaining a `jq` dependency. → Literal JSON in `edl_pod_overrides`; no `jq` at run time in either kit.
-- [Critic 12] Multi-line queries break; log rotation can drop the markers. → Docs say one query per line; the report and JSON print last.
+- [Critic 12] Multi-line queries break; log rotation can drop early output. → Docs say one query per line; the final report prints last.
 - [Critic 13] `TARGET_HTTP_URL` not enforced at install. → `endpoints: [native, http]`.
 - [Critic-2 M1] A pod that ends before it is seen Running would wait 600 seconds. → Return when the phase leaves Pending; stub case reports Succeeded on the first poll.
 - [Critic-2 M2] Unbounded loops for a gone pod. → Resume only while Running; NotFound fails with `pod <name> was deleted`; a failed get is a retry, never phase ""; stubs report phases.

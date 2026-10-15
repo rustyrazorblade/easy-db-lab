@@ -263,7 +263,7 @@ The runtime probe SHALL make a second `start` fail while a `benchmark-run` pod f
 - **THEN** a new `start` is not refused
 
 ### Requirement: Start reports the run pod exit code
-The run pod SHALL run `pod/run-benchmark.sh` (POSIX sh), which runs `clickhouse-benchmark` with `--json /tmp/report.json`, keeps its exit code, prints the JSON between `=== EDL BENCHMARK JSON BEGIN ===` and `=== EDL BENCHMARK JSON END ===`, and exits with the tool's exit code.  After the log stream ends, `start` SHALL wait for the pod to exit with `edl_wait_for_pod_exit`.  When the exit code is not 0, `start` SHALL say that the run failed, give the exit code, not print the success line, and exit non-zero.
+The run pod SHALL run `pod/run-benchmark.sh` (POSIX sh), which runs `clickhouse-benchmark` with the queries file on stdin and exits with the tool's exit code.  After the log stream ends, `start` SHALL wait for the pod to exit with `edl_wait_for_pod_exit`.  When the exit code is not 0, `start` SHALL say that the run failed, give the exit code, not print the success line, and exit non-zero.
 
 #### Scenario: Benchmark exits non-zero
 - **WHEN** the `clickhouse-benchmark` process in the run pod exits non-zero
@@ -330,19 +330,19 @@ The kit SHALL ship `dashboards/clickhouse-benchmark.json`.  Its panels SHALL sho
 - **THEN** each dashboard panel shows non-zero data, as read back from Grafana
 
 ### Requirement: Run results in the kit directory
-After the run pod ends, `start` SHALL read the full log with `kubectl logs <pod>` (not `-f`) and SHALL write, in the kit directory, `last-run.txt` (the run settings, the exit code and the final report) and `last-run.json` (the tool's `--json` output, taken from the marker block with `awk`).  It SHALL write them for every ended run, failed runs included, and each run SHALL replace the previous files.  The final report and the JSON are printed last, so they stay in the current log file when the kubelet rotates the log at about 10 MiB; early interval blocks can be lost from `last-run.txt`.
+After the run pod ends, `start` SHALL read the full log with `kubectl logs <pod>` (not `-f`) and SHALL write, in the kit directory, `last-run.txt` (the run settings, the exit code and the final report).  The kit SHALL NOT write a JSON result file; the run's numbers are in the metrics.  It SHALL write the file for every ended run, failed runs included, and each run SHALL replace the previous file.  The final report is printed last, so they stay in the current log file when the kubelet rotates the log at about 10 MiB; early interval blocks can be lost from `last-run.txt`.
 
 #### Scenario: Text result
 - **WHEN** a run finishes
 - **THEN** `last-run.txt` in the kit directory holds the run settings and the final report
 
-#### Scenario: JSON result
+#### Scenario: No JSON result
 - **WHEN** a run finishes
-- **THEN** `last-run.json` in the kit directory holds the tool's `--json` output
+- **THEN** the kit directory holds no `last-run.json`
 
 #### Scenario: Results replaced
 - **WHEN** a new run finishes
-- **THEN** it replaces the previous run's `last-run.txt` and `last-run.json`
+- **THEN** it replaces the previous run's `last-run.txt`
 
 ### Requirement: clickhouse-benchmark user guide
 `docs/user-guide/clickhouse-benchmark.md` SHALL cover install, `prepare`, `start`, `stop`, every arg in a Flags table, `--source`, `--queries` (one query per line, path relative to the current directory), `--settings` (no commas in values, the denylist), the app-node requirement, and how to read the dashboard.  It SHALL say that the server reads `--source` with the cluster's IAM role (`use_environment_credentials`), so a private source must be readable by that role.  It SHALL say that `hits` must be loaded again with `prepare` after the target `clickhouse` kit stops and starts.  `docs/SUMMARY.md` and the kit list in `docs/user-guide/kits.md` SHALL include `clickhouse-benchmark`.  A kit-flags-documented test SHALL check that every flag in the kit's `kit.yaml` appears in the page's Flags table.

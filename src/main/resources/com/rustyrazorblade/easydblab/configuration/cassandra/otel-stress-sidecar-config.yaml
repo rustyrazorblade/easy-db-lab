@@ -11,6 +11,10 @@ receivers:
               replacement: '${env:K8S_NODE_NAME}:${env:STRESS_PROM_PORT}'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+            - target_label: experiment
+              replacement: '${env:EXPERIMENT}'
+            - target_label: edl_tenant
+              replacement: '${env:TENANT}'
 
 processors:
   batch:

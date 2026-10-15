@@ -66,6 +66,10 @@ receivers:
               replacement: '${env:HOSTNAME}:9400'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+            - target_label: experiment
+              replacement: '${env:EXPERIMENT}'
+            - target_label: edl_tenant
+              replacement: '${env:TENANT}'
         - job_name: 'ebpf-exporter'
           scrape_interval: 15s
           static_configs:
@@ -75,6 +79,10 @@ receivers:
               replacement: '${env:HOSTNAME}:9435'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+            - target_label: experiment
+              replacement: '${env:EXPERIMENT}'
+            - target_label: edl_tenant
+              replacement: '${env:TENANT}'
         - job_name: 'yace'
           scrape_interval: 5s
           scrape_timeout: 5s
@@ -85,6 +93,10 @@ receivers:
               replacement: '${env:HOSTNAME}:5001'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+            - target_label: experiment
+              replacement: '${env:EXPERIMENT}'
+            - target_label: edl_tenant
+              replacement: '${env:TENANT}'
         # The collector's own telemetry: exporter send failures, queue sizes, refused points. Without
         # it a Tempo exporter failing every send looks exactly like a cluster with no traffic.
         - job_name: 'otel-collector'
@@ -96,6 +108,10 @@ receivers:
               replacement: '${env:HOSTNAME}:8888'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
+            - target_label: experiment
+              replacement: '${env:EXPERIMENT}'
+            - target_label: edl_tenant
+              replacement: '${env:TENANT}'
         # Built by OtelManifestBuilder: the Mimir, Loki, Tempo and Pyroscope server jobs (local mode
         # only; a redirect cluster deploys none of them), the kube-state-metrics pod-discovery job (every cluster)
         # and the Cilium agent/operator/Hubble jobs (Cilium clusters only). The pod-discovery jobs are rendered in
@@ -222,6 +238,12 @@ processors:
       - action: upsert
         key: cluster
         value: '${env:CLUSTER_NAME}'
+      - action: upsert
+        key: experiment
+        value: '${env:EXPERIMENT}'
+      - action: upsert
+        key: edl_tenant
+        value: '${env:TENANT}'
   # Strip the SDK's default resource from OTLP metrics.
   #
   # The OTel Java agent stamps every export with its own identity and the JVM's. None of it is
@@ -237,9 +259,9 @@ processors:
   # container.id comes from the same containerised JVMs and is new on every pod restart, so it too
   # would mint a fresh series set each time; no dashboard selects on it.
   #
-  # What survives is what a dashboard actually selects on: cluster, host.name, node_role, instance,
-  # job, service.name, service.instance.id, and the rule-supplied keyspace, table,
-  # cassandra.operation and cassandra.status.
+  # What survives is what a dashboard actually selects on: cluster, experiment, edl_tenant, host.name,
+  # node_role, instance, job, service.name, service.instance.id, and the rule-supplied keyspace,
+  # table, cassandra.operation and cassandra.status.
   resource/drop_sdk_metadata:
     attributes:
       - action: delete

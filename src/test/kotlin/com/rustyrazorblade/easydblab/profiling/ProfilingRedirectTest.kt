@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.profiling
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterLabels
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -148,8 +149,7 @@ class ProfilingRedirectTest : BaseKoinTest() {
             builder
                 .buildAllResources(
                     controlNodeIp = CONTROL_NODE_IP,
-                    clusterName = "test-cluster",
-                    tenant = "acme",
+                    labels = ClusterLabels("test-cluster", "test-cluster", "acme"),
                     telemetryRedirect = redirect,
                 ).filterIsInstance<DaemonSet>()
                 .single()

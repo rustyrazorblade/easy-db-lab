@@ -1,0 +1,2802 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "${logs_datasource}"
+        },
+        "enable": true,
+        "expr": "{source=\"annotation\", cluster=~\"${cluster:regex}\"} | dashboard_uid=\"\" | label_format cluster_name=`{{regexReplaceAll \"^(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$\" .cluster \"$1\"}}`",
+        "hide": false,
+        "iconColor": "green",
+        "instant": false,
+        "name": "easy-db-lab markers",
+        "tagKeys": "tags",
+        "textFormat": "",
+        "titleFormat": "{{cluster_name}}"
+      }
+    ]
+  },
+  "description": "Compare the machines of any number of an experiment's clusters, each over its own window: a leaderboard, distributions, an overlay by hours since each cluster's start, and a timeline over the experiment's span. Reads host metrics and eBPF only, so it works whatever database runs on the hosts. The dashboard range stays relative; panels on absolute time cover the experiment's span on their own.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "System A/B Comparison",
+      "tooltip": "Two clusters of this experiment, side by side",
+      "type": "link",
+      "url": "/d/system-ab-comparison/system-a-b-comparison?${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${experiment:queryparam}&${cluster:queryparam}&${role:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
+    },
+    {
+      "asDropdown": false,
+      "icon": "dashboard",
+      "includeVars": false,
+      "keepTime": false,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Experiment: Cassandra",
+      "tooltip": "The same experiment's Cassandra figures",
+      "type": "link",
+      "url": "/d/c09599ec-8d87-4fe5-9346-9e85c41d33af/experiment-cassandra?${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${experiment:queryparam}&${cluster:queryparam}&${role:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "panels": [],
+      "title": "Leaderboard",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "One row per selected cluster. Every figure is that cluster's own average over its own window, from its first to its last report of host metrics (the steps where it sent nothing are skipped), so clusters that ran on different days compare directly. Values are raw; click a header to sort by it. Green is better for every coloured column but Network per host. The Cluster column links to System Overview over the cluster's window and to System A/B Comparison with the cluster as A.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cluster"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cluster_name"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Cluster"
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "System Overview for this cluster",
+                    "url": "/d/system-overview/system-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${experiment:queryparam}&${role:queryparam}"
+                  },
+                  {
+                    "title": "System A/B Comparison with this cluster as A",
+                    "url": "/d/system-ab-comparison/system-a-b-comparison?var-cluster_a=${__data.fields.cluster}&${experiment:queryparam}&${cluster:queryparam}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${role:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "window_start|window_end"
+            },
+            "properties": [
+              {
+                "id": "custom.hidden",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Started"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ended"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "dateTimeAsIso"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Active time"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Hosts"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "CPU busy"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Load per core"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory used"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Disk busy"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Block I/O read p99"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Block I/O write p99"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-GrYlRd"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Network per host"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Bps"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-BlPu"
+                }
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 1
+      },
+      "id": 101,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "CPU busy"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * min_over_time(timestamp(count by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * max_over_time(timestamp(count by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(count_over_time((count by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}) * ${resolution}, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(max_over_time((count by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(avg_over_time((100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"idle\"}[${resolution}s])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "E"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(avg_over_time((sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "F"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(avg_over_time((100 * sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"used\"}) / sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "G"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(avg_over_time((100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"nvme[0-9]+n[0-9]+\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "H"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(avg_over_time((max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "I"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(avg_over_time((max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"write\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "J"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(avg_over_time((avg by (cluster) (sum by (cluster, host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"ens.*|eth.*\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "K"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * (min_over_time(timestamp(count by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}) - ${resolution}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "L"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(1000 * (max_over_time(timestamp(count by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}) + ${resolution}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "M"
+        }
+      ],
+      "title": "Leaderboard",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "cluster_name": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4,
+              "Value #E": 5,
+              "Value #F": 6,
+              "Value #G": 7,
+              "Value #H": 8,
+              "Value #I": 9,
+              "Value #J": 10,
+              "Value #K": 11,
+              "Value #L": 12,
+              "Value #M": 13,
+              "cluster": 14
+            },
+            "renameByName": {
+              "Value #A": "Started",
+              "Value #B": "Ended",
+              "Value #C": "Active time",
+              "Value #D": "Hosts",
+              "Value #E": "CPU busy",
+              "Value #F": "Load per core",
+              "Value #G": "Memory used",
+              "Value #H": "Disk busy",
+              "Value #I": "Block I/O read p99",
+              "Value #J": "Block I/O write p99",
+              "Value #K": "Network per host",
+              "Value #L": "window_start",
+              "Value #M": "window_end"
+            }
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "string",
+                "targetField": "window_start"
+              },
+              {
+                "destinationType": "string",
+                "targetField": "window_end"
+              }
+            ],
+            "fields": {}
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "id": 2,
+      "panels": [],
+      "title": "Distributions",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "CPU busy: the share of CPU time not idle, idle over the sum of every state, so it is core-count independent. The median, 90th and 99th percentile of each cluster's values over its own window, one group of bars per cluster, sorted by name.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 12
+      },
+      "id": 102,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.9,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xField": "Cluster",
+        "xTickLabelRotation": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.5, (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"idle\"}[${resolution}s])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.9, (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"idle\"}[${resolution}s])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.99, (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"idle\"}[${resolution}s])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "C"
+        }
+      ],
+      "title": "CPU busy distribution",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "cluster": true
+            },
+            "indexByName": {
+              "cluster_name": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            },
+            "renameByName": {
+              "cluster_name": "Cluster",
+              "Value #A": "p50",
+              "Value #B": "p90",
+              "Value #C": "p99"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": false,
+                "field": "Cluster"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Load per core: the one-minute load average of the cluster's hosts over their logical cores. The median, 90th and 99th percentile of each cluster's values over its own window, one group of bars per cluster, sorted by name.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 12
+      },
+      "id": 103,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.9,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xField": "Cluster",
+        "xTickLabelRotation": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.5, (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.9, (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.99, (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "C"
+        }
+      ],
+      "title": "Load per core distribution",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "cluster": true
+            },
+            "indexByName": {
+              "cluster_name": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            },
+            "renameByName": {
+              "cluster_name": "Cluster",
+              "Value #A": "p50",
+              "Value #B": "p90",
+              "Value #C": "p99"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": false,
+                "field": "Cluster"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Memory used: used memory over the memory of every state. The median, 90th and 99th percentile of each cluster's values over its own window, one group of bars per cluster, sorted by name.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 12
+      },
+      "id": 104,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.9,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xField": "Cluster",
+        "xTickLabelRotation": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.5, (100 * sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"used\"}) / sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.9, (100 * sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"used\"}) / sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.99, (100 * sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"used\"}) / sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "C"
+        }
+      ],
+      "title": "Memory used distribution",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "cluster": true
+            },
+            "indexByName": {
+              "cluster_name": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            },
+            "renameByName": {
+              "cluster_name": "Cluster",
+              "Value #A": "p50",
+              "Value #B": "p90",
+              "Value #C": "p99"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": false,
+                "field": "Cluster"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Disk busy: the share of wall time the busiest whole disk of each host had a request in flight, averaged over the hosts. The median, 90th and 99th percentile of each cluster's values over its own window, one group of bars per cluster, sorted by name.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 20
+      },
+      "id": 105,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.9,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xField": "Cluster",
+        "xTickLabelRotation": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.5, (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"nvme[0-9]+n[0-9]+\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.9, (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"nvme[0-9]+n[0-9]+\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.99, (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"nvme[0-9]+n[0-9]+\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "C"
+        }
+      ],
+      "title": "Disk busy distribution",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "cluster": true
+            },
+            "indexByName": {
+              "cluster_name": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            },
+            "renameByName": {
+              "cluster_name": "Cluster",
+              "Value #A": "p50",
+              "Value #B": "p90",
+              "Value #C": "p99"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": false,
+                "field": "Cluster"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Block I/O read p99: the p99 read latency at the block layer, from ebpf_exporter's biolatency histogram. The median, 90th and 99th percentile of each cluster's values over its own window, one group of bars per cluster, sorted by name.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 20
+      },
+      "id": 106,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.9,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xField": "Cluster",
+        "xTickLabelRotation": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.5, (max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.9, (max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.99, (max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "C"
+        }
+      ],
+      "title": "Block I/O read p99 distribution",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "cluster": true
+            },
+            "indexByName": {
+              "cluster_name": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            },
+            "renameByName": {
+              "cluster_name": "Cluster",
+              "Value #A": "p50",
+              "Value #B": "p90",
+              "Value #C": "p99"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": false,
+                "field": "Cluster"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Network per host: bytes per second received plus sent on the physical interfaces, averaged over the hosts. The median, 90th and 99th percentile of each cluster's values over its own window, one group of bars per cluster, sorted by name.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 20
+      },
+      "id": 107,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.9,
+        "groupWidth": 0.7,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "never",
+        "stacking": "none",
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        },
+        "xField": "Cluster",
+        "xTickLabelRotation": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.5, (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"ens.*|eth.*\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.9, (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"ens.*|eth.*\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(quantile_over_time(0.99, (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"ens.*|eth.*\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": true,
+          "range": false,
+          "refId": "C"
+        }
+      ],
+      "title": "Network per host distribution",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "cluster": true
+            },
+            "indexByName": {
+              "cluster_name": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            },
+            "renameByName": {
+              "cluster_name": "Cluster",
+              "Value #A": "p50",
+              "Value #B": "p90",
+              "Value #C": "p99"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": false,
+                "field": "Cluster"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "barchart"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "id": 3,
+      "panels": [],
+      "title": "Elapsed-time overlay",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "CPU busy against the hours since each cluster's first report, so clusters that ran on different days line up from their own start. The panel covers the experiment's span; at 3 weeks a point is about 5 minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "displayName": "${__field.labels.cluster_name}",
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "id": 108,
+      "maxDataPoints": 5000,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "xField": "Value #A"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace((timestamp(100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"idle\"}[${resolution}s])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[${resolution}s])))) - min_over_time(timestamp(100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"idle\"}[${resolution}s])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end})) / 3600, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"idle\"}[${resolution}s])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[${resolution}s]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": false,
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "CPU busy by hours since start",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "cluster",
+              "cluster_name"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": true
+            }
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "Value #A",
+            "mode": "outer"
+          }
+        }
+      ],
+      "type": "trend"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Memory used against the hours since each cluster's first report, so clusters that ran on different days line up from their own start. The panel covers the experiment's span; at 3 weeks a point is about 5 minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "displayName": "${__field.labels.cluster_name}",
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "id": 109,
+      "maxDataPoints": 5000,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "xField": "Value #A"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace((timestamp(100 * sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"used\"}) / sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"})) - min_over_time(timestamp(100 * sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"used\"}) / sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}))[${exp_len}s:${resolution}s] @ ${exp_end})) / 3600, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(100 * sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"used\"}) / sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": false,
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Memory used by hours since start",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "cluster",
+              "cluster_name"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": true
+            }
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "Value #A",
+            "mode": "outer"
+          }
+        }
+      ],
+      "type": "trend"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Disk busy against the hours since each cluster's first report, so clusters that ran on different days line up from their own start. The panel covers the experiment's span; at 3 weeks a point is about 5 minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "displayName": "${__field.labels.cluster_name}",
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "id": 110,
+      "maxDataPoints": 5000,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "xField": "Value #A"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace((timestamp(100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"nvme[0-9]+n[0-9]+\"}[${resolution}s])))) - min_over_time(timestamp(100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"nvme[0-9]+n[0-9]+\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end})) / 3600, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"nvme[0-9]+n[0-9]+\"}[${resolution}s]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": false,
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Disk busy by hours since start",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "cluster",
+              "cluster_name"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": true
+            }
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "Value #A",
+            "mode": "outer"
+          }
+        }
+      ],
+      "type": "trend"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Network per host against the hours since each cluster's first report, so clusters that ran on different days line up from their own start. The panel covers the experiment's span; at 3 weeks a point is about 5 minutes.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "displayName": "${__field.labels.cluster_name}",
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "id": 111,
+      "maxDataPoints": 5000,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "xField": "Value #A"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace((timestamp(avg by (cluster) (sum by (cluster, host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"ens.*|eth.*\"}[${resolution}s])))) - min_over_time(timestamp(avg by (cluster) (sum by (cluster, host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"ens.*|eth.*\"}[${resolution}s]))))[${exp_len}s:${resolution}s] @ ${exp_end})) / 3600, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(avg by (cluster) (sum by (cluster, host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"ens.*|eth.*\"}[${resolution}s]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "format": "table",
+          "instant": false,
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Network per host by hours since start",
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {},
+            "renameByName": {}
+          }
+        },
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "cluster",
+              "cluster_name"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": true
+            }
+          }
+        },
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "Value #A",
+            "mode": "outer"
+          }
+        }
+      ],
+      "type": "trend"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "id": 4,
+      "panels": [],
+      "title": "Timeline",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "The hosts of each cluster that reported host metrics, at their real times over the experiment's span.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "continuous-BlPu"
+          },
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "id": 112,
+      "options": {
+        "colWidth": 0.9,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "rowHeight": 0.9,
+        "showValue": "never",
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(count by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "instant": false,
+          "legendFormat": "{{cluster_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Activity: hosts reporting",
+      "type": "status-history"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "CPU busy: the share of CPU time not idle, idle over the sum of every state, so it is core-count independent. One series per cluster, at its real times over the experiment's span.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 56
+      },
+      "id": 113,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"idle\"}[${resolution}s])) / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}[${resolution}s]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "instant": false,
+          "legendFormat": "{{cluster_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "CPU busy",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Load per core: the one-minute load average of the cluster's hosts over their logical cores. One series per cluster, at its real times over the experiment's span.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 56
+      },
+      "id": 114,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "instant": false,
+          "legendFormat": "{{cluster_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Load per core",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Memory used: used memory over the memory of every state. One series per cluster, at its real times over the experiment's span.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 64
+      },
+      "id": 115,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(100 * sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", state=\"used\"}) / sum by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"${role:pipe}\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "instant": false,
+          "legendFormat": "{{cluster_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Memory used",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Disk busy: the share of wall time the busiest whole disk of each host had a request in flight, averaged over the hosts. One series per cluster, at its real times over the experiment's span.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 64
+      },
+      "id": 116,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"nvme[0-9]+n[0-9]+\"}[${resolution}s]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "instant": false,
+          "legendFormat": "{{cluster_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Disk busy",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Block I/O read p99: the p99 read latency at the block layer, from ebpf_exporter's biolatency histogram. One series per cluster, at its real times over the experiment's span.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 72
+      },
+      "id": 117,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"read\"}[${resolution}s])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "instant": false,
+          "legendFormat": "{{cluster_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Block I/O read p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Block I/O write p99: the p99 write latency at the block layer, from ebpf_exporter's biolatency histogram. One series per cluster, at its real times over the experiment's span.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 72
+      },
+      "id": 118,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(max by (cluster) (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", operation=\"write\"}[${resolution}s])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "instant": false,
+          "legendFormat": "{{cluster_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Block I/O write p99",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Network per host: bytes per second received plus sent on the physical interfaces, averaged over the hosts. One series per cluster, at its real times over the experiment's span.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 80
+      },
+      "id": 119,
+      "options": {
+        "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(avg by (cluster) (sum by (cluster, host_name) (rate(system_network_io_bytes_total{cluster=~\"$cluster\", host_name=~\"${role:pipe}\", device=~\"ens.*|eth.*\"}[${resolution}s]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "instant": false,
+          "legendFormat": "{{cluster_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${exp_len_s}s-${exp_len_d}d",
+      "timeShift": "${exp_since_end_s}s-${exp_since_end_d}d",
+      "title": "Network per host",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 88
+      },
+      "id": 5,
+      "panels": [],
+      "title": "Report",
+      "type": "row"
+    },
+    {
+      "description": "The newest report of the selected experiment, reports/<tenant>/<experiment>/index.html, served read-only by the documents web server. Upload one with easy-db-lab report upload <dir>. With All selected there is no single report: select one experiment to see it.",
+      "gridPos": {
+        "h": 18,
+        "w": 24,
+        "x": 0,
+        "y": 89
+      },
+      "id": 120,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${experiment}/index.html\" width=\"100%\" height=\"620\"></iframe>",
+        "mode": "html"
+      },
+      "title": "Report: ${experiment:text}",
+      "type": "text"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "system",
+    "experiment",
+    "comparison"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Logs",
+        "multi": false,
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\") or label_replace(label_replace(vector(0), \"exp_key\", \".*/.*\", \"\", \"\"), \"exp_text\", \"All\", \"\", \"\"))))",
+        "description": "The experiment, as <tenant>/<name>, newest first by last activity within Lookback. A cluster from before experiments is its own experiment, <tenant>/<name>-<id>. All, the last option, lists every cluster of the tenant view and must be picked by hand.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Experiment",
+        "multi": false,
+        "name": "experiment",
+        "options": [],
+        "query": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\") or label_replace(label_replace(vector(0), \"exp_key\", \".*/.*\", \"\", \"\"), \"exp_text\", \"All\", \"\", \"\"))))",
+        "refresh": 2,
+        "regex": "/exp_key=\"(?<value>[^\"]+)\",exp_text=\"(?<text>[^\"]+)\"/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "description": "The tenant part of the selected experiment; .* for All.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_tenant",
+        "options": [],
+        "query": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "refresh": 2,
+        "regex": "/k=\"(?<value>[^/\"]*)\\//",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "description": "The name part of the selected experiment; .* for All.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_name",
+        "options": [],
+        "query": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "refresh": 2,
+        "regex": "/k=\"[^/\"]*\\/(?<value>[^\"]*)\"/",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "description": "The home tenant, the tenant of a cluster from before the tenant label when Mimir names none. The installer fills it.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "home_tenant",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s])))",
+        "description": "The clusters of the selected experiment with up samples within Lookback. All, the default, is every one of them. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s])))",
+        "refresh": 2,
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "description": "Shows the hosts of the selected roles. A host's role is read from its name: dbN is db, appN is app, controlN is control, and an EMR node (named ip-... by EC2) is spark.",
+        "hide": 0,
+        "includeAll": true,
+        "allValue": ".*",
+        "label": "Role",
+        "multi": true,
+        "name": "role",
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "db",
+            "value": "db[0-9]+"
+          },
+          {
+            "selected": false,
+            "text": "app",
+            "value": "app[0-9]+"
+          },
+          {
+            "selected": false,
+            "text": "control",
+            "value": "control[0-9]+"
+          },
+          {
+            "selected": false,
+            "text": "spark",
+            "value": "ip-.+"
+          }
+        ],
+        "query": "db : db[0-9]+,app : app[0-9]+,control : control[0-9]+,spark : ip-.+",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "180d",
+          "value": "180d"
+        },
+        "description": "How far back to look for runs.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Lookback",
+        "multi": false,
+        "name": "lookback",
+        "options": [
+          {
+            "selected": false,
+            "text": "7d",
+            "value": "7d"
+          },
+          {
+            "selected": false,
+            "text": "30d",
+            "value": "30d"
+          },
+          {
+            "selected": false,
+            "text": "90d",
+            "value": "90d"
+          },
+          {
+            "selected": true,
+            "text": "180d",
+            "value": "180d"
+          },
+          {
+            "selected": false,
+            "text": "365d",
+            "value": "365d"
+          }
+        ],
+        "query": "7d,30d,90d,180d,365d",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "5m",
+          "value": "300"
+        },
+        "description": "The step, in seconds, at which each run's first and last up sample is found.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Resolution",
+        "multi": false,
+        "name": "resolution",
+        "options": [
+          {
+            "selected": false,
+            "text": "1m",
+            "value": "60"
+          },
+          {
+            "selected": true,
+            "text": "5m",
+            "value": "300"
+          },
+          {
+            "selected": false,
+            "text": "15m",
+            "value": "900"
+          },
+          {
+            "selected": false,
+            "text": "1h",
+            "value": "3600"
+          }
+        ],
+        "query": "1m : 60,5m : 300,15m : 900,1h : 3600",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(sort(round(min_over_time(timestamp(count by (cluster) (up{cluster=~\"$cluster\"}))[$lookback:${resolution}s]))))",
+        "description": "The first up sample of the selected clusters, epoch seconds: the earliest cluster's start lists first.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_start",
+        "options": [],
+        "query": "query_result(sort(round(min_over_time(timestamp(count by (cluster) (up{cluster=~\"$cluster\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(sort_desc(round(max_over_time(timestamp(count by (cluster) (up{cluster=~\"$cluster\"}))[$lookback:${resolution}s]))))",
+        "description": "The last up sample of the selected clusters, epoch seconds: the latest cluster's end lists first.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_end",
+        "options": [],
+        "query": "query_result(sort_desc(round(max_over_time(timestamp(count by (cluster) (up{cluster=~\"$cluster\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${exp_end} - ${exp_start} + ${resolution}))",
+        "description": "The experiment's span in seconds, padded by one step.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_len",
+        "options": [],
+        "query": "query_result(vector(${exp_end} - ${exp_start} + ${resolution}))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(floor(vector(${exp_len}) / 86400))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_len_d",
+        "options": [],
+        "query": "query_result(floor(vector(${exp_len}) / 86400))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${exp_len}) - 86400 * ${exp_len_d})",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_len_s",
+        "options": [],
+        "query": "query_result(vector(${exp_len}) - 86400 * ${exp_len_d})",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(vector(time() - ${exp_end})))",
+        "description": "Seconds from the experiment's end to now.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_since_end",
+        "options": [],
+        "query": "query_result(round(vector(time() - ${exp_end})))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(floor(vector(${exp_since_end}) / 86400))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_since_end_d",
+        "options": [],
+        "query": "query_result(floor(vector(${exp_since_end}) / 86400))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${exp_since_end}) - 86400 * ${exp_since_end_d})",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_since_end_s",
+        "options": [],
+        "query": "query_result(vector(${exp_since_end}) - 86400 * ${exp_since_end_d})",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "Experiment: System",
+  "uid": "experiment-system",
+  "version": 1,
+  "weekStart": ""
+}

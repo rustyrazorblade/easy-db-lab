@@ -9,30 +9,39 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import java.io.File
 
 /**
  * Every `/d/` link keeps the time range the operator is looking at: `from` and `to` in its URL,
  * `${__url_time_range}`, or `keepTime`. The postgres extension dashboards' header links carried
- * none, so following one reset the time. Links into the Tests and comparison dashboards are the
- * exception: those open on their own relative ranges, because an absolute range turns panel
+ * none, so following one reset the time. Links into the Tests, Experiment and pair dashboards are
+ * the exception: those open on their own relative ranges, because an absolute range turns panel
  * `timeFrom` off.
  */
 class DashboardLinkTimeTest {
+    /** Tests, Experiment: Cassandra (the former Cluster Comparison uid), Experiment: System and the three pair dashboards. */
     private val ownRangeDashboards =
         listOf(
-            "dashboards/infrastructure/tests.json",
-            "dashboards/cassandra/cluster-comparison.json",
-            "dashboards/cassandra/ab-comparison.json",
-            "dashboards/infrastructure/system-ab-comparison.json",
-        ).map { uidOf(File(it)) }
+            "tests",
+            "c09599ec-8d87-4fe5-9346-9e85c41d33af",
+            "experiment-system",
+            "cluster-pair",
+            "ab-comparison",
+            "system-ab-comparison",
+        )
 
-    private fun uidOf(file: File): String =
-        Json
-            .parseToJsonElement(file.readText())
-            .jsonObject
-            .getValue("uid")
-            .jsonPrimitive.content
+    @Test
+    fun `every own-range dashboard exists under its uid`() {
+        val uids =
+            DashboardFiles.all().mapNotNull { file ->
+                Json
+                    .parseToJsonElement(file.readText())
+                    .jsonObject["uid"]
+                    ?.jsonPrimitive
+                    ?.content
+            }
+
+        assertThat(uids).containsAll(ownRangeDashboards)
+    }
 
     /** Every object in [element] with a `/d/` url, as (url, keepTime). */
     private fun dashboardLinks(element: JsonElement): List<Pair<String, Boolean>> =

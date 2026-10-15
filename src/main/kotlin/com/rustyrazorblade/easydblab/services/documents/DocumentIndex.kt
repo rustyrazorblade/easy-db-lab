@@ -81,7 +81,8 @@ object DocumentIndex {
         return page("Test documents", body)
     }
 
-    private fun escape(text: String): String =
+    /** [text] with the characters HTML treats as markup escaped. */
+    fun escape(text: String): String =
         text
             .replace("&", "&amp;")
             .replace("<", "&lt;")

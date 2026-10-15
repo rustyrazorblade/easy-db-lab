@@ -342,6 +342,27 @@ object Constants {
         /** The front page of an upload that holds `index.md` or `index.html` at its root. */
         const val REPORT_FRONT_PAGE = "index.html"
 
+        /** The pointer at the root of an experiment's report folder; it leads to the newest upload. */
+        const val REPORT_POINTER = "index.html"
+
+        /** What the pointer of an experiment with no upload yet says. */
+        const val REPORT_PLACEHOLDER_TEXT = "No report yet"
+
+        /** The prefix of each upload's zip and folder: `report-<yyyyMMdd-HHmmss>`. */
+        const val REPORT_UPLOAD_PREFIX = "report-"
+
+        /**
+         * How many times an upload re-reads and rewrites a pointer that other writers keep
+         * changing between its read and its conditional write, before it fails.
+         */
+        const val REPORT_POINTER_MAX_ATTEMPTS = 10
+
+        /**
+         * How many later seconds an upload tries when the zip key of its second is taken, before it
+         * fails. Each try is one conditional write.
+         */
+        const val REPORT_ZIP_KEY_MAX_ATTEMPTS = 60
+
         /** The suffix of a report file that gets an HTML copy. */
         const val REPORT_MARKDOWN_SUFFIX = ".md"
 

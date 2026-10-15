@@ -464,8 +464,7 @@ class S3ObjectStore(
                     .builder()
                     .message(
                         "Conditional write to $uri failed with S3 error $code (HTTP ${e.statusCode()}), attempts: $attemptsMade",
-                    )
-                    .statusCode(e.statusCode())
+                    ).statusCode(e.statusCode())
                     .awsErrorDetails(e.awsErrorDetails())
                     .requestId(e.requestId())
                     .cause(e)

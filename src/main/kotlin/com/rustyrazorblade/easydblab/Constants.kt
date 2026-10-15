@@ -1013,6 +1013,83 @@ object Constants {
     object LocalStack {
         /** The address every published port of a local stack binds, and the address this tool reaches it on. */
         const val LOOPBACK = "127.0.0.1"
+
+        /**
+         * The read gate's web server, which the cluster does not run: a released stable nginx that
+         * runs as a non-root user. The store check runs in it too, for its `curl`.
+         */
+        const val GATE_IMAGE = "nginxinc/nginx-unprivileged:1.30.5-alpine"
+
+        /**
+         * A statically linked busybox, mounted into the signer for its healthcheck: the signer's
+         * image is built from scratch and has no shell or HTTP client of its own.
+         */
+        const val HEALTHCHECK_TOOLS_IMAGE = "busybox:1.37.0-musl"
+
+        /** thanos, which rewrites Mimir blocks for a query export; a released version. */
+        const val THANOS_IMAGE = "quay.io/thanos/thanos:v0.42.4"
+
+        /** The base compose file; a user's `compose.override.yml` beside it merges automatically. */
+        const val COMPOSE_FILE = "compose.yml"
+
+        /** The user's own compose file. The tool never opens, writes or removes it. */
+        const val OVERRIDE_FILE = "compose.override.yml"
+
+        /** The manifest of the files the tool owns in a stack directory. */
+        const val MANIFEST_FILE = ".easy-db-lab-local-stack.json"
+
+        /** Directories that hold data or state, which the tool never opens, writes or removes. */
+        val PROTECTED_DIRS = listOf("data", "cache", "grafana-data")
+
+        /** The directory the components keep their working state in, one subdirectory each. */
+        const val CACHE_DIR = "cache"
+
+        /** Grafana's data directory (its database and installed plugins). */
+        const val GRAFANA_DATA_DIR = "grafana-data"
+
+        /** The directory holding the provisioned dashboard tree, and the staging trees beside it. */
+        const val DASHBOARDS_DIR = "dashboards"
+
+        /** Where [DASHBOARDS_DIR] is mounted in the Grafana container. */
+        const val DASHBOARDS_MOUNT = "/var/lib/easy-db-lab/dashboards"
+
+        /** The provisioned tree under [DASHBOARDS_DIR], which Grafana's dashboard provider sweeps. */
+        const val DASHBOARDS_TREE = "current"
+
+        /** The port the read gate and the signer listen on inside the project network. */
+        const val STORE_PORT = 8080
+
+        /**
+         * The signer's `HOME`. Its image sets none, and aws-sdk-go v1 finds `~/.aws` from `$HOME`:
+         * without it the read-only mount at `/root/.aws` is never read and every request fails with
+         * `NoCredentialProviders`.
+         */
+        const val SIGNER_HOME = "/root"
+
+        /** How often the signer's healthcheck reads the bucket, so expired credentials show as unhealthy. */
+        const val SIGNER_HEALTHCHECK_INTERVAL = "60s"
+
+        /** Grafana's localhost port, unless `create` is given another. */
+        const val DEFAULT_GRAFANA_PORT = 3000
+
+        /** The documents web server's localhost port, unless `create` is given another. */
+        const val DEFAULT_DOCUMENTS_PORT = 3080
+
+        /** The compose service names, which are also the host names inside the project network. */
+        object Services {
+            const val MIMIR = "mimir"
+            const val MEMCACHED = "memcached"
+            const val LOKI = "loki"
+            const val TEMPO = "tempo"
+            const val GRAFANA = "grafana"
+            const val DOCUMENTS = "documents-web"
+            const val STORE_GATE = "store-gate"
+            const val STORE_SIGNER = "store-signer"
+            const val STORE_CHECK = "store-check"
+
+            /** No service answers it until profiles join the stack (issue 1016); the datasource set names it. */
+            const val PYROSCOPE = "pyroscope"
+        }
     }
 
     // Proxy configuration

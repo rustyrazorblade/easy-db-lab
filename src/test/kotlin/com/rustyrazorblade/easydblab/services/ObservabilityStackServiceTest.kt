@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
@@ -254,6 +255,7 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
         verify(mockDashboardService).deploy(any(), context.capture(), eq("easy-db-lab-test"))
         assertThat(context.firstValue.tenants).isEqualTo(TenantSet("default", listOf("acme", "default")))
         assertThat(context.firstValue.cluster).isEqualTo(mockClusterStateManager.load().clusterLabelName())
+        assertThat(context.firstValue.experiment).isEqualTo(ExperimentKey.of(mockClusterStateManager.load()))
         assertThat(context.firstValue.documentsUrl).isEqualTo("http://${controlNode.privateIp}:${Constants.Grafana.Documents.WEB_PORT}")
 
         // Both on-node data directories are prepared over SSH.

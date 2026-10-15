@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.TestDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter.Companion.PYROSCOPE_URL_PLACEHOLDER
@@ -48,7 +49,7 @@ class GrafanaDashboardTreeUploaderTest : BaseKoinTest() {
     private val host = controlHost.toHost()
     private val hostPath = GrafanaManifestBuilder.GRAFANA_DASHBOARD_HOST_PATH
     private val grafanaUid = GrafanaManifestBuilder.GRAFANA_UID
-    private val installContext = DashboardInstallContext("test-abc", TenantSet.of("default"), "http://10.0.1.5:3080")
+    private val installContext = DashboardInstallContext("test-abc", ExperimentKey("default", "test-abc"), TenantSet.of("default"), "http://10.0.1.5:3080")
 
     override fun additionalTestModules(): List<Module> =
         listOf(

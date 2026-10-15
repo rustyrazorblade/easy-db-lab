@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.TestDashboardCatalog
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter.Companion.PYROSCOPE_URL_PLACEHOLDER
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -26,7 +27,7 @@ class GrafanaDashboardTreeWriterTest {
     private val catalog = TestDashboardCatalog.catalog
     private val writer = GrafanaDashboardTreeWriter(catalog)
     private val pyroscopeUrl = "http://10.0.0.1:4040"
-    private val context = DashboardInstallContext("lab-abc123", TenantSet.of("acme", listOf("default")), "http://10.0.0.1:3080")
+    private val context = DashboardInstallContext("lab-abc123", ExperimentKey("acme", "e1"), TenantSet.of("acme", listOf("default")), "http://10.0.0.1:3080")
 
     private fun writtenFiles(root: Path): Set<String> =
         root

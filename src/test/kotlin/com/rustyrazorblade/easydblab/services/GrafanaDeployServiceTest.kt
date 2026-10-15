@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
@@ -93,7 +94,7 @@ class GrafanaDeployServiceTest : BaseKoinTest() {
                 .thenReturn(GetBucketLocationResponse.builder().locationConstraint(region).build())
         }
 
-    private fun context(tenant: String) = DashboardInstallContext("test-abc", TenantSet.of(tenant), "http://10.0.1.5:3080")
+    private fun context(tenant: String) = DashboardInstallContext("test-abc", ExperimentKey(tenant, "test-abc"), TenantSet.of(tenant), "http://10.0.1.5:3080")
 
     private fun service() =
         DefaultGrafanaDeployService(

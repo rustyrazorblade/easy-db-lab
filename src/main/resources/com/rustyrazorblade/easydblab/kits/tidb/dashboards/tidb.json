@@ -842,7 +842,7 @@
         {
           "datasource": { "type": "tempo", "uid": "${traces_datasource}" },
           "limit": 20,
-          "query": "{ resource.service.name = \"TiDB\" }",
+          "query": "{ resource.cluster =~ \"${cluster:regex}\" && resource.service.name = \"TiDB\" }",
           "queryType": "traceql",
           "refId": "A"
         }

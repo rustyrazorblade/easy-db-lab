@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.documents
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
+import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
  * The pointer of an experiment's report folder, `<folder>/index.html`: the page the documents
@@ -49,7 +50,7 @@ class ReportPointer(
             val shown = current?.let { target(it.content) }
             // A write refused on a retried attempt that already shows this upload is this writer's
             // own: an earlier attempt committed and its response was lost.
-            if (refusedAfterRetry && shown == stamp) return true
+            if (refusedAfterRetry && acceptedAsOwn(path, shown, stamp)) return true
             if (shown != null && shown >= stamp) return false
             val result =
                 if (current == null) {
@@ -66,8 +67,22 @@ class ReportPointer(
         )
     }
 
+    /** Whether the pointer at [path], re-read after a write refused on a retry and naming [shown], is this upload's [stamp]. */
+    private fun acceptedAsOwn(
+        path: ClusterS3Path,
+        shown: ReportStamp?,
+        stamp: ReportStamp,
+    ): Boolean {
+        val accepted = shown == stamp
+        log.info {
+            "Pointer write to ${path.toUri()} refused after a retry; it names ${shown?.timestamp ?: "no upload"}, accepted=$accepted"
+        }
+        return accepted
+    }
+
     /** Renders pointers and reads them back. */
     companion object {
+        private val log = KotlinLogging.logger {}
         private const val CONTENT_TYPE = "text/html; charset=utf-8"
         private const val TITLE = "Report"
         private const val MARKER = "easy-db-lab report pointer:"

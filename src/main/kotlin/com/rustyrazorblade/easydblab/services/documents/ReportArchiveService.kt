@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.time.Clock
 import java.util.UUID
@@ -144,10 +145,15 @@ class DefaultReportArchiveService(
         when (store.putIfAbsent(content, path, contentType)) {
             ConditionalObjectStore.Written -> true
             ConditionalObjectStore.AlreadyExists -> false
-            ConditionalObjectStore.RefusedAfterRetry -> store.readBytes(path)?.contentEquals(content) == true
+            ConditionalObjectStore.RefusedAfterRetry -> {
+                val accepted = store.readBytes(path)?.contentEquals(content) == true
+                log.info { "Write to ${path.toUri()} refused after a retry; read back, accepted=$accepted" }
+                accepted
+            }
         }
 
     private companion object {
         private const val ZIP_CONTENT_TYPE = "application/zip"
+        private val log = KotlinLogging.logger {}
     }
 }

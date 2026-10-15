@@ -5,9 +5,9 @@ import org.commonmark.parser.Parser
 import org.commonmark.renderer.html.HtmlRenderer
 
 /**
- * Renders a test document's markdown to HTML, GitHub-flavored tables included.
+ * Renders a report markdown file to HTML, GitHub-flavored tables included.
  *
- * The documents are the operator's own notes, so raw HTML in them is kept.
+ * The reports are the operator's own notes, so raw HTML in them is kept.
  */
 object MarkdownRenderer {
     private val extensions = listOf(TablesExtension.create())
@@ -24,7 +24,7 @@ object MarkdownRenderer {
  *
  * Every page declares UTF-8, so it reads correctly whatever charset S3 serves it with.
  */
-object DocumentIndex {
+object ReportHtml {
     private const val STYLE =
         "body { font-family: sans-serif; margin: 1em; color: #222; background: #fff; } " +
             "section { margin-bottom: 2em; } " +

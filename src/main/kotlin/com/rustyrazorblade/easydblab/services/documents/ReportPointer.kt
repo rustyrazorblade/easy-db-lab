@@ -70,8 +70,8 @@ class ReportPointer(
             stamp: ReportStamp,
             frontPage: String,
         ): String {
-            val target = DocumentIndex.escape("${stamp.folderName}/$frontPage")
-            return DocumentIndex
+            val target = ReportHtml.escape("${stamp.folderName}/$frontPage")
+            return ReportHtml
                 .page(TITLE, "<p><a href=\"$target\">The newest report, uploaded ${stamp.timestamp} UTC</a></p>")
                 .replaceFirst("<head>", "<head>\n<!-- $MARKER ${stamp.timestamp} -->\n<meta http-equiv=\"refresh\" content=\"0; url=$target\">")
         }
@@ -79,7 +79,7 @@ class ReportPointer(
         /** The upload the pointer [content] leads to, or null for the placeholder or any page this class did not write. */
         fun target(content: String): ReportStamp? = MARKER_LINE.find(content)?.let { ReportStamp(it.groupValues[1]) }
 
-        private fun placeholder(): String = DocumentIndex.page(TITLE, "<p>${Constants.Observability.REPORT_PLACEHOLDER_TEXT}</p>")
+        private fun placeholder(): String = ReportHtml.page(TITLE, "<p>${Constants.Observability.REPORT_PLACEHOLDER_TEXT}</p>")
 
         private fun pointerOf(folder: ClusterS3Path): ClusterS3Path = folder.resolve(Constants.Observability.REPORT_POINTER)
     }

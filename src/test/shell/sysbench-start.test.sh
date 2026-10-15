@@ -150,11 +150,24 @@ test_a_non_zero_run_fails_without_the_summary_line() {
   if grep -q "Run summary written to" "${WORK}/out.txt"; then fail "printed the success line"; fi
 }
 
+test_a_failed_run_replaces_an_older_last_run() {
+  start_test "failed run replaces last-run.txt"
+  printf '%s\n' "sysbench run summary" "exit code: 0" "SQL statistics:" "    from an older run" > "${WORK}/kit/last-run.txt"
+  printf '%s\n' "Running|||" "Failed|||1" > "${STUB_STATE}/state.default"
+  printf '%s\n' "Running the test with following options:" "FATAL: event queue is full" > "${STUB_STATE}/full-log"
+  run_script && fail "exited 0"
+  if grep -q "from an older run" "${WORK}/kit/last-run.txt"; then fail "kept the older run: $(cat "${WORK}/kit/last-run.txt")"; fi
+  grep -q "^exit code: *1$" "${WORK}/kit/last-run.txt" || fail "no exit code: $(cat "${WORK}/kit/last-run.txt")"
+  grep -q "FATAL: event queue is full" "${WORK}/kit/last-run.txt" || fail "no end of the log: $(cat "${WORK}/kit/last-run.txt")"
+  grep -q "${WORK}/kit/last-run.txt" "${WORK}/out.txt" || fail "the failure does not name last-run.txt: $(cat "${WORK}/out.txt")"
+}
+
 test_a_zero_run_prints_the_summary_line() {
   start_test "exit 0"
   run_script || fail "exited non-zero: $(cat "${WORK}/out.txt")"
   grep -q "Run summary written to ${WORK}/kit/last-run.txt" "${WORK}/out.txt" || fail "no summary line: $(cat "${WORK}/out.txt")"
   grep -q "^SQL statistics:" "${WORK}/kit/last-run.txt" || fail "no summary block: $(cat "${WORK}/kit/last-run.txt")"
+  grep -q "^exit code: *0$" "${WORK}/kit/last-run.txt" || fail "no exit code: $(cat "${WORK}/kit/last-run.txt")"
 }
 
 test_a_repeated_stream_does_not_repeat_the_summary_or_the_histogram() {
@@ -186,6 +199,7 @@ test_no_app_node_runs_no_pod
 test_a_pod_failed_on_the_first_poll_reports_the_exit_code
 test_a_pull_error_fails_fast
 test_a_non_zero_run_fails_without_the_summary_line
+test_a_failed_run_replaces_an_older_last_run
 test_a_zero_run_prints_the_summary_line
 
 echo "sysbench start (${BASH_VERSION}): ${tests_run} tests, ${tests_failed} failed"

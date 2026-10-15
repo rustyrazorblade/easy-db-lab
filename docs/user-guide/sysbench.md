@@ -84,13 +84,14 @@ pushed to Mimir.
 
 When the run finishes, the final sysbench summary (SQL statistics, throughput, latency
 percentiles, and errors) is written to `last-run.txt` in the kit's workspace directory
-(e.g. `sysbench-tidb/last-run.txt`), prefixed with the run's parameters. Each run
-overwrites the file, so a completed run's numbers survive after the terminal output
-scrolls away.
+(e.g. `sysbench-tidb/last-run.txt`), prefixed with the run's parameters and its exit code. Each
+run overwrites the file, a failed run too, so a run's numbers survive after the terminal output
+scrolls away and the file never shows an older run.
 
 When the run pod ends, `start` reads its exit code. When sysbench exits non-zero (for example after
-`FATAL: event queue is full`), `start` says the run failed, gives the exit code and exits
-non-zero, and does not print `Run summary written to ...`. A run pod that cannot pull its image
+`FATAL: event queue is full`), `start` says the run failed, gives the exit code, names
+`last-run.txt` (which then holds the end of the run's log when sysbench printed no summary) and
+exits non-zero, and does not print `Run summary written to ...`. A run pod that cannot pull its image
 fails `start` at once, with the reason and the pod's events; one that stays Pending fails it after
 10 minutes.
 

@@ -81,16 +81,14 @@ handle_line() {
 edl_follow_pod_logs "${POD_NAME}" handle_line
 EXIT_CODE="$(edl_wait_for_pod_exit "${POD_NAME}")"
 
-if [ "${EXIT_CODE}" != 0 ]; then
-  edl_fail "The sysbench run failed with exit code ${EXIT_CODE}."
-fi
-
 # The full log, read once the pod has ended, holds every line exactly once.
 LOG_FILE="$(mktemp)"
 kubectl --kubeconfig="${KUBECONFIG}" logs "${POD_NAME}" > "${LOG_FILE}" 2>&1 || true
 
-# Persist the run metadata and the final sysbench report (SQL statistics / Throughput / Latency
-# percentiles / errors), which starts at "SQL statistics:" and runs to the end of the log.
+# Persist the run metadata, the exit code and the final sysbench report (SQL statistics /
+# Throughput / Latency percentiles / errors), which starts at "SQL statistics:" and runs to the end
+# of the log. Every ended run replaces the file, a failed one too, so it never shows an older run;
+# a run that printed no report keeps the end of its log instead.
 {
   echo "sysbench run summary"
   echo "workload:  ${WORKLOAD}"
@@ -100,9 +98,20 @@ kubectl --kubeconfig="${KUBECONFIG}" logs "${POD_NAME}" > "${LOG_FILE}" 2>&1 || 
   echo "skip-trx:  ${SKIP_TRX}"
   echo "rand-type: ${RAND_TYPE}"
   echo "started:   ${STARTED}"
+  echo "exit code: ${EXIT_CODE}"
   echo
-  awk '/^SQL statistics:/ { insummary = 1 } insummary' "${LOG_FILE}"
+  if grep -q '^SQL statistics:' "${LOG_FILE}"; then
+    awk '/^SQL statistics:/ { insummary = 1 } insummary' "${LOG_FILE}"
+  else
+    echo "The run printed no summary. The end of its log:"
+    tail -n 20 "${LOG_FILE}"
+  fi
 } > "${LAST_RUN_FILE}"
+
+if [ "${EXIT_CODE}" != 0 ]; then
+  rm -f "${LOG_FILE}"
+  edl_fail "The sysbench run failed with exit code ${EXIT_CODE}. Its settings and log are in ${LAST_RUN_FILE}"
+fi
 
 # Derive whole-run p50/p95/p99 from the final latency histogram (values in ms).
 # Histogram data lines look like: "       1.412 |***...     123" — first field is

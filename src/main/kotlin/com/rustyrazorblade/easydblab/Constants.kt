@@ -1006,6 +1006,15 @@ object Constants {
         }
     }
 
+    /**
+     * The local observability stack: a docker compose project on the operator's machine that reads
+     * the shared store (`observability local create`), and the export's temporary stacks.
+     */
+    object LocalStack {
+        /** The address every published port of a local stack binds, and the address this tool reaches it on. */
+        const val LOOPBACK = "127.0.0.1"
+    }
+
     // Proxy configuration
     object Proxy {
         /**

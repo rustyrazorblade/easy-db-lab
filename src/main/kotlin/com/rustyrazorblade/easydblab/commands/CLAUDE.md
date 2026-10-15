@@ -237,7 +237,7 @@ Commands should delegate to these services:
 | `GrafanaDeployService` | Grafana deployment: datasources, the dashboard tree, the Grafana K8s resources |
 | `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
 | `ReportArchiveService` | An experiment's reports under `reports/<tenant>/<experiment>/` (`services/documents/`): `report upload` stores each directory as one zip, unpacks it beside the zip and moves the forward-only pointer (`ReportPointer`), which `up` creates as a placeholder only when absent |
-| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki on the control node (SOCKS unless Tailscale) |
+| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir, Loki and Tempo. The injected one reaches the control node (SOCKS unless Tailscale); `LocalhostObservabilityHttp` reaches a local docker compose stack on its published ports. Both go through the `ObservabilityEndpoint` seam |
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |

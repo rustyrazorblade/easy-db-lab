@@ -29,10 +29,13 @@ data class ExperimentKey(
      */
     val pickerValue: String get() = "$tenant/$name"
 
-    /** The two rules of an experiment key, usable before a key can be built. */
+    /** The two rules of an experiment key, usable before a key can be built, and the key of a cluster. */
     companion object {
         private val TENANT = Regex(Constants.Observability.TENANT_PATTERN)
         private val NAME = Regex(Constants.Observability.EXPERIMENT_PATTERN)
+
+        /** The experiment [clusterState] belongs to: its tenant and its experiment name together. */
+        fun of(clusterState: ClusterState): ExperimentKey = ExperimentKey(clusterState.tenant(), clusterState.experiment())
 
         /**
          * Checks [tenant] against [Constants.Observability.TENANT_PATTERN] and

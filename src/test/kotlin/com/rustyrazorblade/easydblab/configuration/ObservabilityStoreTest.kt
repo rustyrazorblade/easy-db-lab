@@ -47,7 +47,7 @@ class ObservabilityStoreTest {
     fun `a cluster from before experiments keeps its documents in its own folder`() {
         val store = ObservabilityStore.from(state)
 
-        assertThat(store.documentsRoot(state.experimentKey()).getKey())
+        assertThat(store.documentsRoot(ExperimentKey.of(state)).getKey())
             .isEqualTo("reports/acme/lab-0f1e2d3c-aaaa-bbbb-cccc-123456789abc")
     }
 
@@ -55,7 +55,7 @@ class ObservabilityStoreTest {
     fun `a cluster's reports folder is its experiment's`() {
         val joined = state.copy(initConfig = InitConfig(tenant = "acme", experiment = "2026-10-13-ab"))
 
-        assertThat(ObservabilityStore.from(joined).documentsRoot(joined.experimentKey()).getKey()).isEqualTo("reports/acme/2026-10-13-ab")
+        assertThat(ObservabilityStore.from(joined).documentsRoot(ExperimentKey.of(joined)).getKey()).isEqualTo("reports/acme/2026-10-13-ab")
     }
 
     @Test

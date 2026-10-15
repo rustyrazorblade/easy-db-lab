@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.documents
 import com.rustyrazorblade.easydblab.SharedMinio
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -56,7 +57,7 @@ class ReportArchiveServiceIntegrationTest {
 
     private fun service(at: String) = DefaultReportArchiveService(objectStore, Clock.fixed(Instant.parse(at), ZoneOffset.UTC))
 
-    private fun folder(state: ClusterState): ClusterS3Path = ObservabilityStore.from(state).documentsRoot(state.experimentKey())
+    private fun folder(state: ClusterState): ClusterS3Path = ObservabilityStore.from(state).documentsRoot(ExperimentKey.of(state))
 
     private fun bytes(path: ClusterS3Path): ByteArray =
         s3Client

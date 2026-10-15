@@ -149,7 +149,8 @@ class ReportPointerTest {
 
     @Test
     fun `the placeholder says no report yet and is replaced by the first upload`() {
-        assertThat(pointer.ensurePlaceholder(folder)).isTrue()
+        pointer.ensurePlaceholder(folder)
+
         assertThat(pointerText()).contains("No report yet", "<meta charset=\"utf-8\">")
         assertThat(ReportPointer.target(pointerText())).isNull()
 
@@ -161,7 +162,17 @@ class ReportPointerTest {
         pointer.advance(folder, newer, "index.html")
         val before = pointerText()
 
-        assertThat(pointer.ensurePlaceholder(folder)).isFalse()
+        pointer.ensurePlaceholder(folder)
+
         assertThat(pointerText()).isEqualTo(before)
+    }
+
+    @Test
+    fun `a placeholder write that stored the pointer but was reported refused leaves the placeholder`() {
+        store.loseNextWriteResponse()
+
+        pointer.ensurePlaceholder(folder)
+
+        assertThat(pointerText()).contains("No report yet")
     }
 }

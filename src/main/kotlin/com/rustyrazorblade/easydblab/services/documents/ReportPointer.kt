@@ -20,12 +20,13 @@ class ReportPointer(
     private val store: ConditionalObjectStore,
 ) {
     /**
-     * Writes the "No report yet" pointer into [folder] only if no pointer is there.
-     *
-     * @return whether it was written; false leaves an existing pointer exactly as it is.
+     * Writes the "No report yet" pointer into [folder] only if no pointer is there; an existing
+     * pointer is left exactly as it is. Either way the folder has a pointer afterwards, so the
+     * outcome of the write is not reported.
      */
-    fun ensurePlaceholder(folder: ClusterS3Path): Boolean =
-        store.putIfAbsent(placeholder().toByteArray(), pointerOf(folder), CONTENT_TYPE) == ConditionalObjectStore.Written
+    fun ensurePlaceholder(folder: ClusterS3Path) {
+        store.putIfAbsent(placeholder().toByteArray(), pointerOf(folder), CONTENT_TYPE)
+    }
 
     /**
      * Points [folder]'s pointer at the upload [stamp], whose front page is [frontPage], unless it

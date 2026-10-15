@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import io.fabric8.kubernetes.api.model.ConfigMap
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
+import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
@@ -127,8 +128,39 @@ class ConfigHashRolloutIntegrationTest {
                     resource
                 }
             }
-        return (tempoResources + pyroscope.buildServerResources()).onEach { it.metadata.namespace = NAMESPACE }
+        return (tempoResources + pyroscope.buildServerResources())
+            .map(::onPreloadedImage)
+            .onEach { it.metadata.namespace = NAMESPACE }
     }
+
+    /**
+     * [resource] with every container of a Deployment running [SharedK3s.BUSYBOX_IMAGE], which the
+     * cluster has preloaded, and every other resource unchanged.
+     *
+     * Tempo and Pyroscope roll with the `Recreate` strategy: the controller scales the old ReplicaSet
+     * to zero and creates the new one only once the old pod is gone. A pod still pulling its image
+     * from a registry is not gone until the pull ends, so with the real images the new ReplicaSet
+     * waited on a Docker Hub pull from inside K3s, which on a busy machine outlasted the wait. The
+     * image is the same in every render a test applies, so it changes neither the config hash nor
+     * what rolls.
+     */
+    private fun onPreloadedImage(resource: HasMetadata): HasMetadata =
+        if (resource is Deployment) {
+            DeploymentBuilder(resource)
+                .editSpec()
+                .editTemplate()
+                .editSpec()
+                .withContainers(
+                    resource.spec.template.spec.containers.map {
+                        ContainerBuilder(it).withImage(SharedK3s.BUSYBOX_IMAGE).build()
+                    },
+                ).endSpec()
+                .endTemplate()
+                .endSpec()
+                .build()
+        } else {
+            resource
+        }
 
     private fun generation(
         name: String,
@@ -254,7 +286,8 @@ class ConfigHashRolloutIntegrationTest {
                 } else {
                     resource
                 }
-            }.onEach { it.metadata.namespace = TEMPLATE_NAMESPACE }
+            }.map(::onPreloadedImage)
+            .onEach { it.metadata.namespace = TEMPLATE_NAMESPACE }
 
     /**
      * Kubernetes rolls a workload on any pod-template change, not only a ConfigMap change. A change

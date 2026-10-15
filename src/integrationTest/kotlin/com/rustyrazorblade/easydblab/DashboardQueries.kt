@@ -117,36 +117,53 @@ object DashboardQueries {
     private const val LOGS_PICKER = "\${logs_datasource}"
 
     /**
-     * Plausible values for the comparison and Tests dashboards' helper variables. Each is a query
-     * variable that Grafana fills at load time, so the file holds no value to substitute; these
-     * stand in for them so the negative `offset`, `@` and subquery forms reach the pinned Mimir.
+     * Plausible values for the variables of the experiment, pair and Tests dashboards that Grafana
+     * fills at load time, so the file holds no value to substitute: the experiment and its split
+     * (`experiment` is `<tenant>/<name>`), the home tenant, each side's report folder, the A and B
+     * helpers (`a_*`, `b_*`, `max_len*`) and the experiment's span helpers (`exp_*`). They stand in
+     * so the negative `offset`, `@` and subquery forms reach the pinned Mimir resolved, as Grafana
+     * sends them.
      */
     private val sampleValues =
         mapOf(
             "role" to "db[0-9]+|app[0-9]+",
             "lookback" to "180d",
             "resolution" to "300",
-            "base_start" to "1790000000",
-            "base_end" to "1790086400",
-            "base_len" to "86400",
-            "cand_start" to "1790600000",
-            "cand_end" to "1790621600",
-            "cand_len" to "21600",
+            "experiment" to "default/e1",
+            "exp_tenant" to "default",
+            "exp_name" to "e1",
+            "home_tenant" to "default",
+            "a_report" to "default/e1",
+            "b_report" to "default/e1",
+            "a_start" to "1790000000",
+            "a_end" to "1790086400",
+            "a_len" to "86400",
+            "b_start" to "1790600000",
+            "b_end" to "1790621600",
+            "b_len" to "21600",
             "max_len" to "86400",
-            "base_offset" to "3600",
-            "cand_offset" to "-600",
-            "base_since_end" to "600000",
-            "cand_since_end" to "600",
+            "a_offset" to "3600",
+            "b_offset" to "-600",
+            "a_since_end" to "600000",
+            "b_since_end" to "600",
             "max_len_d" to "1",
             "max_len_s" to "0",
-            "base_len_d" to "1",
-            "base_len_s" to "0",
-            "cand_len_d" to "0",
-            "cand_len_s" to "21600",
-            "base_since_end_d" to "6",
-            "base_since_end_s" to "81600",
-            "cand_since_end_d" to "0",
-            "cand_since_end_s" to "600",
+            "a_len_d" to "1",
+            "a_len_s" to "0",
+            "b_len_d" to "0",
+            "b_len_s" to "21600",
+            "a_since_end_d" to "6",
+            "a_since_end_s" to "81600",
+            "b_since_end_d" to "0",
+            "b_since_end_s" to "600",
+            "exp_start" to "1790000000",
+            "exp_end" to "1790621600",
+            "exp_len" to "621900",
+            "exp_since_end" to "600",
+            "exp_len_d" to "7",
+            "exp_len_s" to "17100",
+            "exp_since_end_d" to "0",
+            "exp_since_end_s" to "600",
         )
 
     private fun walkPanels(

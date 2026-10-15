@@ -425,6 +425,27 @@ class ReportArchiveServiceTest {
         assertThat(store.keys()).isEqualTo(before)
     }
 
+    @Test
+    fun `an upload whose every name is held or still empty fails naming how many of each`() {
+        file("results.md", "x")
+        val stamps =
+            generateSequence(ReportStamp("20261014-120000")) { it.next() }
+                .take(Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS)
+                .toList()
+        stamps.drop(1).forEach { store.overwrite(key("reports/acme/e1/${it.zipName}"), "another upload") }
+        store.writeInFlightAt(key("reports/acme/e1/${stamps.first().zipName}"), endsOnRead = Int.MAX_VALUE, InMemoryConditionalObjectStore.InFlightEnd.Aborts)
+        val held = Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS - 1
+
+        assertThatThrownBy { service("2026-10-14T12:00:00Z").upload(state, dir) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining(
+                "No report name for ${Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS} seconds up to " +
+                    "report-20261014-120059.zip could be claimed",
+            ).hasMessageContaining("$held held by other uploads, 1 still empty after a write in flight")
+            .hasMessageContaining("nothing was uploaded")
+            .hasMessageNotContaining("is taken")
+    }
+
     private companion object {
         private const val DOCUMENTS_LOGGER = "com.rustyrazorblade.easydblab.services.documents"
     }

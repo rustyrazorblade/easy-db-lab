@@ -117,31 +117,34 @@ class DefaultReportArchiveService(
             generateSequence(ReportStamp.of(clock.instant())) { it.next() }
                 .take(Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS)
                 .toList()
-        return candidates.firstOrNull { stamp ->
-            zipStoredAt(folder.resolve(stamp.zipName), archive.bytes)
-        } ?: error(
-            "Every report name for ${Constants.Observability.REPORT_ZIP_KEY_MAX_ATTEMPTS} seconds up to " +
-                "${candidates.last().zipName} is taken in ${folder.toUri()}; nothing was uploaded.",
+        val unclaimed = mutableListOf<KeyHolder>()
+        candidates.forEach { stamp ->
+            val holder = zipHolderAt(folder.resolve(stamp.zipName), archive.bytes)
+            if (holder == KeyHolder.OWN) return stamp
+            unclaimed += holder
+        }
+        error(
+            "No report name for ${candidates.size} seconds up to ${candidates.last().zipName} could be claimed in " +
+                "${folder.toUri()}: ${unclaimed.count { it == KeyHolder.OTHER }} held by other uploads, " +
+                "${unclaimed.count { it == KeyHolder.EMPTY }} still empty after a write in flight; nothing was uploaded.",
         )
     }
 
-    /** Whether [path] now holds this upload's zip [bytes]; any other outcome moves to the next second. */
-    private fun zipStoredAt(
+    /** Whose object [path] holds once this upload's zip [bytes] were written; any holder but [KeyHolder.OWN] moves to the next second. */
+    private fun zipHolderAt(
         path: ClusterS3Path,
         bytes: ByteArray,
-    ): Boolean {
+    ): KeyHolder {
         val decision = writer.write(bytes, path, ZIP_CONTENT_TYPE)
-        return when (decision.holder) {
-            KeyHolder.OWN -> true.also { logRefused(path, decision) }
-            KeyHolder.OTHER -> false.also { logRefused(path, decision) }
-            KeyHolder.EMPTY -> {
+        when (decision.holder) {
+            KeyHolder.OWN, KeyHolder.OTHER -> logRefused(path, decision)
+            KeyHolder.EMPTY ->
                 log.warn {
                     "Zip ${path.toUri()} refused and still empty after ${decision.looks} looks; moving to the next second. " +
                         "The abandoned key may still receive a write in flight."
                 }
-                false
-            }
         }
+        return decision.holder
     }
 
     private fun put(

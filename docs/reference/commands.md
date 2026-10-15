@@ -984,7 +984,7 @@ easy-db-lab report upload results/
 |----------|-------------|
 | `DIR` | The one directory to upload (required). Any file types; subdirectories are kept. |
 
-**No upload replaces another.** The zip is written only if no object exists at its key; if another upload already took that second, it takes the next free second. Every upload is kept.
+**No upload replaces another.** The zip is written only if no object exists at its key; if another upload already took that second, it takes the next free second. Every upload is kept. Each zip holds a random upload id in its zip comment, so two uploads of an unchanged directory store different zips with the same files inside.
 
 **What is stored.** Next to the zip, the same zip is unpacked to `report-<yyyyMMdd-HHmmss>/`, with an HTML copy of each `.md` file and a generated `_files.html` that lists the upload's files. The experiment's `index.html` is a pointer that the documents panels show. It leads to the newest upload: to the upload's `index.html` when the directory holds `index.md` or `index.html` at its root, or to its `_files.html` otherwise. The pointer only moves forward. An upload named for an earlier second than the one shown leaves the pointer alone, and its zip is still kept. The pointer is the only object in the folder that is ever rewritten. Uploads are ordered by the clock of the machine that ran them, so two machines whose clocks differ can, within a few seconds, leave the older of their uploads shown. Both are kept.
 

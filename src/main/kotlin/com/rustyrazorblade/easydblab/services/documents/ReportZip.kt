@@ -82,18 +82,26 @@ object ReportZip {
     }
 
     /**
-     * The zip of [dir]: every file under its relative path, in path order, dated with its own
-     * modification time, so building the same directory twice gives the same bytes.
+     * The zip of [dir] for the upload [uploadId]: every file under its relative path, in path
+     * order, dated with its own modification time, and [uploadId] in the zip comment. The entries
+     * depend only on the directory, so the report's contents are the same for every upload of it;
+     * the comment makes each upload's zip its own, so a stored zip of the same directory from
+     * another upload never has this upload's bytes. Building again with the same [uploadId] gives
+     * the same bytes.
      *
      * @throws ReportRejectedException naming every offender, before anything is built, if [dir] breaks a rule.
      */
-    fun build(dir: File): ReportArchive {
+    fun build(
+        dir: File,
+        uploadId: String,
+    ): ReportArchive {
         val problems = problems(dir)
         if (problems.isNotEmpty()) throw ReportRejectedException(problems)
         val root = dir.toPath().toRealPath()
         val files = filesUnder(root).map { relative(root, it) }.sorted()
         val out = ByteArrayOutputStream()
         ZipOutputStream(out).use { zip ->
+            zip.setComment(Constants.Observability.REPORT_ZIP_COMMENT_PREFIX + uploadId)
             files.forEach { path ->
                 val file = root.resolve(path)
                 // The file's own time, never the clock, so the same directory always gives the same zip.

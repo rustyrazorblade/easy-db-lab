@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.nio.file.Files
+import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
 /**
@@ -143,7 +144,7 @@ class ReportZipTest {
         file("x.md")
         file("x.html")
 
-        assertThatThrownBy { ReportZip.build(dir) }
+        assertThatThrownBy { ReportZip.build(dir, "upload-1") }
             .isInstanceOf(ReportRejectedException::class.java)
             .hasMessageContaining("a b.md")
             .hasMessageContaining("link.md")
@@ -158,7 +159,7 @@ class ReportZipTest {
         file("runs/r1/graph.png", "png-bytes")
         file("index.md", "front")
 
-        val archive = ReportZip.build(dir)
+        val archive = ReportZip.build(dir, "upload-1")
 
         assertThat(archive.files).containsExactly("index.md", "results.md", "runs/r1/graph.png")
         assertThat(entries(archive))
@@ -166,13 +167,35 @@ class ReportZipTest {
     }
 
     @Test
-    fun `building the same directory twice gives the same bytes`() {
+    fun `building the same directory twice for one upload gives the same bytes`() {
         file("results.md", "# Results")
         file("runs/r1/graph.png", "png-bytes")
-        val first = ReportZip.build(dir).bytes
+        val first = ReportZip.build(dir, "upload-1").bytes
         Thread.sleep(2_100)
 
-        assertThat(ReportZip.build(dir).bytes).isEqualTo(first)
+        assertThat(ReportZip.build(dir, "upload-1").bytes).isEqualTo(first)
+    }
+
+    @Test
+    fun `two uploads of the same directory give different bytes holding the same files`() {
+        file("results.md", "# Results")
+        file("runs/r1/graph.png", "png-bytes")
+
+        val first = ReportZip.build(dir, "upload-1")
+        val second = ReportZip.build(dir, "upload-2")
+
+        assertThat(second.bytes).isNotEqualTo(first.bytes)
+        assertThat(entries(second)).isEqualTo(entries(first))
+    }
+
+    @Test
+    fun `the zip comment holds the upload id`(
+        @TempDir out: File,
+    ) {
+        file("results.md", "# Results")
+        val zipFile = File(out, "report.zip").also { it.writeBytes(ReportZip.build(dir, "upload-1").bytes) }
+
+        assertThat(ZipFile(zipFile).use { it.comment }).contains("upload-1")
     }
 
     @Test
@@ -183,6 +206,6 @@ class ReportZipTest {
         Files.createSymbolicLink(link.toPath(), real.toPath())
 
         assertThat(ReportZip.problems(link)).isEmpty()
-        assertThat(ReportZip.build(link).files).containsExactly("results.md")
+        assertThat(ReportZip.build(link, "upload-1").files).containsExactly("results.md")
     }
 }

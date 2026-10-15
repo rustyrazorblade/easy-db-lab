@@ -21,7 +21,7 @@ class ReportUnpackerTest {
         File(dir, path).also { it.parentFile.mkdirs() }.writeText(text)
     }
 
-    private fun unpack(): UnpackedReport = ReportUnpacker.unpack(ReportZip.build(dir).bytes)
+    private fun unpack(): UnpackedReport = ReportUnpacker.unpack(ReportZip.build(dir, "upload-1").bytes)
 
     private fun UnpackedReport.text(path: String): String =
         objects

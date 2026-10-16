@@ -18,6 +18,7 @@ import com.rustyrazorblade.easydblab.export.FakeExportStore
 import com.rustyrazorblade.easydblab.export.TenantExporter
 import com.rustyrazorblade.easydblab.export.query.QueryExporter
 import com.rustyrazorblade.easydblab.export.query.WorkspaceCluster
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -31,6 +32,7 @@ import org.mockito.kotlin.eq
 import org.mockito.kotlin.isNull
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import picocli.CommandLine
 import java.io.File
@@ -41,6 +43,11 @@ import java.io.File
  * exporter over an account bucket held in memory.
  */
 class ObservabilityExportTest : BaseKoinTest() {
+    private companion object {
+        const val X = "x-0f8fad5b-d9cb-469f-a165-70867728950e"
+        const val W = "w-7c9e6679-7425-40de-944b-e07fc1f90ae7"
+    }
+
     private val store = FakeExportStore()
     private val events = mutableListOf<Event>()
     private val stateManager = mock<ClusterStateManager>()
@@ -141,9 +148,21 @@ class ObservabilityExportTest : BaseKoinTest() {
 
     @Test
     fun `clusters are exported by query, outside a workspace with no workspace cluster`() {
-        export(zip(), "--cluster", "x-1", "--cluster", "w-2", "--cluster", "x-1")
+        export(zip(), "--cluster", X, "--cluster", W, "--cluster", X)
 
-        verify(queryExporter).export(any(), eq(ExportSelector.Clusters(listOf("x-1", "w-2"))), isNull())
+        verify(queryExporter).export(any(), eq(ExportSelector.Clusters(listOf(X, W))), isNull())
+    }
+
+    @Test
+    fun `a cluster with a quote is refused with an event naming it, and nothing is exported`() {
+        val injected = "x-1\"} or vector(1) #"
+
+        assertThatThrownBy { export(zip(), "--cluster", X, "--cluster", injected) }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(events.filterIsInstance<Event.Export.InvalidCluster>().single().clusters).containsExactly(injected)
+        assertThat(events.single().toDisplayString()).contains(injected, "--cluster")
+        verifyNoInteractions(queryExporter)
+        assertThat(File(zip())).doesNotExist()
     }
 
     @Test

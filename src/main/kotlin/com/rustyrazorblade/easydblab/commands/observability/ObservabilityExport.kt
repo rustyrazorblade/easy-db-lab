@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.commands.observability
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.export.ClusterIdRefused
 import com.rustyrazorblade.easydblab.export.ExportSelection
 import com.rustyrazorblade.easydblab.export.ExportSelector
 import com.rustyrazorblade.easydblab.export.ExportSelectorChoice
@@ -10,6 +12,7 @@ import com.rustyrazorblade.easydblab.export.ExportTarget
 import com.rustyrazorblade.easydblab.export.TenantExporter
 import com.rustyrazorblade.easydblab.export.query.QueryExporter
 import com.rustyrazorblade.easydblab.export.query.WorkspaceCluster
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import org.koin.core.component.inject
 import picocli.CommandLine.ArgGroup
 import picocli.CommandLine.Command
@@ -81,7 +84,13 @@ class ObservabilityExport : PicoBaseCommand() {
 
     override fun execute() {
         val workspace = if (clusterStateManager.exists()) WorkspaceCluster(clusterState.clusterLabelName(), clusterState.tenant()) else null
-        val selection = ExportSelection.of(selector.choice(), workspace?.tenant)
+        val selection =
+            try {
+                ExportSelection.of(selector.choice(), workspace?.tenant)
+            } catch (e: ClusterIdRefused) {
+                eventBus.emit(Event.Export.InvalidCluster(e.clusters, Constants.Observability.CLUSTER_ID_PATTERN))
+                throw CommandFailedException(e.message ?: "--cluster needs a cluster's <name>-<id>")
+            }
         val target = ExportTarget.of(path)
         when (val chosen = selection.selector) {
             is ExportSelector.Tenant -> tenantExporter.export(target, chosen.tenant)

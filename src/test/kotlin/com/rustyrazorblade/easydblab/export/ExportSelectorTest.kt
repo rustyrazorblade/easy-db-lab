@@ -11,6 +11,11 @@ import org.junit.jupiter.api.Test
  * `default` outside one, and the command says which and why.
  */
 class ExportSelectorTest {
+    private companion object {
+        const val X = "x-0f8fad5b-d9cb-469f-a165-70867728950e"
+        const val Y = "unthrottled_cursor-7c9e6679-7425-40de-944b-e07fc1f90ae7"
+    }
+
     private fun select(
         tenant: String? = null,
         clusters: List<String> = emptyList(),
@@ -51,8 +56,8 @@ class ExportSelectorTest {
 
     @Test
     fun `repeated clusters are one cluster selector, each named once`() {
-        assertThat(select(clusters = listOf("x-1", "y-2", "x-1")).selector)
-            .isEqualTo(ExportSelector.Clusters(listOf("x-1", "y-2")))
+        assertThat(select(clusters = listOf(X, Y, X)).selector)
+            .isEqualTo(ExportSelector.Clusters(listOf(X, Y)))
     }
 
     @Test
@@ -91,5 +96,21 @@ class ExportSelectorTest {
         assertThatThrownBy { select(clusters = listOf(" ")) }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("--cluster")
+    }
+
+    /** A --cluster value goes into PromQL, LogQL and TraceQL selectors: only a cluster's own id may. */
+    @Test
+    fun `a cluster that is not a name and a uuid is refused, naming each such value`() {
+        val injected = "x-1\"} or vector(1) #"
+
+        assertThatThrownBy { select(clusters = listOf(X, injected, "x-1")) }
+            .isInstanceOfSatisfying(ClusterIdRefused::class.java) { assertThat(it.clusters).containsExactly(injected, "x-1") }
+            .hasMessageContaining(injected)
+    }
+
+    @Test
+    fun `an upper-case or truncated id is not a cluster's id`() {
+        assertThatThrownBy { select(clusters = listOf(X.uppercase())) }.isInstanceOf(ClusterIdRefused::class.java)
+        assertThatThrownBy { select(clusters = listOf(X.dropLast(1))) }.isInstanceOf(ClusterIdRefused::class.java)
     }
 }

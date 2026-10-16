@@ -73,8 +73,10 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
   cluster's `tempo.yaml` patched as typed data through `YamlDocument`/`YamlPatch` (never string-built).
 - The signer mounts `~/.aws` read-only at `/root/.aws` with `HOME=/root` (`Constants.LocalStack.SIGNER_HOME`)
   and `AWS_PROFILE`; its healthcheck lists the bucket every 60s. `store-check` (packaged `store-check.sh`,
-  POSIX sh, tested by `./gradlew testLocalStoreCheck`) must pass before any backend starts; it treats the
-  signer's 502 `unable to proxy request` as a credentials failure, apart from an S3 4xx.
+  POSIX sh, tested by `./gradlew testLocalStoreCheck`) must pass before any backend starts; it names the
+  signer's 502 `unable to proxy request` by its text, apart from an S3 4xx: a network error (`dial tcp`, `i/o
+  timeout`, `no such host`, TLS) is "the signer could not reach S3"; a credentials text (SSO, `NoCredentialProviders`,
+  `ExpiredToken`, credentials) is a credentials failure with the `aws sso login` hint; anything else is the signer's text.
 - An offline Grafana downloads no plugin (`GrafanaServerSettings.plugins` empty, so no `GF_INSTALL_PLUGINS`):
   with no network the download fails and Grafana 13 exits 1. `OfflineGrafanaPluginsTest` fails if a packaged
   dashboard starts to use one of `GrafanaServerSettings.DOWNLOADED_PLUGINS`; the plugin would then have to be

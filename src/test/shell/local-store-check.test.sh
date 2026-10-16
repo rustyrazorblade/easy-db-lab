@@ -100,6 +100,50 @@ test_the_signers_502_is_a_credentials_failure() {
   grep -q 'aws sso login --profile lab' "${WORK}/out.txt" || fail "expired credentials give the login command: $(out)"
 }
 
+test_every_credentials_text_of_the_signer_is_a_credentials_failure() {
+  for reason in \
+    'NoCredentialProviders: no valid providers in chain' \
+    'ExpiredToken: The security token included in the request is expired' \
+    'failed to refresh cached credentials, the SSO session has expired' \
+    'unable to retrieve credentials'; do
+    setup
+    body creds "unable to proxy request - ${reason}"
+    respond 0 502 creds
+    run_check
+    [ "$(rc)" = 1 ] || fail "credentials (${reason}) exit 1, got $(rc)"
+    grep -q 'with profile lab: credentials: unable to proxy request' "${WORK}/out.txt" || fail "credentials (${reason}) are named so: $(out)"
+    grep -q 'aws sso login --profile lab' "${WORK}/out.txt" || fail "credentials (${reason}) give the login command: $(out)"
+  done
+}
+
+test_a_signer_that_cannot_reach_s3_is_not_a_credentials_failure() {
+  for reason in \
+    'RequestError: send request failed caused by: Get "https://s3.eu-west-1.amazonaws.com/acct": net/http: TLS handshake timeout' \
+    'dial tcp 52.218.1.1:443: connect: network is unreachable' \
+    'read tcp 172.18.0.3:40112->52.218.1.1:443: i/o timeout' \
+    'dial tcp: lookup s3.eu-west-1.amazonaws.com on 127.0.0.11:53: no such host'; do
+    setup
+    body unreachable "unable to proxy request - ${reason}"
+    respond 0 502 unreachable
+    run_check
+    [ "$(rc)" = 1 ] || fail "an unreachable S3 (${reason}) exits 1, got $(rc)"
+    grep -q 'with profile lab: the signer could not reach S3: unable to proxy request' "${WORK}/out.txt" ||
+      fail "an unreachable S3 (${reason}) is named so: $(out)"
+    if grep -q 'credentials\|aws sso login' "${WORK}/out.txt"; then fail "an unreachable S3 (${reason}) is not credentials: $(out)"; fi
+  done
+}
+
+test_another_signer_failure_is_named_with_the_signers_text_and_no_login_hint() {
+  setup
+  body other 'unable to proxy request - something else went wrong'
+  respond 0 502 other
+  run_check
+  [ "$(rc)" = 1 ] || fail "another signer failure exits 1, got $(rc)"
+  grep -q 'with profile lab: the signer could not proxy the request: unable to proxy request - something else went wrong' "${WORK}/out.txt" ||
+    fail "another signer failure carries the signer's text: $(out)"
+  if grep -q 'aws sso login' "${WORK}/out.txt"; then fail "another signer failure gives no login hint: $(out)"; fi
+}
+
 test_an_s3_error_is_named_by_its_code_not_as_credentials() {
   setup
   body denied '<?xml version="1.0" encoding="UTF-8"?><Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>'

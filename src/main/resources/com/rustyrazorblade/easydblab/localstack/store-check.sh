@@ -6,9 +6,10 @@
 #
 # It lists one key under mimir/ through the signer. Exit 0 when the bucket is readable. Otherwise it
 # exits 1 with "cannot read the account bucket ... with profile P: <reason>":
-#   - the signer's HTTP 502 with a body starting "unable to proxy request" is a credentials failure
-#     (missing profile, expired SSO token): the reason is the signer's own text, and the hint is
-#     `aws sso login --profile P`;
+#   - the signer's HTTP 502 with a body starting "unable to proxy request" is the signer's own
+#     failure, named by its text: a network error (DNS, TCP, TLS) is "the signer could not reach S3";
+#     a credentials error (missing profile, expired SSO token) is "credentials", with the hint
+#     `aws sso login --profile P`; anything else is "the signer could not proxy the request";
 #   - any other answer is S3's: the reason is S3's error code (AccessDenied, NoSuchBucket, ...).
 #
 # Environment: BUCKET (the account bucket), PROFILE (the operator's AWS profile, for the message),
@@ -16,6 +17,11 @@
 # POSIX sh: it runs in the gate's alpine image (busybox ash).
 
 set -u
+
+# What aws-sdk-go says after "unable to proxy request - " when the signer could not reach AWS at all.
+NETWORK_ERRORS='TLS handshake timeout|dial tcp|i/o timeout|no such host|connection refused|connection reset|network is unreachable'
+# What it says when the profile has no usable credentials.
+CREDENTIALS_ERRORS='SSO|NoCredentialProviders|ExpiredToken|credentials'
 
 url="http://${SIGNER}/${BUCKET}?list-type=2&prefix=mimir%2F&max-keys=1"
 body=$(mktemp)
@@ -53,7 +59,15 @@ case "$status" in
     ;;
   502)
     if head -c 23 "$body" | grep -q '^unable to proxy request'; then
-      fail "credentials: $(cat "$body")" "run: aws sso login --profile ${PROFILE}"
+      # Network first: an SSO refresh that fails for want of a network names credentials too, and
+      # logging in again would not help.
+      if grep -qiE "$NETWORK_ERRORS" "$body"; then
+        fail "the signer could not reach S3: $(cat "$body")"
+      fi
+      if grep -qiE "$CREDENTIALS_ERRORS" "$body"; then
+        fail "credentials: $(cat "$body")" "run: aws sso login --profile ${PROFILE}"
+      fi
+      fail "the signer could not proxy the request: $(cat "$body")"
     fi
     ;;
 esac

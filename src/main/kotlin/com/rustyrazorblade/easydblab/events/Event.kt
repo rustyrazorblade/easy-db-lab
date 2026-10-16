@@ -6519,6 +6519,201 @@ sealed interface Event {
                     "Open it with: unzip $path, then docker compose up in the directory it makes; see its README.txt."
             }
         }
+
+        /**
+         * One cluster a query export reads, and its tenant.
+         *
+         * @property cluster the cluster's `<name>-<id>`.
+         * @property tenant its tenant.
+         */
+        @Serializable
+        data class SelectedCluster(
+            val cluster: String,
+            val tenant: String,
+        )
+
+        /**
+         * A query export found the clusters it reads and their tenants.
+         *
+         * @property clusters each cluster and its tenant.
+         * @property home the tenant of the opened export's stable datasources: the experiment's, or the
+         *   first cluster's.
+         */
+        @Serializable
+        @SerialName("Export.ClustersSelected")
+        data class ClustersSelected(
+            val clusters: List<SelectedCluster>,
+            val home: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Exporting ${clusters.size} cluster${if (clusters.size == 1) "" else "s"}: " +
+                    clusters.joinToString(", ") { "${it.cluster} (tenant ${it.tenant})" } + ". Home tenant: $home"
+        }
+
+        /**
+         * No tenant holds a cluster `--cluster` names; nothing was written.
+         *
+         * @property cluster the cluster.
+         * @property tenants the tenants searched.
+         */
+        @Serializable
+        @SerialName("Export.ClusterNotFound")
+        data class ClusterNotFound(
+            val cluster: String,
+            val tenants: List<String>,
+        ) : Export {
+            override fun toDisplayString(): String =
+                if (tenants.isEmpty()) {
+                    "Cluster $cluster was not found: the store holds no tenant. Nothing was written."
+                } else {
+                    "Cluster $cluster was not found in tenant${if (tenants.size == 1) "" else "s"} ${tenants.joinToString(", ")}. " +
+                        "Nothing was written."
+                }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A cluster has data in several tenants, so `--cluster` cannot tell which; nothing was written.
+         *
+         * @property cluster the cluster.
+         * @property tenants every tenant it has data in.
+         */
+        @Serializable
+        @SerialName("Export.ClusterInSeveralTenants")
+        data class ClusterInSeveralTenants(
+            val cluster: String,
+            val tenants: List<String>,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Cluster $cluster has data in several tenants: ${tenants.joinToString(", ")}. Nothing was written. " +
+                    "Export one tenant with --tenant, or run from the cluster's own workspace."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * Mimir named no tenant for a series of a cluster in a federated query; nothing was written.
+         *
+         * @property cluster the cluster.
+         * @property tenantSet the tenants the query named, joined by `|`.
+         */
+        @Serializable
+        @SerialName("Export.ClusterTenantUnknown")
+        data class ClusterTenantUnknown(
+            val cluster: String,
+            val tenantSet: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Mimir named no tenant for a series of cluster $cluster in the query of tenants $tenantSet. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * No cluster of a tenant carries the experiment `--experiment` names; nothing was written.
+         *
+         * @property experiment the experiment's name.
+         * @property tenant its tenant.
+         * @property query the lookup that found no cluster.
+         */
+        @Serializable
+        @SerialName("Export.ExperimentNotFound")
+        data class ExperimentNotFound(
+            val experiment: String,
+            val tenant: String,
+            val query: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Experiment $experiment has no clusters in tenant $tenant: $query found none. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A query export reads the store through a temporary local stack whose signer reads `~/.aws`
+         * with an AWS profile, and the easy-db-lab profile names none; nothing was written.
+         */
+        @Serializable
+        @SerialName("Export.AwsProfileRequired")
+        data object AwsProfileRequired : Export {
+            override fun toDisplayString(): String =
+                "A --cluster or --experiment export reads the store through a temporary local stack, which signs with an AWS " +
+                    "profile from ~/.aws, and the easy-db-lab profile names none. Nothing was written. Export the tenant with --tenant."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * What a query export put in the zip for one signal. A signal with nothing is reported as zero.
+         *
+         * @property signal `metrics` (items are blocks), `logs` (lines) or `traces` (traces).
+         * @property items the blocks, lines or traces.
+         * @property bytes their size.
+         */
+        @Serializable
+        @SerialName("Export.SignalExported")
+        data class SignalExported(
+            val signal: String,
+            val items: Long,
+            val bytes: Long,
+        ) : Export {
+            override fun toDisplayString(): String {
+                val unit =
+                    when (signal) {
+                        "metrics" -> "blocks"
+                        "logs" -> "lines"
+                        else -> "traces"
+                    }
+                return "Exported $signal: $items $unit, ${bytes / Constants.Size.BYTES_PER_MIB} MiB ($bytes bytes)"
+            }
+        }
+
+        /**
+         * A query export's zip is complete and at its path.
+         *
+         * @property path the zip's path.
+         * @property clusters the clusters exported.
+         * @property tenants their tenants, the home tenant first.
+         * @property entries the files in the zip.
+         * @property bytes their size before compression.
+         * @property excluded what the export leaves out.
+         */
+        @Serializable
+        @SerialName("Export.QueryCompleted")
+        data class QueryCompleted(
+            val path: String,
+            val clusters: List<String>,
+            val tenants: List<String>,
+            val entries: Int,
+            val bytes: Long,
+            val excluded: List<Exclusion>,
+        ) : Export {
+            override fun toDisplayString(): String {
+                val left = excluded.joinToString("\n") { "${it.what.replaceFirstChar(Char::uppercase)} are not included (issue #${it.issue})." }
+                val size = "$entries files, ${bytes / Constants.Size.BYTES_PER_MIB} MiB before compression"
+                return "Exported ${clusters.joinToString(", ")} (tenant${if (tenants.size == 1) "" else "s"} ${tenants.joinToString(", ")}) " +
+                    "to $path ($size).\n$left\n" +
+                    "Open it with: unzip $path, then docker compose up in the directory it makes; see its README.txt."
+            }
+        }
+
+        /**
+         * A query export's work directory, kept after the export, success or failure. Nothing removes it.
+         *
+         * @property path the directory.
+         * @property bytes what it holds.
+         */
+        @Serializable
+        @SerialName("Export.WorkDirectoryKept")
+        data class WorkDirectoryKept(
+            val path: String,
+            val bytes: Long,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "The work directory $path (${bytes / Constants.Size.BYTES_PER_MIB} MiB, $bytes bytes) is kept; " +
+                    "remove it yourself when you no longer need it."
+        }
     }
 
     /**

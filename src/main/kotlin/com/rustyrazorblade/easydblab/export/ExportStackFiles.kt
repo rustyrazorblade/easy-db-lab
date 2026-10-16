@@ -1,9 +1,9 @@
 package com.rustyrazorblade.easydblab.export
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
-import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.localstack.ComposeFile
 import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
 import com.rustyrazorblade.easydblab.localstack.LocalStackComposer
@@ -17,8 +17,8 @@ import com.rustyrazorblade.easydblab.services.TemplateService
  *
  * - the offline compose stack and its configuration ([LocalStackComposer] in [LocalStackSpec.Mode.Offline]);
  * - the dashboards under `dashboards/current`, after the install-time pass for the export: its
- *   tenant, no current cluster or experiment (each opens on the newest), and the documents view on
- *   loopback;
+ *   tenants, no current cluster, the experiment of an experiment export (otherwise each opens on the
+ *   newest), and the documents view on loopback;
  * - `README.txt`: how to open it, the images the opening machine needs (exactly those the compose
  *   file names, each a `LocalImages` pin), and that profiles are left out (issue 1016);
  * - the manifest, so `observability local dashboards` works on the opened export.
@@ -41,15 +41,21 @@ class ExportStackFiles(
         const val DASHBOARD_TREE = "${Constants.LocalStack.DASHBOARDS_DIR}/${Constants.LocalStack.DASHBOARDS_TREE}"
     }
 
-    /** The stack files of an export of [tenant]; [root] is the directory the zip unpacks to. */
+    /**
+     * The stack files of an export whose home tenant is [tenant]; [root] is the directory the zip
+     * unpacks to. A query export may cover several [tenants], and an experiment export opens its
+     * dashboards on [experiment].
+     */
     fun files(
         tenant: String,
         root: String = tenant,
+        tenants: List<String> = listOf(tenant),
+        experiment: ExperimentKey? = null,
     ): Map<String, ByteArray> {
         val spec =
             LocalStackSpec(
                 mode = LocalStackSpec.Mode.Offline(dataDir = Constants.Export.DATA_DIR, home = tenant),
-                tenants = listOf(tenant),
+                tenants = tenants,
                 grafanaPort = grafanaPort,
                 documentsPort = documentsPort,
             )
@@ -58,8 +64,8 @@ class ExportStackFiles(
         val context =
             DashboardInstallContext(
                 cluster = null,
-                experiment = null,
-                tenants = TenantSet.of(tenant, listOf(tenant)),
+                experiment = experiment,
+                tenants = spec.tenantSet,
                 documentsUrl = "http://${Constants.LocalStack.LOOPBACK}:${spec.documentsPort}",
             )
         val tree = dashboards.render(context).map { (path, json) -> "$DASHBOARD_TREE/$path" to json.toByteArray() }.toMap()

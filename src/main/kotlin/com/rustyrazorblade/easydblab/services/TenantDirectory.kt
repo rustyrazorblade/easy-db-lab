@@ -17,11 +17,14 @@ class TenantDirectory(
     companion object {
         private val TENANT = Regex(Constants.Observability.TENANT_PATTERN)
 
+        /** The directory [names] that are tenants, in order: those that keep the tenant name rule. */
+        fun tenantNames(names: List<String>): List<String> = names.filter { TENANT.matches(it) && it != Constants.Observability.RESERVED_TENANT }
+
         /** The tenants among the directory [names], with [home] added. */
         fun tenantsFrom(
             names: List<String>,
             home: String,
-        ): TenantSet = TenantSet.of(home, names.filter { TENANT.matches(it) && it != Constants.Observability.RESERVED_TENANT })
+        ): TenantSet = TenantSet.of(home, tenantNames(names))
     }
 
     /** Every tenant with a directory under `mimir/` in [bucket], and [home]. */

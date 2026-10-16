@@ -8,7 +8,8 @@ import com.rustyrazorblade.easydblab.export.ExportSelector
 import com.rustyrazorblade.easydblab.export.ExportSelectorChoice
 import com.rustyrazorblade.easydblab.export.ExportTarget
 import com.rustyrazorblade.easydblab.export.TenantExporter
-import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.export.query.QueryExporter
+import com.rustyrazorblade.easydblab.export.query.WorkspaceCluster
 import org.koin.core.component.inject
 import picocli.CommandLine.ArgGroup
 import picocli.CommandLine.Command
@@ -52,7 +53,8 @@ class ExportSelectorOptions {
  * Writes an export: a zip of observability data that opens offline as the local stack, with plain
  * `docker compose up` and no network once the images are pulled. It reads the account bucket with
  * the operator's profile and writes only the local zip; nothing in S3 changes. It works outside a
- * cluster workspace. See [TenantExporter] for the tenant export.
+ * cluster workspace. See [TenantExporter] for the tenant export and [QueryExporter] for an export of
+ * clusters or of an experiment by query.
  */
 @RequireProfileSetup
 @Command(
@@ -75,10 +77,11 @@ class ObservabilityExport : PicoBaseCommand() {
     var selector: ExportSelectorOptions = ExportSelectorOptions()
 
     private val tenantExporter: TenantExporter by inject()
+    private val queryExporter: QueryExporter by inject()
 
     override fun execute() {
-        val workspaceTenant = if (clusterStateManager.exists()) clusterState.tenant() else null
-        val selection = ExportSelection.of(selector.choice(), workspaceTenant)
+        val workspace = if (clusterStateManager.exists()) WorkspaceCluster(clusterState.clusterLabelName(), clusterState.tenant()) else null
+        val selection = ExportSelection.of(selector.choice(), workspace?.tenant)
         val target = ExportTarget.of(path)
         when (val chosen = selection.selector) {
             is ExportSelector.Tenant -> tenantExporter.export(target, chosen.tenant)
@@ -86,10 +89,9 @@ class ObservabilityExport : PicoBaseCommand() {
                 selection.tenantChoice?.let {
                     eventBus.emit(Event.Export.TenantChosen(chosen.key.name, it.tenant, it.source.name.lowercase()))
                 }
-                throw CommandFailedException("Exporting an experiment is not available yet; export its tenant with --tenant")
+                queryExporter.export(target, chosen, workspace)
             }
-            is ExportSelector.Clusters ->
-                throw CommandFailedException("Exporting clusters is not available yet; export their tenant with --tenant")
+            is ExportSelector.Clusters -> queryExporter.export(target, chosen, workspace)
         }
     }
 }

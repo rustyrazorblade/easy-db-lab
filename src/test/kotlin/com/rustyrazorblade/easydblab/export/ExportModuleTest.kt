@@ -50,6 +50,11 @@ class ExportModuleTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the module builds the query exporter`() {
+        assertThatCode { getKoin().get<com.rustyrazorblade.easydblab.export.query.QueryExporter>() }.doesNotThrowAnyException()
+    }
+
+    @Test
     fun `the root command routes observability export with an experiment and its tenant`() {
         val parsed =
             CommandLine(

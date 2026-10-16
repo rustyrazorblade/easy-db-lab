@@ -6655,6 +6655,30 @@ sealed interface Event {
         }
 
         /**
+         * Mimir named clusters of the experiment `--experiment` names whose `cluster` label is not a
+         * cluster's `<name>-<id>`; they went into no query and nothing was written.
+         *
+         * @property experiment the experiment's name.
+         * @property tenant its tenant.
+         * @property clusters each such label value.
+         * @property rule the pattern a cluster id matches.
+         */
+        @Serializable
+        @SerialName("Export.InvalidDiscoveredCluster")
+        data class InvalidDiscoveredCluster(
+            val experiment: String,
+            val tenant: String,
+            val clusters: List<String>,
+            val rule: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Experiment $experiment in tenant $tenant has clusters whose cluster label is not a cluster's <name>-<id> " +
+                    "($rule): ${clusters.joinToString(", ")}. They were not queried. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * A query export reads the store through a temporary local stack whose signer reads `~/.aws`
          * with an AWS profile, and the easy-db-lab profile names none; nothing was written.
          */

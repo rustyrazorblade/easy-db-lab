@@ -958,7 +958,7 @@ easy-db-lab observability export ~/acme-export.zip --tenant acme
 | `PATH` | The zip to write (required): a new `.zip` file in a directory that exists. It is never overwritten. The zip holds one directory named after it, without `.zip`. | - |
 | `--tenant` | Export a copy of this tenant's store. With `--experiment`, the experiment's tenant. | - |
 | `--cluster` | Export only this cluster's data, by query (repeatable). The value is the cluster's full `<name>-<id>` (its name, `-`, and its UUID); any other value is refused before anything is read. Clusters of different tenants may be exported together. | - |
-| `--experiment` | Export every cluster of this experiment, in `--tenant`, the workspace's tenant, or `default` outside a workspace; the command says which tenant it used and why. | - |
+| `--experiment` | Export every cluster of this experiment, in `--tenant`, the workspace's tenant, or `default` outside a workspace; the command says which tenant it used and why. Every cluster found must carry a `<name>-<id>` `cluster` label; otherwise the export stops, naming each such value. | - |
 
 Exactly one kind of export is required: `--tenant` alone, `--cluster`, or `--experiment`. No selector, or two kinds, fails and names the three.
 

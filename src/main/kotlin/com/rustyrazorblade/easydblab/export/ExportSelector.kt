@@ -90,8 +90,6 @@ data class ExportSelection(
                 "--cluster <name-id> (repeatable; those clusters only) or --experiment <name> " +
                 "(every cluster of the experiment; add --tenant to name its tenant)."
 
-        private val CLUSTER_ID = Regex(Constants.Observability.CLUSTER_ID_PATTERN)
-
         /**
          * Checks [choice]; [workspaceTenant] is the tenant of the workspace the command runs in, if any.
          *
@@ -111,7 +109,7 @@ data class ExportSelection(
             val clusters = choice.clusters.distinct()
             val kinds = listOfNotNull(tenant, clusters.ifEmpty { null }, experiment)
             if (kinds.size != 1) throw ExportSelectorRefused(CHOICES)
-            clusters.filterNot(CLUSTER_ID::matches).takeIf { it.isNotEmpty() }?.let { throw ClusterIdRefused(it) }
+            ClusterIdRule.violations(clusters).takeIf { it.isNotEmpty() }?.let { throw ClusterIdRefused(it) }
             return when {
                 tenant != null -> ExportSelection(ExportSelector.Tenant(tenant), tenantChoice = null)
                 experiment != null -> experiment(experiment, choice.tenant, workspaceTenant)
@@ -133,6 +131,18 @@ data class ExportSelection(
             return ExportSelection(ExportSelector.Experiment(ExperimentKey(chosen.tenant, name)), chosen)
         }
     }
+}
+
+/**
+ * The rule a cluster id must follow before it goes into a PromQL, LogQL or TraceQL selector, which
+ * takes it unescaped: [Constants.Observability.CLUSTER_ID_PATTERN]. A `--cluster` value and a
+ * cluster Mimir names for an experiment, a pre-label cluster's own id included, both follow it.
+ */
+object ClusterIdRule {
+    private val CLUSTER_ID = Regex(Constants.Observability.CLUSTER_ID_PATTERN)
+
+    /** Each of [values] that is not a cluster id, in order. */
+    fun violations(values: List<String>): List<String> = values.filterNot(CLUSTER_ID::matches)
 }
 
 /** The selector options name no kind of export, or more than one. */

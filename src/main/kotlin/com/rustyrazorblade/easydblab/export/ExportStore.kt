@@ -24,9 +24,12 @@ data class StoreObject(
  * The account bucket as an export reads it. It can only list and read: an export writes nothing to
  * S3, deletes nothing and uploads nothing, and this interface has no way to.
  */
-interface ExportStore {
+interface ExportStore : AutoCloseable {
     /** The bucket, for messages. */
     val bucket: String
+
+    /** Releases the store's client; nothing to release by default. */
+    override fun close() = Unit
 
     /** Every object whose key starts with [prefix], in key order. */
     fun list(prefix: String): List<StoreObject>
@@ -49,8 +52,13 @@ class S3ExportStore(
 ) : ExportStore {
     override fun list(prefix: String): List<StoreObject> =
         s3
-            .listObjectsV2Paginator(ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build())
-            .contents()
+            .listObjectsV2Paginator(
+                ListObjectsV2Request
+                    .builder()
+                    .bucket(bucket)
+                    .prefix(prefix)
+                    .build(),
+            ).contents()
             .map { StoreObject(it.key(), it.size(), it.lastModified()) }
 
     override fun listDirectories(prefix: String): List<String> =
@@ -65,9 +73,17 @@ class S3ExportStore(
             ).commonPrefixes()
             .map { it.prefix() }
 
+    override fun close() = s3.close()
+
     override fun open(key: String): InputStream? =
         try {
-            s3.getObject(GetObjectRequest.builder().bucket(bucket).key(key).build())
+            s3.getObject(
+                GetObjectRequest
+                    .builder()
+                    .bucket(bucket)
+                    .key(key)
+                    .build(),
+            )
         } catch (_: NoSuchKeyException) {
             null
         }

@@ -6308,6 +6308,161 @@ sealed interface Event {
         }
     }
 
+    // =========================================================================
+    // Event.Export — `observability export`: a zip that opens offline as the local stack
+    // =========================================================================
+
+    /**
+     * `observability export`: a zip of a tenant's store (or some clusters' data) with the offline
+     * local stack. It reads the account bucket and writes only the local zip; nothing in S3 changes.
+     */
+    @Serializable
+    sealed interface Export : Event {
+        /**
+         * What an export leaves out, and the issue that brings it.
+         *
+         * @property what the data left out.
+         * @property issue the issue number.
+         */
+        @Serializable
+        data class Exclusion(
+            val what: String,
+            val issue: Int,
+        )
+
+        /**
+         * An experiment export reads [tenant], for the reason [source] names.
+         *
+         * @property experiment the experiment's name.
+         * @property tenant the tenant it reads.
+         * @property source `option` (`--tenant`), `workspace` (the workspace's tenant) or `default`
+         *   (no `--tenant` and no workspace).
+         */
+        @Serializable
+        @SerialName("Export.TenantChosen")
+        data class TenantChosen(
+            val experiment: String,
+            val tenant: String,
+            val source: String,
+        ) : Export {
+            override fun toDisplayString(): String {
+                val why =
+                    when (source) {
+                        "option" -> "given with --tenant"
+                        "workspace" -> "the tenant of this cluster workspace; name another with --tenant"
+                        else -> "the default tenant, since this is not a cluster workspace; name another with --tenant"
+                    }
+                return "Experiment $experiment: using tenant $tenant ($why)"
+            }
+        }
+
+        /**
+         * The export listed what it will copy and found room for it.
+         *
+         * @property tenant the tenant copied.
+         * @property objects the objects it will copy.
+         * @property bytes their size.
+         * @property freeBytes the free space where the zip is written.
+         */
+        @Serializable
+        @SerialName("Export.SizeEstimated")
+        data class SizeEstimated(
+            val tenant: String,
+            val objects: Int,
+            val bytes: Long,
+            val freeBytes: Long,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Exporting tenant $tenant: $objects objects, ${bytes / Constants.Size.BYTES_PER_MIB} MiB ($bytes bytes); " +
+                    "${freeBytes / Constants.Size.BYTES_PER_MIB} MiB free"
+        }
+
+        /**
+         * The data is larger than the free space where the zip is written; nothing was copied.
+         *
+         * @property path the zip's path.
+         * @property bytes the data's size.
+         * @property freeBytes the free space there.
+         */
+        @Serializable
+        @SerialName("Export.InsufficientSpace")
+        data class InsufficientSpace(
+            val path: String,
+            val bytes: Long,
+            val freeBytes: Long,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Not enough disk space for $path: the data is ${bytes / Constants.Size.BYTES_PER_MIB} MiB ($bytes bytes) " +
+                    "and only ${freeBytes / Constants.Size.BYTES_PER_MIB} MiB ($freeBytes bytes) is free. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The tenant has no metrics, logs or traces in the store; nothing was written.
+         *
+         * @property tenant the tenant.
+         * @property prefixes the prefixes the export listed.
+         */
+        @Serializable
+        @SerialName("Export.EmptyTenant")
+        data class EmptyTenant(
+            val tenant: String,
+            val prefixes: List<String>,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Tenant $tenant has no data in the store: nothing under ${prefixes.joinToString(", ")}. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The export failed; no zip is left at its path.
+         *
+         * @property path the zip's path.
+         * @property signal what was being copied (`metrics`, `logs`, `traces`, `annotations`, `reports`, `stack`).
+         * @property step what the export was doing.
+         * @property reason the error.
+         */
+        @Serializable
+        @SerialName("Export.Failed")
+        data class Failed(
+            val path: String,
+            val signal: String,
+            val step: String,
+            val reason: String,
+        ) : Export {
+            override fun toDisplayString(): String = "The export failed copying $signal ($step): $reason\nNo zip was left at $path."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The zip is complete and at its path.
+         *
+         * @property path the zip's path.
+         * @property tenant the tenant exported.
+         * @property entries the files in the zip.
+         * @property bytes their size before compression.
+         * @property excluded what the export leaves out.
+         */
+        @Serializable
+        @SerialName("Export.Completed")
+        data class Completed(
+            val path: String,
+            val tenant: String,
+            val entries: Int,
+            val bytes: Long,
+            val excluded: List<Exclusion>,
+        ) : Export {
+            override fun toDisplayString(): String {
+                val left = excluded.joinToString("\n") { "${it.what.replaceFirstChar(Char::uppercase)} are not included (issue #${it.issue})." }
+                return "Exported tenant $tenant to $path ($entries files, ${bytes / Constants.Size.BYTES_PER_MIB} MiB before compression).\n" +
+                    "$left\nOpen it with: unzip $path, then docker compose up in the directory it makes; see its README.txt."
+            }
+        }
+    }
+
     /**
      * SSH ingress rules that `ingress allow` and `ingress revoke` change on the workspace cluster's
      * security group: one event per CIDR, and one for each precondition that stops the command.

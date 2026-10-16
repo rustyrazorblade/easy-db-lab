@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+
+# The cleanup pod runs on an app node, like every sysbench pod. With none, stop fails and the kit
+# stays marked running.
+edl_require_app_node sysbench
+
 # stop has no args of its own, so default any prepare/start-only vars safely
 # to keep the script working under `set -u`. Defaults match the kit.yaml
 # prepare defaults so cleanup drops the standard set of sbtest tables.
@@ -35,6 +41,8 @@ kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
   --image="docker.io/severalnines/sysbench" \
   --restart=Never \
   --labels="${CLEANUP_LABELS}" \
+  --overrides="$(edl_pod_overrides)" \
+  --override-type=strategic \
   --command -- sysbench \
     ${DB_ARGS} \
     --tables="${TABLES}" \

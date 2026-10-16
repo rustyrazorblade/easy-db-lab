@@ -140,13 +140,17 @@ class KitRunnerCommandEnvironmentTest : KitRunnerCommandTestBase() {
             echo "${'$'}KUBECONFIG" > "${seen.absolutePath}"
             echo "${'$'}PATH" >> "${seen.absolutePath}"
             command -v kubectl >> "${seen.absolutePath}"
+            echo "${'$'}${Constants.Kit.LIBRARY_ENV}" >> "${seen.absolutePath}"
             """.trimIndent(),
         )
 
         val exitCode = command("mydb", "start").call()
 
         assertThat(exitCode).isZero()
-        val (kubeconfig, path, kubectl) = seen.readLines()
+        val (kubeconfig, path, kubectl, library) = seen.readLines()
+        assertThat(
+            library,
+        ).isEqualTo(File(workingDir, "${Constants.ToolWrappers.DIRECTORY}/${Constants.ToolWrappers.KIT_LIBRARY}").absolutePath)
         assertThat(kubeconfig).isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
         assertThat(File(kubeconfig)).isFile()
         assertThat(path.split(File.pathSeparator).first()).isEqualTo(File(workingDir, Constants.ToolWrappers.DIRECTORY).absolutePath)

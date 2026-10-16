@@ -23,6 +23,7 @@
   - [Trino](user-guide/install-trino.md)
   - [TiDB](user-guide/tidb.md)
   - [Sysbench](user-guide/sysbench.md)
+  - [clickhouse-benchmark](user-guide/clickhouse-benchmark.md)
   - [PostgreSQL](user-guide/install-postgres.md)
   - [Platform Substrate](user-guide/platform-substrate.md)
 - [Monitoring](user-guide/monitoring.md)

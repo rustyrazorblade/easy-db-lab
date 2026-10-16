@@ -61,8 +61,14 @@ class KitInstallCommand(
         for ((variable, default) in resolvedDefaults) {
             argValues.putIfAbsent(variable, default)
         }
+        // After the defaults, so an unresolved ${VAR} default (never handed to picocli) is kept.
+        // Recording "" for the rest means an exported shell variable of the same name cannot
+        // reach a kit process in its place.
+        for (arg in config.args) {
+            argValues.putIfAbsent(arg.variable, "")
+        }
 
-        validateKitRefCapability()
+        validateKitRefTarget()
 
         val instanceName = resolveInstanceName()
 
@@ -135,24 +141,24 @@ class KitInstallCommand(
     }
 
     /**
-     * Validates that the target kit declared by a kit-ref arg exposes the required capability.
-     * Fails fast with a clear error rather than letting the bench kit fail at runtime.
+     * Validates that the target kit declared by a kit-ref arg exposes the required capability
+     * and endpoint types. Fails fast with a clear error rather than letting the bench kit fail
+     * at runtime.
      */
-    private fun validateKitRefCapability() {
+    private fun validateKitRefTarget() {
         val kitRefArg = config.kitRefArg ?: return
-        val requiredCapability = kitRefArg.capability.takeIf { it.isNotBlank() } ?: return
         val targetName = argValues[kitRefArg.variable]?.takeIf { it.isNotBlank() } ?: return
+        KitRefTargetValidator(::lookUpInstalledKit).validate(config.name, kitRefArg, targetName)
+    }
 
-        val targetKitDir = File(context.workingDirectory, targetName)
-        val configFile = File(targetKitDir, Constants.Kit.CONFIG_FILE)
-        check(configFile.isFile) {
-            "Target kit '$targetName' is not installed (expected $configFile)"
-        }
-
-        val targetConfig = installConfigYaml.decodeFromString(KitConfig.serializer(), configFile.readText())
-        val hasCapability = targetConfig.capabilities.any { it.type == requiredCapability }
-        check(hasCapability) {
-            "Target kit '$targetName' does not have the '$requiredCapability' capability required by ${config.name}"
+    private fun lookUpInstalledKit(targetName: String): KitRefTargetValidator.TargetLookup {
+        val configFile = File(File(context.workingDirectory, targetName), Constants.Kit.CONFIG_FILE)
+        return when {
+            configFile.isFile ->
+                KitRefTargetValidator.TargetLookup.Installed(
+                    installConfigYaml.decodeFromString(KitConfig.serializer(), configFile.readText()),
+                )
+            else -> KitRefTargetValidator.TargetLookup.NotInstalled(configFile.path)
         }
     }
 

@@ -371,13 +371,17 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-// SysbenchFlagsDocumentedTest reads this user-guide page off the filesystem to check it
-// documents every kit.yaml flag. Gradle can't infer that dependency, so without declaring it
+// KitFlagsDocumentedTest reads these user-guide pages off the filesystem to check they
+// document every kit.yaml flag. Gradle can't infer that dependency, so without declaring it
 // an edit that drops a flag row would be masked by an up-to-date or cached test result.
 tasks.named<Test>("test") {
     inputs
         .file("docs/user-guide/sysbench.md")
         .withPropertyName("sysbenchUserGuide")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs
+        .file("docs/user-guide/clickhouse-benchmark.md")
+        .withPropertyName("clickhouseBenchmarkUserGuide")
         .withPathSensitivity(PathSensitivity.RELATIVE)
 
     // DevLauncherTelemetryTest runs the dev wrapper against a stub docker and launcher.
@@ -421,7 +425,13 @@ tasks.register("testScripts") {
         "testCassandraScripts",
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
+        "testKitShellLib",
+        "testClickhouseBenchmarkReport",
+        "testClickhouseBenchmarkStart",
+        "testClickhouseBenchmarkPrepare",
+        "testClickhouseBenchmarkStop",
         "testSysbenchStartScript",
+        "testSysbenchPrepareScript",
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
@@ -446,13 +456,68 @@ tasks.register<Exec>("testPyroscopeKitLabels") {
     commandLine = listOf("bash", "src/test/shell/pyroscope-kit-labels.test.sh")
 }
 
+// Unit-test the shared kit shell library (configuration/edl-kit-lib.sh): app-node check, pod
+// overrides, labelled ConfigMaps, the pod waits, log following and the gauge push. kubectl, curl,
+// date and sleep are stubbed. Like every kit script test, it also runs under /bin/bash when that is
+// bash 3.x (run-with-bashes.sh), because kit scripts run under the macOS bash 3.2.
+tasks.register<Exec>("testKitShellLib") {
+    group = "Verification"
+    description = "Unit-test the shared kit shell library"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/kit-lib.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's report parser against reports captured from real runs.
+tasks.register<Exec>("testClickhouseBenchmarkReport") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit report parser"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-report.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's start script, its arg checks and the pod-side runner.
+// kubectl, curl, date, sleep and clickhouse-benchmark are stubbed.
+tasks.register<Exec>("testClickhouseBenchmarkStart") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-start.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's prepare script and the pod-side loader. kubectl, curl,
+// date, sleep and clickhouse-client are stubbed.
+tasks.register<Exec>("testClickhouseBenchmarkPrepare") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit prepare script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-prepare.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's stop script: it deletes only the instance's pods and
+// ConfigMaps. kubectl is stubbed.
+tasks.register<Exec>("testClickhouseBenchmarkStop") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-stop.test.sh")
+}
+
 // Unit-test the sysbench kit's start script: it pushes its figures as OTLP JSON to the collector,
 // which labels them with the cluster and sends them to Mimir. kubectl and curl are stubbed.
 tasks.register<Exec>("testSysbenchStartScript") {
     group = "Verification"
     description = "Unit-test the sysbench kit start script"
     workingDir = file(".")
-    commandLine = listOf("bash", "src/test/shell/sysbench-start.test.sh")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-start.test.sh")
+}
+
+// Unit-test the sysbench kit's prepare script: its createdb, cleanup and prepare pods run on an app
+// node, a pod that ends at once does not make it wait, and a failed pod fails it. kubectl is stubbed.
+tasks.register<Exec>("testSysbenchPrepareScript") {
+    group = "Verification"
+    description = "Unit-test the sysbench kit prepare script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-prepare.test.sh")
 }
 
 // Unit-test the sysbench kit's stop script: it finishes and removes its cleanup pod when the target
@@ -461,7 +526,7 @@ tasks.register<Exec>("testSysbenchStopScript") {
     group = "Verification"
     description = "Unit-test the sysbench kit stop script"
     workingDir = file(".")
-    commandLine = listOf("bash", "src/test/shell/sysbench-stop.test.sh")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-stop.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,

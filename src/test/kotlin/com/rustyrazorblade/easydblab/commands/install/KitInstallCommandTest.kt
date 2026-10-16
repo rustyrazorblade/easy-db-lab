@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
@@ -170,6 +171,40 @@ class KitInstallCommandTest : BaseKoinTest() {
             .hasMessageContaining("presto")
     }
 
+    @Test
+    fun `kit-ref with endpoints fails before writing when the target lacks one`() {
+        val benchConfig =
+            KitConfig(
+                name = "clickhouse-benchmark",
+                type = null,
+                args =
+                    listOf(
+                        KitArgSpec(
+                            flag = "--target",
+                            variable = "TARGET",
+                            type = KitArgSpec.ArgType.KIT_REF,
+                            endpoints = listOf(KitEndpoint.EndpointType.NATIVE, KitEndpoint.EndpointType.HTTP),
+                        ),
+                    ),
+            )
+        val targetDir = File(workingDir, "tidb").also { it.mkdirs() }
+        File(targetDir, "kit.yaml").writeText(
+            """
+            name: tidb
+            endpoints:
+              - name: HTTP
+                node-type: db
+                port: 10080
+                type: http
+            """.trimIndent(),
+        )
+
+        assertThatThrownBy { buildAndRun(benchConfig, mapOf("TARGET" to "tidb")) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("Target kit 'tidb' does not have the 'native' endpoint required by clickhouse-benchmark")
+        assertThat(File(workingDir, "clickhouse-benchmark-tidb")).doesNotExist()
+    }
+
     private val extensionsYaml =
         """
         extensions:
@@ -278,6 +313,76 @@ class KitInstallCommandTest : BaseKoinTest() {
         assertThat(resolvedArgs("store")).containsEntry("STORAGE_SIZE", "100Gi")
     }
 
+    /** Parses [args] as the user would type them, then runs the install. */
+    private fun parseAndRun(
+        config: KitConfig,
+        vararg args: String,
+    ) {
+        val cl = factory.build(config, source)
+        cl.parseArgs(*args)
+        (cl.commandSpec.userObject() as KitInstallCommand).execute()
+    }
+
+    @Test
+    fun `an install arg with no value and no default is recorded as an empty string`() {
+        val config =
+            KitConfig(name = "pg", type = null, args = listOf(KitArgSpec(flag = "--extension", variable = "EXTENSION")))
+
+        parseAndRun(config)
+
+        assertThat(File(workingDir, "pg/${Constants.Kit.RESOLVED_ARGS_FILE}").readLines()).contains("EXTENSION=")
+    }
+
+    @Test
+    fun `an unresolved default is kept rather than replaced by an empty string`() {
+        val config =
+            KitConfig(
+                name = "sized",
+                type = null,
+                args = listOf(KitArgSpec(flag = "--nodes", variable = "NODES", default = "\${NOT_A_CLUSTER_VAR}")),
+            )
+
+        parseAndRun(config)
+
+        assertThat(resolvedArgs("sized")).containsEntry("NODES", "\${NOT_A_CLUSTER_VAR}")
+    }
+
+    private val cacheConfig =
+        KitConfig(
+            name = "cache",
+            type = null,
+            args =
+                listOf(
+                    KitArgSpec(
+                        flag = "--s3-cache-on-write",
+                        variable = "S3_CACHE_ON_WRITE",
+                        type = KitArgSpec.ArgType.BOOLEAN,
+                        default = "true",
+                    ),
+                ),
+        )
+
+    @Test
+    fun `a boolean install arg given false as a separate value records false`() {
+        parseAndRun(cacheConfig, "--s3-cache-on-write", "false")
+
+        assertThat(resolvedArgs("cache")).containsEntry("S3_CACHE_ON_WRITE", "false")
+    }
+
+    @Test
+    fun `a boolean install arg given false with an equals sign records false`() {
+        parseAndRun(cacheConfig, "--s3-cache-on-write=false")
+
+        assertThat(resolvedArgs("cache")).containsEntry("S3_CACHE_ON_WRITE", "false")
+    }
+
+    @Test
+    fun `a bare boolean install arg records true`() {
+        parseAndRun(cacheConfig, "--s3-cache-on-write")
+
+        assertThat(resolvedArgs("cache")).containsEntry("S3_CACHE_ON_WRITE", "true")
+    }
+
     @Test
     fun `a failed install step exits non-zero and removes the kit directory instead of throwing`() {
         val config = KitConfig(name = "broken", type = null, install = listOf(InstallStep.Shell("exit 2")))
@@ -298,16 +403,21 @@ class KitInstallCommandTest : BaseKoinTest() {
                 type = null,
                 install =
                     listOf(
-                        InstallStep.Shell("echo \"\$KUBECONFIG\" > '${seen.absolutePath}'\necho \"\$PATH\" >> '${seen.absolutePath}'"),
+                        InstallStep.Shell(
+                            "echo \"\$KUBECONFIG\" > '${seen.absolutePath}'\necho \"\$PATH\" >> '${seen.absolutePath}'\n" +
+                                "echo \"\$${Constants.Kit.LIBRARY_ENV}\" >> '${seen.absolutePath}'",
+                        ),
                     ),
             )
 
         val exitCode = (factory.build(config, source).commandSpec.userObject() as KitInstallCommand).call()
 
         assertThat(exitCode).isZero()
-        val (kubeconfig, path) = seen.readLines()
+        val (kubeconfig, path, library) = seen.readLines()
+        val bin = File(workingDir, Constants.ToolWrappers.DIRECTORY)
         assertThat(kubeconfig).isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
-        assertThat(path.split(File.pathSeparator).first()).isEqualTo(File(workingDir, Constants.ToolWrappers.DIRECTORY).absolutePath)
+        assertThat(path.split(File.pathSeparator).first()).isEqualTo(bin.absolutePath)
+        assertThat(library).isEqualTo(File(bin, Constants.ToolWrappers.KIT_LIBRARY).absolutePath)
     }
 
     /**

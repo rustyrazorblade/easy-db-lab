@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.kits
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.InstallStep
+import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource
 import org.assertj.core.api.Assertions.assertThat
@@ -176,5 +177,14 @@ class ClickHouseKitTest : BaseKoinTest() {
                 .first()
                 .script,
         ).contains("-l $KEEPER_POD_SELECTOR")
+    }
+
+    @Test
+    fun `native endpoint declares the default database and keeps a host and port url`() {
+        val native = kit.config.endpoints.single { it.type == KitEndpoint.EndpointType.NATIVE }
+
+        assertThat(native.port).isEqualTo(30900)
+        assertThat(native.database).isEqualTo("default")
+        assertThat(native.formatUrl("10.0.1.5")).isEqualTo("10.0.1.5:30900")
     }
 }

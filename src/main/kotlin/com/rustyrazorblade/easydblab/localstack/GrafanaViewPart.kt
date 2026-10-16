@@ -133,6 +133,7 @@ object GrafanaViewPart {
                     appTitle = "easy-db-lab local (${spec.mode.home})",
                     dashboardRoot = DASHBOARD_TREE,
                     plugins = plugins,
+                    dataProxyTimeoutSeconds = Constants.LocalStack.GRAFANA_DATAPROXY_TIMEOUT_SECONDS,
                 ).environment()
                     .toMap(),
             volumes =

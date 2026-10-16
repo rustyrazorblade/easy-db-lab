@@ -30,12 +30,15 @@ data class GrafanaImageRenderer(
  * @property plugins the plugins Grafana downloads from grafana.com at start. An exported stack opens
  *   with no network, where a download failure stops Grafana (it exits 1), so it installs none; no
  *   dashboard it carries uses one of these.
+ * @property dataProxyTimeoutSeconds how long Grafana waits for a datasource, or Grafana's 30-second
+ *   default when null. A local stack sets it: a cold query there reads every block from S3.
  */
 data class GrafanaServerSettings(
     val appTitle: String,
     val dashboardRoot: String = GRAFANA_DASHBOARD_ROOT,
     val imageRenderer: GrafanaImageRenderer? = null,
     val plugins: List<String> = DOWNLOADED_PLUGINS,
+    val dataProxyTimeoutSeconds: Int? = null,
 ) {
     companion object {
         /**
@@ -64,6 +67,7 @@ data class GrafanaServerSettings(
                 "GF_BRANDING_APP_TITLE" to appTitle,
                 "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" to "$dashboardRoot/${Constants.Grafana.HOME_DASHBOARD_PATH}",
             ) + rendererEnvironment() +
+            listOfNotNull(dataProxyTimeoutSeconds?.let { "GF_DATAPROXY_TIMEOUT" to it.toString() }) +
             // The Tests and comparison dashboards show a test's documents in an iframe in a Text panel.
             listOf(Constants.Grafana.DISABLE_SANITIZE_HTML_ENV to "true")
 

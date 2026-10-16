@@ -46,6 +46,7 @@ class OfflineStackComposerTest {
 
         assertThat(environment.keys).doesNotContain("GF_INSTALL_PLUGINS", "GF_PLUGINS_PREINSTALL", "GF_PLUGINS_PREINSTALL_SYNC")
         assertThat(environment).containsEntry(Constants.Grafana.DISABLE_SANITIZE_HTML_ENV, "true")
+        assertThat(environment).containsEntry("GF_DATAPROXY_TIMEOUT", "300")
     }
 
     @Test

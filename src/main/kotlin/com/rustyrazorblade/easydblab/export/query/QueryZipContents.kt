@@ -66,8 +66,7 @@ class QueryZipContents(
             }
             val annotations = "${Constants.Observability.GRAFANA_ROOT}/${Constants.Observability.ANNOTATIONS_DIR}/$tenant/"
             val ofClusters = plan.clustersOf(tenant).toSet()
-            store
-                .list(annotations)
+            exportStep(ExportSignal.ANNOTATIONS, "list $annotations") { store.list(annotations) }
                 .filter {
                     it.key
                         .removePrefix(annotations)
@@ -77,7 +76,7 @@ class QueryZipContents(
         }
         plan.covered.forEach { key ->
             val reports = "${Constants.Observability.REPORTS_ROOT}/${key.tenant}/${key.name}/"
-            store.list(reports).forEach { obj ->
+            exportStep(ExportSignal.REPORTS, "list $reports") { store.list(reports) }.forEach { obj ->
                 exportStep(ExportSignal.REPORTS, "copy ${obj.key}") { copy(obj.key, obj.lastModified, zip) }
             }
         }

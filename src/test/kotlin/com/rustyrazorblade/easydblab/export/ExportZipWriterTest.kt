@@ -81,7 +81,7 @@ class ExportZipWriterTest {
                 sink.put("data/a", "first".byteInputStream())
                 sink.put("data/b", FailingStream())
             }
-        }.isInstanceOf(IOException::class.java)
+        }.isInstanceOf(ExportStepFailed::class.java).hasCauseInstanceOf(IOException::class.java)
 
         assertThat(target.zip).doesNotExist()
         assertThat(dir.list()).isEmpty()
@@ -96,7 +96,11 @@ class ExportZipWriterTest {
                 sink.put("data/a", "mine".byteInputStream())
                 target.zip.writeText("someone else's")
             }
-        }.isInstanceOf(IOException::class.java)
+        }.isInstanceOfSatisfying(ExportStepFailed::class.java) { failed ->
+            assertThat(failed.signal).isEqualTo(ExportSignal.STACK)
+            assertThat(failed.step).contains("move")
+            assertThat(failed.cause).isInstanceOf(IOException::class.java).hasMessageContaining("appeared while the export was written")
+        }
 
         assertThat(target.zip.readText()).isEqualTo("someone else's")
         assertThat(dir.list()).containsExactly("out.zip")
@@ -107,7 +111,8 @@ class ExportZipWriterTest {
         val target = ExportTarget.of(File(dir, "out.zip"))
 
         assertThatThrownBy { writer.write(target) { sink -> sink.put("../escape", "x".byteInputStream()) } }
-            .isInstanceOf(IllegalArgumentException::class.java)
+            .isInstanceOf(ExportStepFailed::class.java)
+            .hasCauseInstanceOf(IllegalArgumentException::class.java)
         assertThat(dir.list()).isEmpty()
     }
 

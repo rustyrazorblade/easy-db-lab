@@ -104,7 +104,10 @@ class TenantExporter(
         target: ExportTarget,
         block: (File) -> T,
     ): T {
-        val scratch = Files.createTempDirectory(directory.toPath(), "${target.zip.name}$SCRATCH_PREFIX").toFile()
+        val scratch =
+            exportStep(ExportSignal.LOGS, "create the scratch directory for Loki's index tables in $directory") {
+                Files.createTempDirectory(directory.toPath(), "${target.zip.name}$SCRATCH_PREFIX").toFile()
+            }
         try {
             return block(scratch)
         } finally {

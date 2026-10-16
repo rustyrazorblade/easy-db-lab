@@ -76,7 +76,14 @@ class TenantExporterTest {
 
     private fun target() = ExportTarget.of(File(dir, "acme-export.zip"))
 
-    private fun entries(zip: File): Set<String> = ZipFile(zip).use { file -> file.entries().asSequence().map { it.name }.toSet() }
+    private fun entries(zip: File): Set<String> =
+        ZipFile(zip).use { file ->
+            file
+                .entries()
+                .asSequence()
+                .map { it.name }
+                .toSet()
+        }
 
     @Test
     fun `a tenant export holds the offline stack, the dashboards and the data, and says profiles are left out`() {
@@ -92,7 +99,8 @@ class TenantExporterTest {
             "acme-export/data/tempo/acme/t1/meta.json",
             "acme-export/data/tempo/acme/index.json.gz",
             "acme-export/data/mimir/acme/bucket-index.json.gz",
-            "acme-export/data/loki/acme/fp/chunk",
+            // Loki chunks carry the name Loki's filesystem store gives them (see LokiFilesystemLayout).
+            "acme-export/data/loki/acme/fp/Y2h1bms=",
             "acme-export/data/reports/acme/exp/index.html",
         )
         val completed = events.filterIsInstance<Event.Export.Completed>().single()

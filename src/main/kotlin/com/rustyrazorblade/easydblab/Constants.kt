@@ -1098,6 +1098,30 @@ object Constants {
         }
     }
 
+    /** `observability export`: a zip of a tenant's or some clusters' data that opens offline as a local stack. */
+    object Export {
+        /** The only extension an export's path may have; the zip's one directory is the name without it. */
+        const val ZIP_EXTENSION = ".zip"
+
+        /** Between the path and a random suffix: the name the zip is written under until it is complete. */
+        const val PARTIAL_INFIX = ".partial-"
+
+        /** The buffer one object is streamed into the zip through. */
+        const val COPY_BUFFER_BYTES = 1024 * 1024
+
+        /** The directory of the stack the copied store sits under, mounted read-only into every backend. */
+        const val DATA_DIR = "data"
+
+        /** The file at the root of the stack that says how to open it and which images it needs. */
+        const val README_FILE = "README.txt"
+
+        /** The issue that brings profiles to the local stack and the export. */
+        const val PROFILES_ISSUE = 1016
+
+        /** How many times one Loki index table is copied again after an object listed in it went away mid-copy. */
+        const val LOKI_TABLE_ATTEMPTS = 5
+    }
+
     // Proxy configuration
     object Proxy {
         /**

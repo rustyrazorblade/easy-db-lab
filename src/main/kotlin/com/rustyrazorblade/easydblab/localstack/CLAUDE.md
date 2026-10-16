@@ -16,10 +16,34 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
    `BackendsPart` (`memcached`, `mimir`, `loki`, `tempo`) and `GrafanaViewPart` (`grafana`, `documents-web`).
 3. `LocalStackWriter(toolVersion).write(dir, spec, files)` writes them atomically and then the manifest
    `.easy-db-lab-local-stack.json` (`LocalStackManifest`: tool version, mode, home tenant, tenants, Grafana
-   and documents ports, sha256 per owned file). It returns `LocalStackWriteResult(written, edited)`. It creates a missing
-   directory, uses an empty one, and throws `LocalStackDirectoryRefused` for a non-empty directory with no
-   manifest before writing anything. It refuses (`IllegalArgumentException`) any owned path that is
-   `compose.override.yml`, the manifest, or under `data/`, `cache/`, `grafana-data/` or `dashboards/`.
+   and documents ports, sha256 per owned file). It returns `LocalStackWriteResult(written, edited, manifest,
+   rewrite)`. It creates a missing directory, uses an empty one, and throws `LocalStackDirectoryRefused` for a
+   file or a non-empty directory with no manifest before writing anything (`refuseForeign(dir)` makes the same
+   check on its own and returns the existing manifest). It refuses (`IllegalArgumentException`) any owned path
+   that is `compose.override.yml`, the manifest, or under `data/`, `cache/`, `grafana-data/` or `dashboards/`.
+4. The dashboard tree goes in separately: `LocalStackDashboards.install(dir, manifest, source, reload)` renders a
+   `DashboardTreeSource` with the live context (`cluster` and `experiment` null, the manifest's tenants, the
+   documents URL on its port) through `GrafanaDashboardTreeWriter.render`, and `DashboardTreeInstaller` stages
+   it in `dashboards/.staging-*`, renames the old `current` aside, renames the staged tree into place and
+   removes the old one. Sources: `PackagedDashboardTree` (the core catalog plus every packaged kit,
+   `PackagedKitDashboards`, one folder per instance as a cluster installs it: `<kit>` and `<kit>-<extension>`)
+   and `DirectoryDashboardTree` (`--from`, `<folder>/<file>.json` only).
+
+## Commands and services
+
+- `observability local create <dir> [--tenant]` → `LocalStackCreator`: tenant rule, `refuseForeign`, profile and
+  bucket from `User`, `LocalStackStore.check` (SDK: bucket region, `HeadBucket`, one-key list of `mimir/`;
+  `Event.LocalStack.StoreUnreadable(profile, awsErrorCode)` and `CommandFailedException` on failure, nothing
+  written), `LocalStackStore.tenants` (`TenantDirectory`), compose and write, packaged dashboards, then
+  `LocalStack.Written` (files, edited files, tenants). On a re-run only (`rewrite`), a Grafana answering on the
+  manifest's port reloads its datasources and dashboards (`LocalStack.DatasourcesReloaded`).
+- `observability local dashboards <dir> [--from <dir>]` → `LocalDashboardsRefresher`: reads the manifest, checks
+  `LocalGrafana.isRunning` on its port (`LocalStack.GrafanaNotRunning` and nothing changed when it does not
+  answer), installs and reloads (`LocalStack.DashboardsInstalled`, "Using packaged dashboards" when no `--from`).
+  It never calls docker.
+- `LocalGrafanaHttp`: `GET /api/health`, and `POST /api/admin/provisioning/{datasources,dashboards}/reload` as the
+  server admin (`Constants.Grafana.ADMIN_USER`, basic auth), direct with `Proxy.NO_PROXY`.
+- Wiring: `localStackModule`.
 
 ## Rules the stack encodes
 

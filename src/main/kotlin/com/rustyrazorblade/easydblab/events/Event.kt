@@ -6186,6 +6186,128 @@ sealed interface Event {
         }
     }
 
+    // =========================================================================
+    // Event.LocalStack — the local observability stack (`observability local`)
+    // =========================================================================
+
+    /**
+     * The local observability stack: a docker compose project on this machine that reads the shared
+     * store. `observability local create` writes it, `observability local dashboards` refreshes its
+     * dashboards.
+     */
+    @Serializable
+    sealed interface LocalStack : Event {
+        /**
+         * `local create` could not read the account bucket with the operator's profile, and wrote
+         * nothing.
+         *
+         * @property profile the AWS profile the stack would read the store with.
+         * @property awsErrorCode S3's error code, or the SDK's reason when it loaded no credentials.
+         */
+        @Serializable
+        @SerialName("LocalStack.StoreUnreadable")
+        data class StoreUnreadable(
+            val profile: String,
+            val awsErrorCode: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String =
+                "Cannot read the account bucket with profile $profile: $awsErrorCode\n" +
+                    "Nothing was written. Log in and run the command again: aws sso login --profile $profile"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `local create` wrote the stack's files into [directory].
+         *
+         * @property directory the stack directory.
+         * @property files the number of files the tool owns there.
+         * @property edited the owned files the operator had edited; this write replaced the edits.
+         * @property homeTenant the tenant of the stable datasources.
+         * @property tenants every tenant Grafana has datasources for, sorted.
+         * @property grafanaUrl where the browser reaches the stack's Grafana.
+         */
+        @Serializable
+        @SerialName("LocalStack.Written")
+        data class Written(
+            val directory: String,
+            val files: Int,
+            val edited: List<String>,
+            val homeTenant: String,
+            val tenants: List<String>,
+            val grafanaUrl: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String {
+                val replaced =
+                    if (edited.isEmpty()) {
+                        ""
+                    } else {
+                        "\nThese files had been edited; the edits were replaced: ${edited.joinToString(", ")}"
+                    }
+                return "Wrote the local observability stack to $directory ($files files)$replaced\n" +
+                    "Tenants: ${tenants.joinToString(", ")} (home: $homeTenant)\n" +
+                    "Start it with: cd $directory && docker compose up -d\n" +
+                    "Grafana: $grafanaUrl"
+            }
+        }
+
+        /**
+         * A running local Grafana reloaded its provisioned datasources, so a tenant that is new since
+         * the last `local create` shows with no restart.
+         *
+         * @property grafanaUrl the Grafana that reloaded.
+         */
+        @Serializable
+        @SerialName("LocalStack.DatasourcesReloaded")
+        data class DatasourcesReloaded(
+            val grafanaUrl: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String = "Grafana at $grafanaUrl reloaded its datasources"
+        }
+
+        /**
+         * A dashboard tree was put where the stack's Grafana reads it.
+         *
+         * @property directory the stack directory.
+         * @property dashboards the number of dashboards in the tree.
+         * @property from the directory the dashboards came from, or null for the packaged ones.
+         * @property reloaded whether a running Grafana was asked to reload them.
+         */
+        @Serializable
+        @SerialName("LocalStack.DashboardsInstalled")
+        data class DashboardsInstalled(
+            val directory: String,
+            val dashboards: Int,
+            val from: String?,
+            val reloaded: Boolean,
+        ) : LocalStack {
+            override fun toDisplayString(): String {
+                val source = if (from == null) "Using packaged dashboards" else "Using dashboards from $from"
+                val shown = if (reloaded) "Grafana reloaded them." else "Grafana loads them when the stack starts."
+                return "$source: installed $dashboards dashboards in $directory. $shown"
+            }
+        }
+
+        /**
+         * `local dashboards` found no Grafana answering for the stack, and changed nothing.
+         *
+         * @property directory the stack directory.
+         * @property grafanaUrl where the stack's Grafana should answer.
+         */
+        @Serializable
+        @SerialName("LocalStack.GrafanaNotRunning")
+        data class GrafanaNotRunning(
+            val directory: String,
+            val grafanaUrl: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String =
+                "No Grafana answers at $grafanaUrl for the stack in $directory; nothing was changed. " +
+                    "Start it with: cd $directory && docker compose up -d"
+
+            override fun isError(): Boolean = true
+        }
+    }
+
     /**
      * SSH ingress rules that `ingress allow` and `ingress revoke` change on the workspace cluster's
      * security group: one event per CIDR, and one for each precondition that stops the command.

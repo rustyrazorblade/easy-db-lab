@@ -30,11 +30,15 @@ data class ObservabilityResponse(
  * reached through [LocalhostObservabilityHttp].
  */
 interface ObservabilityHttp {
-    /** GETs [pathAndQuery] from the service on [port], waiting up to [timeout] for the answer. */
+    /**
+     * GETs [pathAndQuery] from the service on [port], waiting up to [timeout] for the answer, with
+     * [headers] besides the tenant (Loki's `X-Loki-Response-Encoding-Flags`, for one).
+     */
     fun get(
         port: Int,
         pathAndQuery: String,
         timeout: Duration = DEFAULT_TIMEOUT,
+        headers: Map<String, String> = emptyMap(),
     ): ObservabilityResponse
 
     /** POSTs [body] as [contentType] to [path] on the service on [port], waiting up to [timeout]. */
@@ -90,7 +94,8 @@ class EndpointObservabilityHttp(
         port: Int,
         pathAndQuery: String,
         timeout: Duration,
-    ): ObservabilityResponse = send(port, pathAndQuery, timeout) { it.get() }
+        headers: Map<String, String>,
+    ): ObservabilityResponse = send(port, pathAndQuery, timeout, headers) { it.get() }
 
     override fun post(
         port: Int,
@@ -98,17 +103,19 @@ class EndpointObservabilityHttp(
         body: String,
         contentType: String,
         timeout: Duration,
-    ): ObservabilityResponse = send(port, path, timeout) { it.post(body.toRequestBody(contentType.toMediaType())) }
+    ): ObservabilityResponse = send(port, path, timeout, emptyMap()) { it.post(body.toRequestBody(contentType.toMediaType())) }
 
     private fun send(
         port: Int,
         pathAndQuery: String,
         timeout: Duration,
+        headers: Map<String, String>,
         method: (Request.Builder) -> Request.Builder,
     ): ObservabilityResponse {
         val target = endpoint.target(port)
         val request =
             method(Request.Builder().url("${target.baseUrl}$pathAndQuery"))
+                .apply { headers.forEach { (name, value) -> header(name, value) } }
                 .header(Constants.Observability.TENANT_HEADER, target.tenant)
                 .build()
         val client =

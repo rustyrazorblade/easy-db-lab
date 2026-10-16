@@ -34,7 +34,10 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
   a table's files are its root files and `<table>/<tenant>/`); Tempo by one listing (blocks with `meta.json` and no
   `meta.compacted.json`), then `TempoTenantIndexWriter`; Mimir from one read of `bucket-index.json.gz` (blocks minus
   deletion marks; marker files left out), then `MimirBucketIndexWriter` last; then the immutable objects (Loki
-  chunks, annotation backups, reports). Everything goes to `data/<key>`. Mimir blocks with no bucket index fail.
+  chunks, annotation backups, reports). Everything goes to `data/<key>`, except Loki chunks: the offline Loki
+  reads a filesystem store, which names a v13 chunk `<tenant>/<fingerprint>/<base64 of from:through:checksum>`
+  (`LokiFilesystemLayout.chunkPath`; S3 keeps the raw name), so the export writes them under that name. The
+  index keeps its keys. Mimir blocks with no bucket index fail.
 - `MimirBucketIndexWriter` / `TempoTenantIndexWriter` — built from a `BlockDirectory` (`FileBlockDirectory` on disk,
   for section 8; the recorder in the zip), never from a copy list, and checked with `requireExactBlocks`: an index
   that leaves out or adds a block, or a block with no `meta.json`, throws `IndexMismatchException`. Mimir: version 2,

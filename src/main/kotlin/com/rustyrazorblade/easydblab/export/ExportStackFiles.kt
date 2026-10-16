@@ -27,10 +27,14 @@ import com.rustyrazorblade.easydblab.services.TemplateService
  *
  * @property dashboards the dashboards to install, the packaged ones.
  * @property toolVersion the version the manifest and the README record.
+ * @property grafanaPort Grafana's port on `127.0.0.1` when the export is opened.
+ * @property documentsPort the documents view's port on `127.0.0.1` when the export is opened.
  */
 class ExportStackFiles(
     private val dashboards: DashboardTreeSource,
     private val toolVersion: String,
+    private val grafanaPort: Int = Constants.LocalStack.DEFAULT_GRAFANA_PORT,
+    private val documentsPort: Int = Constants.LocalStack.DEFAULT_DOCUMENTS_PORT,
 ) {
     private companion object {
         const val README_TEMPLATE = "README.txt"
@@ -46,6 +50,8 @@ class ExportStackFiles(
             LocalStackSpec(
                 mode = LocalStackSpec.Mode.Offline(dataDir = Constants.Export.DATA_DIR, home = tenant),
                 tenants = listOf(tenant),
+                grafanaPort = grafanaPort,
+                documentsPort = documentsPort,
             )
         val stack = LocalStackComposer.compose(spec)
         val owned = stack + (Constants.Export.README_FILE to readme(spec, stack, root).toByteArray())

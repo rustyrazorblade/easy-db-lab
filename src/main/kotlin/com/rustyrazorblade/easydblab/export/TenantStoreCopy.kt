@@ -8,7 +8,23 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.nio.file.Files
+import java.util.Base64
 import java.util.zip.GZIPInputStream
+
+/**
+ * Where Loki's filesystem store keeps a chunk. The offline Loki reads the export as a filesystem store,
+ * which names a schema v12+ chunk `<tenant>/<fingerprint>/<base64 of the last key part>` (standard
+ * base64, padded), where S3 keeps the last part as it is (`from:through:checksum`). Loki's file path
+ * drops the empty parts a `/` in the encoding leaves, and so does this. The index is not renamed: its
+ * files keep their keys on a filesystem store too.
+ */
+internal object LokiFilesystemLayout {
+    /** The filesystem key of the chunk stored in S3 at [key]. */
+    fun chunkPath(key: String): String {
+        val encoded = Base64.getEncoder().encodeToString(key.substringAfterLast('/').toByteArray())
+        return "${key.substringBeforeLast('/')}/$encoded".split('/').filter { it.isNotEmpty() }.joinToString("/")
+    }
+}
 
 /** A tenant has no metrics, logs or traces under any prefix the export looked under. */
 class EmptyTenantException(
@@ -42,7 +58,9 @@ data class TenantCopyPlan(
 
     /** The number of objects the plan copies, from its listings. */
     val objects: Int
-        get() = lokiIndex.size + tempoBlocks.values.sumOf { it.size } + mimirBlocks.values.sumOf { it.size } + immutable.values.sumOf { it.size }
+        get() =
+            lokiIndex.size + tempoBlocks.values.sumOf { it.size } + mimirBlocks.values.sumOf { it.size } +
+                immutable.values.sumOf { it.size }
 }
 
 /**
@@ -122,7 +140,11 @@ class TenantStoreCopy(
     ) {
         plan.lokiTables.forEach { table -> copyLokiTable(table, plan.tenant, zip, scratch) }
 
-        plan.tempoBlocks.forEach { (id, objects) -> exportStep(ExportSignal.TRACES, "copy block $id of ${plan.tenant}") { objects.forEach { copyObject(it, zip) } } }
+        plan.tempoBlocks.forEach { (id, objects) ->
+            exportStep(ExportSignal.TRACES, "copy block $id of ${plan.tenant}") {
+                objects.forEach { copyObject(it, zip) }
+            }
+        }
         if (plan.tempoBlocks.isNotEmpty()) {
             val tenantDir = "${Constants.Export.DATA_DIR}/$TRACES/${plan.tenant}"
             exportStep(ExportSignal.TRACES, "write the tenant index of ${plan.tenant}") {
@@ -130,7 +152,11 @@ class TenantStoreCopy(
             }
         }
 
-        plan.mimirBlocks.forEach { (id, objects) -> exportStep(ExportSignal.METRICS, "copy block $id of ${plan.tenant}") { objects.forEach { copyObject(it, zip) } } }
+        plan.mimirBlocks.forEach { (id, objects) ->
+            exportStep(ExportSignal.METRICS, "copy block $id of ${plan.tenant}") {
+                objects.forEach { copyObject(it, zip) }
+            }
+        }
         if (plan.mimirBlocks.isNotEmpty()) {
             val tenantDir = "${Constants.Export.DATA_DIR}/$METRICS/${plan.tenant}"
             exportStep(ExportSignal.METRICS, "write the bucket index of ${plan.tenant}") {
@@ -139,7 +165,8 @@ class TenantStoreCopy(
         }
 
         plan.immutable.forEach { (signal, objects) ->
-            objects.forEach { exportStep(signal, "copy ${it.key}") { copyObject(it, zip) } }
+            val path: (String) -> String = if (signal == ExportSignal.LOGS) LokiFilesystemLayout::chunkPath else { key -> key }
+            objects.forEach { exportStep(signal, "copy ${it.key}") { copyObject(it, zip, path(it.key)) } }
         }
     }
 
@@ -189,12 +216,14 @@ class TenantStoreCopy(
             obj to file
         }
 
+    /** Copies [obj] to `data/<path>`, its key unless the offline backend names the object otherwise. */
     private fun copyObject(
         obj: StoreObject,
         zip: ExportRecorder,
+        path: String = obj.key,
     ) {
         val input = store.open(obj.key) ?: throw ObjectGoneException(obj.key)
-        zip.put("${Constants.Export.DATA_DIR}/${obj.key}", input, obj.lastModified)
+        zip.put("${Constants.Export.DATA_DIR}/$path", input, obj.lastModified)
     }
 
     /** The objects of every block in [listing] with a `meta.json` and no compacted marker, by block. */
@@ -215,10 +244,20 @@ class TenantStoreCopy(
         val indexKey = "$METRICS/$tenant/${MimirBucketIndexWriter.FILE}"
         val index =
             exportStep(ExportSignal.METRICS, "read $indexKey") {
-                val input = store.open(indexKey) ?: error("$indexKey is missing: the account compactor writes it every minute; start it with 'observability compactor start'")
+                val input =
+                    store.open(indexKey)
+                        ?: error(
+                            "$indexKey is missing: the account compactor writes it every minute; start it with 'observability compactor start'",
+                        )
                 JSON.parseToJsonElement(GZIPInputStream(input).use { it.readBytes() }.decodeToString()).jsonObject
             }
-        fun ids(field: String) = index[field]?.jsonArray.orEmpty().map { (it as JsonObject).getValue("block_id").jsonPrimitive.content }.toSet()
+
+        fun ids(field: String) =
+            index[field]
+                ?.jsonArray
+                .orEmpty()
+                .map { (it as JsonObject).getValue("block_id").jsonPrimitive.content }
+                .toSet()
         val live = ids("blocks") - ids("block_deletion_marks")
         return byBlock(listing, "$METRICS/$tenant/")
             .filterKeys { it in live }

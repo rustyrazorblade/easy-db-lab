@@ -33,7 +33,14 @@ class TenantStoreCopyTest {
 
     /** Every entry the copy put, in order, with its bytes. */
     private val entries = linkedMapOf<String, ByteArray>()
-    private val sink = ExportZipSink { path, input -> input.use { it.readBytes() }.also { entries[path] = it }.size.toLong() }
+    private val sink =
+        ExportZipSink { path, input ->
+            input
+                .use { it.readBytes() }
+                .also { entries[path] = it }
+                .size
+                .toLong()
+        }
 
     private fun run(tenant: String = "acme") = copy.copy(copy.plan(tenant), ExportRecorder(sink), scratch)
 
@@ -45,7 +52,8 @@ class TenantStoreCopyTest {
         store.objects[key] = gzipped to Instant.parse("2026-10-15T10:00:00Z")
     }
 
-    private fun gunzip(bytes: ByteArray): JsonObject = Json.parseToJsonElement(GZIPInputStream(bytes.inputStream()).readBytes().decodeToString()).jsonObject
+    private fun gunzip(bytes: ByteArray): JsonObject =
+        Json.parseToJsonElement(GZIPInputStream(bytes.inputStream()).readBytes().decodeToString()).jsonObject
 
     private fun mimirBlock(
         tenant: String,
@@ -111,11 +119,11 @@ class TenantStoreCopyTest {
             "data/mimir/acme/01Aacme/index",
             "data/mimir/acme/01Aacme/chunks/000001",
             "data/mimir/acme/bucket-index.json.gz",
-            "data/loki/acme/fp1/chunk-1",
+            "data/loki/acme/fp1/Y2h1bmstMQ==",
             "data/grafana/annotations/acme/20261015-100000_c-acme.json",
             "data/reports/acme/exp/index.html",
         )
-        assertThat(entries["data/loki/acme/fp1/chunk-1"]?.decodeToString()).isEqualTo("log chunk of acme")
+        assertThat(entries["data/loki/acme/fp1/Y2h1bmstMQ=="]?.decodeToString()).isEqualTo("log chunk of acme")
     }
 
     @Test
@@ -125,7 +133,9 @@ class TenantStoreCopyTest {
         run()
 
         val order = entries.keys.toList()
+
         fun last(prefix: String) = order.indexOfLast { it.startsWith(prefix) }
+
         fun first(prefix: String) = order.indexOfFirst { it.startsWith(prefix) }
         assertThat(last("data/loki/index/")).isLessThan(first("data/tempo/"))
         assertThat(last("data/tempo/")).isLessThan(first("data/mimir/"))
@@ -143,8 +153,19 @@ class TenantStoreCopyTest {
         run()
 
         val index = gunzip(entries.getValue("data/mimir/acme/bucket-index.json.gz"))
-        assertThat(index.getValue("blocks").jsonArray.map { it.jsonObject.getValue("block_id").jsonPrimitive.content }).containsExactly("01A")
-        assertThat(entries.keys.filter { it.startsWith("data/mimir/acme/01") }.map { it.split('/')[3] }.distinct()).containsExactly("01A")
+        assertThat(
+            index.getValue("blocks").jsonArray.map {
+                it.jsonObject
+                    .getValue("block_id")
+                    .jsonPrimitive.content
+            },
+        ).containsExactly("01A")
+        assertThat(
+            entries.keys
+                .filter { it.startsWith("data/mimir/acme/01") }
+                .map { it.split('/')[3] }
+                .distinct(),
+        ).containsExactly("01A")
         assertThat(store.opened.count { it == "mimir/acme/bucket-index.json.gz" }).isEqualTo(1)
     }
 
@@ -165,8 +186,13 @@ class TenantStoreCopyTest {
         run()
 
         val index = gunzip(entries.getValue("data/mimir/acme/bucket-index.json.gz"))
-        assertThat(index.getValue("blocks").jsonArray.map { it.jsonObject.getValue("block_id").jsonPrimitive.content })
-            .containsExactlyInAnyOrder("01A", "01B")
+        assertThat(
+            index.getValue("blocks").jsonArray.map {
+                it.jsonObject
+                    .getValue("block_id")
+                    .jsonPrimitive.content
+            },
+        ).containsExactlyInAnyOrder("01A", "01B")
         assertThat(entries.keys).noneMatch { it.endsWith("deletion-mark.json") || it.contains("/01M/") }
     }
 
@@ -182,7 +208,13 @@ class TenantStoreCopyTest {
         assertThat(entries.keys.filter { it.startsWith("data/tempo/") })
             .containsExactlyInAnyOrder("data/tempo/acme/t1/data.parquet", "data/tempo/acme/t1/meta.json", "data/tempo/acme/index.json.gz")
         val index = gunzip(entries.getValue("data/tempo/acme/index.json.gz"))
-        assertThat(index.getValue("meta").jsonArray.map { it.jsonObject.getValue("blockID").jsonPrimitive.content }).containsExactly("t1")
+        assertThat(
+            index.getValue("meta").jsonArray.map {
+                it.jsonObject
+                    .getValue("blockID")
+                    .jsonPrimitive.content
+            },
+        ).containsExactly("t1")
     }
 
     @Test
@@ -205,6 +237,26 @@ class TenantStoreCopyTest {
             .containsExactly("data/loki/index/index_1/acme/compacted.tsdb.gz")
     }
 
+    /**
+     * Loki's filesystem store keeps a v13 chunk under `<tenant>/<fingerprint>/` with its last key part
+     * base64-encoded, where S3 has it as it is; the offline Loki reads the zip as a filesystem store.
+     * The pair below is what Loki 3.7.8 wrote to disk for a chunk named by that key.
+     */
+    @Test
+    fun `a Loki chunk is named as Loki's filesystem store names it, so the offline Loki finds it`() {
+        store.put("loki/acme/4dfd726b66f828a3/1a142e71190:1a142e71190:e72c7c6c", "chunk")
+        // Base64 of "???" is "Pz8/": Loki's file path drops the trailing separator, and so does the zip.
+        store.put("loki/acme/fp/???", "other chunk")
+
+        run()
+
+        assertThat(entries.keys.filter { it.startsWith("data/loki/acme/") }).containsExactlyInAnyOrder(
+            "data/loki/acme/4dfd726b66f828a3/MWExNDJlNzExOTA6MWExNDJlNzExOTA6ZTcyYzdjNmM=",
+            "data/loki/acme/fp/Pz8",
+        )
+        assertThat(entries["data/loki/acme/fp/Pz8"]?.decodeToString()).isEqualTo("other chunk")
+    }
+
     @Test
     fun `a tenant with no metrics, logs or traces fails, naming the tenant and the prefixes it looked under`() {
         twoTenants()
@@ -225,8 +277,15 @@ class TenantStoreCopyTest {
 
         val acme =
             store.objects.filterKeys { key ->
-                listOf("mimir/acme/01", "tempo/acme/t-", "loki/acme/", "loki/index/index_20376/acme/", "grafana/annotations/acme/", "reports/acme/")
-                    .any { key.startsWith(it) } || key == "loki/index/index_20376/ingester-1.tsdb.gz"
+                listOf(
+                    "mimir/acme/01",
+                    "tempo/acme/t-",
+                    "loki/acme/",
+                    "loki/index/index_20376/acme/",
+                    "grafana/annotations/acme/",
+                    "reports/acme/",
+                ).any { key.startsWith(it) } ||
+                    key == "loki/index/index_20376/ingester-1.tsdb.gz"
             }
         assertThat(plan.bytes).isEqualTo(acme.values.sumOf { it.first.size.toLong() })
     }

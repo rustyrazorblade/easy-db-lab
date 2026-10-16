@@ -52,7 +52,12 @@ class DashboardTreeInstallerTest {
         DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":1}"))
 
         assertThatThrownBy {
-            DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":2}"), moveIntoPlace = { _, _ -> throw IOException("disk said no") })
+            DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":2}"), moveIntoPlace = {
+                _,
+                _,
+                ->
+                throw IOException("disk said no")
+            })
         }.isInstanceOf(IOException::class.java)
 
         assertThat(filesUnder(current)).containsExactly("kept/k.json")

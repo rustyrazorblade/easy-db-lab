@@ -143,7 +143,9 @@ class ThanosBlockRewrite(
             }
         if (result.timedOut) throw stopAfterTimeout(directory, name, tenantDir.name, staging, result)
         removal.down(directory, name)
-        check(result.exitCode == 0) { "thanos could not rewrite the blocks of ${tenantDir.name} (exit ${result.exitCode}):\n${result.output}" }
+        check(result.exitCode == 0) {
+            "thanos could not rewrite the blocks of ${tenantDir.name} (exit ${result.exitCode}):\n${result.output}"
+        }
     }
 
     /**
@@ -165,7 +167,9 @@ class ThanosBlockRewrite(
         val stopped = kill.exitCode == 0 && removed == null && listed.exitCode == 0 && listed.output.isBlank()
         val head = "thanos did not finish rewriting the blocks of $tenant within $TIMEOUT"
         return if (stopped) {
-            IllegalStateException("$head; its container was stopped and removed, and the staged blocks were left as they were:\n${result.output}")
+            IllegalStateException(
+                "$head; its container was stopped and removed, and the staged blocks were left as they were:\n${result.output}",
+            )
         } else {
             IllegalStateException(
                 "$head, and its container may still be running and writing into $staging. " +

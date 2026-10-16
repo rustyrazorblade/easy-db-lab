@@ -147,9 +147,11 @@ The Experiments table's row links are **Newest report**
 (`reports/${__data.fields.edl_tenant}/${__data.fields.experiment}/index.html`), **Compare clusters**
 (Experiment: Cassandra with the row's `var-experiment` and `var-cluster=$__all`) and **Show here**
 (Tests on that experiment). The Clusters table links each cluster to System Overview and Cassandra
-Overview (with `var-cluster` and the row's window as `from`/`to`), and **Compare with the current
-cluster** opens the cluster pair with `var-cluster_a` set to the row's cluster and no absolute range
-(the own-range rule above); B is the pair's installed default, the current cluster. The report
+Overview (with `var-cluster` and the row's window as `from`/`to`), and **Open as A in the cluster
+pair** opens the cluster pair with `var-cluster_a` set to the row's cluster and no absolute range
+(the own-range rule above); B is the pair's installed default: the current cluster on a cluster, and
+the experiment's newest cluster in the local stack and an export, which have no current cluster. The
+link and the table's description say so, true in both cases. The report
 panel shows `reports/${experiment}/index.html`.
 
 ## Experiments

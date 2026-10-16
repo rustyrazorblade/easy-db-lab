@@ -13,7 +13,8 @@ import java.io.File
  *
  * In order, stopping at the first failure:
  * 1. the home tenant must match the tenant rule;
- * 2. the directory must be missing, empty, or a stack this command wrote ([LocalStackWriter.refuseForeign]);
+ * 2. the directory must be missing, empty, or a stack this command wrote ([LocalStackWriter.refuseForeign]),
+ *    and not an opened export;
  * 3. the profile must name an AWS profile and an account bucket;
  * 4. the profile must be able to read the bucket ([LocalStackStore.check]); otherwise
  *    [Event.LocalStack.StoreUnreadable] and nothing is written;
@@ -54,7 +55,10 @@ class LocalStackCreator(
             "--tenant $homeTenant is not a tenant name: it must match ${Constants.Observability.TENANT_PATTERN} " +
                 "and not be '${Constants.Observability.RESERVED_TENANT}'"
         }
-        writer.refuseForeign(directory)
+        val existing = writer.refuseForeign(directory)
+        if (existing?.mode == LocalStackSpec.Mode.Offline.MANIFEST_NAME) {
+            throw LocalStackDirectoryRefused(directory, "is an opened export, which local create would turn into a live stack")
+        }
         val profile =
             user.awsProfile.ifBlank {
                 error(

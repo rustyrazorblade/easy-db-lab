@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.writeBytesAtomically
 import com.rustyrazorblade.easydblab.writeTextAtomically
 import java.io.File
-import java.security.MessageDigest
 
 /**
  * A stack directory the tool will not write into: it is not empty and holds no manifest of the tool,
@@ -67,19 +66,10 @@ class LocalStackWriter(
             files.keys.filter { path ->
                 val recorded = previous?.files?.get(path)
                 val onDisk = File(directory, path)
-                recorded != null && onDisk.isFile && sha256(onDisk.readBytes()) != recorded
+                recorded != null && onDisk.isFile && LocalStackManifest.sha256(onDisk.readBytes()) != recorded
             }
         files.forEach { (path, bytes) -> File(directory, path).writeBytesAtomically(bytes) }
-        val manifest =
-            LocalStackManifest(
-                toolVersion = toolVersion,
-                mode = spec.mode.manifestName,
-                homeTenant = spec.mode.home,
-                tenants = spec.tenantSet.all,
-                grafanaPort = spec.grafanaPort,
-                documentsPort = spec.documentsPort,
-                files = files.mapValues { sha256(it.value) },
-            )
+        val manifest = LocalStackManifest.of(toolVersion, spec, files)
         manifestFile.writeTextAtomically(manifest.toJson())
         return LocalStackWriteResult(written = files.keys.toList(), edited = edited, manifest = manifest, rewrite = previous != null)
     }
@@ -110,6 +100,4 @@ class LocalStackWriter(
             "$path is under a directory the stack never writes"
         }
     }
-
-    private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 }

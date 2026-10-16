@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.localstack
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * The record a stack directory keeps of what the tool wrote there (`.easy-db-lab-local-stack.json`).
@@ -41,6 +42,28 @@ data class LocalStackManifest(
             }
 
         /** Reads the manifest at [file]. */
-        fun read(file: File): LocalStackManifest = JSON.decodeFromString(serializer(), file.readText())
+        fun read(file: File): LocalStackManifest = fromJson(file.readText())
+
+        /** Reads a manifest written by [toJson]. */
+        fun fromJson(text: String): LocalStackManifest = JSON.decodeFromString(serializer(), text)
+
+        /** The manifest of the stack [spec] whose owned [files] (by relative path) [toolVersion] wrote. */
+        fun of(
+            toolVersion: String,
+            spec: LocalStackSpec,
+            files: Map<String, ByteArray>,
+        ): LocalStackManifest =
+            LocalStackManifest(
+                toolVersion = toolVersion,
+                mode = spec.mode.manifestName,
+                homeTenant = spec.mode.home,
+                tenants = spec.tenantSet.all,
+                grafanaPort = spec.grafanaPort,
+                documentsPort = spec.documentsPort,
+                files = files.mapValues { sha256(it.value) },
+            )
+
+        /** The sha256 of [bytes], in hex, as the manifest records an owned file. */
+        fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
     }
 }

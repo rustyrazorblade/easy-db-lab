@@ -37,7 +37,7 @@ val exportModule =
             val stores = get<CheckedExportStoreFactory>()
             QueryExporter(
                 stores = QueryStoreFactory { stores.openForQuery() },
-                runtime = DockerQueryRuntime(StackRuntime(DockerComposeCli)),
+                runtime = DockerQueryRuntime(StackRuntime(DockerComposeCli, eventBus = get())),
                 stack = stackFiles(),
                 zipWriter = ExportZipWriter(),
                 eventBus = get(),

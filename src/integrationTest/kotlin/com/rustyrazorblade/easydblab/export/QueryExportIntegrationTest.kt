@@ -180,7 +180,7 @@ class QueryExportIntegrationTest {
         val exporter =
             QueryExporter(
                 stores = { QueryStoreAccess(S3ExportStore(minio.s3Client(), bucket), bucket, NetworkMinio.REGION, PROFILE) },
-                runtime = DockerQueryRuntime(StackRuntime(DockerComposeCli, beforeStart = ::readerOverride)),
+                runtime = DockerQueryRuntime(StackRuntime(DockerComposeCli, eventBus, beforeStart = ::readerOverride)),
                 stack =
                     ExportStackFiles(
                         PackagedDashboardTree(GrafanaDashboardCatalog.discover(), PackagedKitDashboards.discover()),

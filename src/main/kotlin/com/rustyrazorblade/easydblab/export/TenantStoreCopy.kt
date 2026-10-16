@@ -1,15 +1,9 @@
 package com.rustyrazorblade.easydblab.export
 
 import com.rustyrazorblade.easydblab.Constants
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.nio.file.Files
 import java.util.Base64
-import java.util.zip.GZIPInputStream
 
 /**
  * Where Loki's filesystem store keeps a chunk. The offline Loki reads the export as a filesystem store,
@@ -97,10 +91,6 @@ class TenantStoreCopy(
         val LOKI_INDEX = "$LOGS/index/"
         const val META = "meta.json"
         const val COMPACTED_META = "meta.compacted.json"
-
-        /** Marker files in a Mimir block directory; a reader needs none. */
-        val MIMIR_MARKS = setOf("deletion-mark.json", "no-compact-mark.json")
-        val JSON = Json { ignoreUnknownKeys = true }
     }
 
     /** Lists everything the export of [tenant] copies; fails when the tenant has no data. */
@@ -241,27 +231,14 @@ class TenantStoreCopy(
         listing: List<StoreObject>,
         tenant: String,
     ): Map<String, List<StoreObject>> {
-        val indexKey = "$METRICS/$tenant/${MimirBucketIndexWriter.FILE}"
-        val index =
-            exportStep(ExportSignal.METRICS, "read $indexKey") {
-                val input =
-                    store.open(indexKey)
-                        ?: error(
-                            "$indexKey is missing: the account compactor writes it every minute; start it with 'observability compactor start'",
-                        )
-                JSON.parseToJsonElement(GZIPInputStream(input).use { it.readBytes() }.decodeToString()).jsonObject
-            }
-
-        fun ids(field: String) =
-            index[field]
-                ?.jsonArray
-                .orEmpty()
-                .map { (it as JsonObject).getValue("block_id").jsonPrimitive.content }
+        val live =
+            exportStep(ExportSignal.METRICS, "read ${MimirStoreIndex.key(tenant)}") { MimirStoreIndex.read(store, tenant) }
+                .live
+                .map { it.id }
                 .toSet()
-        val live = ids("blocks") - ids("block_deletion_marks")
         return byBlock(listing, "$METRICS/$tenant/")
             .filterKeys { it in live }
-            .mapValues { (_, objects) -> objects.filter { it.key.substringAfterLast('/') !in MIMIR_MARKS } }
+            .mapValues { (_, objects) -> objects.filter { it.key.substringAfterLast('/') !in MimirStoreIndex.MARKER_FILES } }
     }
 
     /** The objects of [listing] under a block directory of [tenantPrefix], by block; files at the tenant's root are left out. */

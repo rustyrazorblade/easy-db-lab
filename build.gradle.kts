@@ -425,7 +425,17 @@ tasks.register("testScripts") {
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
+        "testBaseChronyPoll",
     )
+}
+
+// Unit-test the base AMI's chrony change: every Amazon Time Sync source polls every 8 s, other
+// lines are left alone, and a config with no Time Sync source fails the bake. sudo is stubbed.
+tasks.register<Exec>("testBaseChronyPoll") {
+    group = "Verification"
+    description = "Unit-test the base AMI chrony poll script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/base/install/configure_chrony_poll.test.sh")
 }
 
 // Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug

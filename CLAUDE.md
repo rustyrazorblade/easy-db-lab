@@ -340,6 +340,7 @@ and need no Docker:
 ```bash
 ./gradlew testCassandraScripts
 ./gradlew testBaseJdkInstall   # base AMI JDK install (install_jdks.sh)
+./gradlew testBaseChronyPoll   # base AMI chrony poll (configure_chrony_poll.sh)
 ```
 
 Scripts in `packer/cassandra/bin/` are **not bake-time-only** — the AMI puts them on the node's

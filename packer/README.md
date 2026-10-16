@@ -37,6 +37,9 @@ network:
 
 # The base AMI JDK install (base/install/install_jdks.sh); not part of testCassandraScripts
 ./gradlew testBaseJdkInstall
+
+# The base AMI chrony poll (base/install/configure_chrony_poll.sh)
+./gradlew testBaseChronyPoll
 ```
 
 Each test lives next to its script as `<script>.test.sh` and also runs in CI
@@ -117,6 +120,12 @@ pre-rename `eth0` name or its final `ens6`, is `Unmanaged=yes` and Cilium owns i
 the OS DHCPs the new ENI and adds a competing default route, multi-homing the host and breaking
 IMDS/egress/kubelet. The files are inert on Flannel (no secondary ENIs are ever attached) and are
 covered by `./gradlew testPackerBase`.
+
+## Base AMI clock sync
+
+Ubuntu's EC2 image polls the Amazon Time Sync Service every 16 s (`minpoll 4 maxpoll 4` in `/etc/chrony/conf.d/00-cpc.conf`). Between polls the kernel's clock error bound (`maxerror`) grows at 500 ppm, so it reaches about 8 ms before each update.  That is too much for databases that use the bound for correctness.
+
+`base/install/configure_chrony_poll.sh` sets `minpoll 3 maxpoll 3` (8 s) on every Time Sync source line (`169.254.169.123` and `fd00:ec2::123`) and keeps the other options on the line.  The bake fails if the image has no Time Sync source.  The script is covered by `./gradlew testBaseChronyPoll`.
 
 ## Documentation
 

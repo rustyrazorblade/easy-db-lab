@@ -12,6 +12,9 @@ internal interface BackendStorage {
     /** What the cluster's configuration files expand. */
     val environment: Map<String, String>
 
+    /** Loki's environment: [environment], and whatever its S3 client needs besides. */
+    val lokiEnvironment: Map<String, String> get() = environment
+
     /** The services every backend waits for before it starts. */
     val dependsOn: Map<String, ComposeDependency>
 
@@ -47,6 +50,16 @@ internal class GatedStore(
     }
 
     override val environment: Map<String, String> get() = backendEnvironment(bucket = live.bucket, region = live.region, home = live.home)
+
+    // Loki's aws-sdk-go-v2 would add an x-amz-checksum-mode header the signer does not sign, and S3 would
+    // refuse every read: see Constants.LocalStack.AWS_RESPONSE_CHECKSUM_VALIDATION_ENV.
+    override val lokiEnvironment: Map<String, String>
+        get() =
+            environment +
+                mapOf(
+                    Constants.LocalStack.AWS_RESPONSE_CHECKSUM_VALIDATION_ENV to Constants.LocalStack.AWS_CHECKSUM_WHEN_REQUIRED,
+                    Constants.LocalStack.AWS_REQUEST_CHECKSUM_CALCULATION_ENV to Constants.LocalStack.AWS_CHECKSUM_WHEN_REQUIRED,
+                )
 
     override val dependsOn: Map<String, ComposeDependency>
         get() =

@@ -1075,6 +1075,21 @@ object Constants {
         /** How often the signer's healthcheck reads the bucket, so expired credentials show as unhealthy. */
         const val SIGNER_HEALTHCHECK_INTERVAL = "60s"
 
+        /**
+         * aws-sdk-go-v2's switches for the checksum headers it adds to S3 requests. Loki 3.7.8 uses that
+         * SDK, and by default asks for response checksum validation with an `x-amz-checksum-mode` header
+         * on every GetObject; the signer (aws-sigv4-proxy 1.13) does not sign that header, so S3 refuses
+         * the request. Set to [AWS_CHECKSUM_WHEN_REQUIRED], the SDK sends checksum headers only for an
+         * operation that requires one, and no read does.
+         */
+        const val AWS_RESPONSE_CHECKSUM_VALIDATION_ENV = "AWS_RESPONSE_CHECKSUM_VALIDATION"
+
+        /** See [AWS_RESPONSE_CHECKSUM_VALIDATION_ENV]: the request side of the same SDK switch. */
+        const val AWS_REQUEST_CHECKSUM_CALCULATION_ENV = "AWS_REQUEST_CHECKSUM_CALCULATION"
+
+        /** The value of both checksum switches: only when the operation requires a checksum. */
+        const val AWS_CHECKSUM_WHEN_REQUIRED = "when_required"
+
         /** Grafana's localhost port, unless `create` is given another. */
         const val DEFAULT_GRAFANA_PORT = 3000
 

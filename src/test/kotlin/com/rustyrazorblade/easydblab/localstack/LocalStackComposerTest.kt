@@ -141,6 +141,21 @@ class LocalStackComposerTest {
         assertThat(mountedFile("loki", "/etc/loki/loki.yaml")).isEqualTo(resource(LokiManifestBuilder::class.java, "loki.yaml"))
     }
 
+    /**
+     * Loki's aws-sdk-go-v2 asks for checksum validation on every GetObject with an
+     * `x-amz-checksum-mode` header, which the signer does not sign; S3 then refuses the request
+     * ("headers present in the request which were not signed") and Loki reads nothing.
+     */
+    @Test
+    fun `Loki sends a checksum header only when S3 requires one, so the signer signs every header it sends`() {
+        assertThat(service("loki").environment).containsAllEntriesOf(
+            mapOf(
+                "AWS_RESPONSE_CHECKSUM_VALIDATION" to "when_required",
+                "AWS_REQUEST_CHECKSUM_CALCULATION" to "when_required",
+            ),
+        )
+    }
+
     @Test
     fun `Tempo is the single binary with the generated config`() {
         val command = service("tempo").command.orEmpty()

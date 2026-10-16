@@ -37,7 +37,8 @@ internal interface BackendStorage {
 /**
  * The live shared store in S3, read through the gate that refuses every write. Mimir and Loki run the
  * cluster's files byte for byte, pointed at the gate by flags with placeholder keys the signer
- * replaces; Tempo's file is patched ([TempoLocalConfig.live]), since Tempo has no flag for it.
+ * replaces; Tempo's file is patched ([TempoLocalConfig.live]), since Tempo has no flag for it, and
+ * Tempo keeps its block reads in the stack's memcached.
  *
  * @property live the bucket, its region and the home tenant.
  */
@@ -92,7 +93,8 @@ internal class GatedStore(
 
     override fun lokiConfig(clusterYaml: String): String = clusterYaml
 
-    override fun tempoConfig(clusterYaml: String): String = TempoLocalConfig.live(clusterYaml, LocalStackComposer.STORE_GATE_ENDPOINT)
+    override fun tempoConfig(clusterYaml: String): String =
+        TempoLocalConfig.live(clusterYaml, LocalStackComposer.STORE_GATE_ENDPOINT, LocalStackComposer.MEMCACHED_ENDPOINT)
 }
 
 /**

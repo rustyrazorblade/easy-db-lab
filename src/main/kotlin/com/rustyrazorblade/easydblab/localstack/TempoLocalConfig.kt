@@ -37,11 +37,13 @@ object TempoLocalConfig {
 
     /**
      * The live stack's config: [clusterYaml] reading the store through the gate at [s3Endpoint]
-     * (`host:port`, plain HTTP, path-style).
+     * (`host:port`, plain HTTP, path-style), and keeping what it reads in the memcached at
+     * [cacheEndpoint] ([readCache]).
      */
     fun live(
         clusterYaml: String,
         s3Endpoint: String,
+        cacheEndpoint: String,
     ): String =
         YamlDocument.patch(
             clusterYaml,
@@ -51,7 +53,32 @@ object TempoLocalConfig {
                 YamlPatch.set("storage.trace.s3.forcepathstyle", "true"),
                 YamlPatch.set("storage.trace.s3.access_key", PLACEHOLDER_KEY),
                 YamlPatch.set("storage.trace.s3.secret_key", PLACEHOLDER_KEY),
+                YamlPatch.tree("cache", TempoCacheConfig.serializer(), readCache(cacheEndpoint)),
             ) + READ_ONLY,
+        )
+
+    /**
+     * Every block read the live Tempo can cache, kept in the memcached at [endpoint]. A trace-by-id
+     * fetch reads every page of the row groups of the block that holds the trace, whichever trace it
+     * is, so without the `parquet-page` role each fetch from one block read the whole block from S3
+     * again (an 83 MB block: about 183 range reads and 57 MB, about 5s, per fetch). With it, the
+     * first fetch from a block reads it and the next ones read nothing from the store; a search
+     * reads through the same pages. The footer, index and bloom roles keep the smaller reads.
+     */
+    private fun readCache(endpoint: String): TempoCacheConfig =
+        TempoCacheConfig(
+            listOf(
+                TempoCache(
+                    roles = TempoCacheRole.entries,
+                    memcached =
+                        TempoMemcachedClient(
+                            addresses = endpoint,
+                            timeout = Constants.LocalStack.TEMPO_CACHE_TIMEOUT,
+                            maxIdleConnections = Constants.LocalStack.TEMPO_CACHE_MAX_IDLE_CONNECTIONS,
+                            maxItemSize = Constants.LocalStack.TEMPO_CACHE_MAX_ITEM_BYTES,
+                        ),
+                ),
+            ),
         )
 
     /**

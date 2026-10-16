@@ -75,9 +75,9 @@ class MimirManifestBuilder(
         private const val MEMCACHED_THREADS = "4"
 
         /**
-         * memcached's size, connection and thread settings, shared by every memcached that holds
-         * Mimir's caches: the cluster's sidecar and the local docker compose stack's service. Each
-         * caller adds its own listen address and port.
+         * The cluster sidecar's memcached size, connection and thread settings. The local docker
+         * compose stack sizes its own (`Constants.LocalStack.MEMCACHED_MEMORY_MB`), since it also
+         * holds Tempo's block reads.
          */
         val MEMCACHED_SERVER_ARGS =
             listOf(

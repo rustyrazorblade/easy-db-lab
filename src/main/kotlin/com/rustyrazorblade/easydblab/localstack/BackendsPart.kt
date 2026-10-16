@@ -16,8 +16,10 @@ import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
  *   store only, with its own address as the compactor's (it exits at start without one) and no
  *   compactor module.
  * - Mimir's four caches are the stack's memcached, an ordinary service on the project network,
- *   with the cluster's size, connection and thread settings.
- * - Tempo runs as its single binary with the generated configuration.
+ *   with the cluster's connection and thread settings and room for Tempo's block reads.
+ * - Tempo runs as its single binary with the generated configuration. Reading the live store, it
+ *   keeps every block read in the same memcached ([TempoLocalConfig.live]); it starts after
+ *   memcached in either mode, as Mimir does.
  *
  * Each keeps its working state under `cache/<component>`.
  */
@@ -33,7 +35,22 @@ object BackendsPart {
     /** The backends run as root, so they can write the state directories docker creates for them. */
     private const val ROOT_USER = "0"
 
-    private val MEMCACHED = "${Constants.LocalStack.Services.MEMCACHED}:${Constants.K8s.MIMIR_MEMCACHED_PORT}"
+    /** The stack's memcached as a reader backend needs it ([Constants.LocalStack.MEMCACHED_MEMORY_MB]), on the project network. */
+    private val MEMCACHED_ARGS =
+        listOf(
+            "-m",
+            "${Constants.LocalStack.MEMCACHED_MEMORY_MB}",
+            "-I",
+            "${Constants.LocalStack.MEMCACHED_MAX_ITEM_MB}m",
+            "-c",
+            "${Constants.LocalStack.MEMCACHED_MAX_CONNECTIONS}",
+            "-t",
+            "${Constants.LocalStack.MEMCACHED_THREADS}",
+            "-p",
+            "${Constants.K8s.MIMIR_MEMCACHED_PORT}",
+        )
+
+    private val AFTER_MEMCACHED = Constants.LocalStack.Services.MEMCACHED to ComposeDependency.STARTED
 
     /** The part for the live store in [live]'s bucket. */
     fun live(live: LocalStackSpec.Mode.Live): ComposePart = compose(GatedStore(live))
@@ -73,7 +90,7 @@ object BackendsPart {
         ComposeService(
             image = LocalImages.MEMCACHED,
             // No listen address: the cluster's loopback-only one would refuse Mimir's container.
-            command = MimirManifestBuilder.MEMCACHED_SERVER_ARGS + listOf("-p", "${Constants.K8s.MIMIR_MEMCACHED_PORT}"),
+            command = MEMCACHED_ARGS,
             restart = "unless-stopped",
         )
 
@@ -89,10 +106,10 @@ object BackendsPart {
                     "-usage-stats.enabled=false",
                 ) + storage.mimirFlags +
                     listOf(
-                        "-blocks-storage.bucket-store.index-cache.memcached.addresses=$MEMCACHED",
-                        "-blocks-storage.bucket-store.chunks-cache.memcached.addresses=$MEMCACHED",
-                        "-blocks-storage.bucket-store.metadata-cache.memcached.addresses=$MEMCACHED",
-                        "-query-frontend.results-cache.memcached.addresses=$MEMCACHED",
+                        "-blocks-storage.bucket-store.index-cache.memcached.addresses=${LocalStackComposer.MEMCACHED_ENDPOINT}",
+                        "-blocks-storage.bucket-store.chunks-cache.memcached.addresses=${LocalStackComposer.MEMCACHED_ENDPOINT}",
+                        "-blocks-storage.bucket-store.metadata-cache.memcached.addresses=${LocalStackComposer.MEMCACHED_ENDPOINT}",
+                        "-query-frontend.results-cache.memcached.addresses=${LocalStackComposer.MEMCACHED_ENDPOINT}",
                     ),
             environment = storage.environment,
             volumes =
@@ -100,7 +117,7 @@ object BackendsPart {
                     LocalStackComposer.configMount(Constants.LocalStack.Services.MIMIR, MIMIR_CONFIG_DIR),
                     stateMount(Constants.LocalStack.Services.MIMIR, "/data"),
                 ) + storage.mounts,
-            dependsOn = storage.dependsOn + (Constants.LocalStack.Services.MEMCACHED to ComposeDependency.STARTED),
+            dependsOn = storage.dependsOn + AFTER_MEMCACHED,
             restart = "unless-stopped",
         )
 
@@ -138,7 +155,7 @@ object BackendsPart {
                     LocalStackComposer.configMount(Constants.LocalStack.Services.TEMPO, TEMPO_CONFIG_DIR),
                     stateMount(Constants.LocalStack.Services.TEMPO, "/var/tempo"),
                 ) + storage.mounts,
-            dependsOn = storage.dependsOn,
+            dependsOn = storage.dependsOn + AFTER_MEMCACHED,
             restart = "unless-stopped",
         )
 }

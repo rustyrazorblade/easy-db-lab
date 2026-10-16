@@ -63,6 +63,8 @@ import java.util.UUID
  * - **Local Grafana has a cluster's datasources** for `default` and `acme`, and accepts the
  *   provisioning reloads as the server admin.
  * - **`local dashboards --from` loads an edit** into the running Grafana with no container recreated.
+ * - **Tempo reads a block through memcached.** Repeated fetches of one trace stop reading its block's
+ *   `data.parquet` through the gate.
  *
  * A trace counts as found only when `trace.resourceSpans` holds spans: Tempo answers
  * `200 {"trace":{}}` for a trace it does not have.
@@ -88,6 +90,11 @@ class LocalStackReadOnlyIntegrationTest {
         const val HTTP_OK = 200
         const val HTTP_FORBIDDEN = 403
         const val PROBE_TIMEOUT_SECONDS = "5"
+
+        /** Fetches of one trace in a row, and how many of the first may still read the block while Tempo fills its cache. */
+        const val REPEATED_FETCHES = 10
+        const val CACHE_FILL_FETCHES = 3
+        val GATE_LOG_SETTLE: Duration = Duration.ofMillis(500)
 
         /** What Mimir and Tempo write when a block is merged away or marked: deletion, no-compact, compacted. */
         val COMPACTION_MARKS = listOf("deletion-mark.json", "no-compact-mark.json", "meta.compacted.json")
@@ -654,6 +661,41 @@ class LocalStackReadOnlyIntegrationTest {
             metricSeries(HOME).map { it["cluster"] } == listOf(seeded.cluster(HOME))
         }
         assertThat(listing()).isEqualTo(listingBefore)
+    }
+
+    /** How many reads of a Tempo block's `data.parquet` the gate has passed so far. */
+    private fun blockReads(): Int =
+        project
+            .logs(Constants.LocalStack.Services.STORE_GATE)
+            .lines()
+            .count { line ->
+                line.contains(" GET ") &&
+                    line.contains("/${Constants.Observability.TRACES_ROOT}/") &&
+                    line.contains("/data.parquet")
+            }
+
+    /**
+     * A trace-by-id fetch reads every page of the block that holds the trace. Through the stack's
+     * memcached, repeated fetches from one block stop reading it from the store: Tempo stores what it
+     * read in the background, so the first few fetches may still read, and then none does. Without the
+     * cache every fetch read the whole block again.
+     */
+    @Test
+    @Order(8)
+    fun `repeated trace fetches from one block read it from the store a bounded number of times`() {
+        val traceId = seeded.traceIds.getValue(HOME)
+        val readsPerFetch =
+            List(REPEATED_FETCHES) {
+                val before = blockReads()
+                assertThat(traceFound(HOME, traceId)).describedAs("fetch ${it + 1} of trace $traceId").isTrue()
+                // The gate logs a request when it ends; give the log a moment to show the last one.
+                Thread.sleep(GATE_LOG_SETTLE.toMillis())
+                blockReads() - before
+            }
+
+        assertThat(readsPerFetch.drop(CACHE_FILL_FETCHES))
+            .describedAs("block reads per fetch, in order: $readsPerFetch")
+            .containsOnly(0)
     }
 
     private fun grafanaBase(): String = "http://${Constants.LocalStack.LOOPBACK}:${manifest.grafanaPort}"

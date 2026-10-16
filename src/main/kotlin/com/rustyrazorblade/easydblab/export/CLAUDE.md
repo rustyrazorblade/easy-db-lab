@@ -76,7 +76,8 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
    `writer/{store,state/loki,state/tempo}`, `metrics/` and `projects/`, made by the operator. It is never removed;
    `Export.WorkDirectoryKept(path, bytes)` is the last event, on success and on failure (owner decision D17).
 2. The reader (`QueryRuntime.reader`, `ExportReaderStack`: `StoreAccessPart` + `BackendsPart` of the live stack, no
-   Grafana, backends published `127.0.0.1::<port>`) as `edl-export-<id>-reader`. `QueryPlanner` reads its Mimir
+   Grafana, backends published `127.0.0.1::<port>`) as `edl-export-<id>-reader`. Its Tempo reads through its memcached
+   (`TempoLocalConfig.live`, see `localstack/CLAUDE.md`), so the trace fetches of one block read it from S3 once. `QueryPlanner` reads its Mimir
    (`MimirApi`, per tenant header, `|` for federation):
    - `ClusterTenantResolver` for `--cluster` (spike S7): the workspace's state for its own cluster, no query; one store
      tenant: that tenant, checked by a single-tenant `/api/v1/series?match[]=up{cluster="x"}&start=0&end=<now>`;

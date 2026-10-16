@@ -98,6 +98,9 @@ object LocalStackComposer {
     /** The S3 endpoint every component of the stack reads the store through. */
     internal val STORE_GATE_ENDPOINT = "${Constants.LocalStack.Services.STORE_GATE}:${Constants.LocalStack.STORE_PORT}"
 
+    /** The stack's memcached on the project network, which holds Mimir's caches and the live Tempo's. */
+    internal val MEMCACHED_ENDPOINT = "${Constants.LocalStack.Services.MEMCACHED}:${Constants.K8s.MIMIR_MEMCACHED_PORT}"
+
     /** The signer's address on the project network. */
     internal val STORE_SIGNER_ENDPOINT = "${Constants.LocalStack.Services.STORE_SIGNER}:${Constants.LocalStack.STORE_PORT}"
 }

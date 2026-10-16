@@ -1113,6 +1113,40 @@ object Constants {
          */
         const val COLD_READ_TIMEOUT_SECONDS = 300
 
+        /**
+         * The stack's memcached, which holds Mimir's caches and the live Tempo's block reads. A
+         * trace-by-id fetch reads every page of the block holding the trace (an 83 MB block took
+         * about 183 range reads and 57 MB from S3, per fetch); cached, the next fetches from that
+         * block read nothing from the store. memcached takes memory only as it fills.
+         */
+        const val MEMCACHED_MEMORY_MB = 4096
+
+        /**
+         * memcached's largest item. Tempo reads a block in 1 MiB buffers and stores each one as an
+         * item; at the cluster's 1m limit memcached refused every one of them.
+         */
+        const val MEMCACHED_MAX_ITEM_MB = 16
+
+        /** The connections memcached accepts, and its threads: the cluster's sidecar settings. */
+        const val MEMCACHED_MAX_CONNECTIONS = 4096
+        const val MEMCACHED_THREADS = 4
+
+        /**
+         * The largest item the live Tempo stores, below [MEMCACHED_MAX_ITEM_MB], whose limit also
+         * counts the key and item header, so Tempo skips a larger one instead of logging a refused set.
+         */
+        const val TEMPO_CACHE_MAX_ITEM_BYTES = (MEMCACHED_MAX_ITEM_MB - 1) * 1024 * 1024
+
+        /**
+         * The live Tempo's idle connections to memcached. At Tempo's default of 16, eight parallel
+         * trace fetches opened and closed connections until the container ran out of local ports, and
+         * those reads went to the store.
+         */
+        const val TEMPO_CACHE_MAX_IDLE_CONNECTIONS = 512
+
+        /** How long the live Tempo waits for memcached before it reads the store instead (its default is 100ms). */
+        const val TEMPO_CACHE_TIMEOUT = "1s"
+
         /** Grafana's localhost port, unless `create` is given another. */
         const val DEFAULT_GRAFANA_PORT = 3000
 

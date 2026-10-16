@@ -8,6 +8,7 @@ import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
 import com.charleskorn.kaml.YamlScalar
+import kotlinx.serialization.SerializationStrategy
 
 /**
  * One typed change to a parsed YAML document, addressed by the chain of map keys (and list indices,
@@ -35,12 +36,28 @@ sealed interface YamlPatch {
         override val path: List<String>,
     ) : YamlPatch
 
+    /**
+     * Sets the entry at [path] to [value], a whole tree of maps, lists and scalars, creating the maps
+     * on the way and replacing whatever was there. [tree] builds it from a typed value.
+     */
+    data class Tree(
+        override val path: List<String>,
+        val value: YamlNode,
+    ) : YamlPatch
+
     companion object {
         /** `a.b.c` as a path. */
         fun set(
             dottedPath: String,
             value: String,
         ): YamlPatch = Set(dottedPath.split('.'), value)
+
+        /** `a.b.c` as a path, set to [value] encoded with [serializer] (kotlinx.serialization). */
+        fun <T> tree(
+            dottedPath: String,
+            serializer: SerializationStrategy<T>,
+            value: T,
+        ): YamlPatch = Tree(dottedPath.split('.'), YamlDocument.encode(serializer, value))
 
         /** `a.b.c` as a path. */
         fun remove(dottedPath: String): YamlPatch = Remove(dottedPath.split('.'))
@@ -71,6 +88,12 @@ object YamlDocument {
         return yaml.encodeToString(YamlNode.serializer(), patched).trimEnd('\n') + "\n"
     }
 
+    /** [value] as a YAML tree: kaml has no direct encoder to a node, so it reads back its own encoding. */
+    internal fun <T> encode(
+        serializer: SerializationStrategy<T>,
+        value: T,
+    ): YamlNode = yaml.parseToYamlNode(yaml.encodeToString(serializer, value))
+
     private fun apply(
         map: YamlMap,
         patch: YamlPatch,
@@ -89,6 +112,7 @@ object YamlDocument {
                     apply(child, patch, path.drop(1))
                 }
                 patch is YamlPatch.Set -> YamlScalar(patch.value, valuePath)
+                patch is YamlPatch.Tree -> patch.value
                 else -> null
             }
         val entries = LinkedHashMap<YamlScalar, YamlNode>(map.entries)

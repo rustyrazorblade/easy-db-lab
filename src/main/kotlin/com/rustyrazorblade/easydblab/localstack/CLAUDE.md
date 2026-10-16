@@ -92,7 +92,18 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
 - Mimir and Loki run the cluster's `mimir.yaml` and `loki.yaml` byte for byte with flag overrides
   (read-path targets, usage reporting off, the gate as endpoint, placeholder keys; Mimir's four
   `memcached:11211` cache addresses). Tempo runs as the single binary with `TempoLocalConfig.live`, the
-  cluster's `tempo.yaml` patched as typed data through `YamlDocument`/`YamlPatch` (never string-built).
+  cluster's `tempo.yaml` patched as typed data through `YamlDocument`/`YamlPatch` (never string-built;
+  a whole block such as `cache` is a `@Serializable` data class set with `YamlPatch.tree`).
+- The stack's memcached is sized by `Constants.LocalStack` (`MEMCACHED_MEMORY_MB` 4096, `MEMCACHED_MAX_ITEM_MB` 16), not
+  by the cluster sidecar's args, and the live Tempo (so the export's reader too) reads through it: `TempoLocalConfig.live`
+  sets `cache.caches` (`TempoCacheConfig`) with every `TempoCacheRole` (bloom, parquet footer, column and offset index,
+  page) at `LocalStackComposer.MEMCACHED_ENDPOINT`, 512 idle connections, a 1s timeout and a 15 MiB item limit. A
+  trace-by-id fetch reads every page of the row groups of the block that holds the trace (about 150 range reads, the
+  whole block, per fetch), so only `parquet-page` makes repeated fetches from one block read nothing from the store;
+  search reads the same pages. Measured (Tempo 3.0.3, MinIO, one 22 MB block, 2000 fetches 8-way): 361,594 range reads
+  and 45 GB without the cache, 614 reads and 90 MB with it. Tempo stores its 1 MiB read buffers as items, which the
+  cluster's `-I 1m` refused; 16 idle connections ran the container out of local ports under parallel fetches. The
+  offline Tempo has no cache. `LocalStackReadOnlyIntegrationTest` counts the gate's `data.parquet` reads per fetch.
 - The signer mounts `~/.aws` read-only at `/root/.aws` with `HOME=/root` (`Constants.LocalStack.SIGNER_HOME`)
   and `AWS_PROFILE`; its healthcheck lists the bucket every 60s. `store-check` (packaged `store-check.sh`,
   POSIX sh, tested by `./gradlew testLocalStoreCheck`) must pass before any backend starts; it names the

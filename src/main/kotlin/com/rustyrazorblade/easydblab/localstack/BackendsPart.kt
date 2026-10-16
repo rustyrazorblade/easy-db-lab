@@ -22,10 +22,13 @@ import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
  * Each keeps its working state under `cache/<component>`.
  */
 object BackendsPart {
-    private const val MIMIR_CONFIG = "/etc/mimir/mimir.yaml"
-    private const val LOKI_CONFIG = "/etc/loki/loki.yaml"
-    private const val TEMPO_CONFIG = "/etc/tempo/tempo.yaml"
+    private const val MIMIR_CONFIG_DIR = "/etc/mimir"
+    private const val LOKI_CONFIG_DIR = "/etc/loki"
+    private const val TEMPO_CONFIG_DIR = "/etc/tempo"
     private const val TEMPO_FILE = "tempo.yaml"
+    private const val MIMIR_CONFIG = "$MIMIR_CONFIG_DIR/mimir.yaml"
+    private const val LOKI_CONFIG = "$LOKI_CONFIG_DIR/loki.yaml"
+    private const val TEMPO_CONFIG = "$TEMPO_CONFIG_DIR/$TEMPO_FILE"
 
     /** The backends run as root, so they can write the state directories docker creates for them. */
     private const val ROOT_USER = "0"
@@ -52,10 +55,10 @@ object BackendsPart {
                 ),
             files =
                 mapOf(
-                    LocalStackComposer.configPath(MimirManifestBuilder.CONFIG_FILE) to
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.MIMIR, MimirManifestBuilder.CONFIG_FILE) to
                         LocalStackComposer.resourceNextTo(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE),
-                    LocalStackComposer.configPath(LokiManifestBuilder.CONFIG_FILE) to storage.lokiConfig(clusterLoki),
-                    LocalStackComposer.configPath(TEMPO_FILE) to storage.tempoConfig(clusterTempo),
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.LOKI, LokiManifestBuilder.CONFIG_FILE) to storage.lokiConfig(clusterLoki),
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.TEMPO, TEMPO_FILE) to storage.tempoConfig(clusterTempo),
                 ),
         )
     }
@@ -93,7 +96,7 @@ object BackendsPart {
             environment = storage.environment,
             volumes =
                 listOf(
-                    LocalStackComposer.configMount(MimirManifestBuilder.CONFIG_FILE, MIMIR_CONFIG),
+                    LocalStackComposer.configMount(Constants.LocalStack.Services.MIMIR, MIMIR_CONFIG_DIR),
                     stateMount(Constants.LocalStack.Services.MIMIR, "/data"),
                 ) + storage.mounts,
             dependsOn = storage.dependsOn + (Constants.LocalStack.Services.MEMCACHED to ComposeDependency.STARTED),
@@ -116,7 +119,7 @@ object BackendsPart {
             environment = storage.lokiEnvironment,
             volumes =
                 listOf(
-                    LocalStackComposer.configMount(LokiManifestBuilder.CONFIG_FILE, LOKI_CONFIG),
+                    LocalStackComposer.configMount(Constants.LocalStack.Services.LOKI, LOKI_CONFIG_DIR),
                     stateMount(Constants.LocalStack.Services.LOKI, "/loki"),
                 ) + storage.mounts,
             dependsOn = storage.dependsOn,
@@ -131,7 +134,7 @@ object BackendsPart {
             environment = storage.environment,
             volumes =
                 listOf(
-                    LocalStackComposer.configMount(TEMPO_FILE, TEMPO_CONFIG),
+                    LocalStackComposer.configMount(Constants.LocalStack.Services.TEMPO, TEMPO_CONFIG_DIR),
                     stateMount(Constants.LocalStack.Services.TEMPO, "/var/tempo"),
                 ) + storage.mounts,
             dependsOn = storage.dependsOn,

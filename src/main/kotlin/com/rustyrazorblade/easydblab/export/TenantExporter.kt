@@ -64,7 +64,7 @@ class TenantExporter(
     ) {
         stores.open().use { store ->
             val copy = TenantStoreCopy(store, MimirBucketIndexWriter(clock), TempoTenantIndexWriter(clock))
-            val plan = failingWith(target) { plan(copy, tenant) }
+            val plan = eventBus.reportingStepFailure(target) { plan(copy, tenant) }
             val directory = target.zip.absoluteFile.parentFile
             val free = diskSpace.free(directory)
             if (plan.bytes > free) {
@@ -73,7 +73,7 @@ class TenantExporter(
             }
             eventBus.emit(Event.Export.SizeEstimated(tenant, plan.objects, plan.bytes, free))
             val written =
-                failingWith(target) {
+                eventBus.reportingStepFailure(target) {
                     zipWriter.write(target) { sink ->
                         val zip = ExportRecorder(sink)
                         exportStep(ExportSignal.STACK, "write the stack") {
@@ -96,18 +96,6 @@ class TenantExporter(
         } catch (e: EmptyTenantException) {
             eventBus.emit(Event.Export.EmptyTenant(e.tenant, e.prefixes))
             throw CommandFailedException(e.message ?: "Tenant $tenant has no data")
-        }
-
-    /** Runs [block]; an [ExportStepFailed] is reported with [target]'s path and fails the command. */
-    private fun <T> failingWith(
-        target: ExportTarget,
-        block: () -> T,
-    ): T =
-        try {
-            block()
-        } catch (e: ExportStepFailed) {
-            eventBus.emit(Event.Export.Failed(target.zip.path, e.signal.label, e.step, e.cause?.message ?: e.message.orEmpty()))
-            throw CommandFailedException(e.message ?: "The export failed")
         }
 
     /** Runs [block] with a scratch directory of the tool's own beside the zip, removed afterwards. */

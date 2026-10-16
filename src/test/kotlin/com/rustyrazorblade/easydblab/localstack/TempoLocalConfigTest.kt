@@ -15,10 +15,15 @@ import org.junit.jupiter.api.Test
  * tests read the cluster file from the classpath, as the composer does, and parse the result back.
  */
 class TempoLocalConfigTest {
+    private companion object {
+        /** Tempo 3.0.3's `storage.trace.search.read_buffer_size_bytes` default, 1 MiB, which the local stack keeps. */
+        const val TEMPO_READ_BUFFER_BYTES = 1024 * 1024
+    }
+
     private val clusterYaml =
         checkNotNull(TempoManifestBuilder::class.java.getResourceAsStream("tempo.yaml")).bufferedReader().use { it.readText() }
 
-    private val rendered = TempoLocalConfig.live(clusterYaml, s3Endpoint = "store-gate:8080")
+    private val rendered = TempoLocalConfig.live(clusterYaml, s3Endpoint = "store-gate:8080", cacheEndpoint = "memcached:11211")
 
     private fun parse(text: String): YamlMap = Yaml.default.parseToYamlNode(text) as YamlMap
 
@@ -108,6 +113,43 @@ class TempoLocalConfigTest {
                 assertThat(value).describedAs(path.joinToString(".")).isEqualTo(wait)
             }
         }
+    }
+
+    /**
+     * A trace-by-id fetch reads every page of the block's row groups, whichever trace it wants. Only
+     * the `parquet-page` role keeps those pages: with the footer and index roles alone, every repeated
+     * fetch from one block read the whole block again.
+     */
+    @Test
+    fun `the live Tempo reads blocks through the stack's memcached, the parquet pages included`() {
+        val caches = nodeAt(parse(rendered), "cache", "caches") as YamlList
+        val cache = plain(caches.items.single()) as Map<*, *>
+
+        assertThat(cache["roles"] as List<*>).containsExactlyInAnyOrder(
+            "bloom",
+            "parquet-footer",
+            "parquet-column-idx",
+            "parquet-offset-idx",
+            "parquet-page",
+        )
+        val memcached = cache["memcached"] as Map<*, *>
+        assertThat(memcached["addresses"]).isEqualTo("memcached:11211")
+        assertThat(memcached["max_item_size"]).isEqualTo("${Constants.LocalStack.TEMPO_CACHE_MAX_ITEM_BYTES}")
+        // Eight parallel fetches with Tempo's 16 idle connections ran out of local ports, and a
+        // read the cache could not answer in Tempo's 100ms went to the store instead.
+        assertThat(memcached["max_idle_conns"]).isEqualTo("${Constants.LocalStack.TEMPO_CACHE_MAX_IDLE_CONNECTIONS}")
+        assertThat(memcached["timeout"]).isEqualTo(Constants.LocalStack.TEMPO_CACHE_TIMEOUT)
+        // Tempo's YAML decoder refuses a quoted number for an integer field.
+        assertThat(rendered).contains("max_idle_conns: ${Constants.LocalStack.TEMPO_CACHE_MAX_IDLE_CONNECTIONS}")
+    }
+
+    @Test
+    fun `Tempo caches a whole read buffer`() {
+        // Tempo reads a block in 1 MiB buffers, each one cache item.
+        val caches = nodeAt(parse(rendered), "cache", "caches") as YamlList
+        val memcached = (plain(caches.items.single()) as Map<*, *>)["memcached"] as Map<*, *>
+
+        assertThat(memcached["max_item_size"].toString().toInt()).isGreaterThan(TEMPO_READ_BUFFER_BYTES)
     }
 
     @Test

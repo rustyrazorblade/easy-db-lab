@@ -1,5 +1,9 @@
 package com.rustyrazorblade.easydblab.localstack
 
+import com.charleskorn.kaml.Yaml
+import com.charleskorn.kaml.YamlList
+import com.charleskorn.kaml.YamlMap
+import com.charleskorn.kaml.YamlScalar
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
@@ -143,9 +147,39 @@ class LocalStackComposerTest {
             "-query-frontend.results-cache.memcached.addresses=memcached:11211",
         )
         val memcached = service("memcached")
-        assertThat(memcached.command).isEqualTo(MimirManifestBuilder.MEMCACHED_SERVER_ARGS + listOf("-p", "11211"))
+        assertThat(memcached.command).containsSequence("-p", "11211")
         assertThat(memcached.command).doesNotContain("-l")
         assertThat(service("mimir").dependsOn).containsKey("memcached")
+    }
+
+    /** memcached's value of [flag], such as `-I 16m`, in bytes. */
+    private fun memcachedSize(flag: String): Long {
+        val command = service("memcached").command.orEmpty()
+        val value = command[command.indexOf(flag) + 1]
+        val units = mapOf('k' to (1L shl 10), 'm' to (1L shl 20), 'g' to (1L shl 30))
+        return units[value.last()]?.let { value.dropLast(1).toLong() * it } ?: value.toLong()
+    }
+
+    /**
+     * Tempo's trace-by-id fetch reads every page of a block, and only cached pages stop a repeated
+     * fetch from reading the whole block again. memcached refuses an item over its `-I` limit, and at
+     * the cluster's 1m it refused every 1 MiB read buffer Tempo stored.
+     */
+    @Test
+    fun `Tempo reads through the stack's memcached, whose item limit holds the largest item Tempo stores`() {
+        val tempo = Yaml.default.parseToYamlNode(mountedFile("tempo", "/etc/tempo/tempo.yaml")) as YamlMap
+        val cache =
+            tempo
+                .get<YamlMap>("cache")
+                ?.get<YamlList>("caches")
+                ?.items
+                ?.single() as YamlMap
+        val client = checkNotNull(cache.get<YamlMap>("memcached"))
+        val largestItem = checkNotNull(client.get<YamlScalar>("max_item_size")).toLong()
+
+        assertThat(checkNotNull(client.get<YamlScalar>("addresses")).content).isEqualTo("memcached:11211")
+        assertThat(memcachedSize("-I")).isGreaterThan(largestItem)
+        assertThat(service("tempo").dependsOn).containsKey("memcached")
     }
 
     @Test
@@ -187,7 +221,9 @@ class LocalStackComposerTest {
 
         assertThat(command).containsExactly("-config.file=/etc/tempo/tempo.yaml", "-config.expand-env=true")
         assertThat(mountedFile("tempo", "/etc/tempo/tempo.yaml"))
-            .isEqualTo(TempoLocalConfig.live(resource(TempoManifestBuilder::class.java, "tempo.yaml"), "store-gate:8080"))
+            .isEqualTo(
+                TempoLocalConfig.live(resource(TempoManifestBuilder::class.java, "tempo.yaml"), "store-gate:8080", "memcached:11211"),
+            )
     }
 
     @Test
@@ -377,6 +413,13 @@ class LocalStackComposerTest {
         // string") and a bare number as a user.
         val yaml = text(Constants.LocalStack.COMPOSE_FILE)
 
-        assertThat(yaml).contains("- \"2048\"", "user: \"0\"", "\"GF_USERS_ALLOW_SIGN_UP\": \"false\"", "restart: \"no\"")
+        assertThat(
+            yaml,
+        ).contains(
+            "- \"${Constants.LocalStack.MEMCACHED_MEMORY_MB}\"",
+            "user: \"0\"",
+            "\"GF_USERS_ALLOW_SIGN_UP\": \"false\"",
+            "restart: \"no\"",
+        )
     }
 }

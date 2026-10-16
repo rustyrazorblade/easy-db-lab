@@ -63,6 +63,8 @@ The first start takes a minute or two: Mimir loads the store's block index, Loki
 
 The first query over older data is slow: nothing is cached yet, and Mimir, Loki and Tempo read the blocks and chunks from S3. A panel can take a minute or more the first time and is fast after that, while the caches are warm. Grafana waits up to five minutes for a datasource, instead of its default 30 seconds, and Tempo waits as long for a cold read of its blocks, instead of its own 30 seconds for a search and 10 seconds for a trace lookup. A cold trace search or trace lookup that takes less than five minutes therefore shows its data rather than a 502.
 
+The stack's memcached (4 GB, taking memory only as it fills) holds Mimir's caches and everything Tempo reads from a block. A trace lookup reads every page of the block that holds the trace, whichever trace it is, so the first lookup in a block reads the whole block from S3 and the next lookups and searches in that block read it from memory. The caches only hold copies; `docker compose down` empties them, and nothing is lost.
+
 Grafana installs no plugin at start: no packaged dashboard needs one, and the download from grafana.com could hold its start for minutes. A cluster's Grafana still installs them, since the ClickHouse kit's datasource is one.
 
 The datasources are the ones a cluster's Grafana has, with the same UIDs:
@@ -265,7 +267,7 @@ easy-db-lab observability export ~/e1.zip --experiment e1 --tenant acme
 
 `--cluster` finds each cluster's tenant: from the workspace when you run it in that cluster's own workspace, otherwise from the store, and it says which for each cluster. Clusters of different tenants may be exported together; the first cluster's tenant is the one the stable datasources read, and the opened stack has datasources for every tenant in the zip.
 
-These exports read by query rather than copying the store. They start two temporary docker compose projects: a read-only reader over the live store, with the same read gate and signer as `local create` (so they need docker and an AWS profile, not access keys), and a writer whose Loki and Tempo keep what is read. Metric blocks are copied and rewritten with thanos, with no network, to keep only the selected clusters' series. The zip holds the selected clusters' metrics, logs and traces, their annotation backups, and every report of each experiment they belong to, and nothing of any other cluster. Nothing in the bucket is written or deleted.
+These exports read by query rather than copying the store. They start two temporary docker compose projects: a read-only reader over the live store, with the same read gate and signer as `local create` (so they need docker and an AWS profile, not access keys), and a writer whose Loki and Tempo keep what is read. The reader's Tempo keeps every block it reads in the reader's memcached, as the local stack does, so fetching the many traces of one block reads that block from S3 once rather than once per trace. Metric blocks are copied and rewritten with thanos, with no network, to keep only the selected clusters' series. The zip holds the selected clusters' metrics, logs and traces, their annotation backups, and every report of each experiment they belong to, and nothing of any other cluster. Nothing in the bucket is written or deleted.
 
 ```
 Exporting 2 clusters: lab-0f8fad5b-d9cb-469f-a165-70867728950e (tenant acme, found by querying the store), lab-7c9e6679-7425-40de-944b-e07fc1f90ae7 (tenant default, found by querying the store). Home tenant: acme

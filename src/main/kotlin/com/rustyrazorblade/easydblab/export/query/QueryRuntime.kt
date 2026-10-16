@@ -94,7 +94,7 @@ class DockerQueryRuntime(
         )
 
     override fun rewrite(work: QueryWorkDirectory): BlockRewrite =
-        ThanosBlockRewrite(runtime.compose, work.projects, work.project, owner(work.root))
+        ThanosBlockRewrite(runtime.compose, work.projects, work.project, owner(work.root), runtime.eventBus)
 
     /** The `uid:gid` that owns [directory]: the operator, who made it. */
     private fun owner(directory: File): String {

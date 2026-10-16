@@ -82,6 +82,17 @@ class ExportStacksTest {
     }
 
     @Test
+    fun `the reader's Tempo waits for a cold read as long as the export waits for it`() {
+        val tempo = String(ExportReaderStack.compose(live).getValue("config/tempo/tempo.yaml"))
+        val wait = "${Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS}s"
+
+        assertThat(scalar(tempo, "querier.search.query_timeout")).isEqualTo(wait)
+        assertThat(scalar(tempo, "querier.trace_by_id.query_timeout")).isEqualTo(wait)
+        assertThat(scalar(tempo, "server.http_server_read_timeout")).isEqualTo(wait)
+        assertThat(scalar(tempo, "server.http_server_write_timeout")).isEqualTo(wait)
+    }
+
+    @Test
     fun `only the reader's backends are published, each on a random loopback port`() {
         val services = compose(ExportReaderStack.compose(live)).services
 

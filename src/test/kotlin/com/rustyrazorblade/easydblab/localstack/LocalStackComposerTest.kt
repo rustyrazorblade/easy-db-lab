@@ -327,7 +327,7 @@ class LocalStackComposerTest {
                     appTitle = "easy-db-lab local (default)",
                     dashboardRoot = tree,
                     plugins = emptyList(),
-                    dataProxyTimeoutSeconds = Constants.LocalStack.GRAFANA_DATAPROXY_TIMEOUT_SECONDS,
+                    dataProxyTimeoutSeconds = Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS,
                     dataSourceProxyAllowList = BackendUrls.LOCAL_COMPOSE.hostPorts(),
                 ).environment().toMap(),
             )

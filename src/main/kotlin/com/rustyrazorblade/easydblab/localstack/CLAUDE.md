@@ -119,5 +119,10 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
 - The live Loki runs with `AWS_RESPONSE_CHECKSUM_VALIDATION` and `AWS_REQUEST_CHECKSUM_CALCULATION` set to
   `when_required` (`GatedStore.lokiEnvironment`): its aws-sdk-go-v2 otherwise adds an `x-amz-checksum-mode` header
   the signer does not sign, and S3 refuses every read.
-- Both local Grafanas wait `Constants.LocalStack.GRAFANA_DATAPROXY_TIMEOUT_SECONDS` (300s) for a datasource
+- Both local Grafanas wait `Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS` (300s) for a datasource
   (`GF_DATAPROXY_TIMEOUT`): a cold query over older data outlasted the 30s default. A cluster's Grafana keeps it.
+  The local and offline Tempo (and so the export's reader) wait as long: `TempoLocalConfig` sets
+  `server.http_server_read_timeout`, `server.http_server_write_timeout`, `querier.search.query_timeout` and
+  `querier.trace_by_id.query_timeout` to it (Tempo 3.0.3's 30s and 10s ended cold range reads of large blocks with
+  502s and 500s). The trace export waits `Constants.Export.Query.TEMPO_ANSWER_MARGIN_SECONDS` longer than that.
+  `YamlDocument.patch` ends every file it writes with a newline.

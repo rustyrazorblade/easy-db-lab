@@ -1102,11 +1102,13 @@ object Constants {
         const val AWS_CHECKSUM_WHEN_REQUIRED = "when_required"
 
         /**
-         * How long a local stack's Grafana waits for a datasource (`GF_DATAPROXY_TIMEOUT`). A cold
-         * query over older data reads every block and chunk from S3 and outlasts Grafana's 30-second
-         * default, which shows as a 502. A cluster's Grafana keeps the default.
+         * How long a cold read over older data may take in a local stack or the export's reader: a
+         * local Grafana's wait for a datasource (`GF_DATAPROXY_TIMEOUT`) and the local Tempo's server
+         * and querier timeouts (`TempoLocalConfig`). Such a read fetches every block and chunk it
+         * needs from S3 and outlasted Grafana's 30-second default and Tempo 3.0.3's 30s (10s by id),
+         * which showed as 502s in Grafana and 500s to the export. A cluster keeps the defaults.
          */
-        const val GRAFANA_DATAPROXY_TIMEOUT_SECONDS = 300
+        const val COLD_READ_TIMEOUT_SECONDS = 300
 
         /** Grafana's localhost port, unless `create` is given another. */
         const val DEFAULT_GRAFANA_PORT = 3000
@@ -1200,6 +1202,12 @@ object Constants {
 
             /** The traces one search of a trace export asks Tempo for; a window that returns this many is split. */
             const val TRACE_SEARCH_LIMIT = 1000
+
+            /**
+             * How much longer a trace export waits for the reader's Tempo than Tempo waits for a cold
+             * read (`LocalStack.COLD_READ_TIMEOUT_SECONDS`), so Tempo's own answer arrives first.
+             */
+            const val TEMPO_ANSWER_MARGIN_SECONDS = 30L
 
             /** The longest trace search window, Tempo's `query_frontend.search.max_duration` (spike S3). */
             const val TRACE_SEARCH_MAX_HOURS = 168L

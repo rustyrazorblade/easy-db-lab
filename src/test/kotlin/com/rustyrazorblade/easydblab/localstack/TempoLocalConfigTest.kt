@@ -5,6 +5,7 @@ import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
 import com.charleskorn.kaml.YamlScalar
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -90,6 +91,32 @@ class TempoLocalConfigTest {
     }
 
     @Test
+    fun `live and offline, Tempo waits for a cold read as long as Grafana waits for Tempo`() {
+        // Tempo 3.0.3's 30s (10s by id) defaults ended cold range reads of large blocks with a 502
+        // in Grafana and a 500 to the export, while Grafana itself waited five minutes.
+        val wait = "${Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS}s"
+        val offline = parse(TempoLocalConfig.offline(clusterYaml, tracesPath = "/store/tempo"))
+
+        for (config in listOf(parse(rendered), offline)) {
+            for (path in listOf(
+                listOf("server", "http_server_read_timeout"),
+                listOf("server", "http_server_write_timeout"),
+                listOf("querier", "search", "query_timeout"),
+                listOf("querier", "trace_by_id", "query_timeout"),
+            )) {
+                val value = (nodeAt(config, *path.toTypedArray()) as? YamlScalar)?.content
+                assertThat(value).describedAs(path.joinToString(".")).isEqualTo(wait)
+            }
+        }
+    }
+
+    @Test
+    fun `the rendered file ends with a newline`() {
+        assertThat(rendered).endsWith("\n")
+        assertThat(TempoLocalConfig.offline(clusterYaml, tracesPath = "/store/tempo")).endsWith("\n")
+    }
+
+    @Test
     fun `every other setting is the cluster's, unchanged`() {
         val cluster = parse(clusterYaml)
         val local = parse(rendered)
@@ -98,12 +125,16 @@ class TempoLocalConfigTest {
             "live_store",
             "distributor",
             "metrics_generator",
-            "server",
             "multitenancy_enabled",
             "stream_over_http_enabled",
         )) {
             assertThat(plain(nodeAt(local, key))).describedAs(key).isEqualTo(plain(nodeAt(cluster, key)))
         }
+        // The server keeps the cluster's ports; only its two timeouts are the local stack's.
+        val localServer = plain(nodeAt(local, "server")) as Map<*, *>
+        val clusterServer = plain(nodeAt(cluster, "server")) as Map<*, *>
+        assertThat(localServer.filterKeys { it in clusterServer.keys }).isEqualTo(clusterServer)
+        assertThat(localServer.keys - clusterServer.keys).containsExactlyInAnyOrder("http_server_read_timeout", "http_server_write_timeout")
         assertThat(plain(nodeAt(local, "storage", "trace", "wal"))).isEqualTo(plain(nodeAt(cluster, "storage", "trace", "wal")))
         assertThat(
             plain(nodeAt(local, "overrides", "defaults", "ingestion")),

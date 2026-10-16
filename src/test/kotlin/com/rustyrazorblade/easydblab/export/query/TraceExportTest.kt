@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.export.query
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -124,6 +125,18 @@ class TraceExportTest {
         assertThat(fetch.param("start")).isEqualTo(range.start.epochSecond.toString())
         assertThat(fetch.param("end")).isEqualTo(range.end.epochSecond.toString())
         assertThat(backends.calls.filter { it.route == "/v1/traces" }.map { it.tenant }).containsOnly("acme")
+    }
+
+    @Test
+    fun `the export waits for Tempo longer than Tempo waits for a cold read, so Tempo's own answer arrives`() {
+        traces = mapOf("0abc0000000000000000000000000002" to start.epochSecond + 60)
+
+        export()
+
+        val tempoWait = Duration.ofSeconds(Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS.toLong())
+        val reads = backends.calls.filter { it.route == "/api/search" || it.route.startsWith("/api/v2/traces/") }
+        assertThat(reads.map { it.route.substringAfter("/api/").substringBefore('/') }).contains("search", "v2")
+        assertThat(reads).allSatisfy { assertThat(it.timeout).isGreaterThan(tempoWait) }
     }
 
     @Test

@@ -11,14 +11,18 @@ import com.charleskorn.kaml.YamlScalar
  * than that some text appears somewhere in the file.
  */
 object YamlTestSupport {
-    /** The node at [path] in [yaml], or null when any key on the way is missing. */
+    /** The node at [path] in [yaml], or null when any key on the way is missing. A number steps into a list. */
     fun nodeAt(
         yaml: String,
         vararg path: String,
     ): YamlNode? {
         var node: YamlNode? = Yaml.default.parseToYamlNode(yaml)
         for (key in path) {
-            node = (node as? YamlMap)?.get<YamlNode>(key) ?: return null
+            node =
+                when (val current = node) {
+                    is YamlList -> key.toIntOrNull()?.let { current.items.getOrNull(it) }
+                    else -> (current as? YamlMap)?.get<YamlNode>(key)
+                } ?: return null
         }
         return node
     }

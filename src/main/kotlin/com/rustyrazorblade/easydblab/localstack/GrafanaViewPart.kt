@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardProvi
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDocumentsSidecars
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaServerSettings
+import com.rustyrazorblade.easydblab.services.TemplateService
 
 /**
  * What the browser sees of a local stack: Grafana and the documents web server, each published on
@@ -13,10 +14,11 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaServerSettings
  *
  * Grafana's datasources are built by the same code as a cluster's ([GrafanaDatasourceSet]), from the
  * spec's tenants and home tenant, so the UIDs and types are a cluster's and only the URLs differ
- * ([BackendUrls.LOCAL_COMPOSE]). Its server settings are a cluster's ([GrafanaServerSettings]). Its
+ * ([BackendUrls.LOCAL_COMPOSE]). Its server settings are a cluster's ([GrafanaServerSettings]), except
+ * that an offline stack downloads no plugin: with no network the download fails and Grafana exits. Its
  * one dashboard provider sweeps the provisioned tree in `dashboards/current`; that tree and the
  * staging trees beside it are written outside the composer. The documents web server is the
- * cluster's, forwarding to the read gate instead of a signer on loopback.
+ * cluster's, forwarding to the read gate (live) or serving the export's copy from disk (offline).
  */
 object GrafanaViewPart {
     private const val GRAFANA_PORT = Constants.K8s.GRAFANA_PORT
@@ -24,7 +26,11 @@ object GrafanaViewPart {
     private const val DATASOURCES_FILE = "grafana/provisioning/datasources/datasources.yaml"
     private const val DASHBOARDS_FILE = "grafana/provisioning/dashboards/dashboards.yaml"
     private const val DOCUMENTS_FILE = "documents-nginx.conf"
+    private const val OFFLINE_DOCUMENTS_TEMPLATE = "documents-nginx-offline.conf"
     private const val NGINX_CONFIG = "/etc/nginx/nginx.conf"
+
+    /** Where the offline documents view sees the export's data directory; its config's `root`. */
+    private const val OFFLINE_DOCUMENTS_ROOT = "/data"
 
     /** Grafana runs as root, so it can write the `grafana-data` directory docker creates for it. */
     private const val ROOT_USER = "0"
@@ -32,16 +38,72 @@ object GrafanaViewPart {
     /** The provisioned dashboard tree, as Grafana sees it. */
     private const val DASHBOARD_TREE = "${Constants.LocalStack.DASHBOARDS_MOUNT}/${Constants.LocalStack.DASHBOARDS_TREE}"
 
-    /** The part for [spec], whose documents come from [documentsBucket]. */
+    /** Where the documents view reads the reports, and what that means for the stack. */
+    sealed interface Documents {
+        /** The documents web server's configuration file. */
+        fun config(): String
+
+        /** What the documents web server mounts besides its configuration. */
+        val mounts: List<ComposeMount>
+
+        /** What the documents web server waits for. */
+        val dependsOn: Map<String, ComposeDependency>?
+
+        /**
+         * The account bucket, read through the gate; the stack has the network.
+         *
+         * @property bucket the account bucket.
+         */
+        data class FromStore(
+            val bucket: String,
+        ) : Documents {
+            override fun config(): String =
+                GrafanaDocumentsSidecars.renderWebServerConfig(
+                    bucket = bucket,
+                    upstream = LocalStackComposer.STORE_GATE_ENDPOINT,
+                    listenPort = Constants.Grafana.Documents.WEB_PORT,
+                )
+
+            override val mounts: List<ComposeMount> get() = emptyList()
+
+            override val dependsOn: Map<String, ComposeDependency>
+                get() = mapOf(Constants.LocalStack.Services.STORE_GATE to ComposeDependency.STARTED)
+        }
+
+        /**
+         * The export's copy on disk, mounted read-only; the stack may have no network.
+         *
+         * @property dataDir the stack's data directory, relative to it.
+         */
+        data class FromDisk(
+            val dataDir: String,
+        ) : Documents {
+            override fun config(): String =
+                TemplateService
+                    .Template(LocalStackComposer.resource(OFFLINE_DOCUMENTS_TEMPLATE), emptyMap())
+                    .substitute(mapOf("DOCUMENTS_WEB_PORT" to Constants.Grafana.Documents.WEB_PORT.toString()))
+
+            override val mounts: List<ComposeMount>
+                get() = listOf(ComposeMount.bind("./$dataDir", OFFLINE_DOCUMENTS_ROOT, readOnly = true))
+
+            override val dependsOn: Map<String, ComposeDependency>? get() = null
+        }
+    }
+
+    /**
+     * The part for [spec], whose documents come from [documents] and whose Grafana downloads
+     * [plugins] at start (none where the stack may have no network).
+     */
     fun compose(
         spec: LocalStackSpec,
-        documentsBucket: String,
+        documents: Documents,
+        plugins: List<String>,
     ): ComposePart =
         ComposePart(
             services =
                 mapOf(
-                    Constants.LocalStack.Services.GRAFANA to grafana(spec),
-                    Constants.LocalStack.Services.DOCUMENTS to documents(spec),
+                    Constants.LocalStack.Services.GRAFANA to grafana(spec, plugins),
+                    Constants.LocalStack.Services.DOCUMENTS to documents(spec, documents),
                 ),
             files =
                 mapOf(
@@ -49,22 +111,23 @@ object GrafanaViewPart {
                         GrafanaDatasourceSet.build(spec.tenantSet, BackendUrls.LOCAL_COMPOSE).toYaml(),
                     LocalStackComposer.configPath(DASHBOARDS_FILE) to
                         GrafanaDashboardProvisioningConfig.forDashboardTree(DASHBOARD_TREE).toYaml(),
-                    LocalStackComposer.configPath(DOCUMENTS_FILE) to
-                        GrafanaDocumentsSidecars.renderWebServerConfig(
-                            bucket = documentsBucket,
-                            upstream = LocalStackComposer.STORE_GATE_ENDPOINT,
-                            listenPort = Constants.Grafana.Documents.WEB_PORT,
-                        ),
+                    LocalStackComposer.configPath(DOCUMENTS_FILE) to documents.config(),
                 ),
         )
 
-    private fun grafana(spec: LocalStackSpec): ComposeService =
+    private fun grafana(
+        spec: LocalStackSpec,
+        plugins: List<String>,
+    ): ComposeService =
         ComposeService(
             image = LocalImages.GRAFANA,
             user = ROOT_USER,
             environment =
-                GrafanaServerSettings(appTitle = "easy-db-lab local (${spec.mode.home})", dashboardRoot = DASHBOARD_TREE)
-                    .environment()
+                GrafanaServerSettings(
+                    appTitle = "easy-db-lab local (${spec.mode.home})",
+                    dashboardRoot = DASHBOARD_TREE,
+                    plugins = plugins,
+                ).environment()
                     .toMap(),
             volumes =
                 listOf(
@@ -80,12 +143,15 @@ object GrafanaViewPart {
             restart = "unless-stopped",
         )
 
-    private fun documents(spec: LocalStackSpec): ComposeService =
+    private fun documents(
+        spec: LocalStackSpec,
+        documents: Documents,
+    ): ComposeService =
         ComposeService(
             image = LocalImages.DOCUMENTS_WEB,
-            volumes = listOf(LocalStackComposer.configMount(DOCUMENTS_FILE, NGINX_CONFIG)),
+            volumes = listOf(LocalStackComposer.configMount(DOCUMENTS_FILE, NGINX_CONFIG)) + documents.mounts,
             ports = listOf("${Constants.LocalStack.LOOPBACK}:${spec.documentsPort}:${Constants.Grafana.Documents.WEB_PORT}"),
-            dependsOn = mapOf(Constants.LocalStack.Services.STORE_GATE to ComposeDependency.STARTED),
+            dependsOn = documents.dependsOn,
             restart = "unless-stopped",
         )
 }

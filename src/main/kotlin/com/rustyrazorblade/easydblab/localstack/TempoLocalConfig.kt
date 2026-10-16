@@ -49,15 +49,38 @@ object TempoLocalConfig {
                 YamlPatch.set("storage.trace.s3.forcepathstyle", "true"),
                 YamlPatch.set("storage.trace.s3.access_key", PLACEHOLDER_KEY),
                 YamlPatch.set("storage.trace.s3.secret_key", PLACEHOLDER_KEY),
-                YamlPatch.set("storage.trace.blocklist_poll_fallback", "false"),
-                YamlPatch.remove("storage.trace.blocklist_poll"),
-                YamlPatch.remove("storage.trace.blocklist_poll_tenant_index_builders"),
-                YamlPatch.set("overrides.defaults.compaction.compaction_disabled", "true"),
-                YamlPatch.set("backend_scheduler.backend_flush_interval", SCHEDULER_FLUSH_INTERVAL),
-                YamlPatch.set("backend_scheduler.local_work_path", UNWRITABLE_WORK_PATH),
-                YamlPatch.set("usage_report.reporting_enabled", "false"),
-                YamlPatch.set("query_frontend.search.query_backend_after", QUERY_BACKEND_AFTER),
-                YamlPatch.set("query_frontend.metrics.query_backend_after", QUERY_BACKEND_AFTER),
-            ),
+            ) + READ_ONLY,
+        )
+
+    /**
+     * The offline stack's config: [clusterYaml] reading the exported tenant directories under
+     * [tracesPath] with the local backend, which the single binary lists itself. Its tenant-index and
+     * work-file writes fail on the read-only mount, logged and harmless (spike S5).
+     */
+    fun offline(
+        clusterYaml: String,
+        tracesPath: String,
+    ): String =
+        YamlDocument.patch(
+            clusterYaml,
+            listOf(
+                YamlPatch.set("storage.trace.backend", "local"),
+                YamlPatch.remove("storage.trace.s3"),
+                YamlPatch.set("storage.trace.local.path", tracesPath),
+            ) + READ_ONLY,
+        )
+
+    /** What makes the single binary a reader: the inert scheduler and worker, and search over the backend. */
+    private val READ_ONLY =
+        listOf(
+            YamlPatch.set("storage.trace.blocklist_poll_fallback", "false"),
+            YamlPatch.remove("storage.trace.blocklist_poll"),
+            YamlPatch.remove("storage.trace.blocklist_poll_tenant_index_builders"),
+            YamlPatch.set("overrides.defaults.compaction.compaction_disabled", "true"),
+            YamlPatch.set("backend_scheduler.backend_flush_interval", SCHEDULER_FLUSH_INTERVAL),
+            YamlPatch.set("backend_scheduler.local_work_path", UNWRITABLE_WORK_PATH),
+            YamlPatch.set("usage_report.reporting_enabled", "false"),
+            YamlPatch.set("query_frontend.search.query_backend_after", QUERY_BACKEND_AFTER),
+            YamlPatch.set("query_frontend.metrics.query_backend_after", QUERY_BACKEND_AFTER),
         )
 }

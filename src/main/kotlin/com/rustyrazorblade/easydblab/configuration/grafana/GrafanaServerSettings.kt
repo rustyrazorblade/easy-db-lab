@@ -46,8 +46,8 @@ data class GrafanaServerSettings(
     fun environment(): List<Pair<String, String>> =
         listOf(
             "GF_INSTALL_PLUGINS" to PLUGINS,
-            "GF_SECURITY_ADMIN_USER" to "admin",
-            "GF_SECURITY_ADMIN_PASSWORD" to "admin",
+            "GF_SECURITY_ADMIN_USER" to Constants.Grafana.ADMIN_USER,
+            "GF_SECURITY_ADMIN_PASSWORD" to Constants.Grafana.ADMIN_PASSWORD,
             "GF_USERS_ALLOW_SIGN_UP" to "false",
             "GF_AUTH_ANONYMOUS_ENABLED" to "true",
             "GF_USERS_DEFAULT_ORG_NAME" to "Main Org.",

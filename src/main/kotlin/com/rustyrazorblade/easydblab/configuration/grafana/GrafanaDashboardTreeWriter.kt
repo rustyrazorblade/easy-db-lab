@@ -56,13 +56,25 @@ class GrafanaDashboardTreeWriter(
                 ?.bufferedReader()
                 ?.readText()
                 ?: error("Dashboard resource not found: $resourcePath")
-        val dashboardJson = Json.parseToJsonElement(json.replace(PYROSCOPE_URL_PLACEHOLDER, pyroscopeUrl)).jsonObject
-        // JsonElement.toString keeps every number as written; the serializer would reformat 0.0001 as 1.0E-4.
-        return DashboardDefaults.apply(dashboardJson, context).toString()
+        return render(json, pyroscopeUrl, context)
     }
 
     companion object {
         /** Placeholder a dashboard carries where the cluster's Pyroscope URL belongs. */
         const val PYROSCOPE_URL_PLACEHOLDER = "__PYROSCOPE_URL__"
+
+        /**
+         * One dashboard's [json] as it is installed: `__PYROSCOPE_URL__` replaced by [pyroscopeUrl],
+         * then the install-time pass, [DashboardDefaults], for [context], written as compact JSON.
+         */
+        fun render(
+            json: String,
+            pyroscopeUrl: String,
+            context: DashboardInstallContext,
+        ): String {
+            val dashboardJson = Json.parseToJsonElement(json.replace(PYROSCOPE_URL_PLACEHOLDER, pyroscopeUrl)).jsonObject
+            // JsonElement.toString keeps every number as written; the serializer would reformat 0.0001 as 1.0E-4.
+            return DashboardDefaults.apply(dashboardJson, context).toString()
+        }
     }
 }

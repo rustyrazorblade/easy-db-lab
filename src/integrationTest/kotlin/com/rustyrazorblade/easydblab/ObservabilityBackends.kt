@@ -9,6 +9,10 @@ import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.wait.strategy.Wait
@@ -162,6 +166,23 @@ object ObservabilityBackends {
             .withExposedPorts(Constants.K8s.LOKI_HTTP_PORT)
             .waitingFor(Wait.forHttp("/ready").forPort(Constants.K8s.LOKI_HTTP_PORT).withStartupTimeout(STARTUP))
             .apply { start() }
+
+    /**
+     * Whether a Tempo `/api/v2/traces/<id>` answer holds the trace. Tempo answers `200 {"trace":{}}`
+     * for a trace it does not find, so the status code says nothing: only spans in
+     * `trace.resourceSpans` mean found.
+     */
+    fun traceFound(
+        status: Int,
+        body: String,
+    ): Boolean =
+        status == 200 &&
+            runCatching {
+                (Json.parseToJsonElement(body).jsonObject["trace"] as? JsonObject)
+                    ?.get("resourceSpans")
+                    ?.jsonArray
+                    ?.isNotEmpty() == true
+            }.getOrDefault(false)
 
     /** The base URL of [container]'s HTTP port [port] on the Docker host. */
     fun baseUrl(

@@ -43,6 +43,9 @@ class QueryWorkDirectory private constructor(
     /** The prefix of every temporary compose project's name. */
     val project: String get() = "edl-export-$id"
 
+    /** The `docker compose logs` the reader and the writer saved before they were removed, those that exist. */
+    fun stackLogs(): List<File> = listOf(reader, writer).map { File(it, Constants.Export.Query.STACK_LOG_FILE) }.filter { it.isFile }
+
     /** The bytes the directory holds. */
     fun size(): Long = root.walkTopDown().filter { it.isFile }.sumOf { it.length() }
 

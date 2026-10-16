@@ -167,9 +167,6 @@ class DefaultObservabilityHttp(
         ClusterObservabilityEndpoint(httpClientFactory, socksProxyService, clusterStateManager),
     )
 
-/** An HTTP client that never uses a proxy: a local stack is on this machine. */
-private fun directClient(): OkHttpClient = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).build()
-
 /**
  * The [ObservabilityEndpoint] of a docker compose stack on this machine: each backend is reached on
  * the localhost port the stack publishes for it, with no proxy, and every request carries one tenant
@@ -183,7 +180,7 @@ private fun directClient(): OkHttpClient = OkHttpClient.Builder().proxy(Proxy.NO
 class LocalhostObservabilityEndpoint(
     private val tenant: String,
     private val publishedPorts: Map<Int, Int>,
-    private val client: OkHttpClient = directClient(),
+    private val client: OkHttpClient = LocalhostObservabilityHttp.directClient(),
 ) : ObservabilityEndpoint {
     override fun target(port: Int): ObservabilityTarget {
         val published = requireNotNull(publishedPorts[port]) { "The local stack publishes no backend on port $port" }
@@ -194,10 +191,16 @@ class LocalhostObservabilityEndpoint(
 /**
  * [ObservabilityHttp] to a docker compose stack on this machine: [EndpointObservabilityHttp] over a
  * [LocalhostObservabilityEndpoint]. The local stack and the export's temporary reader and writer
- * stacks use it.
+ * stacks use it. Each client keeps its own connection pool, so a caller that makes many of these
+ * shares one [directClient] between them.
  */
 class LocalhostObservabilityHttp(
     tenant: String,
     publishedPorts: Map<Int, Int>,
     client: OkHttpClient = directClient(),
-) : ObservabilityHttp by EndpointObservabilityHttp(LocalhostObservabilityEndpoint(tenant, publishedPorts, client))
+) : ObservabilityHttp by EndpointObservabilityHttp(LocalhostObservabilityEndpoint(tenant, publishedPorts, client)) {
+    companion object {
+        /** An HTTP client that never uses a proxy: a local stack is on this machine. */
+        fun directClient(): OkHttpClient = OkHttpClient.Builder().proxy(Proxy.NO_PROXY).build()
+    }
+}

@@ -1174,6 +1174,9 @@ object Constants {
             /** Between the zip's path and a random suffix: the query export's work directory, kept afterwards. */
             const val WORK_INFIX = ".work-"
 
+            /** Each temporary stack's `docker compose logs`, saved in its directory before the stack is removed. */
+            const val STACK_LOG_FILE = "compose.log"
+
             /** Joins the tenants of a federated request in `X-Scope-OrgID`. */
             const val TENANT_SEPARATOR = "|"
 

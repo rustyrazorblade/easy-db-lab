@@ -52,15 +52,16 @@ internal inline fun <T> exportStep(
 
 /**
  * Runs [block]; an [ExportStepFailed] is reported as [Event.Export.Failed] with [target]'s path, its
- * signal, step and reason, and fails the command.
+ * signal, step and reason, and the saved [logs] of any temporary stacks, and fails the command.
  */
 internal fun <T> EventBus.reportingStepFailure(
     target: ExportTarget,
+    logs: () -> List<String> = { emptyList() },
     block: () -> T,
 ): T =
     try {
         block()
     } catch (e: ExportStepFailed) {
-        emit(Event.Export.Failed(target.zip.path, e.signal.label, e.step, e.cause?.message ?: e.message.orEmpty()))
+        emit(Event.Export.Failed(target.zip.path, e.signal.label, e.step, e.cause?.message ?: e.message.orEmpty(), logs()))
         throw CommandFailedException(e.message ?: "The export failed")
     }

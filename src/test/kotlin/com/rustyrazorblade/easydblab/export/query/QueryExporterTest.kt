@@ -195,6 +195,8 @@ class QueryExporterTest {
 
             override fun close() {
                 closed += name
+                // As DockerExportStack does: the project's logs are saved beside it before it is removed.
+                File(directory, "compose.log").writeText("logs of $name")
             }
         }
 
@@ -426,6 +428,19 @@ class QueryExporterTest {
         assertThat(target.zip).doesNotExist()
         assertThat(dir.listFiles()!!.map { it.name }).noneMatch { it.contains(".partial-") }
         assertThat(closed).containsExactlyInAnyOrder("reader", "writer")
+    }
+
+    @Test
+    fun `a failure names the temporary stacks' saved docker compose logs in the work directory`() {
+        failTraceFetch = true
+
+        assertThatThrownBy { exporter.export(target(), ExportSelector.Clusters(listOf("x-1")), workspace = null) }
+            .isInstanceOf(CommandFailedException::class.java)
+
+        val work = File(events.filterIsInstance<Event.Export.WorkDirectoryKept>().single().path)
+        val failed = events.filterIsInstance<Event.Export.Failed>().single()
+        assertThat(failed.logs).containsExactly(File(work, "reader/compose.log").path, File(work, "writer/compose.log").path)
+        assertThat(failed.toDisplayString()).contains(File(work, "reader/compose.log").path)
     }
 
     @Test

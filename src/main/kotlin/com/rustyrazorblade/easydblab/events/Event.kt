@@ -6477,6 +6477,8 @@ sealed interface Event {
          * @property signal what was being copied (`metrics`, `logs`, `traces`, `annotations`, `reports`, `stack`).
          * @property step what the export was doing.
          * @property reason the error.
+         * @property logs the docker compose logs of a query export's temporary stacks, saved in its
+         *   work directory; empty for a tenant export, which runs none.
          */
         @Serializable
         @SerialName("Export.Failed")
@@ -6485,8 +6487,11 @@ sealed interface Event {
             val signal: String,
             val step: String,
             val reason: String,
+            val logs: List<String> = emptyList(),
         ) : Export {
-            override fun toDisplayString(): String = "The export failed copying $signal ($step): $reason\nNo zip was left at $path."
+            override fun toDisplayString(): String =
+                "The export failed copying $signal ($step): $reason\nNo zip was left at $path." +
+                    if (logs.isEmpty()) "" else "\nThe temporary stacks' docker compose logs: ${logs.joinToString(", ")}"
 
             override fun isError(): Boolean = true
         }
@@ -6737,6 +6742,31 @@ sealed interface Event {
             override fun toDisplayString(): String =
                 "The work directory $path (${bytes / Constants.Size.BYTES_PER_MIB} MiB, $bytes bytes) is kept; " +
                     "remove it yourself when you no longer need it."
+        }
+
+        /**
+         * `docker compose down` could not remove one of a query export's temporary projects: its
+         * containers or network may still exist. The export's own outcome is reported apart.
+         *
+         * @property project the compose project.
+         * @property directory the project's directory, in the work directory.
+         * @property exitCode `docker compose down`'s exit status.
+         * @property output what it printed.
+         */
+        @Serializable
+        @SerialName("Export.StackNotRemoved")
+        data class StackNotRemoved(
+            val project: String,
+            val directory: String,
+            val exitCode: Int,
+            val output: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "The temporary docker compose project $project was not removed: docker compose down exited $exitCode:\n" +
+                    "${output.trimEnd()}\n" +
+                    "Remove it yourself in $directory with: docker compose -p $project down --remove-orphans"
+
+            override fun isError(): Boolean = true
         }
     }
 

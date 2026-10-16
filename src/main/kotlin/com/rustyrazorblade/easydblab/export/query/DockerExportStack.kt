@@ -1,9 +1,12 @@
 package com.rustyrazorblade.easydblab.export.query
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.services.LocalhostObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
+import okhttp3.OkHttpClient
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -19,7 +22,7 @@ interface ExportStack : AutoCloseable {
     /** Stops [service] gracefully, so it can finish writing what it holds. */
     fun stop(service: String)
 
-    /** Removes the project's containers and network; the files in [directory] stay. */
+    /** Saves the project's logs in [directory] and removes its containers and network; the files in [directory] stay. */
     override fun close()
 }
 
@@ -41,7 +44,9 @@ class StackDefinition(
  * How temporary compose projects are run and reached.
  *
  * @property compose runs docker compose.
- * @property http a project's backends for a tenant, over the published port of each backend port.
+ * @property eventBus reports a project that cannot be removed.
+ * @property client makes the one HTTP client each project's requests share; direct, with no proxy.
+ * @property http a project's backends for a tenant, over the published port of each backend port and the project's client.
  * @property readyTimeout how long a service may take to answer `/ready`.
  * @property pollInterval the gap between two `/ready` looks.
  * @property beforeStart runs on a project's directory once its files are written; where a test puts
@@ -49,35 +54,94 @@ class StackDefinition(
  */
 class StackRuntime(
     val compose: ComposeCli,
-    val http: (String, Map<Int, Int>) -> ObservabilityHttp = { tenant, ports -> LocalhostObservabilityHttp(tenant, ports) },
+    val eventBus: EventBus,
+    val client: () -> OkHttpClient = LocalhostObservabilityHttp::directClient,
+    val http: (String, Map<Int, Int>, OkHttpClient) -> ObservabilityHttp = { tenant, ports, client ->
+        LocalhostObservabilityHttp(tenant, ports, client)
+    },
     val readyTimeout: Duration = Duration.ofMinutes(Constants.Export.Query.READY_TIMEOUT_MINUTES),
     val pollInterval: Duration = Duration.ofSeconds(2),
     val beforeStart: (File) -> Unit = {},
 )
 
 /**
+ * Removes a temporary compose project, and reports it when compose cannot.
+ *
+ * Before it removes the project it saves `docker compose logs` in the project's directory
+ * ([Constants.Export.Query.STACK_LOG_FILE]), which the kept work directory holds, so a failed export
+ * leaves the operator the containers' own account. A `down` that exits non-zero is reported as
+ * [Event.Export.StackNotRemoved], with the command that removes the project by hand.
+ *
+ * @property compose runs docker compose.
+ * @property eventBus reports a project that cannot be removed.
+ */
+internal class ProjectRemoval(
+    private val compose: ComposeCli,
+    private val eventBus: EventBus,
+) {
+    companion object {
+        private val COMMAND_TIMEOUT: Duration = Duration.ofMinutes(Constants.Export.Query.COMPOSE_COMMAND_TIMEOUT_MINUTES)
+        private const val DOWN_SECONDS = 60
+    }
+
+    /** Where [directory]'s project logs are saved. */
+    fun logFile(directory: File): File = File(directory, Constants.Export.Query.STACK_LOG_FILE)
+
+    /** Saves the logs of [project] in [directory]; returns the file. */
+    fun saveLogs(
+        directory: File,
+        project: String,
+    ): File {
+        val logs = compose.run(directory, project, listOf("logs", "--no-color", "--timestamps"), COMMAND_TIMEOUT)
+        return logFile(directory).apply {
+            writeText(if (logs.exitCode == 0) logs.output else "docker compose logs exited ${logs.exitCode}:\n${logs.output}")
+        }
+    }
+
+    /**
+     * Removes [project]; when compose cannot, reports it and returns the failure, else null. Never
+     * throws for a failed `down`, so the caller's own outcome is not hidden.
+     */
+    fun down(
+        directory: File,
+        project: String,
+    ): IllegalStateException? {
+        val down = compose.run(directory, project, listOf("down", "--remove-orphans", "-t", DOWN_SECONDS.toString()), COMMAND_TIMEOUT)
+        if (down.exitCode == 0) return null
+        eventBus.emit(Event.Export.StackNotRemoved(project, directory.path, down.exitCode, down.output))
+        return IllegalStateException("docker compose could not remove $project (exit ${down.exitCode}):\n${down.output}")
+    }
+}
+
+/**
  * [ExportStack] over `docker compose -p <project>`. [start] writes the project's files, starts it
  * detached, finds the loopback port compose published for each backend port, and waits until each
  * service answers `/ready` on its first port. A project that does not start, or a backend that does
- * not become ready, is removed again before the failure is reported.
+ * not become ready, has its logs saved and is removed again before the failure is reported, which
+ * names the log file. Every request goes through one HTTP client, whose connections are released
+ * when the stack closes.
  *
  * @property directory the project's directory.
  * @property project the project's name.
  * @property compose runs docker compose.
+ * @property removal saves the logs and removes the project.
  * @property ports the published loopback port of each backend port.
- * @property http the backends for a tenant over [ports].
+ * @property client the one HTTP client of every request to this project.
+ * @property http the backends for a tenant over [ports] and [client].
  */
 class DockerExportStack private constructor(
     override val directory: File,
     private val project: String,
     private val compose: ComposeCli,
+    private val removal: ProjectRemoval,
     private val ports: Map<Int, Int>,
-    private val http: (String, Map<Int, Int>) -> ObservabilityHttp,
+    private val client: OkHttpClient,
+    private val http: (String, Map<Int, Int>, OkHttpClient) -> ObservabilityHttp,
 ) : ExportStack {
     companion object {
         private val COMMAND_TIMEOUT: Duration = Duration.ofMinutes(Constants.Export.Query.COMPOSE_COMMAND_TIMEOUT_MINUTES)
         private const val STOP_SECONDS = 120
-        private const val DOWN_SECONDS = 60
+        private const val ANSWER_EXCERPT_CHARS = 500
 
         /**
          * Writes [definition]'s files into [directory], runs the runtime's `beforeStart` on it (where a
@@ -90,35 +154,29 @@ class DockerExportStack private constructor(
             runtime: StackRuntime,
         ): ExportStack {
             val project = definition.project
-            val published = definition.published
             val compose = runtime.compose
-            val files = definition.files
-            val http = runtime.http
-            files.forEach { (path, bytes) -> File(directory, path).apply { parentFile.mkdirs() }.writeBytes(bytes) }
+            val removal = ProjectRemoval(compose, runtime.eventBus)
+            definition.files.forEach { (path, bytes) -> File(directory, path).apply { parentFile.mkdirs() }.writeBytes(bytes) }
             runtime.beforeStart(directory)
-            val stack =
-                lazy {
-                    val ports =
-                        published
-                            .flatMap { (service, servicePorts) ->
-                                servicePorts.map {
-                                    it to
-                                        port(compose, directory, project, service, it)
-                                }
-                            }.toMap()
-                    DockerExportStack(directory, project, compose, ports, http)
-                }
+            val client = runtime.client()
             try {
                 val up = compose.run(directory, project, listOf("up", "-d"), COMMAND_TIMEOUT)
                 check(up.exitCode == 0) { "docker compose could not start $project (exit ${up.exitCode}):\n${up.output}" }
-                val started = stack.value
-                published.forEach { (service, servicePorts) ->
+                val ports =
+                    definition.published
+                        .flatMap { (service, servicePorts) -> servicePorts.map { it to port(compose, directory, project, service, it) } }
+                        .toMap()
+                val started = DockerExportStack(directory, project, compose, removal, ports, client, runtime.http)
+                definition.published.forEach { (service, servicePorts) ->
                     started.awaitReady(service, servicePorts.first(), runtime.readyTimeout, runtime.pollInterval)
                 }
                 return started
             } catch (e: Exception) {
-                down(compose, directory, project)
-                throw e
+                val logs = removal.saveLogs(directory, project)
+                val failed = IllegalStateException("${e.message}\nThe project's docker compose logs are in ${logs.path}", e)
+                removal.down(directory, project)?.let(failed::addSuppressed)
+                release(client)
+                throw failed
             }
         }
 
@@ -141,23 +199,28 @@ class DockerExportStack private constructor(
             return published
         }
 
-        private fun down(
-            compose: ComposeCli,
-            directory: File,
-            project: String,
-        ) {
-            compose.run(directory, project, listOf("down", "--remove-orphans", "-t", DOWN_SECONDS.toString()), COMMAND_TIMEOUT)
+        /** Closes [client]'s idle connections and its dispatcher's threads. */
+        private fun release(client: OkHttpClient) {
+            client.connectionPool.evictAll()
+            client.dispatcher.executorService.shutdown()
         }
     }
 
-    override fun http(tenant: String): ObservabilityHttp = http(tenant, ports)
+    override fun http(tenant: String): ObservabilityHttp = http(tenant, ports, client)
 
     override fun stop(service: String) {
         val result = compose.run(directory, project, listOf("stop", "-t", STOP_SECONDS.toString(), service), COMMAND_TIMEOUT)
         check(result.exitCode == 0) { "docker compose could not stop $service of $project (exit ${result.exitCode}):\n${result.output}" }
     }
 
-    override fun close() = down(compose, directory, project)
+    override fun close() {
+        try {
+            removal.saveLogs(directory, project)
+            removal.down(directory, project)
+        } finally {
+            release(client)
+        }
+    }
 
     private fun awaitReady(
         service: String,
@@ -167,14 +230,24 @@ class DockerExportStack private constructor(
     ) {
         val deadline = Instant.now().plus(timeout)
         val attempts = (timeout.toMillis() / interval.toMillis().coerceAtLeast(1)).toInt().coerceAtLeast(1) + 1
+        var last = "no answer"
         val ready =
             pollUntil("$project $service ready", attempts, interval, deadline, done = { it }) {
-                runCatching {
-                    http(
-                        Constants.Observability.DEFAULT_TENANT,
-                    ).get(port, "/ready").code == Constants.HttpStatus.OK
-                }.getOrDefault(false)
+                runCatching { http(Constants.Observability.DEFAULT_TENANT).get(port, "/ready") }.fold(
+                    onSuccess = { answer ->
+                        if (answer.code !=
+                            Constants.HttpStatus.OK
+                        ) {
+                            last = "status ${answer.code}: ${answer.body.take(ANSWER_EXCERPT_CHARS)}"
+                        }
+                        answer.code == Constants.HttpStatus.OK
+                    },
+                    onFailure = { error ->
+                        last = "${error::class.simpleName}: ${error.message}"
+                        false
+                    },
+                )
             }
-        check(ready) { "$service of $project did not answer /ready within $timeout" }
+        check(ready) { "$service of $project did not answer /ready within $timeout; its last answer: $last" }
     }
 }

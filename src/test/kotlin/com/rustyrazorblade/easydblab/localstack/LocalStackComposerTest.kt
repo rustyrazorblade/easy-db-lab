@@ -263,13 +263,25 @@ class LocalStackComposerTest {
         val provider = mountedFile("grafana", "/etc/grafana/provisioning/dashboards/dashboards.yaml")
 
         assertThat(grafana.environment)
-            .isEqualTo(GrafanaServerSettings(appTitle = "easy-db-lab local (default)", dashboardRoot = tree).environment().toMap())
+            .isEqualTo(
+                GrafanaServerSettings(
+                    appTitle = "easy-db-lab local (default)",
+                    dashboardRoot = tree,
+                    dataProxyTimeoutSeconds = Constants.LocalStack.GRAFANA_DATAPROXY_TIMEOUT_SECONDS,
+                ).environment().toMap(),
+            )
         assertThat(provider).isEqualTo(GrafanaDashboardProvisioningConfig.forDashboardTree(tree).toYaml())
         assertThat(grafana.ports).containsExactly("127.0.0.1:3300:3000")
         assertThat(grafana.volumes).contains(
             ComposeMount.bind("./dashboards", Constants.LocalStack.DASHBOARDS_MOUNT, readOnly = true),
             ComposeMount.bind("./grafana-data", "/var/lib/grafana", readOnly = false),
         )
+    }
+
+    /** A cold query over older data reads every block from S3 and outlasts Grafana's 30s default, which shows a 502. */
+    @Test
+    fun `Grafana waits five minutes for a datasource, as a cold local query can take minutes`() {
+        assertThat(service("grafana").environment).containsEntry("GF_DATAPROXY_TIMEOUT", "300")
     }
 
     @Test

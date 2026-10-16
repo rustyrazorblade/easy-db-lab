@@ -1090,6 +1090,13 @@ object Constants {
         /** The value of both checksum switches: only when the operation requires a checksum. */
         const val AWS_CHECKSUM_WHEN_REQUIRED = "when_required"
 
+        /**
+         * How long a local stack's Grafana waits for a datasource (`GF_DATAPROXY_TIMEOUT`). A cold
+         * query over older data reads every block and chunk from S3 and outlasts Grafana's 30-second
+         * default, which shows as a 502. A cluster's Grafana keeps the default.
+         */
+        const val GRAFANA_DATAPROXY_TIMEOUT_SECONDS = 300
+
         /** Grafana's localhost port, unless `create` is given another. */
         const val DEFAULT_GRAFANA_PORT = 3000
 

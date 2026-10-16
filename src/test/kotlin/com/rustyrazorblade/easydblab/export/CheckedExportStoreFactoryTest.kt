@@ -104,8 +104,12 @@ class CheckedExportStoreFactoryTest {
         assertThatThrownBy { factory().open() }.isInstanceOf(CommandFailedException::class.java).hasMessageContaining("reach S3")
 
         val unreachable = events.filterIsInstance<Event.Export.StoreUnreachable>().single()
-        assertThat(unreachable).isEqualTo(Event.Export.StoreUnreachable(profile = "lab", reason = "UnknownHostException: acct.s3.eu-west-1.amazonaws.com"))
-        assertThat(unreachable.toDisplayString()).contains("could not reach S3", "UnknownHostException", "Nothing was written").doesNotContain("aws sso login")
+        assertThat(
+            unreachable,
+        ).isEqualTo(Event.Export.StoreUnreachable(profile = "lab", reason = "UnknownHostException: acct.s3.eu-west-1.amazonaws.com"))
+        assertThat(
+            unreachable.toDisplayString(),
+        ).contains("could not reach S3", "UnknownHostException", "Nothing was written").doesNotContain("aws sso login")
         assertThat(unreachable.isError()).isTrue()
         assertThat(events.filterIsInstance<Event.Export.StoreUnreadable>()).isEmpty()
         assertThat(regions).isEmpty()

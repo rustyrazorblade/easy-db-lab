@@ -127,7 +127,14 @@ class TenantExporterTest {
 
         exporter.export(target, tenant = "acme")
 
-        val tempo = ZipFile(target.zip).use { file -> file.entries().asSequence().filter { it.name == "acme-export/data/tempo/" }.toList() }
+        val tempo =
+            ZipFile(target.zip).use { file ->
+                file
+                    .entries()
+                    .asSequence()
+                    .filter { it.name == "acme-export/data/tempo/" }
+                    .toList()
+            }
         assertThat(tempo).singleElement().satisfies({ assertThat(it.isDirectory).isTrue() })
     }
 
@@ -210,7 +217,9 @@ class TenantExporterTest {
         val failed = events.filterIsInstance<Event.Export.Failed>().single()
         assertThat(failed.signal).isEqualTo("traces")
         assertThat(failed.partialFile).isEqualTo(partial)
-        assertThat(failed.toDisplayString()).contains("No zip was left at ${target.zip.path}", partial, "left behind", "read-only directory")
+        assertThat(
+            failed.toDisplayString(),
+        ).contains("No zip was left at ${target.zip.path}", partial, "left behind", "read-only directory")
     }
 
     @Test

@@ -27,7 +27,7 @@ class ExportStepFailed(
     val signal: ExportSignal,
     val step: String,
     cause: Throwable,
-) : RuntimeException("The export failed copying ${signal.label} (${step}): ${cause.message}", cause)
+) : RuntimeException("The export failed copying ${signal.label} ($step): ${cause.message}", cause)
 
 /** An object an export listed was gone when it was read. */
 class ObjectGoneException(

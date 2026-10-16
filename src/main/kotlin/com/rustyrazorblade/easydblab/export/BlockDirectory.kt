@@ -76,7 +76,12 @@ internal fun requireExactBlocks(
 ) {
     val leftOut = blocks - listed.toSet()
     val absent = listed.toSet() - blocks
-    val twice = listed.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+    val twice =
+        listed
+            .groupingBy { it }
+            .eachCount()
+            .filterValues { it > 1 }
+            .keys
     if (leftOut.isEmpty() && absent.isEmpty() && twice.isEmpty()) return
     val problems =
         listOfNotNull(
@@ -93,7 +98,12 @@ internal fun indexableBlocks(
     directory: BlockDirectory,
     notBlocks: Set<String>,
 ): List<StagedBlock> {
-    val blocks = directory.blocks().filterKeys { it !in notBlocks }.values.sortedBy { it.id }
+    val blocks =
+        directory
+            .blocks()
+            .filterKeys { it !in notBlocks }
+            .values
+            .sortedBy { it.id }
     val noMeta = blocks.filter { it.meta == null }.map { it.id }
     if (noMeta.isNotEmpty()) {
         throw IndexMismatchException(

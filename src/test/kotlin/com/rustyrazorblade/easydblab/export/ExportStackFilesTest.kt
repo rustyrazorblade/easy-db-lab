@@ -56,7 +56,12 @@ class ExportStackFilesTest {
 
     @Test
     fun `the README lists exactly the images the stack runs, each a registered pin, and says how to open it`() {
-        val images = ComposeFile.fromYaml(text(Constants.LocalStack.COMPOSE_FILE)).services.values.map { it.image }.toSet()
+        val images =
+            ComposeFile
+                .fromYaml(text(Constants.LocalStack.COMPOSE_FILE))
+                .services.values
+                .map { it.image }
+                .toSet()
         val readme = text(Constants.Export.README_FILE)
         val pulled = readme.lines().filter { it.trim().startsWith("docker pull ") }.map { it.trim().removePrefix("docker pull ") }
 
@@ -73,6 +78,7 @@ class ExportStackFilesTest {
     @Test
     fun `the manifest records the offline stack, so local dashboards works on the opened export`() {
         val manifest = LocalStackManifest.fromJson(text(Constants.LocalStack.MANIFEST_FILE))
+
         fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
         assertThat(manifest.mode).isEqualTo("offline")

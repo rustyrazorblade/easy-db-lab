@@ -36,7 +36,8 @@ class MimirBucketIndexWriterTest {
         thanos: String = """{"labels":{},"source":"receive","segment_files":["000001","000002"]}""",
         level: Int = 1,
         extra: String = "",
-    ) = """{"ulid":"$ulid","minTime":1000,"maxTime":61000,"stats":{"numSeries":3},"compaction":{"level":$level,"sources":["$ulid"]$extra},"version":1,"thanos":$thanos}"""
+    ) =
+        """{"ulid":"$ulid","minTime":1000,"maxTime":61000,"stats":{"numSeries":3},"compaction":{"level":$level,"sources":["$ulid"]$extra},"version":1,"thanos":$thanos}"""
 
     private fun block(
         ulid: String,
@@ -46,14 +47,23 @@ class MimirBucketIndexWriterTest {
         File(tenantDir, "$ulid/chunks").mkdirs()
         File(tenantDir, "$ulid/index").writeText("index")
         File(tenantDir, "$ulid/chunks/000001").writeText("c")
-        meta?.let { File(tenantDir, "$ulid/meta.json").apply { writeText(it) }.toPath().also { p -> java.nio.file.Files.setLastModifiedTime(p, FileTime.from(uploadedAt)) } }
+        meta?.let {
+            File(tenantDir, "$ulid/meta.json").apply { writeText(it) }.toPath().also { p ->
+                java.nio.file.Files
+                    .setLastModifiedTime(p, FileTime.from(uploadedAt))
+            }
+        }
     }
 
     private fun decode(bytes: ByteArray): JsonObject =
         Json.parseToJsonElement(GZIPInputStream(bytes.inputStream()).readBytes().decodeToString()).jsonObject
 
     private fun entries(index: JsonObject): Map<String, JsonObject> =
-        index.getValue("blocks").jsonArray.associate { it.jsonObject.getValue("block_id").jsonPrimitive.content to it.jsonObject }
+        index.getValue("blocks").jsonArray.associate {
+            it.jsonObject
+                .getValue("block_id")
+                .jsonPrimitive.content to it.jsonObject
+        }
 
     @Test
     fun `each block's entry carries Mimir's fields, from its meta json and the time the meta was written`() {
@@ -78,12 +88,23 @@ class MimirBucketIndexWriterTest {
 
     @Test
     fun `segments come from the chunk files the meta lists when it names no segment files, and only when they count up from 000001`() {
-        block("01AAA", meta("01AAA", thanos = """{"labels":{},"files":[{"rel_path":"chunks/000001"},{"rel_path":"chunks/000002"},{"rel_path":"index"}]}"""))
+        block(
+            "01AAA",
+            meta(
+                "01AAA",
+                thanos = """{"labels":{},"files":[{"rel_path":"chunks/000001"},{"rel_path":"chunks/000002"},{"rel_path":"index"}]}""",
+            ),
+        )
         block("01BBB", meta("01BBB", thanos = """{"labels":{},"segment_files":["000001","000003"]}"""))
 
         val entries = entries(decode(writer.write(FileBlockDirectory(tenantDir))))
 
-        assertThat(entries.getValue("01AAA").getValue("segments_num").jsonPrimitive.int).isEqualTo(2)
+        assertThat(
+            entries
+                .getValue("01AAA")
+                .getValue("segments_num")
+                .jsonPrimitive.int,
+        ).isEqualTo(2)
         assertThat(entries.getValue("01BBB").keys).doesNotContain("segments_format", "segments_num")
     }
 

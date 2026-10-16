@@ -52,7 +52,10 @@ class LocalStackComposerTest {
      */
     @Test
     fun `every configuration is mounted as its directory, so a running container reads a rewritten file`() {
-        val configMounts = compose.services.values.flatMap { it.volumes.orEmpty() }.filter { it.source.startsWith("./config") }
+        val configMounts =
+            compose.services.values
+                .flatMap { it.volumes.orEmpty() }
+                .filter { it.source.startsWith("./config") }
 
         assertThat(configMounts).isNotEmpty().allSatisfy { mount ->
             val directory = mount.source.removePrefix("./")

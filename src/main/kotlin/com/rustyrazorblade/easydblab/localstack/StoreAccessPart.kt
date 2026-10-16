@@ -35,8 +35,10 @@ object StoreAccessPart {
                 ),
             files =
                 mapOf(
-                    LocalStackComposer.configPath(Constants.LocalStack.Services.STORE_GATE, LocalStackComposer.NGINX_CONFIG_FILE) to gateConfig(),
-                    LocalStackComposer.configPath(Constants.LocalStack.Services.STORE_CHECK, CHECK_SCRIPT) to LocalStackComposer.resource(CHECK_SCRIPT),
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.STORE_GATE, LocalStackComposer.NGINX_CONFIG_FILE) to
+                        gateConfig(),
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.STORE_CHECK, CHECK_SCRIPT) to
+                        LocalStackComposer.resource(CHECK_SCRIPT),
                 ),
         )
 

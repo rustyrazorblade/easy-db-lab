@@ -73,7 +73,7 @@ class LocalStackCreator(
         val spec =
             LocalStackSpec(
                 mode = LocalStackSpec.Mode.Live(bucket = bucket, region = region, awsProfile = profile, home = homeTenant),
-                tenants = store.tenants(bucket, homeTenant).all,
+                tenants = store.tenants(bucket, region, homeTenant).all,
             )
         val result = writer.write(directory, spec, LocalStackComposer.compose(spec))
         val manifest = result.manifest

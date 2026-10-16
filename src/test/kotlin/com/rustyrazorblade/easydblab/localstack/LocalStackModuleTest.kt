@@ -5,8 +5,6 @@ import com.rustyrazorblade.easydblab.EasyDBLabCommand
 import com.rustyrazorblade.easydblab.commands.observability.LocalCreate
 import com.rustyrazorblade.easydblab.commands.observability.LocalDashboards
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
-import com.rustyrazorblade.easydblab.services.ObjectStore
-import com.rustyrazorblade.easydblab.services.TenantDirectory
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.jupiter.api.Test
@@ -14,6 +12,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import picocli.CommandLine
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
 
 /**
  * The `observability local` commands are reachable: the real [localStackModule] builds both
@@ -25,8 +24,7 @@ class LocalStackModuleTest : BaseKoinTest() {
             localStackModule,
             module {
                 single { GrafanaDashboardCatalog.discover() }
-                single<ObjectStore> { mock() }
-                factory { TenantDirectory(get()) }
+                single<AwsCredentialsProvider> { mock() }
             },
         )
 

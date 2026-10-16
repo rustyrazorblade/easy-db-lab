@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterLabels
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -60,8 +61,8 @@ fun GrafanaAnnotationRequest.toMirrored(id: Long): MirroredAnnotation =
  * Grafana with the rest of its observability data.
  *
  * Grafana stays where annotations are written. Each annotation is its own Loki stream
- * (`cluster`, `source="annotation"`, `annotation_id`), with the text as the line and the tags,
- * dashboard, panel and end time as structured metadata. Pushing the same annotation again writes
+ * (`cluster`, `experiment`, `edl_tenant`, `source="annotation"`, `annotation_id`), with the text
+ * as the line and the tags, dashboard, panel and end time as structured metadata. Pushing the same annotation again writes
  * the same entry to the same stream, which Loki stores once; and since no two annotations share a
  * stream, a backdated one is never out of order.
  */
@@ -103,7 +104,7 @@ data class QueryableWait(
  *
  * @property pushClient Writes the streams to Loki.
  * @property grafana Lists Grafana's annotations for [syncAll].
- * @property clusterStateManager The cluster label.
+ * @property clusterStateManager The cluster, experiment and tenant labels.
  * @property eventBus Warns about annotations Loki would refuse.
  * @property clock Where Loki's accepted window and the ingester's query window are measured from.
  * @property queryableWait How long to wait for a flushed annotation to become queryable.
@@ -150,11 +151,11 @@ class DefaultAnnotationMirror(
     }
 
     private fun pushAll(annotations: List<MirroredAnnotation>) {
-        val cluster = clusterStateManager.load().clusterLabelName()
-        pushClient.push(annotations.map { it.toStream(cluster) })
+        val labels = ClusterLabels.of(clusterStateManager.load())
+        pushClient.push(annotations.map { it.toStream(labels) })
 
         val ingesterWindowStart = clock.instant().minus(Duration.ofHours(Constants.Loki.INGESTER_QUERY_WINDOW_HOURS)).toEpochMilli()
-        val backdated = annotations.filter { it.time < ingesterWindowStart }.map { it.toStream(cluster) }
+        val backdated = annotations.filter { it.time < ingesterWindowStart }.map { it.toStream(labels) }
         if (backdated.isNotEmpty()) {
             pushClient.flushIngester()
             awaitQueryable(backdated)
@@ -181,9 +182,9 @@ class DefaultAnnotationMirror(
         }
     }
 
-    private fun MirroredAnnotation.toStream(cluster: String): LokiPushStream =
+    private fun MirroredAnnotation.toStream(labels: ClusterLabels): LokiPushStream =
         LokiPushStream(
-            labels = mapOf("cluster" to cluster, "source" to Constants.Loki.ANNOTATION_SOURCE, ANNOTATION_ID to id.toString()),
+            labels = labels.asMap() + mapOf("source" to Constants.Loki.ANNOTATION_SOURCE, ANNOTATION_ID to id.toString()),
             timestampNanos = time * NANOS_PER_MILLI,
             line = text,
             metadata =

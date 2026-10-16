@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -41,6 +42,40 @@ class HelpTopicServiceTest {
     @Test
     fun `find returns null for an unknown key`() {
         assertThat(service().find("nonsense")).isNull()
+    }
+
+    /** The topic states the rules `init` enforces, so it must name them as the code does. */
+    @Test
+    fun `the provisioning topic describes init --experiment with the rules init enforces`() {
+        val body = DefaultHelpTopicService().find("provisioning")!!.body
+
+        assertThat(body)
+            .contains("--experiment")
+            .contains(Constants.Observability.EXPERIMENT_PATTERN)
+            .contains(Constants.Observability.CLUSTER_NAME_PATTERN)
+    }
+
+    @Test
+    fun `the observability topic describes the local stack commands`() {
+        val body = DefaultHelpTopicService().find("observability")!!.body
+
+        assertThat(body)
+            .contains("observability local create <dir>")
+            .contains("--tenant")
+            .contains("observability local dashboards <dir>")
+            .contains("--from")
+    }
+
+    @Test
+    fun `the observability topic describes the export, its three selectors, and that profiles are left out`() {
+        val body = DefaultHelpTopicService().find("observability")!!.body
+
+        assertThat(body)
+            .contains("observability export")
+            .contains("--tenant <t>")
+            .contains("--cluster <name-id>")
+            .contains("--experiment <name>")
+            .contains("no profiles, #1016")
     }
 
     @Test

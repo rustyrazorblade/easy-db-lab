@@ -2,11 +2,6 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
-import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.InitConfig
-import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
@@ -18,8 +13,6 @@ import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
-import org.mockito.kotlin.mock
-import org.mockito.kotlin.whenever
 import java.util.concurrent.TimeUnit
 
 /**
@@ -49,13 +42,7 @@ class DocumentsWebServerIntegrationTest {
         SharedK3s.createNamespace(NAMESPACE)
         client = SharedK3s.client()
 
-        val stateManager = mock<ClusterStateManager>()
-        whenever(
-            stateManager.load(),
-        ).thenReturn(
-            ClusterState(name = "test", versions = mutableMapOf(), s3Bucket = BUCKET, initConfig = InitConfig(region = "eu-west-1")),
-        )
-        val sidecars = GrafanaDocumentsSidecars(TemplateService(stateManager, mock<User>()))
+        val sidecars = GrafanaDocumentsSidecars()
         val documents = DocumentsBucket(BUCKET, "eu-west-1")
 
         val webConfig =

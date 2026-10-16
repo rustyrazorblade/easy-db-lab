@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.TailSignal
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -303,6 +304,57 @@ class ClusterStateTest {
         val state = ClusterState(name = "c", versions = mutableMapOf(), initConfig = InitConfig(tenant = longest))
 
         assertThat(state.tenant()).isEqualTo(longest)
+    }
+
+    @Test
+    fun `a state written before experiments existed reads its experiment as its name and id`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText(
+            """
+            {
+              "name": "pre-exp",
+              "clusterId": "0f3c",
+              "initConfig": { "region": "us-west-2", "tenant": "acme" }
+            }
+            """.trimIndent(),
+        )
+
+        assertThat(ClusterStateManager(stateFile).load().experiment()).isEqualTo("pre-exp-0f3c")
+    }
+
+    @Test
+    fun `a state with no init config reads its experiment as its name and id`() {
+        val state = ClusterState(name = "c", versions = mutableMapOf(), clusterId = "0f3c")
+
+        assertThat(state.experiment()).isEqualTo("c-0f3c")
+    }
+
+    @Test
+    fun `a recorded experiment survives a save and load`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        val manager = ClusterStateManager(stateFile)
+        manager.save(ClusterState(name = "c", versions = mutableMapOf(), initConfig = InitConfig(experiment = "2026-10-13-ab")))
+
+        assertThat(manager.load().experiment()).isEqualTo("2026-10-13-ab")
+    }
+
+    /** The experiment goes into labels, JVM options and S3 keys, so a hand-edited one is refused where it is read. */
+    @Test
+    fun `an experiment in state json that breaks the rule is refused, naming it`(
+        @TempDir tempDir: File,
+    ) {
+        val stateFile = File(tempDir, "state.json")
+        stateFile.writeText("""{ "name": "edited", "initConfig": { "experiment": "e1 -Dx=y" } }""")
+        val state = ClusterStateManager(stateFile).load()
+
+        assertThatThrownBy { state.experiment() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("e1 -Dx=y")
+            .hasMessageContaining(Constants.Observability.EXPERIMENT_PATTERN)
     }
 
     @Test

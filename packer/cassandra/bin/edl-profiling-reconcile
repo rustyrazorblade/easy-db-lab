@@ -415,6 +415,7 @@ RETENTION_MINUTES="$FALLBACK_RETENTION_MINUTES"
 MAX_BYTES="$FALLBACK_MAX_BYTES"
 PYROSCOPE_URL=""
 CLUSTER_NAME=""
+EXPERIMENT=""
 TENANT="$DEFAULT_TENANT"
 USER_ARGS=()
 DESIRED_FINGERPRINT=""
@@ -576,6 +577,8 @@ write_metrics() {
 otlp_metrics_payload() {
   EDL_M_HOST="$HOSTNAME_LABEL" \
     EDL_M_CLUSTER="$CLUSTER_NAME" \
+    EDL_M_EXPERIMENT="$EXPERIMENT" \
+    EDL_M_TENANT="$TENANT" \
     EDL_M_TIME="${NOW}000000000" \
     EDL_M_CUMULATIVE="$OTLP_CUMULATIVE" \
     EDL_M_SHIP_FAILURES="$FAILURES" \
@@ -623,7 +626,9 @@ otlp_metrics_payload() {
         "resource": {
           "attributes": [
             {"key": "host.name", "value": {"stringValue": strenv(EDL_M_HOST)}},
-            {"key": "cluster", "value": {"stringValue": strenv(EDL_M_CLUSTER)}}
+            {"key": "cluster", "value": {"stringValue": strenv(EDL_M_CLUSTER)}},
+            {"key": "experiment", "value": {"stringValue": strenv(EDL_M_EXPERIMENT)}},
+            {"key": "edl_tenant", "value": {"stringValue": strenv(EDL_M_TENANT)}}
           ]
         },
         "scopeMetrics": [{
@@ -676,9 +681,9 @@ write_effective_state() {
   # attachFailures are cumulative counters, deliberately, because a chunk that was rejected and has
   # since been pruned still happened and is still what the operator needs to see.
   #
-  # retentionMinutes, maxBytes, pyroscopeUrl, clusterName and tenant are recorded so a later pass
-  # whose desired-state document has gone unreadable can keep shipping and pruning under the
-  # operator's own numbers, into the cluster's own tenant, instead of silently reverting to the
+  # retentionMinutes, maxBytes, pyroscopeUrl, clusterName, experiment and tenant are recorded so a
+  # later pass whose desired-state document has gone unreadable can keep shipping and pruning under
+  # the operator's own numbers, into the cluster's own tenant and experiment, instead of silently reverting to the
   # built-in defaults.
   #
   # recordingStopped names why a node that should be profiling is deliberately not recording:
@@ -712,6 +717,7 @@ write_effective_state() {
     EDL_S_MAX_BYTES="$MAX_BYTES" \
     EDL_S_PYROSCOPE_URL="$PYROSCOPE_URL" \
     EDL_S_CLUSTER_NAME="$CLUSTER_NAME" \
+    EDL_S_EXPERIMENT="$EXPERIMENT" \
     EDL_S_TENANT="$TENANT" \
     EDL_S_STARTED_AT="$SESSION_STARTED_AT" \
     EDL_S_CHUNKS_PENDING="$(count_pending)" \
@@ -739,6 +745,7 @@ write_effective_state() {
       "maxBytes": env(EDL_S_MAX_BYTES),
       "pyroscopeUrl": strenv(EDL_S_PYROSCOPE_URL),
       "clusterName": strenv(EDL_S_CLUSTER_NAME),
+      "experiment": strenv(EDL_S_EXPERIMENT),
       "tenant": strenv(EDL_S_TENANT),
       "startedAt": env(EDL_S_STARTED_AT),
       "chunksPending": env(EDL_S_CHUNKS_PENDING),
@@ -810,6 +817,9 @@ else
   MAX_BYTES="$(read_scalar '.maxBytes' "$CONFIG_PATH")"
   PYROSCOPE_URL="$(read_scalar '.pyroscopeUrl' "$CONFIG_PATH")"
   CLUSTER_NAME="$(read_scalar '.clusterName' "$CONFIG_PATH")"
+  # A document written before experiments existed carries none: the cluster is an experiment of one.
+  EXPERIMENT="$(read_scalar '.experiment' "$CONFIG_PATH")"
+  [[ "$EXPERIMENT" == "null" || -z "$EXPERIMENT" ]] && EXPERIMENT="$CLUSTER_NAME"
   # A document written before tenants existed carries none, and belongs to the default tenant.
   TENANT="$(read_scalar '.tenant' "$CONFIG_PATH")"
   [[ "$TENANT" == "null" || -z "$TENANT" ]] && TENANT="$DEFAULT_TENANT"
@@ -875,6 +885,8 @@ if [[ -n "$CONFIG_ERROR" ]]; then
   # absent document answers empty and an absent key answers "null"; both mean "nothing recollected".
   CLUSTER_NAME="$(read_scalar '.clusterName' "$STATE_PATH")"
   [[ "$CLUSTER_NAME" == "null" ]] && CLUSTER_NAME=""
+  EXPERIMENT="$(read_scalar '.experiment' "$STATE_PATH")"
+  [[ "$EXPERIMENT" == "null" || -z "$EXPERIMENT" ]] && EXPERIMENT="$CLUSTER_NAME"
 fi
 
 LOOP_SECONDS="$(duration_seconds "$LOOP_INTERVAL")"
@@ -1171,7 +1183,7 @@ fi
 
 upload_chunk() {
   local path="$1" mtime="$2" status url name curl_exit curl_error stderr_file
-  name="$(urlencode "cassandra{hostname=${HOSTNAME_LABEL},cluster=${CLUSTER_NAME}}")"
+  name="$(urlencode "cassandra{hostname=${HOSTNAME_LABEL},cluster=${CLUSTER_NAME},experiment=${EXPERIMENT},edl_tenant=${TENANT}}")"
   url="${PYROSCOPE_URL}/ingest?name=${name}&format=jfr&from=$((mtime - LOOP_SECONDS))&until=${mtime}"
 
   # curl's stdout is the status code (--write-out) and its stderr is the only account of a failure

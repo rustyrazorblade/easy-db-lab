@@ -73,7 +73,7 @@ class SetupInstanceTest : BaseKoinTest() {
                                 hosts = hosts,
                                 // Not the default tenant, which is also ProfilingConfig's
                                 // fallback: only a non-default tenant shows it was written.
-                                initConfig = InitConfig(tenant = "acme"),
+                                initConfig = InitConfig(tenant = "acme", experiment = "e1"),
                             ),
                         )
                         whenever(it.exists()).thenReturn(true)
@@ -104,5 +104,6 @@ class SetupInstanceTest : BaseKoinTest() {
         assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
         assertThat(config.tenant).isEqualTo("acme")
+        assertThat(config.experiment).isEqualTo("e1")
     }
 }

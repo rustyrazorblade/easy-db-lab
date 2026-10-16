@@ -8,14 +8,19 @@ import com.rustyrazorblade.easydblab.configuration.InfrastructureState
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.services.aws.DomainState
+import com.rustyrazorblade.easydblab.services.aws.LONG_UNDERSCORE_DOMAIN
+import com.rustyrazorblade.easydblab.services.aws.LONG_UNDERSCORE_NAME
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -184,6 +189,27 @@ class OpenSearchStartTest : BaseKoinTest() {
         command.execute()
 
         verify(mockOpenSearchService).createDomain(any())
+    }
+
+    /** Cluster provisioning derives the same name (ClusterProvisioningServiceTest). */
+    @Test
+    fun `the domain name converts an underscore and keeps its suffix`() {
+        val domainResult =
+            OpenSearchDomainResult(
+                domainName = LONG_UNDERSCORE_DOMAIN,
+                domainId = "123456789012/$LONG_UNDERSCORE_DOMAIN",
+                endpoint = null,
+                dashboardsEndpoint = null,
+                state = DomainState.PROCESSING,
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(createValidClusterState().also { it.name = LONG_UNDERSCORE_NAME })
+        whenever(mockOpenSearchService.createDomain(any())).thenReturn(domainResult)
+
+        OpenSearchStart().execute()
+
+        val config = argumentCaptor<OpenSearchDomainConfig>()
+        verify(mockOpenSearchService).createDomain(config.capture())
+        assertThat(config.firstValue.domainName).isEqualTo(LONG_UNDERSCORE_DOMAIN)
     }
 
     private fun createValidClusterState(): ClusterState =

@@ -28,15 +28,16 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * a fixed path in that tree ([Constants.Grafana.HOME_DASHBOARD_PATH]).
  *
  * The pod also runs the test documents' signing proxy and read-only web server
- * ([GrafanaDocumentsSidecars]), and Grafana runs with `disable_sanitize_html` so a Text panel can
- * hold the documents iframe.
+ * ([GrafanaDocumentsSidecars]). Grafana's own `GF_*` settings, including `disable_sanitize_html` so
+ * a Text panel can hold the documents iframe, come from [GrafanaServerSettings], which the local
+ * docker compose stack shares.
  *
  * @property templateService Used for reading the cluster name for Grafana branding
  */
 class GrafanaManifestBuilder(
     private val templateService: TemplateService,
 ) {
-    private val documentsSidecars = GrafanaDocumentsSidecars(templateService)
+    private val documentsSidecars = GrafanaDocumentsSidecars()
 
     companion object {
         /** The Grafana Deployment's name, which the deploy waits on to finish rolling out. */
@@ -74,14 +75,6 @@ class GrafanaManifestBuilder(
         private const val LIVENESS_PERIOD = 15
         private const val READINESS_INITIAL_DELAY = 5
         private const val READINESS_PERIOD = 10
-
-        // Only externally-distributed plugins belong here. The Pyroscope datasource
-        // (grafana-pyroscope-datasource) is BUNDLED as a core plugin in Grafana 13.x — listing it
-        // makes the boot-time install step fail ("cannot install a Core plugin") and Grafana
-        // CrashLoopBackOffs. It is still declared as a datasource in GrafanaDatasourceConfig; the
-        // bundled plugin serves it without an install.
-        private const val GRAFANA_PLUGINS =
-            "grafana-clickhouse-datasource,grafana-polystat-panel"
 
         private const val RENDERER_TOKEN = "easydblab-renderer"
     }
@@ -250,28 +243,15 @@ class GrafanaManifestBuilder(
         )
 
     private fun buildEnvVars(clusterName: String): List<EnvVar> =
-        listOf(
-            envVar("GF_INSTALL_PLUGINS", GRAFANA_PLUGINS),
-            envVar("GF_SECURITY_ADMIN_USER", "admin"),
-            envVar("GF_SECURITY_ADMIN_PASSWORD", "admin"),
-            envVar("GF_USERS_ALLOW_SIGN_UP", "false"),
-            envVar("GF_AUTH_ANONYMOUS_ENABLED", "true"),
-            envVar("GF_USERS_DEFAULT_ORG_NAME", "Main Org."),
-            envVar("GF_AUTH_ANONYMOUS_ORG_NAME", "Main Org."),
-            envVar("GF_AUTH_ANONYMOUS_ORG_ROLE", "Admin"),
-            envVar("GF_AUTH_DISABLE_LOGIN_FORM", "false"),
-            envVar("GF_AUTH_BASIC_ENABLED", "true"),
-            envVar("GF_BRANDING_APP_TITLE", clusterName),
-            envVar(
-                "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH",
-                "$GRAFANA_DASHBOARD_ROOT/${Constants.Grafana.HOME_DASHBOARD_PATH}",
-            ),
-            envVar("GF_RENDERING_SERVER_URL", "http://localhost:$IMAGE_RENDERER_PORT/render"),
-            envVar("GF_RENDERING_CALLBACK_URL", "http://localhost:$GRAFANA_PORT/"),
-            envVar("GF_RENDERING_RENDERER_TOKEN", RENDERER_TOKEN),
-            // The Tests and comparison dashboards show a test's documents in an iframe in a Text panel.
-            envVar(Constants.Grafana.DISABLE_SANITIZE_HTML_ENV, "true"),
-        )
+        GrafanaServerSettings(
+            appTitle = clusterName,
+            imageRenderer =
+                GrafanaImageRenderer(
+                    serverUrl = "http://localhost:$IMAGE_RENDERER_PORT/render",
+                    callbackUrl = "http://localhost:$GRAFANA_PORT/",
+                    token = RENDERER_TOKEN,
+                ),
+        ).environment().map { (name, value) -> envVar(name, value) }
 
     private fun envVar(
         name: String,

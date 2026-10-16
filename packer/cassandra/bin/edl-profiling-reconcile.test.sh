@@ -937,7 +937,9 @@ test_successful_upload_is_marked_shipped() {
   log="$(curl_log)"
   assert_contains "the upload targets the ingest endpoint" "$log" "http://10.0.1.5:4040/ingest"
   assert_contains "the upload declares JFR format" "$log" "format=jfr"
-  assert_contains "the upload is labelled with hostname and cluster" "$log" "name=cassandra%7Bhostname%3Ddb0%2Ccluster%3Dtest-cluster%7D"
+  # A document with no experiment (written before experiments existed) is an experiment of one.
+  assert_contains "the upload is labelled with hostname, cluster, experiment and tenant" "$log" \
+    "name=cassandra%7Bhostname%3Ddb0%2Ccluster%3Dtest-cluster%2Cexperiment%3Dtest-cluster%2Cedl_tenant%3Dacme%7D"
   assert_contains "the upload sends raw octet-stream bytes" "$log" "application/octet-stream"
   assert_not_contains "the upload is not gzipped" "$log" "gzip"
 
@@ -1527,6 +1529,57 @@ test_the_reserved_tenant_makes_the_config_unreadable() {
   teardown
 }
 
+# --- experiment --------------------------------------------------------------
+
+# Every JFR profile carries cluster, experiment and edl_tenant, like every other signal, so the
+# experiment dashboards find it.
+test_uploads_carry_the_experiment_and_the_tenant() {
+  setup
+  write_config true '["-e", "cpu"]'
+  yq -i -p=json -o=json '.experiment = "2026-10-13-ab"' "$CONFIG"
+  make_chunk "cassandra-1-100.jfr" 600
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  assert_contains "the series name carries all three labels" "$(curl_log)" \
+    "name=cassandra%7Bhostname%3Ddb0%2Ccluster%3Dtest-cluster%2Cexperiment%3D2026-10-13-ab%2Cedl_tenant%3Dacme%7D"
+  assert_eq "and the experiment is recorded for a pass whose config goes unreadable" "2026-10-13-ab" \
+    "$(state_field '.experiment')"
+  teardown
+}
+
+# The counters reach Mimir as OTLP; they carry the same three labels as the profiles.
+test_the_counters_carry_the_experiment_and_the_tenant() {
+  setup
+  write_config true '["-e", "cpu"]'
+  yq -i -p=json -o=json '.experiment = "e1"' "$CONFIG"
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  local body
+  body="$(cat "$CURL_BODY")"
+  assert_eq "the counters carry the experiment" "e1" \
+    "$(jq -r '.resourceMetrics[0].resource.attributes[] | select(.key == "experiment") | .value.stringValue' <<<"$body")"
+  assert_eq "the counters carry the tenant" "acme" \
+    "$(jq -r '.resourceMetrics[0].resource.attributes[] | select(.key == "edl_tenant") | .value.stringValue' <<<"$body")"
+  teardown
+}
+
+# A pass whose document has gone unreadable keeps shipping under the experiment it last shipped under.
+test_an_unreadable_config_ships_under_the_last_experiment() {
+  setup
+  write_config true '["-e", "cpu"]'
+  yq -i -p=json -o=json '.experiment = "e1"' "$CONFIG"
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+  write_config true '["-e", "cpu"]' "1m" "60" "2147483648" 'Bad Tenant'
+  make_chunk "cassandra-1-100.jfr" 600
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  assert_eq "the document is unreadable" "config_unreadable" "$(state_field '.configError')"
+  assert_contains "the pass ships under the last experiment" "$(curl_log)" "experiment%3De1%2C"
+  teardown
+}
+
 # --- observability -----------------------------------------------------------
 
 test_metrics_and_effective_state_are_written() {
@@ -2000,7 +2053,7 @@ test_the_effective_state_key_set_is_the_contract() {
   run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
 
   assert_eq "the document carries exactly the keys the Kotlin reader models" \
-    "running,desiredEnabled,pid,args,loopInterval,retentionMinutes,maxBytes,pyroscopeUrl,clusterName,tenant,startedAt,chunksPending,chunksShipped,chunksRejected,shipFailures,prunedForAge,prunedForSize,bytesOnDisk,lastError,attachFailures,lastAttachError,attachDeferred,recordingStopped,configError,updatedAt" \
+    "running,desiredEnabled,pid,args,loopInterval,retentionMinutes,maxBytes,pyroscopeUrl,clusterName,experiment,tenant,startedAt,chunksPending,chunksShipped,chunksRejected,shipFailures,prunedForAge,prunedForSize,bytesOnDisk,lastError,attachFailures,lastAttachError,attachDeferred,recordingStopped,configError,updatedAt" \
     "$(jq -r 'keys_unsorted | join(",")' <"$PROFILE_DIR/effective-state.json")"
   teardown
 }
@@ -2175,6 +2228,9 @@ test_uploads_carry_the_tenant
 test_a_config_without_a_tenant_uploads_to_the_default_tenant
 test_a_malformed_tenant_makes_the_config_unreadable
 test_the_reserved_tenant_makes_the_config_unreadable
+test_uploads_carry_the_experiment_and_the_tenant
+test_the_counters_carry_the_experiment_and_the_tenant
+test_an_unreadable_config_ships_under_the_last_experiment
 test_metrics_and_effective_state_are_written
 test_counters_are_exported_to_the_node_otel_collector
 test_hostile_labels_cannot_corrupt_the_otlp_payload

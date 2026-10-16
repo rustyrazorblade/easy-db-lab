@@ -155,6 +155,12 @@ object Constants {
         const val BAD_REQUEST = 400
         const val FORBIDDEN = 403
         const val NOT_FOUND = 404
+
+        /** S3's answer to a write whose conditional request (`If-Match`, `If-None-Match`) is concurrent with another. */
+        const val CONFLICT = 409
+
+        /** S3's answer to a conditional write whose condition does not hold. */
+        const val PRECONDITION_FAILED = 412
         const val SERVER_ERROR_MIN = 500
         const val SERVER_ERROR_MAX = 599
         const val CLIENT_ERROR_THRESHOLD = 500 // Errors >= 500 are server errors
@@ -293,6 +299,12 @@ object Constants {
 
         /** Maximum length for S3 metrics configuration IDs */
         const val MAX_METRICS_CONFIG_ID_LENGTH = 32
+
+        /** S3's error code for a 409 that a concurrent conditional write to the same key caused. */
+        const val CONDITIONAL_REQUEST_CONFLICT = "ConditionalRequestConflict"
+
+        /** S3's error code for a request naming an object that does not exist. */
+        const val NO_SUCH_KEY = "NoSuchKey"
     }
 
     /**
@@ -320,8 +332,62 @@ object Constants {
         /** Directory of the Grafana annotation backups under [GRAFANA_ROOT]; the tenant follows it. */
         const val ANNOTATIONS_DIR = "annotations"
 
-        /** Root of the test documents: `reports/<tenant>/<name>-<id>/`, one folder per test. */
+        /** Root of the reports: `reports/<tenant>/<experiment>/`, one folder per experiment. */
         const val REPORTS_ROOT = "reports"
+
+        /**
+         * The rule every segment of every path in a report must match. The path travels through a
+         * URL, the documents web server and a signing proxy, and these characters need no encoding
+         * in any of them.
+         */
+        const val REPORT_PATH_SEGMENT_PATTERN = "[A-Za-z0-9._-]+"
+
+        /** The file list `report upload` generates at the root of every upload; no report may hold one there. */
+        const val REPORT_FILE_LIST = "_files.html"
+
+        /** The front page of an upload that holds `index.md` or `index.html` at its root. */
+        const val REPORT_FRONT_PAGE = "index.html"
+
+        /** The pointer at the root of an experiment's report folder; it leads to the newest upload. */
+        const val REPORT_POINTER = "index.html"
+
+        /** What the pointer of an experiment with no upload yet says. */
+        const val REPORT_PLACEHOLDER_TEXT = "No report yet"
+
+        /** The prefix of each upload's zip and folder: `report-<yyyyMMdd-HHmmss>`. */
+        const val REPORT_UPLOAD_PREFIX = "report-"
+
+        /**
+         * How many times an upload re-reads and rewrites a pointer that other writers keep
+         * changing between its read and its conditional write, before it fails.
+         */
+        const val REPORT_POINTER_MAX_ATTEMPTS = 10
+
+        /**
+         * How many later seconds an upload tries when the zip key of its second is taken, before it
+         * fails. Each try is one conditional write.
+         */
+        const val REPORT_ZIP_KEY_MAX_ATTEMPTS = 60
+
+        /**
+         * How many times an upload looks at a key whose write was refused while the key holds
+         * nothing (a write in flight there, possibly its own earlier attempt, or one that aborted)
+         * before it gives the key up: each look reads the key back and, while it holds nothing,
+         * writes it again. The pointer waits as many looks for a refused pointer to change.
+         */
+        const val REPORT_IN_FLIGHT_MAX_LOOKS = 10
+
+        /** How long an upload waits between looks at a key with a write in flight. */
+        const val REPORT_IN_FLIGHT_LOOK_INTERVAL_MS = 1000L
+
+        /**
+         * The start of every report zip's comment, which ends with its upload's random id: two
+         * uploads of the same directory never build the same bytes.
+         */
+        const val REPORT_ZIP_COMMENT_PREFIX = "easy-db-lab report upload "
+
+        /** The suffix of a report file that gets an HTML copy. */
+        const val REPORT_MARKDOWN_SUFFIX = ".md"
 
         /** The tenant of a cluster that was initialized without `--tenant`. */
         const val DEFAULT_TENANT = "default"
@@ -335,11 +401,40 @@ object Constants {
          */
         const val RESERVED_TENANT = "index"
 
+        /** A cluster name, unanchored; [CLUSTER_NAME_PATTERN] and [CLUSTER_ID_PATTERN] anchor it. */
+        private const val CLUSTER_NAME_CHARS = "[a-z][a-z0-9_-]{0,39}"
+
         /**
          * The rule every cluster name must match. The name flows raw into configuration files, Loki
          * index file names, S3 keys and metric labels, so it holds only characters all of them accept.
+         * `_` is allowed, so a cluster can be named for the variant it tests (`unthrottled_cursor`);
+         * a derived name that does not accept `_`, such as the OpenSearch domain name, converts it.
          */
-        const val CLUSTER_NAME_PATTERN = "^[a-z][a-z0-9-]{0,39}$"
+        const val CLUSTER_NAME_PATTERN = "^$CLUSTER_NAME_CHARS$"
+
+        /**
+         * The rule every cluster id, the `cluster` label's `<name>-<id>`, matches: a cluster name, then
+         * `-` and the cluster's lower-case UUID. A `--cluster` value goes into PromQL, LogQL and TraceQL
+         * selectors, so anything else is refused.
+         */
+        const val CLUSTER_ID_PATTERN =
+            "^$CLUSTER_NAME_CHARS-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
+        /**
+         * The rule every experiment name must match. A name may start with a digit, so a
+         * `YYYY-MM-DD` prefix sorts experiments by date. No `/`: the picker value joins tenant and
+         * name with one.
+         */
+        const val EXPERIMENT_PATTERN = "^[a-z0-9][a-z0-9_-]{0,79}$"
+
+        /** The label every signal carries naming its experiment. */
+        const val EXPERIMENT_LABEL = "experiment"
+
+        /**
+         * The label every signal carries naming its tenant. Not `tenant`: Tempo's own metrics
+         * already carry a `tenant` label that the collector scrapes.
+         */
+        const val TENANT_LABEL = "edl_tenant"
 
         /** The header Tempo and Pyroscope read the tenant from. */
         const val TENANT_HEADER = "X-Scope-OrgID"
@@ -454,6 +549,16 @@ object Constants {
         const val MAX_POLL_TIMEOUT_MS = 45 * 60 * 1000L // 45 minutes max wait
         const val LOG_INTERVAL_POLLS = 2 // Log every 2 polls (60 seconds at 30s interval)
         const val DOMAIN_NAME_MAX_LENGTH = 28 // AWS OpenSearch domain names must be 3-28 lowercase chars
+
+        // CreateDomain's refusal while OpenSearch cannot yet see a just-created service-linked
+        // role. Both the code and this part of the message must match before it is retried.
+        const val VALIDATION_ERROR_CODE = "ValidationException"
+        const val SERVICE_LINKED_ROLE_NOT_VISIBLE = "you must enable a service-linked role"
+
+        // CreateDomain right after this run created the service-linked role: OpenSearch does
+        // not see the new role at once. 12 attempts, 5s apart (about a minute in all).
+        const val SERVICE_LINKED_ROLE_MAX_ATTEMPTS = 12
+        const val SERVICE_LINKED_ROLE_RETRY_INTERVAL_MS = 5_000L
     }
 
     // Kit configuration
@@ -855,6 +960,15 @@ object Constants {
         const val HOME_DASHBOARD_PATH = "infrastructure/system-overview.json"
 
         /**
+         * Grafana's server admin. Every Grafana this tool runs lets anyone in as an org admin, but the
+         * provisioning reload API (`/api/admin/provisioning/...`) needs the server admin, by basic auth.
+         */
+        const val ADMIN_USER = "admin"
+
+        /** [ADMIN_USER]'s password. The Grafanas are ephemeral and bound to private or loopback addresses. */
+        const val ADMIN_PASSWORD = "admin"
+
+        /**
          * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in
          * addition to any operator-supplied tags. The core dashboards' annotation query filters on
          * this tag so global markers render on their timelines. Scoped annotations
@@ -909,6 +1023,218 @@ object Constants {
 
             /** The read-only web server, a released stable nginx that runs as a non-root user. */
             const val WEB_SERVER_IMAGE = "nginxinc/nginx-unprivileged:1.30.5-alpine"
+        }
+    }
+
+    /**
+     * The local observability stack: a docker compose project on the operator's machine that reads
+     * the shared store (`observability local create`), and the export's temporary stacks.
+     */
+    object LocalStack {
+        /** The address every published port of a local stack binds, and the address this tool reaches it on. */
+        const val LOOPBACK = "127.0.0.1"
+
+        /**
+         * The read gate's web server, which the cluster does not run: a released stable nginx that
+         * runs as a non-root user. The store check runs in it too, for its `curl`.
+         */
+        const val GATE_IMAGE = "nginxinc/nginx-unprivileged:1.30.5-alpine"
+
+        /**
+         * A statically linked busybox, mounted into the signer for its healthcheck: the signer's
+         * image is built from scratch and has no shell or HTTP client of its own.
+         */
+        const val HEALTHCHECK_TOOLS_IMAGE = "busybox:1.37.0-musl"
+
+        /** thanos, which rewrites Mimir blocks for a query export; a released version. */
+        const val THANOS_IMAGE = "quay.io/thanos/thanos:v0.42.4"
+
+        /** The base compose file; a user's `compose.override.yml` beside it merges automatically. */
+        const val COMPOSE_FILE = "compose.yml"
+
+        /** The user's own compose file. The tool never opens, writes or removes it. */
+        const val OVERRIDE_FILE = "compose.override.yml"
+
+        /** The manifest of the files the tool owns in a stack directory. */
+        const val MANIFEST_FILE = ".easy-db-lab-local-stack.json"
+
+        /** Directories that hold data or state, which the tool never opens, writes or removes. */
+        val PROTECTED_DIRS = listOf("data", "cache", "grafana-data")
+
+        /** The directory the components keep their working state in, one subdirectory each. */
+        const val CACHE_DIR = "cache"
+
+        /** Grafana's data directory (its database and installed plugins). */
+        const val GRAFANA_DATA_DIR = "grafana-data"
+
+        /** The directory holding the provisioned dashboard tree, and the staging trees beside it. */
+        const val DASHBOARDS_DIR = "dashboards"
+
+        /** Where [DASHBOARDS_DIR] is mounted in the Grafana container. */
+        const val DASHBOARDS_MOUNT = "/var/lib/easy-db-lab/dashboards"
+
+        /** The provisioned tree under [DASHBOARDS_DIR], which Grafana's dashboard provider sweeps. */
+        const val DASHBOARDS_TREE = "current"
+
+        /** The port the read gate and the signer listen on inside the project network. */
+        const val STORE_PORT = 8080
+
+        /**
+         * The signer's `HOME`. Its image sets none, and aws-sdk-go v1 finds `~/.aws` from `$HOME`:
+         * without it the read-only mount at `/root/.aws` is never read and every request fails with
+         * `NoCredentialProviders`.
+         */
+        const val SIGNER_HOME = "/root"
+
+        /** How often the signer's healthcheck reads the bucket, so expired credentials show as unhealthy. */
+        const val SIGNER_HEALTHCHECK_INTERVAL = "60s"
+
+        /**
+         * aws-sdk-go-v2's switches for the checksum headers it adds to S3 requests. Loki 3.7.8 uses that
+         * SDK, and by default asks for response checksum validation with an `x-amz-checksum-mode` header
+         * on every GetObject; the signer (aws-sigv4-proxy 1.13) does not sign that header, so S3 refuses
+         * the request. Set to [AWS_CHECKSUM_WHEN_REQUIRED], the SDK sends checksum headers only for an
+         * operation that requires one, and no read does.
+         */
+        const val AWS_RESPONSE_CHECKSUM_VALIDATION_ENV = "AWS_RESPONSE_CHECKSUM_VALIDATION"
+
+        /** See [AWS_RESPONSE_CHECKSUM_VALIDATION_ENV]: the request side of the same SDK switch. */
+        const val AWS_REQUEST_CHECKSUM_CALCULATION_ENV = "AWS_REQUEST_CHECKSUM_CALCULATION"
+
+        /** The value of both checksum switches: only when the operation requires a checksum. */
+        const val AWS_CHECKSUM_WHEN_REQUIRED = "when_required"
+
+        /**
+         * How long a cold read over older data may take in a local stack or the export's reader: a
+         * local Grafana's wait for a datasource (`GF_DATAPROXY_TIMEOUT`) and the local Tempo's server
+         * and querier timeouts (`TempoLocalConfig`). Such a read fetches every block and chunk it
+         * needs from S3 and outlasted Grafana's 30-second default and Tempo 3.0.3's 30s (10s by id),
+         * which showed as 502s in Grafana and 500s to the export. A cluster keeps the defaults.
+         */
+        const val COLD_READ_TIMEOUT_SECONDS = 300
+
+        /** Grafana's localhost port, unless `create` is given another. */
+        const val DEFAULT_GRAFANA_PORT = 3000
+
+        /** The documents web server's localhost port, unless `create` is given another. */
+        const val DEFAULT_DOCUMENTS_PORT = 3080
+
+        /** The compose service names, which are also the host names inside the project network. */
+        object Services {
+            const val MIMIR = "mimir"
+            const val MEMCACHED = "memcached"
+            const val LOKI = "loki"
+            const val TEMPO = "tempo"
+            const val GRAFANA = "grafana"
+            const val DOCUMENTS = "documents-web"
+            const val STORE_GATE = "store-gate"
+            const val STORE_SIGNER = "store-signer"
+            const val STORE_CHECK = "store-check"
+
+            /** No service answers it until profiles join the stack (issue 1016); the datasource set names it. */
+            const val PYROSCOPE = "pyroscope"
+        }
+
+        /**
+         * The networks of a stack that reads the live store. The signer signs any request with the
+         * operator's credentials, so it shares a network only with the gate and the store check.
+         */
+        object Networks {
+            /** The project's own network, which every service but the signer and the store check joins. */
+            const val DEFAULT = "default"
+
+            /** The signer, the gate and the store check; internal, so it has no way out. */
+            const val STORE_ACCESS = "store-access"
+
+            /** The signer's way out to S3, which no other service joins. */
+            const val STORE_EGRESS = "store-egress"
+        }
+    }
+
+    /** `observability export`: a zip of a tenant's or some clusters' data that opens offline as a local stack. */
+    object Export {
+        /** The only extension an export's path may have; the zip's one directory is the name without it. */
+        const val ZIP_EXTENSION = ".zip"
+
+        /** Between the path and a random suffix: the name the zip is written under until it is complete. */
+        const val PARTIAL_INFIX = ".partial-"
+
+        /** The buffer one object is streamed into the zip through. */
+        const val COPY_BUFFER_BYTES = 1024 * 1024
+
+        /** The directory of the stack the copied store sits under, mounted read-only into every backend. */
+        const val DATA_DIR = "data"
+
+        /** The file at the root of the stack that says how to open it and which images it needs. */
+        const val README_FILE = "README.txt"
+
+        /** The issue that brings profiles to the local stack and the export. */
+        const val PROFILES_ISSUE = 1016
+
+        /** How many times one Loki index table is copied again after an object listed in it went away mid-copy. */
+        const val LOKI_TABLE_ATTEMPTS = 5
+
+        /** Exports by query (`--cluster`, `--experiment`): the temporary reader and writer stacks. */
+        object Query {
+            /** Between the zip's path and a random suffix: the query export's work directory, kept afterwards. */
+            const val WORK_INFIX = ".work-"
+
+            /** Each temporary stack's `docker compose logs`, saved in its directory before the stack is removed. */
+            const val STACK_LOG_FILE = "compose.log"
+
+            /** Joins the tenants of a federated request in `X-Scope-OrgID`. */
+            const val TENANT_SEPARATOR = "|"
+
+            /** The label a federated Mimir answer gives each series, naming its tenant. */
+            const val TENANT_ID_LABEL = "__tenant_id__"
+
+            /** The lines one forward page of a log export asks Loki for. */
+            const val LOG_PAGE_LINES = 5000
+
+            /**
+             * The most lines Loki answers in one query, `max_entries_limit_per_query` in `loki.yaml`:
+             * what a log export asks for when a whole page shares one nanosecond.
+             */
+            const val LOG_MAX_LINES = 100_000
+
+            /** The Loki request header that asks for each line's structured metadata apart from the stream labels. */
+            const val LOKI_ENCODING_FLAGS_HEADER = "X-Loki-Response-Encoding-Flags"
+
+            /** The value of [LOKI_ENCODING_FLAGS_HEADER] that categorizes the labels. */
+            const val LOKI_CATEGORIZE_LABELS = "categorize-labels"
+
+            /**
+             * The traces one search of a trace export asks Tempo for; a window that returns this many is
+             * split. A search costs about the same whatever its window, since Tempo scans every block the
+             * window overlaps (a live export took about 5s per search, from a 100s window to a 7h one), so
+             * the number of searches is the cost: at 1000, 146k traces took 475 searches and 43 minutes.
+             * Tempo 3.0.3 answers up to `query_frontend.search.max_result_limit`, 262144.
+             */
+            const val TRACE_SEARCH_LIMIT = 20_000
+
+            /**
+             * How much longer a trace export waits for the reader's Tempo than Tempo waits for a cold
+             * read (`LocalStack.COLD_READ_TIMEOUT_SECONDS`), so Tempo's own answer arrives first.
+             */
+            const val TEMPO_ANSWER_MARGIN_SECONDS = 30L
+
+            /** How many trace searches, and how many fetches and replays, a trace export runs at once. */
+            const val TRACE_EXPORT_PARALLELISM = 8
+
+            /** The longest trace search window, Tempo's `query_frontend.search.max_duration` (spike S3). */
+            const val TRACE_SEARCH_MAX_HOURS = 168L
+
+            /** How long one tenant's thanos block rewrite may run. */
+            const val REWRITE_TIMEOUT_HOURS = 6L
+
+            /** How long one `docker compose` command of a temporary stack may take, image pulls included. */
+            const val COMPOSE_COMMAND_TIMEOUT_MINUTES = 20L
+
+            /** How long a temporary stack's backend may take to answer `/ready`. */
+            const val READY_TIMEOUT_MINUTES = 10L
+
+            /** How long the export writer's Tempo may take to write every span into a flushed block. */
+            const val TEMPO_DRAIN_TIMEOUT_MINUTES = 15L
         }
     }
 

@@ -473,6 +473,8 @@ object RetryUtil {
      *   fails only when the last look throws. That includes checked ones such as OkHttp's
      *   IOException, so run it with resilience4j's checked decorators, as [pollUntil] does
      * - An InterruptedException ends the poll at once: the thread was asked to stop
+     * - An exception [transient] rejects ends the poll at once too: a poll that awaits only its
+     *   result (a conditional write still in flight) passes `{ false }`, so every error fails fast
      *
      * - When [deadline] is set, nothing is retried once it has passed, so the wait is bounded by the
      *   wall clock rather than by how long each look takes
@@ -481,6 +483,7 @@ object RetryUtil {
      * @param interval how long to wait between looks
      * @param done whether a look's result ends the poll
      * @param deadline when set, the instant after which no further look is made
+     * @param transient which exceptions from a look are retried; every one but an interrupt by default
      * @return RetryConfig configured for a fixed-interval poll
      */
     fun <T> createPollUntilRetryConfig(
@@ -488,6 +491,7 @@ object RetryUtil {
         interval: Duration,
         done: (T) -> Boolean,
         deadline: Instant? = null,
+        transient: (Throwable) -> Boolean = { true },
     ): RetryConfig {
         fun beforeDeadline() = deadline == null || Instant.now().isBefore(deadline)
         return RetryConfig
@@ -495,7 +499,7 @@ object RetryUtil {
             .maxAttempts(maxAttempts)
             .intervalFunction { _ -> interval.toMillis() }
             .retryOnResult { result -> !done(result) && beforeDeadline() }
-            .retryOnException { it !is InterruptedException && beforeDeadline() }
+            .retryOnException { it !is InterruptedException && transient(it) && beforeDeadline() }
             .build()
     }
 }

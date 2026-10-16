@@ -6151,27 +6151,721 @@ sealed interface Event {
     }
 
     /**
-     * Test documents: the markdown files `report upload` stores in a test's folder, `reports/<tenant>/<name>-<id>/`,
-     * with an HTML copy of each and one `index.html` that holds them all.
+     * Reports: `report upload` stores each upload of a directory as one zip in its experiment's
+     * folder, `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip`, unpacks it beside the zip
+     * and moves the folder's pointer forward to it.
      */
     @Serializable
     sealed interface Report : Event {
-        /** One stored document: its file name and its S3 URI. */
+        /**
+         * One upload was stored.
+         *
+         * @property zipKey The zip's S3 key; the zip is never replaced.
+         * @property unpackedPrefix The key prefix of the folder it was unpacked to, ending in `/`.
+         * @property pointerAdvanced Whether the experiment's pointer now leads to this upload; false
+         *   when an upload of the same or a later second is already shown.
+         * @property files The directory's files, relative to it.
+         */
         @Serializable
-        data class StoredDocument(
-            val name: String,
-            val uri: String,
+        @SerialName("Report.Uploaded")
+        data class Uploaded(
+            val zipKey: String,
+            val unpackedPrefix: String,
+            val pointerAdvanced: Boolean,
+            val files: List<String>,
+        ) : Report {
+            override fun toDisplayString(): String {
+                val shown =
+                    if (pointerAdvanced) {
+                        "The documents panels now show this upload."
+                    } else {
+                        "A newer upload of this experiment is already shown; this one is kept beside it."
+                    }
+                return "Uploaded ${files.size} files as $zipKey\nUnpacked to $unpackedPrefix\n$shown"
+            }
+        }
+    }
+
+    // =========================================================================
+    // Event.LocalStack — the local observability stack (`observability local`)
+    // =========================================================================
+
+    /**
+     * The local observability stack: a docker compose project on this machine that reads the shared
+     * store. `observability local create` writes it, `observability local dashboards` refreshes its
+     * dashboards.
+     */
+    @Serializable
+    sealed interface LocalStack : Event {
+        /**
+         * `local create` could not read the account bucket with the operator's profile, and wrote
+         * nothing.
+         *
+         * @property profile the AWS profile the stack would read the store with.
+         * @property awsErrorCode S3's error code, or the SDK's reason when it loaded no credentials.
+         */
+        @Serializable
+        @SerialName("LocalStack.StoreUnreadable")
+        data class StoreUnreadable(
+            val profile: String,
+            val awsErrorCode: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String =
+                "Cannot read the account bucket with profile $profile: $awsErrorCode\n" +
+                    "Nothing was written. Log in and run the command again: aws sso login --profile $profile"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `local create` could not reach S3 to check the account bucket (a timeout, a refused
+         * connection, a name that did not resolve, TLS), and wrote nothing. The credentials were never
+         * tried, so this carries no login hint.
+         *
+         * @property profile the AWS profile the stack would read the store with.
+         * @property reason the network error's class and message.
+         */
+        @Serializable
+        @SerialName("LocalStack.StoreUnreachable")
+        data class StoreUnreachable(
+            val profile: String,
+            val reason: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String =
+                "The account bucket check with profile $profile could not reach S3: $reason\n" +
+                    "Nothing was written. Check the network (VPN, proxy, DNS) and run the command again."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `local create` wrote the stack's files into [directory].
+         *
+         * @property directory the stack directory.
+         * @property files the number of files the tool owns there.
+         * @property edited the owned files the operator had edited; this write replaced the edits.
+         * @property homeTenant the tenant of the stable datasources.
+         * @property tenants every tenant Grafana has datasources for, sorted.
+         * @property grafanaUrl where the browser reaches the stack's Grafana.
+         */
+        @Serializable
+        @SerialName("LocalStack.Written")
+        data class Written(
+            val directory: String,
+            val files: Int,
+            val edited: List<String>,
+            val homeTenant: String,
+            val tenants: List<String>,
+            val grafanaUrl: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String {
+                val replaced =
+                    if (edited.isEmpty()) {
+                        ""
+                    } else {
+                        "\nThese files had been edited; the edits were replaced: ${edited.joinToString(", ")}"
+                    }
+                return "Wrote the local observability stack to $directory ($files files)$replaced\n" +
+                    "Tenants: ${tenants.joinToString(", ")} (home: $homeTenant)\n" +
+                    "Start it with: cd $directory && docker compose up -d\n" +
+                    "Grafana: $grafanaUrl"
+            }
+        }
+
+        /**
+         * A running local Grafana reloaded its provisioned datasources, so a tenant that is new since
+         * the last `local create` shows with no restart.
+         *
+         * @property grafanaUrl the Grafana that reloaded.
+         */
+        @Serializable
+        @SerialName("LocalStack.DatasourcesReloaded")
+        data class DatasourcesReloaded(
+            val grafanaUrl: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String = "Grafana at $grafanaUrl reloaded its datasources"
+        }
+
+        /**
+         * A dashboard tree was put where the stack's Grafana reads it.
+         *
+         * @property directory the stack directory.
+         * @property dashboards the number of dashboards in the tree.
+         * @property from the directory the dashboards came from, or null for the packaged ones.
+         * @property reloaded whether a running Grafana was asked to reload them.
+         */
+        @Serializable
+        @SerialName("LocalStack.DashboardsInstalled")
+        data class DashboardsInstalled(
+            val directory: String,
+            val dashboards: Int,
+            val from: String?,
+            val reloaded: Boolean,
+        ) : LocalStack {
+            override fun toDisplayString(): String {
+                val source = if (from == null) "Using packaged dashboards" else "Using dashboards from $from"
+                val shown = if (reloaded) "Grafana reloaded them." else "Grafana loads them when the stack starts."
+                return "$source: installed $dashboards dashboards in $directory. $shown"
+            }
+        }
+
+        /**
+         * A running Grafana refused to reload what the command had already rewritten, so it still
+         * shows what it loaded before. The files on disk are the new ones; a restart loads them.
+         *
+         * @property directory the stack directory.
+         * @property grafanaUrl the Grafana that refused.
+         * @property kind `datasources` or `dashboards`.
+         * @property status Grafana's HTTP status.
+         * @property reason Grafana's answer.
+         */
+        @Serializable
+        @SerialName("LocalStack.ReloadRefused")
+        data class ReloadRefused(
+            val directory: String,
+            val grafanaUrl: String,
+            val kind: String,
+            val status: Int,
+            val reason: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String =
+                "The stack's files in $directory were rewritten, but Grafana at $grafanaUrl refused to reload its $kind " +
+                    "(HTTP $status: $reason), so it still shows the old ones.\n" +
+                    "Load them with: cd $directory && docker compose restart grafana"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `local dashboards` found no Grafana answering for the stack, and changed nothing.
+         *
+         * @property directory the stack directory.
+         * @property grafanaUrl where the stack's Grafana should answer.
+         */
+        @Serializable
+        @SerialName("LocalStack.GrafanaNotRunning")
+        data class GrafanaNotRunning(
+            val directory: String,
+            val grafanaUrl: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String =
+                "No Grafana answers at $grafanaUrl for the stack in $directory; nothing was changed. " +
+                    "Start it with: cd $directory && docker compose up -d"
+
+            override fun isError(): Boolean = true
+        }
+    }
+
+    // =========================================================================
+    // Event.Export — `observability export`: a zip that opens offline as the local stack
+    // =========================================================================
+
+    /**
+     * `observability export`: a zip of a tenant's store (or some clusters' data) with the offline
+     * local stack. It reads the account bucket and writes only the local zip; nothing in S3 changes.
+     */
+    @Serializable
+    sealed interface Export : Event {
+        /**
+         * What an export leaves out, and the issue that brings it.
+         *
+         * @property what the data left out.
+         * @property issue the issue number.
+         */
+        @Serializable
+        data class Exclusion(
+            val what: String,
+            val issue: Int,
         )
 
-        /** [documents] were stored in the test's folder and its index at [indexUri] was rebuilt. */
+        /**
+         * An experiment export reads [tenant], for the reason [source] names.
+         *
+         * @property experiment the experiment's name.
+         * @property tenant the tenant it reads.
+         * @property source `option` (`--tenant`), `workspace` (the workspace's tenant) or `default`
+         *   (no `--tenant` and no workspace).
+         */
         @Serializable
-        @SerialName("Report.DocumentsUploaded")
-        data class DocumentsUploaded(
-            val documents: List<StoredDocument>,
-            val indexUri: String,
-        ) : Report {
+        @SerialName("Export.TenantChosen")
+        data class TenantChosen(
+            val experiment: String,
+            val tenant: String,
+            val source: String,
+        ) : Export {
+            override fun toDisplayString(): String {
+                val why =
+                    when (source) {
+                        "option" -> "given with --tenant"
+                        "workspace" -> "the tenant of this cluster workspace; name another with --tenant"
+                        else -> "the default tenant, since this is not a cluster workspace; name another with --tenant"
+                    }
+                return "Experiment $experiment: using tenant $tenant ($why)"
+            }
+        }
+
+        /**
+         * The operator's credentials cannot read the account bucket (an expired SSO session, a
+         * refused bucket); nothing was written.
+         *
+         * @property profile the AWS profile the export reads with, or null when the easy-db-lab
+         *   profile holds access keys instead.
+         * @property awsErrorCode the AWS error code, or the SDK's reason when it loaded no credentials.
+         */
+        @Serializable
+        @SerialName("Export.StoreUnreadable")
+        data class StoreUnreadable(
+            val profile: String?,
+            val awsErrorCode: String,
+        ) : Export {
             override fun toDisplayString(): String =
-                (documents.map { "Uploaded ${it.name} to ${it.uri}" } + "Rebuilt the test's index at $indexUri").joinToString("\n")
+                when (profile) {
+                    null ->
+                        "Cannot read the account bucket with the access keys in the easy-db-lab profile: $awsErrorCode\n" +
+                            "Nothing was written. Fix the access keys and run the command again."
+                    else ->
+                        "Cannot read the account bucket with profile $profile: $awsErrorCode\n" +
+                            "Nothing was written. Log in and run the command again: aws sso login --profile $profile"
+                }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The export could not reach S3 to check the account bucket (a timeout, a refused connection,
+         * a name that did not resolve, TLS); nothing was written. The credentials were never tried, so
+         * this carries no login hint.
+         *
+         * @property profile the AWS profile the export reads with, or null for the easy-db-lab
+         *   profile's access keys.
+         * @property reason the network error's class and message.
+         */
+        @Serializable
+        @SerialName("Export.StoreUnreachable")
+        data class StoreUnreachable(
+            val profile: String?,
+            val reason: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "The account bucket check with ${profile?.let { "profile $it" } ?: "the easy-db-lab profile's access keys"} " +
+                    "could not reach S3: $reason\n" +
+                    "Nothing was written. Check the network (VPN, proxy, DNS) and run the command again."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The export listed what it will copy and found room for it.
+         *
+         * @property tenant the tenant copied.
+         * @property objects the objects it will copy.
+         * @property bytes their size.
+         * @property freeBytes the free space where the zip is written.
+         */
+        @Serializable
+        @SerialName("Export.SizeEstimated")
+        data class SizeEstimated(
+            val tenant: String,
+            val objects: Int,
+            val bytes: Long,
+            val freeBytes: Long,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Exporting tenant $tenant: $objects objects, ${bytes / Constants.Size.BYTES_PER_MIB} MiB ($bytes bytes); " +
+                    "${freeBytes / Constants.Size.BYTES_PER_MIB} MiB free"
+        }
+
+        /**
+         * The data is larger than the free space where the zip is written; nothing was copied.
+         *
+         * @property path the zip's path.
+         * @property bytes the data's size.
+         * @property freeBytes the free space there.
+         */
+        @Serializable
+        @SerialName("Export.InsufficientSpace")
+        data class InsufficientSpace(
+            val path: String,
+            val bytes: Long,
+            val freeBytes: Long,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Not enough disk space for $path: the data is ${bytes / Constants.Size.BYTES_PER_MIB} MiB ($bytes bytes) " +
+                    "and only ${freeBytes / Constants.Size.BYTES_PER_MIB} MiB ($freeBytes bytes) is free. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The tenant has no metrics, logs or traces in the store; nothing was written.
+         *
+         * @property tenant the tenant.
+         * @property prefixes the prefixes the export listed.
+         */
+        @Serializable
+        @SerialName("Export.EmptyTenant")
+        data class EmptyTenant(
+            val tenant: String,
+            val prefixes: List<String>,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Tenant $tenant has no data in the store: nothing under ${prefixes.joinToString(", ")}. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The export failed; no zip is left at its path.
+         *
+         * @property path the zip's path.
+         * @property signal what was being copied (`metrics`, `logs`, `traces`, `annotations`, `reports`, `stack`).
+         * @property step what the export was doing.
+         * @property reason the error.
+         * @property logs the docker compose logs of a query export's temporary stacks, saved in its
+         *   work directory; empty for a tenant export, which runs none.
+         * @property partialFile the export's partial file, when it could not be removed and was left
+         *   behind; null when it was removed.
+         * @property partialFileError why [partialFile] could not be removed.
+         * @property zipComplete true when the zip was already complete at [path] and only the removal
+         *   of [partialFile] failed.
+         */
+        @Serializable
+        @SerialName("Export.Failed")
+        data class Failed(
+            val path: String,
+            val signal: String,
+            val step: String,
+            val reason: String,
+            val logs: List<String> = emptyList(),
+            val partialFile: String? = null,
+            val partialFileError: String? = null,
+            val zipComplete: Boolean = false,
+        ) : Export {
+            override fun toDisplayString(): String {
+                val outcome =
+                    when {
+                        zipComplete ->
+                            "The zip is complete at $path, but the partial file $partialFile could not be removed " +
+                                "($partialFileError) and was left behind; remove it by hand."
+                        partialFile != null ->
+                            "The export failed copying $signal ($step): $reason\nNo zip was left at $path.\n" +
+                                "The partial file $partialFile could not be removed ($partialFileError) and was left behind; " +
+                                "remove it by hand."
+                        else -> "The export failed copying $signal ($step): $reason\nNo zip was left at $path."
+                    }
+                return outcome + if (logs.isEmpty()) "" else "\nThe temporary stacks' docker compose logs: ${logs.joinToString(", ")}"
+            }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The zip is complete and at its path.
+         *
+         * @property path the zip's path.
+         * @property tenant the tenant exported.
+         * @property entries the files in the zip.
+         * @property bytes their size before compression.
+         * @property excluded what the export leaves out.
+         */
+        @Serializable
+        @SerialName("Export.Completed")
+        data class Completed(
+            val path: String,
+            val tenant: String,
+            val entries: Int,
+            val bytes: Long,
+            val excluded: List<Exclusion>,
+        ) : Export {
+            override fun toDisplayString(): String {
+                val left =
+                    excluded.joinToString(
+                        "\n",
+                    ) { "${it.what.replaceFirstChar(Char::uppercase)} are not included (issue #${it.issue})." }
+                val size = "$entries files, ${bytes / Constants.Size.BYTES_PER_MIB} MiB before compression"
+                return "Exported tenant $tenant to $path ($size).\n$left\n" +
+                    "Open it with: unzip $path, then docker compose up in the directory it makes; see its README.txt."
+            }
+        }
+
+        /**
+         * One cluster a query export reads, and its tenant.
+         *
+         * @property cluster the cluster's `<name>-<id>`.
+         * @property tenant its tenant.
+         * @property source where a `--cluster` export found [tenant]: `workspace` (this cluster
+         *   workspace's state) or `query` (a series query of the store); null for an experiment
+         *   export, whose tenant `TenantChosen` reports.
+         */
+        @Serializable
+        data class SelectedCluster(
+            val cluster: String,
+            val tenant: String,
+            val source: String? = null,
+        )
+
+        /**
+         * A query export found the clusters it reads and their tenants.
+         *
+         * @property clusters each cluster and its tenant.
+         * @property home the tenant of the opened export's stable datasources: the experiment's, or the
+         *   first cluster's.
+         */
+        @Serializable
+        @SerialName("Export.ClustersSelected")
+        data class ClustersSelected(
+            val clusters: List<SelectedCluster>,
+            val home: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Exporting ${clusters.size} cluster${if (clusters.size == 1) "" else "s"}: " +
+                    clusters.joinToString(", ") { "${it.cluster} (tenant ${it.tenant}${whereFound(it.source)})" } + ". Home tenant: $home"
+
+            /** Where a cluster export found the tenant; nothing for an experiment's clusters. */
+            private fun whereFound(source: String?): String =
+                when (source) {
+                    null -> ""
+                    "workspace" -> ", from this cluster workspace"
+                    else -> ", found by querying the store"
+                }
+        }
+
+        /**
+         * Some `--cluster` values are not a cluster's `<name>-<id>`; nothing was read or written.
+         *
+         * @property clusters each such value.
+         * @property rule the pattern a cluster id matches.
+         */
+        @Serializable
+        @SerialName("Export.InvalidCluster")
+        data class InvalidCluster(
+            val clusters: List<String>,
+            val rule: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "--cluster needs a cluster's <name>-<id>, its cluster label: a cluster name, then - and the cluster's UUID " +
+                    "($rule). Not a cluster id: ${clusters.joinToString(", ")}. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * No tenant holds a cluster `--cluster` names; nothing was written.
+         *
+         * @property cluster the cluster.
+         * @property tenants the tenants searched.
+         */
+        @Serializable
+        @SerialName("Export.ClusterNotFound")
+        data class ClusterNotFound(
+            val cluster: String,
+            val tenants: List<String>,
+        ) : Export {
+            override fun toDisplayString(): String =
+                if (tenants.isEmpty()) {
+                    "Cluster $cluster was not found: the store holds no tenant. Nothing was written."
+                } else {
+                    "Cluster $cluster was not found in tenant${if (tenants.size == 1) "" else "s"} ${tenants.joinToString(", ")}. " +
+                        "Nothing was written."
+                }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A cluster has data in several tenants, so `--cluster` cannot tell which; nothing was written.
+         *
+         * @property cluster the cluster.
+         * @property tenants every tenant it has data in.
+         */
+        @Serializable
+        @SerialName("Export.ClusterInSeveralTenants")
+        data class ClusterInSeveralTenants(
+            val cluster: String,
+            val tenants: List<String>,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Cluster $cluster has data in several tenants: ${tenants.joinToString(", ")}. Nothing was written. " +
+                    "Export one tenant with --tenant, or run from the cluster's own workspace."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * Mimir named no tenant for a series of a cluster in a federated query; nothing was written.
+         *
+         * @property cluster the cluster.
+         * @property tenantSet the tenants the query named, joined by `|`.
+         */
+        @Serializable
+        @SerialName("Export.ClusterTenantUnknown")
+        data class ClusterTenantUnknown(
+            val cluster: String,
+            val tenantSet: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Mimir named no tenant for a series of cluster $cluster in the query of tenants $tenantSet. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * No cluster of a tenant carries the experiment `--experiment` names; nothing was written.
+         *
+         * @property experiment the experiment's name.
+         * @property tenant its tenant.
+         * @property query the lookup that found no cluster.
+         */
+        @Serializable
+        @SerialName("Export.ExperimentNotFound")
+        data class ExperimentNotFound(
+            val experiment: String,
+            val tenant: String,
+            val query: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Experiment $experiment has no clusters in tenant $tenant: $query found none. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * Mimir named clusters of the experiment `--experiment` names whose `cluster` label is not a
+         * cluster's `<name>-<id>`; they went into no query and nothing was written.
+         *
+         * @property experiment the experiment's name.
+         * @property tenant its tenant.
+         * @property clusters each such label value.
+         * @property rule the pattern a cluster id matches.
+         */
+        @Serializable
+        @SerialName("Export.InvalidDiscoveredCluster")
+        data class InvalidDiscoveredCluster(
+            val experiment: String,
+            val tenant: String,
+            val clusters: List<String>,
+            val rule: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Experiment $experiment in tenant $tenant has clusters whose cluster label is not a cluster's <name>-<id> " +
+                    "($rule): ${clusters.joinToString(", ")}. They were not queried. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * A query export reads the store through a temporary local stack whose signer reads `~/.aws`
+         * with an AWS profile, and the easy-db-lab profile names none; nothing was written.
+         */
+        @Serializable
+        @SerialName("Export.AwsProfileRequired")
+        data object AwsProfileRequired : Export {
+            override fun toDisplayString(): String =
+                "A --cluster or --experiment export reads the store through a temporary local stack, which signs with an AWS " +
+                    "profile from ~/.aws, and the easy-db-lab profile names none. Nothing was written. Export the tenant with --tenant."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * What a query export put in the zip for one signal. A signal with nothing is reported as zero.
+         *
+         * @property signal `metrics` (items are blocks), `logs` (lines) or `traces` (traces).
+         * @property items the blocks, lines or traces.
+         * @property bytes their size.
+         */
+        @Serializable
+        @SerialName("Export.SignalExported")
+        data class SignalExported(
+            val signal: String,
+            val items: Long,
+            val bytes: Long,
+        ) : Export {
+            override fun toDisplayString(): String {
+                val unit =
+                    when (signal) {
+                        "metrics" -> "blocks"
+                        "logs" -> "lines"
+                        else -> "traces"
+                    }
+                return "Exported $signal: $items $unit, ${bytes / Constants.Size.BYTES_PER_MIB} MiB ($bytes bytes)"
+            }
+        }
+
+        /**
+         * A query export's zip is complete and at its path.
+         *
+         * @property path the zip's path.
+         * @property clusters the clusters exported.
+         * @property tenants their tenants, the home tenant first.
+         * @property entries the files in the zip.
+         * @property bytes their size before compression.
+         * @property excluded what the export leaves out.
+         */
+        @Serializable
+        @SerialName("Export.QueryCompleted")
+        data class QueryCompleted(
+            val path: String,
+            val clusters: List<String>,
+            val tenants: List<String>,
+            val entries: Int,
+            val bytes: Long,
+            val excluded: List<Exclusion>,
+        ) : Export {
+            override fun toDisplayString(): String {
+                val left =
+                    excluded.joinToString(
+                        "\n",
+                    ) { "${it.what.replaceFirstChar(Char::uppercase)} are not included (issue #${it.issue})." }
+                val size = "$entries files, ${bytes / Constants.Size.BYTES_PER_MIB} MiB before compression"
+                return "Exported ${clusters.joinToString(
+                    ", ",
+                )} (tenant${if (tenants.size == 1) "" else "s"} ${tenants.joinToString(", ")}) " +
+                    "to $path ($size).\n$left\n" +
+                    "Open it with: unzip $path, then docker compose up in the directory it makes; see its README.txt."
+            }
+        }
+
+        /**
+         * A query export's work directory, kept after the export, success or failure. Nothing removes it.
+         *
+         * @property path the directory.
+         * @property bytes what it holds.
+         */
+        @Serializable
+        @SerialName("Export.WorkDirectoryKept")
+        data class WorkDirectoryKept(
+            val path: String,
+            val bytes: Long,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "The work directory $path (${bytes / Constants.Size.BYTES_PER_MIB} MiB, $bytes bytes) is kept; " +
+                    "remove it yourself when you no longer need it."
+        }
+
+        /**
+         * `docker compose down` could not remove one of a query export's temporary projects: its
+         * containers or network may still exist. The export's own outcome is reported apart.
+         *
+         * @property project the compose project.
+         * @property directory the project's directory, in the work directory.
+         * @property exitCode `docker compose down`'s exit status.
+         * @property output what it printed.
+         */
+        @Serializable
+        @SerialName("Export.StackNotRemoved")
+        data class StackNotRemoved(
+            val project: String,
+            val directory: String,
+            val exitCode: Int,
+            val output: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "The temporary docker compose project $project was not removed: docker compose down exited $exitCode:\n" +
+                    "${output.trimEnd()}\n" +
+                    "Remove it yourself in $directory with: docker compose -p $project down --remove-orphans"
+
+            override fun isError(): Boolean = true
         }
     }
 

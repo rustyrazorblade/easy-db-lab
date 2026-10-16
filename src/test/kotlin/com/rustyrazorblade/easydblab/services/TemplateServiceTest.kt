@@ -128,6 +128,13 @@ class TemplateServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `buildContextVariables carries the experiment, defaulting to the cluster's name and id`() {
+        setupClusterState()
+
+        assertThat(createService().buildContextVariables()).containsEntry("EXPERIMENT", "test-cluster-test-id")
+    }
+
+    @Test
     fun `buildContextVariables uses empty string when no control host exists`() {
         setupClusterState(controlHost = null)
 

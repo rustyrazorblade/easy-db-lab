@@ -33,6 +33,20 @@ class ClusterConfigDataTest {
     }
 
     @Test
+    fun `publishes the experiment under the lowercase key experiment`() {
+        val withExperiment = state.copy(initConfig = InitConfig(tenant = "acme", experiment = "2026-10-13-ab"))
+
+        assertThat(ClusterConfigData.of(control, withExperiment, "us-west-2")).containsEntry("experiment", "2026-10-13-ab")
+    }
+
+    @Test
+    fun `a cluster without an experiment publishes its own name and id as the experiment`() {
+        val data = ClusterConfigData.of(control, state, "us-west-2")
+
+        assertThat(data).containsEntry("experiment", "lab-abc123")
+    }
+
+    @Test
     fun `publishes the metrics and logs backend prefixes`() {
         val data = ClusterConfigData.of(control, state, "us-west-2")
 

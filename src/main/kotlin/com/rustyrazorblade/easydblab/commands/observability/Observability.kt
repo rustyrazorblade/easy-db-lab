@@ -9,12 +9,14 @@ import picocli.CommandLine.Spec
  *
  * Available sub-commands:
  * - compactor: start, stop and inspect the account compactor
+ * - local: a local Grafana stack over the shared store
+ * - export: a zip of observability data that opens offline as the local stack
  */
 @Command(
     name = "observability",
     description = ["Account-wide observability store operations"],
     mixinStandardHelpOptions = true,
-    subcommands = [Compactor::class],
+    subcommands = [Compactor::class, Local::class, ObservabilityExport::class],
 )
 class Observability : Runnable {
     @Spec
@@ -36,6 +38,25 @@ class Observability : Runnable {
     subcommands = [CompactorStart::class, CompactorStop::class, CompactorStatus::class],
 )
 class Compactor : Runnable {
+    @Spec
+    lateinit var spec: CommandSpec
+
+    override fun run() {
+        spec.commandLine().usage(System.out)
+    }
+}
+
+/**
+ * Parent command for the local observability stack: a docker compose project on this machine that
+ * shows every tenant's metrics, logs and traces from the shared store, with no cluster running.
+ */
+@Command(
+    name = "local",
+    description = ["A local Grafana, Mimir, Loki and Tempo stack that reads the shared store"],
+    mixinStandardHelpOptions = true,
+    subcommands = [LocalCreate::class, LocalDashboards::class],
+)
+class Local : Runnable {
     @Spec
     lateinit var spec: CommandSpec
 

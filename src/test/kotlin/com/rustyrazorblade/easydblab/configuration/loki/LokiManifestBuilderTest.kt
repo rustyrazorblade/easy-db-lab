@@ -127,7 +127,7 @@ class LokiManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the cluster, host, role and source are index labels`() {
+    fun `the cluster, experiment, tenant, host, role and source are index labels`() {
         val yaml = config()
         val rules = nodeAt(yaml, "limits_config", "otlp_config", "resource_attributes", "attributes_config") as YamlList
         val indexLabels =
@@ -136,7 +136,7 @@ class LokiManifestBuilderTest : BaseKoinTest() {
                 .filter { it.get<YamlScalar>("action")?.content == "index_label" }
                 .flatMap { rule -> (rule.get<YamlList>("attributes")?.items.orEmpty()).map { (it as YamlScalar).content } }
 
-        assertThat(indexLabels).containsExactlyInAnyOrder("cluster", "host.name", "node_role", "source")
+        assertThat(indexLabels).containsExactlyInAnyOrder("cluster", "experiment", "edl_tenant", "host.name", "node_role", "source")
     }
 
     @Test

@@ -1,0 +1,2985 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "${logs_datasource}"
+        },
+        "enable": true,
+        "expr": "{source=\"annotation\", cluster=~\"${cluster_a:regex}|${cluster_b:regex}\"} | dashboard_uid=\"\" | label_format cluster_name=`{{regexReplaceAll \"^(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$\" .cluster \"$1\"}}`",
+        "hide": false,
+        "iconColor": "green",
+        "instant": false,
+        "name": "easy-db-lab markers",
+        "tagKeys": "tags",
+        "textFormat": "",
+        "titleFormat": "{{cluster_name}}"
+      }
+    ]
+  },
+  "description": "Compare any two clusters exactly: cluster A and cluster B, usually of one experiment, each over its own window and at full resolution. Overlay, side by side, a summary with B vs A %, both reports, the verdict tiles and the latency distributions.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1000,
+      "panels": [],
+      "title": "Overlay: A and B from a common start",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "A and B on one axis, each moved by a PromQL offset so it starts at the left edge. The panel covers the longer of the two and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a side whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1001,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_a\"}[$__rate_interval] offset ${a_offset}s))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_b\"}[$__rate_interval] offset ${b_offset}s))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
+      "title": "Throughput: overlay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "A and B on one axis, each moved by a PromQL offset so it starts at the left edge. The panel covers the longer of the two and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a side whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "id": 1002,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"} offset ${a_offset}s)",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"} offset ${b_offset}s)",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
+      "title": "Read p99: overlay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "A and B on one axis, each moved by a PromQL offset so it starts at the left edge. The panel covers the longer of the two and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a side whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "id": 1003,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"} offset ${a_offset}s)",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"} offset ${b_offset}s)",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
+      "title": "Write p99: overlay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "A and B on one axis, each moved by a PromQL offset so it starts at the left edge. The panel covers the longer of the two and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a side whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 9
+      },
+      "id": 1004,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_a\"}[$__rate_interval] offset ${a_offset}s))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_b\"}[$__rate_interval] offset ${b_offset}s))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
+      "title": "Error rate: overlay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "A and B on one axis, each moved by a PromQL offset so it starts at the left edge. The panel covers the longer of the two and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a side whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 9
+      },
+      "id": 1005,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\", state=\"idle\"}[$__rate_interval] offset ${a_offset}s)) / sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\"}[$__rate_interval] offset ${a_offset}s)))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_b\", state=\"idle\"}[$__rate_interval] offset ${b_offset}s)) / sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_b\"}[$__rate_interval] offset ${b_offset}s)))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
+      "title": "CPU busy: overlay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "A and B on one axis, each moved by a PromQL offset so it starts at the left edge. The panel covers the longer of the two and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a side whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 9
+      },
+      "id": 1006,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$cluster_a\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval] offset ${a_offset}s))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$cluster_b\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval] offset ${b_offset}s))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
+      "title": "Disk I/O: overlay",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "A and B on one axis, each moved by a PromQL offset so it starts at the left edge. The panel covers the longer of the two and ends now, so it needs the dashboard's relative time range: an absolute range turns the panel's own range off. Annotations sit at their real time, so only a side whose offset is 0 lines up with them.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 17
+      },
+      "id": 1007,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_a\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval] offset ${a_offset}s)))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_b\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval] offset ${b_offset}s)))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "timeFrom": "${max_len_s}s-${max_len_d}d",
+      "title": "GC pause: overlay",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "id": 1008,
+      "panels": [],
+      "title": "Side by side: each cluster on its own time range",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster A over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "id": 1009,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_a\"}[$__rate_interval]))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${a_len_s}s-${a_len_d}d",
+      "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
+      "title": "Throughput: A ${cluster_a:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster B over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "id": 1010,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_b\"}[$__rate_interval]))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${b_len_s}s-${b_len_d}d",
+      "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
+      "title": "Throughput: B ${cluster_b:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster A over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 33
+      },
+      "id": 1011,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"})",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${a_len_s}s-${a_len_d}d",
+      "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
+      "title": "Read p99: A ${cluster_a:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster B over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 33
+      },
+      "id": 1012,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"})",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${b_len_s}s-${b_len_d}d",
+      "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
+      "title": "Read p99: B ${cluster_b:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster A over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "id": 1013,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"})",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${a_len_s}s-${a_len_d}d",
+      "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
+      "title": "Write p99: A ${cluster_a:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster B over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "µs"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "id": 1014,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"})",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${b_len_s}s-${b_len_d}d",
+      "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
+      "title": "Write p99: B ${cluster_b:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster A over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 47
+      },
+      "id": 1015,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_a\"}[$__rate_interval]))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${a_len_s}s-${a_len_d}d",
+      "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
+      "title": "Error rate: A ${cluster_a:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster B over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 47
+      },
+      "id": 1016,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_b\"}[$__rate_interval]))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${b_len_s}s-${b_len_d}d",
+      "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
+      "title": "Error rate: B ${cluster_b:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster A over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 54
+      },
+      "id": 1017,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\", state=\"idle\"}[$__rate_interval])) / sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\"}[$__rate_interval])))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${a_len_s}s-${a_len_d}d",
+      "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
+      "title": "CPU busy: A ${cluster_a:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster B over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 54
+      },
+      "id": 1018,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_b\", state=\"idle\"}[$__rate_interval])) / sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_b\"}[$__rate_interval])))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${b_len_s}s-${b_len_d}d",
+      "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
+      "title": "CPU busy: B ${cluster_b:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster A over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 61
+      },
+      "id": 1019,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$cluster_a\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${a_len_s}s-${a_len_d}d",
+      "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
+      "title": "Disk I/O: A ${cluster_a:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster B over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 61
+      },
+      "id": 1020,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(system_disk_io_bytes_total{cluster=\"$cluster_b\", device=~\"nvme[0-9]+n[0-9]+\"}[$__rate_interval]))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${b_len_s}s-${b_len_d}d",
+      "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
+      "title": "Disk I/O: B ${cluster_b:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster A over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 68
+      },
+      "id": 1021,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_a\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
+          "legendFormat": "A ${cluster_a:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${a_len_s}s-${a_len_d}d",
+      "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
+      "title": "GC pause: A ${cluster_a:text}",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Cluster B over its own whole window, at its real times. The panel covers the cluster's length and is shifted back from now to the cluster's end; it needs the dashboard's relative time range.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 5,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 68
+      },
+      "id": 1022,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_b\", jvm_gc_name!~\".*Cycles\"}[$__rate_interval])))",
+          "legendFormat": "B ${cluster_b:text}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${b_len_s}s-${b_len_d}d",
+      "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
+      "title": "GC pause: B ${cluster_b:text}",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 75
+      },
+      "id": 1023,
+      "panels": [],
+      "title": "Summary and reports",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Each figure over each cluster's whole window: a range the length of the cluster's run, evaluated at its end. B vs A % is 100 * (B - A) / A, and is empty when A is 0.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 12,
+        "x": 0,
+        "y": 76
+      },
+      "id": 1024,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "Figure"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace(label_replace(sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end})), \"figure\", \"Throughput (reqps)\", \"\", \"\"), \"run\", \"1 A\", \"\", \"\")\nor label_replace(label_replace(sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_b\"}[${b_len}s] @ ${b_end})), \"figure\", \"Throughput (reqps)\", \"\", \"\"), \"run\", \"2 B\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_b\"}[${b_len}s] @ ${b_end}))) - (sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end})))) / ((sum(rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end}))) != 0), \"figure\", \"Throughput (reqps)\", \"\", \"\"), \"run\", \"3 B vs A %\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"}[${a_len}s] @ ${a_end})), \"figure\", \"Read p99 (µs)\", \"\", \"\"), \"run\", \"1 A\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"}[${b_len}s] @ ${b_end})), \"figure\", \"Read p99 (µs)\", \"\", \"\"), \"run\", \"2 B\", \"\", \"\")\nor label_replace(label_replace(100 * ((max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"}[${b_len}s] @ ${b_end}))) - (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"}[${a_len}s] @ ${a_end})))) / ((max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"}[${a_len}s] @ ${a_end}))) != 0), \"figure\", \"Read p99 (µs)\", \"\", \"\"), \"run\", \"3 B vs A %\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"}[${a_len}s] @ ${a_end})), \"figure\", \"Write p99 (µs)\", \"\", \"\"), \"run\", \"1 A\", \"\", \"\")\nor label_replace(label_replace(max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"}[${b_len}s] @ ${b_end})), \"figure\", \"Write p99 (µs)\", \"\", \"\"), \"run\", \"2 B\", \"\", \"\")\nor label_replace(label_replace(100 * ((max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"}[${b_len}s] @ ${b_end}))) - (max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"}[${a_len}s] @ ${a_end})))) / ((max(avg_over_time(cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"}[${a_len}s] @ ${a_end}))) != 0), \"figure\", \"Write p99 (µs)\", \"\", \"\"), \"run\", \"3 B vs A %\", \"\", \"\")\nor label_replace(label_replace(sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end})), \"figure\", \"Error rate (reqps)\", \"\", \"\"), \"run\", \"1 A\", \"\", \"\")\nor label_replace(label_replace(sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_b\"}[${b_len}s] @ ${b_end})), \"figure\", \"Error rate (reqps)\", \"\", \"\"), \"run\", \"2 B\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_b\"}[${b_len}s] @ ${b_end}))) - (sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end})))) / ((sum(rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end}))) != 0), \"figure\", \"Error rate (reqps)\", \"\", \"\"), \"run\", \"3 B vs A %\", \"\", \"\")\nor label_replace(label_replace(100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\", state=\"idle\"}[${a_len}s] @ ${a_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end}))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"1 A\", \"\", \"\")\nor label_replace(label_replace(100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_b\", state=\"idle\"}[${b_len}s] @ ${b_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_b\"}[${b_len}s] @ ${b_end}))), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"2 B\", \"\", \"\")\nor label_replace(label_replace(100 * ((100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_b\", state=\"idle\"}[${b_len}s] @ ${b_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_b\"}[${b_len}s] @ ${b_end})))) - (100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\", state=\"idle\"}[${a_len}s] @ ${a_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end}))))) / ((100 * (1 - sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\", state=\"idle\"}[${a_len}s] @ ${a_end})) / sum(rate(system_cpu_time_seconds_total{cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end})))) != 0), \"figure\", \"CPU busy (percent)\", \"\", \"\"), \"run\", \"3 B vs A %\", \"\", \"\")\nor label_replace(label_replace(sum(rate(system_disk_io_bytes_total{cluster=\"$cluster_a\", device=~\"nvme[0-9]+n[0-9]+\"}[${a_len}s] @ ${a_end})), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"1 A\", \"\", \"\")\nor label_replace(label_replace(sum(rate(system_disk_io_bytes_total{cluster=\"$cluster_b\", device=~\"nvme[0-9]+n[0-9]+\"}[${b_len}s] @ ${b_end})), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"2 B\", \"\", \"\")\nor label_replace(label_replace(100 * ((sum(rate(system_disk_io_bytes_total{cluster=\"$cluster_b\", device=~\"nvme[0-9]+n[0-9]+\"}[${b_len}s] @ ${b_end}))) - (sum(rate(system_disk_io_bytes_total{cluster=\"$cluster_a\", device=~\"nvme[0-9]+n[0-9]+\"}[${a_len}s] @ ${a_end})))) / ((sum(rate(system_disk_io_bytes_total{cluster=\"$cluster_a\", device=~\"nvme[0-9]+n[0-9]+\"}[${a_len}s] @ ${a_end}))) != 0), \"figure\", \"Disk I/O (Bps)\", \"\", \"\"), \"run\", \"3 B vs A %\", \"\", \"\")\nor label_replace(label_replace(100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_a\", jvm_gc_name!~\".*Cycles\"}[${a_len}s] @ ${a_end}))), \"figure\", \"GC pause (percent)\", \"\", \"\"), \"run\", \"1 A\", \"\", \"\")\nor label_replace(label_replace(100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_b\", jvm_gc_name!~\".*Cycles\"}[${b_len}s] @ ${b_end}))), \"figure\", \"GC pause (percent)\", \"\", \"\"), \"run\", \"2 B\", \"\", \"\")\nor label_replace(label_replace(100 * ((100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_b\", jvm_gc_name!~\".*Cycles\"}[${b_len}s] @ ${b_end})))) - (100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_a\", jvm_gc_name!~\".*Cycles\"}[${a_len}s] @ ${a_end}))))) / ((100 * avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_a\", jvm_gc_name!~\".*Cycles\"}[${a_len}s] @ ${a_end})))) != 0), \"figure\", \"GC pause (percent)\", \"\", \"\"), \"run\", \"3 B vs A %\", \"\", \"\")",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Summary: A ${cluster_a:text}, B ${cluster_b:text}",
+      "transformations": [
+        {
+          "id": "groupingToMatrix",
+          "options": {
+            "columnField": "run",
+            "rowField": "figure",
+            "valueField": "Value"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "figure\\run": 0,
+              "1 A": 1,
+              "2 B": 2,
+              "3 B vs A %": 3
+            },
+            "renameByName": {
+              "figure\\run": "Figure",
+              "1 A": "A",
+              "2 B": "B",
+              "3 B vs A %": "B vs A %"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "description": "The report of cluster A's experiment, reports/<tenant>/<experiment>/index.html, served read-only by the documents web server; for a cluster from before the experiment label, reports/<tenant>/<name>-<id>/. Upload a report with easy-db-lab report upload DIR. When cluster A has no up samples within Lookback, there is no report path and the frame shows the documents server's error page.",
+      "gridPos": {
+        "h": 14,
+        "w": 6,
+        "x": 12,
+        "y": 76
+      },
+      "id": 1025,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${a_report}/index.html\" width=\"100%\" height=\"468\"></iframe>",
+        "mode": "html"
+      },
+      "title": "Report: A ${cluster_a:text}",
+      "type": "text"
+    },
+    {
+      "description": "The report of cluster B's experiment, reports/<tenant>/<experiment>/index.html, served read-only by the documents web server; for a cluster from before the experiment label, reports/<tenant>/<name>-<id>/. Upload a report with easy-db-lab report upload DIR. When cluster B has no up samples within Lookback, there is no report path and the frame shows the documents server's error page.",
+      "gridPos": {
+        "h": 14,
+        "w": 6,
+        "x": 18,
+        "y": 76
+      },
+      "id": 1026,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${b_report}/index.html\" width=\"100%\" height=\"468\"></iframe>",
+        "mode": "html"
+      },
+      "title": "Report: B ${cluster_b:text}",
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 90
+      },
+      "id": 1030,
+      "panels": [],
+      "title": "Verdict: B measured against A",
+      "type": "row"
+    },
+    {
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 91
+      },
+      "id": 1031,
+      "options": {
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "Pick **Cluster A** and **Cluster B**. Every tile in the row below is B measured against A, each over its own whole window (a range the length of the cluster's run, evaluated at its end), so the two may have run on different days.\n\n**What the colours mean.** Green means B is better than A, red means worse. The direction is set per metric: for latency, GC pause and errors, lower is better; for throughput, higher is better. Read the sign, not just the colour.\n\n**Percent or absolute.** The latency, throughput, GC and allocation tiles are percent changes, empty when A is 0. The error tile is an **absolute** difference in errors per second per node, because a healthy A is zero and a percentage of zero is undefined.\n\n**A blank tile** means one side had no data: either A was zero, or A and B are not both set.\n\n**Comparing a cluster with itself** reads 0% everywhere. That is the expected result, and a useful check that the section is wired up.\n\nTo compare more than two clusters, open **Experiment: Cassandra**.",
+        "mode": "markdown"
+      },
+      "transparent": false,
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Change in read latency at ${percentile}, B against A. Negative is better: B answers reads faster. The percentile is a pre-aggregated gauge from each node's EstimatedHistogram, averaged over each cluster's nodes and over its own window. Empty when A is 0.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 97
+      },
+      "id": 1032,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * ((avg(avg_over_time(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"}[${b_len}s] @ ${b_end}))) - (avg(avg_over_time(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"}[${a_len}s] @ ${a_end})))) / ((avg(avg_over_time(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"}[${a_len}s] @ ${a_end}))) != 0)",
+          "instant": true,
+          "legendFormat": "Read ${percentile}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Read ${percentile}",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Change in write latency at ${percentile}, B against A. Negative is better: B acknowledges writes faster. Empty when A is 0.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 97
+      },
+      "id": 1033,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * ((avg(avg_over_time(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"}[${b_len}s] @ ${b_end}))) - (avg(avg_over_time(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"}[${a_len}s] @ ${a_end})))) / ((avg(avg_over_time(cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"}[${a_len}s] @ ${a_end}))) != 0)",
+          "instant": true,
+          "legendFormat": "Write ${percentile}",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Write ${percentile}",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Change in coordinator requests per second per node, B against A. Positive is better: B serves more work. Averaged per node so clusters of different sizes stay comparable. Empty when A is 0.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": -5
+              },
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 97
+      },
+      "id": 1034,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * ((avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_b\"}[${b_len}s] @ ${b_end})))) - (avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end}))))) / ((avg(sum by (host_name) (rate(cassandra_client_request_count_total{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end})))) != 0)",
+          "instant": true,
+          "legendFormat": "Throughput",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Throughput",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Change in the share of wall clock time spent in stop-the-world GC pauses, B against A. Negative is better. Concurrent cycles are excluded with jvm_gc_name!~\".*Cycles\"; leaving them in counts a concurrent collector's background work as pause time and makes it look worse than a stop-the-world collector, which is backwards. Empty when A is 0.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 97
+      },
+      "id": 1035,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * ((avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_b\", jvm_gc_name!~\".*Cycles\"}[${b_len}s] @ ${b_end})))) - (avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_a\", jvm_gc_name!~\".*Cycles\"}[${a_len}s] @ ${a_end}))))) / ((avg(sum by (host_name) (rate(jvm_gc_duration_seconds_sum{job=\"cassandra\", cluster=\"$cluster_a\", jvm_gc_name!~\".*Cycles\"}[${a_len}s] @ ${a_end})))) != 0)",
+          "instant": true,
+          "legendFormat": "GC pause overhead",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "GC pause overhead",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Change in bytes allocated per second per node, B against A. Negative is better only at equal throughput: allocating less for the same work means less garbage to collect. Always read it beside the Throughput tile, because a cluster doing more work allocates more. jvm_memory_allocation_bytes is a histogram, so this is the _sum series, never a _total. Needs Java 17 or newer: the OpenTelemetry agent derives allocation from JFR and emits no jvm_memory_allocation on Java 11, the default for Cassandra 4.x and 5.0 (run `cassandra use <version> --java 17`). Empty when A is 0.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 97
+      },
+      "id": 1036,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "100 * ((avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=\"$cluster_b\"}[${b_len}s] @ ${b_end})))) - (avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end}))))) / ((avg(sum by (host_name) (rate(jvm_memory_allocation_bytes_sum{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end})))) != 0)",
+          "instant": true,
+          "legendFormat": "Allocation rate",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Allocation rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "Errors per second per node on B minus A, each over its own window. Negative is better. This one is an absolute difference, not a percentage: a healthy cluster has zero errors, and a percentage change from zero is undefined and would blank the tile.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 4,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.0001
+              },
+              {
+                "color": "red",
+                "value": 0.01
+              }
+            ]
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 97
+      },
+      "id": 1037,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "(avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_b\"}[${b_len}s] @ ${b_end})))) - (avg(sum by (host_name) (rate(cassandra_client_request_error_total{job=\"cassandra\", cluster=\"$cluster_a\"}[${a_len}s] @ ${a_end}))))",
+          "instant": true,
+          "legendFormat": "Error rate (absolute)",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Error rate (absolute)",
+      "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 102
+      },
+      "id": 1040,
+      "panels": [],
+      "title": "Latency distribution: A and B side by side",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "How cluster A's per-node read latency at ${percentile} is spread over its own window, at its real times. Cassandra exports pre-aggregated percentiles, not a request histogram, so Grafana buckets the nodes' samples: the Y axis is latency and the colour is how many node samples fell in each bucket. Compare the shape and height of the band on the two sides.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 103
+      },
+      "id": 1041,
+      "maxDataPoints": 500,
+      "options": {
+        "calculate": true,
+        "calculation": {
+          "yBuckets": {
+            "mode": "count",
+            "scale": {
+              "log": 2,
+              "type": "log"
+            },
+            "value": "24"
+          }
+        },
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Oranges",
+          "steps": 64
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-09
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "µs"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"})",
+          "instant": false,
+          "legendFormat": "A ${cluster_a:text} {{host_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${a_len_s}s-${a_len_d}d",
+      "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
+      "title": "Read latency ${percentile} distribution: A ${cluster_a:text}",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "How cluster B's per-node read latency at ${percentile} is spread over its own window, at its real times. Cassandra exports pre-aggregated percentiles, not a request histogram, so Grafana buckets the nodes' samples: the Y axis is latency and the colour is how many node samples fell in each bucket. Compare the shape and height of the band on the two sides.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 103
+      },
+      "id": 1042,
+      "maxDataPoints": 500,
+      "options": {
+        "calculate": true,
+        "calculation": {
+          "yBuckets": {
+            "mode": "count",
+            "scale": {
+              "log": 2,
+              "type": "log"
+            },
+            "value": "24"
+          }
+        },
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Oranges",
+          "steps": 64
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-09
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "µs"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"})",
+          "instant": false,
+          "legendFormat": "B ${cluster_b:text} {{host_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${b_len_s}s-${b_len_d}d",
+      "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
+      "title": "Read latency ${percentile} distribution: B ${cluster_b:text}",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "How cluster A's per-node write latency at ${percentile} is spread over its own window, at its real times. Cassandra exports pre-aggregated percentiles, not a request histogram, so Grafana buckets the nodes' samples: the Y axis is latency and the colour is how many node samples fell in each bucket. Compare the shape and height of the band on the two sides.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 112
+      },
+      "id": 1043,
+      "maxDataPoints": 500,
+      "options": {
+        "calculate": true,
+        "calculation": {
+          "yBuckets": {
+            "mode": "count",
+            "scale": {
+              "log": 2,
+              "type": "log"
+            },
+            "value": "24"
+          }
+        },
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Oranges",
+          "steps": 64
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-09
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "µs"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"})",
+          "instant": false,
+          "legendFormat": "A ${cluster_a:text} {{host_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${a_len_s}s-${a_len_d}d",
+      "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
+      "title": "Write latency ${percentile} distribution: A ${cluster_a:text}",
+      "type": "heatmap"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "description": "How cluster B's per-node write latency at ${percentile} is spread over its own window, at its real times. Cassandra exports pre-aggregated percentiles, not a request histogram, so Grafana buckets the nodes' samples: the Y axis is latency and the colour is how many node samples fell in each bucket. Compare the shape and height of the band on the two sides.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "scaleDistribution": {
+              "type": "linear"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 112
+      },
+      "id": 1044,
+      "maxDataPoints": 500,
+      "options": {
+        "calculate": true,
+        "calculation": {
+          "yBuckets": {
+            "mode": "count",
+            "scale": {
+              "log": 2,
+              "type": "log"
+            },
+            "value": "24"
+          }
+        },
+        "cellGap": 1,
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Oranges",
+          "steps": 64
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-09
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "mode": "single",
+          "showColorScale": false,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "µs"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "max by (host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"})",
+          "instant": false,
+          "legendFormat": "B ${cluster_b:text} {{host_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "timeFrom": "${b_len_s}s-${b_len_d}d",
+      "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
+      "title": "Write latency ${percentile} distribution: B ${cluster_b:text}",
+      "type": "heatmap"
+    }
+  ],
+  "schemaVersion": 38,
+  "tags": [
+    "cassandra",
+    "comparison"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Logs",
+        "multi": false,
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "180d",
+          "value": "180d"
+        },
+        "description": "How far back to look for clusters.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Lookback",
+        "multi": false,
+        "name": "lookback",
+        "options": [
+          {
+            "selected": false,
+            "text": "7d",
+            "value": "7d"
+          },
+          {
+            "selected": false,
+            "text": "30d",
+            "value": "30d"
+          },
+          {
+            "selected": false,
+            "text": "90d",
+            "value": "90d"
+          },
+          {
+            "selected": true,
+            "text": "180d",
+            "value": "180d"
+          },
+          {
+            "selected": false,
+            "text": "365d",
+            "value": "365d"
+          }
+        ],
+        "query": "7d,30d,90d,180d,365d",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "5m",
+          "value": "300"
+        },
+        "description": "The step, in seconds, at which each cluster's first and last up sample is found.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Resolution",
+        "multi": false,
+        "name": "resolution",
+        "options": [
+          {
+            "selected": false,
+            "text": "1m",
+            "value": "60"
+          },
+          {
+            "selected": true,
+            "text": "5m",
+            "value": "300"
+          },
+          {
+            "selected": false,
+            "text": "15m",
+            "value": "900"
+          },
+          {
+            "selected": false,
+            "text": "1h",
+            "value": "3600"
+          }
+        ],
+        "query": "1m : 60,5m : 300,15m : 900,1h : 3600",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "description": "The home tenant: the tenant of a cluster from before the experiment label when Mimir names none. The installer fills it.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "home_tenant",
+        "options": [],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\", cluster!=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\") or label_replace(label_replace(vector(0), \"exp_key\", \".*/.*\", \"\", \"\"), \"exp_text\", \"All\", \"\", \"\"))))",
+        "description": "An experiment of the tenant view, as <tenant>/<name>, newest first. A cluster from before the experiment label is an experiment of one, named for the cluster. All, the last option, lists every cluster of the tenant view and must be picked by hand.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Experiment",
+        "multi": false,
+        "name": "experiment",
+        "options": [],
+        "query": "query_result(sort_desc(max by (exp_key, exp_text) (label_join(label_join(max_over_time(timestamp(count by (edl_tenant, experiment) (up{experiment!=\"\"}))[$lookback:${resolution}s]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\"), \"exp_text\", \"/\", \"edl_tenant\", \"experiment\") or label_join(label_join(label_replace(label_replace(max_over_time(timestamp(count by (cluster, __tenant_id__) (up{experiment=\"\", cluster!=\"\"}))[$lookback:${resolution}s]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\"), \"exp_text\", \"/\", \"t\", \"cluster\") or label_replace(label_replace(vector(0), \"exp_key\", \".*/.*\", \"\", \"\"), \"exp_text\", \"All\", \"\", \"\"))))",
+        "refresh": 2,
+        "regex": "/exp_key=\"(?<value>[^\"]+)\",exp_text=\"(?<text>[^\"]+)\"/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_tenant",
+        "options": [],
+        "query": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "refresh": 2,
+        "regex": "/k=\"(?<value>[^/\"]*)\\//",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "exp_name",
+        "options": [],
+        "query": "query_result(label_replace(vector(1), \"k\", \"$experiment\", \"\", \"\"))",
+        "refresh": 2,
+        "regex": "/k=\"[^/\"]*\\/(?<value>[^\"]*)\"/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s])))",
+        "description": "The clusters of the selected experiment, for links that carry them. The pair reads only Cluster A and Cluster B.",
+        "hide": 2,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": "query_result(max by (cluster) (max_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s])))",
+        "refresh": 2,
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(sort(min by (cluster) (min_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s]))))",
+        "description": "Cluster A: a cluster of the selected experiment with up samples within Lookback, oldest first. It opens on the experiment's oldest cluster.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Cluster A",
+        "multi": false,
+        "name": "cluster_a",
+        "options": [],
+        "query": "query_result(sort(min by (cluster) (min_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(sort_desc(max by (cluster) (max_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s]))))",
+        "description": "Cluster B: a cluster of the selected experiment with up samples within Lookback, newest first. The installer selects the current cluster; with none it opens on the newest. Every difference is B measured against A.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Cluster B",
+        "multi": false,
+        "name": "cluster_b",
+        "options": [],
+        "query": "query_result(sort_desc(max by (cluster) (max_over_time(timestamp(count by (cluster) (up{edl_tenant=~\"$exp_tenant\", experiment=~\"$exp_name\"}) or count by (cluster) (up{experiment=\"\", cluster=~\"$exp_name\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/cluster=\"(?<value>(?<text>[^\"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\"/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(max by (exp_key) (label_join(last_over_time(up{cluster=\"$cluster_a\", experiment!=\"\"}[$lookback]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\")) or on() max by (exp_key) (label_join(label_replace(label_replace(last_over_time(up{cluster=\"$cluster_a\", experiment=\"\"}[$lookback]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\")))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_report",
+        "options": [],
+        "query": "query_result(max by (exp_key) (label_join(last_over_time(up{cluster=\"$cluster_a\", experiment!=\"\"}[$lookback]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\")) or on() max by (exp_key) (label_join(label_replace(label_replace(last_over_time(up{cluster=\"$cluster_a\", experiment=\"\"}[$lookback]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\")))",
+        "refresh": 2,
+        "regex": "/exp_key=\"(?<value>[^\"]+)\"/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(max by (exp_key) (label_join(last_over_time(up{cluster=\"$cluster_b\", experiment!=\"\"}[$lookback]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\")) or on() max by (exp_key) (label_join(label_replace(label_replace(last_over_time(up{cluster=\"$cluster_b\", experiment=\"\"}[$lookback]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\")))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_report",
+        "options": [],
+        "query": "query_result(max by (exp_key) (label_join(last_over_time(up{cluster=\"$cluster_b\", experiment!=\"\"}[$lookback]), \"exp_key\", \"/\", \"edl_tenant\", \"experiment\")) or on() max by (exp_key) (label_join(label_replace(label_replace(last_over_time(up{cluster=\"$cluster_b\", experiment=\"\"}[$lookback]), \"t\", \"$1\", \"__tenant_id__\", \"(.+)\"), \"t\", \"${home_tenant}\", \"t\", \"\"), \"exp_key\", \"/\", \"t\", \"cluster\")))",
+        "refresh": 2,
+        "regex": "/exp_key=\"(?<value>[^\"]+)\"/",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "p99",
+          "value": "p99"
+        },
+        "description": "Which pre-aggregated percentile to read. Cassandra emits these as gauges from its own EstimatedHistogram, so there is no bucket to re-aggregate and no cluster-wide percentile to compute.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Percentile",
+        "multi": false,
+        "name": "percentile",
+        "options": [
+          {
+            "selected": false,
+            "text": "p50",
+            "value": "p50"
+          },
+          {
+            "selected": true,
+            "text": "p99",
+            "value": "p99"
+          },
+          {
+            "selected": false,
+            "text": "p999",
+            "value": "p999"
+          },
+          {
+            "selected": false,
+            "text": "max",
+            "value": "max"
+          }
+        ],
+        "query": "p50,p99,p999,max",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(min(min_over_time(timestamp(count(up{cluster=\"$cluster_a\"}))[$lookback:${resolution}s]))))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_start",
+        "options": [],
+        "query": "query_result(round(min(min_over_time(timestamp(count(up{cluster=\"$cluster_a\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(max(max_over_time(timestamp(count(up{cluster=\"$cluster_a\"}))[$lookback:${resolution}s]))))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_end",
+        "options": [],
+        "query": "query_result(round(max(max_over_time(timestamp(count(up{cluster=\"$cluster_a\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(min(min_over_time(timestamp(count(up{cluster=\"$cluster_b\"}))[$lookback:${resolution}s]))))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_start",
+        "options": [],
+        "query": "query_result(round(min(min_over_time(timestamp(count(up{cluster=\"$cluster_b\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(max(max_over_time(timestamp(count(up{cluster=\"$cluster_b\"}))[$lookback:${resolution}s]))))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_end",
+        "options": [],
+        "query": "query_result(round(max(max_over_time(timestamp(count(up{cluster=\"$cluster_b\"}))[$lookback:${resolution}s]))))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${a_end} - ${a_start} + ${resolution}))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_len",
+        "options": [],
+        "query": "query_result(vector(${a_end} - ${a_start} + ${resolution}))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${b_end} - ${b_start} + ${resolution}))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_len",
+        "options": [],
+        "query": "query_result(vector(${b_end} - ${b_start} + ${resolution}))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${a_len}) > vector(${b_len}) or vector(${b_len}))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "max_len",
+        "options": [],
+        "query": "query_result(vector(${a_len}) > vector(${b_len}) or vector(${b_len}))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(vector(time() - ${max_len} - ${a_start})))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_offset",
+        "options": [],
+        "query": "query_result(round(vector(time() - ${max_len} - ${a_start})))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(vector(time() - ${max_len} - ${b_start})))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_offset",
+        "options": [],
+        "query": "query_result(round(vector(time() - ${max_len} - ${b_start})))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(vector(time() - ${a_end})))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_since_end",
+        "options": [],
+        "query": "query_result(round(vector(time() - ${a_end})))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(round(vector(time() - ${b_end})))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_since_end",
+        "options": [],
+        "query": "query_result(round(vector(time() - ${b_end})))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(floor(vector(${max_len}) / 86400))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "max_len_d",
+        "options": [],
+        "query": "query_result(floor(vector(${max_len}) / 86400))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${max_len}) - 86400 * ${max_len_d})",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "max_len_s",
+        "options": [],
+        "query": "query_result(vector(${max_len}) - 86400 * ${max_len_d})",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(floor(vector(${a_len}) / 86400))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_len_d",
+        "options": [],
+        "query": "query_result(floor(vector(${a_len}) / 86400))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${a_len}) - 86400 * ${a_len_d})",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_len_s",
+        "options": [],
+        "query": "query_result(vector(${a_len}) - 86400 * ${a_len_d})",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(floor(vector(${b_len}) / 86400))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_len_d",
+        "options": [],
+        "query": "query_result(floor(vector(${b_len}) / 86400))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${b_len}) - 86400 * ${b_len_d})",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_len_s",
+        "options": [],
+        "query": "query_result(vector(${b_len}) - 86400 * ${b_len_d})",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(floor(vector(${a_since_end}) / 86400))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_since_end_d",
+        "options": [],
+        "query": "query_result(floor(vector(${a_since_end}) / 86400))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${a_since_end}) - 86400 * ${a_since_end_d})",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "a_since_end_s",
+        "options": [],
+        "query": "query_result(vector(${a_since_end}) - 86400 * ${a_since_end_d})",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(floor(vector(${b_since_end}) / 86400))",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_since_end_d",
+        "options": [],
+        "query": "query_result(floor(vector(${b_since_end}) / 86400))",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "query_result(vector(${b_since_end}) - 86400 * ${b_since_end_d})",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "b_since_end_s",
+        "options": [],
+        "query": "query_result(vector(${b_since_end}) - 86400 * ${b_since_end_d})",
+        "refresh": 2,
+        "regex": "/\\} (\\S+) /",
+        "skipUrlSync": false,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "",
+  "title": "Cluster pair",
+  "uid": "cluster-pair",
+  "version": 0,
+  "weekStart": ""
+}

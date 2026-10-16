@@ -23,6 +23,7 @@ import org.mockito.kotlin.whenever
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.GenericContainer
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpRequest
@@ -34,11 +35,14 @@ import java.util.UUID
  * S3 (LocalStack). The test proves:
  *
  * - a line only in the WAL survives a SIGKILL and a restart on the same data volume;
- * - the compactor never compacts, and a delete request is refused with the lines kept.
+ * - the compactor never compacts, and a delete request is refused with the lines kept;
+ * - an ingester id holding `_` (a cluster named with one) accepts and flushes lines, and its index
+ *   files carry the id.
  */
 class LokiIntegrationTest : BaseKoinTest() {
     private companion object {
         const val PREFIX = "loki"
+        const val STOP_TIMEOUT_SECONDS = 120
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -170,6 +174,45 @@ class LokiIntegrationTest : BaseKoinTest() {
             .single { it.startsWith("$name ") }
             .substringAfter(' ')
             .toDouble()
+
+    /**
+     * A cluster may be named with `_`, so the ingester id `<tenant>.<name>-<id>` can hold one. Loki
+     * must accept lines under it, flush them, and name its uploaded index files with it.
+     */
+    @Test
+    fun `an ingester id holding an underscore accepts lines, flushes, and names its index files with it`() {
+        val cluster = "unthrottled_cursor-0f3c"
+        val loki = startLoki(newVolume(), "acme", cluster)
+        push(loki, "acme", cluster, "from a cluster named with an underscore")
+        assertThat(lines(awaitStreams(loki, "acme", """{cluster="$cluster"}""", expected = 1)))
+            .containsExactly("from a cluster named with an underscore")
+
+        val flush =
+            ObservabilityBackends.send(
+                HttpRequest
+                    .newBuilder(URI("${url(loki)}/ingester/shutdown?flush=true&terminate=false&delete_ring_tokens=false"))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .timeout(Duration.ofMinutes(2))
+                    .build(),
+            )
+        assertThat(flush.statusCode()).describedAs(flush.body()).isEqualTo(204)
+        // As `down` does after the flush: the index head is uploaded when Loki stops.
+        docker.stopContainerCmd(loki.containerId).withTimeout(STOP_TIMEOUT_SECONDS).exec()
+
+        assertThat(keysUnder("$PREFIX/index/")).anyMatch { it.contains("acme.$cluster") }
+        assertThat(keysUnder("$PREFIX/acme/")).describedAs("the chunks are in S3").isNotEmpty()
+    }
+
+    private fun keysUnder(prefix: String): List<String> =
+        s3
+            .listObjectsV2Paginator(
+                ListObjectsV2Request
+                    .builder()
+                    .bucket(bucket)
+                    .prefix(prefix)
+                    .build(),
+            ).contents()
+            .map { it.key() }
 
     @Test
     fun `a line only in the WAL survives a SIGKILL, nothing compacts, and a delete is refused`() {

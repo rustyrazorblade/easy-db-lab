@@ -2,8 +2,10 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
+import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -12,12 +14,17 @@ import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.mockingDetails
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.core.exception.SdkClientException
+import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
+import software.amazon.awssdk.services.s3.model.NoSuchKeyException
 import software.amazon.awssdk.services.s3.model.PutObjectRequest
+import software.amazon.awssdk.services.s3.model.PutObjectResponse
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.nio.file.Path
 
@@ -150,5 +157,251 @@ class S3ObjectStoreTest : BaseKoinTest() {
         assertThatThrownBy {
             objectStore.downloadFile(s3Path, localPath)
         }.isInstanceOf(S3Exception::class.java)
+    }
+
+    private fun s3Error(
+        status: Int,
+        code: String? = null,
+        sdkAttempts: Int? = null,
+    ): S3Exception =
+        S3Exception
+            .builder()
+            .message("status $status")
+            .statusCode(status)
+            .numAttempts(sdkAttempts)
+            .apply {
+                code?.let {
+                    awsErrorDetails(
+                        AwsErrorDetails
+                            .builder()
+                            .errorCode(it)
+                            .serviceName("S3")
+                            .build(),
+                    )
+                }
+            }.build() as S3Exception
+
+    private val path = ClusterS3Path.fromKey("b", "k")
+
+    private fun putFails(vararg errors: S3Exception) {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>())).thenThrow(*errors)
+    }
+
+    private fun putIfAbsent() = objectStore.putIfAbsent("x".toByteArray(), path, "text/plain")
+
+    private fun putIfMatch() = objectStore.putIfMatch("x".toByteArray(), path, "\"e\"", "text/html")
+
+    private fun putCalls(): Int = mockingDetails(mockS3Client).invocations.count { it.method.name == "putObject" }
+
+    @Test
+    fun `putIfAbsent refused with 412 is AlreadyExists after one request`() {
+        putFails(s3Error(412, "PreconditionFailed"))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.AlreadyExists)
+        assertThat(putCalls()).isEqualTo(1)
+    }
+
+    @Test
+    fun `putIfAbsent losing to a concurrent conditional write is AlreadyExists after one request`() {
+        putFails(s3Error(409, "ConditionalRequestConflict"))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.AlreadyExists)
+        assertThat(putCalls()).isEqualTo(1)
+    }
+
+    @Test
+    fun `putIfMatch refused with 412 is PreconditionFailed after one request`() {
+        putFails(s3Error(412, "PreconditionFailed"))
+
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.PreconditionFailed)
+        assertThat(putCalls()).isEqualTo(1)
+    }
+
+    @Test
+    fun `putIfMatch reports a removed object as PreconditionFailed`() {
+        putFails(s3Error(404, "NoSuchKey"))
+
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.PreconditionFailed)
+        assertThat(putCalls()).isEqualTo(1)
+    }
+
+    @Test
+    fun `putIfMatch on a 404 with no error code is an error naming the key and status`() {
+        putFails(s3Error(404))
+
+        assertThatThrownBy { putIfMatch() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("s3://b/k")
+            .hasMessageContaining("unknown")
+            .hasMessageContaining("HTTP 404")
+    }
+
+    @Test
+    fun `putIfMatch on a 404 with an unknown error code is an error naming the key, code and status`() {
+        putFails(s3Error(404, "NoSuchUpload"))
+
+        assertThatThrownBy { putIfMatch() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("s3://b/k")
+            .hasMessageContaining("NoSuchUpload")
+            .hasMessageContaining("HTTP 404")
+    }
+
+    @Test
+    fun `putIfAbsent on a missing bucket is an error naming the S3 error code`() {
+        putFails(s3Error(404, "NoSuchBucket"))
+
+        assertThatThrownBy { putIfAbsent() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("NoSuchBucket")
+            .hasMessageContaining("s3://b/k")
+    }
+
+    @Test
+    fun `putIfMatch on a missing bucket is an error, not a removed object`() {
+        putFails(s3Error(404, "NoSuchBucket"))
+
+        assertThatThrownBy { putIfMatch() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("NoSuchBucket")
+    }
+
+    @Test
+    fun `a 409 that is not a conditional conflict is an error naming the S3 error code`() {
+        putFails(s3Error(409, "OperationAborted"))
+
+        assertThatThrownBy { putIfAbsent() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("OperationAborted")
+        assertThatThrownBy { putIfMatch() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("OperationAborted")
+    }
+
+    @Test
+    fun `a conditional write that S3 denies is an error naming the S3 error code`() {
+        putFails(s3Error(403, "AccessDenied"))
+
+        assertThatThrownBy { putIfAbsent() }
+            .isInstanceOf(S3Exception::class.java)
+            .hasMessageContaining("AccessDenied")
+            .satisfies({ assertThat((it as S3Exception).statusCode()).isEqualTo(403) })
+    }
+
+    @Test
+    fun `an error on the first attempt says one attempt was made`() {
+        putFails(s3Error(403, "AccessDenied"))
+
+        assertThatThrownBy { putIfAbsent() }.hasMessageContaining("attempts: 1")
+    }
+
+    @Test
+    fun `an error after a server-error retry says how many attempts were made`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()))
+            .thenThrow(s3Error(500, "InternalError"))
+            .thenThrow(s3Error(403, "AccessDenied"))
+
+        assertThatThrownBy { putIfAbsent() }.hasMessageContaining("attempts: 2")
+    }
+
+    @Test
+    fun `an error on an attempt the SDK retried itself counts the SDK's attempts`() {
+        putFails(s3Error(403, "AccessDenied", sdkAttempts = 3))
+
+        assertThatThrownBy { putIfMatch() }.hasMessageContaining("attempts: 3")
+    }
+
+    @Test
+    fun `a conditional write that fails with a server error is retried and written`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()))
+            .thenThrow(s3Error(500, "InternalError"))
+            .thenReturn(PutObjectResponse.builder().build())
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.Written)
+        assertThat(putCalls()).isEqualTo(2)
+    }
+
+    @Test
+    fun `a refusal after a server-error retry is the same refusal as on a first attempt`() {
+        objectStore = get()
+        whenever(mockS3Client.putObject(any<PutObjectRequest>(), any<RequestBody>()))
+            .thenThrow(s3Error(500, "InternalError"))
+            .thenThrow(s3Error(412, "PreconditionFailed"))
+            .thenThrow(s3Error(503, "SlowDown"))
+            .thenThrow(s3Error(409, "ConditionalRequestConflict"))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.AlreadyExists)
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.PreconditionFailed)
+        assertThat(putCalls()).isEqualTo(4)
+    }
+
+    private fun readFails(error: S3Exception) {
+        objectStore = get()
+        whenever(mockS3Client.getObjectAsBytes(any<GetObjectRequest>())).thenThrow(error)
+    }
+
+    @Test
+    fun `a read of a missing key is null for both reads`() {
+        readFails(
+            NoSuchKeyException
+                .builder()
+                .statusCode(404)
+                .message("no such key")
+                .build() as S3Exception,
+        )
+
+        assertThat(objectStore.readVersioned(path)).isNull()
+        assertThat(objectStore.readBytes(path)).isNull()
+    }
+
+    @Test
+    fun `a read that S3 denies is an error naming the key and code and keeping the status, for both reads`() {
+        val denied =
+            S3Exception
+                .builder()
+                .message("denied")
+                .statusCode(403)
+                .requestId("req-1")
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .errorCode("AccessDenied")
+                        .serviceName("S3")
+                        .build(),
+                ).build() as S3Exception
+        readFails(denied)
+
+        listOf({ objectStore.readVersioned(path) }, { objectStore.readBytes(path) }).forEach { read ->
+            assertThatThrownBy { read() }
+                .isInstanceOfSatisfying(S3Exception::class.java) {
+                    assertThat(it.statusCode()).isEqualTo(403)
+                    assertThat(it.awsErrorDetails().errorCode()).isEqualTo("AccessDenied")
+                    assertThat(it.requestId()).isEqualTo("req-1")
+                }.hasMessageContaining("Read of s3://b/k failed with S3 error AccessDenied (HTTP 403)")
+                .hasCause(denied)
+        }
+    }
+
+    @Test
+    fun `a read of a missing bucket is an error naming the key and code and keeping the status, for both reads`() {
+        readFails(s3Error(404, "NoSuchBucket"))
+
+        listOf({ objectStore.readVersioned(path) }, { objectStore.readBytes(path) }).forEach { read ->
+            assertThatThrownBy { read() }
+                .isInstanceOfSatisfying(S3Exception::class.java) { assertThat(it.statusCode()).isEqualTo(404) }
+                .hasMessageContaining("Read of s3://b/k failed with S3 error NoSuchBucket (HTTP 404)")
+        }
+    }
+
+    @Test
+    fun `a refusal on an attempt the SDK retried itself is the same refusal and is not retried again`() {
+        putFails(s3Error(409, "ConditionalRequestConflict", sdkAttempts = 2))
+
+        assertThat(putIfAbsent()).isEqualTo(ConditionalObjectStore.AlreadyExists)
+        assertThat(putIfMatch()).isEqualTo(ConditionalObjectStore.PreconditionFailed)
+        assertThat(putCalls()).isEqualTo(2)
     }
 }

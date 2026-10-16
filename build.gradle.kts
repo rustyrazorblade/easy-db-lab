@@ -435,6 +435,7 @@ tasks.register("testScripts") {
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
+        "testLocalStoreCheck",
     )
 }
 
@@ -445,6 +446,15 @@ tasks.register<Exec>("testBaseJdkInstall") {
     description = "Unit-test the base AMI JDK install script"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/base/install/install_jdks.test.sh")
+}
+
+// Unit-test the local stack's store check: the signer's 502 is a credentials failure, an S3 4xx is
+// named by its code, and it waits for the signer to listen. curl is stubbed; no network.
+tasks.register<Exec>("testLocalStoreCheck") {
+    group = "Verification"
+    description = "Unit-test the local observability stack's store check script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/local-store-check.test.sh")
 }
 
 // Unit-test the Pyroscope labels the presto and trino start scripts put on their profiles: the

@@ -46,6 +46,7 @@ class ProfilingEffectiveStateTest {
         assertThat(state.maxBytes).isEqualTo(777)
         assertThat(state.pyroscopeUrl).isEqualTo("http://10.0.1.5:4040")
         assertThat(state.clusterName).isEqualTo("test-cluster")
+        assertThat(state.experiment).isEqualTo("e1")
         assertThat(state.tenant).isEqualTo("acme")
         assertThat(state.startedAt).isEqualTo(1_755_999_000)
         assertThat(state.chunksPending).isEqualTo(3)
@@ -112,6 +113,7 @@ class ProfilingEffectiveStateTest {
             "maxBytes" to "777",
             "pyroscopeUrl" to """"http://10.0.1.5:4040"""",
             "clusterName" to """"test-cluster"""",
+            "experiment" to """"e1"""",
             "tenant" to """"acme"""",
             "startedAt" to "1755999000",
             "chunksPending" to "3",

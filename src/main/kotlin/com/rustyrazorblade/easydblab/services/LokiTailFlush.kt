@@ -21,7 +21,8 @@ class LokiTailFlush(
     private val timeouts: FlushTimeouts = FlushTimeouts(),
 ) : SignalFlush {
     companion object {
-        private const val SHUTDOWN_PATH = "/ingester/shutdown?flush=true&terminate=false&delete_ring_tokens=false"
+        /** Flushes every chunk and answers 204 only once the flush queues are empty; the export writer's flush uses it too. */
+        const val SHUTDOWN_PATH = "/ingester/shutdown?flush=true&terminate=false&delete_ring_tokens=false"
     }
 
     /**

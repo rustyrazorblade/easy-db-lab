@@ -4,11 +4,17 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export KUBECONFIG="${SCRIPT_DIR}/../../__KUBECONFIG__"
 
-# Profiles carry the cluster label every other signal carries, <name>-<id>, so the profiling
-# dashboards' cluster filter finds them. CLUSTER_NAME is the bare name; cluster-config holds the label.
+# Profiles carry the cluster, experiment and tenant labels every other signal carries, so the
+# profiling dashboards' filters find them. CLUSTER_NAME is the bare name; cluster-config holds the
+# cluster label, <name>-<id>, and the experiment. TENANT comes from the kit environment.
 CLUSTER_LABEL=$(kubectl get configmap cluster-config -n default -o jsonpath='{.data.cluster_name}')
 if [ -z "${CLUSTER_LABEL}" ]; then
   echo "ERROR: cluster-config has no cluster_name; run 'easy-db-lab grafana update-config' first." >&2
+  exit 1
+fi
+EXPERIMENT_LABEL=$(kubectl get configmap cluster-config -n default -o jsonpath='{.data.experiment}')
+if [ -z "${EXPERIMENT_LABEL}" ]; then
+  echo "ERROR: cluster-config has no experiment; run 'easy-db-lab grafana update-config' first." >&2
   exit 1
 fi
 
@@ -27,7 +33,7 @@ echo "Patching coordinator: hostPort + Pyroscope profiling agent..."
 COORD_PATCH=$(jq -n \
   --argjson vols "$PYROSCOPE_VOLUME" \
   --argjson mounts "$PYROSCOPE_MOUNT" \
-  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_LABEL},component=coordinator" \
+  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_LABEL},experiment=${EXPERIMENT_LABEL},edl_tenant=${TENANT},component=coordinator" \
   '{spec:{template:{spec:{
     volumes:$vols,
     containers:[{name:"trino-coordinator",ports:[{containerPort:8080,hostPort:8080}],env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],
@@ -42,7 +48,7 @@ echo "Patching worker: Pyroscope profiling agent..."
 WORKER_PATCH=$(jq -n \
   --argjson vols "$PYROSCOPE_VOLUME" \
   --argjson mounts "$PYROSCOPE_MOUNT" \
-  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_LABEL},component=worker" \
+  --arg opts "${PYROSCOPE_OPTS} -Dpyroscope.labels=cluster=${CLUSTER_LABEL},experiment=${EXPERIMENT_LABEL},edl_tenant=${TENANT},component=worker" \
   '{spec:{template:{spec:{
     volumes:$vols,
     containers:[{name:"trino-worker",env:[{name:"JAVA_TOOL_OPTIONS",value:$opts}],

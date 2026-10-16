@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.configuration.grafana.ClusterFilterGuards.Language
 import com.rustyrazorblade.easydblab.configuration.grafana.ClusterFilterGuards.Query
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -10,14 +11,16 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import java.net.URLEncoder
 
 /**
- * Every dashboard that reads metrics, logs or profiles shows only the clusters its `cluster` variable selects.
+ * Every dashboard that reads metrics, logs, traces or profiles shows only the clusters its `cluster`
+ * variable (or, on a pair dashboard, `cluster_a` and `cluster_b`) selects.
  *
  * Clusters of one tenant share one store, so a dashboard without the filter mixes every cluster
  * that ran at the same time, and a performance review reads another cluster's numbers as its own.
- * The Tests dashboard's listing is the one exception: it lists every cluster so that one can be
- * picked, and its `cluster` variable only picks the test whose documents it shows.
+ * Two exceptions: the Tests dashboard's listing, which lists every experiment so that one can be
+ * picked, and the variables that list clusters or experiments themselves.
  */
 class ClusterFilterTest {
     private fun unscoped(
@@ -31,7 +34,72 @@ class ClusterFilterTest {
             unscoped("""rate(cassandra_reads_total{host_name=~"${'$'}host", cluster=~"${'$'}cluster"}[${'$'}__rate_interval])"""),
         ).isEmpty()
         assertThat(unscoped("""up{cluster=~"${'$'}{cluster:regex}"}""")).isEmpty()
-        assertThat(unscoped("""up{cluster="${'$'}baseline_cluster"} - up{cluster="${'$'}{candidate_cluster}"}""")).isEmpty()
+        assertThat(unscoped("""up{cluster="${'$'}cluster_a"} - up{cluster="${'$'}{cluster_b}"}""")).isEmpty()
+    }
+
+    @Test
+    fun `the retired run variables no longer scope a selector`() {
+        assertThat(unscoped("""up{cluster="${'$'}baseline_cluster"}""")).hasSize(1)
+        assertThat(unscoped("""up{cluster="${'$'}{candidate_cluster}"}""")).hasSize(1)
+    }
+
+    @Test
+    fun `a TraceQL spanset is scoped by resource cluster on a cluster variable`() {
+        val traceql = Language.TRACEQL
+
+        assertThat(unscoped("""{ resource.service.name = "x" && resource.cluster =~ "${'$'}{cluster:regex}" }""", traceql)).isEmpty()
+        assertThat(unscoped("""{ resource.cluster = "${'$'}cluster_a" } >> { resource.cluster="${'$'}cluster_b" }""", traceql)).isEmpty()
+        assertThat(unscoped("""{ resource.cluster =~ "${'$'}cluster" } | rate() by (resource.service.name)""", traceql)).isEmpty()
+    }
+
+    @Test
+    fun `a TraceQL spanset without resource cluster on a cluster variable reads every cluster`() {
+        val traceql = Language.TRACEQL
+
+        assertThat(unscoped("""{ resource.host.name = "db0" }""", traceql)).containsExactly("""{ resource.host.name = "db0" }""")
+        assertThat(unscoped("{}", traceql)).containsExactly("{}")
+        assertThat(unscoped("""{ cluster =~ "${'$'}cluster" }""", traceql)).hasSize(1)
+        assertThat(unscoped("""{ resource.cluster = "lab-1" }""", traceql)).hasSize(1)
+        assertThat(unscoped("""{ resource.cluster =~ "${'$'}cluster" } && { span.x = 1 }""", traceql)).containsExactly("{ span.x = 1 }")
+    }
+
+    @Test
+    fun `Tempo targets, Tempo variables and Explore links on Tempo are read as TraceQL`() {
+        val pane =
+            """{"a":{"datasource":"${'$'}{traces_datasource}","queries":[{"refId":"A",""" +
+                """"datasource":{"uid":"${'$'}{traces_datasource}","type":"tempo"},"queryType":"traceql",""" +
+                """"query":"{ resource.host.name = \"db0\" }"}]}}"""
+        val link = "/explore?orgId=1&panes=" + URLEncoder.encode(pane, Charsets.UTF_8)
+        val dashboard =
+            parse(
+                """
+                {"panels": [{"title": "traces", "datasource": {"type": "tempo", "uid": "${'$'}{traces_datasource}"},
+                             "targets": [{"queryType": "traceql", "query": "{ resource.service.name = \"x\" }"},
+                                         {"queryType": "serviceMap"}]},
+                            {"title": "linked", "targets": [],
+                             "fieldConfig": {"defaults": {"links": [{"url": ${Json.encodeToString(String.serializer(), link)}}]}}}],
+                 "templating": {"list": [
+                   {"name": "service", "type": "query", "datasource": {"type": "tempo", "uid": "${'$'}{traces_datasource}"},
+                    "query": {"type": 1, "label": "resource.service.name", "query": "{ resource.cluster =~ \"${'$'}{cluster:regex}\" }"}},
+                   {"name": "everything", "type": "query", "datasource": {"uid": "${'$'}{traces_datasource}"},
+                    "query": {"type": 1, "label": "resource.service.name"}}]}}
+                """,
+            )
+
+        val found = ClusterFilterGuards.queries(dashboard).map { "${it.where}: ${it.language} ${it.text}" }
+
+        assertThat(found).containsExactlyInAnyOrder(
+            "panel 'traces': TRACEQL { resource.service.name = \"x\" }",
+            "link on 'linked': TRACEQL { resource.host.name = \"db0\" }",
+            "variable 'service': TRACEQL { resource.cluster =~ \"${'$'}{cluster:regex}\" }",
+            "variable 'everything': TRACEQL {}",
+        )
+    }
+
+    @Test
+    fun `the variables that list clusters or experiments are the cluster lists`() {
+        assertThat(ClusterFilterGuards.CLUSTER_LISTS)
+            .containsExactlyInAnyOrder("cluster", "cluster_a", "cluster_b", "experiment", "exp_tenant", "exp_name")
     }
 
     @Test
@@ -58,8 +126,8 @@ class ClusterFilterTest {
     fun `functions, label lists, strings, ranges and offsets are not selectors`() {
         val query =
             """
-            histogram_quantile(0.99, sum by (le, ${'$'}groupby) (rate(x_bucket{cluster=~"${'$'}cluster"}[5m] offset -${'$'}{cand_offset}s)))
-            + on (host_name) group_left label_replace(time() - y{cluster=~"${'$'}cluster"} @ ${'$'}{base_end}, "a", "{b}", "c", "(.*)")
+            histogram_quantile(0.99, sum by (le, ${'$'}groupby) (rate(x_bucket{cluster=~"${'$'}cluster"}[5m] offset -${'$'}{b_offset}s)))
+            + on (host_name) group_left label_replace(time() - y{cluster=~"${'$'}cluster"} @ ${'$'}{a_end}, "a", "{b}", "c", "(.*)")
             """.trimIndent()
 
         assertThat(unscoped(query)).isEmpty()
@@ -217,7 +285,7 @@ class ClusterFilterTest {
     }
 
     @Test
-    fun `every metrics, logs and profile query filters by the selected clusters`() {
+    fun `every metrics, logs, traces and profile query filters by the selected clusters`() {
         val unscoped =
             DashboardFiles.all().flatMap { file ->
                 val dashboard = parse(file.readText())

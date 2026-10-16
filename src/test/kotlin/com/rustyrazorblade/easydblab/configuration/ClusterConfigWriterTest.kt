@@ -141,6 +141,7 @@ internal class ClusterConfigWriterTest {
                 writer,
                 mapOf(ServerType.Control to listOf(ClusterHost("54.1.1.1", "10.0.0.1", "control0", "us-west-2a"))),
                 "lab",
+                "lab",
             )
         }
         val envSh = stringWriter.toString()
@@ -149,5 +150,16 @@ internal class ClusterConfigWriterTest {
         assertThat(envSh).contains("export PATH=\"\$CLUSTER_DIR/bin:\$PATH\"")
         assertThat(envSh).contains("\$CLUSTER_DIR/.socks5-proxy.env")
         assertThat(envSh).doesNotContainPattern("(?m)^(kubectl|helm|cilium|curl|skopeo|k9s)\\(\\)")
+    }
+
+    @Test
+    fun `env sh names the cluster and its experiment`() {
+        val stringWriter = StringWriter()
+        BufferedWriter(stringWriter).use { writer ->
+            ClusterConfigWriter.writeEnvironmentFile(writer, emptyMap(), "lab-0f3c", experiment = "2026-10-13-ab")
+        }
+
+        assertThat(stringWriter.toString().lines())
+            .contains("CLUSTER_NAME=\"lab-0f3c\"", "EXPERIMENT=\"2026-10-13-ab\"")
     }
 }

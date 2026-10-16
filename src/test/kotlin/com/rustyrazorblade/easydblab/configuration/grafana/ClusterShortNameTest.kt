@@ -24,11 +24,18 @@ import org.junit.jupiter.api.Test
 class ClusterShortNameTest {
     @Test
     fun `a shown cluster reference without the text format is reported`() {
-        assertThat(shownProblems("Summary: baseline \${baseline_cluster}")).hasSize(1)
+        assertThat(shownProblems("Summary: A \${cluster_a}")).hasSize(1)
         assertThat(shownProblems("Ladder — \$cluster (\${latency_unit:text})")).hasSize(1)
-        assertThat(shownProblems("candidate \${candidate_cluster:text}")).isEmpty()
+        assertThat(shownProblems("B \${cluster_b:text}")).isEmpty()
         assertThat(shownProblems("tag_cluster_id=~\"\$cluster_id\"")).isEmpty()
-        assertThat(shownProblems("""<iframe src="/reports/${'$'}{doc_tenant}/${'$'}{cluster}/index.html"></iframe>""")).isEmpty()
+        assertThat(shownProblems("""<iframe src="/reports/${'$'}{a_report}/index.html"></iframe>""")).isEmpty()
+    }
+
+    @Test
+    fun `a pair picker without the text and value split is reported`() {
+        assertThat(pickerProblems(parse("""{"name": "cluster_a", "regex": ""}"""))).hasSize(1)
+        assertThat(pickerProblems(parse("""{"name": "cluster_b", "regex": "/cluster=\"(?<value>(?<text>[^\"]+))\"/"}"""))).isEmpty()
+        assertThat(pickerProblems(parse("""{"name": "baseline_cluster", "regex": ""}"""))).isEmpty()
     }
 
     @Test
@@ -157,12 +164,12 @@ class ClusterShortNameTest {
     private fun parse(text: String): JsonObject = Json.parseToJsonElement(text).jsonObject
 
     private companion object {
-        val PICKERS = setOf("cluster", "baseline_cluster", "candidate_cluster")
+        val PICKERS = DashboardVariables.CLUSTER_FILTERS.toSet()
         const val BY_NAME_CLUSTER = "cluster"
         val ORGANIZE_KEYS = listOf("excludeByName", "indexByName", "renameByName", "includeByName")
 
         /** `$name`, `${name}` or `${name:format}` for a cluster picker; `$cluster_id` is another variable. */
-        val CLUSTER_REFERENCE = Regex("""\$\{?(cluster|baseline_cluster|candidate_cluster)\b(?::(\w+))?\}?""")
+        val CLUSTER_REFERENCE = Regex("""\$\{?(${PICKERS.joinToString("|")})\b(?::(\w+))?\}?""")
 
         /** A link or frame URL in a text panel: it carries the full id and is never shown. */
         val URL_ATTRIBUTE = Regex("""\b(?:src|href)\s*=\s*"[^"]*"""")

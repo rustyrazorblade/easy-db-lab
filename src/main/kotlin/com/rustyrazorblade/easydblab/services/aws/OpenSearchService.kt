@@ -10,11 +10,13 @@ import com.rustyrazorblade.easydblab.providers.aws.IamPolicyDocument.Companion.t
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyPrincipal
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyResource
 import com.rustyrazorblade.easydblab.providers.aws.IamPolicyStatement
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig
 import software.amazon.awssdk.services.opensearch.model.CreateDomainRequest
+import software.amazon.awssdk.services.opensearch.model.CreateDomainResponse
 import software.amazon.awssdk.services.opensearch.model.DeleteDomainRequest
 import software.amazon.awssdk.services.opensearch.model.DescribeDomainRequest
 import software.amazon.awssdk.services.opensearch.model.DomainEndpointOptions
@@ -25,7 +27,9 @@ import software.amazon.awssdk.services.opensearch.model.NodeToNodeEncryptionOpti
 import software.amazon.awssdk.services.opensearch.model.OpenSearchPartitionInstanceType
 import software.amazon.awssdk.services.opensearch.model.Tag
 import software.amazon.awssdk.services.opensearch.model.VPCOptions
+import software.amazon.awssdk.services.opensearch.model.ValidationException
 import software.amazon.awssdk.services.opensearch.model.VolumeType
+import java.time.Duration
 
 /**
  * State of an OpenSearch domain.
@@ -107,18 +111,43 @@ class OpenSearchService(
     private val openSearchClient: OpenSearchClient,
     private val aws: AWS,
     private val eventBus: EventBus = EventBus(),
+    private val serviceLinkedRoleRetryInterval: Duration =
+        Duration.ofMillis(Constants.OpenSearch.SERVICE_LINKED_ROLE_RETRY_INTERVAL_MS),
 ) {
     companion object {
         private val log = KotlinLogging.logger {}
+
+        /**
+         * Whether [throwable] is CreateDomain's refusal of a service-linked role OpenSearch cannot
+         * see yet: a `ValidationException` with that error code whose message says the role must
+         * be enabled. Every other error, including any other `ValidationException`, is not.
+         */
+        private fun isServiceLinkedRoleNotVisible(throwable: Throwable): Boolean {
+            val details = (throwable as? ValidationException)?.awsErrorDetails() ?: return false
+            return details.errorCode() == Constants.OpenSearch.VALIDATION_ERROR_CODE &&
+                details.errorMessage()?.contains(Constants.OpenSearch.SERVICE_LINKED_ROLE_NOT_VISIBLE) == true
+        }
     }
+
+    /**
+     * Set when [ensureServiceLinkedRole] created the role in this process: [createDomain] then
+     * retries OpenSearch's refusal of a role it cannot see yet. Read from the provisioning
+     * thread that creates the domain.
+     */
+    @Volatile
+    private var serviceLinkedRoleJustCreated = false
 
     /**
      * Ensures the OpenSearch service-linked role exists.
      *
      * OpenSearch requires a service-linked role to access VPC resources.
-     * Delegates to [AWS.ensureOpenSearchServiceLinkedRole].
+     * Delegates to [AWS.ensureOpenSearchServiceLinkedRole], and remembers whether it created
+     * the role so [createDomain] can wait for OpenSearch to see it.
      */
-    fun ensureServiceLinkedRole() = aws.ensureOpenSearchServiceLinkedRole()
+    fun ensureServiceLinkedRole() {
+        val status = aws.ensureOpenSearchServiceLinkedRole()
+        serviceLinkedRoleJustCreated = status == AWS.ServiceLinkedRoleStatus.CREATED
+    }
 
     /**
      * Retrieves the AWS account ID for the authenticated credentials.
@@ -142,9 +171,18 @@ class OpenSearchService(
 
         val request = buildCreateDomainRequest(config)
 
-        val response =
+        val create = {
             withAwsRetry("create-opensearch-domain") {
                 openSearchClient.createDomain(request)
+            }
+        }
+        // A role this process just created is not visible to OpenSearch at once; retry only
+        // that refusal. A role that was already there gets no retry.
+        val response =
+            if (serviceLinkedRoleJustCreated) {
+                createWithNewServiceLinkedRole(config.domainName, create)
+            } else {
+                create()
             }
 
         val domainStatus = response.domainStatus()
@@ -160,6 +198,37 @@ class OpenSearchService(
             state = DomainState.fromDomainStatus(domainStatus.processing(), domainStatus.deleted()),
         )
     }
+
+    /**
+     * Runs [create] until OpenSearch sees the service-linked role this run just created, within
+     * the bound. When the bound runs out and OpenSearch still refuses the role, the refusal is
+     * wrapped in an error that says the role was created by this run and to re-run once IAM has
+     * propagated, since the bare ValidationException asks the operator to create a role that
+     * already exists.
+     */
+    private fun createWithNewServiceLinkedRole(
+        domainName: String,
+        create: () -> CreateDomainResponse,
+    ): CreateDomainResponse =
+        try {
+            pollUntil(
+                "create-opensearch-domain-new-service-linked-role",
+                maxAttempts = Constants.OpenSearch.SERVICE_LINKED_ROLE_MAX_ATTEMPTS,
+                interval = serviceLinkedRoleRetryInterval,
+                transient = ::isServiceLinkedRoleNotVisible,
+                done = { true },
+                poll = create,
+            )
+        } catch (e: ValidationException) {
+            if (!isServiceLinkedRoleNotVisible(e)) throw e
+            val message =
+                "OpenSearch domain $domainName: the OpenSearch service-linked role was created by this run, " +
+                    "but OpenSearch still refused it after ${Constants.OpenSearch.SERVICE_LINKED_ROLE_MAX_ATTEMPTS} attempts " +
+                    "${Constants.OpenSearch.SERVICE_LINKED_ROLE_RETRY_INTERVAL_MS} ms apart; " +
+                    "re-run once IAM has propagated the new role"
+            log.error(e) { message }
+            throw IllegalStateException(message, e)
+        }
 
     private fun buildCreateDomainRequest(config: OpenSearchDomainConfig): CreateDomainRequest {
         val tags =

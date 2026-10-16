@@ -52,6 +52,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
     private companion object {
         const val TENANT = "acme"
         const val CLUSTER = "e2e-lab-0123"
+        const val EXPERIMENT = "2026-10-13-ab"
         const val SA_DIR = "/var/run/secrets/kubernetes.io/serviceaccount"
         val ARRIVAL: Duration = Duration.ofMinutes(2)
         val POLL: Duration = Duration.ofSeconds(2)
@@ -140,6 +141,7 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
             .withEnv("HOSTNAME", "node0")
             .withEnv("CLUSTER_NAME", CLUSTER)
             .withEnv("TENANT", TENANT)
+            .withEnv("EXPERIMENT", EXPERIMENT)
             .withEnv("KUBERNETES_SERVICE_HOST", "127.0.0.1")
             .withEnv("KUBERNETES_SERVICE_PORT", "1")
             .withCommand("--config=/etc/otel-collector-config.yaml")
@@ -264,7 +266,10 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
                 results(ObservabilityBackends.get("$mimirUrl/prometheus/api/v1/query?query=edl_e2e_probe", TENANT).body())
                     .firstOrNull()
             }
-        assertThat(labelsOf(series, "metric")).containsEntry("cluster", CLUSTER)
+        assertThat(labelsOf(series, "metric"))
+            .containsEntry("cluster", CLUSTER)
+            .containsEntry("experiment", EXPERIMENT)
+            .containsEntry("edl_tenant", TENANT)
 
         // The collector's own scrape rides metrics/local, as host metrics do; its host is control0.
         val local =
@@ -286,7 +291,11 @@ class CollectorToBackendsIntegrationTest : BaseKoinTest() {
                 results(ObservabilityBackends.get("$lokiUrl/loki/api/v1/query_range?query=$query&since=10m", TENANT).body())
                     .firstOrNull()
             }
-        assertThat(labelsOf(stream, "stream")).containsEntry("cluster", CLUSTER).containsEntry("source", "journald")
+        assertThat(labelsOf(stream, "stream"))
+            .containsEntry("cluster", CLUSTER)
+            .containsEntry("experiment", EXPERIMENT)
+            .containsEntry("edl_tenant", TENANT)
+            .containsEntry("source", "journald")
 
         // Nothing went to another tenant.
         assertThat(results(ObservabilityBackends.get("$mimirUrl/prometheus/api/v1/query?query=edl_e2e_probe", "other").body())).isEmpty()

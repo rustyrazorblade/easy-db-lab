@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.TestDashboardCatalog
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter.Companion.PYROSCOPE_URL_PLACEHOLDER
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -26,7 +27,8 @@ class GrafanaDashboardTreeWriterTest {
     private val catalog = TestDashboardCatalog.catalog
     private val writer = GrafanaDashboardTreeWriter(catalog)
     private val pyroscopeUrl = "http://10.0.0.1:4040"
-    private val context = DashboardInstallContext("lab-abc123", TenantSet.of("acme", listOf("default")), "http://10.0.0.1:3080")
+    private val context =
+        DashboardInstallContext("lab-abc123", ExperimentKey("acme", "e1"), TenantSet.of("acme", listOf("default")), "http://10.0.0.1:3080")
 
     private fun writtenFiles(root: Path): Set<String> =
         root
@@ -83,29 +85,49 @@ class GrafanaDashboardTreeWriterTest {
     }
 
     @Test
-    fun `every written dashboard with a cluster variable defaults it to the current cluster`(
+    fun `every written dashboard with a cluster variable defaults it to the current cluster, except an experiment dashboard`(
         @TempDir root: Path,
     ) {
         writer.writeTo(root, pyroscopeUrl, context)
 
-        val clusters =
-            catalog.dashboards.mapNotNull { dashboard ->
-                parse(root.resolve(dashboard.relativePath).readText())["templating"]
-                    ?.jsonObject
-                    ?.get("list")
-                    ?.jsonArray
-                    ?.map { it.jsonObject }
-                    ?.singleOrNull { it["name"]?.jsonPrimitive?.content == "cluster" }
-                    ?.let {
-                        dashboard.relativePath to
-                            it
-                                .getValue("current")
-                                .jsonObject
-                                .getValue("value")
-                                .toString()
-                    }
-            }
-        assertThat(clusters).isNotEmpty()
-        assertThat(clusters).allSatisfy { (path, value) -> assertThat(value).describedAs(path).contains("\"lab-abc123\"") }
+        val withCluster =
+            catalog.dashboards
+                .associate { dashboard ->
+                    dashboard.relativePath to
+                        parse(root.resolve(dashboard.relativePath).readText())["templating"]
+                            ?.jsonObject
+                            ?.get("list")
+                            ?.jsonArray
+                            ?.map { it.jsonObject }
+                            .orEmpty()
+                            .associateBy { it["name"]?.jsonPrimitive?.content }
+                }.filterValues { "cluster" in it }
+        val (experimentDashboards, clusterDashboards) = withCluster.entries.partition { "experiment" in it.value }
+        assertThat(experimentDashboards).isNotEmpty()
+        assertThat(clusterDashboards).isNotEmpty()
+
+        // An experiment dashboard's `cluster` lists the experiment's clusters and opens on "All";
+        // the experiment it opens on is the current cluster's.
+        assertThat(experimentDashboards).allSatisfy { (path, variables) ->
+            assertThat(variables.getValue("cluster")["current"]?.jsonObject.orEmpty()).describedAs("$path cluster").isEmpty()
+            assertThat(
+                variables
+                    .getValue("experiment")
+                    .getValue("current")
+                    .jsonObject
+                    .getValue("value")
+                    .jsonPrimitive.content,
+            ).describedAs("$path experiment").isEqualTo("acme/e1")
+        }
+        assertThat(clusterDashboards).allSatisfy { (path, variables) ->
+            assertThat(
+                variables
+                    .getValue("cluster")
+                    .getValue("current")
+                    .jsonObject
+                    .getValue("value")
+                    .toString(),
+            ).describedAs(path).contains("\"lab-abc123\"")
+        }
     }
 }

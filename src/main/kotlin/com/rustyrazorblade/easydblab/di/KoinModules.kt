@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.di
 
+import com.rustyrazorblade.easydblab.export.exportModule
 import com.rustyrazorblade.easydblab.kubernetes.kubernetesModule
 import com.rustyrazorblade.easydblab.localstack.localStackModule
 import com.rustyrazorblade.easydblab.providers.aws.awsModule
@@ -31,6 +32,7 @@ object KoinModules {
             awsModule,
             servicesModule,
             localStackModule,
+            exportModule,
             configurationModule,
             commandsModule,
             prompterModule,

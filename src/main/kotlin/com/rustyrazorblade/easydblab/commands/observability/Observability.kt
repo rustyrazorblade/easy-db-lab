@@ -10,12 +10,13 @@ import picocli.CommandLine.Spec
  * Available sub-commands:
  * - compactor: start, stop and inspect the account compactor
  * - local: a local Grafana stack over the shared store
+ * - export: a zip of observability data that opens offline as the local stack
  */
 @Command(
     name = "observability",
     description = ["Account-wide observability store operations"],
     mixinStandardHelpOptions = true,
-    subcommands = [Compactor::class, Local::class],
+    subcommands = [Compactor::class, Local::class, ObservabilityExport::class],
 )
 class Observability : Runnable {
     @Spec

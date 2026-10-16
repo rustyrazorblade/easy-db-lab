@@ -946,6 +946,15 @@ object Constants {
         const val HOME_DASHBOARD_PATH = "infrastructure/system-overview.json"
 
         /**
+         * Grafana's server admin. Every Grafana this tool runs lets anyone in as an org admin, but the
+         * provisioning reload API (`/api/admin/provisioning/...`) needs the server admin, by basic auth.
+         */
+        const val ADMIN_USER = "admin"
+
+        /** [ADMIN_USER]'s password. The Grafanas are ephemeral and bound to private or loopback addresses. */
+        const val ADMIN_PASSWORD = "admin"
+
+        /**
          * Tag auto-applied to every GLOBAL (unscoped) annotation created via `grafana annotate`, in
          * addition to any operator-supplied tags. The core dashboards' annotation query filters on
          * this tag so global markers render on their timelines. Scoped annotations

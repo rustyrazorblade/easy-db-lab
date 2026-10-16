@@ -36,7 +36,7 @@ The **Tests** dashboard (Infrastructure folder) lists every experiment of the te
 Below the list, **Clusters of** the selected experiment lists each of its clusters with its start and end, and the experiment's report. Click a cluster for:
 
 - **System Overview** or **Cassandra Overview**, opened on that cluster's window;
-- **Compare with the current cluster**, which opens Cluster pair with that cluster as A and the current cluster as B.
+- **Open as A in the cluster pair**, which opens Cluster pair with that cluster as A. B is the current cluster on a cluster; the local stack and an opened export have no current cluster, so B is the experiment's newest cluster there.
 
 ### Comparing an experiment's clusters
 

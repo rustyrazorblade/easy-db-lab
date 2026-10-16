@@ -259,7 +259,7 @@
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "One row per cluster of the selected experiment. Start and End are the cluster's first and last `up` sample within Lookback, found at the Resolution step, so the window is the whole life of the cluster. Click a cluster for its dashboards over its window, or for the cluster pair with this cluster as A and the current cluster as B.",
+      "description": "One row per cluster of the selected experiment. Start and End are the cluster's first and last `up` sample within Lookback, found at the Resolution step, so the window is the whole life of the cluster. Click a cluster for its dashboards over its window, or to open the cluster pair with this cluster as A. B opens on the current cluster on a cluster, and on the experiment's newest cluster in the local stack and an export, which have no current cluster.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -315,7 +315,7 @@
                     "url": "/d/1e7b6436-9a13-44cf-bdae-7528a9a7f537/cassandra-overview?var-cluster=${__data.fields.cluster}&from=${__data.fields.window_start}&to=${__data.fields.window_end}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${experiment:queryparam}"
                   },
                   {
-                    "title": "Compare with the current cluster",
+                    "title": "Open as A in the cluster pair",
                     "url": "/d/cluster-pair/cluster-pair?var-cluster_a=${__data.fields.cluster}&${experiment:queryparam}&${cluster:queryparam}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${lookback:queryparam}&${resolution:queryparam}"
                   }
                 ]

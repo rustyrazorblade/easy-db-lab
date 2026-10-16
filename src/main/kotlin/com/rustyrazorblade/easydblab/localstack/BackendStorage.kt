@@ -82,6 +82,53 @@ internal class GatedStore(
     override fun tempoConfig(clusterYaml: String): String = TempoLocalConfig.live(clusterYaml, LocalStackComposer.STORE_GATE_ENDPOINT)
 }
 
+/**
+ * An export's copy of the store, on disk beside `compose.yml`, read with filesystem backends and no
+ * network or credentials. The copy is mounted read-only at [STORE] in every backend, so no component
+ * can change it: Mimir reads `mimir/<tenant>` with the zip's generated bucket index, Loki reads
+ * `loki/` (its schema's object store switched to the filesystem, its S3 settings removed), and Tempo,
+ * the single binary, lists `tempo/<tenant>` with the local backend.
+ *
+ * @property offline the data directory and the home tenant.
+ */
+internal class ExportedFiles(
+    private val offline: LocalStackSpec.Mode.Offline,
+) : BackendStorage {
+    companion object {
+        /** Where every backend sees the export's data directory. */
+        const val STORE = "/store"
+
+        /** What the configuration files expand for a bucket and a region that do not exist offline. */
+        private const val NO_BUCKET = "offline"
+    }
+
+    override val environment: Map<String, String> get() = backendEnvironment(bucket = NO_BUCKET, region = NO_BUCKET, home = offline.home)
+
+    override val dependsOn: Map<String, ComposeDependency> get() = emptyMap()
+
+    override val mounts: List<ComposeMount> get() = listOf(ComposeMount.bind("./${offline.dataDir}", STORE, readOnly = true))
+
+    override val mimirFlags: List<String>
+        get() = listOf("-blocks-storage.backend=filesystem", "-blocks-storage.filesystem.dir=$STORE")
+
+    override val lokiFlags: List<String> get() = emptyList()
+
+    override fun lokiConfig(clusterYaml: String): String =
+        YamlDocument.patch(
+            clusterYaml,
+            listOf(
+                YamlPatch.remove("common.storage.s3"),
+                YamlPatch.set("common.storage.filesystem.chunks_directory", STORE),
+                YamlPatch.set("common.storage.filesystem.rules_directory", "/loki/rules"),
+                YamlPatch.set("storage_config.filesystem.directory", STORE),
+                YamlPatch.set("schema_config.configs.0.object_store", "filesystem"),
+            ),
+        )
+
+    override fun tempoConfig(clusterYaml: String): String =
+        TempoLocalConfig.offline(clusterYaml, "$STORE/${Constants.Observability.TRACES_ROOT}")
+}
+
 /** The stack's cluster name and experiment, which the cluster files expand but no reader uses. */
 private const val LOCAL_CLUSTER = "local"
 

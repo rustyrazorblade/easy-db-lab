@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.localstack
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaServerSettings
 
 /**
  * A slice of a local stack: some compose services and the files they mount, by path relative to the
@@ -28,19 +29,26 @@ data class ComposePart(
 object LocalStackComposer {
     /** Every file of the stack described by [spec], by path relative to the stack directory. */
     fun compose(spec: LocalStackSpec): Map<String, ByteArray> {
-        val live =
-            when (val mode = spec.mode) {
-                is LocalStackSpec.Mode.Live -> mode
-                is LocalStackSpec.Mode.Offline -> throw UnsupportedOperationException(
-                    "An offline stack is written by the export, not by local create",
-                )
-            }
         val parts =
-            listOf(
-                StoreAccessPart.live(live),
-                BackendsPart.live(live),
-                GrafanaViewPart.compose(spec, documentsBucket = live.bucket),
-            )
+            when (val mode = spec.mode) {
+                is LocalStackSpec.Mode.Live ->
+                    listOf(
+                        StoreAccessPart.live(mode),
+                        BackendsPart.live(mode),
+                        GrafanaViewPart.compose(
+                            spec,
+                            GrafanaViewPart.Documents.FromStore(mode.bucket),
+                            GrafanaServerSettings.DOWNLOADED_PLUGINS,
+                        ),
+                    )
+                // No gate, signer or store check: the data is on disk. Grafana downloads no plugin,
+                // since the stack may have no network.
+                is LocalStackSpec.Mode.Offline ->
+                    listOf(
+                        BackendsPart.offline(mode),
+                        GrafanaViewPart.compose(spec, GrafanaViewPart.Documents.FromDisk(mode.dataDir), plugins = emptyList()),
+                    )
+            }
         val services = parts.flatMap { it.services.entries }.associate { it.toPair() }
         val files = parts.flatMap { it.files.entries }.associate { it.toPair() }
         require(services.size == parts.sumOf { it.services.size }) { "Two parts define the same service" }

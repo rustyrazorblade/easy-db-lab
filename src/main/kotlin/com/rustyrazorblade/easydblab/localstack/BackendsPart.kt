@@ -35,6 +35,9 @@ object BackendsPart {
     /** The part for the live store in [live]'s bucket. */
     fun live(live: LocalStackSpec.Mode.Live): ComposePart = compose(GatedStore(live))
 
+    /** The part for the export's copy of the store in [offline]'s data directory. */
+    fun offline(offline: LocalStackSpec.Mode.Offline): ComposePart = compose(ExportedFiles(offline))
+
     /** The part over [storage]. */
     internal fun compose(storage: BackendStorage): ComposePart {
         val clusterTempo = LocalStackComposer.resourceNextTo(TempoManifestBuilder::class.java, TEMPO_FILE)

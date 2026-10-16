@@ -11,7 +11,6 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 
 /**
@@ -291,12 +290,5 @@ class LocalStackComposerTest {
         val yaml = text(Constants.LocalStack.COMPOSE_FILE)
 
         assertThat(yaml).contains("- \"2048\"", "user: \"0\"", "\"GF_USERS_ALLOW_SIGN_UP\": \"false\"", "restart: \"no\"")
-    }
-
-    @Test
-    fun `an offline stack is not composed here`() {
-        val offline = spec.copy(mode = LocalStackSpec.Mode.Offline(dataDir = "data", home = "default"))
-
-        assertThatThrownBy { LocalStackComposer.compose(offline) }.isInstanceOf(UnsupportedOperationException::class.java)
     }
 }

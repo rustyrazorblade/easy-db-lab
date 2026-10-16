@@ -4,19 +4,21 @@ import com.charleskorn.kaml.Location
 import com.charleskorn.kaml.SingleLineStringStyle
 import com.charleskorn.kaml.Yaml
 import com.charleskorn.kaml.YamlConfiguration
+import com.charleskorn.kaml.YamlList
 import com.charleskorn.kaml.YamlMap
 import com.charleskorn.kaml.YamlNode
 import com.charleskorn.kaml.YamlScalar
 
 /**
- * One typed change to a parsed YAML document, addressed by the chain of map keys that leads to it.
+ * One typed change to a parsed YAML document, addressed by the chain of map keys (and list indices,
+ * such as the `0` of `schema_config.configs.0.object_store`) that leads to it.
  *
  * The local stack derives a backend's configuration from the cluster's own resource file this way,
  * so the derived file can never drift from the cluster's except where a patch says so, and no YAML is
  * ever assembled from strings.
  */
 sealed interface YamlPatch {
-    /** The map keys from the document root to the changed entry. */
+    /** The map keys, or the indices of list items, from the document root to the changed entry. */
     val path: List<String>
 
     /**
@@ -76,6 +78,7 @@ object YamlDocument {
         val valuePath = map.path.withMapElementKey(key, GENERATED).withMapElementValue(GENERATED)
         val replacement: YamlNode? =
             when {
+                path.size > 1 && existing?.value is YamlList -> applyToItem(existing.value as YamlList, patch, path.drop(1))
                 path.size > 1 -> {
                     val child = existing?.value ?: YamlMap(emptyMap(), valuePath)
                     require(child is YamlMap) { "${patch.path.joinToString(".")}: $key is not a map" }
@@ -89,5 +92,17 @@ object YamlDocument {
         val entryKey = existing?.key ?: YamlScalar(key, map.path.withMapElementKey(key, GENERATED))
         if (replacement == null) entries.remove(entryKey) else entries[entryKey] = replacement
         return YamlMap(entries, map.path)
+    }
+
+    /** Applies [patch] inside the map at index `path.first()` of [list]; the index must exist. */
+    private fun applyToItem(
+        list: YamlList,
+        patch: YamlPatch,
+        path: List<String>,
+    ): YamlList {
+        val index = path.first().toIntOrNull()
+        val item = index?.let { list.items.getOrNull(it) }
+        require(item is YamlMap && path.size > 1) { "${patch.path.joinToString(".")}: ${path.first()} is not a map in the list" }
+        return YamlList(list.items.mapIndexed { n, node -> if (n == index) apply(item, patch, path.drop(1)) else node }, list.path)
     }
 }

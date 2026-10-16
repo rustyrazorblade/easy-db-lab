@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.localstack
 import com.rustyrazorblade.easydblab.events.EventBus
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.MethodSource
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
@@ -22,6 +24,11 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Response
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable
 import software.amazon.awssdk.services.ssooidc.model.ExpiredTokenException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import java.nio.file.NoSuchFileException
+import javax.net.ssl.SSLHandshakeException
 
 /**
  * The store check `local create` runs before it writes anything: the bucket's region, a
@@ -31,6 +38,19 @@ import software.amazon.awssdk.services.ssooidc.model.ExpiredTokenException
  * profile's (S3 answers a HEAD in another region with a 301).
  */
 class SdkLocalStackStoreTest {
+    companion object {
+        /** What the SDK's HTTP client throws when S3 cannot be reached: a read timeout, a refused or timed-out connect, no DNS, TLS. */
+        @JvmStatic
+        fun networkFailures(): List<Exception> =
+            listOf(
+                SocketTimeoutException("Read timed out"),
+                SocketTimeoutException("Connect timed out"),
+                ConnectException("Connection refused"),
+                UnknownHostException("acct.s3.eu-west-1.amazonaws.com"),
+                SSLHandshakeException("Remote host terminated the handshake"),
+            )
+    }
+
     /** The profile-region client: it only finds the bucket's region. */
     private val profileS3 = mock<S3Client>()
 
@@ -143,6 +163,46 @@ class SdkLocalStackStoreTest {
         assertThat(result).isEqualTo(
             StoreReadResult.Unreadable(awsErrorCode = "SdkClientException: The SSO session associated with this profile has expired"),
         )
+    }
+
+    /**
+     * A network failure is not a credentials failure: `aws sso login` would not help. The SDK wraps
+     * it in an [SdkClientException] whose cause is the I/O error, as store-check.sh names a `dial tcp`,
+     * `i/o timeout` or `no such host` text apart from a credentials text.
+     */
+    @ParameterizedTest
+    @MethodSource("networkFailures")
+    fun `a network failure is unreachable, not unreadable, and names the I-O error`(cause: Exception) {
+        whenever(profileS3.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenThrow(SdkClientException.builder().message("Unable to execute HTTP request: ${cause.message}").cause(cause).build())
+
+        val result = check.check("acct")
+
+        assertThat(result).isInstanceOf(StoreReadResult.Unreachable::class.java)
+        assertThat((result as StoreReadResult.Unreachable).reason).contains(cause::class.java.simpleName, cause.message)
+    }
+
+    @Test
+    fun `credentials that fail on a missing token file are still a credentials failure, not a network one`() {
+        whenever(profileS3.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenThrow(
+                SdkClientException
+                    .builder()
+                    .message("Unable to load SSO token")
+                    .cause(NoSuchFileException("/home/op/.aws/sso/cache/abc.json"))
+                    .build(),
+            )
+
+        assertThat(check.check("acct")).isInstanceOf(StoreReadResult.Unreadable::class.java)
+    }
+
+    @Test
+    fun `a network failure under the bucket's own region is unreachable too`() {
+        readableBucket()
+        whenever(s3.headBucket(any<HeadBucketRequest>()))
+            .thenThrow(SdkClientException.builder().message("Unable to execute HTTP request").cause(SocketTimeoutException("Read timed out")).build())
+
+        assertThat(check.check("acct")).isInstanceOf(StoreReadResult.Unreachable::class.java)
     }
 
     /**

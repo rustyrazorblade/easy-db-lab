@@ -6218,6 +6218,27 @@ sealed interface Event {
         }
 
         /**
+         * `local create` could not reach S3 to check the account bucket (a timeout, a refused
+         * connection, a name that did not resolve, TLS), and wrote nothing. The credentials were never
+         * tried, so this carries no login hint.
+         *
+         * @property profile the AWS profile the stack would read the store with.
+         * @property reason the network error's class and message.
+         */
+        @Serializable
+        @SerialName("LocalStack.StoreUnreachable")
+        data class StoreUnreachable(
+            val profile: String,
+            val reason: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String =
+                "The account bucket check with profile $profile could not reach S3: $reason\n" +
+                    "Nothing was written. Check the network (VPN, proxy, DNS) and run the command again."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * `local create` wrote the stack's files into [directory].
          *
          * @property directory the stack directory.
@@ -6406,6 +6427,29 @@ sealed interface Event {
                         "Cannot read the account bucket with profile $profile: $awsErrorCode\n" +
                             "Nothing was written. Log in and run the command again: aws sso login --profile $profile"
                 }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * The export could not reach S3 to check the account bucket (a timeout, a refused connection,
+         * a name that did not resolve, TLS); nothing was written. The credentials were never tried, so
+         * this carries no login hint.
+         *
+         * @property profile the AWS profile the export reads with, or null for the easy-db-lab
+         *   profile's access keys.
+         * @property reason the network error's class and message.
+         */
+        @Serializable
+        @SerialName("Export.StoreUnreachable")
+        data class StoreUnreachable(
+            val profile: String?,
+            val reason: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "The account bucket check with ${profile?.let { "profile $it" } ?: "the easy-db-lab profile's access keys"} " +
+                    "could not reach S3: $reason\n" +
+                    "Nothing was written. Check the network (VPN, proxy, DNS) and run the command again."
 
             override fun isError(): Boolean = true
         }

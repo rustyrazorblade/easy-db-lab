@@ -163,6 +163,7 @@ docker compose logs store-gate | grep REFUSED
 ## Troubleshooting
 
 - **No data at all.** Check `docker compose ps`: a `store-check` that exited 1, or an unhealthy `store-signer`, means the credentials cannot read the bucket. `docker compose logs store-check` says why.
+- **`local create` or `export` says the check could not reach S3.** That is a network problem (a timeout, a refused connection, a name that did not resolve, TLS), not your credentials: logging in again will not help. Check the VPN, proxy or DNS and run the command again. Expired or refused credentials are reported apart, with the `aws sso login` command.
 - **A tenant is missing from the pickers.** Run `local create` on the directory again.
 - **`docker compose up` fails with `port is already allocated`.** Grafana uses port 3000 and the documents web server port 3080 on `127.0.0.1`. Stop whatever holds them, then run `docker compose up -d` again.
 
@@ -262,12 +263,12 @@ easy-db-lab observability export ~/e1.zip --experiment e1 --tenant acme
 
 `--cluster` takes a cluster's full `<name>-<id>`, as its `cluster` label holds it: the cluster's name, `-`, and its UUID. Any other value is refused, naming it, before anything is read.
 
-`--cluster` finds each cluster's tenant: from the workspace when you run it in that cluster's own workspace, otherwise from the store. Clusters of different tenants may be exported together; the first cluster's tenant is the one the stable datasources read, and the opened stack has datasources for every tenant in the zip.
+`--cluster` finds each cluster's tenant: from the workspace when you run it in that cluster's own workspace, otherwise from the store, and it says which for each cluster. Clusters of different tenants may be exported together; the first cluster's tenant is the one the stable datasources read, and the opened stack has datasources for every tenant in the zip.
 
 These exports read by query rather than copying the store. They start two temporary docker compose projects: a read-only reader over the live store, with the same read gate and signer as `local create` (so they need docker and an AWS profile, not access keys), and a writer whose Loki and Tempo keep what is read. Metric blocks are copied and rewritten with thanos, with no network, to keep only the selected clusters' series. The zip holds the selected clusters' metrics, logs and traces, their annotation backups, and every report of each experiment they belong to, and nothing of any other cluster. Nothing in the bucket is written or deleted.
 
 ```
-Exporting 2 clusters: lab-0f8fad5b-d9cb-469f-a165-70867728950e (tenant acme), lab-7c9e6679-7425-40de-944b-e07fc1f90ae7 (tenant default). Home tenant: acme
+Exporting 2 clusters: lab-0f8fad5b-d9cb-469f-a165-70867728950e (tenant acme, found by querying the store), lab-7c9e6679-7425-40de-944b-e07fc1f90ae7 (tenant default, found by querying the store). Home tenant: acme
 Exported metrics: 14 blocks, 38 MiB (39845888 bytes)
 Exported logs: 120433 lines, 22 MiB (23068672 bytes)
 Exported traces: 0 traces, 0 MiB (0 bytes)

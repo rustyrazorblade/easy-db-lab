@@ -217,6 +217,12 @@ build {
     script = "install/configure_cilium_eni_networkd.sh"
   }
 
+  # Poll the Amazon Time Sync Service every 8 s instead of the image's 16 s, so the kernel's
+  # clock error bound grows half as far between polls (see the script header).
+  provisioner "shell" {
+    script = "install/configure_chrony_poll.sh"
+  }
+
   # install OpenTelemetry Java agent for workload instrumentation
   provisioner "shell" {
     script = "install/install_otel_agent.sh"

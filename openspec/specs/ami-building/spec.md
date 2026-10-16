@@ -22,6 +22,19 @@ The system MUST support building AMIs with multiple database versions and suppor
 - **WHEN** the AMI is built
 - **THEN** all specified versions are installed and selectable at runtime
 
+### Requirement: Clock sync polls Amazon Time Sync every 8 seconds
+The base AMI SHALL configure chrony to poll every Amazon Time Sync Service source (`169.254.169.123` and `fd00:ec2::123`) every 8 seconds (`minpoll 3 maxpoll 3`), and SHALL keep every other option on those source lines. The base AMI build SHALL fail if the image's chrony configuration has no Amazon Time Sync source.
+
+#### Scenario: Time Sync source polled every 8 seconds
+- **GIVEN** the Ubuntu image's chrony config polls Amazon Time Sync with `minpoll 4 maxpoll 4`
+- **WHEN** the user builds the base image
+- **THEN** every Amazon Time Sync source line in the image has `minpoll 3 maxpoll 3` and keeps its other options
+
+#### Scenario: No Time Sync source fails the build
+- **GIVEN** an image whose chrony config has no Amazon Time Sync source
+- **WHEN** the base image is built
+- **THEN** the build fails and names the missing source
+
 ### Requirement: AMI Maintenance
 The system MUST support pruning old AMIs to manage costs.
 

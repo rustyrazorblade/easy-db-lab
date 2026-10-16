@@ -357,7 +357,16 @@ class QueryExporterTest {
 
         exporter.export(target, ExportSelector.Clusters(listOf(X1)), workspace = null)
 
-        val tempo = ZipFile(target.zip).use { file -> file.entries().asSequence().filter { it.name.substringAfter('/') == "data/tempo/" }.toList() }
+        val tempo =
+            ZipFile(
+                target.zip,
+            ).use { file ->
+                file
+                    .entries()
+                    .asSequence()
+                    .filter { it.name.substringAfter('/') == "data/tempo/" }
+                    .toList()
+            }
         assertThat(tempo).singleElement().satisfies({ assertThat(it.isDirectory).isTrue() })
     }
 

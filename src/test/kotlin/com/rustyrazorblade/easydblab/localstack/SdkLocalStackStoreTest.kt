@@ -174,7 +174,13 @@ class SdkLocalStackStoreTest {
     @MethodSource("networkFailures")
     fun `a network failure is unreachable, not unreadable, and names the I-O error`(cause: Exception) {
         whenever(profileS3.getBucketLocation(any<GetBucketLocationRequest>()))
-            .thenThrow(SdkClientException.builder().message("Unable to execute HTTP request: ${cause.message}").cause(cause).build())
+            .thenThrow(
+                SdkClientException
+                    .builder()
+                    .message("Unable to execute HTTP request: ${cause.message}")
+                    .cause(cause)
+                    .build(),
+            )
 
         val result = check.check("acct")
 
@@ -200,7 +206,14 @@ class SdkLocalStackStoreTest {
     fun `a network failure under the bucket's own region is unreachable too`() {
         readableBucket()
         whenever(s3.headBucket(any<HeadBucketRequest>()))
-            .thenThrow(SdkClientException.builder().message("Unable to execute HTTP request").cause(SocketTimeoutException("Read timed out")).build())
+            .thenThrow(
+                SdkClientException
+                    .builder()
+                    .message(
+                        "Unable to execute HTTP request",
+                    ).cause(SocketTimeoutException("Read timed out"))
+                    .build(),
+            )
 
         assertThat(check.check("acct")).isInstanceOf(StoreReadResult.Unreachable::class.java)
     }

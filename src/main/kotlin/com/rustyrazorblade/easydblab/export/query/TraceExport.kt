@@ -61,6 +61,7 @@ class TraceExport(
 ) {
     private companion object {
         val MAX_WINDOW: Duration = Duration.ofHours(Constants.Export.Query.TRACE_SEARCH_MAX_HOURS)
+
         /**
          * Longer than the reader's Tempo may take for a cold read, so a slow read ends with Tempo's
          * own answer, which names the failure, rather than with the client giving up.

@@ -25,10 +25,14 @@ class LocalStackDirectoryRefused(
  * @property written every owned file, by relative path, in the order written.
  * @property edited the owned files whose content on disk was not what the last write left there:
  *   the user edited them, and this write replaced the edit.
+ * @property manifest the manifest this write recorded.
+ * @property rewrite whether the directory already held a stack this tool wrote.
  */
 data class LocalStackWriteResult(
     val written: List<String>,
     val edited: List<String>,
+    val manifest: LocalStackManifest,
+    val rewrite: Boolean,
 )
 
 /**
@@ -55,10 +59,9 @@ class LocalStackWriter(
         files: Map<String, ByteArray>,
     ): LocalStackWriteResult {
         files.keys.forEach(::requireOwnable)
-        val manifestFile = File(directory, Constants.LocalStack.MANIFEST_FILE)
-        val previous = if (manifestFile.isFile) LocalStackManifest.read(manifestFile) else null
-        if (previous == null && !directory.list().isNullOrEmpty()) throw LocalStackDirectoryRefused(directory)
+        val previous = refuseForeign(directory)
         directory.mkdirs()
+        val manifestFile = File(directory, Constants.LocalStack.MANIFEST_FILE)
 
         val edited =
             files.keys.filter { path ->
@@ -67,7 +70,7 @@ class LocalStackWriter(
                 recorded != null && onDisk.isFile && sha256(onDisk.readBytes()) != recorded
             }
         files.forEach { (path, bytes) -> File(directory, path).writeBytesAtomically(bytes) }
-        manifestFile.writeTextAtomically(
+        val manifest =
             LocalStackManifest(
                 toolVersion = toolVersion,
                 mode = spec.mode.manifestName,
@@ -76,9 +79,23 @@ class LocalStackWriter(
                 grafanaPort = spec.grafanaPort,
                 documentsPort = spec.documentsPort,
                 files = files.mapValues { sha256(it.value) },
-            ).toJson(),
-        )
-        return LocalStackWriteResult(written = files.keys.toList(), edited = edited)
+            )
+        manifestFile.writeTextAtomically(manifest.toJson())
+        return LocalStackWriteResult(written = files.keys.toList(), edited = edited, manifest = manifest, rewrite = previous != null)
+    }
+
+    /**
+     * The manifest of the stack in [directory], or null when there is none yet (the directory is
+     * missing or empty). Throws [LocalStackDirectoryRefused] for anything else: a file, or a
+     * directory with content and no manifest. It reads only the manifest and the directory listing.
+     */
+    fun refuseForeign(directory: File): LocalStackManifest? {
+        val manifestFile = File(directory, Constants.LocalStack.MANIFEST_FILE)
+        if (manifestFile.isFile) return LocalStackManifest.read(manifestFile)
+        if (directory.exists() && (!directory.isDirectory || !directory.list().isNullOrEmpty())) {
+            throw LocalStackDirectoryRefused(directory)
+        }
+        return null
     }
 
     private fun requireOwnable(path: String) {

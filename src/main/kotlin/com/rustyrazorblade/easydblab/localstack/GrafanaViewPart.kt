@@ -15,8 +15,9 @@ import com.rustyrazorblade.easydblab.services.TemplateService
  * Grafana's datasources are built by the same code as a cluster's ([GrafanaDatasourceSet]), from the
  * spec's tenants and home tenant, so the UIDs and types are a cluster's and only the URLs differ
  * ([BackendUrls.LOCAL_COMPOSE]). Its server settings are a cluster's ([GrafanaServerSettings]), except
- * that an offline stack downloads no plugin: with no network the download fails and Grafana exits. Its
- * one dashboard provider sweeps the provisioned tree in `dashboards/current`; that tree and the
+ * that it downloads no plugin: offline the download fails and Grafana exits, and live the download
+ * stalled Grafana's start for minutes, while no dashboard a local stack installs uses one. Its one
+ * dashboard provider sweeps the provisioned tree in `dashboards/current`; that tree and the
  * staging trees beside it are written outside the composer. The documents web server is the
  * cluster's, forwarding to the read gate (live) or serving the export's copy from disk (offline).
  */
@@ -96,19 +97,15 @@ object GrafanaViewPart {
         }
     }
 
-    /**
-     * The part for [spec], whose documents come from [documents] and whose Grafana downloads
-     * [plugins] at start (none where the stack may have no network).
-     */
+    /** The part for [spec], whose documents come from [documents]. */
     fun compose(
         spec: LocalStackSpec,
         documents: Documents,
-        plugins: List<String>,
     ): ComposePart =
         ComposePart(
             services =
                 mapOf(
-                    Constants.LocalStack.Services.GRAFANA to grafana(spec, plugins),
+                    Constants.LocalStack.Services.GRAFANA to grafana(spec),
                     Constants.LocalStack.Services.DOCUMENTS to documents(spec, documents),
                 ),
             files =
@@ -122,10 +119,7 @@ object GrafanaViewPart {
                 ),
         )
 
-    private fun grafana(
-        spec: LocalStackSpec,
-        plugins: List<String>,
-    ): ComposeService =
+    private fun grafana(spec: LocalStackSpec): ComposeService =
         ComposeService(
             image = LocalImages.GRAFANA,
             user = ROOT_USER,
@@ -133,7 +127,7 @@ object GrafanaViewPart {
                 GrafanaServerSettings(
                     appTitle = "easy-db-lab local (${spec.mode.home})",
                     dashboardRoot = DASHBOARD_TREE,
-                    plugins = plugins,
+                    plugins = emptyList(),
                     dataProxyTimeoutSeconds = Constants.LocalStack.GRAFANA_DATAPROXY_TIMEOUT_SECONDS,
                 ).environment()
                     .toMap(),

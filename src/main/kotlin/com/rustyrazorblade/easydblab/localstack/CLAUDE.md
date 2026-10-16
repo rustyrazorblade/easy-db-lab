@@ -20,7 +20,7 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
    Mimir `-blocks-storage.backend=filesystem -blocks-storage.filesystem.dir=/store`; Loki's file patched:
    `common.storage.s3` removed, filesystem directories `/store`, `schema_config.configs.0.object_store:
    filesystem`; Tempo `TempoLocalConfig.offline`: `backend: local` at `/store/tempo`, `s3` removed).
-   `GrafanaViewPart.compose(spec, documents, plugins)`: `Documents.FromStore(bucket)` (the cluster's documents
+   `GrafanaViewPart.compose(spec, documents)`: `Documents.FromStore(bucket)` (the cluster's documents
    nginx forwarding to the gate) or `Documents.FromDisk(dataDir)` (`documents-nginx-offline.conf`, `root /data`
    over the data directory mounted read-only, GET only under `/reports/`).
 3. `LocalStackWriter(toolVersion).write(dir, spec, files)` writes them atomically and then the manifest
@@ -80,10 +80,11 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
   signer's 502 `unable to proxy request` by its text, apart from an S3 4xx: a network error (`dial tcp`, `i/o
   timeout`, `no such host`, TLS) is "the signer could not reach S3"; a credentials text (SSO, `NoCredentialProviders`,
   `ExpiredToken`, credentials) is a credentials failure with the `aws sso login` hint; anything else is the signer's text.
-- An offline Grafana downloads no plugin (`GrafanaServerSettings.plugins` empty, so no `GF_INSTALL_PLUGINS`):
-  with no network the download fails and Grafana 13 exits 1. `OfflineGrafanaPluginsTest` fails if a packaged
-  dashboard starts to use one of `GrafanaServerSettings.DOWNLOADED_PLUGINS`; the plugin would then have to be
-  carried by the export. Grafana's own async preinstall of its default apps still runs and logs failures offline,
+- A local Grafana, live or offline, downloads no plugin (`GrafanaViewPart` sets `GrafanaServerSettings.plugins` empty,
+  so no `GF_INSTALL_PLUGINS`): offline the download fails and Grafana 13 exits 1, and live the download from
+  grafana.com stalled Grafana's start for minutes. A cluster's Grafana keeps them (the ClickHouse kit uses its
+  datasource). `LocalGrafanaPluginsTest` fails, per mode, if a packaged core or kit dashboard starts to use one of
+  `GrafanaServerSettings.DOWNLOADED_PLUGINS`; that stack would then have to carry the plugin. Grafana's own async preinstall of its default apps still runs and logs failures offline,
   which do not stop it.
 - `local create` refuses a directory whose manifest is offline (an opened export).
 - Grafana takes its `GF_*` settings from `GrafanaServerSettings` and its datasources from

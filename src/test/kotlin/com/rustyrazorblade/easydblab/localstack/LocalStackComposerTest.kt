@@ -292,6 +292,7 @@ class LocalStackComposerTest {
                 GrafanaServerSettings(
                     appTitle = "easy-db-lab local (default)",
                     dashboardRoot = tree,
+                    plugins = emptyList(),
                     dataProxyTimeoutSeconds = Constants.LocalStack.GRAFANA_DATAPROXY_TIMEOUT_SECONDS,
                 ).environment().toMap(),
             )

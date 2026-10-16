@@ -20,16 +20,17 @@ data class GrafanaImageRenderer(
  *
  * Every Grafana this tool runs takes them from here — the cluster's Deployment
  * ([GrafanaManifestBuilder]) and the local docker compose stack — so the two log in, brand, open
- * their home dashboard, install plugins (except offline) and show the documents iframe the same way. Only the values
+ * their home dashboard, install plugins (a cluster's only) and show the documents iframe the same way. Only the values
  * that differ by host are parameters.
  *
  * @property appTitle the browser title, the cluster's `<name>-<id>` on a cluster.
  * @property dashboardRoot where the dashboard tree sits inside the Grafana container; the home
  *   dashboard is [Constants.Grafana.HOME_DASHBOARD_PATH] under it.
  * @property imageRenderer the image renderer, where one runs beside Grafana.
- * @property plugins the plugins Grafana downloads from grafana.com at start. An exported stack opens
- *   with no network, where a download failure stops Grafana (it exits 1), so it installs none; no
- *   dashboard it carries uses one of these.
+ * @property plugins the plugins Grafana downloads from grafana.com at start. A local stack installs
+ *   none: an exported stack opens with no network, where a download failure stops Grafana (it
+ *   exits 1), and a live one stalled minutes on the download. No dashboard a local stack installs
+ *   uses one of these.
  * @property dataProxyTimeoutSeconds how long Grafana waits for a datasource, or Grafana's 30-second
  *   default when null. A local stack sets it: a cold query there reads every block from S3.
  */

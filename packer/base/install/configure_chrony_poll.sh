@@ -31,11 +31,30 @@ for f in "${CHRONY_DIR}/chrony.conf" "${CHRONY_DIR}"/conf.d/*.conf "${CHRONY_DIR
     [[ -f "$f" ]] && files+=("$f")
 done
 
+if [[ "${#files[@]}" -eq 0 ]]; then
+    echo "ERROR: no chrony config (chrony.conf, conf.d/*.conf, sources.d/*.sources) in ${CHRONY_DIR}"
+    exit 1
+fi
+
+# Sets MATCHES to the Time Sync lines of $1 and succeeds when it has any. The files can be
+# root-only, so they are read through sudo, and a read error fails the bake: a skipped file would
+# leave its source at the image's poll.
+read_time_sync_lines() {
+    local status=0
+    MATCHES="$(sudo grep -E "$TIME_SYNC_SOURCE" "$1")" || status=$?
+    if [[ "$status" -gt 1 ]]; then
+        echo "ERROR: cannot read $1"
+        exit 1
+    fi
+    [[ "$status" -eq 0 ]]
+}
+
 updated=0
 for f in "${files[@]}"; do
-    grep -Eq "$TIME_SYNC_SOURCE" "$f" || continue
-    awk -v poll="$POLL" -v source="$TIME_SYNC_SOURCE" '
-        $0 ~ source {
+    read_time_sync_lines "$f" || continue
+    # The regex goes through the environment, not -v, which would process its backslashes.
+    sudo env SOURCE="$TIME_SYNC_SOURCE" awk -v poll="$POLL" '
+        $0 ~ ENVIRON["SOURCE"] {
             gsub(/[[:space:]]+(minpoll|maxpoll)[[:space:]]+-?[0-9]+/, "")
             sub(/[[:space:]]+$/, "")
             $0 = $0 " minpoll " poll " maxpoll " poll
@@ -55,12 +74,13 @@ fi
 
 # Self-verify: every Time Sync line now carries exactly our poll, once.
 for f in "${files[@]}"; do
+    read_time_sync_lines "$f" || continue
     while IFS= read -r line; do
         if [[ "$(grep -Eo '(minpoll|maxpoll) -?[0-9]+' <<<"$line" | sort | tr '\n' ' ')" != "maxpoll ${POLL} minpoll ${POLL} " ]]; then
             echo "ERROR: ${f} still has a Time Sync line without minpoll ${POLL} maxpoll ${POLL}: ${line}"
             exit 1
         fi
-    done < <(grep -E "$TIME_SYNC_SOURCE" "$f" || true)
+    done <<<"$MATCHES"
 done
 
 echo "✓ configure_chrony_poll.sh completed successfully"

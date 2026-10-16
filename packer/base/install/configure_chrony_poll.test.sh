@@ -50,6 +50,8 @@ make_chrony_dir() {
 server 169.254.169.123 prefer iburst minpoll 4 maxpoll 4
 server fd00:ec2::123 iburst minpoll 4 maxpoll 4
 #server 169.254.169.123 minpoll 6 maxpoll 6
+server 169.254.169.1234 iburst minpoll 6 maxpoll 6
+server 10.0.0.5 minpoll 6
 EOF
   cat >"${dir}/sources.d/ubuntu-ntp-pools.sources" <<'EOF'
 pool ntp.ubuntu.com iburst maxsources 4 maxpoll 7
@@ -99,6 +101,13 @@ else
   fail "the commented-out line changed: $(grep '^#server' "$CPC")"
 fi
 
+if grep -qx 'server 169.254.169.1234 iburst minpoll 6 maxpoll 6' "$CPC" \
+  && grep -qx 'server 10.0.0.5 minpoll 6' "$CPC"; then
+  pass "other servers in the same file, including a near-miss address, are left alone"
+else
+  fail "a non-Time-Sync server line changed: $(grep -E '^server (169.254.169.1234|10\.)' "$CPC")"
+fi
+
 if cmp -s "${SANDBOX}/pools.before" "${DIR}/sources.d/ubuntu-ntp-pools.sources" \
   && cmp -s "${SANDBOX}/chrony.before" "${DIR}/chrony.conf"; then
   pass "files with no Time Sync source are not changed"
@@ -132,6 +141,46 @@ if [[ "$STATUS" -eq 0 ]] && grep -qx 'server 169.254.169.123 prefer iburst minpo
   pass "a Time Sync source with no poll options gets minpoll 3 maxpoll 3"
 else
   fail "bare Time Sync source not updated (${STATUS}): $(cat "${DIR}/chrony.conf")"
+fi
+
+# --- An indented pool line with tabs and its poll options split around another option ---
+DIR="${SANDBOX}/split"
+mkdir -p "${DIR}/sources.d"
+printf '\tpool 169.254.169.123\tminpoll 4 prefer maxpoll 4\n' >"${DIR}/sources.d/aws.sources"
+OUTPUT="$(run_script "$DIR")"
+STATUS=$?
+if [[ "$STATUS" -eq 0 ]] && grep -qx "$(printf '\tpool 169.254.169.123 prefer minpoll 3 maxpoll 3')" "${DIR}/sources.d/aws.sources"; then
+  pass "an indented, tab-separated pool line with split poll options ends with minpoll 3 maxpoll 3"
+else
+  fail "split pool line not updated (${STATUS}): $(cat "${DIR}/sources.d/aws.sources")"
+fi
+
+# --- An unreadable config file fails the bake instead of being skipped ---
+# Root reads any file, so this case only means something for a non-root run (CI, a laptop).
+if [[ "$(id -u)" -ne 0 ]]; then
+  DIR="${SANDBOX}/unreadable"
+  make_chrony_dir "$DIR"
+  printf 'server fd00:ec2::123 iburst\n' >"${DIR}/conf.d/10-v6.conf"
+  chmod 000 "${DIR}/conf.d/10-v6.conf"
+  OUTPUT="$(run_script "$DIR")"
+  STATUS=$?
+  chmod 644 "${DIR}/conf.d/10-v6.conf"
+  if [[ "$STATUS" -ne 0 ]] && [[ "$OUTPUT" == *"cannot read ${DIR}/conf.d/10-v6.conf"* ]]; then
+    pass "an unreadable config file fails the bake and is named"
+  else
+    fail "an unreadable config file should fail the bake, got ${STATUS}: ${OUTPUT}"
+  fi
+fi
+
+# --- No chrony config at all: the bake fails with a clear message ---
+DIR="${SANDBOX}/empty"
+mkdir -p "$DIR"
+OUTPUT="$(run_script "$DIR")"
+STATUS=$?
+if [[ "$STATUS" -ne 0 ]] && [[ "$OUTPUT" == *"no chrony config"* ]]; then
+  pass "fails with a clear message when there is no chrony config"
+else
+  fail "should fail on an empty chrony dir, got ${STATUS}: ${OUTPUT}"
 fi
 
 # --- No Time Sync source: the bake fails and nothing changes ---

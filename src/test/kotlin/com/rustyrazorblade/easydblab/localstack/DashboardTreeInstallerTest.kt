@@ -6,6 +6,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.io.IOException
 
 /**
  * Putting a dashboard tree where a local stack's Grafana reads it: staged beside the provisioned
@@ -43,6 +44,28 @@ class DashboardTreeInstallerTest {
 
         assertThat(filesUnder(current)).containsExactly("kept/k.json")
         assertThat(File(current, "kept/k.json").readText()).isEqualTo("{\"v\":2}")
+        assertThat(dashboards.list()).containsExactly(Constants.LocalStack.DASHBOARDS_TREE)
+    }
+
+    @Test
+    fun `when the new tree cannot be renamed into place, the old tree is put back`() {
+        DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":1}"))
+
+        assertThatThrownBy {
+            DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":2}"), moveIntoPlace = { _, _ -> throw IOException("disk said no") })
+        }.isInstanceOf(IOException::class.java)
+
+        assertThat(filesUnder(current)).containsExactly("kept/k.json")
+        assertThat(File(current, "kept/k.json").readText()).isEqualTo("{\"v\":1}")
+        assertThat(dashboards.list()).containsExactly(Constants.LocalStack.DASHBOARDS_TREE)
+    }
+
+    @Test
+    fun `an old tree left aside by an install that was stopped is removed by the next install`() {
+        File(dashboards, ".previous-123/old/o.json").apply { parentFile.mkdirs() }.writeText("{}")
+
+        DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{}"))
+
         assertThat(dashboards.list()).containsExactly(Constants.LocalStack.DASHBOARDS_TREE)
     }
 

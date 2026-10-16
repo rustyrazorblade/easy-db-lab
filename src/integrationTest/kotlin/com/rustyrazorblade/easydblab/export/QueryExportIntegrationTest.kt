@@ -58,15 +58,18 @@ import java.util.zip.ZipFile
  * with its real temporary reader and writer stacks and thanos, and the zip opened with
  * `docker compose up` on an internal network.
  *
+ * The clusters are `qx`, `qy`, `qz` and `qw`, each a real `<name>-<uuid>` cluster id, because an
+ * experiment's discovered clusters must be cluster ids too.
+ *
  * - **Nothing in S3 changes**: the listing, keys and ETags, is the same after both exports.
  * - **Only the selected clusters**: `--cluster qx-1 --cluster qw-4` holds their metrics, logs and
- *   traces and nothing of `qy-2` or `qz-3`, read back through the opened stack's own datasources; only
+ *   traces and nothing of `qy` or `qz`, read back through the opened stack's own datasources; only
  *   their annotation backups and their experiments' reports.
- * - **Mixed tenants**: `qx-1` is in `acme` and `qw-4` in `default`; the home tenant is `acme`, and the
+ * - **Mixed tenants**: `qx` is in `acme` and `qw` in `default`; the home tenant is `acme`, and the
  *   opened stack has both tenants.
  * - **Same-named experiments stay apart**: `e1` is an experiment of both tenants; `--experiment e1
- *   --tenant acme` exports `qx-1` and `qy-2` and nothing of `default`.
- * - **Old spans**: `qx-1`'s span from three days ago is found by id and by search over its own time
+ *   --tenant acme` exports `qx` and `qy` and nothing of `default`.
+ * - **Old spans**: `qx`'s span from three days ago is found by id and by search over its own time
  *   from the opened stack's Tempo, which holds only the zipped blocks, never the writer.
  * - **Structured metadata** survives: a filter on a line's metadata finds it in the opened stack.
  *
@@ -85,10 +88,10 @@ class QueryExportIntegrationTest {
         val READY_WAIT: Duration = Duration.ofMinutes(5)
         val ANSWER_WAIT: Duration = Duration.ofMinutes(5)
         val POLL: Duration = Duration.ofSeconds(3)
-        val X = QueryStoreSeed.Cluster("qx-1", ACME, "e1")
-        val Y = QueryStoreSeed.Cluster("qy-2", ACME, "e1")
-        val Z = QueryStoreSeed.Cluster("qz-3", ACME, "other")
-        val W = QueryStoreSeed.Cluster("qw-4", DEFAULT, "e1")
+        val X = QueryStoreSeed.Cluster("qx-00000000-0000-4000-8000-000000000001", ACME, "e1")
+        val Y = QueryStoreSeed.Cluster("qy-00000000-0000-4000-8000-000000000002", ACME, "e1")
+        val Z = QueryStoreSeed.Cluster("qz-00000000-0000-4000-8000-000000000003", ACME, "other")
+        val W = QueryStoreSeed.Cluster("qw-00000000-0000-4000-8000-000000000004", DEFAULT, "e1")
     }
 
     /** One export run: its zip and its events. */

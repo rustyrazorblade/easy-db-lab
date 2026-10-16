@@ -75,12 +75,14 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
      tenant: that tenant, checked by a single-tenant `/api/v1/series?match[]=up{cluster="x"}&start=0&end=<now>`;
      several: the same query federated, tenant from `__tenant_id__`. Never `/api/v1/label/__tenant_id__/values`.
    - `ExperimentDiscovery`: `--experiment` clusters from `label/cluster/values` with `up{experiment="e"}` and the
-     pre-label `up{experiment="",cluster="e"}` in the one tenant; for `--cluster`, the covered experiments are the
+     pre-label `up{experiment="",cluster="e"}` in the one tenant; every value must pass `ClusterIdRule` (the same
+     `CLUSTER_ID_PATTERN` check `--cluster` gets), else `DiscoveredClusterIdRefused` → `Export.InvalidDiscoveredCluster`
+     naming each bad value, before any query uses one; for `--cluster`, the covered experiments are the
      labelled `experiment` values plus each pre-label cluster's own id.
    - `ClusterTimeRanges`: each cluster's range from `count by (cluster) (count_over_time(up{...}[step]))` from the
      tenant's oldest block (`MimirStoreIndex`), widened by 10 minutes.
    Home tenant: the experiment's, or the first `--cluster`'s; the zip's tenants are the union. Refusals are typed:
-   `ClusterNotFound`, `ClusterInSeveralTenants`, `ClusterTenantUnknown`, `ExperimentNotFound`; then
+   `ClusterNotFound`, `ClusterInSeveralTenants`, `ClusterTenantUnknown`, `ExperimentNotFound`, `InvalidDiscoveredCluster`; then
    `Export.ClustersSelected`.
 3. The writer (`ExportWriterStack`: a Loki with the offline stack's filesystem layout and `reject_old_samples: false`, a
    Tempo with the local backend and both WAL `ingestion_time_range_slack: 87600h`, never 0; both as the operator; no

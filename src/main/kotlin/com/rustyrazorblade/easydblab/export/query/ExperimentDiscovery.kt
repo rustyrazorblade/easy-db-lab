@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.export.query
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ExperimentKey
+import com.rustyrazorblade.easydblab.export.ClusterIdRule
 
 /**
  * No cluster of [key]'s tenant carries the experiment.
@@ -11,6 +13,20 @@ class ExperimentNotFoundException(
     val key: ExperimentKey,
     val query: String,
 ) : QueryExportRefused("Experiment ${key.name} has no clusters in tenant ${key.tenant}: $query found none")
+
+/**
+ * Mimir named clusters of [key] whose `cluster` label is not a cluster's `<name>-<id>`
+ * ([Constants.Observability.CLUSTER_ID_PATTERN]); they go into no query.
+ *
+ * @property clusters each such value, in the order Mimir gave them.
+ */
+class DiscoveredClusterIdRefused(
+    val key: ExperimentKey,
+    val clusters: List<String>,
+) : QueryExportRefused(
+        "Experiment ${key.name} in tenant ${key.tenant} has clusters whose cluster label is not a cluster's <name>-<id> " +
+            "(${Constants.Observability.CLUSTER_ID_PATTERN}): ${clusters.joinToString(", ")}",
+    )
 
 /** Values for a PromQL regex matcher. */
 object PromQlValues {
@@ -38,6 +54,8 @@ class ExperimentDiscovery(
      * whose `<name>-<id>` is the name. Same-named experiments of other tenants are never read.
      *
      * @throws ExperimentNotFoundException when there are none.
+     * @throws DiscoveredClusterIdRefused when a cluster's label is not a cluster id: it goes into the
+     *   later queries unescaped, so it is refused, never dropped.
      */
     fun clustersOf(key: ExperimentKey): List<String> {
         val matches = listOf("up{experiment=\"${key.name}\"}", "up{experiment=\"\",cluster=\"${key.name}\"}")
@@ -45,6 +63,7 @@ class ExperimentDiscovery(
         if (clusters.isEmpty()) {
             throw ExperimentNotFoundException(key, "label values of $CLUSTER for ${matches.joinToString(" or ")} in tenant ${key.tenant}")
         }
+        ClusterIdRule.violations(clusters).takeIf { it.isNotEmpty() }?.let { throw DiscoveredClusterIdRefused(key, it) }
         return clusters
     }
 

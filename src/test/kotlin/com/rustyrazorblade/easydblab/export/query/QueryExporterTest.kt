@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.export.query
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.events.Event
@@ -16,6 +17,8 @@ import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
 import com.rustyrazorblade.easydblab.localstack.LocalStackSpec
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -50,15 +53,16 @@ class QueryExporterTest {
     /** The tenant of each cluster the reader knows, and the experiment it is labelled with ("" before the label). */
     private val clusters =
         mapOf(
-            "x-1" to ("acme" to "exp-a"),
-            "y-2" to ("acme" to "exp-a"),
-            "z-3" to ("acme" to "exp-b"),
-            "w-4" to ("default" to "exp-a"),
-            "old-5" to ("acme" to ""),
+            X1 to ("acme" to "exp-a"),
+            Y2 to ("acme" to "exp-a"),
+            Z3 to ("acme" to "exp-b"),
+            W4 to ("default" to "exp-a"),
+            OLD5 to ("acme" to ""),
+            INJECTED to ("acme" to "exp-bad"),
         )
 
     /** Clusters that have traces. */
-    private var traced = setOf("x-1")
+    private var traced = setOf(X1)
     private var failTraceFetch = false
     private val stopped = mutableListOf<String>()
     private val closed = mutableListOf<String>()
@@ -98,7 +102,7 @@ class QueryExporterTest {
                                         }
                                     }
                             }.keys
-                    FakeBackends.prometheus(values.joinToString(",", "[", "]") { "\"$it\"" })
+                    FakeBackends.prometheus(JsonArray(values.map(::JsonPrimitive)).toString())
                 }
                 call.route == "/prometheus/api/v1/label/experiment/values" -> {
                     val among =
@@ -278,12 +282,12 @@ class QueryExporterTest {
             store.objects["mimir/$tenant/bucket-index.json.gz"] =
                 ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(index.toByteArray()) } }.toByteArray() to now
         }
-        store.put("grafana/annotations/acme/20261015-100000_x-1.json", "[x]")
-        store.put("grafana/annotations/acme/20261015-100000_z-3.json", "[z]")
-        store.put("grafana/annotations/default/20261015-100000_w-4.json", "[w]")
+        store.put("grafana/annotations/acme/20261015-100000_$X1.json", "[x]")
+        store.put("grafana/annotations/acme/20261015-100000_$Z3.json", "[z]")
+        store.put("grafana/annotations/default/20261015-100000_$W4.json", "[w]")
         store.put("reports/acme/exp-a/index.html", "report a")
         store.put("reports/acme/exp-b/index.html", "report b")
-        store.put("reports/acme/old-5/index.html", "report old")
+        store.put("reports/acme/$OLD5/index.html", "report old")
         store.put("reports/default/exp-a/index.html", "report a of default")
     }
 
@@ -301,22 +305,22 @@ class QueryExporterTest {
     fun `a cluster export holds only the selected clusters' signals, annotations and their experiments' reports`() {
         val target = target()
 
-        exporter.export(target, ExportSelector.Clusters(listOf("x-1")), workspace = null)
+        exporter.export(target, ExportSelector.Clusters(listOf(X1)), workspace = null)
 
         val zip = entries(target.zip)
         assertThat(zip.keys.filter { it.startsWith("data/loki/") }).isNotEmpty().allMatch {
             it.startsWith("data/loki/acme/") ||
                 it.startsWith("data/loki/index/")
         }
-        assertThat(zip.filterKeys { it.startsWith("data/loki/acme/") }.values).allMatch { it.contains("line of x-1") }
-        assertThat(zip.keys).contains("data/grafana/annotations/acme/20261015-100000_x-1.json", "data/reports/acme/exp-a/index.html")
+        assertThat(zip.filterKeys { it.startsWith("data/loki/acme/") }.values).allMatch { it.contains("line of $X1") }
+        assertThat(zip.keys).contains("data/grafana/annotations/acme/20261015-100000_$X1.json", "data/reports/acme/exp-a/index.html")
         assertThat(zip.keys).doesNotContain(
-            "data/grafana/annotations/acme/20261015-100000_z-3.json",
+            "data/grafana/annotations/acme/20261015-100000_$Z3.json",
             "data/reports/acme/exp-b/index.html",
             "data/reports/default/exp-a/index.html",
         )
         assertThat(zip.keys).anyMatch { it.startsWith("data/mimir/acme/R01acme/") }.contains("data/mimir/acme/bucket-index.json.gz")
-        assertThat(rewrites).containsExactly(listOf("x-1"))
+        assertThat(rewrites).containsExactly(listOf(X1))
         // The zip's Tempo index is the export's own, of the blocks in it.
         assertThat(zip.getValue("data/tempo/acme/index.json.gz")).doesNotContain("tempo's own index")
         assertThat(zip.keys).anyMatch { it.matches(Regex("data/tempo/acme/block-\\d+/meta.json")) }
@@ -327,7 +331,7 @@ class QueryExporterTest {
         traced = emptySet()
         val target = target()
 
-        exporter.export(target, ExportSelector.Clusters(listOf("x-1")), workspace = null)
+        exporter.export(target, ExportSelector.Clusters(listOf(X1)), workspace = null)
 
         val signals = events.filterIsInstance<Event.Export.SignalExported>().associateBy { it.signal }
         assertThat(signals.keys).containsExactlyInAnyOrder("metrics", "logs", "traces")
@@ -335,7 +339,7 @@ class QueryExporterTest {
         assertThat(signals.getValue("logs").items).isEqualTo(1)
         assertThat(signals.getValue("metrics").items).isEqualTo(1)
         val completed = events.filterIsInstance<Event.Export.QueryCompleted>().single()
-        assertThat(completed.clusters).containsExactly("x-1")
+        assertThat(completed.clusters).containsExactly(X1)
         assertThat(completed.toDisplayString()).contains("Profiles are not included", "#1016")
         val kept = events.filterIsInstance<Event.Export.WorkDirectoryKept>().single()
         assertThat(File(kept.path)).isDirectory()
@@ -350,15 +354,15 @@ class QueryExporterTest {
     fun `clusters of two tenants are exported together, the first one's tenant the home, every tenant in the stack`() {
         val target = target()
 
-        exporter.export(target, ExportSelector.Clusters(listOf("x-1", "w-4")), workspace = null)
+        exporter.export(target, ExportSelector.Clusters(listOf(X1, W4)), workspace = null)
 
         val zip = entries(target.zip)
         assertThat(zip.getValue("dashboards/current/home/home.json")).contains("\"tenants\":\"acme,default\"")
-        assertThat(zip.keys).contains("data/grafana/annotations/default/20261015-100000_w-4.json", "data/reports/default/exp-a/index.html")
+        assertThat(zip.keys).contains("data/grafana/annotations/default/20261015-100000_$W4.json", "data/reports/default/exp-a/index.html")
         assertThat(zip.keys).anyMatch { it.startsWith("data/mimir/default/") }
         val selected = events.filterIsInstance<Event.Export.ClustersSelected>().single()
         assertThat(selected.home).isEqualTo("acme")
-        assertThat(selected.clusters.map { it.cluster to it.tenant }).containsExactly("x-1" to "acme", "w-4" to "default")
+        assertThat(selected.clusters.map { it.cluster to it.tenant }).containsExactly(X1 to "acme", W4 to "default")
     }
 
     @Test
@@ -372,7 +376,7 @@ class QueryExporterTest {
             events.filterIsInstance<Event.Export.ClustersSelected>().single().clusters.map {
                 it.cluster
             },
-        ).containsExactlyInAnyOrder("x-1", "y-2")
+        ).containsExactlyInAnyOrder(X1, Y2)
         assertThat(reader.calls.map { it.tenant }).containsOnly("acme")
         assertThat(zip.keys).contains("data/reports/acme/exp-a/index.html").doesNotContain("data/reports/default/exp-a/index.html")
         assertThat(zip.getValue("dashboards/current/home/home.json")).contains("acme/exp-a")
@@ -382,7 +386,7 @@ class QueryExporterTest {
     fun `a pre-label cluster is its own experiment, and its report goes with it`() {
         val target = target()
 
-        exporter.export(target, ExportSelector.Experiment(ExperimentKey("acme", "old-5")), workspace = null)
+        exporter.export(target, ExportSelector.Experiment(ExperimentKey("acme", OLD5)), workspace = null)
 
         assertThat(
             events
@@ -390,19 +394,19 @@ class QueryExporterTest {
                 .single()
                 .clusters
                 .map { it.cluster },
-        ).containsExactly("old-5")
-        assertThat(entries(target.zip).keys).contains("data/reports/acme/old-5/index.html")
+        ).containsExactly(OLD5)
+        assertThat(entries(target.zip).keys).contains("data/reports/acme/$OLD5/index.html")
     }
 
     @Test
     fun `a cluster that does not exist fails naming it and the tenants searched, leaving no zip and keeping the work directory`() {
         val target = target()
 
-        assertThatThrownBy { exporter.export(target, ExportSelector.Clusters(listOf("nope-9")), workspace = null) }
+        assertThatThrownBy { exporter.export(target, ExportSelector.Clusters(listOf(NOPE9)), workspace = null) }
             .isInstanceOf(CommandFailedException::class.java)
 
         val missing = events.filterIsInstance<Event.Export.ClusterNotFound>().single()
-        assertThat(missing.cluster).isEqualTo("nope-9")
+        assertThat(missing.cluster).isEqualTo(NOPE9)
         assertThat(missing.tenants).containsExactly("acme", "default")
         assertThat(target.zip).doesNotExist()
         assertThat(events.last()).isInstanceOf(Event.Export.WorkDirectoryKept::class.java)
@@ -425,7 +429,7 @@ class QueryExporterTest {
         failTraceFetch = true
         val target = target()
 
-        assertThatThrownBy { exporter.export(target, ExportSelector.Clusters(listOf("x-1")), workspace = null) }
+        assertThatThrownBy { exporter.export(target, ExportSelector.Clusters(listOf(X1)), workspace = null) }
             .isInstanceOf(CommandFailedException::class.java)
 
         val failed = events.filterIsInstance<Event.Export.Failed>().single()
@@ -440,7 +444,7 @@ class QueryExporterTest {
     fun `a failure names the temporary stacks' saved docker compose logs in the work directory`() {
         failTraceFetch = true
 
-        assertThatThrownBy { exporter.export(target(), ExportSelector.Clusters(listOf("x-1")), workspace = null) }
+        assertThatThrownBy { exporter.export(target(), ExportSelector.Clusters(listOf(X1)), workspace = null) }
             .isInstanceOf(CommandFailedException::class.java)
 
         val work = File(events.filterIsInstance<Event.Export.WorkDirectoryKept>().single().path)
@@ -450,7 +454,7 @@ class QueryExporterTest {
     }
 
     /** Runs one export expected to fail, and returns its Export.Failed. */
-    private fun failedExport(selector: ExportSelector = ExportSelector.Clusters(listOf("x-1"))): Event.Export.Failed {
+    private fun failedExport(selector: ExportSelector = ExportSelector.Clusters(listOf(X1))): Event.Export.Failed {
         val target = target()
         assertThatThrownBy { exporter.export(target, selector, workspace = null) }.isInstanceOf(CommandFailedException::class.java)
         assertThat(target.zip).doesNotExist()
@@ -506,15 +510,43 @@ class QueryExporterTest {
     fun `nothing in the store is written`() {
         val before = store.objects.mapValues { it.value.first.toList() }
 
-        exporter.export(target(), ExportSelector.Clusters(listOf("x-1", "w-4")), workspace = null)
+        exporter.export(target(), ExportSelector.Clusters(listOf(X1, W4)), workspace = null)
 
         assertThat(store.objects.mapValues { it.value.first.toList() }).isEqualTo(before)
     }
 
     @Test
     fun `inside the cluster's own workspace its tenant comes from the state`() {
-        exporter.export(target(), ExportSelector.Clusters(listOf("x-1")), WorkspaceCluster("x-1", "acme"))
+        exporter.export(target(), ExportSelector.Clusters(listOf(X1)), WorkspaceCluster(X1, "acme"))
 
         assertThat(reader.calls.map { it.route }).doesNotContain("/prometheus/api/v1/series")
+    }
+
+    @Test
+    fun `an experiment whose discovered cluster is not a cluster id fails naming it, and queries nothing with it`() {
+        val target = target()
+
+        assertThatThrownBy { exporter.export(target, ExportSelector.Experiment(ExperimentKey("acme", "exp-bad")), workspace = null) }
+            .isInstanceOf(CommandFailedException::class.java)
+
+        val refused = events.filterIsInstance<Event.Export.InvalidDiscoveredCluster>().single()
+        assertThat(refused.experiment).isEqualTo("exp-bad")
+        assertThat(refused.tenant).isEqualTo("acme")
+        assertThat(refused.clusters).containsExactly(INJECTED)
+        assertThat(refused.rule).isEqualTo(Constants.Observability.CLUSTER_ID_PATTERN)
+        assertThat(reader.calls.map { it.route }).containsOnly("/prometheus/api/v1/label/cluster/values")
+        assertThat(target.zip).doesNotExist()
+    }
+
+    private companion object {
+        const val X1 = "x-00000000-0000-4000-8000-000000000001"
+        const val Y2 = "y-00000000-0000-4000-8000-000000000002"
+        const val Z3 = "z-00000000-0000-4000-8000-000000000003"
+        const val W4 = "w-00000000-0000-4000-8000-000000000004"
+        const val OLD5 = "old-00000000-0000-4000-8000-000000000005"
+        const val NOPE9 = "nope-00000000-0000-4000-8000-000000000009"
+
+        /** A `cluster` label value that would end a PromQL selector early. */
+        const val INJECTED = "bad\"} or vector(1) #"
     }
 }

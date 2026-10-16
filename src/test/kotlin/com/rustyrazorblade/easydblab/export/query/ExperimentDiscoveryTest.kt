@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.export.query
 
 import com.rustyrazorblade.easydblab.configuration.ExperimentKey
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -19,17 +21,17 @@ class ExperimentDiscoveryTest {
     private var labelValues: (BackendCall) -> List<String> = { emptyList() }
     private val backends =
         FakeBackends { call ->
-            FakeBackends.prometheus(labelValues(call).joinToString(",", "[", "]") { "\"$it\"" })
+            FakeBackends.prometheus(JsonArray(labelValues(call).map(::JsonPrimitive)).toString())
         }
     private val discovery = ExperimentDiscovery(MimirApi(backends::forTenant, clock))
 
     @Test
     fun `an experiment's clusters are its labelled clusters and a pre-label cluster named for it, in its tenant only`() {
-        labelValues = { listOf("e-z1", "lab-e1") }
+        labelValues = { listOf(LABELLED, PRE_LABEL) }
 
         val clusters = discovery.clustersOf(ExperimentKey("acme", "e"))
 
-        assertThat(clusters).containsExactly("e-z1", "lab-e1")
+        assertThat(clusters).containsExactly(LABELLED, PRE_LABEL)
         val call = backends.calls.single()
         assertThat(call.tenant).isEqualTo("acme")
         assertThat(call.route).isEqualTo("/prometheus/api/v1/label/cluster/values")
@@ -47,6 +49,19 @@ class ExperimentDiscoveryTest {
             }.hasMessageContaining("ghost")
             .hasMessageContaining("acme")
             .hasMessageContaining("up{experiment=\"ghost\"}")
+    }
+
+    @Test
+    fun `a discovered cluster that is not a cluster id is refused naming it, and goes into no query`() {
+        val injected = "x\"} or vector(1) #"
+        labelValues = { listOf(LABELLED, injected, "short-1") }
+
+        assertThatThrownBy { discovery.clustersOf(ExperimentKey("acme", "e")) }
+            .isInstanceOfSatisfying(DiscoveredClusterIdRefused::class.java) {
+                assertThat(it.key).isEqualTo(ExperimentKey("acme", "e"))
+                assertThat(it.clusters).containsExactly(injected, "short-1")
+            }.hasMessageContaining(injected)
+        assertThat(backends.calls).describedAs("only the label-values lookup").hasSize(1)
     }
 
     @Test
@@ -71,5 +86,13 @@ class ExperimentDiscoveryTest {
     @Test
     fun `a cluster id's regex characters are escaped in the alternation`() {
         assertThat(PromQlValues.anyOf(listOf("a.b-1", "c+d"))).isEqualTo("a\\\\.b-1|c\\\\+d")
+    }
+
+    private companion object {
+        /** A cluster labelled with the experiment. */
+        const val LABELLED = "lab-0b5f8c2a-1d3e-4f5a-9b7c-2e4d6f8a0b1c"
+
+        /** A cluster from before the label; its own id is the experiment's name. */
+        const val PRE_LABEL = "old-7c1e2d3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f"
     }
 }

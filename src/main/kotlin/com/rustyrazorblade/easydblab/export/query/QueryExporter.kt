@@ -167,6 +167,8 @@ class QueryExporter(
             is ClusterInSeveralTenantsException -> Event.Export.ClusterInSeveralTenants(e.cluster, e.tenants)
             is ClusterTenantUnknownException -> Event.Export.ClusterTenantUnknown(e.cluster, e.tenantSet)
             is ExperimentNotFoundException -> Event.Export.ExperimentNotFound(e.key.name, e.key.tenant, e.query)
+            is DiscoveredClusterIdRefused ->
+                Event.Export.InvalidDiscoveredCluster(e.key.name, e.key.tenant, e.clusters, Constants.Observability.CLUSTER_ID_PATTERN)
         }
 
     /** Copies every cluster's logs and traces into [writer], flushing and stopping each writer once it holds them. */

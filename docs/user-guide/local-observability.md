@@ -256,7 +256,7 @@ easy-db-lab observability export ~/lab-pair.zip --cluster lab-0f8fad5b-d9cb-469f
 easy-db-lab observability export ~/e1.zip --experiment e1 --tenant acme
 ```
 
-`--experiment` reads the experiment of one tenant: `--tenant`, else the tenant of the cluster workspace you run it in, else `default`, and it says which. Two tenants may each have an experiment of the same name; only the one you name is exported. A cluster from before experiments existed is an experiment of its own, named by its `<name>-<id>`.
+`--experiment` reads the experiment of one tenant: `--tenant`, else the tenant of the cluster workspace you run it in, else `default`, and it says which. Two tenants may each have an experiment of the same name; only the one you name is exported. A cluster from before experiments existed is an experiment of its own, named by its `<name>-<id>`. Every cluster found for the experiment must have a `cluster` label that is such a `<name>-<id>`; if one does not, the export stops, naming each such value, before it reads any of the experiment's data.
 
 `--cluster` takes a cluster's full `<name>-<id>`, as its `cluster` label holds it: the cluster's name, `-`, and its UUID. Any other value is refused, naming it, before anything is read.
 

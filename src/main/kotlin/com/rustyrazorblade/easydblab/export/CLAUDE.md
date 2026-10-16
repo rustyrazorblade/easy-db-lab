@@ -33,7 +33,9 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
   it writes anything, so this leaves no zip and no partial file.
 - `ExportZipWriter` — streams to `<path>.partial-<random>` beside the path (`ZipOutputStream`, Zip64 automatic),
   moves it with a hard link (fails on an existing path; a plain no-replace move where links are unsupported), and
-  removes the partial file on success and failure. `ExportZipSink.put` refuses a path that leaves the stack.
+  removes the partial file on success and failure. A removal that fails never replaces the export's own failure: it
+  is attached as suppressed, naming the partial file left behind; after a complete move it fails the `stack` step.
+  `ExportZipSink.put` refuses a path that leaves the stack.
 - `ExportRecorder` — wraps the sink, keeps every entry's size and source time and each `meta.json`'s bytes;
   `directory(prefix)` is a `BlockDirectory` of what is in the zip.
 - `TenantStoreCopy` — the safe order (design D15): Loki index table by table, each table read into a scratch

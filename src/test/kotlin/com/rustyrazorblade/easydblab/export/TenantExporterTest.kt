@@ -197,7 +197,7 @@ class TenantExporterTest {
         seed()
         val target = ExportTarget.of(File(dir, "a".repeat(241) + ".zip"))
 
-        assertThatThrownBy { exporter(ExportZipWriter { "x" }).export(target, tenant = "acme") }
+        assertThatThrownBy { exporter(ExportZipWriter(partialSuffix = { "x" })).export(target, tenant = "acme") }
             .isInstanceOf(CommandFailedException::class.java)
 
         val failed = events.filterIsInstance<Event.Export.Failed>().single()

@@ -37,11 +37,16 @@ class LocalGrafanaHttp(
         OkHttpClient
             .Builder()
             .proxy(Proxy.NO_PROXY)
+            .readTimeout(TIMEOUT)
             .callTimeout(TIMEOUT)
             .build(),
 ) : LocalGrafana {
     private companion object {
-        val TIMEOUT: Duration = Duration.ofSeconds(30)
+        /**
+         * A provisioning reload answers only once Grafana has read the whole tree, which takes tens of
+         * seconds when it replaces every dashboard; OkHttp's 10s read timeout gives up first.
+         */
+        val TIMEOUT: Duration = Duration.ofMinutes(2)
         const val HEALTH = "/api/health"
         const val RELOAD = "/api/admin/provisioning/%s/reload"
     }

@@ -1,13 +1,48 @@
 package com.rustyrazorblade.easydblab.localstack
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.io.File
 import java.io.IOException
 import java.net.Proxy
 import java.time.Duration
+
+/**
+ * Grafana answered a provisioning reload with an error, so it still shows what it loaded before.
+ *
+ * @property kind `datasources` or `dashboards`.
+ * @property status Grafana's HTTP status.
+ * @property body Grafana's answer.
+ */
+class GrafanaReloadRefused(
+    val kind: String,
+    val status: Int,
+    val body: String,
+) : IllegalStateException("Grafana refused to reload its $kind: HTTP $status $body")
+
+/**
+ * Runs [reloads], which ask the Grafana at [grafanaUrl] to reload what was just rewritten in
+ * [directory]. A refusal is reported as [Event.LocalStack.ReloadRefused], which says the files are
+ * rewritten and a restart loads them, and fails the command.
+ */
+internal fun EventBus.reportingReloadRefusal(
+    directory: File,
+    grafanaUrl: String,
+    reloads: () -> Unit,
+) {
+    try {
+        reloads()
+    } catch (e: GrafanaReloadRefused) {
+        emit(Event.LocalStack.ReloadRefused(directory.path, grafanaUrl, e.kind, e.status, e.body))
+        throw CommandFailedException("Grafana at $grafanaUrl refused to reload its ${e.kind}")
+    }
+}
 
 /**
  * A local stack's Grafana, on `127.0.0.1` at the port its manifest records: whether it answers, and
@@ -18,10 +53,18 @@ interface LocalGrafana {
     /** Whether a Grafana answers its health check on [port]. */
     fun isRunning(port: Int): Boolean
 
-    /** Asks the Grafana on [port] to read its provisioned datasources again. */
+    /**
+     * Asks the Grafana on [port] to read its provisioned datasources again.
+     *
+     * @throws GrafanaReloadRefused when Grafana answers with an error.
+     */
     fun reloadDatasources(port: Int)
 
-    /** Asks the Grafana on [port] to read its provisioned dashboards again. */
+    /**
+     * Asks the Grafana on [port] to read its provisioned dashboards again.
+     *
+     * @throws GrafanaReloadRefused when Grafana answers with an error.
+     */
     fun reloadDashboards(port: Int)
 }
 
@@ -82,9 +125,7 @@ class LocalGrafanaHttp(
                 .post(ByteArray(0).toRequestBody())
                 .build()
         client.newCall(request).execute().use { response ->
-            check(response.isSuccessful) {
-                "Grafana on port $port refused to reload its $kind: HTTP ${response.code} ${response.body.string()}"
-            }
+            if (!response.isSuccessful) throw GrafanaReloadRefused(kind, response.code, response.body.string())
         }
     }
 

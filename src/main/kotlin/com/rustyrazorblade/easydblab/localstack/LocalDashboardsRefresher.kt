@@ -37,6 +37,8 @@ class LocalDashboardsRefresher(
             eventBus.emit(Event.LocalStack.GrafanaNotRunning(directory.path, grafanaUrl(manifest.grafanaPort)))
             throw CommandFailedException("The local stack's Grafana in $directory is not running")
         }
-        eventBus.emit(dashboards.install(directory, manifest, from?.let(::DirectoryDashboardTree), reload = true))
+        eventBus.reportingReloadRefusal(directory, grafanaUrl(manifest.grafanaPort)) {
+            eventBus.emit(dashboards.install(directory, manifest, from?.let(::DirectoryDashboardTree), reload = true))
+        }
     }
 }

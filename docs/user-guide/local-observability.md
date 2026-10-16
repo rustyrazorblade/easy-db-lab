@@ -57,9 +57,11 @@ cd ~/lab-local
 docker compose up -d
 ```
 
-Open <http://127.0.0.1:3000>. You are signed in as an admin. Grafana and the documents web server (<http://127.0.0.1:3080>, which serves experiment reports to the dashboards) are published on `127.0.0.1` only.
+Open <http://127.0.0.1:3000>. You are in as an anonymous user with the Admin role; there is no login. Grafana and the documents web server (<http://127.0.0.1:3080>, which serves experiment reports to the dashboards) are published on `127.0.0.1` only.
 
 The first start takes a minute or two: Mimir loads the store's block index, Loki its log index, and Tempo lists every tenant's blocks. A cluster torn down a few minutes ago shows too: Tempo finds blocks by listing the bucket, not only from its tenant index.
+
+The first query over older data is slow: nothing is cached yet, and Mimir and Loki read the blocks and chunks from S3. A panel can take a minute or more the first time and is fast after that, while the caches are warm. Grafana waits up to five minutes for a datasource, instead of its default 30 seconds, so a cold query shows its data rather than a 502.
 
 The datasources are the ones a cluster's Grafana has, with the same UIDs:
 
@@ -97,6 +99,8 @@ The datasources are built from the tenants present when `local create` ran. When
 Grafana at http://127.0.0.1:3000 reloaded its datasources
 ```
 
+Grafana reloads the datasources first, then the dashboards. If it refuses a reload, the command fails and says so: the stack's files were already rewritten, so `docker compose restart grafana` in the directory loads them.
+
 ## Change the dashboards
 
 To load dashboards you are editing, without a rebuild or a restart, point `local dashboards` at a directory that holds one subdirectory per Grafana folder, each with dashboard JSON files:
@@ -113,6 +117,8 @@ easy-db-lab observability local dashboards ~/lab-local
 
 The command writes the new tree beside the old one, swaps it into place, and asks Grafana to reload its dashboards. It never calls docker, so no container is recreated and nothing else changes. The stack must be running: when Grafana does not answer on the port the manifest records, the command fails and changes nothing.
 
+`--from` replaces the whole tree: Grafana then shows only the dashboards in that directory, and the packaged core and kit dashboards are gone until you run `local dashboards` again without `--from`.
+
 A JSON file at the top of the `--from` directory, or nested more than one directory deep, has no Grafana folder. The command names every such file and changes nothing.
 
 ## Credentials
@@ -128,8 +134,13 @@ A store the stack cannot read fails loudly, at three points:
   Nothing was written. Log in and run the command again: aws sso login --profile edl
   ```
 
-- `docker compose up` runs a one-shot `store-check` first. When it cannot read the bucket it exits non-zero with `cannot read the account bucket ... with profile edl: ...`, and no backend starts. See its message with `docker compose logs store-check`.
-- While the stack runs, the signer checks the bucket every minute. Once your credentials expire, `docker compose ps` shows `store-signer` as `unhealthy`.
+- `docker compose up` runs a one-shot `store-check` first. When it cannot read the bucket it exits non-zero with `cannot read the account bucket ... with profile edl: ...`, and no backend starts. See its message with `docker compose logs store-check`. A credentials failure (an expired SSO token, no credentials for the profile) says `credentials: ...` and prints `aws sso login --profile edl`; a signer that could not reach S3 at all (a DNS, TCP or TLS error) says `the signer could not reach S3: ...` instead, since logging in again would not help.
+- While the stack runs, the signer checks the bucket every minute. `store-signer` is the only service with a health status: `docker compose ps` shows it `healthy` or `unhealthy`, and every other service just `Up`.
+
+The signer turns `unhealthy` when it can no longer read the bucket, which happens in two ways:
+
+- its credentials end. The signer holds the role session it got from your SSO token in memory, so it keeps working for a while after the SSO token itself expires, and turns unhealthy only when that role session ends, which can be hours later;
+- it cannot reach S3, for example when this machine loses its network.
 
 When an SSO session expires, run `aws sso login --profile <profile>` on your machine. A running signer picks up the new token with no restart.
 

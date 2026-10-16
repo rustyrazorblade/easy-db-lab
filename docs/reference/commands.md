@@ -927,7 +927,7 @@ Before writing anything, the command checks that the profile can read the accoun
 
 It prints the tenants it found (every directory under `mimir/`, plus the home tenant). Grafana gets the datasources a cluster's Grafana has for them, with the same UIDs.
 
-Run it again on the same directory to pick up new tenants: it rewrites only the files it owns, each atomically, and names any owned file you edited, whose edit it replaced. It never opens `cache/`, `grafana-data/` or your `compose.override.yml`. When the stack is running, Grafana reloads its datasources and dashboards, with no restart.
+Run it again on the same directory to pick up new tenants: it rewrites only the files it owns, each atomically, and names any owned file you edited, whose edit it replaced. It never opens `cache/`, `grafana-data/` or your `compose.override.yml`. When the stack is running, Grafana reloads its datasources and then its dashboards, with no restart; if Grafana refuses a reload, the command fails and says the files were rewritten and that `docker compose restart grafana` loads them. A re-run keeps the stack's Grafana and documents ports.
 
 ### observability local dashboards
 

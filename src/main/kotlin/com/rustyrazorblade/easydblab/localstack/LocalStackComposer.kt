@@ -43,6 +43,11 @@ object LocalStackComposer {
                         GrafanaViewPart.compose(spec, GrafanaViewPart.Documents.FromDisk(mode.dataDir)),
                     )
             }
+        return join(parts)
+    }
+
+    /** `compose.yml` of every service of [parts], and every file they mount, by relative path. */
+    internal fun join(parts: List<ComposePart>): Map<String, ByteArray> {
         val services = parts.flatMap { it.services.entries }.associate { it.toPair() }
         val files = parts.flatMap { it.files.entries }.associate { it.toPair() }
         require(services.size == parts.sumOf { it.services.size }) { "Two parts define the same service" }

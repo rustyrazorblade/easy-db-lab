@@ -18,6 +18,7 @@ class LocalStackWriterTest {
             mode = LocalStackSpec.Mode.Live(bucket = "acct", region = "us-west-2", awsProfile = "lab", home = "default"),
             tenants = listOf("acme"),
             grafanaPort = 3300,
+            documentsPort = 3380,
         )
 
     private val files =
@@ -49,6 +50,7 @@ class LocalStackWriterTest {
                 homeTenant = "default",
                 tenants = listOf("acme", "default"),
                 grafanaPort = 3300,
+                documentsPort = 3380,
                 files = files.mapValues { sha256(it.value) },
             ),
         )

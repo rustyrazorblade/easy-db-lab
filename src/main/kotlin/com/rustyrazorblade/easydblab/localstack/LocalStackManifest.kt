@@ -9,13 +9,15 @@ import java.io.File
  *
  * Its presence marks the directory as the tool's, so a re-run may rewrite the files it lists, and
  * only those. The checksums tell a re-run which owned files the user edited. `local dashboards`
- * reads the Grafana port from it.
+ * reads the Grafana and documents ports from it.
  *
  * @property toolVersion the easy-db-lab version that wrote the stack.
  * @property mode `live` or `offline` ([LocalStackSpec.Mode.manifestName]).
  * @property homeTenant the tenant of the stable datasources.
  * @property tenants every tenant Grafana got datasources for, sorted, the home tenant included.
  * @property grafanaPort Grafana's port on `127.0.0.1`.
+ * @property documentsPort the documents web server's port on `127.0.0.1`, which the dashboards'
+ *   documents URL names.
  * @property files the sha256 (hex) of each owned file as written, by path relative to the directory.
  */
 @Serializable
@@ -25,6 +27,7 @@ data class LocalStackManifest(
     val homeTenant: String,
     val tenants: List<String>,
     val grafanaPort: Int,
+    val documentsPort: Int,
     val files: Map<String, String>,
 ) {
     /** This manifest as JSON. */

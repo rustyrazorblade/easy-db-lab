@@ -16,7 +16,7 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
    `BackendsPart` (`memcached`, `mimir`, `loki`, `tempo`) and `GrafanaViewPart` (`grafana`, `documents-web`).
 3. `LocalStackWriter(toolVersion).write(dir, spec, files)` writes them atomically and then the manifest
    `.easy-db-lab-local-stack.json` (`LocalStackManifest`: tool version, mode, home tenant, tenants, Grafana
-   port, sha256 per owned file). It returns `LocalStackWriteResult(written, edited)`. It creates a missing
+   and documents ports, sha256 per owned file). It returns `LocalStackWriteResult(written, edited)`. It creates a missing
    directory, uses an empty one, and throws `LocalStackDirectoryRefused` for a non-empty directory with no
    manifest before writing anything. It refuses (`IllegalArgumentException`) any owned path that is
    `compose.override.yml`, the manifest, or under `data/`, `cache/`, `grafana-data/` or `dashboards/`.

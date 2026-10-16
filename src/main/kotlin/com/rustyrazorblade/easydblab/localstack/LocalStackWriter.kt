@@ -74,6 +74,7 @@ class LocalStackWriter(
                 homeTenant = spec.mode.home,
                 tenants = spec.tenantSet.all,
                 grafanaPort = spec.grafanaPort,
+                documentsPort = spec.documentsPort,
                 files = files.mapValues { sha256(it.value) },
             ).toJson(),
         )

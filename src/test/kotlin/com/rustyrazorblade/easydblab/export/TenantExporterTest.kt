@@ -1,0 +1,158 @@
+package com.rustyrazorblade.easydblab.export
+
+import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.time.Instant
+import java.util.zip.GZIPOutputStream
+import java.util.zip.ZipFile
+
+/**
+ * A tenant export end to end, with the account bucket in memory: the size check before any copy,
+ * the zip moved into place only when complete, every failure leaving no zip and naming the signal
+ * and the step, and nothing in the store changed.
+ */
+class TenantExporterTest {
+    @TempDir
+    lateinit var dir: File
+
+    private val store = FakeExportStore()
+    private var free = Long.MAX_VALUE
+    private val events = mutableListOf<Event>()
+    private val eventBus = EventBus()
+
+    private val dashboards =
+        object : DashboardTreeSource {
+            override val origin: String = "packaged dashboards"
+
+            override fun render(context: DashboardInstallContext): Map<String, String> = mapOf("home/home.json" to """{"uid":"home"}""")
+        }
+
+    private val exporter =
+        TenantExporter(
+            stores = { store },
+            stack = ExportStackFiles(dashboards, toolVersion = "16"),
+            zipWriter = ExportZipWriter(),
+            diskSpace = { free },
+            eventBus = eventBus,
+        )
+
+    @BeforeEach
+    fun listen() {
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+    }
+
+    private fun seed() {
+        store.put("tempo/acme/t1/data.parquet", "spans")
+        store.put("tempo/acme/t1/meta.json", """{"blockID":"t1","tenantID":"acme"}""")
+        store.put("mimir/acme/01A/meta.json", """{"ulid":"01A","minTime":1,"maxTime":2,"compaction":{"level":1},"thanos":{"labels":{}}}""")
+        store.put("mimir/acme/01A/index", "index")
+        val index = """{"version":2,"blocks":[{"block_id":"01A","min_time":1,"max_time":2}],"block_deletion_marks":[],"updated_at":1}"""
+        store.objects["mimir/acme/bucket-index.json.gz"] =
+            ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(index.toByteArray()) } }.toByteArray() to
+            Instant.parse("2026-10-15T10:00:00Z")
+        store.put("loki/acme/fp/chunk", "logs")
+        store.put("reports/acme/exp/index.html", "pointer")
+    }
+
+    private fun target() = ExportTarget.of(File(dir, "acme-export.zip"))
+
+    private fun entries(zip: File): Set<String> = ZipFile(zip).use { file -> file.entries().asSequence().map { it.name }.toSet() }
+
+    @Test
+    fun `a tenant export holds the offline stack, the dashboards and the data, and says profiles are left out`() {
+        seed()
+        val target = target()
+
+        exporter.export(target, tenant = "acme")
+
+        assertThat(entries(target.zip)).contains(
+            "acme-export/compose.yml",
+            "acme-export/README.txt",
+            "acme-export/dashboards/current/home/home.json",
+            "acme-export/data/tempo/acme/t1/meta.json",
+            "acme-export/data/tempo/acme/index.json.gz",
+            "acme-export/data/mimir/acme/bucket-index.json.gz",
+            "acme-export/data/loki/acme/fp/chunk",
+            "acme-export/data/reports/acme/exp/index.html",
+        )
+        val completed = events.filterIsInstance<Event.Export.Completed>().single()
+        assertThat(completed.excluded).containsExactly(Event.Export.Exclusion("profiles", 1016))
+        assertThat(completed.toDisplayString()).contains("Profiles are not included", "#1016")
+        assertThat(events.filterIsInstance<Event.Export.SizeEstimated>().single().bytes).isPositive()
+        assertThat(dir.list()).containsExactly("acme-export.zip")
+    }
+
+    @Test
+    fun `nothing in the store is written, rewritten or removed`() {
+        seed()
+        val before = store.objects.mapValues { it.value.first.toList() to it.value.second }
+
+        exporter.export(target(), tenant = "acme")
+
+        assertThat(store.objects.mapValues { it.value.first.toList() to it.value.second }).isEqualTo(before)
+    }
+
+    @Test
+    fun `short disk space fails before anything is copied, naming the size and the free space`() {
+        seed()
+        free = 10
+        val target = target()
+
+        assertThatThrownBy { exporter.export(target, tenant = "acme") }.isInstanceOf(CommandFailedException::class.java)
+
+        val refused = events.filterIsInstance<Event.Export.InsufficientSpace>().single()
+        assertThat(refused.freeBytes).isEqualTo(10)
+        assertThat(refused.bytes).isGreaterThan(10)
+        // Only the bucket index was read, to list the blocks; no object was copied.
+        assertThat(store.opened).containsOnly("mimir/acme/bucket-index.json.gz")
+        assertThat(dir.list()).isEmpty()
+    }
+
+    @Test
+    fun `an empty tenant fails naming the tenant and the prefixes, and writes nothing`() {
+        seed()
+
+        assertThatThrownBy { exporter.export(target(), tenant = "ghost") }.isInstanceOf(CommandFailedException::class.java)
+
+        val empty = events.filterIsInstance<Event.Export.EmptyTenant>().single()
+        assertThat(empty.tenant).isEqualTo("ghost")
+        assertThat(empty.prefixes).contains("mimir/ghost/", "tempo/ghost/", "loki/ghost/")
+        assertThat(dir.list()).isEmpty()
+    }
+
+    @Test
+    fun `a failure while copying traces leaves no zip, and the error names the traces signal and the step`() {
+        seed()
+        store.beforeOpen = { key -> if (key == "tempo/acme/t1/data.parquet") store.objects.remove(key) }
+        val target = target()
+
+        assertThatThrownBy { exporter.export(target, tenant = "acme") }.isInstanceOf(CommandFailedException::class.java)
+
+        val failed = events.filterIsInstance<Event.Export.Failed>().single()
+        assertThat(failed.signal).isEqualTo("traces")
+        assertThat(failed.step).contains("t1")
+        assertThat(failed.toDisplayString()).contains("traces", "No zip was left at ${target.zip.path}")
+        assertThat(dir.list()).describedAs("no zip, no partial file, no scratch").isEmpty()
+        assertThat(events.filterIsInstance<Event.Export.Completed>()).isEmpty()
+    }
+}

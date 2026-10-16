@@ -30,6 +30,7 @@
   - [Metrics (Mimir)](user-guide/mimir.md)
   - [Logs (Loki)](user-guide/loki.md)
   - [Account Compactor](user-guide/compactor.md)
+  - [Local Observability Stack](user-guide/local-observability.md)
 - [Kubernetes](user-guide/kubernetes.md)
 - [Pod Networking (CNI)](user-guide/networking.md)
 - [Network Connectivity](user-guide/network-connectivity.md)

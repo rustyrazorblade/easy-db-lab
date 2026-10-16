@@ -47,6 +47,7 @@ data class ComposeFile(
  * @property dependsOn the services this one waits for, and the condition it waits on.
  * @property healthcheck how compose decides the service is healthy.
  * @property restart the restart policy.
+ * @property networkMode the container's network, `none` for one that must reach nothing.
  */
 @Serializable
 data class ComposeService(
@@ -61,6 +62,8 @@ data class ComposeService(
     val dependsOn: Map<String, ComposeDependency>? = null,
     val healthcheck: ComposeHealthcheck? = null,
     val restart: String? = null,
+    @SerialName("network_mode")
+    val networkMode: String? = null,
 )
 
 /**

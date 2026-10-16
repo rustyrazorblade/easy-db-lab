@@ -1171,6 +1171,18 @@ object Constants {
 
             /** The longest trace search window, Tempo's `query_frontend.search.max_duration` (spike S3). */
             const val TRACE_SEARCH_MAX_HOURS = 168L
+
+            /** How long one tenant's thanos block rewrite may run. */
+            const val REWRITE_TIMEOUT_HOURS = 6L
+
+            /** How long one `docker compose` command of a temporary stack may take, image pulls included. */
+            const val COMPOSE_COMMAND_TIMEOUT_MINUTES = 20L
+
+            /** How long a temporary stack's backend may take to answer `/ready`. */
+            const val READY_TIMEOUT_MINUTES = 10L
+
+            /** How long the export writer's Tempo may take to write every span into a flushed block. */
+            const val TEMPO_DRAIN_TIMEOUT_MINUTES = 15L
         }
     }
 

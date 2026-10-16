@@ -305,6 +305,8 @@ class SeriesClusterTest {
             .contains("joinByField joins on 'Value #A', which does not hold the cluster")
         assertThat(SeriesClusterGuards.joinProblems(trend(merge, partition("host_name"), join)))
             .contains("joinByField joins on 'Value #A', which does not hold the cluster")
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, partition("cluster"), merge, join)))
+            .contains("joinByField joins on 'Value #A', which does not hold the cluster")
     }
 
     @Test

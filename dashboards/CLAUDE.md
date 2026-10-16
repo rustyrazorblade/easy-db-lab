@@ -140,6 +140,9 @@ variables (all `query_result`, evaluated at now) hold each run's `base_start`/`c
 side-by-side shifts `base_since_end`/`cand_since_end`. Each of `max_len`, `base_len`, `cand_len`,
 `base_since_end` and `cand_since_end` also has a `_d` helper (whole days, `floor(x / 86400)`) and a `_s`
 helper (the remaining seconds, `x - 86400 * ${x_d}`, so it reads `_d` and resolves after it) for the panel time overrides.
+Every span length (`a_len`, `b_len`, `exp_len`) is the last step minus the first plus one step,
+`${a_end} - ${a_start} + ${resolution}`: a cluster seen at one step then spans one step rather than 0s, which PromQL
+refuses as a range and Grafana as a `timeFrom`, and `[${a_len}s] @ ${a_end}` reaches the first step (`ComparisonDashboardsTest`).
 
 Grafana's date math reads at most five digits per number, so a `timeFrom` or `timeShift` of `${x}s`
 fails with "invalid timeshift" once `x` passes 99999 seconds (27.8 hours). Write each override as
@@ -162,6 +165,7 @@ Three rows sit at the top, above the existing panels:
   several, Grafana names the value fields `Value #A`, `Value #B`, ..., and `groupingToMatrix`, which needs
   one frame and a field named `Value`, returns the rows unpivoted. `ComparisonDashboardsTest` checks this.
   The `!= 0` filter drops a zero baseline, so that figure's Difference % cell is empty instead of NaN (0 vs 0) or an infinite percentage; each summary's description says so. `ComparisonDashboardsTest` checks every difference term for the guard.
+  Every other delta of a pair dashboard, `label_replace(100 * (B - A) / ((A) != 0), ...)` on the verdict tiles and the delta series, is guarded the same way (`ComparisonDashboardsTest`).
 
 The new views filter by `baseline_cluster` and `candidate_cluster` only; the `cluster`, build and
 host variables of the A/B dashboards apply to the existing panels. They need a relative dashboard range: an absolute range turns panel `timeFrom`
@@ -183,7 +187,9 @@ A test's documents are `reports/<tenant>/<name>-<id>/index.html` in the account 
 Grafana runs with `disable_sanitize_html` (set in `[panels]` by `GF_PANELS_DISABLE_SANITIZE_HTML`), and the documents web server in the Grafana pod serves
 the file (see `configuration/CLAUDE.md`).
 
-The Text panel sanitizer keeps only `src`, `width` and `height` on an iframe and strips `style`, so size the iframe with attributes: `width="100%"` and a pixel `height` that fills the panel. The height is the panel height, `h * 38 - 8` px, less 56 px for the header, the padding and the inline gap. `DocumentsIframeTest` checks every iframe against its panel's `gridPos.h`.
+The Text panel sanitizer keeps only `src`, `width` and `height` on an iframe and strips `style`, so size the iframe with attributes: `width="100%"` and a pixel `height` that fills the panel. The height is the panel height, `h * 38 - 8` px, less 56 px for the header, the padding and the inline gap. `DocumentsIframeTest` checks every iframe against its panel's `gridPos.h`, and that the pair dashboards' iframes read exactly `a_report` and `b_report` and the others' exactly `experiment`.
+
+With experiment "All" (`.*/.*`) no report folder matches and the frame shows the documents server's error page, so an Experiment dashboard's report panel says "select one experiment" in its title, not only in its description. On the pair dashboards a side whose cluster has no `up` sample within Lookback has no report path either; their descriptions say so. A data link to a report from a table row reads that row's own fields, `reports/${__data.fields.report}/index.html` (the Experiment: Cassandra leaderboard writes `report` per cluster with `label_join`, the pre-label branch included) or `${__data.fields.edl_tenant}/${__data.fields.experiment}` (Tests), never `${experiment}` (`DocumentsIframeTest`).
 
 ## Rows are placed by position, not by file order
 

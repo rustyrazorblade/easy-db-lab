@@ -66,6 +66,16 @@ class DashboardLinkTimeTest {
     ): Boolean =
         keepTime || "\${__url_time_range}" in url || (Regex("[?&]from=").containsMatchIn(url) && Regex("[?&]to=").containsMatchIn(url))
 
+    /**
+     * Whether a link into an own-range dashboard sets any time at all. Either end alone moves the
+     * range off the dashboard's own relative default, so `from=` or `to=` counts, as do
+     * `${'$'}{__url_time_range}` and `keepTime`.
+     */
+    private fun carriesAnyTime(
+        url: String,
+        keepTime: Boolean,
+    ): Boolean = keepTime || "\${__url_time_range}" in url || Regex("[?&](from|to)=").containsMatchIn(url)
+
     private fun target(url: String): String = url.removePrefix("/d/").substringBefore('/').substringBefore('?')
 
     @Test
@@ -90,7 +100,7 @@ class DashboardLinkTimeTest {
         val carried =
             DashboardFiles.all().flatMap { file ->
                 dashboardLinks(Json.parseToJsonElement(file.readText()))
-                    .filter { (url, keepTime) -> target(url) in ownRangeDashboards && carriesTime(url, keepTime) }
+                    .filter { (url, keepTime) -> target(url) in ownRangeDashboards && carriesAnyTime(url, keepTime) }
                     .map { (url, _) -> "${file.path}: $url" }
             }
 
@@ -103,17 +113,24 @@ class DashboardLinkTimeTest {
             Json.parseToJsonElement(
                 """{"links": [{"keepTime": false, "url": "/d/ab-comparison/a-b-comparison?from=${'$'}{__from}&to=${'$'}{__to}"},
                    {"keepTime": true, "url": "/d/cluster-pair/cluster-pair?var-cluster_a=x"},
+                   {"url": "/d/tests/tests?var-experiment=x&from=${'$'}{__from}"},
+                   {"url": "/d/experiment-system/x?to=now-1h&var-experiment=x"},
+                   {"url": "/d/system-ab-comparison/x?var-cluster_a=x&${'$'}{__url_time_range}"},
+                   {"url": "/d/tests/tests?var-from_cluster=x"},
                    {"keepTime": false, "url": "/d/tests/tests?var-experiment=x"}]}""",
             )
 
         val carried =
             dashboardLinks(link)
-                .filter { (url, keepTime) -> target(url) in ownRangeDashboards && carriesTime(url, keepTime) }
+                .filter { (url, keepTime) -> target(url) in ownRangeDashboards && carriesAnyTime(url, keepTime) }
                 .map { it.first }
 
         assertThat(carried).containsExactly(
             "/d/ab-comparison/a-b-comparison?from=\${__from}&to=\${__to}",
             "/d/cluster-pair/cluster-pair?var-cluster_a=x",
+            "/d/tests/tests?var-experiment=x&from=\${__from}",
+            "/d/experiment-system/x?to=now-1h&var-experiment=x",
+            "/d/system-ab-comparison/x?var-cluster_a=x&\${__url_time_range}",
         )
     }
 }

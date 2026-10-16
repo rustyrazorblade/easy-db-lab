@@ -340,6 +340,10 @@ class ComparisonDashboardsTest {
         assertThat(found).isEmpty()
     }
 
+    /**
+     * With All the frame shows the documents server's error page, so the instruction must be on
+     * the panel itself, in its title or in the content's text, not in the hover description.
+     */
     @Test
     fun `every experiment dashboard's report panel tells the operator to select one experiment for All`() {
         val found =
@@ -350,12 +354,142 @@ class ComparisonDashboardsTest {
                     }
                 listOfNotNull(
                     "has no report panel".takeIf { reports.isEmpty() },
-                    "report panel does not say to select one experiment"
-                        .takeUnless { reports.all { "select one experiment" in it.string("description").orEmpty().lowercase() } },
+                    "report panel does not show the instruction to select one experiment"
+                        .takeUnless { reports.all { SELECT_ONE_EXPERIMENT in visibleText(it).lowercase() } },
                 )
             }
 
         assertThat(found).isEmpty()
+    }
+
+    @Test
+    fun `an instruction only in the description is not visible`() {
+        val hidden =
+            Json
+                .parseToJsonElement(
+                    """{"type": "text", "title": "Report", "description": "Select one experiment to see it.",
+                       "options": {"content": "<iframe src=\"x\"></iframe>"}}""",
+                ).jsonObject
+        val shown =
+            Json
+                .parseToJsonElement(
+                    """{"type": "text", "title": "Report", "options": {"content": "<p>Select one experiment.</p><iframe></iframe>"}}""",
+                ).jsonObject
+
+        assertThat(visibleText(hidden).lowercase()).doesNotContain(SELECT_ONE_EXPERIMENT)
+        assertThat(visibleText(shown).lowercase()).contains(SELECT_ONE_EXPERIMENT)
+    }
+
+    /** What a Text panel shows without hovering: its title and its content with the HTML tags removed. */
+    private fun visibleText(panel: JsonObject): String {
+        val content = panel["options"]?.jsonObject?.string("content").orEmpty()
+        return panel.string("title").orEmpty() + "\n" + content.replace(Regex("<[^>]*>"), " ")
+    }
+
+    /**
+     * A span length is the last step minus the first plus one step: the first and last samples
+     * sit on the Resolution grid, so a cluster seen at one step spans one step, not 0s (which
+     * PromQL refuses as a range and Grafana as a `timeFrom`), and a window from the last step
+     * back by the length reaches the first step.
+     */
+    @Test
+    fun `every span length includes the resolution step`() {
+        val found =
+            problems(pairDashboards + experimentDashboards) { path, dashboard ->
+                spanLengthProblems(variables(dashboard), if (path in pairDashboards) PAIR_SPANS else EXPERIMENT_SPANS)
+            }
+
+        assertThat(found).isEmpty()
+    }
+
+    @Test
+    fun `a span length without the resolution step is caught`() {
+        fun variable(query: String) =
+            buildJsonObject {
+                put("name", "a_len")
+                put("definition", query)
+            }
+
+        assertThat(spanLengthProblems(mapOf("a_len" to variable("query_result(vector(\${a_end} - \${a_start}))")), listOf("a")))
+            .containsExactly("a_len is not query_result(vector(\${a_end} - \${a_start} + \${resolution}))")
+        assertThat(
+            spanLengthProblems(mapOf("a_len" to variable("query_result(vector(\${a_end} - \${a_start} + \${resolution}))")), listOf("a")),
+        ).isEmpty()
+        assertThat(spanLengthProblems(emptyMap(), listOf("a"))).containsExactly("declares no a_len")
+    }
+
+    /** Each `<side>_len` of [sides] in [variables] that is missing or not `<side>_end - <side>_start + resolution`. */
+    private fun spanLengthProblems(
+        variables: Map<String, JsonObject>,
+        sides: List<String>,
+    ): List<String> =
+        sides.mapNotNull { side ->
+            val expected = "query_result(vector(\${${side}_end} - \${${side}_start} + \${resolution}))"
+            when (val variable = variables["${side}_len"]) {
+                null -> "declares no ${side}_len"
+                else -> "${side}_len is not $expected".takeUnless { queryOf(variable) == expected }
+            }
+        }
+
+    /**
+     * A delta `100 * (B - A) / A` over a zero A is NaN or infinite, and every pair dashboard says a
+     * delta is blank when A is 0. So every delta divides by A filtered to non-zero values.
+     */
+    @Test
+    fun `every delta on a pair dashboard is empty when A is 0`() {
+        val found =
+            problems(pairDashboards) { _, dashboard ->
+                allPanels(dashboard).flatMap { panel ->
+                    exprs(panel).mapNotNull { expr ->
+                        "'${panel.string("title")}': unguarded delta ${expr.take(TERM_PREVIEW)}".takeIf { unguardedDelta(expr) }
+                    }
+                }
+            }
+
+        assertThat(found).isEmpty()
+    }
+
+    @Test
+    fun `an unguarded delta is caught`() {
+        val a = "avg by (cluster) (x{cluster=~\"\$cluster\", build=~\"\$build_a\"})"
+        val b = "avg by (cluster) (x{cluster=~\"\$cluster\", build=~\"\$build_b\"})"
+        val tail = ", \"cluster_name\", \"\$1\", \"cluster\", \"(.+)\")"
+
+        assertThat(unguardedDelta("label_replace(100 * (\n    ($b)\n  - ($a)\n) / ($a)$tail")).isTrue()
+        assertThat(unguardedDelta("label_replace(100 * ($b - $a) / $a$tail")).isTrue()
+        assertThat(unguardedDelta("label_replace(100 * (\n    ($b)\n  - ($a)\n) / (($a) != 0)$tail")).isFalse()
+        assertThat(unguardedDelta("label_replace(100 * ($b - $a) / (($a) != 0)$tail")).isFalse()
+        assertThat(unguardedDelta("label_replace(100 * (1 - sum by (cluster) (a) / sum by (cluster) (b))$tail")).isFalse()
+    }
+
+    /**
+     * Whether [expr] is `label_replace(100 * (<group>) / <divisor>, "cluster_name", ...)` whose
+     * divisor appears inside the group (the A of `B - A`) and is not filtered with `!= 0`.
+     */
+    private fun unguardedDelta(expr: String): Boolean {
+        val prefix = "label_replace(100 * "
+        val body = expr.takeIf { it.startsWith(prefix) }?.removePrefix(prefix)?.substringBefore(", \"cluster_name\"") ?: return false
+        val end = groupEnd(body)
+        val divisor =
+            body
+                .substring(end + 1)
+                .trimStart('\n')
+                .takeIf { end > 0 && it.startsWith(" / ") }
+                ?.removePrefix(" / ") ?: return false
+        val core = if (groupEnd(divisor) == divisor.length - 1) divisor.substring(1, divisor.length - 1) else divisor
+        return core in body.substring(0, end + 1) && !divisor.endsWith("!= 0)")
+    }
+
+    /** The index of the parenthesis that closes the group [text] opens with, or -1. */
+    private fun groupEnd(text: String): Int {
+        if (!text.startsWith("(")) return -1
+        var depth = 0
+        text.forEachIndexed { i, c ->
+            if (c == '(') depth++
+            if (c == ')') depth--
+            if (depth == 0) return i
+        }
+        return -1
     }
 
     private companion object {
@@ -404,5 +538,10 @@ class ComparisonDashboardsTest {
         const val PINNED_AT_END = "@ \${exp_end}"
         const val BY_CLUSTER = "by (cluster)"
         const val EXPERIMENT_REPORT = "reports/\${experiment}/index.html"
+        const val SELECT_ONE_EXPERIMENT = "select one experiment"
+
+        /** The span lengths each kind of dashboard derives from its start and end helpers. */
+        val PAIR_SPANS = listOf("a", "b")
+        val EXPERIMENT_SPANS = listOf("exp")
     }
 }

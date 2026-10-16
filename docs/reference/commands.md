@@ -877,7 +877,7 @@ On a Cilium cluster, prints the routing mode, IPAM mode, kube-proxy replacement,
 
 ## Observability Commands
 
-These commands manage the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
+These commands manage the [account compactor](../user-guide/compactor.md) and the [local observability stack](../user-guide/local-observability.md). They work outside a cluster workspace: the account bucket comes from the profile.
 
 ### observability compactor start
 
@@ -908,6 +908,42 @@ If your IAM user lacks the `EasyDBLabCompactor` policy, `observability compactor
 ```bash
 easy-db-lab observability compactor status
 ```
+
+### observability local create
+
+Write a local Grafana, Mimir, Loki and Tempo stack into `DIR`, a docker compose project that reads the shared store in the account bucket with your AWS profile and writes nothing to it. Start it with `docker compose up -d` in `DIR`, and open Grafana at `http://127.0.0.1:3000`. See [Local Observability Stack](../user-guide/local-observability.md).
+
+```bash
+easy-db-lab observability local create ~/lab-local
+easy-db-lab observability local create ~/lab-local --tenant acme
+```
+
+| Argument / Option | Description | Default |
+|-------------------|-------------|---------|
+| `DIR` | The stack directory (required). Created when missing, used when empty, rewritten when it holds a stack this command wrote. | - |
+| `--tenant` | The home tenant: the tenant of the stable `mimir`, `loki` and `tempo` datasources. Must match `^[a-z][a-z0-9_-]{0,62}$`. | `default` |
+
+Before writing anything, the command checks that the profile can read the account bucket and list `mimir/`. If it cannot, it fails, writes nothing, and names the AWS profile, the AWS error code and `aws sso login --profile <profile>`. It also fails, writing nothing, for a directory that holds files and no `.easy-db-lab-local-stack.json`, and for an easy-db-lab profile that names no AWS profile.
+
+It prints the tenants it found (every directory under `mimir/`, plus the home tenant). Grafana gets the datasources a cluster's Grafana has for them, with the same UIDs.
+
+Run it again on the same directory to pick up new tenants: it rewrites only the files it owns, each atomically, and names any owned file you edited, whose edit it replaced. It never opens `cache/`, `grafana-data/` or your `compose.override.yml`. When the stack is running, Grafana reloads its datasources and dashboards, with no restart.
+
+### observability local dashboards
+
+Replace the dashboards of the running local stack in `DIR` and have Grafana reload them, with no restart. It never calls docker, so no container is recreated.
+
+```bash
+easy-db-lab observability local dashboards ~/lab-local
+easy-db-lab observability local dashboards ~/lab-local --from ~/work/dashboards
+```
+
+| Argument / Option | Description | Default |
+|-------------------|-------------|---------|
+| `DIR` | The stack directory `observability local create` wrote (required). | - |
+| `--from` | A directory of dashboards to use instead of the packaged ones, laid out as `<folder>/<file>.json`; each subdirectory becomes a Grafana folder. No rebuild needed. | the packaged dashboards |
+
+Without `--from`, it uses the core and kit dashboards packaged with the tool and prints `Using packaged dashboards`. When Grafana does not answer on the port recorded in the stack's manifest, the command fails and changes nothing. A JSON file at the top of the `--from` directory, or nested deeper than one folder, is named and nothing changes.
 
 ## Grafana Commands
 

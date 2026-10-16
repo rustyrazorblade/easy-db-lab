@@ -56,6 +56,17 @@ class HelpTopicServiceTest {
     }
 
     @Test
+    fun `the observability topic describes the local stack commands`() {
+        val body = DefaultHelpTopicService().find("observability")!!.body
+
+        assertThat(body)
+            .contains("observability local create <dir>")
+            .contains("--tenant")
+            .contains("observability local dashboards <dir>")
+            .contains("--from")
+    }
+
+    @Test
     fun `the packaged seed topics load with valid frontmatter and a body`() {
         // Guards the real seed resources against a malformed frontmatter header slipping in.
         val service = DefaultHelpTopicService()

@@ -3,25 +3,21 @@ package com.rustyrazorblade.easydblab.commands.observability
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.export.ExportSelector
 import com.rustyrazorblade.easydblab.export.ExportSelectorRefused
 import com.rustyrazorblade.easydblab.export.ExportStackFiles
 import com.rustyrazorblade.easydblab.export.ExportZipWriter
 import com.rustyrazorblade.easydblab.export.FakeExportStore
 import com.rustyrazorblade.easydblab.export.TenantExporter
-import com.rustyrazorblade.easydblab.export.ExportSelector
 import com.rustyrazorblade.easydblab.export.query.QueryExporter
 import com.rustyrazorblade.easydblab.export.query.WorkspaceCluster
-import com.rustyrazorblade.easydblab.configuration.ExperimentKey
-import org.mockito.kotlin.any
-import org.mockito.kotlin.eq
-import org.mockito.kotlin.isNull
-import org.mockito.kotlin.verify
 import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -30,7 +26,11 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.koin.test.get
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.isNull
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import picocli.CommandLine
 import java.io.File
@@ -133,7 +133,9 @@ class ObservabilityExportTest : BaseKoinTest() {
 
         val chosen = events.filterIsInstance<Event.Export.TenantChosen>().single()
         assertThat(chosen.tenant).isEqualTo("acme")
-        verify(queryExporter).export(any(), eq(ExportSelector.Experiment(ExperimentKey("acme", "e"))), eq(WorkspaceCluster("lab-${state.clusterId}", "acme")))
+        verify(
+            queryExporter,
+        ).export(any(), eq(ExportSelector.Experiment(ExperimentKey("acme", "e"))), eq(WorkspaceCluster("lab-${state.clusterId}", "acme")))
         assertThat(chosen.toDisplayString()).contains("tenant acme", "workspace")
     }
 

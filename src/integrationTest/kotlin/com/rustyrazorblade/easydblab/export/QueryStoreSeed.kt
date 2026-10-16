@@ -135,24 +135,33 @@ class QueryStoreSeed(
             "EXPERIMENT" to "seed",
         )
 
-    private fun start(
-        image: String,
-        configFile: String,
-        config: String,
-        command: List<String>,
-        dataDir: String,
-        readyPort: Int,
-        extraPorts: List<Int> = emptyList(),
-    ): GenericContainer<*> =
-        GenericContainer(image)
+    /**
+     * One writer: a cluster backend's image, its configuration file, and the flags that point it at MinIO.
+     *
+     * @property dataDir its state directory, a tmpfs here.
+     * @property readyPort the port that serves `/ready`.
+     * @property extraPorts other ports the seed reaches, such as Tempo's OTLP receiver.
+     */
+    private data class Writer(
+        val image: String,
+        val configFile: String,
+        val config: String,
+        val command: List<String>,
+        val dataDir: String,
+        val readyPort: Int,
+        val extraPorts: List<Int> = emptyList(),
+    )
+
+    private fun start(writer: Writer): GenericContainer<*> =
+        GenericContainer(writer.image)
             .withNetwork(minio.network)
             .withCreateContainerCmdModifier { it.withUser("root") }
-            .withTmpFs(mapOf(dataDir to "rw"))
-            .withCopyToContainer(Transferable.of(config), configFile)
+            .withTmpFs(mapOf(writer.dataDir to "rw"))
+            .withCopyToContainer(Transferable.of(writer.config), writer.configFile)
             .withEnv(storeEnv())
-            .withCommand(*(listOf("-config.file=$configFile", "-config.expand-env=true") + command).toTypedArray())
-            .withExposedPorts(readyPort, *extraPorts.toTypedArray())
-            .waitingFor(Wait.forHttp("/ready").forPort(readyPort).withStartupTimeout(STARTUP))
+            .withCommand(*(listOf("-config.file=${writer.configFile}", "-config.expand-env=true") + writer.command).toTypedArray())
+            .withExposedPorts(writer.readyPort, *writer.extraPorts.toTypedArray())
+            .waitingFor(Wait.forHttp("/ready").forPort(writer.readyPort).withStartupTimeout(STARTUP))
             .apply { start() }
 
     private fun seedMetrics(
@@ -163,16 +172,20 @@ class QueryStoreSeed(
     ) {
         val mimir =
             start(
-                MimirManifestBuilder.IMAGE,
-                "/etc/mimir/mimir.yaml",
-                CompactorTaskDefinition.resource(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE),
-                // The old cluster's samples are days behind the head: accept them out of order.
-                s3Flags("blocks-storage.s3") + listOf("-blocks-storage.s3.bucket-lookup-type=path", "-ingester.out-of-order-time-window=96h"),
-                "/data",
-                Constants.K8s.MIMIR_HTTP_PORT,
+                Writer(
+                    MimirManifestBuilder.IMAGE,
+                    "/etc/mimir/mimir.yaml",
+                    CompactorTaskDefinition.resource(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE),
+                    // The old cluster's samples are days behind the head: accept them out of order.
+                    s3Flags("blocks-storage.s3") +
+                        listOf("-blocks-storage.s3.bucket-lookup-type=path", "-ingester.out-of-order-time-window=96h"),
+                    "/data",
+                    Constants.K8s.MIMIR_HTTP_PORT,
+                ),
             )
         try {
             val base = ObservabilityBackends.baseUrl(mimir, Constants.K8s.MIMIR_HTTP_PORT)
+
             fun times(from: Instant) = (0 until SAMPLES).map { from.plusSeconds(it * STEP_SECONDS).toEpochMilli() }
             val recent = times(now.minusSeconds(SAMPLES * STEP_SECONDS))
             val oldTimes = times(seeded.oldAt)
@@ -214,12 +227,14 @@ class QueryStoreSeed(
     ) {
         val loki =
             start(
-                LokiManifestBuilder.IMAGE,
-                "/etc/loki/loki.yaml",
-                CompactorTaskDefinition.resource(LokiManifestBuilder::class.java, LokiManifestBuilder.CONFIG_FILE),
-                s3Flags("common.storage.s3") + "-common.storage.s3.force-path-style=true",
-                "/loki",
-                Constants.K8s.LOKI_HTTP_PORT,
+                Writer(
+                    LokiManifestBuilder.IMAGE,
+                    "/etc/loki/loki.yaml",
+                    CompactorTaskDefinition.resource(LokiManifestBuilder::class.java, LokiManifestBuilder.CONFIG_FILE),
+                    s3Flags("common.storage.s3") + "-common.storage.s3.force-path-style=true",
+                    "/loki",
+                    Constants.K8s.LOKI_HTTP_PORT,
+                ),
             )
         try {
             val base = ObservabilityBackends.baseUrl(loki, Constants.K8s.LOKI_HTTP_PORT)
@@ -269,13 +284,15 @@ class QueryStoreSeed(
             )
         val tempo =
             start(
-                TempoManifestBuilder.IMAGE,
-                "/etc/tempo/tempo.yaml",
-                config,
-                emptyList(),
-                "/var/tempo",
-                Constants.K8s.TEMPO_PORT,
-                listOf(ObservabilityBackends.TEMPO_OTLP_HTTP_PORT),
+                Writer(
+                    TempoManifestBuilder.IMAGE,
+                    "/etc/tempo/tempo.yaml",
+                    config,
+                    emptyList(),
+                    "/var/tempo",
+                    Constants.K8s.TEMPO_PORT,
+                    listOf(ObservabilityBackends.TEMPO_OTLP_HTTP_PORT),
+                ),
             )
         try {
             val otlp = ObservabilityBackends.baseUrl(tempo, ObservabilityBackends.TEMPO_OTLP_HTTP_PORT)
@@ -324,7 +341,8 @@ class QueryStoreSeed(
         try {
             tenants.forEach { tenant ->
                 awaitUntil("the bucket index of $tenant", { compactor.logs.takeLast(LOG_TAIL) }) {
-                    "${Constants.Observability.METRICS_ROOT}/$tenant/bucket-index.json.gz" in keys("${Constants.Observability.METRICS_ROOT}/$tenant/")
+                    "${Constants.Observability.METRICS_ROOT}/$tenant/bucket-index.json.gz" in
+                        keys("${Constants.Observability.METRICS_ROOT}/$tenant/")
                 }
             }
         } finally {
@@ -388,6 +406,7 @@ class QueryStoreSeed(
                                 ResponseTransformer.toBytes(),
                             ).asUtf8String(),
                     ).jsonObject
+
             fun millis(field: String): Long =
                 meta.getValue(field).jsonPrimitive.let { value ->
                     value.content.toLongOrNull() ?: Instant.parse(value.content).toEpochMilli()

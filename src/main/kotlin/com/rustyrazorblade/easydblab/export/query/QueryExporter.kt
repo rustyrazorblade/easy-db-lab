@@ -104,13 +104,19 @@ class QueryExporter(
             exportStep(ExportSignal.METRICS, "list the tenants") {
                 TenantDirectory.tenantNames(store.listDirectories(metricsRoot).map { it.removePrefix(metricsRoot).trimEnd('/') })
             }
-        val readerHome = (selector as? ExportSelector.Experiment)?.key?.tenant ?: storeTenants.firstOrNull() ?: Constants.Observability.DEFAULT_TENANT
+        val readerHome =
+            (selector as? ExportSelector.Experiment)?.key?.tenant ?: storeTenants.firstOrNull() ?: Constants.Observability.DEFAULT_TENANT
         val metrics = MetricsExport(store, runtime.rewrite(work), MimirBucketIndexWriter(clock))
         val (plan, counts) =
             exportStep(ExportSignal.STACK, "start the reader stack") { runtime.reader(work, access.live(readerHome)) }.use { reader ->
                 val plan = plan(QueryPlanner(MimirApi(reader::http, clock), metrics::oldestBlock, clock), selector, storeTenants, workspace)
-                eventBus.emit(Event.Export.ClustersSelected(plan.clusters.map { Event.Export.SelectedCluster(it.key, it.value) }, plan.home))
-                val (logs, traces) = exportStep(ExportSignal.STACK, "start the writer stack") { runtime.writer(work, plan.home) }.use { copy(plan, reader, it, work) }
+                eventBus.emit(
+                    Event.Export.ClustersSelected(plan.clusters.map { Event.Export.SelectedCluster(it.key, it.value) }, plan.home),
+                )
+                val (logs, traces) =
+                    exportStep(ExportSignal.STACK, "start the writer stack") {
+                        runtime.writer(work, plan.home)
+                    }.use { copy(plan, reader, it, work) }
                 val metricBlocks =
                     plan.tenants.fold(SignalCount.ZERO) { count, tenant ->
                         val clusters = plan.clustersOf(tenant)
@@ -125,7 +131,9 @@ class QueryExporter(
         eventBus.emit(Event.Export.SignalExported(ExportSignal.METRICS.label, counts.metrics.items, counts.metrics.bytes))
         eventBus.emit(Event.Export.SignalExported(ExportSignal.LOGS.label, counts.logs.items, counts.logs.bytes))
         eventBus.emit(Event.Export.SignalExported(ExportSignal.TRACES.label, counts.traces.items, counts.traces.bytes))
-        eventBus.emit(Event.Export.QueryCompleted(target.zip.path, plan.clusters.keys.toList(), plan.tenants, written.count, written.bytes, EXCLUDED))
+        eventBus.emit(
+            Event.Export.QueryCompleted(target.zip.path, plan.clusters.keys.toList(), plan.tenants, written.count, written.bytes, EXCLUDED),
+        )
     }
 
     /** The plan of [selector]; a selection that cannot be found fails with its own event. */
@@ -164,18 +172,32 @@ class QueryExporter(
         val logExport = LogExport(reader::http, writer::http)
         val logs =
             plan.clusters.entries.fold(SignalCount.ZERO) { count, (cluster, tenant) ->
-                count + exportStep(ExportSignal.LOGS, "copy the logs of $cluster") { logExport.export(tenant, cluster, plan.ranges.getValue(cluster)) }
+                count +
+                    exportStep(
+                        ExportSignal.LOGS,
+                        "copy the logs of $cluster",
+                    ) { logExport.export(tenant, cluster, plan.ranges.getValue(cluster)) }
             }
         exportStep(ExportSignal.LOGS, "flush the writer's Loki") {
-            val flushed = writer.http(plan.home).post(Constants.K8s.LOKI_HTTP_PORT, LokiTailFlush.SHUTDOWN_PATH, timeout = LOKI_FLUSH_TIMEOUT)
-            check(flushed.code == Constants.HttpStatus.NO_CONTENT) { "The writer's Loki did not flush (status ${flushed.code}): ${flushed.body}" }
+            val flushed =
+                writer
+                    .http(
+                        plan.home,
+                    ).post(Constants.K8s.LOKI_HTTP_PORT, LokiTailFlush.SHUTDOWN_PATH, timeout = LOKI_FLUSH_TIMEOUT)
+            check(
+                flushed.code == Constants.HttpStatus.NO_CONTENT,
+            ) { "The writer's Loki did not flush (status ${flushed.code}): ${flushed.body}" }
             // Its index head is uploaded as it stops.
             writer.stop(Constants.LocalStack.Services.LOKI)
         }
         val traceExport = TraceExport(reader::http, writer::http)
         val traces =
             plan.clusters.entries.fold(SignalCount.ZERO) { count, (cluster, tenant) ->
-                count + exportStep(ExportSignal.TRACES, "copy the traces of $cluster") { traceExport.export(tenant, cluster, plan.ranges.getValue(cluster)) }
+                count +
+                    exportStep(
+                        ExportSignal.TRACES,
+                        "copy the traces of $cluster",
+                    ) { traceExport.export(tenant, cluster, plan.ranges.getValue(cluster)) }
             }
         exportStep(ExportSignal.TRACES, "drain the writer's Tempo") {
             WriterTempoDrain(writer.http(plan.home), work.writerTempoWal).await()

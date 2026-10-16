@@ -139,12 +139,23 @@ class LogExport(
                 TIMEOUT,
                 mapOf(Constants.Export.Query.LOKI_ENCODING_FLAGS_HEADER to Constants.Export.Query.LOKI_CATEGORIZE_LABELS),
             )
-        check(response.code == Constants.HttpStatus.OK) { "Loki answered $query in tenant $tenant with status ${response.code}: ${response.body}" }
-        val result = JSON.parseToJsonElement(response.body).jsonObject.getValue("data").jsonObject["result"] as? JsonArray
+        check(
+            response.code == Constants.HttpStatus.OK,
+        ) { "Loki answered $query in tenant $tenant with status ${response.code}: ${response.body}" }
+        val result =
+            JSON
+                .parseToJsonElement(response.body)
+                .jsonObject
+                .getValue("data")
+                .jsonObject["result"] as? JsonArray
         return result
             .orEmpty()
             .flatMap { stream ->
-                val labels = stream.jsonObject.getValue("stream").jsonObject.mapValues { it.value.jsonPrimitive.content }
+                val labels =
+                    stream.jsonObject
+                        .getValue("stream")
+                        .jsonObject
+                        .mapValues { it.value.jsonPrimitive.content }
                 stream.jsonObject.getValue("values").jsonArray.map { value ->
                     val fields = value.jsonArray
                     val categories = fields.getOrNull(2) as? JsonObject
@@ -185,7 +196,15 @@ class LogExport(
         check(response.code == Constants.HttpStatus.NO_CONTENT) {
             "The writer's Loki refused ${entries.size} lines of tenant $tenant with status ${response.code}: ${response.body}"
         }
-        return SignalCount(entries.size.toLong(), entries.sumOf { it.line.toByteArray().size.toLong() })
+        return SignalCount(
+            entries.size.toLong(),
+            entries.sumOf {
+                it.line
+                    .toByteArray()
+                    .size
+                    .toLong()
+            },
+        )
     }
 
     private fun value(entry: Entry): JsonArray =

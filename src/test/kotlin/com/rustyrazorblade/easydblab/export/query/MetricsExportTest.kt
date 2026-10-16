@@ -75,10 +75,13 @@ class MetricsExportTest {
         marked: List<String> = emptyList(),
     ) {
         val json =
-            """{"version":2,"blocks":[${blocks.joinToString(",") { (id, min, max) -> """{"block_id":"$id","min_time":$min,"max_time":$max}""" }}],
+            """{"version":2,"blocks":[${blocks.joinToString(
+                ",",
+            ) { (id, min, max) -> """{"block_id":"$id","min_time":$min,"max_time":$max}""" }}],
             "block_deletion_marks":[${marked.joinToString(",") { """{"block_id":"$it"}""" }}],"updated_at":1}"""
         store.objects["mimir/acme/bucket-index.json.gz"] =
-            ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(json.toByteArray()) } }.toByteArray() to Instant.EPOCH
+            ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(json.toByteArray()) } }.toByteArray() to
+            Instant.EPOCH
     }
 
     private fun seed() {
@@ -123,11 +126,16 @@ class MetricsExportTest {
         assertThat(tenantDir.list()).containsExactlyInAnyOrder("R01HIT", MimirBucketIndexWriter.FILE)
         val indexed =
             Json
-                .parseToJsonElement(GZIPInputStream(File(tenantDir, MimirBucketIndexWriter.FILE).inputStream()).readBytes().decodeToString())
-                .jsonObject
+                .parseToJsonElement(
+                    GZIPInputStream(File(tenantDir, MimirBucketIndexWriter.FILE).inputStream()).readBytes().decodeToString(),
+                ).jsonObject
                 .getValue("blocks")
                 .jsonArray
-                .map { it.jsonObject.getValue("block_id").jsonPrimitive.content }
+                .map {
+                    it.jsonObject
+                        .getValue("block_id")
+                        .jsonPrimitive.content
+                }
         assertThat(indexed).containsExactly("R01HIT")
         assertThat(count.items).isEqualTo(1)
         assertThat(count.bytes).isEqualTo(tenantDir.walkTopDown().filter { it.isFile }.sumOf { it.length() })
@@ -150,7 +158,20 @@ class MetricsExportTest {
     fun `no overlapping block exports nothing and runs no rewrite`() {
         seed()
 
-        val count = export.export("acme", listOf("x-1"), listOf(TimeRange(Instant.ofEpochMilli(day0 + 100 * hour), Instant.ofEpochMilli(day0 + 101 * hour))), work)
+        val count =
+            export.export(
+                "acme",
+                listOf("x-1"),
+                listOf(
+                    TimeRange(
+                        Instant.ofEpochMilli(day0 + 100 * hour),
+                        Instant.ofEpochMilli(
+                            day0 + 101 * hour,
+                        ),
+                    ),
+                ),
+                work,
+            )
 
         assertThat(count).isEqualTo(SignalCount.ZERO)
         assertThat(rewrites).isEmpty()

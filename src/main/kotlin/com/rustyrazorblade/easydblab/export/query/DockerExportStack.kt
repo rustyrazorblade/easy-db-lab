@@ -99,14 +99,22 @@ class DockerExportStack private constructor(
             val stack =
                 lazy {
                     val ports =
-                        published.flatMap { (service, servicePorts) -> servicePorts.map { it to port(compose, directory, project, service, it) } }.toMap()
+                        published
+                            .flatMap { (service, servicePorts) ->
+                                servicePorts.map {
+                                    it to
+                                        port(compose, directory, project, service, it)
+                                }
+                            }.toMap()
                     DockerExportStack(directory, project, compose, ports, http)
                 }
             try {
                 val up = compose.run(directory, project, listOf("up", "-d"), COMMAND_TIMEOUT)
                 check(up.exitCode == 0) { "docker compose could not start $project (exit ${up.exitCode}):\n${up.output}" }
                 val started = stack.value
-                published.forEach { (service, servicePorts) -> started.awaitReady(service, servicePorts.first(), runtime.readyTimeout, runtime.pollInterval) }
+                published.forEach { (service, servicePorts) ->
+                    started.awaitReady(service, servicePorts.first(), runtime.readyTimeout, runtime.pollInterval)
+                }
                 return started
             } catch (e: Exception) {
                 down(compose, directory, project)
@@ -161,7 +169,11 @@ class DockerExportStack private constructor(
         val attempts = (timeout.toMillis() / interval.toMillis().coerceAtLeast(1)).toInt().coerceAtLeast(1) + 1
         val ready =
             pollUntil("$project $service ready", attempts, interval, deadline, done = { it }) {
-                runCatching { http(Constants.Observability.DEFAULT_TENANT).get(port, "/ready").code == Constants.HttpStatus.OK }.getOrDefault(false)
+                runCatching {
+                    http(
+                        Constants.Observability.DEFAULT_TENANT,
+                    ).get(port, "/ready").code == Constants.HttpStatus.OK
+                }.getOrDefault(false)
             }
         check(ready) { "$service of $project did not answer /ready within $timeout" }
     }

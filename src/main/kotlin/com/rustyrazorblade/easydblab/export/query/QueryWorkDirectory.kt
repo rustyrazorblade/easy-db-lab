@@ -28,7 +28,11 @@ class QueryWorkDirectory private constructor(
     val writerStore: File get() = File(writer, ExportWriterStack.STORE_DIR)
 
     /** The writer Tempo's live-store WAL, which the drain lists. */
-    val writerTempoWal: File get() = File(writer, "${ExportWriterStack.STATE_DIR}/${Constants.LocalStack.Services.TEMPO}/${ExportWriterStack.TEMPO_LIVE_WAL}")
+    val writerTempoWal: File get() =
+        File(
+            writer,
+            "${ExportWriterStack.STATE_DIR}/${Constants.LocalStack.Services.TEMPO}/${ExportWriterStack.TEMPO_LIVE_WAL}",
+        )
 
     /** The staged metric blocks, `mimir/<tenant>/` under it. */
     val staging: File get() = File(root, "metrics")

@@ -70,7 +70,11 @@ class ClusterTimeRangesTest {
 
         ranges.of("acme", listOf("x-1"), since)
 
-        val step = backends.calls.single().param("step")!!.toLong()
+        val step =
+            backends.calls
+                .single()
+                .param("step")!!
+                .toLong()
         assertThat(Duration.between(since, now).seconds / step).isLessThanOrEqualTo(ClusterTimeRanges.MAX_POINTS)
         assertThat(backends.calls.single().param("query")).contains("[${step}s]")
     }

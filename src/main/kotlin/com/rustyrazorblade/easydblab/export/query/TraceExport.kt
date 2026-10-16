@@ -8,7 +8,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.time.Duration
@@ -62,28 +61,40 @@ class TraceExport(
         cluster: String,
         range: TimeRange,
     ): SignalCount {
-        val query = "{ resource.cluster = \"$cluster\" }"
-        val ids = LinkedHashSet<String>()
+        val search = Search(tenant, cluster)
         var from = range.start.epochSecond
         val end = range.end.epochSecond
         do {
             val to = minOf(end, from + MAX_WINDOW.seconds)
-            search(tenant, cluster, query, from, to, ids)
+            search(search, from, to)
             from = to
         } while (from < end)
-        return ids.fold(SignalCount.ZERO) { count, id -> count + replay(tenant, cluster, id, range) }
+        return search.ids.fold(SignalCount.ZERO) { count, id -> count + replay(tenant, cluster, id, range) }
     }
 
-    /** Adds every trace of [query] between [from] and [to] to [ids], splitting a full window. */
+    /**
+     * One cluster's trace search, and the traces it found so far.
+     *
+     * @property tenant the cluster's tenant.
+     * @property cluster the cluster.
+     */
+    private class Search(
+        val tenant: String,
+        val cluster: String,
+    ) {
+        val query: String = "{ resource.cluster = \"$cluster\" }"
+        val ids = LinkedHashSet<String>()
+    }
+
+    /** Adds every trace of [search] between [from] and [to] to its ids, splitting a full window. */
     private fun search(
-        tenant: String,
-        cluster: String,
-        query: String,
+        search: Search,
         from: Long,
         to: Long,
-        ids: MutableSet<String>,
     ) {
-        val params = query("q" to query, "start" to from.toString(), "end" to to.toString(), "limit" to limit.toString())
+        val tenant = search.tenant
+        val cluster = search.cluster
+        val params = query("q" to search.query, "start" to from.toString(), "end" to to.toString(), "limit" to limit.toString())
         val response = reader(tenant).get(Constants.K8s.TEMPO_PORT, "/api/search?$params", TIMEOUT)
         check(response.code == Constants.HttpStatus.OK) {
             "Tempo answered the trace search of cluster $cluster in tenant $tenant with status ${response.code}: ${response.body}"
@@ -91,17 +102,21 @@ class TraceExport(
         val found =
             (JSON.parseToJsonElement(response.body).jsonObject["traces"] as? JsonArray)
                 .orEmpty()
-                .map { it.jsonObject.getValue("traceID").jsonPrimitive.content }
+                .map {
+                    it.jsonObject
+                        .getValue("traceID")
+                        .jsonPrimitive.content
+                }
         if (found.size < limit) {
-            ids += found
+            search.ids += found
             return
         }
         check(to - from > 1) {
             "Cluster $cluster of tenant $tenant has $limit or more traces starting within one second at $from; the export cannot list them all"
         }
         val middle = from + (to - from) / 2
-        search(tenant, cluster, query, from, middle, ids)
-        search(tenant, cluster, query, middle, to, ids)
+        search(search, from, middle)
+        search(search, middle, to)
     }
 
     /** Fetches trace [id] and replays its resource spans of [cluster] to the writer. */
@@ -113,10 +128,17 @@ class TraceExport(
     ): SignalCount {
         val params = query("start" to range.start.epochSecond.toString(), "end" to range.end.epochSecond.toString())
         val response = reader(tenant).get(Constants.K8s.TEMPO_PORT, "/api/v2/traces/$id?$params", TIMEOUT)
-        check(response.code == Constants.HttpStatus.OK) { "Tempo answered trace $id of tenant $tenant with status ${response.code}: ${response.body}" }
+        check(response.code == Constants.HttpStatus.OK) {
+            "Tempo answered trace $id of tenant $tenant with status ${response.code}: ${response.body}"
+        }
         val resources =
-            (JSON.parseToJsonElement(response.body).jsonObject["trace"]?.jsonObject?.get("resourceSpans") as? JsonArray)
-                .orEmpty()
+            (
+                JSON
+                    .parseToJsonElement(response.body)
+                    .jsonObject["trace"]
+                    ?.jsonObject
+                    ?.get("resourceSpans") as? JsonArray
+            ).orEmpty()
                 .filter { clusterOf(it) == cluster }
         if (resources.isEmpty()) return SignalCount.ZERO
         val body = buildJsonObject { put("resourceSpans", JsonArray(resources.map(::withHexIds))) }.toString()
@@ -139,14 +161,17 @@ class TraceExport(
             ?.jsonPrimitive
             ?.content
 
+    /** Whether [value] holds an id: a string that is not empty. */
+    private fun isId(value: JsonElement): Boolean = value is JsonPrimitive && value.isString && value.content.isNotEmpty()
+
     /** [element] with every trace, span and parent span id, links' included, in hex. */
     private fun withHexIds(element: JsonElement): JsonElement =
         when (element) {
             is JsonObject ->
                 JsonObject(
                     element.mapValues { (key, value) ->
-                        if (key in ID_FIELDS && value is JsonPrimitive && value.isString && value.content.isNotEmpty()) {
-                            JsonPrimitive(OtlpIds.hex(value.content))
+                        if (key in ID_FIELDS && isId(value)) {
+                            JsonPrimitive(OtlpIds.hex(value.jsonPrimitive.content))
                         } else {
                             withHexIds(value)
                         }

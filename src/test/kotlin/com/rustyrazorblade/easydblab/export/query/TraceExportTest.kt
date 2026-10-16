@@ -52,6 +52,7 @@ class TraceExportTest {
     /** A trace as Tempo's v2 API returns it: ids in base64, and a resource of another cluster beside the selected one. */
     private fun trace(id: String): ObservabilityResponse {
         val traceId = id.padStart(32, '0')
+
         fun resource(cluster: String) =
             """
             {"resource":{"attributes":[{"key":"cluster","value":{"stringValue":"$cluster"}}]},
@@ -111,7 +112,14 @@ class TraceExportTest {
         assertThat(span.getValue("traceId").jsonPrimitive.content).isEqualTo("0abc0000000000000000000000000001")
         assertThat(span.getValue("spanId").jsonPrimitive.content).isEqualTo("0102030405060708")
         assertThat(span.getValue("parentSpanId").jsonPrimitive.content).isEqualTo("1112131415161718")
-        assertThat(span.getValue("links").jsonArray[0].jsonObject.getValue("spanId").jsonPrimitive.content).isEqualTo("2122232425262728")
+        assertThat(
+            span
+                .getValue("links")
+                .jsonArray[0]
+                .jsonObject
+                .getValue("spanId")
+                .jsonPrimitive.content,
+        ).isEqualTo("2122232425262728")
         val fetch = backends.calls.single { it.route.startsWith("/api/v2/traces/") }
         assertThat(fetch.param("start")).isEqualTo(range.start.epochSecond.toString())
         assertThat(fetch.param("end")).isEqualTo(range.end.epochSecond.toString())

@@ -40,7 +40,8 @@ class ThanosBlockRewriteTest {
 
     private fun projectDir() = runs.first().first
 
-    private fun service() = ComposeFile.fromYaml(File(projectDir(), Constants.LocalStack.COMPOSE_FILE).readText()).services.getValue("thanos")
+    private fun service() =
+        ComposeFile.fromYaml(File(projectDir(), Constants.LocalStack.COMPOSE_FILE).readText()).services.getValue("thanos")
 
     @Test
     fun `thanos runs once, as a one-off run of its project, then the project is removed`() {
@@ -79,7 +80,13 @@ class ThanosBlockRewriteTest {
             "--id=01B",
         )
         assertThat(service().command).noneMatch { it.startsWith("--delete-blocks") || it.startsWith("--hash-func") }
-        assertThat(service().volumes.orEmpty().single { it.target == "/staging" }.source).isEqualTo(staging.absolutePath)
+        assertThat(
+            service()
+                .volumes
+                .orEmpty()
+                .single { it.target == "/staging" }
+                .source,
+        ).isEqualTo(staging.absolutePath)
     }
 
     @Test

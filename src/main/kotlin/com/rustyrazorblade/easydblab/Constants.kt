@@ -401,13 +401,24 @@ object Constants {
          */
         const val RESERVED_TENANT = "index"
 
+        /** A cluster name, unanchored; [CLUSTER_NAME_PATTERN] and [CLUSTER_ID_PATTERN] anchor it. */
+        private const val CLUSTER_NAME_CHARS = "[a-z][a-z0-9_-]{0,39}"
+
         /**
          * The rule every cluster name must match. The name flows raw into configuration files, Loki
          * index file names, S3 keys and metric labels, so it holds only characters all of them accept.
          * `_` is allowed, so a cluster can be named for the variant it tests (`unthrottled_cursor`);
          * a derived name that does not accept `_`, such as the OpenSearch domain name, converts it.
          */
-        const val CLUSTER_NAME_PATTERN = "^[a-z][a-z0-9_-]{0,39}$"
+        const val CLUSTER_NAME_PATTERN = "^$CLUSTER_NAME_CHARS$"
+
+        /**
+         * The rule every cluster id, the `cluster` label's `<name>-<id>`, matches: a cluster name, then
+         * `-` and the cluster's lower-case UUID. A `--cluster` value goes into PromQL, LogQL and TraceQL
+         * selectors, so anything else is refused.
+         */
+        const val CLUSTER_ID_PATTERN =
+            "^$CLUSTER_NAME_CHARS-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 
         /**
          * The rule every experiment name must match. A name may start with a digit, so a

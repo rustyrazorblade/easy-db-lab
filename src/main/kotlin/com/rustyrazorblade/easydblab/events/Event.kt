@@ -6551,6 +6551,25 @@ sealed interface Event {
         }
 
         /**
+         * Some `--cluster` values are not a cluster's `<name>-<id>`; nothing was read or written.
+         *
+         * @property clusters each such value.
+         * @property rule the pattern a cluster id matches.
+         */
+        @Serializable
+        @SerialName("Export.InvalidCluster")
+        data class InvalidCluster(
+            val clusters: List<String>,
+            val rule: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "--cluster needs a cluster's <name>-<id>, its cluster label: a cluster name, then - and the cluster's UUID " +
+                    "($rule). Not a cluster id: ${clusters.joinToString(", ")}. Nothing was written."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * No tenant holds a cluster `--cluster` names; nothing was written.
          *
          * @property cluster the cluster.

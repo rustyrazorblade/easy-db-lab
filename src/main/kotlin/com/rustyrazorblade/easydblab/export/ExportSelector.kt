@@ -90,11 +90,14 @@ data class ExportSelection(
                 "--cluster <name-id> (repeatable; those clusters only) or --experiment <name> " +
                 "(every cluster of the experiment; add --tenant to name its tenant)."
 
+        private val CLUSTER_ID = Regex(Constants.Observability.CLUSTER_ID_PATTERN)
+
         /**
          * Checks [choice]; [workspaceTenant] is the tenant of the workspace the command runs in, if any.
          *
          * @throws ExportSelectorRefused when [choice] names no kind of export or more than one.
-         * @throws IllegalArgumentException when a value breaks its rule.
+         * @throws ClusterIdRefused when a `--cluster` value is not a cluster's `<name>-<id>`.
+         * @throws IllegalArgumentException when another value breaks its rule.
          */
         fun of(
             choice: ExportSelectorChoice,
@@ -108,6 +111,7 @@ data class ExportSelection(
             val clusters = choice.clusters.distinct()
             val kinds = listOfNotNull(tenant, clusters.ifEmpty { null }, experiment)
             if (kinds.size != 1) throw ExportSelectorRefused(CHOICES)
+            clusters.filterNot(CLUSTER_ID::matches).takeIf { it.isNotEmpty() }?.let { throw ClusterIdRefused(it) }
             return when {
                 tenant != null -> ExportSelection(ExportSelector.Tenant(tenant), tenantChoice = null)
                 experiment != null -> experiment(experiment, choice.tenant, workspaceTenant)
@@ -135,3 +139,15 @@ data class ExportSelection(
 class ExportSelectorRefused(
     message: String,
 ) : IllegalArgumentException(message)
+
+/**
+ * Some `--cluster` values are not a cluster's `<name>-<id>` ([Constants.Observability.CLUSTER_ID_PATTERN]).
+ *
+ * @property clusters each such value, in the order given.
+ */
+class ClusterIdRefused(
+    val clusters: List<String>,
+) : IllegalArgumentException(
+        "--cluster needs a cluster's <name>-<id> (${Constants.Observability.CLUSTER_ID_PATTERN}); " +
+            "not a cluster id: ${clusters.joinToString(", ")}",
+    )

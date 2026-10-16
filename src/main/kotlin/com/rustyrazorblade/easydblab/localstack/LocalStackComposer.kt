@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.localstack
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaServerSettings
 
 /**
  * A slice of a local stack: some compose services and the files they mount, by path relative to the
@@ -35,18 +34,13 @@ object LocalStackComposer {
                     listOf(
                         StoreAccessPart.live(mode),
                         BackendsPart.live(mode),
-                        GrafanaViewPart.compose(
-                            spec,
-                            GrafanaViewPart.Documents.FromStore(mode.bucket),
-                            GrafanaServerSettings.DOWNLOADED_PLUGINS,
-                        ),
+                        GrafanaViewPart.compose(spec, GrafanaViewPart.Documents.FromStore(mode.bucket)),
                     )
-                // No gate, signer or store check: the data is on disk. Grafana downloads no plugin,
-                // since the stack may have no network.
+                // No gate, signer or store check: the data is on disk.
                 is LocalStackSpec.Mode.Offline ->
                     listOf(
                         BackendsPart.offline(mode),
-                        GrafanaViewPart.compose(spec, GrafanaViewPart.Documents.FromDisk(mode.dataDir), plugins = emptyList()),
+                        GrafanaViewPart.compose(spec, GrafanaViewPart.Documents.FromDisk(mode.dataDir)),
                     )
             }
         val services = parts.flatMap { it.services.entries }.associate { it.toPair() }

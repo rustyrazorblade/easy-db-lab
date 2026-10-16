@@ -63,6 +63,8 @@ The first start takes a minute or two: Mimir loads the store's block index, Loki
 
 The first query over older data is slow: nothing is cached yet, and Mimir and Loki read the blocks and chunks from S3. A panel can take a minute or more the first time and is fast after that, while the caches are warm. Grafana waits up to five minutes for a datasource, instead of its default 30 seconds, so a cold query shows its data rather than a 502.
 
+Grafana installs no plugin at start: no packaged dashboard needs one, and the download from grafana.com could hold its start for minutes. A cluster's Grafana still installs them, since the ClickHouse kit's datasource is one.
+
 The datasources are the ones a cluster's Grafana has, with the same UIDs:
 
 - `mimir`, `loki` and `tempo` read the home tenant;

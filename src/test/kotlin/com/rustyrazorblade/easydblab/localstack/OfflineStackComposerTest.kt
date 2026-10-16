@@ -136,17 +136,4 @@ class OfflineStackComposerTest {
         assertThat(text("config/grafana/provisioning/datasources/datasources.yaml"))
             .isEqualTo(GrafanaDatasourceSet.build(spec.tenantSet, BackendUrls.LOCAL_COMPOSE).toYaml())
     }
-
-    @Test
-    fun `the live stack still installs the cluster's plugins`() {
-        val live = spec.copy(mode = LocalStackSpec.Mode.Live(bucket = "b", region = "eu-west-1", awsProfile = "p", home = "acme"))
-        val grafana =
-            ComposeFile
-                .fromYaml(
-                    String(LocalStackComposer.compose(live).getValue(Constants.LocalStack.COMPOSE_FILE)),
-                ).services
-                .getValue("grafana")
-
-        assertThat(grafana.environment.orEmpty()).containsKey("GF_INSTALL_PLUGINS")
-    }
 }

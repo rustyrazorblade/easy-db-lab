@@ -1148,6 +1148,9 @@ object Constants {
 
         /** Exports by query (`--cluster`, `--experiment`): the temporary reader and writer stacks. */
         object Query {
+            /** Between the zip's path and a random suffix: the query export's work directory, kept afterwards. */
+            const val WORK_INFIX = ".work-"
+
             /** Joins the tenants of a federated request in `X-Scope-OrgID`. */
             const val TENANT_SEPARATOR = "|"
 

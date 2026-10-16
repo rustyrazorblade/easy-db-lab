@@ -1,5 +1,8 @@
 package com.rustyrazorblade.easydblab.export
 
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import java.io.IOException
 
 /** What an export copies, as its failures and its report name it. */
@@ -45,4 +48,19 @@ internal inline fun <T> exportStep(
     } catch (e: Exception) {
         // An inner step's failure already names the step that failed.
         throw e as? ExportStepFailed ?: ExportStepFailed(signal, step, e)
+    }
+
+/**
+ * Runs [block]; an [ExportStepFailed] is reported as [Event.Export.Failed] with [target]'s path, its
+ * signal, step and reason, and fails the command.
+ */
+internal fun <T> EventBus.reportingStepFailure(
+    target: ExportTarget,
+    block: () -> T,
+): T =
+    try {
+        block()
+    } catch (e: ExportStepFailed) {
+        emit(Event.Export.Failed(target.zip.path, e.signal.label, e.step, e.cause?.message ?: e.message.orEmpty()))
+        throw CommandFailedException(e.message ?: "The export failed")
     }

@@ -98,6 +98,24 @@ class CheckedExportStoreFactoryTest {
     }
 
     @Test
+    fun `a query export's store carries the bucket's region and the profile its reader stack signs with`() {
+        val access = factory().openForQuery()
+
+        assertThat(access.live("acme")).isEqualTo(
+            com.rustyrazorblade.easydblab.localstack.LocalStackSpec.Mode
+                .Live(bucket = "acct", region = "ap-south-1", awsProfile = "lab", home = "acme"),
+        )
+    }
+
+    @Test
+    fun `a query export with access keys and no AWS profile fails before reading anything`() {
+        assertThatThrownBy { factory(user(profile = "")).openForQuery() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(events).containsExactly(Event.Export.AwsProfileRequired)
+        assertThat(regions).isEmpty()
+    }
+
+    @Test
     fun `access keys in the profile, with no AWS profile, are named as such and get no SSO hint`() {
         access = StoreReadResult.Unreadable("InvalidAccessKeyId")
 

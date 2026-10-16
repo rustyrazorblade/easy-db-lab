@@ -11,6 +11,7 @@ import java.time.Duration
  *
  * @property tenant the `X-Scope-OrgID` value; `a|b` for several tenants.
  * @property headers the extra request headers.
+ * @property timeout how long the caller waits for the answer.
  */
 data class BackendCall(
     val tenant: String,
@@ -19,6 +20,7 @@ data class BackendCall(
     val path: String,
     val body: String,
     val headers: Map<String, String> = emptyMap(),
+    val timeout: Duration? = null,
 ) {
     /** The path without its query string. */
     val route: String get() = path.substringBefore('?')
@@ -57,7 +59,7 @@ class FakeBackends(
                 pathAndQuery: String,
                 timeout: Duration,
                 headers: Map<String, String>,
-            ): ObservabilityResponse = record(BackendCall(tenant, "GET", port, pathAndQuery, "", headers))
+            ): ObservabilityResponse = record(BackendCall(tenant, "GET", port, pathAndQuery, "", headers, timeout))
 
             override fun post(
                 port: Int,
@@ -65,7 +67,7 @@ class FakeBackends(
                 body: String,
                 contentType: String,
                 timeout: Duration,
-            ): ObservabilityResponse = record(BackendCall(tenant, "POST", port, path, body))
+            ): ObservabilityResponse = record(BackendCall(tenant, "POST", port, path, body, timeout = timeout))
         }
 
     private fun record(call: BackendCall): ObservabilityResponse {

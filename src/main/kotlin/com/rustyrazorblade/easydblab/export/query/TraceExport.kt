@@ -50,7 +50,14 @@ class TraceExport(
 ) {
     private companion object {
         val MAX_WINDOW: Duration = Duration.ofHours(Constants.Export.Query.TRACE_SEARCH_MAX_HOURS)
-        val TIMEOUT: Duration = Duration.ofMinutes(5)
+        /**
+         * Longer than the reader's Tempo may take for a cold read, so a slow read ends with Tempo's
+         * own answer, which names the failure, rather than with the client giving up.
+         */
+        val TIMEOUT: Duration =
+            Duration.ofSeconds(
+                Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS.toLong() + Constants.Export.Query.TEMPO_ANSWER_MARGIN_SECONDS,
+            )
         val JSON = Json { ignoreUnknownKeys = true }
         val ID_FIELDS = setOf("traceId", "spanId", "parentSpanId")
     }

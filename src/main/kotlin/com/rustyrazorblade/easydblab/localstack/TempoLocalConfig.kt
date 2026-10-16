@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.localstack
 
+import com.rustyrazorblade.easydblab.Constants
+
 /**
  * The local stack's Tempo configuration: the cluster's `tempo.yaml` parsed and patched as typed data
  * ([YamlDocument]). Tempo 3.0.3 has no flag for the S3 `insecure` and `forcepathstyle` keys or the
@@ -70,9 +72,24 @@ object TempoLocalConfig {
             ) + READ_ONLY,
         )
 
-    /** What makes the single binary a reader: the inert scheduler and worker, and search over the backend. */
+    /**
+     * How long a cold read may take: the server's read and write timeouts and the querier's search
+     * and trace-by-id timeouts, all [Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS], the wait of the
+     * local Grafana in front of this Tempo. Range reads of large blocks through the gate outlasted
+     * Tempo 3.0.3's defaults (30s, and 10s by id).
+     */
+    private val COLD_READ = "${Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS}s"
+
+    /**
+     * What makes the single binary a reader: the inert scheduler and worker, search over the backend,
+     * and the time a cold read may take.
+     */
     private val READ_ONLY =
         listOf(
+            YamlPatch.set("server.http_server_read_timeout", COLD_READ),
+            YamlPatch.set("server.http_server_write_timeout", COLD_READ),
+            YamlPatch.set("querier.search.query_timeout", COLD_READ),
+            YamlPatch.set("querier.trace_by_id.query_timeout", COLD_READ),
             YamlPatch.set("storage.trace.blocklist_poll_fallback", "false"),
             YamlPatch.remove("storage.trace.blocklist_poll"),
             YamlPatch.remove("storage.trace.blocklist_poll_tenant_index_builders"),

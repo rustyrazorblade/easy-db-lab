@@ -58,14 +58,17 @@ object YamlDocument {
     /** Plain scalars where YAML allows them; kaml still quotes a string that would read as another type. */
     private val yaml = Yaml(configuration = YamlConfiguration(singleLineStringStyle = SingleLineStringStyle.Plain))
 
-    /** [text] with every patch applied in order. [text] must be a map at its root. */
+    /**
+     * [text] with every patch applied in order, ending with a newline as a text file does (kaml writes
+     * none). [text] must be a map at its root.
+     */
     fun patch(
         text: String,
         patches: List<YamlPatch>,
     ): String {
         val root = yaml.parseToYamlNode(text) as? YamlMap ?: throw IllegalArgumentException("The document is not a map at its root")
         val patched = patches.fold(root) { map, patch -> apply(map, patch, patch.path) }
-        return yaml.encodeToString(YamlNode.serializer(), patched)
+        return yaml.encodeToString(YamlNode.serializer(), patched).trimEnd('\n') + "\n"
     }
 
     private fun apply(

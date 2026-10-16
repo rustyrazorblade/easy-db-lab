@@ -4,11 +4,15 @@ import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.ObservabilityBackends
+import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -124,7 +128,8 @@ class LocalStackReadOnlyIntegrationTest {
         val spec =
             LocalStackSpec(
                 mode = LocalStackSpec.Mode.Live(bucket = bucket, region = region, awsProfile = PROFILE, home = HOME),
-                tenants = store.tenants(bucket, region, HOME).all,
+                // Only the home tenant at first: the re-run test finds acme and loads it into the running Grafana.
+                tenants = listOf(HOME),
                 grafanaPort = freePort(),
                 documentsPort = freePort(),
             )
@@ -446,8 +451,77 @@ class LocalStackReadOnlyIntegrationTest {
             .contains("(HTTP $HTTP_FORBIDDEN)")
     }
 
+    /** The uids of the datasources the running Grafana has now. */
+    private fun datasourceUids(): List<String> {
+        val answer = ObservabilityBackends.get("${grafanaBase()}/api/datasources", HOME)
+        assertThat(answer.statusCode()).describedAs(answer.body()).isEqualTo(HTTP_OK)
+        return Json.parseToJsonElement(answer.body()).jsonArray.map {
+            it.jsonObject
+                .getValue("uid")
+                .jsonPrimitive.content
+        }
+    }
+
+    /**
+     * The stack was written with only the home tenant. A re-run of `local create` with the stack up
+     * lists acme, rewrites the datasource file inside the mounted provisioning directory, and the
+     * running Grafana reloads it, then its dashboards: acme's datasources show with no restart.
+     */
     @Test
     @Order(4)
+    fun `a re-run of local create with the stack up loads a new tenant into the running Grafana with no restart`() {
+        val services = ComposeFile.fromYaml(File(stack, Constants.LocalStack.COMPOSE_FILE).readText()).services.keys
+        val before = project.containerIds(services)
+        assertThat(datasourceUids()).doesNotContain("mimir-acme")
+        val events = mutableListOf<Event>()
+        val eventBus = EventBus().apply { addListener(CollectingListener(events)) }
+        val user =
+            User(
+                email = "",
+                region = NetworkMinio.REGION,
+                keyName = "",
+                awsProfile = PROFILE,
+                awsAccessKey = "",
+                awsSecret = "",
+                s3Bucket = bucket,
+            )
+        val creator =
+            LocalStackCreator(
+                user = user,
+                store = SdkLocalStackStore(minio.s3Client(), { minio.s3Client() }, EventBus()),
+                writer = LocalStackWriter("it"),
+                grafana = grafana,
+                dashboards =
+                    LocalStackDashboards(
+                        grafana,
+                        PackagedDashboardTree(GrafanaDashboardCatalog.discover(), PackagedKitDashboards.discover()),
+                    ),
+                eventBus = eventBus,
+            )
+
+        creator.create(stack, HOME)
+
+        assertThat(events.filterIsInstance<Event.LocalStack.ReloadRefused>()).isEmpty()
+        assertThat(events.filterIsInstance<Event.LocalStack.DatasourcesReloaded>()).hasSize(1)
+        assertThat(events.filterIsInstance<Event.LocalStack.DashboardsInstalled>().single().reloaded).isTrue()
+        assertThat(datasourceUids()).contains("mimir-acme", "loki-acme", "tempo-acme")
+        assertThat(project.containerIds(services)).isEqualTo(before)
+        assertThat(listing()).isEqualTo(listingBefore)
+    }
+
+    /** Collects every event into [events]. */
+    private class CollectingListener(
+        private val events: MutableList<Event>,
+    ) : EventListener {
+        override fun onEvent(envelope: EventEnvelope) {
+            events += envelope.event
+        }
+
+        override fun close() = Unit
+    }
+
+    @Test
+    @Order(5)
     fun `local Grafana has a cluster's datasource uids for default and acme, and reloads them as the server admin`() {
         val clusterUids =
             GrafanaDatasourceSet
@@ -470,7 +544,7 @@ class LocalStackReadOnlyIntegrationTest {
     }
 
     @Test
-    @Order(5)
+    @Order(6)
     fun `local dashboards --from loads an edit into the running Grafana with no container recreated`() {
         val services = ComposeFile.fromYaml(File(stack, Constants.LocalStack.COMPOSE_FILE).readText()).services.keys
         val before = project.containerIds(services)

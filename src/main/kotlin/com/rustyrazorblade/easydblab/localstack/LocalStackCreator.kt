@@ -20,9 +20,10 @@ import java.io.File
  *    [Event.LocalStack.StoreUnreadable] and nothing is written;
  * 5. the tenants are listed again, the stack is composed and its owned files written, and the
  *    packaged dashboards installed in `dashboards/current`;
- * 6. on a re-run, a Grafana answering on the stack's port reloads its datasources and dashboards,
- *    so a new tenant shows with no restart. A first run never reloads: whatever answers on the
- *    port is not this stack's.
+ * 6. on a re-run, a Grafana answering on the stack's port reloads its datasources, then its dashboards,
+ *    so a new tenant shows with no restart; a refused reload is [Event.LocalStack.ReloadRefused] (the
+ *    files are rewritten, a restart loads them) and fails the command. A re-run keeps the manifest's
+ *    ports. A first run never reloads: whatever answers on the port is not this stack's.
  *
  * It never opens `data/`, `cache/`, `grafana-data/` or `compose.override.yml`, and never writes to
  * the bucket.
@@ -78,11 +79,13 @@ class LocalStackCreator(
             LocalStackSpec(
                 mode = LocalStackSpec.Mode.Live(bucket = bucket, region = region, awsProfile = profile, home = homeTenant),
                 tenants = store.tenants(bucket, region, homeTenant).all,
+                // A re-run keeps the ports the stack runs on.
+                grafanaPort = existing?.grafanaPort ?: Constants.LocalStack.DEFAULT_GRAFANA_PORT,
+                documentsPort = existing?.documentsPort ?: Constants.LocalStack.DEFAULT_DOCUMENTS_PORT,
             )
         val result = writer.write(directory, spec, LocalStackComposer.compose(spec))
         val manifest = result.manifest
         val reload = result.rewrite && grafana.isRunning(manifest.grafanaPort)
-        val installed = dashboards.install(directory, manifest, source = null, reload = reload)
         val grafanaUrl = grafanaUrl(manifest.grafanaPort)
         eventBus.emit(
             Event.LocalStack.Written(
@@ -94,10 +97,13 @@ class LocalStackCreator(
                 grafanaUrl = grafanaUrl,
             ),
         )
-        eventBus.emit(installed)
-        if (reload) {
-            grafana.reloadDatasources(manifest.grafanaPort)
-            eventBus.emit(Event.LocalStack.DatasourcesReloaded(grafanaUrl))
+        // Datasources first: the dashboards name their datasources by uid.
+        eventBus.reportingReloadRefusal(directory, grafanaUrl) {
+            if (reload) {
+                grafana.reloadDatasources(manifest.grafanaPort)
+                eventBus.emit(Event.LocalStack.DatasourcesReloaded(grafanaUrl))
+            }
+            eventBus.emit(dashboards.install(directory, manifest, source = null, reload = reload))
         }
     }
 }

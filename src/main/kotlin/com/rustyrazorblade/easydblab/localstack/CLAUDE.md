@@ -48,8 +48,11 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
   written), `LocalStackStore.tenants(bucket, region, home)` (`TenantDirectory` over a client for the bucket's
   region), compose and write with `Mode.Live.region` the bucket's region (the signer signs for it), packaged
   dashboards, then
-  `LocalStack.Written` (files, edited files, tenants). On a re-run only (`rewrite`), a Grafana answering on the
-  manifest's port reloads its datasources and dashboards (`LocalStack.DatasourcesReloaded`).
+  `LocalStack.Written` (files, edited files, tenants). A re-run keeps the manifest's ports. On a re-run only
+  (`rewrite`), a Grafana answering on the manifest's port reloads its datasources, then its dashboards
+  (`LocalStack.DatasourcesReloaded`). A refused reload (`GrafanaReloadRefused` from `LocalGrafana`) is reported by
+  `reportingReloadRefusal` as `LocalStack.ReloadRefused` (the files are rewritten; `docker compose restart grafana`
+  loads them) and fails the command; `local dashboards` reports a refused reload the same way.
 - `observability local dashboards <dir> [--from <dir>]` → `LocalDashboardsRefresher`: reads the manifest, checks
   `LocalGrafana.isRunning` on its port (`LocalStack.GrafanaNotRunning` and nothing changed when it does not
   answer), installs and reloads (`LocalStack.DashboardsInstalled`, "Using packaged dashboards" when no `--from`).
@@ -92,3 +95,13 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
   `cache/<component>`, Grafana's under `grafana-data/`; the backends and Grafana run as root so they can
   write the directories docker creates.
 - `compose.yml` strings are double-quoted: compose refuses a bare number where it wants a string.
+- Every configuration file sits in its component's directory, `config/<component>/`, and compose mounts the
+  directory, never the file (`LocalStackComposer.configMount`): the writer replaces a file by renaming a new one over
+  it, and a container that bind-mounts the file itself keeps the old one, so Grafana's provisioning reload failed
+  with "no such file". Both nginx services read `/etc/easy-db-lab/nginx/nginx.conf` through `-c`
+  (`LocalStackComposer.nginxCommand`).
+- The live Loki runs with `AWS_RESPONSE_CHECKSUM_VALIDATION` and `AWS_REQUEST_CHECKSUM_CALCULATION` set to
+  `when_required` (`GatedStore.lokiEnvironment`): its aws-sdk-go-v2 otherwise adds an `x-amz-checksum-mode` header
+  the signer does not sign, and S3 refuses every read.
+- Both local Grafanas wait `Constants.LocalStack.GRAFANA_DATAPROXY_TIMEOUT_SECONDS` (300s) for a datasource
+  (`GF_DATAPROXY_TIMEOUT`): a cold query over older data outlasted the 30s default. A cluster's Grafana keeps it.

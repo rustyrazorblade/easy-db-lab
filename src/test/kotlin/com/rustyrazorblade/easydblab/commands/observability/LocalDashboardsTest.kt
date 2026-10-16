@@ -132,6 +132,19 @@ class LocalDashboardsTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a refused dashboards reload fails with a typed event that says the tree was replaced`() {
+        val dir = stack()
+        grafana.refuses = "dashboards"
+
+        assertThatThrownBy { refresh(dir.path) }.isInstanceOf(CommandFailedException::class.java)
+
+        val refused = events.filterIsInstance<Event.LocalStack.ReloadRefused>().single()
+        assertThat(refused.kind).isEqualTo("dashboards")
+        assertThat(refused.grafanaUrl).isEqualTo("http://127.0.0.1:3300")
+        assertThat(events.filterIsInstance<Event.LocalStack.DashboardsInstalled>()).isEmpty()
+    }
+
+    @Test
     fun `a --from directory with a misplaced dashboard changes nothing`() {
         val dir = stack()
         val before = tree(dir)

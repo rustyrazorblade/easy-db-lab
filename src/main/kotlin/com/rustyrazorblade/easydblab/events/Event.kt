@@ -6289,6 +6289,33 @@ sealed interface Event {
         }
 
         /**
+         * A running Grafana refused to reload what the command had already rewritten, so it still
+         * shows what it loaded before. The files on disk are the new ones; a restart loads them.
+         *
+         * @property directory the stack directory.
+         * @property grafanaUrl the Grafana that refused.
+         * @property kind `datasources` or `dashboards`.
+         * @property status Grafana's HTTP status.
+         * @property reason Grafana's answer.
+         */
+        @Serializable
+        @SerialName("LocalStack.ReloadRefused")
+        data class ReloadRefused(
+            val directory: String,
+            val grafanaUrl: String,
+            val kind: String,
+            val status: Int,
+            val reason: String,
+        ) : LocalStack {
+            override fun toDisplayString(): String =
+                "The stack's files in $directory were rewritten, but Grafana at $grafanaUrl refused to reload its $kind " +
+                    "(HTTP $status: $reason), so it still shows the old ones.\n" +
+                    "Load them with: cd $directory && docker compose restart grafana"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * `local dashboards` found no Grafana answering for the stack, and changed nothing.
          *
          * @property directory the stack directory.

@@ -13,10 +13,12 @@ import com.rustyrazorblade.easydblab.export.ExportStackFiles
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.localstack.ComposeFile
 import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
+import com.rustyrazorblade.easydblab.localstack.GrafanaReloadRefused
 import com.rustyrazorblade.easydblab.localstack.LocalGrafana
 import com.rustyrazorblade.easydblab.localstack.LocalStackCreator
 import com.rustyrazorblade.easydblab.localstack.LocalStackDashboards
 import com.rustyrazorblade.easydblab.localstack.LocalStackDirectoryRefused
+import com.rustyrazorblade.easydblab.localstack.LocalStackManifest
 import com.rustyrazorblade.easydblab.localstack.LocalStackStore
 import com.rustyrazorblade.easydblab.localstack.LocalStackWriter
 import com.rustyrazorblade.easydblab.localstack.StoreReadResult
@@ -284,6 +286,52 @@ class LocalCreateTest : BaseKoinTest() {
         assertThat(events.filterIsInstance<Event.LocalStack.DatasourcesReloaded>()).hasSize(1)
     }
 
+    /** A dashboard reads its datasources by uid, so the new tenant's datasources must be there first. */
+    @Test
+    fun `a re-run reloads the datasources before the dashboards`() {
+        val dir = stack()
+        create(dir.path)
+        grafana.running = true
+
+        create(dir.path)
+
+        assertThat(grafana.reloads).containsExactly("datasources", "dashboards")
+    }
+
+    @Test
+    fun `a refused reload fails with a typed event that says the files were rewritten and how to load them`() {
+        val dir = stack()
+        create(dir.path)
+        storeTenants += "beta"
+        grafana.running = true
+        grafana.refuses = "datasources"
+
+        assertThatThrownBy { create(dir.path) }.isInstanceOf(CommandFailedException::class.java)
+
+        val refused = events.filterIsInstance<Event.LocalStack.ReloadRefused>().single()
+        assertThat(refused.kind).isEqualTo("datasources")
+        assertThat(refused.status).isEqualTo(500)
+        assertThat(refused.isError()).isTrue()
+        assertThat(refused.toDisplayString())
+            .contains("were rewritten", "refused to reload its datasources", "HTTP 500", "docker compose restart grafana", dir.path)
+        assertThat(File(dir, "config/grafana/provisioning/datasources/datasources.yaml").readText()).contains("mimir-beta")
+        assertThat(grafana.reloads).doesNotContain("dashboards")
+    }
+
+    @Test
+    fun `a re-run keeps the Grafana and documents ports the manifest records`() {
+        val dir = stack()
+        create(dir.path)
+        val manifestFile = File(dir, Constants.LocalStack.MANIFEST_FILE)
+        manifestFile.writeText(LocalStackManifest.read(manifestFile).copy(grafanaPort = 3300, documentsPort = 3380).toJson())
+
+        create(dir.path)
+
+        val grafanaService = ComposeFile.fromYaml(File(dir, Constants.LocalStack.COMPOSE_FILE).readText()).services.getValue("grafana")
+        assertThat(grafanaService.ports).containsExactly("127.0.0.1:3300:3000")
+        assertThat(LocalStackManifest.read(manifestFile).documentsPort).isEqualTo(3380)
+    }
+
     @Test
     fun `a first create never reloads a Grafana that already answers on the port, which is not this stack's`() {
         grafana.running = true
@@ -295,19 +343,39 @@ class LocalCreateTest : BaseKoinTest() {
     }
 }
 
-/** A local Grafana that is up or down as the test sets it, and records the reloads it was asked for. */
+/**
+ * A local Grafana that is up or down as the test sets it, records the reloads it was asked for in
+ * order, and refuses the reload of the kind in [refuses] as Grafana does, with an HTTP error.
+ */
 class FakeLocalGrafana : LocalGrafana {
     var running = false
+    var refuses: String? = null
     val datasourceReloads = mutableListOf<Int>()
     val dashboardReloads = mutableListOf<Int>()
+    val reloads = mutableListOf<String>()
 
     override fun isRunning(port: Int): Boolean = running
 
     override fun reloadDatasources(port: Int) {
+        reload("datasources")
         datasourceReloads += port
     }
 
     override fun reloadDashboards(port: Int) {
+        reload("dashboards")
         dashboardReloads += port
+    }
+
+    private fun reload(kind: String) {
+        if (refuses ==
+            kind
+        ) {
+            throw GrafanaReloadRefused(kind, HTTP_SERVER_ERROR, "open /etc/grafana/provisioning/$kind/$kind.yaml: no such file")
+        }
+        reloads += kind
+    }
+
+    private companion object {
+        const val HTTP_SERVER_ERROR = 500
     }
 }

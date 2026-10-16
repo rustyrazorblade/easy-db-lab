@@ -132,15 +132,20 @@ internal class OpenSearchServiceLinkedRoleRetryTest {
     }
 
     @Test
-    fun `the retry gives up after its bound`() {
+    fun `the retry gives up after its bound and says the role this run created is still refused`() {
         roleIsCreated()
         whenever(openSearch.createDomain(any<CreateDomainRequest>())).thenThrow(roleNotVisible)
 
         service.ensureServiceLinkedRole()
 
         assertThatThrownBy { service.createDomain(config) }
-            .isInstanceOf(ValidationException::class.java)
-            .hasMessageContaining("service-linked role")
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasCause(roleNotVisible)
+            .hasMessageContaining("created by this run")
+            .hasMessageContaining(
+                "after ${Constants.OpenSearch.SERVICE_LINKED_ROLE_MAX_ATTEMPTS} attempts " +
+                    "${Constants.OpenSearch.SERVICE_LINKED_ROLE_RETRY_INTERVAL_MS} ms apart",
+            ).hasMessageContaining("re-run once IAM has propagated")
         verify(openSearch, times(Constants.OpenSearch.SERVICE_LINKED_ROLE_MAX_ATTEMPTS))
             .createDomain(any<CreateDomainRequest>())
     }

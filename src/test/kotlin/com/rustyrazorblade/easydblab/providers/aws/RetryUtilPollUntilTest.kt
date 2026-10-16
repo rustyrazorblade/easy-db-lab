@@ -29,6 +29,12 @@ class RetryUtilPollUntilTest {
         ) { results[looks.getAndIncrement()]() }
 
     @Test
+    fun `a retried look is logged with its attempt number and the bound`() {
+        assertThat(pollRetryWarning("create-thing", attempt = 3, maxAttempts = 12))
+            .isEqualTo("create-thing: look 3 of 12 failed; retrying")
+    }
+
+    @Test
     fun `returns the first result that satisfies the condition and looks no further`() {
         val result = poll(maxAttempts = 5, results = listOf({ "pending" }, { "ready" }, { "never" }))
 

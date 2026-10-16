@@ -30,7 +30,7 @@ fun <T> pollUntil(
 ): T {
     val retry = Retry.of(operationName, RetryUtil.createPollUntilRetryConfig(maxAttempts, interval, done, deadline, transient))
     retry.eventPublisher.onRetry { event ->
-        event.lastThrowable?.let { e -> log.warn(e) { "$operationName: a look failed; retrying" } }
+        event.lastThrowable?.let { e -> log.warn(e) { pollRetryWarning(operationName, event.numberOfRetryAttempts, maxAttempts) } }
     }
     // Checked, so a look that throws a checked exception (OkHttp's IOException) is retried too.
     return try {
@@ -40,3 +40,13 @@ fun <T> pollUntil(
         throw e
     }
 }
+
+/**
+ * The warning [pollUntil] logs for a failed look it will retry: which look of how many it was, so
+ * the log shows how close a poll came to its bound.
+ */
+internal fun pollRetryWarning(
+    operationName: String,
+    attempt: Int,
+    maxAttempts: Int,
+): String = "$operationName: look $attempt of $maxAttempts failed; retrying"

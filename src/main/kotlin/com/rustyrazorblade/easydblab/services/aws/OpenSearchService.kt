@@ -16,6 +16,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.opensearch.model.ClusterConfig
 import software.amazon.awssdk.services.opensearch.model.CreateDomainRequest
+import software.amazon.awssdk.services.opensearch.model.CreateDomainResponse
 import software.amazon.awssdk.services.opensearch.model.DeleteDomainRequest
 import software.amazon.awssdk.services.opensearch.model.DescribeDomainRequest
 import software.amazon.awssdk.services.opensearch.model.DomainEndpointOptions
@@ -179,14 +180,7 @@ class OpenSearchService(
         // that refusal. A role that was already there gets no retry.
         val response =
             if (serviceLinkedRoleJustCreated) {
-                pollUntil(
-                    "create-opensearch-domain-new-service-linked-role",
-                    maxAttempts = Constants.OpenSearch.SERVICE_LINKED_ROLE_MAX_ATTEMPTS,
-                    interval = serviceLinkedRoleRetryInterval,
-                    transient = ::isServiceLinkedRoleNotVisible,
-                    done = { true },
-                    poll = create,
-                )
+                createWithNewServiceLinkedRole(config.domainName, create)
             } else {
                 create()
             }
@@ -204,6 +198,37 @@ class OpenSearchService(
             state = DomainState.fromDomainStatus(domainStatus.processing(), domainStatus.deleted()),
         )
     }
+
+    /**
+     * Runs [create] until OpenSearch sees the service-linked role this run just created, within
+     * the bound. When the bound runs out and OpenSearch still refuses the role, the refusal is
+     * wrapped in an error that says the role was created by this run and to re-run once IAM has
+     * propagated, since the bare ValidationException asks the operator to create a role that
+     * already exists.
+     */
+    private fun createWithNewServiceLinkedRole(
+        domainName: String,
+        create: () -> CreateDomainResponse,
+    ): CreateDomainResponse =
+        try {
+            pollUntil(
+                "create-opensearch-domain-new-service-linked-role",
+                maxAttempts = Constants.OpenSearch.SERVICE_LINKED_ROLE_MAX_ATTEMPTS,
+                interval = serviceLinkedRoleRetryInterval,
+                transient = ::isServiceLinkedRoleNotVisible,
+                done = { true },
+                poll = create,
+            )
+        } catch (e: ValidationException) {
+            if (!isServiceLinkedRoleNotVisible(e)) throw e
+            val message =
+                "OpenSearch domain $domainName: the OpenSearch service-linked role was created by this run, " +
+                    "but OpenSearch still refused it after ${Constants.OpenSearch.SERVICE_LINKED_ROLE_MAX_ATTEMPTS} attempts " +
+                    "${Constants.OpenSearch.SERVICE_LINKED_ROLE_RETRY_INTERVAL_MS} ms apart; " +
+                    "re-run once IAM has propagated the new role"
+            log.error(e) { message }
+            throw IllegalStateException(message, e)
+        }
 
     private fun buildCreateDomainRequest(config: OpenSearchDomainConfig): CreateDomainRequest {
         val tags =

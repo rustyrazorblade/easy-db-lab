@@ -43,8 +43,9 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
 - `observability local create <dir> [--tenant]` → `LocalStackCreator`: tenant rule, `refuseForeign`, profile and
   bucket from `User`, `LocalStackStore.check` (SDK: bucket region from `BucketRegion` with the profile-region
   client, then `HeadBucket` and a one-key list of `mimir/` with a client for the bucket's region from
-  `S3ClientForRegion`, since S3 answers a `HeadBucket` in another region with a 301;
-  `Event.LocalStack.StoreUnreadable(profile, awsErrorCode)` and `CommandFailedException` on failure, nothing
+  `S3ClientForRegion`, since S3 answers a `HeadBucket` in another region with a 301; an
+  `S3Exception` is its error code, any other SDK exception its code or class and message, which covers an expired
+  SSO session, the SSO OIDC service's `ExpiredTokenException`; `Event.LocalStack.StoreUnreadable(profile, awsErrorCode)` and `CommandFailedException` on failure, nothing
   written), `LocalStackStore.tenants(bucket, region, home)` (`TenantDirectory` over a client for the bucket's
   region), compose and write with `Mode.Live.region` the bucket's region (the signer signs for it), packaged
   dashboards, then

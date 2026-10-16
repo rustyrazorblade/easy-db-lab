@@ -185,6 +185,14 @@ Open it with: unzip /Users/you/acme-export.zip, then docker compose up in the di
 
 ### What the export checks
 
+- Your credentials must be able to read the account bucket. The export checks this first, the way `local create` does, and writes nothing when they cannot. An expired SSO session looks like this:
+
+  ```
+  Cannot read the account bucket with profile lab: ExpiredTokenException: The SSO session associated with this profile has expired or is otherwise invalid. ...
+  Nothing was written. Log in and run the command again: aws sso login --profile lab
+  ```
+
+  A profile that holds access keys instead of an AWS profile is named as such, with no login hint.
 - The path must be a new `.zip` file in a directory that exists. An existing file is never overwritten.
 - The command lists everything it will copy, prints the size, and fails before copying anything when the disk the zip goes to does not have that much free space.
 - A tenant with no metrics, logs or traces fails and names the prefixes it looked under.
@@ -211,6 +219,29 @@ docker compose up -d
 Open <http://127.0.0.1:3000>. The datasources and dashboards are the ones a cluster has, for the exported tenant; the documents view (<http://127.0.0.1:3080>) serves the tenant's reports from the zip.
 
 The copied data is in `data/` and is mounted read-only into every component, so opening the export never changes it. Nothing compacts, merges or deletes. Tempo logs `failed to write tenant index ... read-only file system` each time it lists its blocks; that is expected and harmless. Grafana installs no plugin at start, since with no network the download would stop it, and no packaged dashboard needs one.
+
+#### With and without a network
+
+The exported `compose.yml` needs no network: every backend reads `data/` from disk, nothing uses AWS credentials, and no service waits on anything outside the project. With no network, it starts and shows its data. Grafana logs that it could not install its default apps, and that does not stop it.
+
+The compose file does not cut the stack off from the network. It runs on an ordinary compose project network, so when the machine has a network the containers can reach it. Mimir, Loki and Tempo run with usage reporting off. Grafana runs with its own defaults: it tries to install its default apps, checks grafana.com for updates, and sends anonymous usage statistics.
+
+To prove that the stack opens with no outbound connection at all, put it on an internal network. Write a `compose.override.yml` beside `compose.yml` (the tool never writes or reads that file):
+
+```yaml
+networks:
+  default:
+    internal: true
+```
+
+`docker compose up -d` then starts the same stack, and no container can reach anything outside the project. Docker publishes no port from an internal network, so Grafana is not on <http://127.0.0.1:3000> while the override is in place. Check it from inside the stack instead:
+
+```bash
+docker compose exec -T grafana wget -q -O - http://127.0.0.1:3000/api/health
+docker compose exec -T grafana wget -q -O - 'http://127.0.0.1:3000/api/datasources/proxy/uid/mimir/api/v1/labels'
+```
+
+Remove the override and run `docker compose up -d` again to get the browser view back.
 
 `observability local dashboards` works on an opened export, as on a live stack. `observability local create` refuses an opened export's directory, so it never turns the export into a live stack.
 

@@ -81,7 +81,13 @@ object GrafanaViewPart {
             override fun config(): String =
                 TemplateService
                     .Template(LocalStackComposer.resource(OFFLINE_DOCUMENTS_TEMPLATE), emptyMap())
-                    .substitute(mapOf("DOCUMENTS_WEB_PORT" to Constants.Grafana.Documents.WEB_PORT.toString()))
+                    .substitute(
+                        mapOf(
+                            "DOCUMENTS_WEB_PORT" to
+                                Constants.Grafana.Documents.WEB_PORT
+                                    .toString(),
+                        ),
+                    )
 
             override val mounts: List<ComposeMount>
                 get() = listOf(ComposeMount.bind("./$dataDir", OFFLINE_DOCUMENTS_ROOT, readOnly = true))

@@ -50,7 +50,12 @@ class TempoTenantIndexWriter(
     fun index(directory: BlockDirectory): TempoTenantIndex =
         TempoTenantIndex(
             createdAt = clock.instant().toString(),
-            meta = indexableBlocks(WHAT, directory, emptySet()).map { Json.parseToJsonElement(checkNotNull(it.meta).decodeToString()) as JsonObject },
+            meta =
+                indexableBlocks(
+                    WHAT,
+                    directory,
+                    emptySet(),
+                ).map { Json.parseToJsonElement(checkNotNull(it.meta).decodeToString()) as JsonObject },
             compacted = emptyList(),
         )
 

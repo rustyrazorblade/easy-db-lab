@@ -33,7 +33,10 @@ class ExportModuleTest : BaseKoinTest() {
 
     @Test
     fun `the root command routes observability export with an experiment and its tenant`() {
-        val parsed = CommandLine(EasyDBLabCommand()).parseArgs("observability", "export", "out.zip", "--experiment", "e", "--tenant", "acme")
+        val parsed =
+            CommandLine(
+                EasyDBLabCommand(),
+            ).parseArgs("observability", "export", "out.zip", "--experiment", "e", "--tenant", "acme")
 
         val command = generateSequence(parsed) { it.subcommand() }.last().commandSpec().userObject() as ObservabilityExport
         assertThat(command.path.path).isEqualTo("out.zip")

@@ -115,7 +115,9 @@ class ObservabilityExportTest : BaseKoinTest() {
     @Test
     fun `an experiment inside a workspace uses the workspace's tenant and says so`() {
         whenever(stateManager.exists()).thenReturn(true)
-        whenever(stateManager.load()).thenReturn(ClusterState(name = "lab", versions = mutableMapOf(), initConfig = InitConfig(tenant = "acme")))
+        whenever(
+            stateManager.load(),
+        ).thenReturn(ClusterState(name = "lab", versions = mutableMapOf(), initConfig = InitConfig(tenant = "acme")))
 
         assertThatThrownBy { export(zip(), "--experiment", "e") }
 

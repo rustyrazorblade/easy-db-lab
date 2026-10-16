@@ -19,12 +19,21 @@ import org.junit.jupiter.api.Test
  * carried by the export instead.
  */
 class OfflineGrafanaPluginsTest {
-    private val context = DashboardInstallContext(cluster = null, experiment = null, tenants = TenantSet.of("acme", listOf("acme")), documentsUrl = "http://127.0.0.1:3080")
+    private val context =
+        DashboardInstallContext(
+            cluster = null,
+            experiment = null,
+            tenants = TenantSet.of("acme", listOf("acme")),
+            documentsUrl = "http://127.0.0.1:3080",
+        )
 
     /** Every `type` (panel, datasource, query) named anywhere in [element]. */
     private fun types(element: JsonElement): List<String> =
         when (element) {
-            is JsonObject -> element.entries.flatMap { (key, value) -> (if (key == "type" && value is JsonPrimitive) listOf(value.content) else emptyList()) + types(value) }
+            is JsonObject -> {
+                val own = (element["type"] as? JsonPrimitive)?.let { listOf(it.content) }.orEmpty()
+                own + element.values.flatMap(::types)
+            }
             is JsonArray -> element.flatMap(::types)
             else -> emptyList()
         }

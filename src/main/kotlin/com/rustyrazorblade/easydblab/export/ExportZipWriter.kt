@@ -98,9 +98,10 @@ class ExportZipWriter(
             try {
                 Files.createLink(zip.toPath(), partial.toPath())
                 true
-            } catch (e: FileSystemException) {
+            } catch (e: FileAlreadyExistsException) {
                 // A path that appeared meanwhile is someone else's file: never replaced.
-                if (e is FileAlreadyExistsException) throw IOException("$zip appeared while the export was written; it was left as it is", e)
+                throw IOException("$zip appeared while the export was written; it was left as it is", e)
+            } catch (_: FileSystemException) {
                 false
             } catch (_: UnsupportedOperationException) {
                 false

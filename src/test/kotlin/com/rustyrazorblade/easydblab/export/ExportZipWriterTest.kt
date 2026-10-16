@@ -20,7 +20,9 @@ class ExportZipWriterTest {
     private val writer = ExportZipWriter()
 
     private fun entries(zip: File): Map<String, String> =
-        ZipFile(zip).use { file -> file.entries().asSequence().associate { it.name to file.getInputStream(it).readBytes().decodeToString() } }
+        ZipFile(zip).use { file ->
+            file.entries().asSequence().associate { it.name to file.getInputStream(it).readBytes().decodeToString() }
+        }
 
     @Test
     fun `a path in a directory that does not exist is refused`() {

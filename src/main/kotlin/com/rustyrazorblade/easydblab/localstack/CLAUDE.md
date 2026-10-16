@@ -35,7 +35,8 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
    `DashboardTreeSource` with the live context (`cluster` and `experiment` null, the manifest's tenants, the
    documents URL on its port) through `GrafanaDashboardTreeWriter.render`, and `DashboardTreeInstaller` stages
    it in `dashboards/.staging-*`, renames the old `current` aside, renames the staged tree into place and
-   removes the old one. Sources: `PackagedDashboardTree` (the core catalog plus every packaged kit,
+   removes the old one. When that rename fails it renames the old tree back; it first removes any
+   `.previous-*` a stopped install left. Sources: `PackagedDashboardTree` (the core catalog plus every packaged kit,
    `PackagedKitDashboards`, one folder per instance as a cluster installs it: `<kit>` and `<kit>-<extension>`)
    and `DirectoryDashboardTree` (`--from`, `<folder>/<file>.json` only).
 
@@ -72,6 +73,18 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
 - Every component reaches S3 only through `store-gate:8080`, an nginx that passes GET and HEAD to the
   signer and answers 403 to anything else; each refused request is logged a second time on a line
   starting `REFUSED`.
+- The signer signs any method with the operator's credentials and Grafana runs anonymous Admin, so no
+  service but the gate and the store check may reach it (`Constants.LocalStack.Networks`, typed
+  `ComposeService.networks` / `ComposeFile.networks` / `ComposePart.networks`): `store-signer` is on the
+  internal `store-access` network with `store-gate` and `store-check`, plus `store-egress`, which no other
+  service joins; the gate is also on `default`, where everything else is. The export's reader uses the
+  same part. `LocalStackComposerTest` and `ExportStacksTest` assert it with the test helper
+  `ComposeNetworks`; `LocalStackReadOnlyIntegrationTest` probes from inside Grafana, Mimir and the
+  documents view (a busybox in the container's network namespace) that the signer is unreachable by name
+  and address. A test override that points the signer at MinIO puts MinIO on `store-egress`, never on
+  `default`. Both local Grafanas also allow their data source proxy only the stack's backends
+  (`GrafanaServerSettings.dataSourceProxyAllowList`, `GF_SECURITY_DATA_SOURCE_PROXY_WHITELIST`, from
+  `BackendUrls.LOCAL_COMPOSE.hostPorts()`).
 - Mimir and Loki run the cluster's `mimir.yaml` and `loki.yaml` byte for byte with flag overrides
   (read-path targets, usage reporting off, the gate as endpoint, placeholder keys; Mimir's four
   `memcached:11211` cache addresses). Tempo runs as the single binary with `TempoLocalConfig.live`, the

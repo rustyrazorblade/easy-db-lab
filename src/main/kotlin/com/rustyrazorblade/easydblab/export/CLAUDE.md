@@ -10,7 +10,10 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
 1. `ExportSelection.of(ExportSelectorChoice, workspaceTenant)` checks the options into a sealed `ExportSelector`
    (`Tenant`, `Clusters`, `Experiment`). `--tenant` alone is the tenant selector; beside `--experiment` it names
    the experiment's tenant (else the workspace's, else `default`, recorded as a `TenantChoice` with its source).
-   No kind or two kinds throw `ExportSelectorRefused` naming all three. The options are a non-exclusive picocli
+   No kind or two kinds throw `ExportSelectorRefused` naming all three. A `--cluster` value that is not a
+   cluster's `<name>-<uuid>` (`Constants.Observability.CLUSTER_ID_PATTERN`) throws `ClusterIdRefused`, which the
+   command reports as `Export.InvalidCluster`: the values go into PromQL, LogQL and TraceQL selectors unescaped,
+   so nothing else may. The options are a non-exclusive picocli
    `@ArgGroup` (`ExportSelectorOptions`): an exclusive group would refuse `--experiment e --tenant t`.
 2. `ExportTarget.of(path)`: a new `.zip` in an existing directory; the zip's one directory is the name without
    `.zip`.
@@ -50,7 +53,9 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
   install-time pass for the export (tenant only; no cluster or experiment), `README.txt` (packaged template; one
   `docker pull` per image the compose names), and the local-stack manifest (mode `offline`), so `local dashboards`
   works on an opened export and `local create` refuses it.
-- `ExportSignal` / `ExportStepFailed` / `exportStep` — every step names its signal and what it was doing.
+- `ExportSignal` / `ExportStepFailed` / `exportStep` — every step names its signal and what it was doing,
+  listings, clean-up, the scratch and work directories and the zip file and its move (`stack`) included, so every
+  failure becomes `Export.Failed`. A query export's `Export.Failed` also lists the stacks' saved `compose.log`s.
 
 ## Flow (query export: `--cluster`, `--experiment`), package `export.query`
 
@@ -96,7 +101,17 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
    `Export.QueryCompleted`.
 
 Both stacks are `docker compose down`ed when the export ends (`DockerExportStack`, `ComposeCli`/`DockerComposeCli`).
-`StackRuntime.beforeStart` is where a test writes a project's `compose.override.yml`; production writes none.
+Before every `down`, on close and after a failed start, `ProjectRemoval` saves `docker compose -p <project> logs
+--no-color --timestamps` as `compose.log` in the project's directory (`Constants.Export.Query.STACK_LOG_FILE`); a
+failed start names it, and so does `Export.Failed`. Every `down`'s exit code is checked: a non-zero one emits
+`Export.StackNotRemoved` (with `docker compose -p <project> down --remove-orphans`) and never hides the export's own
+outcome; after a failed start it is attached as a suppressed exception. A `/ready` timeout names the last status and
+body or error. Each stack makes one direct `OkHttpClient` (`StackRuntime.client`) that every `http(tenant)` and
+`/ready` look shares, and evicts its pool on close. thanos's `run` that outlasts its timeout (`ComposeResult.timedOut`)
+is followed by `kill`, `down --remove-orphans` and `ps -a -q`; it fails either way, saying the container may still be
+running unless all three confirm it is gone, and `MetricsExport` then deletes no source block and writes no index.
+`StackRuntime.beforeStart` is where a test writes a project's `compose.override.yml`; production writes none. The
+reader's override puts MinIO on the signer's `store-egress` network (see `localstack/CLAUDE.md`).
 
 ## Tests
 

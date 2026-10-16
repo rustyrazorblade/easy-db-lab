@@ -113,7 +113,7 @@ object BackendsPart {
                     "-common.compactor-address=http://127.0.0.1:${Constants.K8s.LOKI_HTTP_PORT}",
                     "-reporting.enabled=false",
                 ) + storage.lokiFlags,
-            environment = storage.environment,
+            environment = storage.lokiEnvironment,
             volumes =
                 listOf(
                     LocalStackComposer.configMount(LokiManifestBuilder.CONFIG_FILE, LOKI_CONFIG),

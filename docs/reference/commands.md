@@ -921,7 +921,7 @@ easy-db-lab observability local create ~/lab-local --tenant acme
 | `DIR` | The stack directory (required). Created when missing, used when empty, rewritten when it holds a stack this command wrote. | - |
 | `--tenant` | The home tenant: the tenant of the stable `mimir`, `loki` and `tempo` datasources. Must match `^[a-z][a-z0-9_-]{0,62}$`. | `default` |
 
-Before writing anything, the command checks that the profile can read the account bucket and list `mimir/`. If it cannot, it fails, writes nothing, and names the AWS profile, the AWS error code and `aws sso login --profile <profile>`. It also fails, writing nothing, for a directory that holds files and no `.easy-db-lab-local-stack.json`, and for an easy-db-lab profile that names no AWS profile.
+Before writing anything, the command checks that the profile can read the account bucket and list `mimir/`. If it cannot, it fails, writes nothing, and names the AWS profile, the AWS error code and `aws sso login --profile <profile>`. If it cannot reach S3 at all (a timeout, a refused connection, DNS, TLS), it fails, writes nothing, and says it could not reach S3, with no login hint. It also fails, writing nothing, for a directory that holds files and no `.easy-db-lab-local-stack.json`, and for an easy-db-lab profile that names no AWS profile.
 
 It prints the tenants it found (every directory under `mimir/`, plus the home tenant). Grafana gets the datasources a cluster's Grafana has for them, with the same UIDs.
 

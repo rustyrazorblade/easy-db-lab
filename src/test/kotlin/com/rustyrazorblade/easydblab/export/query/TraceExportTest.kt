@@ -12,6 +12,10 @@ import org.junit.jupiter.api.Test
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * A cluster's traces, searched in the reader's Tempo and replayed to the writer's (design section 7,
@@ -24,11 +28,15 @@ class TraceExportTest {
 
     /** Trace start times (Unix seconds), by trace id. */
     private var traces: Map<String, Long> = emptyMap()
-    private val replayed = mutableListOf<String>()
+    private val replayed = Collections.synchronizedList(mutableListOf<String>())
     private var replayStatus = 200
+
+    /** Runs before each answer, on the caller's thread: a test holds calls here to see how many run at once. */
+    private var beforeAnswer: (BackendCall) -> Unit = {}
 
     private val backends =
         FakeBackends { call ->
+            beforeAnswer(call)
             when {
                 call.route == "/api/search" -> search(call)
                 call.route.startsWith("/api/v2/traces/") -> trace(call.route.removePrefix("/api/v2/traces/"))
@@ -66,7 +74,73 @@ class TraceExportTest {
 
     private val range = TimeRange(start, start.plus(Duration.ofDays(20)))
 
-    private fun export(limit: Int = 10) = TraceExport(backends::forTenant, backends::forTenant, limit).export("acme", "x-1", range)
+    private fun export(
+        limit: Int = 10,
+        parallelism: Int = 1,
+    ) = TraceExport(backends::forTenant, backends::forTenant, limit, parallelism).export("acme", "x-1", range)
+
+    /**
+     * Holds each call [matching] until [expected] of them are in flight together (or a few seconds
+     * pass), and returns the most that ever were.
+     */
+    private fun holdUntilConcurrent(
+        expected: Int,
+        matching: (BackendCall) -> Boolean,
+    ): AtomicInteger {
+        val arrived = CountDownLatch(expected)
+        val inFlight = AtomicInteger()
+        val most = AtomicInteger()
+        beforeAnswer = { call ->
+            if (matching(call)) {
+                most.accumulateAndGet(inFlight.incrementAndGet(), ::maxOf)
+                arrived.countDown()
+                arrived.await(HOLD_SECONDS, TimeUnit.SECONDS)
+                inFlight.decrementAndGet()
+            }
+        }
+        return most
+    }
+
+    private companion object {
+        const val HOLD_SECONDS = 5L
+    }
+
+    @Test
+    fun `traces are fetched and replayed by a fixed pool, as many at once as the pool and never more`() {
+        traces = (1..12).associate { "d%030x".format(it) to start.epochSecond + it * 60L }
+        val most = holdUntilConcurrent(4) { it.route.startsWith("/api/v2/traces/") }
+
+        val count = export(limit = 100, parallelism = 4)
+
+        assertThat(most.get()).isEqualTo(4)
+        assertThat(count.items).isEqualTo(12)
+        assertThat(replayed).hasSize(12)
+    }
+
+    @Test
+    fun `the search windows are searched by the same pool, the halves of a full window together`() {
+        // Twenty days is three windows of at most 168 hours, searched at once.
+        val most = holdUntilConcurrent(3) { it.route == "/api/search" }
+
+        export(parallelism = 3)
+
+        assertThat(most.get()).isEqualTo(3)
+    }
+
+    @Test
+    fun `a search asks for one span per trace, since only the trace ids are used`() {
+        export()
+
+        assertThat(backends.calls.filter { it.route == "/api/search" }.map { it.param("spss") }).containsOnly("1")
+    }
+
+    @Test
+    fun `a failure in one of the parallel fetches fails the export with its own message`() {
+        traces = (1..6).associate { "e%030x".format(it) to start.epochSecond + it * 60L }
+        replayStatus = 503
+
+        assertThatThrownBy { export(parallelism = 3) }.isInstanceOf(IllegalStateException::class.java).hasMessageContaining("503")
+    }
 
     @Test
     fun `no search window is longer than 168 hours, and together they cover the range`() {

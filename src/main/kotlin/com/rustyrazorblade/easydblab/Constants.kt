@@ -1203,14 +1203,23 @@ object Constants {
             /** The value of [LOKI_ENCODING_FLAGS_HEADER] that categorizes the labels. */
             const val LOKI_CATEGORIZE_LABELS = "categorize-labels"
 
-            /** The traces one search of a trace export asks Tempo for; a window that returns this many is split. */
-            const val TRACE_SEARCH_LIMIT = 1000
+            /**
+             * The traces one search of a trace export asks Tempo for; a window that returns this many is
+             * split. A search costs about the same whatever its window, since Tempo scans every block the
+             * window overlaps (a live export took about 5s per search, from a 100s window to a 7h one), so
+             * the number of searches is the cost: at 1000, 146k traces took 475 searches and 43 minutes.
+             * Tempo 3.0.3 answers up to `query_frontend.search.max_result_limit`, 262144.
+             */
+            const val TRACE_SEARCH_LIMIT = 20_000
 
             /**
              * How much longer a trace export waits for the reader's Tempo than Tempo waits for a cold
              * read (`LocalStack.COLD_READ_TIMEOUT_SECONDS`), so Tempo's own answer arrives first.
              */
             const val TEMPO_ANSWER_MARGIN_SECONDS = 30L
+
+            /** How many trace searches, and how many fetches and replays, a trace export runs at once. */
+            const val TRACE_EXPORT_PARALLELISM = 8
 
             /** The longest trace search window, Tempo's `query_frontend.search.max_duration` (spike S3). */
             const val TRACE_SEARCH_MAX_HOURS = 168L

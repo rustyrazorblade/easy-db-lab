@@ -97,7 +97,8 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
    Mimir, whose shipper needs an xattr a macOS bind mount lacks). `LogExport` per cluster (forward pages of
    `query_range` with `X-Loki-Response-Encoding-Flags: categorize-labels`, a nanosecond tie-break, a one-nanosecond
    query when a page shares one, push with structured metadata), then the Loki flush (`LokiTailFlush.SHUTDOWN_PATH`)
-   and `stop loki`. `TraceExport` per cluster (`{ resource.cluster = "x" }`, windows ≤ 168h split in half while full,
+   and `stop loki`. `TraceExport` per cluster (`{ resource.cluster = "x" }`, `limit` 20000 and `spss=1`, windows ≤ 168h split
+   in half while full, searched in waves and then fetched and replayed on a fixed pool of `TRACE_EXPORT_PARALLELISM`,
    fetch by id, only the cluster's resource spans, base64 ids to hex, OTLP/JSON to the writer), then
    `WriterTempoDrain` (idle, then every completed live-store block `flushed`, listed in the work directory) and
    `stop tempo`.

@@ -67,6 +67,18 @@ interface ExportZipSink {
 }
 
 /**
+ * The partial file of an export could not be removed and was left behind. [ExportZipWriter] attaches
+ * it to an export's own failure as suppressed, or, after a complete move, makes it the cause of the
+ * `stack` step's failure; the export's `Failed` event names [partial] either way.
+ *
+ * @property partial the file left behind.
+ */
+class PartialFileLeft(
+    val partial: File,
+    cause: IOException,
+) : IOException("The partial file ${partial.path} could not be removed and was left behind: ${cause.message}", cause)
+
+/**
  * Writes an export's zip atomically.
  *
  * The zip streams to `<path>.partial-<random>` beside the path, so no object is held in memory and
@@ -114,12 +126,12 @@ class ExportZipWriter(
     }
 
     /** Removes [partial]; returns the failure, naming the file left behind, when it cannot be removed. */
-    private fun cleanUp(partial: File): IOException? =
+    private fun cleanUp(partial: File): PartialFileLeft? =
         try {
             removePartial(partial.toPath())
             null
         } catch (e: IOException) {
-            IOException("The partial file ${partial.path} could not be removed and was left behind: ${e.message}", e)
+            PartialFileLeft(partial, e)
         }
 
     private fun moveWithoutOverwrite(

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.time.Instant
 import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipFile
@@ -192,6 +193,41 @@ class TenantExporterTest {
         assertThat(failed.toDisplayString()).contains("traces", "No zip was left at ${target.zip.path}")
         assertThat(dir.list()).describedAs("no zip, no partial file, no scratch").isEmpty()
         assertThat(events.filterIsInstance<Event.Export.Completed>()).isEmpty()
+    }
+
+    /** Writes its partial file as `acme-export.zip.partial-x`, and cannot remove it. */
+    private val stuckPartial = ExportZipWriter(partialSuffix = { "x" }, removePartial = { throw IOException("read-only directory") })
+
+    @Test
+    fun `a failed export whose partial file cannot be removed names the file left behind on screen`() {
+        seed()
+        store.beforeOpen = { key -> if (key == "tempo/acme/t1/data.parquet") store.objects.remove(key) }
+        val target = target()
+        val partial = File(dir, "acme-export.zip.partial-x").path
+
+        assertThatThrownBy { exporter(stuckPartial).export(target, tenant = "acme") }.isInstanceOf(CommandFailedException::class.java)
+
+        val failed = events.filterIsInstance<Event.Export.Failed>().single()
+        assertThat(failed.signal).isEqualTo("traces")
+        assertThat(failed.partialFile).isEqualTo(partial)
+        assertThat(failed.toDisplayString()).contains("No zip was left at ${target.zip.path}", partial, "left behind", "read-only directory")
+    }
+
+    @Test
+    fun `a complete zip whose partial file cannot be removed says the zip is in place and names the file left behind`() {
+        seed()
+        val target = target()
+        val partial = File(dir, "acme-export.zip.partial-x").path
+
+        assertThatThrownBy { exporter(stuckPartial).export(target, tenant = "acme") }.isInstanceOf(CommandFailedException::class.java)
+
+        val failed = events.filterIsInstance<Event.Export.Failed>().single()
+        assertThat(failed.partialFile).isEqualTo(partial)
+        assertThat(failed.zipComplete).isTrue()
+        assertThat(target.zip).isFile()
+        assertThat(failed.toDisplayString())
+            .contains("The zip is complete at ${target.zip.path}", partial, "left behind")
+            .doesNotContain("No zip was left")
     }
 
     @Test

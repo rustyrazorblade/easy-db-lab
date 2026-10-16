@@ -6523,6 +6523,11 @@ sealed interface Event {
          * @property reason the error.
          * @property logs the docker compose logs of a query export's temporary stacks, saved in its
          *   work directory; empty for a tenant export, which runs none.
+         * @property partialFile the export's partial file, when it could not be removed and was left
+         *   behind; null when it was removed.
+         * @property partialFileError why [partialFile] could not be removed.
+         * @property zipComplete true when the zip was already complete at [path] and only the removal
+         *   of [partialFile] failed.
          */
         @Serializable
         @SerialName("Export.Failed")
@@ -6532,10 +6537,24 @@ sealed interface Event {
             val step: String,
             val reason: String,
             val logs: List<String> = emptyList(),
+            val partialFile: String? = null,
+            val partialFileError: String? = null,
+            val zipComplete: Boolean = false,
         ) : Export {
-            override fun toDisplayString(): String =
-                "The export failed copying $signal ($step): $reason\nNo zip was left at $path." +
-                    if (logs.isEmpty()) "" else "\nThe temporary stacks' docker compose logs: ${logs.joinToString(", ")}"
+            override fun toDisplayString(): String {
+                val outcome =
+                    when {
+                        zipComplete ->
+                            "The zip is complete at $path, but the partial file $partialFile could not be removed " +
+                                "($partialFileError) and was left behind; remove it by hand."
+                        partialFile != null ->
+                            "The export failed copying $signal ($step): $reason\nNo zip was left at $path.\n" +
+                                "The partial file $partialFile could not be removed ($partialFileError) and was left behind; " +
+                                "remove it by hand."
+                        else -> "The export failed copying $signal ($step): $reason\nNo zip was left at $path."
+                    }
+                return outcome + if (logs.isEmpty()) "" else "\nThe temporary stacks' docker compose logs: ${logs.joinToString(", ")}"
+            }
 
             override fun isError(): Boolean = true
         }

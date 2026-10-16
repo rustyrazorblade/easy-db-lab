@@ -25,7 +25,7 @@ Core dashboards are standalone JSON files in the top-level `dashboards/<folder>/
 | Datasource config | `src/main/kotlin/.../configuration/grafana/GrafanaDatasourceConfig.kt` |
 | Deploy service | `src/main/kotlin/.../services/GrafanaDeployService.kt` (datasources, tree upload, K8s apply) |
 | Grafana HTTP client | `src/main/kotlin/.../services/GrafanaClient.kt` (dashboard install, folders, annotations) |
-| Install-time pass | `src/main/kotlin/.../configuration/grafana/DashboardDefaults.kt` (picker, cluster and `doc_tenant` defaults) |
+| Install-time pass | `src/main/kotlin/.../configuration/grafana/DashboardDefaults.kt` (picker, cluster, `cluster_b`, `experiment` and `home_tenant` defaults) |
 | Deploy command | `src/main/kotlin/.../commands/grafana/GrafanaUpdateConfig.kt` |
 | Parent command | `src/main/kotlin/.../commands/grafana/Grafana.kt` |
 

@@ -218,6 +218,39 @@ class TenantStoreCopyTest {
     }
 
     @Test
+    fun `a Tempo block merged during the copy is not lost - the listed blocks are copied whole and indexed, the merged one left out`() {
+        tempoBlock("acme", "t1")
+        tempoBlock("acme", "t2")
+        store.beforeOpen = { key ->
+            if (key == "tempo/acme/t1/meta.json") {
+                // The compactor merges t1 and t2 into tM and marks both compacted.
+                tempoBlock("acme", "tM")
+                store.put("tempo/acme/t1/meta.compacted.json", """{"blockID":"t1"}""")
+                store.put("tempo/acme/t2/meta.compacted.json", """{"blockID":"t2"}""")
+            }
+        }
+
+        run()
+
+        assertThat(entries.keys.filter { it.startsWith("data/tempo/") }).containsExactlyInAnyOrder(
+            "data/tempo/acme/t1/data.parquet",
+            "data/tempo/acme/t1/meta.json",
+            "data/tempo/acme/t2/data.parquet",
+            "data/tempo/acme/t2/meta.json",
+            "data/tempo/acme/index.json.gz",
+        )
+        val index = gunzip(entries.getValue("data/tempo/acme/index.json.gz"))
+        assertThat(
+            index.getValue("meta").jsonArray.map {
+                it.jsonObject
+                    .getValue("blockID")
+                    .jsonPrimitive.content
+            },
+        ).containsExactlyInAnyOrder("t1", "t2")
+        assertThat(index.getValue("compacted").jsonArray).isEmpty()
+    }
+
+    @Test
     fun `a Loki index table replaced during the copy is listed and copied again, and the zip holds only the new listing`() {
         store.put("loki/acme/fp/chunk", "c")
         store.put("loki/index/index_1/ingester-a.tsdb.gz", "head a")

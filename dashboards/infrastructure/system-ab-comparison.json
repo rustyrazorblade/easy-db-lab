@@ -875,7 +875,7 @@
       "type": "table"
     },
     {
-      "description": "The report of cluster A's experiment, reports/<tenant>/<experiment>/index.html (for a cluster from before experiments, reports/<tenant>/<name>-<id>/index.html), served read-only by the documents web server. Upload one with easy-db-lab report upload <dir>.",
+      "description": "The report of cluster A's experiment, reports/<tenant>/<experiment>/index.html (for a cluster from before experiments, reports/<tenant>/<name>-<id>/index.html), served read-only by the documents web server. Upload one with easy-db-lab report upload <dir>. When cluster A has no up samples within Lookback, there is no report path and the frame shows the documents server's error page.",
       "gridPos": {
         "h": 14,
         "w": 6,
@@ -896,7 +896,7 @@
       "type": "text"
     },
     {
-      "description": "The report of cluster B's experiment, reports/<tenant>/<experiment>/index.html (for a cluster from before experiments, reports/<tenant>/<name>-<id>/index.html), served read-only by the documents web server. Upload one with easy-db-lab report upload <dir>.",
+      "description": "The report of cluster B's experiment, reports/<tenant>/<experiment>/index.html (for a cluster from before experiments, reports/<tenant>/<name>-<id>/index.html), served read-only by the documents web server. Upload one with easy-db-lab report upload <dir>. When cluster B has no up samples within Lookback, there is no report path and the frame shows the documents server's error page.",
       "gridPos": {
         "h": 14,
         "w": 6,
@@ -992,7 +992,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": false,
           "refId": "A",
@@ -1065,7 +1065,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}))\n  - (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}))\n) / (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}))\n  - (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}))\n) / ((sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"})) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": false,
           "refId": "A",
@@ -1138,7 +1138,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_io_bytes_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": false,
           "refId": "A",
@@ -1211,7 +1211,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": false,
           "refId": "A",
@@ -1284,7 +1284,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": false,
           "refId": "A",
@@ -1357,7 +1357,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": false,
           "refId": "A",
@@ -1872,7 +1872,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((100 * (1 - sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"idle\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n          / sum by (cluster) (rate(system_cpu_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -2168,7 +2168,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}))\n  - (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}))\n) / (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}))\n  - (sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}))\n) / ((sum by (cluster) (system_cpu_load_average_1m{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}) / on (cluster) group_left sum by (cluster) (system_cpu_logical_count{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"})) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -2666,7 +2666,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_b\", state=\"used\", host_name=~\"${role:pipe}\"}))\n  - (avg by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"used\", host_name=~\"${role:pipe}\"}))\n) / (avg by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"used\", host_name=~\"${role:pipe}\"})), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_b\", state=\"used\", host_name=~\"${role:pipe}\"}))\n  - (avg by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"used\", host_name=~\"${role:pipe}\"}))\n) / ((avg by (cluster) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=\"used\", host_name=~\"${role:pipe}\"})) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -2855,7 +2855,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_b\", state=~\"cached|buffered\", host_name=~\"${role:pipe}\"})))\n  - (avg by (cluster) (sum by (cluster, host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=~\"cached|buffered\", host_name=~\"${role:pipe}\"})))\n) / (avg by (cluster) (sum by (cluster, host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=~\"cached|buffered\", host_name=~\"${role:pipe}\"}))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_b\", state=~\"cached|buffered\", host_name=~\"${role:pipe}\"})))\n  - (avg by (cluster) (sum by (cluster, host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=~\"cached|buffered\", host_name=~\"${role:pipe}\"})))\n) / ((avg by (cluster) (sum by (cluster, host_name) (system_memory_usage_bytes{cluster=~\"$cluster\", host_name=~\"$hosts_a\", state=~\"cached|buffered\", host_name=~\"${role:pipe}\"}))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -3044,7 +3044,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"cache_writes\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n  - (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"cache_writes\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n) / (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"cache_writes\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"cache_writes\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n  - (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"cache_writes\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n) / ((avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"cache_writes\", host_name=~\"${role:pipe}\"}[$__rate_interval]))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -3233,7 +3233,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"page_mark_dirties\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n  - (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"page_mark_dirties\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n) / (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"page_mark_dirties\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"page_mark_dirties\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n  - (avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"page_mark_dirties\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n) / ((avg by (cluster) (rate(ebpf_exporter_page_cache_ops_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"page_mark_dirties\", host_name=~\"${role:pipe}\"}[$__rate_interval]))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -3422,7 +3422,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (avg by (cluster) (sum by (cluster, host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((avg by (cluster) (sum by (cluster, host_name) (rate(jvm_memory_allocation_bytes_sum{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -3986,7 +3986,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -4175,7 +4175,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_bio_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -4364,7 +4364,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"read\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -4553,7 +4553,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_b\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((histogram_quantile(0.99, sum by (cluster, le) (rate(ebpf_exporter_xfs_latency_seconds_bucket{cluster=~\"$cluster\", host_name=~\"$hosts_a\", operation=\"write\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -4744,7 +4744,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((100 * avg by (cluster) (max by (cluster, host_name) (rate(system_disk_io_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -4934,7 +4934,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"})))\n  - (avg by (cluster) (sum by (cluster, host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"})))\n) / (avg by (cluster) (sum by (cluster, host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"})))\n  - (avg by (cluster) (sum by (cluster, host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"})))\n) / ((avg by (cluster) (sum by (cluster, host_name) (system_disk_pending_operations{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -5124,7 +5124,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (1000 * avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n         / sum by (cluster, host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (1000 * avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n         / sum by (cluster, host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (1000 * avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n         / sum by (cluster, host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (1000 * avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n         / sum by (cluster, host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (1000 * avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n         / sum by (cluster, host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((1000 * avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_operation_time_seconds_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))\n         / sum by (cluster, host_name) (rate(system_disk_operations_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -5313,7 +5313,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((avg by (cluster) (sum by (cluster, host_name) (rate(system_disk_merged_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device=~\"nvme[0-9]+n[0-9]+\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -6254,7 +6254,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((avg by (cluster) (sum by (cluster, host_name) (rate(system_network_errors_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -6443,7 +6443,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval])))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n  - (avg by (cluster) (sum by (cluster, host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval]))))\n) / ((avg by (cluster) (sum by (cluster, host_name) (rate(system_network_dropped_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", device!~\"lo|veth.*|cni.*|flannel.*|tailscale.*|docker.*|br-.*\", host_name=~\"${role:pipe}\"}[$__rate_interval])))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -6752,7 +6752,7 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "label_replace(100 * (\n    (avg by (cluster) (rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n  - (avg by (cluster) (rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n) / (avg by (cluster) (rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "expr": "label_replace(100 * (\n    (avg by (cluster) (rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$hosts_b\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n  - (avg by (cluster) (rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval])))\n) / ((avg by (cluster) (rate(system_processes_created_total{cluster=~\"$cluster\", host_name=~\"$hosts_a\", host_name=~\"${role:pipe}\"}[$__rate_interval]))) != 0), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "legendFormat": "{{cluster_name}} delta %",
           "range": true,
           "refId": "C"
@@ -8278,13 +8278,13 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(vector(${a_end} - ${a_start}))",
+        "definition": "query_result(vector(${a_end} - ${a_start} + ${resolution}))",
         "hide": 2,
         "includeAll": false,
         "multi": false,
         "name": "a_len",
         "options": [],
-        "query": "query_result(vector(${a_end} - ${a_start}))",
+        "query": "query_result(vector(${a_end} - ${a_start} + ${resolution}))",
         "refresh": 2,
         "regex": "/\\} (\\S+) /",
         "skipUrlSync": false,
@@ -8296,13 +8296,13 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(vector(${b_end} - ${b_start}))",
+        "definition": "query_result(vector(${b_end} - ${b_start} + ${resolution}))",
         "hide": 2,
         "includeAll": false,
         "multi": false,
         "name": "b_len",
         "options": [],
-        "query": "query_result(vector(${b_end} - ${b_start}))",
+        "query": "query_result(vector(${b_end} - ${b_start} + ${resolution}))",
         "refresh": 2,
         "regex": "/\\} (\\S+) /",
         "skipUrlSync": false,

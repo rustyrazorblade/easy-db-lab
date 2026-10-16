@@ -304,8 +304,8 @@ object SeriesClusterGuards {
      * A join that a `partitionByValues` on `cluster` precedes in the chain is exempt: that
      * transformation splits the data into one frame per cluster, so every frame the join sees
      * holds one cluster, and the join lines the frames up side by side (the Trend overlay joins
-     * the clusters on their elapsed time). A partition after the join, or one on other fields,
-     * does not exempt it.
+     * the clusters on their elapsed time). A partition after the join, one on other fields, or one
+     * followed by a `merge` before the join, does not exempt it.
      */
     fun joinProblems(panel: JsonObject): List<String> =
         joins(panel).filterNot { partitionedByCluster(panel, it) }.flatMap { join ->
@@ -514,18 +514,24 @@ object SeriesClusterGuards {
 
     private fun joins(panel: JsonObject): List<JsonObject> = transformations(panel).filter { it.string("id") in joinTransformations }
 
-    /** Whether a `partitionByValues` whose fields include `cluster` comes before [join] in [panel]'s chain. */
+    /**
+     * Whether a `partitionByValues` whose fields include `cluster` comes before [join] in [panel]'s
+     * chain with no `merge` between them. A `merge` after the partition puts every cluster's frame
+     * back into one, so the join again sees rows of several clusters.
+     */
     private fun partitionedByCluster(
         panel: JsonObject,
         join: JsonObject,
     ): Boolean {
-        val chain = transformations(panel)
-        return chain.take(chain.indexOf(join)).any { step ->
-            step.string("id") == "partitionByValues" &&
-                ((step["options"] as? JsonObject)?.get("fields") as? JsonArray).orEmpty().any {
-                    (it as? JsonPrimitive)?.content == CLUSTER
-                }
-        }
+        val before = transformations(panel).let { chain -> chain.take(chain.indexOf(join)) }
+        val partition =
+            before.indexOfLast { step ->
+                step.string("id") == "partitionByValues" &&
+                    ((step["options"] as? JsonObject)?.get("fields") as? JsonArray).orEmpty().any {
+                        (it as? JsonPrimitive)?.content == CLUSTER
+                    }
+            }
+        return partition >= 0 && before.drop(partition + 1).none { it.string("id") == "merge" }
     }
 
     private fun transformations(panel: JsonObject): List<JsonObject> =

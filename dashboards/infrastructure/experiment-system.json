@@ -80,7 +80,7 @@
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "One row per selected cluster. Every figure is that cluster's own average over its own window, from its first to its last report of host metrics (the steps where it sent nothing are skipped), so clusters that ran on different days compare directly. Values are raw; click a header to sort by it. Green is better for every coloured column but Network per host. The Cluster column links to System Overview over the cluster's window and to System A/B Comparison with the cluster as A.",
+      "description": "One row per selected cluster. Every figure is that cluster's own average over its own window, from its first to its last report of host metrics (the steps where it sent nothing are skipped), so clusters that ran on different days compare directly. The window comes from system_cpu_logical_count on the hosts the Role picker selects, not from up, so it follows the selected roles' hosts: with only db selected, a cluster's window is the time its db hosts reported. Values are raw; click a header to sort by it. Green is better for every coloured column but Network per host. The Cluster column links to System Overview over the cluster's window and to System A/B Comparison with the cluster as A.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -2445,7 +2445,7 @@
         "content": "<iframe src=\"__DOCUMENTS_URL__/reports/${experiment}/index.html\" width=\"100%\" height=\"620\"></iframe>",
         "mode": "html"
       },
-      "title": "Report: ${experiment:text}",
+      "title": "Report: ${experiment:text} (select one experiment: All has no single report)",
       "type": "text"
     }
   ],

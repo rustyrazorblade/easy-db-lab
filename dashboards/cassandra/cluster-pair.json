@@ -1351,7 +1351,7 @@
       "type": "table"
     },
     {
-      "description": "The report of cluster A's experiment, reports/<tenant>/<experiment>/index.html, served read-only by the documents web server; for a cluster from before the experiment label, reports/<tenant>/<name>-<id>/. Upload a report with easy-db-lab report upload DIR.",
+      "description": "The report of cluster A's experiment, reports/<tenant>/<experiment>/index.html, served read-only by the documents web server; for a cluster from before the experiment label, reports/<tenant>/<name>-<id>/. Upload a report with easy-db-lab report upload DIR. When cluster A has no up samples within Lookback, there is no report path and the frame shows the documents server's error page.",
       "gridPos": {
         "h": 14,
         "w": 6,
@@ -1372,7 +1372,7 @@
       "type": "text"
     },
     {
-      "description": "The report of cluster B's experiment, reports/<tenant>/<experiment>/index.html, served read-only by the documents web server; for a cluster from before the experiment label, reports/<tenant>/<name>-<id>/. Upload a report with easy-db-lab report upload DIR.",
+      "description": "The report of cluster B's experiment, reports/<tenant>/<experiment>/index.html, served read-only by the documents web server; for a cluster from before the experiment label, reports/<tenant>/<name>-<id>/. Upload a report with easy-db-lab report upload DIR. When cluster B has no up samples within Lookback, there is no report path and the frame shows the documents server's error page.",
       "gridPos": {
         "h": 14,
         "w": 6,
@@ -2640,13 +2640,13 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(vector(${a_end} - ${a_start}))",
+        "definition": "query_result(vector(${a_end} - ${a_start} + ${resolution}))",
         "hide": 2,
         "includeAll": false,
         "multi": false,
         "name": "a_len",
         "options": [],
-        "query": "query_result(vector(${a_end} - ${a_start}))",
+        "query": "query_result(vector(${a_end} - ${a_start} + ${resolution}))",
         "refresh": 2,
         "regex": "/\\} (\\S+) /",
         "skipUrlSync": false,
@@ -2659,13 +2659,13 @@
           "type": "prometheus",
           "uid": "${metrics_datasource}"
         },
-        "definition": "query_result(vector(${b_end} - ${b_start}))",
+        "definition": "query_result(vector(${b_end} - ${b_start} + ${resolution}))",
         "hide": 2,
         "includeAll": false,
         "multi": false,
         "name": "b_len",
         "options": [],
-        "query": "query_result(vector(${b_end} - ${b_start}))",
+        "query": "query_result(vector(${b_end} - ${b_start} + ${resolution}))",
         "refresh": 2,
         "regex": "/\\} (\\S+) /",
         "skipUrlSync": false,

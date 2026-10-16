@@ -9,10 +9,12 @@ import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefini
  *
  * @property services the compose services, by name.
  * @property files the files the services mount, by relative path.
+ * @property networks the project networks the part declares besides `default`, by name.
  */
 data class ComposePart(
     val services: Map<String, ComposeService>,
     val files: Map<String, String>,
+    val networks: Map<String, ComposeNetwork> = emptyMap(),
 )
 
 /**
@@ -51,7 +53,9 @@ object LocalStackComposer {
         val services = parts.flatMap { it.services.entries }.associate { it.toPair() }
         val files = parts.flatMap { it.files.entries }.associate { it.toPair() }
         require(services.size == parts.sumOf { it.services.size }) { "Two parts define the same service" }
-        val compose = ComposeFile(services).toYaml()
+        val networks = parts.flatMap { it.networks.entries }.associate { it.toPair() }
+        require(networks.size == parts.sumOf { it.networks.size }) { "Two parts define the same network" }
+        val compose = ComposeFile(services, networks.ifEmpty { null }).toYaml()
         return (files + (Constants.LocalStack.COMPOSE_FILE to compose)).mapValues { it.value.toByteArray() }
     }
 

@@ -12,11 +12,13 @@ import kotlinx.serialization.Serializable
  * no project `name`, so compose names the project after its directory and two stacks in two
  * directories never share containers.
  *
- * @property services every service, by name; the name is also its host name on the project network.
+ * @property services every service, by name; the name is also its host name on each network it joins.
+ * @property networks the project's own networks besides `default`, by name; null when there are none.
  */
 @Serializable
 data class ComposeFile(
     val services: Map<String, ComposeService>,
+    val networks: Map<String, ComposeNetwork>? = null,
 ) {
     /** This file as YAML. */
     fun toYaml(): String = YAML.encodeToString(serializer(), this)
@@ -48,6 +50,7 @@ data class ComposeFile(
  * @property healthcheck how compose decides the service is healthy.
  * @property restart the restart policy.
  * @property networkMode the container's network, `none` for one that must reach nothing.
+ * @property networks the project networks it joins; null joins only the project's `default` network.
  */
 @Serializable
 data class ComposeService(
@@ -64,6 +67,17 @@ data class ComposeService(
     val restart: String? = null,
     @SerialName("network_mode")
     val networkMode: String? = null,
+    val networks: List<String>? = null,
+)
+
+/**
+ * A network of the project, declared at the top of the compose file.
+ *
+ * @property internal true for a network with no route out of the host: its members reach only each other.
+ */
+@Serializable
+data class ComposeNetwork(
+    val internal: Boolean? = null,
 )
 
 /**

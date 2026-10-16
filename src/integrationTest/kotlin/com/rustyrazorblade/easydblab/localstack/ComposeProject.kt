@@ -128,6 +128,9 @@ class ComposeProject(
         template: String,
     ): String = run(listOf("docker", "inspect", "--format", template, containerId(service))).output.trim()
 
+    /** Runs `docker <args>`, such as a one-off probe container, and returns what it did. */
+    fun docker(vararg args: String): Result = run(listOf("docker") + args)
+
     private fun run(command: List<String>): Result {
         val process =
             ProcessBuilder(command)

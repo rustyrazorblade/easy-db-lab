@@ -16,7 +16,8 @@ import com.rustyrazorblade.easydblab.services.TemplateService
  * spec's tenants and home tenant, so the UIDs and types are a cluster's and only the URLs differ
  * ([BackendUrls.LOCAL_COMPOSE]). Its server settings are a cluster's ([GrafanaServerSettings]), except
  * that it downloads no plugin: offline the download fails and Grafana exits, and live the download
- * stalled Grafana's start for minutes, while no dashboard a local stack installs uses one. Its one
+ * stalled Grafana's start for minutes, while no dashboard a local stack installs uses one, and its data
+ * source proxy may reach only the stack's own backends. Its one
  * dashboard provider sweeps the provisioned tree in `dashboards/current`; that tree and the
  * staging trees beside it are written outside the composer. The documents web server is the
  * cluster's, forwarding to the read gate (live) or serving the export's copy from disk (offline).
@@ -129,6 +130,7 @@ object GrafanaViewPart {
                     dashboardRoot = DASHBOARD_TREE,
                     plugins = emptyList(),
                     dataProxyTimeoutSeconds = Constants.LocalStack.GRAFANA_DATAPROXY_TIMEOUT_SECONDS,
+                    dataSourceProxyAllowList = BackendUrls.LOCAL_COMPOSE.hostPorts(),
                 ).environment()
                     .toMap(),
             volumes =

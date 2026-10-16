@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.LogQl
+import java.net.URI
 import java.security.MessageDigest
 
 /**
@@ -38,6 +39,10 @@ data class BackendUrls(
     val traces: String,
     val profiles: String,
 ) {
+    /** The `host:port` of every backend, as Grafana's data source proxy allow-list names them. */
+    fun hostPorts(): List<String> =
+        listOf(metrics, logs, traces, profiles).map { url -> URI(url).let { "${it.host}:${it.port}" } }.distinct()
+
     companion object {
         /** The backends on the control node, where Grafana runs with the host's network. */
         val CONTROL_NODE =

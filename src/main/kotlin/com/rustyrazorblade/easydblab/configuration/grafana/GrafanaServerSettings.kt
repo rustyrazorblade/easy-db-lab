@@ -33,6 +33,9 @@ data class GrafanaImageRenderer(
  *   uses one of these.
  * @property dataProxyTimeoutSeconds how long Grafana waits for a datasource, or Grafana's 30-second
  *   default when null. A local stack sets it: a cold query there reads every block from S3.
+ * @property dataSourceProxyAllowList the only `host:port`s Grafana's data source proxy may reach, or
+ *   any when empty. A local stack names its own backends, so a datasource an anonymous Admin adds
+ *   cannot proxy to anything else on the stack's networks.
  */
 data class GrafanaServerSettings(
     val appTitle: String,
@@ -40,6 +43,7 @@ data class GrafanaServerSettings(
     val imageRenderer: GrafanaImageRenderer? = null,
     val plugins: List<String> = DOWNLOADED_PLUGINS,
     val dataProxyTimeoutSeconds: Int? = null,
+    val dataSourceProxyAllowList: List<String> = emptyList(),
 ) {
     companion object {
         /**
@@ -69,6 +73,14 @@ data class GrafanaServerSettings(
                 "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" to "$dashboardRoot/${Constants.Grafana.HOME_DASHBOARD_PATH}",
             ) + rendererEnvironment() +
             listOfNotNull(dataProxyTimeoutSeconds?.let { "GF_DATAPROXY_TIMEOUT" to it.toString() }) +
+            listOfNotNull(
+                dataSourceProxyAllowList.takeIf { it.isNotEmpty() }?.let {
+                    "GF_SECURITY_DATA_SOURCE_PROXY_WHITELIST" to
+                        it.joinToString(
+                            " ",
+                        )
+                },
+            ) +
             // The Tests and comparison dashboards show a test's documents in an iframe in a Text panel.
             listOf(Constants.Grafana.DISABLE_SANITIZE_HTML_ENV to "true")
 

@@ -70,8 +70,8 @@ import java.util.zip.ZipFile
  *   from the opened stack's Tempo, which holds only the zipped blocks, never the writer.
  * - **Structured metadata** survives: a filter on a line's metadata finds it in the opened stack.
  *
- * The reader's `compose.override.yml` (written as its stack starts) only joins the test's network and
- * points the signer at MinIO; the opened stack's makes its network internal. Both stacks are the
+ * The reader's `compose.override.yml` (written as its stack starts) only makes the test's network the
+ * signer's way out and points the signer at MinIO; the opened stack's makes its network internal. Both stacks are the
  * export's own.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
@@ -222,7 +222,8 @@ class QueryExportIntegrationTest {
             )
         val override =
             ComposeOverride(
-                networks = mapOf("default" to ExternalNetwork(networkName, external = true)),
+                // MinIO sits on the signer's own way out, which no other service of the reader joins.
+                networks = mapOf(Constants.LocalStack.Networks.STORE_EGRESS to ExternalNetwork(networkName, external = true)),
                 services =
                     mapOf(
                         Constants.LocalStack.Services.STORE_SIGNER to

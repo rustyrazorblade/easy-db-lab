@@ -1275,6 +1275,41 @@ class KitConfigTest {
         assertThat(config.args.single().capability).isEmpty()
     }
 
+    @Test
+    fun `kit-ref endpoints list parses to endpoint types`() {
+        val config =
+            parse(
+                """
+                name: clickhouse-benchmark
+                args:
+                  - flag: --target
+                    variable: TARGET
+                    type: kit-ref
+                    endpoints: [native, http]
+                """.trimIndent(),
+            )
+        assertThat(config.args.single().endpoints).containsExactly(
+            KitEndpoint.EndpointType.NATIVE,
+            KitEndpoint.EndpointType.HTTP,
+        )
+    }
+
+    @Test
+    fun `unknown type in the endpoints list fails at parse`() {
+        assertThatThrownBy {
+            parse(
+                """
+                name: clickhouse-benchmark
+                args:
+                  - flag: --target
+                    variable: TARGET
+                    type: kit-ref
+                    endpoints: [nativ]
+                """.trimIndent(),
+            )
+        }.hasMessageContaining("nativ")
+    }
+
     // -------------------------------------------------------------------------
     // commands map deserialization (kit-command-args)
     // -------------------------------------------------------------------------
@@ -1453,8 +1488,27 @@ class KitEndpointToTargetVarsTest {
     }
 
     @Test
-    fun `native and cql endpoints produce no vars`() {
-        assertThat(endpoint(KitEndpoint.EndpointType.NATIVE).toTargetVars("10.0.0.5", sqlCap)).isEmpty()
+    fun `native endpoint produces TARGET_NATIVE vars`() {
+        val vars = endpoint(KitEndpoint.EndpointType.NATIVE, port = 30900, database = "default").toTargetVars("10.0.1.5", sqlCap)
+        assertThat(vars).containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                "TARGET_NATIVE_HOST" to "10.0.1.5",
+                "TARGET_NATIVE_PORT" to "30900",
+                "TARGET_NATIVE_USER" to "bench",
+                "TARGET_NATIVE_DATABASE" to "default",
+            ),
+        )
+    }
+
+    @Test
+    fun `native endpoint on a target with no sql capability has an empty user`() {
+        val vars = endpoint(KitEndpoint.EndpointType.NATIVE, port = 30900).toTargetVars("10.0.1.5", null)
+        assertThat(vars).containsEntry("TARGET_NATIVE_USER", "")
+    }
+
+    @Test
+    fun `https and cql endpoints produce no vars`() {
+        assertThat(endpoint(KitEndpoint.EndpointType.HTTPS).toTargetVars("10.0.0.5", sqlCap)).isEmpty()
         assertThat(endpoint(KitEndpoint.EndpointType.CQL).toTargetVars("10.0.0.5", sqlCap)).isEmpty()
     }
 

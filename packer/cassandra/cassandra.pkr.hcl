@@ -69,6 +69,8 @@ source "amazon-ebs" "ubuntu" {
       name                = "rustyrazorblade/images/easy-db-lab-base-${var.arch}-${local.base_version}"
       root-device-type    = "ebs"
       virtualization-type = "hvm"
+      # A parallel base bake can register a newer base AMI that is still pending; skip it.
+      state = "available"
     }
     most_recent = true
     owners      = ["self"]

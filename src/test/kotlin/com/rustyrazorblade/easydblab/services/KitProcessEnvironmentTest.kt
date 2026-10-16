@@ -67,8 +67,20 @@ internal class KitProcessEnvironmentTest {
         environment.applyTo(ProcessBuilder("true"), workspace, emptyMap())
 
         assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(
-            Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.MARKER,
+            Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.KIT_LIBRARY +
+                Constants.ToolWrappers.MARKER,
         )
+    }
+
+    @Test
+    fun `EDL_KIT_LIB holds the absolute path of the workspace kit library, which exists`() {
+        val builder = ProcessBuilder("true")
+
+        environment.applyTo(builder, workspace, mapOf(Constants.Kit.LIBRARY_ENV to "elsewhere.sh"))
+
+        val library = File(bin, Constants.ToolWrappers.KIT_LIBRARY)
+        assertThat(builder.environment()[Constants.Kit.LIBRARY_ENV]).isEqualTo(library.absolutePath)
+        assertThat(library).isFile()
     }
 
     @Test

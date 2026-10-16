@@ -32,6 +32,7 @@ endpoints:
     node-type: db
     port: 30900
     type: native
+    database: "default"
   - name: "JDBC"
     node-type: db
     port: 30123

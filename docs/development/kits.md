@@ -19,7 +19,10 @@ Everything for a kit lives in `src/main/resources/com/rustyrazorblade/easydblab/
 
 - `kit.yaml` — required: the kit definition
 - `bin/` — optional: shell scripts (`start.sh.template`, `stop.sh.template`, ...) for phases that
-  have no typed steps
+  have no typed steps. Every `bin/*.sh` becomes a command, so put only phase scripts here.
+- `lib/`, `pod/` and other directories — optional: shared script code, scripts that run inside a
+  pod, query files. They are copied into the kit directory and never become commands
+  (`clickhouse-benchmark` keeps its sourced functions in `lib/` and its pod-side scripts in `pod/`).
 - `dashboards/` — optional: Grafana dashboard JSON files
 - `<name>.yaml.template` — optional: K8s manifest templates applied by `manifest` steps
 - `METRICS.md` and `metrics-catalog.json` — recommended for any kit that exposes metrics
@@ -56,7 +59,8 @@ args:
     variable: WORKERS
     description: "Number of workers"
     type: int            # string | int | float | boolean | kit-ref | extension
-    capability: sql      # optional: for kit-ref, declares required capability
+    capability: sql      # optional: for kit-ref, a capability the target must declare
+    endpoints: [native]  # optional: for kit-ref, endpoint types the target must declare
     required: false
     default: "${APP_NODE_COUNT}"
 
@@ -314,9 +318,14 @@ All scripts and shell steps receive the following environment variables:
 | `RUNNING_KITS` | Comma-separated names of currently running kits |
 | `EASY_DB_LAB_EXEC` | Path to the `easy-db-lab` binary |
 | `BACKUP_NAME` | First positional argument (backup and restore phases only) |
+| `EDL_KIT_LIB` | Absolute path of the shared kit shell library, `<workspace>/bin/edl-kit-lib.sh` (see [Shared shell library](#shared-shell-library)) |
 
 Args declared in `kit.yaml` under `args:` are also injected using their `variable` name. For
-example, `--workers` with `variable: WORKERS` becomes `$WORKERS`.
+example, `--workers` with `variable: WORKERS` becomes `$WORKERS`. An arg the user leaves out that
+has no default is set to an empty string, never the string `null`, and it replaces a variable of
+the same name that the operator's shell exports; test it with `[ -n "${WORKERS}" ]`. A `boolean`
+arg takes an optional value: a bare `--flag` means `true`, and `--flag false` or `--flag=false`
+turns off a flag whose default is `true` (`--help` shows `--flag[=<value>]`).
 
 ### Addressing per-node services (e.g. the Cassandra Sidecar)
 
@@ -684,6 +693,71 @@ anyway — system-level eBPF profiling already covers them, so it can be deferre
 See `docs/user-guide/profiling.md` for how to access profiles in Grafana, profile types, and
 the full observability data flow.
 
+## Shared shell library
+
+A kit script that runs pods sources the shared kit shell library instead of writing its own pod
+placement, waits and gauge push. The CLI packages it as `configuration/edl-kit-lib.sh`, writes it to
+`<workspace>/bin/edl-kit-lib.sh`, and sets `EDL_KIT_LIB` to its absolute path for every kit process
+(phase scripts, `shell` steps and hooks). Source it at the top of the script:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+```
+
+Sourcing it changes no `set` option, trap or working directory, and defines only `edl_` functions
+and `EDL_` variables. The functions read `KIT_NAME`, `KUBECONFIG` and `CONTROL_HOST_PRIVATE` from
+the environment. A function that fails prints why to stderr and exits the script.
+
+| Function | What it does |
+|---|---|
+| `edl_fail <message>` | Prints the message to stderr and exits 1 |
+| `edl_labels <role>` | Prints `easydblab/kit=${KIT_NAME},easydblab/role=<role>` |
+| `edl_resource_name <role>` | Prints `${KIT_NAME}-<role>-$(date +%s)`, a unique pod or ConfigMap name |
+| `edl_require_app_node <kit>` | Fails with `<kit> needs an app node (type=app); this cluster has none` when no node is labelled `type=app` |
+| `edl_pod_overrides [<configmap> <mount-path> <container>]` | Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: `nodeSelector: {type: app}`, and a mount of the ConfigMap when one is given. `kubectl run` names the container after the pod |
+| `edl_create_configmap <name> <role> <key>=<path>...` | Creates a labelled ConfigMap from files in one call; fails on a missing or empty file, or more than 1,000,000 bytes in all |
+| `edl_active_pods <role>` | Prints this instance's pods of that role that have not ended |
+| `edl_wait_for_pod_running <pod>` | Returns once the pod leaves Pending (Running, Succeeded or Failed); fails at once on an image pull error with the reason and the pod's events, and after 10 minutes otherwise, and deletes the pod first so it does not block the next run |
+| `edl_follow_pod_logs <pod> <handler>` | Streams the pod's log, calling the handler function with each line, and resumes a cut stream while the pod runs |
+| `edl_wait_for_pod_exit <pod>` | Waits, with no limit, for the pod to end and prints its exit code |
+| `edl_push_gauges <service> <name> <value>...` | Pushes OTLP gauges labelled `kit=${KIT_NAME}` to the collector; a non-numeric value is sent as 0; a failed push never fails the script and prints one warning per script |
+
+Every wait fails with `pod <name> was deleted` when the pod is gone, for example after a `stop` in
+another terminal. A typical run:
+
+```bash
+edl_require_app_node my-bench
+POD="$(edl_resource_name bench-run)"
+kubectl run "${POD}" --image="${IMAGE}" --restart=Never \
+  --labels="$(edl_labels bench-run)" \
+  --overrides="$(edl_pod_overrides)" --override-type=strategic \
+  --command -- my-bench --threads "${THREADS}"
+edl_wait_for_pod_running "${POD}"
+edl_follow_pod_logs "${POD}" handle_line
+EXIT_CODE="$(edl_wait_for_pod_exit "${POD}")"
+[ "${EXIT_CODE}" = 0 ] || edl_fail "The run failed with exit code ${EXIT_CODE}"
+```
+
+Kit scripts run on the operator's machine, where `#!/usr/bin/env bash` can be the macOS bash 3.2.
+The library, and every script that sources it, follows these rules:
+
+- No associative arrays, `mapfile`, `${v,,}` or `wait -n`.
+- Never expand an array that can be empty as `"${arr[@]}"` under `set -u`: bash before 4.4 fails
+  with `unbound variable`. Add to an array only when there is at least one element to pass, or
+  build the list another way.
+- Assign a command substitution on its own line (`X="$(f)"`), never with `local X="$(f)"` or inside
+  an `if` test, so a failure inside it still ends the script under `set -e`.
+
+The library tests (`./gradlew testKitShellLib`) and the kit script tests also run under `/bin/bash`
+when it is bash 3.x.
+
+The library is written once into each workspace and never rewritten, so a workspace keeps the
+library it was first given. When you edit the library, use a fresh workspace, or delete
+`<workspace>/bin/edl-kit-lib.sh`, before you try the change; the next kit process writes the new
+copy. Report parsers, argument checks and SQL belong in the kit's own `lib/`, not in the library.
+
 ## Bench Kits — cross-kit targeting
 
 A bench kit benchmarks a running database kit. It declares a `kit-ref` arg that the user
@@ -698,15 +772,22 @@ args:
   - flag: --target
     variable: TARGET
     type: kit-ref
-    capability: sql      # advisory: documents required capability
+    capability: sql          # optional: a capability the target must declare
+    endpoints: [native, http] # optional: endpoint types the target must declare
     description: "Name of the running database kit to benchmark"
     required: true
 ```
 
-`type: kit-ref` tells easy-db-lab two things:
+`type: kit-ref` tells easy-db-lab three things:
 1. The installed kit directory is named `<kit>-<target>` instead of `<kit>`, allowing
    multiple simultaneous instances (e.g. `sysbench-clickhouse` and `sysbench-tidb`).
-2. At start time, `KitEndpointResolver` reads the target kit's `kit.yaml` endpoints and
+2. At install, the target must already be installed and must provide what the arg asks for.
+   `kit install` refuses, before it writes anything, a target that lacks the `capability` or any
+   type in `endpoints`, and names every missing type in one message (for example
+   `Target kit 'tidb' does not have the 'native' endpoint required by clickhouse-benchmark`). An
+   unknown type in `endpoints` fails when `kit.yaml` is parsed. With neither field, the target is
+   not checked.
+3. In every phase, `KitEndpointResolver` reads the target kit's `kit.yaml` endpoints and
    injects them as `TARGET_*` environment variables.
 
 ### TARGET_* injection rules
@@ -718,8 +799,12 @@ The variables injected depend on what endpoints the target kit declares:
 | `jdbc` | `TARGET_JDBC_URL`, `TARGET_JDBC_USER`, `TARGET_JDBC_DRIVER` |
 | `postgresql` | `TARGET_PG_HOST`, `TARGET_PG_PORT`, `TARGET_PG_USER`, `TARGET_PG_DATABASE` |
 | `mysql` | `TARGET_MYSQL_HOST`, `TARGET_MYSQL_PORT`, `TARGET_MYSQL_USER`, `TARGET_MYSQL_DATABASE` |
+| `native` | `TARGET_NATIVE_HOST`, `TARGET_NATIVE_PORT`, `TARGET_NATIVE_USER`, `TARGET_NATIVE_DATABASE` |
 | `http` | `TARGET_HTTP_URL` |
 | `kafka` | `TARGET_KAFKA_BOOTSTRAP` |
+
+`https` and `cql` endpoints inject nothing. Every `*_USER` variable comes from the target's `sql`
+capability `user`, and is empty when the target declares no `sql` capability.
 
 If the target kit directory does not exist or its `kit.yaml` is unreadable, no `TARGET_*`
 variables are injected and no error is raised (fail-safe).

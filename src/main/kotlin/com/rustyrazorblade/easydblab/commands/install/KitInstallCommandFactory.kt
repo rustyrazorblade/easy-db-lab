@@ -77,6 +77,7 @@ class KitInstallCommandFactory(
             OptionSpec
                 .builder(arg.flag)
                 .type(picoType)
+                .valuesFor(arg.type)
                 .paramLabel(arg.paramLabel)
                 .description(arg.description)
                 .setter(
@@ -123,4 +124,21 @@ internal fun KitArgSpec.ArgType.toPicoCliType(): Class<*> =
         KitArgSpec.ArgType.BOOLEAN -> Boolean::class.java
         KitArgSpec.ArgType.FLOAT -> Double::class.java
         KitArgSpec.ArgType.INT -> Int::class.java
+    }
+
+/**
+ * Sets how many values an option of [type] takes. A boolean takes an optional value, so
+ * `--flag false` turns off a flag whose default is `true`. A bare `--flag` falls back to
+ * `true`: without the fallback, picocli sets a bare boolean to the opposite of its default.
+ * Every other type takes exactly one value.
+ */
+internal fun OptionSpec.Builder.valuesFor(type: KitArgSpec.ArgType): OptionSpec.Builder =
+    when (type) {
+        KitArgSpec.ArgType.BOOLEAN -> arity("0..1").fallbackValue("true")
+        KitArgSpec.ArgType.STRING,
+        KitArgSpec.ArgType.KIT_REF,
+        KitArgSpec.ArgType.EXTENSION,
+        KitArgSpec.ArgType.FLOAT,
+        KitArgSpec.ArgType.INT,
+        -> arity("1")
     }

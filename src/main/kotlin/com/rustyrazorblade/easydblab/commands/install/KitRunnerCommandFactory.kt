@@ -184,12 +184,16 @@ class KitRunnerCommandFactory {
             OptionSpec
                 .builder(arg.flag)
                 .type(picoType)
+                .valuesFor(arg.type)
                 .paramLabel(arg.paramLabel)
                 .description(arg.description)
                 .setter(
                     object : ISetter {
                         override fun <T> set(value: T): T {
-                            command.runtimeArgValues[arg.variable] = "$value"
+                            // PicoCLI passes null for an unmatched option with no default. Record
+                            // "" so the script never sees the string "null", and so the declared
+                            // value overwrites an exported shell variable of the same name.
+                            command.runtimeArgValues[arg.variable] = value?.toString() ?: ""
                             return value
                         }
                     },

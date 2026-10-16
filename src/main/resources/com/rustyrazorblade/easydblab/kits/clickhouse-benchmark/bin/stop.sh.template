@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+#
+# Deletes this instance's benchmark and prepare pods and their ConfigMaps. The metrics ConfigMap
+# carries easydblab.com/kit, not easydblab/kit, so this selector leaves it alone.
+set -euo pipefail
+
+echo "Stopping clickhouse-benchmark pods for kit ${KIT_NAME}..."
+kubectl --kubeconfig="${KUBECONFIG}" delete pods,configmaps -l "easydblab/kit=${KIT_NAME}" --ignore-not-found

@@ -15,7 +15,9 @@ import java.io.File
  *   (or straight to the nodes on a Tailscale cluster), indirect calls included;
  * - `KUBECONFIG` set to the absolute path of the workspace kubeconfig, used as it is. Shell steps run
  *   from the kit directory, where the relative `kubeconfig` from [TemplateVariables] points at
- *   nothing.
+ *   nothing;
+ * - `EDL_KIT_LIB` set to the absolute path of the shared kit shell library in `<workspace>/bin`,
+ *   which kit scripts source.
  *
  * @param installer writes the wrappers into the workspace
  */
@@ -43,8 +45,9 @@ class KitProcessEnvironment(
         val inheritedPath = environment["PATH"]
         environment.putAll(variables)
         environment["KUBECONFIG"] = kubeconfig.path
-        val bin = File(workspace, Constants.ToolWrappers.DIRECTORY).absolutePath
-        environment["PATH"] = listOfNotNull(bin, inheritedPath).joinToString(File.pathSeparator)
+        val bin = File(workspace, Constants.ToolWrappers.DIRECTORY).absoluteFile
+        environment[Constants.Kit.LIBRARY_ENV] = File(bin, Constants.ToolWrappers.KIT_LIBRARY).path
+        environment["PATH"] = listOfNotNull(bin.path, inheritedPath).joinToString(File.pathSeparator)
         return builder
     }
 }

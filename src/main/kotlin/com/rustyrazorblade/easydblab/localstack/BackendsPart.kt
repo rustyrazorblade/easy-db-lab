@@ -57,7 +57,8 @@ object BackendsPart {
                 mapOf(
                     LocalStackComposer.configPath(Constants.LocalStack.Services.MIMIR, MimirManifestBuilder.CONFIG_FILE) to
                         LocalStackComposer.resourceNextTo(MimirManifestBuilder::class.java, MimirManifestBuilder.CONFIG_FILE),
-                    LocalStackComposer.configPath(Constants.LocalStack.Services.LOKI, LokiManifestBuilder.CONFIG_FILE) to storage.lokiConfig(clusterLoki),
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.LOKI, LokiManifestBuilder.CONFIG_FILE) to
+                        storage.lokiConfig(clusterLoki),
                     LocalStackComposer.configPath(Constants.LocalStack.Services.TEMPO, TEMPO_FILE) to storage.tempoConfig(clusterTempo),
                 ),
         )

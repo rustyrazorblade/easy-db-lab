@@ -117,7 +117,8 @@ object GrafanaViewPart {
                         GrafanaDatasourceSet.build(spec.tenantSet, BackendUrls.LOCAL_COMPOSE).toYaml(),
                     LocalStackComposer.configPath(DASHBOARDS_DIR, DASHBOARDS_FILE) to
                         GrafanaDashboardProvisioningConfig.forDashboardTree(DASHBOARD_TREE).toYaml(),
-                    LocalStackComposer.configPath(Constants.LocalStack.Services.DOCUMENTS, LocalStackComposer.NGINX_CONFIG_FILE) to documents.config(),
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.DOCUMENTS, LocalStackComposer.NGINX_CONFIG_FILE) to
+                        documents.config(),
                 ),
         )
 
@@ -157,7 +158,9 @@ object GrafanaViewPart {
         ComposeService(
             image = LocalImages.DOCUMENTS_WEB,
             command = LocalStackComposer.nginxCommand,
-            volumes = listOf(LocalStackComposer.configMount(Constants.LocalStack.Services.DOCUMENTS, LocalStackComposer.NGINX_CONFIG_DIR)) + documents.mounts,
+            volumes =
+                listOf(LocalStackComposer.configMount(Constants.LocalStack.Services.DOCUMENTS, LocalStackComposer.NGINX_CONFIG_DIR)) +
+                    documents.mounts,
             ports = listOf("${Constants.LocalStack.LOOPBACK}:${spec.documentsPort}:${Constants.Grafana.Documents.WEB_PORT}"),
             dependsOn = documents.dependsOn,
             restart = "unless-stopped",

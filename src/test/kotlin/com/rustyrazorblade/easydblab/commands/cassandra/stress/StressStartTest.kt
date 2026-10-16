@@ -225,7 +225,7 @@ class StressStartTest : BaseKoinTest() {
 
     @Test
     fun `parseTags should reject a value containing whitespace`() {
-        // The regression this guards: JAVA_TOOL_OPTIONS is one string the JVM splits on whitespace,
+        // The regression this guards: JDK_JAVA_OPTIONS is one string the JVM splits on whitespace,
         // so "note=first run" produced "-Dotel.resource.attributes=...,note=first" followed by a
         // bare "run", and the JVM exited with "Unrecognized option: run" before cassandra-easy-
         // stress started. --tags "note=..." invites prose, so this is reachable by ordinary use.

@@ -79,6 +79,8 @@ easy-db-lab show-iam-policies [policy-name]
 |----------|-------------|
 | `policy-name` | Optional filter: `ec2`, `iam`, `emr`, `opensearch` or `compactor` |
 
+To create the policies and attach them to an IAM user, group, or role, see [Applying the Policies](../getting-started/setup.md#applying-the-policies).
+
 ### build-image
 
 Build both base and Cassandra AMI images.

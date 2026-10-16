@@ -422,6 +422,7 @@ tasks.register("testScripts") {
     dependsOn(
         "testProfilingReconcile",
         "testExportWorkloadMetrics",
+        "testSetPolicies",
         "testCassandraScripts",
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
@@ -546,6 +547,16 @@ tasks.register<Exec>("testExportWorkloadMetrics") {
     description = "Unit-test the export-workload-metrics catalog script"
     workingDir = file(".")
     commandLine = listOf("bash", "bin/export-workload-metrics.test.sh")
+}
+
+// Unit-test bin/set-policies: a failed attach shows the AWS error and fails the run, an attached
+// policy is not attached again, and success is reported only once all five policies are attached.
+// aws and easy-db-lab are stubbed. Runs under /bin/bash too when that is bash 3.x (macOS).
+tasks.register<Exec>("testSetPolicies") {
+    group = "Verification"
+    description = "Unit-test the set-policies IAM script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "bin/set-policies.test.sh")
 }
 
 // Packer testing tasks

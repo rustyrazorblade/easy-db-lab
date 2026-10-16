@@ -15,7 +15,7 @@ The `profile setup` command handles all initial configuration interactively. It 
 
 Before running setup:
 
-- **AWS Account**: An AWS account with appropriate permissions (see [IAM Policies](#getting-iam-policies) below)
+- **AWS Account**: An AWS account with appropriate permissions (see [IAM Policies](#step-2-getting-iam-policies) below)
 - **Java 21+**: Required to run easy-db-lab
 - **Docker**: Required only if building custom AMIs
 
@@ -152,21 +152,127 @@ To show a specific policy:
 easy-db-lab show-iam-policies ec2    # Show EC2 policy only
 easy-db-lab show-iam-policies iam    # Show IAM policy only
 easy-db-lab show-iam-policies emr    # Show EMR policy only
+easy-db-lab show-iam-policies opensearch    # Show the OpenSearch policy only
 easy-db-lab show-iam-policies compactor    # Show the compactor policy only
 ```
 
-### Recommended IAM Setup
+### Applying the Policies
 
-For teams with multiple users, we recommend creating managed policies attached to an IAM group:
-
-1. **Create an IAM group** (e.g., "EasyDBLabUsers")
-2. **Create the managed policies** from the JSON output
-3. **Attach all policies** to the group
-4. **Add users** to the group
+Create each policy as a customer-managed policy, and attach all five to one IAM user, group, or role. The policy names are `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR`, `EasyDBLabOpenSearch` and `EasyDBLabCompactor`. Run these steps with an AWS profile that can manage IAM.
 
 ```admonish warning
 Inline policies have a 5,120 byte limit which may not fit all the policies. Use managed policies instead.
 ```
+
+```admonish note
+`show-iam-policies` gets the account ID from the credentials of your easy-db-lab profile, not from the AWS profile you give the AWS CLI. Make sure that both point to the same AWS account. If you have no easy-db-lab profile yet, the command runs `profile setup` first.
+```
+
+#### With `bin/set-policies`
+
+If you have a source checkout, use `bin/set-policies`. Run `./gradlew installDist` first, because the script calls `bin/easy-db-lab`. The script creates the five managed policies and attaches them to the target you name:
+
+```bash
+bin/set-policies --user-name easy-db-lab --profile <admin-profile>
+```
+
+| Option | Environment variable | Description |
+|--------|----------------------|-------------|
+| `--user-name <name>` | `ECL_USER_NAME` | Attach the policies to an IAM user |
+| `--group-name <name>` | `ECL_GROUP_NAME` | Attach the policies to an IAM group |
+| `--role-name <name>` | `ECL_ROLE_NAME` | Attach the policies to an IAM role |
+| `--profile <profile>` | `ECL_PROFILE` or `AWS_PROFILE` | AWS CLI profile to run the IAM calls with |
+| `--dry-run` | `ECL_DRY_RUN=true` | Show the AWS CLI calls without making them |
+
+Give exactly one of `--user-name`, `--group-name` and `--role-name`. Before it changes anything, the script fetches all five policies and checks that each one is valid JSON and names only the account of `--profile`. If a check fails, the script stops and changes nothing. The script stops with an error if an attach fails. At the end, it checks that all five policies are attached to the target.
+
+You can run the script again at any time. If a policy already exists, the script creates a new default version of it from the current output of `show-iam-policies`. This updates the policies after you upgrade easy-db-lab.
+
+#### Without a Source Checkout
+
+If you installed with Homebrew, you do not have `bin/set-policies`. Do the same steps with the AWS CLI. For each policy, write its JSON to a file, create the managed policy, and attach it. This example applies the EC2 policy to the user `easy-db-lab`:
+
+```bash
+easy-db-lab show-iam-policies ec2 > EasyDBLabEC2.json
+aws iam create-policy --policy-name EasyDBLabEC2 \
+  --policy-document file://EasyDBLabEC2.json --profile <admin-profile>
+aws iam attach-user-policy --user-name easy-db-lab \
+  --policy-arn arn:aws:iam::<account-id>:policy/EasyDBLabEC2 --profile <admin-profile>
+```
+
+Repeat these commands for `iam` (`EasyDBLabIAM`), `emr` (`EasyDBLabEMR`), `opensearch` (`EasyDBLabOpenSearch`) and `compactor` (`EasyDBLabCompactor`). To attach the policies to a group, use `aws iam attach-group-policy --group-name <group>` instead of `attach-user-policy`.
+
+If a policy already exists, `create-policy` fails. To update it, create a new default version:
+
+```bash
+aws iam create-policy-version --set-as-default \
+  --policy-arn arn:aws:iam::<account-id>:policy/EasyDBLabEC2 \
+  --policy-document file://EasyDBLabEC2.json --profile <admin-profile>
+```
+
+```admonish note
+A managed policy can have at most five versions. If a policy has five versions, delete the oldest non-default version with `aws iam delete-policy-version` before you create a new one. `bin/set-policies` does this for you.
+```
+
+### Creating a Dedicated IAM User
+
+You can run easy-db-lab as a dedicated IAM user with access keys. Run these steps with an AWS profile that can manage IAM. The examples use the user name `easy-db-lab`.
+
+1. Create the user:
+
+    ```bash
+    aws iam create-user --user-name easy-db-lab --profile <admin-profile>
+    ```
+
+2. Create and attach the five policies. Use `bin/set-policies --user-name easy-db-lab --profile <admin-profile>`, or do the [steps without a source checkout](#without-a-source-checkout).
+
+3. Make sure that all five policies are attached. The output must list `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR`, `EasyDBLabOpenSearch` and `EasyDBLabCompactor`.
+
+    ```bash
+    aws iam list-attached-user-policies --user-name easy-db-lab --profile <admin-profile>
+    ```
+
+4. Create an access key for the user:
+
+    ```bash
+    aws iam create-access-key --user-name easy-db-lab --profile <admin-profile>
+    ```
+
+    AWS shows the secret access key only once, in this output. Copy it now. If you lose it, create a new access key.
+
+5. Store the access key and secret in a named AWS profile:
+
+    ```bash
+    aws configure --profile <easy-db-lab-profile>
+    ```
+
+6. Run `easy-db-lab profile setup`. When it asks for the AWS profile name, enter `<easy-db-lab-profile>`. The access key and secret prompts are then skipped. Alternatively, leave the profile name blank and enter the access key and secret at the prompts.
+
+### Recommended IAM Setup
+
+For teams with multiple users, we recommend attaching the managed policies to an IAM group:
+
+1. **Create an IAM group** (e.g., "EasyDBLabUsers"):
+
+    ```bash
+    aws iam create-group --group-name EasyDBLabUsers --profile <admin-profile>
+    ```
+
+2. **Create and attach the policies** to the group:
+
+    ```bash
+    bin/set-policies --group-name EasyDBLabUsers --profile <admin-profile>
+    ```
+
+    If you have no source checkout, do the [steps without a source checkout](#without-a-source-checkout) with `aws iam attach-group-policy`.
+
+3. **Add users** to the group:
+
+    ```bash
+    aws iam add-user-to-group --group-name EasyDBLabUsers --user-name <user> --profile <admin-profile>
+    ```
+
+To check the attached policies, run `aws iam list-attached-group-policies --group-name EasyDBLabUsers --profile <admin-profile>`.
 
 ## Step 3: Build Custom AMI (Optional)
 

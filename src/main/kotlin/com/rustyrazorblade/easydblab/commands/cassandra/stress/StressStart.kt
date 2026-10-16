@@ -145,7 +145,7 @@ class StressStart : PicoBaseCommand() {
      * disagree with itself.
      *
      * Whitespace is the one that stops a run dead rather than merely spoiling a label.
-     * `JAVA_TOOL_OPTIONS` is a single string the JVM splits on whitespace, so `--tags "note=first
+     * `JDK_JAVA_OPTIONS` is a single string the JVM splits on whitespace, so `--tags "note=first
      * run"` used to yield `-Dotel.resource.attributes=...,note=first` followed by a bare `run`, and
      * the JVM exited with `Unrecognized option: run` before cassandra-easy-stress ever started.
      *

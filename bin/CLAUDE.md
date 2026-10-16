@@ -8,7 +8,7 @@ The local-development CLI entrypoint. It does **not** launch the JVM itself — 
 
 - `create-release` — cuts a release of the main repo with `gh`; nothing happens until the release is confirmed.
 - `diagnose-error` — decodes an AWS "encoded authorization failure" message (`aws sts decode-authorization-message`).
-- `set-policies` — creates the managed easy-db-lab IAM policies and attaches them to a user, group or role.
+- `set-policies` (with `set-policies.test.sh`, `./gradlew testSetPolicies`) — creates the managed easy-db-lab IAM policies and attaches them to a user, group or role. It checks every policy is one JSON document whose ARNs name the `--profile` account, before changing anything, and succeeds only once all five are attached.
 - `export-workload-metrics` (with `metrics-catalog.jq` and `export-workload-metrics.test.sh`) — exports a running kit's metric series to `metrics-catalog.json`; see `docs/development/kits.md`.
 - `setup-spark-cluster`, `spark-bulk-write`, `test-local-bulk-writer`, `test-spark-bulk-writer-s3-iam` — Spark bulk-writer helpers. `test-spark-bulk-writer-s3-iam` provisions a cluster; run it by hand only.
 

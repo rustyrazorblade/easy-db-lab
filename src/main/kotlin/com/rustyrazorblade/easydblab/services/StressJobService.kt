@@ -430,11 +430,16 @@ class DefaultStressJobService(
         // Prometheus counters, so the agent's JVM metrics are the only view of whether the load
         // generator itself is the bottleneck.
         //
+        // JDK_JAVA_OPTIONS, not JAVA_TOOL_OPTIONS: the cassandra-easy-stress image selects ZGC through
+        // JAVA_TOOL_OPTIONS, and a pod env var replaces the image's value, so setting it here ran
+        // stress on G1. The image's entrypoint is the java launcher, which reads JDK_JAVA_OPTIONS as
+        // well, so the agents and the image's GC choice both apply.
+        //
         // Traces are sampled at Constants.Stress.TRACE_SAMPLE_RATIO: tracing every request sent
         // Tempo on the control node more spans than it could take in.
         val otelResourceAttributes = buildResourceAttributes(config.jobName, config.tags)
 
-        val javaToolOptions =
+        val javaOptions =
             listOf(
                 "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",
                 "-Dpyroscope.application.name=cassandra-easy-stress",
@@ -478,8 +483,8 @@ class DefaultStressJobService(
                     .withValue(config.promPort.toString())
                     .build(),
                 EnvVarBuilder()
-                    .withName("JAVA_TOOL_OPTIONS")
-                    .withValue(javaToolOptions)
+                    .withName("JDK_JAVA_OPTIONS")
+                    .withValue(javaOptions)
                     .build(),
             ).withVolumeMounts(
                 VolumeMountBuilder()

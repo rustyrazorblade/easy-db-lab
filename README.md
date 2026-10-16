@@ -62,30 +62,16 @@ This tool provisions and destroys AWS infrastructure! Using a dedicated account 
 
 ### Setting Up Your Profile
 
-This part is a bit clunky still, but it's a one time event.  You will need a user account and credentials.
+You need an IAM identity with the easy-db-lab policies attached. easy-db-lab needs five customer-managed policies: `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR`, `EasyDBLabOpenSearch` and `EasyDBLabCompactor`. Attach all five to one IAM user, group, or role.
 
-1. Create a User for easy-db-lab and get the credentials.
-2. Create a group and add the user to the group.
-3. Create 3 managed policies
-4. Attach managed policies to the group
-
-### Viewing Required IAM Policies
-
-To see the IAM policies required for easy-db-lab with your account ID populated:
+To see the policies with your account ID populated:
 
 ```shell
 easy-db-lab show-iam-policies
+easy-db-lab show-iam-policies ec2   # Show one policy: ec2, iam, emr, opensearch or compactor
 ```
 
-You can filter by policy type:
-
-```shell
-easy-db-lab show-iam-policies ec2   # Show only EC2 policy
-easy-db-lab show-iam-policies iam   # Show only IAM policy
-easy-db-lab show-iam-policies emr   # Show only EMR policy
-```
-
-See `bin/set-policies`.
+If you have a source checkout, `bin/set-policies` creates the five policies and attaches them for you. If you installed with Homebrew, create them with the AWS CLI. See [Applying the Policies](https://rustyrazorblade.github.io/easy-db-lab/getting-started/setup.html#applying-the-policies) and [Creating a Dedicated IAM User](https://rustyrazorblade.github.io/easy-db-lab/getting-started/setup.html#creating-a-dedicated-iam-user) for the full procedure.
 
 ### Interactive Setup
 

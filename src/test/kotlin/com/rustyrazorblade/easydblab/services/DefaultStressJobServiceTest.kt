@@ -416,7 +416,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
-    fun `buildJob should set JAVA_TOOL_OPTIONS with pyroscope agent config`() {
+    fun `buildJob should set JDK_JAVA_OPTIONS with pyroscope agent config`() {
         val job =
             service.buildJob(
                 StressJobConfig(
@@ -430,7 +430,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
         val stress =
             job.spec.template.spec.containers
                 .first { it.name == "stress" }
-        val javaToolOptions = stress.env.first { it.name == "JAVA_TOOL_OPTIONS" }.value
+        val javaToolOptions = stress.env.first { it.name == "JDK_JAVA_OPTIONS" }.value
 
         assertThat(javaToolOptions).contains("-javaagent:/usr/local/pyroscope/pyroscope.jar")
         assertThat(javaToolOptions).contains("-Dpyroscope.application.name=cassandra-easy-stress")
@@ -587,7 +587,7 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
             .spec.template.spec.containers
             .first { it.name == "stress" }
             .env
-            .first { it.name == "JAVA_TOOL_OPTIONS" }
+            .first { it.name == "JDK_JAVA_OPTIONS" }
             .value
 }
 

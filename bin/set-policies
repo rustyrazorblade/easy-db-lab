@@ -72,10 +72,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate that exactly one target is specified
+# (Plain assignments: under set -e, `((target_count++))` from 0 returns status 1 and exits bash 4+.)
 target_count=0
-[[ -n "$USER_NAME" ]] && ((target_count++))
-[[ -n "$GROUP_NAME" ]] && ((target_count++))
-[[ -n "$ROLE_NAME" ]] && ((target_count++))
+if [[ -n "$USER_NAME" ]]; then target_count=$((target_count + 1)); fi
+if [[ -n "$GROUP_NAME" ]]; then target_count=$((target_count + 1)); fi
+if [[ -n "$ROLE_NAME" ]]; then target_count=$((target_count + 1)); fi
 
 if [[ $target_count -eq 0 ]]; then
   echo "ERROR: Must specify exactly one of --user-name, --group-name, or --role-name"
@@ -92,14 +93,17 @@ if [[ -n "$USER_NAME" ]]; then
   TARGET_TYPE="user"
   TARGET_NAME="$USER_NAME"
   ATTACH_COMMAND="attach-user-policy --user-name"
+  LIST_ATTACHED_COMMAND="list-attached-user-policies --user-name"
 elif [[ -n "$GROUP_NAME" ]]; then
   TARGET_TYPE="group"
   TARGET_NAME="$GROUP_NAME"
   ATTACH_COMMAND="attach-group-policy --group-name"
+  LIST_ATTACHED_COMMAND="list-attached-group-policies --group-name"
 else
   TARGET_TYPE="role"
   TARGET_NAME="$ROLE_NAME"
   ATTACH_COMMAND="attach-role-policy --role-name"
+  LIST_ATTACHED_COMMAND="list-attached-role-policies --role-name"
 fi
 
 # Always apply all five policies
@@ -110,6 +114,23 @@ PROFILE_ARG=""
 if [[ -n "$PROFILE" ]]; then
   PROFILE_ARG="--profile $PROFILE"
 fi
+
+# Prints the ARNs of the managed policies attached to the target, one per line.
+# Fails, with the AWS error on stderr, when the target cannot be read.
+attached_policy_arns() {
+  local arns
+  if ! arns=$(aws iam $LIST_ATTACHED_COMMAND "$TARGET_NAME" $PROFILE_ARG \
+    --query 'AttachedPolicies[].PolicyArn' --output text); then
+    echo "ERROR: Failed to list the policies attached to $TARGET_TYPE $TARGET_NAME" >&2
+    return 1
+  fi
+  printf '%s\n' "$arns" | tr '\t' '\n'
+}
+
+# Succeeds when the ARN $1 is in the newline-separated list $2.
+arn_in_list() {
+  printf '%s\n' "$2" | grep -Fqx -- "$1"
+}
 
 # Display configuration
 echo "=== Configuration ==="
@@ -123,62 +144,91 @@ echo ""
 
 # Create temp directory for policy files
 TEMP_DIR=$(mktemp -d)
-trap "rm -rf $TEMP_DIR" EXIT
+trap 'rm -rf "$TEMP_DIR"' EXIT
+
+# Prints the managed policy name for the `easy-db-lab sip` policy key $1.
+policy_name_for() {
+  case "$1" in
+    ec2) echo "EasyDBLabEC2" ;;
+    iam) echo "EasyDBLabIAM" ;;
+    emr) echo "EasyDBLabEMR" ;;
+    opensearch) echo "EasyDBLabOpenSearch" ;;
+    compactor) echo "EasyDBLabCompactor" ;;
+  esac
+}
+
+# Prints each distinct 12-digit account ID named by an ARN in the policy document $1.
+policy_account_ids() {
+  jq -r '.. | strings' "$1" | grep -oE 'arn:aws[a-z-]*:[^:]*:[^:]*:[0-9]{12}' | grep -oE '[0-9]{12}$' | sort -u
+}
+
+# The account the aws CLI writes to. easy-db-lab fills the policies' ARNs from its own profile's
+# account, which --profile does not change, so every policy is checked against this one.
+if [[ "$DRY_RUN" != "true" ]]; then
+  if ! TARGET_ACCOUNT=$(aws sts get-caller-identity $PROFILE_ARG --query Account --output text); then
+    echo "ERROR: Failed to read the AWS account of ${PROFILE:-the default AWS credentials} (AWS error above)"
+    exit 1
+  fi
+fi
+
+# Fetch and check all five policies before changing anything
+for policy in "${POLICY_LIST[@]}"; do
+  POLICY_NAME=$(policy_name_for "$policy")
+  POLICY_FILE="$TEMP_DIR/${POLICY_NAME}.json"
+  echo "Fetching $POLICY_NAME policy JSON..."
+  # easy-db-lab uses the credentials and account of its own profile (EASY_DB_LAB_PROFILE)
+  if ! "$SCRIPT_DIR/easy-db-lab" sip "$policy" > "$POLICY_FILE"; then
+    echo "ERROR: Failed to fetch $policy policy from easy-db-lab"
+    exit 1
+  fi
+
+  if ! jq -se 'length == 1 and (.[0] | type == "object")' "$POLICY_FILE" > /dev/null 2>&1; then
+    echo "ERROR: easy-db-lab returned something that is not a JSON policy document for $POLICY_NAME:"
+    head -n 5 "$POLICY_FILE"
+    echo "easy-db-lab may need its profile set up first: run 'easy-db-lab profile setup', then retry."
+    exit 1
+  fi
+
+  if [[ "$DRY_RUN" != "true" ]]; then
+    for account in $(policy_account_ids "$POLICY_FILE"); do
+      if [[ "$account" != "$TARGET_ACCOUNT" ]]; then
+        echo "ERROR: The $POLICY_NAME policy from easy-db-lab names account $account, but ${PROFILE:-the default AWS credentials} is account $TARGET_ACCOUNT."
+        echo "The easy-db-lab profile (EASY_DB_LAB_PROFILE) points at a different account than --profile."
+        exit 1
+      fi
+    done
+  fi
+done
+echo ""
+
+# ARNs of the policies this run created or updated, checked against the target at the end
+POLICY_ARNS=()
 
 # Apply each policy
 for policy in "${POLICY_LIST[@]}"; do
   echo "=== Processing $policy policy ==="
-
-  # Get policy name mapping
-  case "$policy" in
-    ec2)
-      POLICY_NAME="EasyDBLabEC2"
-      ;;
-    iam)
-      POLICY_NAME="EasyDBLabIAM"
-      ;;
-    emr)
-      POLICY_NAME="EasyDBLabEMR"
-      ;;
-    opensearch)
-      POLICY_NAME="EasyDBLabOpenSearch"
-      ;;
-    compactor)
-      POLICY_NAME="EasyDBLabCompactor"
-      ;;
-  esac
-
-  # Get policy JSON from easy-db-lab
+  POLICY_NAME=$(policy_name_for "$policy")
   POLICY_FILE="$TEMP_DIR/${POLICY_NAME}.json"
-  echo "Fetching policy JSON..."
-  # Set AWS_PROFILE if profile is specified so easy-db-lab uses correct credentials
-  if [[ -n "$PROFILE" ]]; then
-    if ! AWS_PROFILE="$PROFILE" "$SCRIPT_DIR/easy-db-lab" sip "$policy" > "$POLICY_FILE"; then
-      echo "ERROR: Failed to fetch $policy policy from easy-db-lab"
-      exit 1
-    fi
-  else
-    if ! "$SCRIPT_DIR/easy-db-lab" sip "$policy" > "$POLICY_FILE"; then
-      echo "ERROR: Failed to fetch $policy policy from easy-db-lab"
-      exit 1
-    fi
-  fi
 
   if [[ "$DRY_RUN" == "true" ]]; then
     echo "[DRY RUN] Would execute:"
+    echo "  0. Check every account in the policy's ARNs is the target account:"
+    echo "     aws sts get-caller-identity --query Account --output text $PROFILE_ARG"
     echo "  1. Check if policy exists:"
-    echo "     aws iam list-policies --query \"Policies[?PolicyName=='$POLICY_NAME'].Arn\" --output text $PROFILE_ARG"
+    echo "     aws iam list-policies --scope Local --query \"Policies[?PolicyName=='$POLICY_NAME'].Arn\" --output text $PROFILE_ARG"
     echo "  2a. If not exists, create:"
     echo "      aws iam create-policy --policy-name $POLICY_NAME --policy-document file://$POLICY_FILE $PROFILE_ARG"
     echo "  2b. If exists, create new version (deleting old if at 5 version limit):"
     echo "      aws iam create-policy-version --policy-arn <arn> --policy-document file://$POLICY_FILE --set-as-default $PROFILE_ARG"
-    echo "  3. Attach to $TARGET_TYPE:"
+    echo "  3. Check if already attached to $TARGET_TYPE:"
+    echo "     aws iam $LIST_ATTACHED_COMMAND $TARGET_NAME --query 'AttachedPolicies[].PolicyArn' --output text $PROFILE_ARG"
+    echo "  4. If not attached, attach to $TARGET_TYPE (fails the run on error):"
     echo "     aws iam $ATTACH_COMMAND $TARGET_NAME --policy-arn <arn> $PROFILE_ARG"
   else
     echo "Creating or updating managed policy..."
 
-    # Try to get existing policy ARN
-    POLICY_ARN=$(aws iam list-policies $PROFILE_ARG --query "Policies[?PolicyName=='$POLICY_NAME'].Arn" --output text)
+    # Try to get existing policy ARN (customer-managed policies only)
+    POLICY_ARN=$(aws iam list-policies --scope Local $PROFILE_ARG --query "Policies[?PolicyName=='$POLICY_NAME'].Arn" --output text)
 
     if [[ -z "$POLICY_ARN" ]]; then
       # Policy doesn't exist - create it
@@ -241,14 +291,18 @@ for policy in "${POLICY_LIST[@]}"; do
     fi
 
     echo "Policy ARN: $POLICY_ARN"
+    POLICY_ARNS+=("$POLICY_ARN")
 
-    # Attach to target (ignore error if already attached)
-    echo "Attaching policy to $TARGET_TYPE $TARGET_NAME..."
-    if aws iam $ATTACH_COMMAND "$TARGET_NAME" --policy-arn "$POLICY_ARN" $PROFILE_ARG 2>/dev/null; then
-      echo "✓ Successfully attached $POLICY_NAME"
+    ATTACHED_ARNS=$(attached_policy_arns)
+    if arn_in_list "$POLICY_ARN" "$ATTACHED_ARNS"; then
+      echo "✓ Policy $POLICY_NAME is already attached to $TARGET_TYPE $TARGET_NAME"
     else
-      # Check if it's already attached (which is fine)
-      echo "✓ Policy $POLICY_NAME already attached or attachment successful"
+      echo "Attaching policy to $TARGET_TYPE $TARGET_NAME..."
+      if ! aws iam $ATTACH_COMMAND "$TARGET_NAME" --policy-arn "$POLICY_ARN" $PROFILE_ARG; then
+        echo "ERROR: Failed to attach $POLICY_NAME to $TARGET_TYPE $TARGET_NAME (AWS error above)"
+        exit 1
+      fi
+      echo "✓ Successfully attached $POLICY_NAME"
     fi
   fi
   echo ""
@@ -256,7 +310,23 @@ done
 
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "=== Dry run complete ==="
+  echo "Would then verify all five policies are attached to $TARGET_TYPE $TARGET_NAME:"
+  echo "  aws iam $LIST_ATTACHED_COMMAND $TARGET_NAME --query 'AttachedPolicies[].PolicyArn' --output text $PROFILE_ARG"
   echo "No policies were actually created or attached."
 else
+  echo "=== Verifying attachments ==="
+  ATTACHED_ARNS=$(attached_policy_arns)
+  MISSING=()
+  for arn in "${POLICY_ARNS[@]}"; do
+    if ! arn_in_list "$arn" "$ATTACHED_ARNS"; then
+      MISSING+=("${arn##*/}")
+    fi
+  done
+  if [[ ${#MISSING[@]} -gt 0 ]]; then
+    echo "ERROR: Policies not attached to $TARGET_TYPE $TARGET_NAME: ${MISSING[*]}"
+    exit 1
+  fi
+  echo "✓ All ${#POLICY_ARNS[@]} policies are attached to $TARGET_TYPE $TARGET_NAME"
+  echo ""
   echo "=== All managed policies created and attached successfully ==="
 fi

@@ -1165,6 +1165,12 @@ object Constants {
 
             /** The value of [LOKI_ENCODING_FLAGS_HEADER] that categorizes the labels. */
             const val LOKI_CATEGORIZE_LABELS = "categorize-labels"
+
+            /** The traces one search of a trace export asks Tempo for; a window that returns this many is split. */
+            const val TRACE_SEARCH_LIMIT = 1000
+
+            /** The longest trace search window, Tempo's `query_frontend.search.max_duration` (spike S3). */
+            const val TRACE_SEARCH_MAX_HOURS = 168L
         }
     }
 

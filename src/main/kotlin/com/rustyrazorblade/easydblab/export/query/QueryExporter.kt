@@ -82,7 +82,10 @@ class QueryExporter(
         require(selector !is ExportSelector.Tenant) { "A tenant export copies the store; it is not a query export" }
         val access = stores.open()
         access.store.use {
-            val work = QueryWorkDirectory.create(target)
+            val work =
+                eventBus.reportingStepFailure(target) {
+                    exportStep(ExportSignal.STACK, "create the work directory beside ${target.zip.path}") { QueryWorkDirectory.create(target) }
+                }
             try {
                 eventBus.reportingStepFailure(target, logs = { work.stackLogs().map { it.path } }) {
                     run(target, selector, workspace, access, work)

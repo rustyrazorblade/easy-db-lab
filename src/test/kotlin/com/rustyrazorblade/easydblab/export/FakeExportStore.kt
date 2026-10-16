@@ -17,6 +17,9 @@ class FakeExportStore : ExportStore {
     /** Runs before the object [key] is opened. */
     var beforeOpen: (key: String) -> Unit = {}
 
+    /** Runs before [prefix] is listed; a test throws from it to fail a listing as S3 can. */
+    var beforeList: (prefix: String) -> Unit = {}
+
     fun put(
         key: String,
         content: String,
@@ -27,8 +30,10 @@ class FakeExportStore : ExportStore {
 
     override val bucket: String get() = "acct"
 
-    override fun list(prefix: String): List<StoreObject> =
-        objects.filterKeys { it.startsWith(prefix) }.map { (key, value) -> StoreObject(key, value.first.size.toLong(), value.second) }
+    override fun list(prefix: String): List<StoreObject> {
+        beforeList(prefix)
+        return objects.filterKeys { it.startsWith(prefix) }.map { (key, value) -> StoreObject(key, value.first.size.toLong(), value.second) }
+    }
 
     override fun listDirectories(prefix: String): List<String> =
         objects.keys

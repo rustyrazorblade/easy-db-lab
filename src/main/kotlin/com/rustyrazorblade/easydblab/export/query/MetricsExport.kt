@@ -87,13 +87,15 @@ class MetricsExport(
         exportStep(ExportSignal.METRICS, "rewrite the blocks of $tenant to keep only ${clusters.joinToString(", ")}") {
             rewrite.rewrite(tenantDir, tmpDir, chosen, clusters)
         }
-        chosen.forEach { File(tenantDir, it).deleteRecursively() }
-        tmpDir.deleteRecursively()
-        tenantDir
-            .listFiles { file -> file.isDirectory }
-            .orEmpty()
-            .filter { series(it) == 0L }
-            .forEach { it.deleteRecursively() }
+        exportStep(ExportSignal.METRICS, "drop the source blocks, the scratch and the rewritten blocks with no series of $tenant") {
+            chosen.forEach { File(tenantDir, it).deleteRecursively() }
+            tmpDir.deleteRecursively()
+            tenantDir
+                .listFiles { file -> file.isDirectory }
+                .orEmpty()
+                .filter { series(it) == 0L }
+                .forEach { it.deleteRecursively() }
+        }
         val kept = tenantDir.listFiles { file -> file.isDirectory }.orEmpty().size
         exportStep(ExportSignal.METRICS, "write the bucket index of $tenant") {
             File(tenantDir, MimirBucketIndexWriter.FILE).writeBytes(indexWriter.write(FileBlockDirectory(tenantDir)))

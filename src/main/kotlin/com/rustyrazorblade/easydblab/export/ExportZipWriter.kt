@@ -79,11 +79,14 @@ class ExportZipWriter(
     ): T {
         val partial = File(target.zip.absoluteFile.parentFile, "${target.zip.name}${Constants.Export.PARTIAL_INFIX}${partialSuffix()}")
         try {
+            // A failure inside the body names its own step; one of the zip file itself is the stack's.
             val result =
-                ZipOutputStream(Files.newOutputStream(partial.toPath()).buffered(Constants.Export.COPY_BUFFER_BYTES)).use { zip ->
-                    body(StreamingSink(zip, target.root))
+                exportStep(ExportSignal.STACK, "write ${partial.path}") {
+                    ZipOutputStream(Files.newOutputStream(partial.toPath()).buffered(Constants.Export.COPY_BUFFER_BYTES)).use { zip ->
+                        body(StreamingSink(zip, target.root))
+                    }
                 }
-            moveWithoutOverwrite(partial, target.zip)
+            exportStep(ExportSignal.STACK, "move ${partial.name} to ${target.zip.path}") { moveWithoutOverwrite(partial, target.zip) }
             return result
         } finally {
             Files.deleteIfExists(partial.toPath())

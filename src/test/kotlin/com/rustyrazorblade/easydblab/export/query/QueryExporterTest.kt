@@ -23,6 +23,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -201,6 +202,7 @@ class QueryExporterTest {
         }
 
     private val rewrites = mutableListOf<List<String>>()
+    private var brokenRewrittenMeta = false
     private val runtime =
         object : QueryRuntime {
             override fun reader(
@@ -225,7 +227,11 @@ class QueryExporterTest {
                         File(tenantDir, "R$source/chunks/000001").writeText("kept")
                         File(tenantDir, "R$source/index").writeText("index")
                         File(tenantDir, "R$source/meta.json").writeText(
-                            """{"ulid":"R$source","minTime":1,"maxTime":2,"stats":{"numSeries":2},"thanos":{"labels":{},"source":"bucket.rewrite"}}""",
+                            if (brokenRewrittenMeta) {
+                                "not json"
+                            } else {
+                                """{"ulid":"R$source","minTime":1,"maxTime":2,"stats":{"numSeries":2},"thanos":{"labels":{},"source":"bucket.rewrite"}}"""
+                            },
                         )
                     }
                 }
@@ -441,6 +447,59 @@ class QueryExporterTest {
         val failed = events.filterIsInstance<Event.Export.Failed>().single()
         assertThat(failed.logs).containsExactly(File(work, "reader/compose.log").path, File(work, "writer/compose.log").path)
         assertThat(failed.toDisplayString()).contains(File(work, "reader/compose.log").path)
+    }
+
+    /** Runs one export expected to fail, and returns its Export.Failed. */
+    private fun failedExport(selector: ExportSelector = ExportSelector.Clusters(listOf("x-1"))): Event.Export.Failed {
+        val target = target()
+        assertThatThrownBy { exporter.export(target, selector, workspace = null) }.isInstanceOf(CommandFailedException::class.java)
+        assertThat(target.zip).doesNotExist()
+        return events.filterIsInstance<Event.Export.Failed>().single()
+    }
+
+    @Test
+    fun `a failed listing of the annotation backups is reported with the annotations signal and the listing`() {
+        store.beforeList = { prefix -> if (prefix.startsWith("grafana/annotations/")) throw IOException("S3 refused the listing") }
+
+        val failed = failedExport()
+
+        assertThat(failed.signal).isEqualTo("annotations")
+        assertThat(failed.step).contains("list grafana/annotations/acme/")
+        assertThat(failed.reason).contains("S3 refused the listing")
+    }
+
+    @Test
+    fun `a failed listing of an experiment's reports is reported with the reports signal and the listing`() {
+        store.beforeList = { prefix -> if (prefix.startsWith("reports/")) throw IOException("S3 refused the listing") }
+
+        val failed = failedExport()
+
+        assertThat(failed.signal).isEqualTo("reports")
+        assertThat(failed.step).contains("list reports/acme/exp-a/")
+    }
+
+    @Test
+    fun `a rewritten block whose meta cannot be read is reported with the metrics signal and the clean-up step`() {
+        brokenRewrittenMeta = true
+
+        val failed = failedExport()
+
+        assertThat(failed.signal).isEqualTo("metrics")
+        assertThat(failed.step).contains("drop", "acme")
+    }
+
+    @Test
+    fun `a work directory that cannot be made is reported with the stack signal`() {
+        dir.setWritable(false)
+        try {
+            val failed = failedExport()
+
+            assertThat(failed.signal).isEqualTo("stack")
+            assertThat(failed.step).contains("work directory")
+            assertThat(events.filterIsInstance<Event.Export.WorkDirectoryKept>()).isEmpty()
+        } finally {
+            dir.setWritable(true)
+        }
     }
 
     @Test

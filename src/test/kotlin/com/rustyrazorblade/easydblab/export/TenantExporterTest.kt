@@ -32,21 +32,29 @@ class TenantExporterTest {
     private val events = mutableListOf<Event>()
     private val eventBus = EventBus()
 
+    /** Runs while the stack's files are rendered into the zip, after the partial file is open. */
+    private var whileRendering: () -> Unit = {}
+
     private val dashboards =
         object : DashboardTreeSource {
             override val origin: String = "packaged dashboards"
 
-            override fun render(context: DashboardInstallContext): Map<String, String> = mapOf("home/home.json" to """{"uid":"home"}""")
+            override fun render(context: DashboardInstallContext): Map<String, String> {
+                whileRendering()
+                return mapOf("home/home.json" to """{"uid":"home"}""")
+            }
         }
 
-    private val exporter =
+    private fun exporter(zipWriter: ExportZipWriter = ExportZipWriter()) =
         TenantExporter(
             stores = { store },
             stack = ExportStackFiles(dashboards, toolVersion = "16"),
-            zipWriter = ExportZipWriter(),
+            zipWriter = zipWriter,
             diskSpace = { free },
             eventBus = eventBus,
         )
+
+    private val exporter = exporter()
 
     @BeforeEach
     fun listen() {
@@ -162,5 +170,39 @@ class TenantExporterTest {
         assertThat(failed.toDisplayString()).contains("traces", "No zip was left at ${target.zip.path}")
         assertThat(dir.list()).describedAs("no zip, no partial file, no scratch").isEmpty()
         assertThat(events.filterIsInstance<Event.Export.Completed>()).isEmpty()
+    }
+
+    @Test
+    fun `a file that appears at the path while the zip is written is reported with the stack signal and left as it is`() {
+        seed()
+        val target = target()
+        whileRendering = { target.zip.writeText("someone else's") }
+
+        assertThatThrownBy { exporter.export(target, tenant = "acme") }.isInstanceOf(CommandFailedException::class.java)
+
+        val failed = events.filterIsInstance<Event.Export.Failed>().single()
+        assertThat(failed.signal).isEqualTo("stack")
+        assertThat(failed.step).contains("move")
+        assertThat(failed.reason).contains("appeared while the export was written")
+        assertThat(target.zip.readText()).isEqualTo("someone else's")
+    }
+
+    /**
+     * The scratch directory is `<zip name>.scratch-<random digits>` beside the zip. A 245-character zip
+     * name leaves room for the partial file (`.partial-x`, 255 characters, the longest file name
+     * allowed) but not for the scratch directory, so only the scratch directory cannot be made.
+     */
+    @Test
+    fun `a scratch directory that cannot be made is reported with the logs signal and the step`() {
+        seed()
+        val target = ExportTarget.of(File(dir, "a".repeat(241) + ".zip"))
+
+        assertThatThrownBy { exporter(ExportZipWriter { "x" }).export(target, tenant = "acme") }
+            .isInstanceOf(CommandFailedException::class.java)
+
+        val failed = events.filterIsInstance<Event.Export.Failed>().single()
+        assertThat(failed.signal).isEqualTo("logs")
+        assertThat(failed.step).contains("scratch directory")
+        assertThat(dir.list()).describedAs("no zip, no partial file").isEmpty()
     }
 }

@@ -425,5 +425,6 @@ Detailed patterns live in package-level CLAUDE.md files:
 - [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) — cluster state, templates, K8s manifest builders, observability stack details
 - [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md) — Server architecture (MCP, REST, background services)
 - [`kubernetes/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/kubernetes/CLAUDE.md) — K8s client patterns
-- [`localstack/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/localstack/CLAUDE.md) — the local docker compose observability stack: spec, composer, writer, manifest, read gate
+- [`localstack/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/localstack/CLAUDE.md) — the local docker compose observability stack: spec, composer, writer, manifest, read gate, offline mode
+- [`export/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/export/CLAUDE.md) — `observability export`: selector, atomic zip, the tenant copy's safe order, the Mimir and Tempo index writers
 - [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) — test infrastructure

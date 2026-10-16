@@ -20,7 +20,7 @@ data class GrafanaImageRenderer(
  *
  * Every Grafana this tool runs takes them from here — the cluster's Deployment
  * ([GrafanaManifestBuilder]) and the local docker compose stack — so the two log in, brand, open
- * their home dashboard, install plugins and show the documents iframe the same way. Only the values
+ * their home dashboard, install plugins (except offline) and show the documents iframe the same way. Only the values
  * that differ by host are parameters.
  *
  * @property appTitle the browser title, the cluster's `<name>-<id>` on a cluster.

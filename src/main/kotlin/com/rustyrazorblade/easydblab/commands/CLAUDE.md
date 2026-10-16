@@ -71,7 +71,7 @@ commands/
 │   ├── KitSqlCommand.kt   # <kit> sql — runs SQL over the kit's JDBC endpoint; SOCKS-bridged when tunnel-only (#740)
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
 ├── logs/                  # logs query — reads the cluster's logs from Loki
-├── observability/         # observability compactor start|stop|status — the account compactor; no cluster workspace needed (bucket from the profile), status is read-only println. observability local create <dir> [--tenant] and local dashboards <dir> [--from] — the local stack (localstack/: LocalStackCreator, LocalDashboardsRefresher); no workspace needed
+├── observability/         # observability compactor start|stop|status — the account compactor; no cluster workspace needed (bucket from the profile), status is read-only println. observability local create <dir> [--tenant] and local dashboards <dir> [--from] — the local stack (localstack/: LocalStackCreator, LocalDashboardsRefresher); observability export <path> --tenant|--cluster|--experiment — a zip that opens offline as the local stack (export/: TenantExporter); no workspace needed
 ├── opensearch/            # OpenSearch commands
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
 ├── profile/               # Profile inspection and setup (profile show, profile setup)

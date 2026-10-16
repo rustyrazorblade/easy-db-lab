@@ -139,7 +139,13 @@ class ThanosBlockRewriteTest {
     @Test
     fun `a scratch directory inside the tenant directory is refused`() {
         assertThatThrownBy {
-            ThanosBlockRewrite(compose, File(work, "p"), "p", "1:1", eventBus).rewrite(tenantDir, File(tenantDir, "tmp"), listOf("01A"), listOf("x"))
+            ThanosBlockRewrite(
+                compose,
+                File(work, "p"),
+                "p",
+                "1:1",
+                eventBus,
+            ).rewrite(tenantDir, File(tenantDir, "tmp"), listOf("01A"), listOf("x"))
         }.isInstanceOf(IllegalArgumentException::class.java)
     }
 

@@ -32,7 +32,9 @@ class FakeExportStore : ExportStore {
 
     override fun list(prefix: String): List<StoreObject> {
         beforeList(prefix)
-        return objects.filterKeys { it.startsWith(prefix) }.map { (key, value) -> StoreObject(key, value.first.size.toLong(), value.second) }
+        return objects.filterKeys { it.startsWith(prefix) }.map { (key, value) ->
+            StoreObject(key, value.first.size.toLong(), value.second)
+        }
     }
 
     override fun listDirectories(prefix: String): List<String> =

@@ -84,7 +84,9 @@ class QueryExporter(
         access.store.use {
             val work =
                 eventBus.reportingStepFailure(target) {
-                    exportStep(ExportSignal.STACK, "create the work directory beside ${target.zip.path}") { QueryWorkDirectory.create(target) }
+                    exportStep(ExportSignal.STACK, "create the work directory beside ${target.zip.path}") {
+                        QueryWorkDirectory.create(target)
+                    }
                 }
             try {
                 eventBus.reportingStepFailure(target, logs = { work.stackLogs().map { it.path } }) {

@@ -26,6 +26,7 @@ class RecordingObservabilityHttp(
         port: Int,
         pathAndQuery: String,
         timeout: Duration,
+        headers: Map<String, String>,
     ): ObservabilityResponse = answer(Call("GET", port, pathAndQuery, "", timeout))
 
     override fun post(

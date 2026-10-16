@@ -224,7 +224,8 @@ class ContainerObservabilityHttp(
         port: Int,
         pathAndQuery: String,
         timeout: Duration,
-    ): ObservabilityResponse = send(port, pathAndQuery, timeout) { it.GET() }
+        headers: Map<String, String>,
+    ): ObservabilityResponse = send(port, pathAndQuery, timeout) { builder -> headers.entries.fold(builder.GET()) { b, (k, v) -> b.header(k, v) } }
 
     override fun post(
         port: Int,

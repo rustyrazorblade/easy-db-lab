@@ -88,9 +88,10 @@ class TempoTailFlushTest {
                     port: Int,
                     pathAndQuery: String,
                     timeout: Duration,
+                    headers: Map<String, String>,
                 ): ObservabilityResponse {
                     if (failures-- > 0) throw IOException("unexpected end of stream")
-                    return recorded.get(port, pathAndQuery, timeout)
+                    return recorded.get(port, pathAndQuery, timeout, headers)
                 }
             }
         walListing("blocks/acme/01HDONE/meta.json\nblocks/acme/01HDONE/flushed")

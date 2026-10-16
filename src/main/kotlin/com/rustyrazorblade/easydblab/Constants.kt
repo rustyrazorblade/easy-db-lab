@@ -1142,6 +1142,30 @@ object Constants {
 
         /** How many times one Loki index table is copied again after an object listed in it went away mid-copy. */
         const val LOKI_TABLE_ATTEMPTS = 5
+
+        /** Exports by query (`--cluster`, `--experiment`): the temporary reader and writer stacks. */
+        object Query {
+            /** Joins the tenants of a federated request in `X-Scope-OrgID`. */
+            const val TENANT_SEPARATOR = "|"
+
+            /** The label a federated Mimir answer gives each series, naming its tenant. */
+            const val TENANT_ID_LABEL = "__tenant_id__"
+
+            /** The lines one forward page of a log export asks Loki for. */
+            const val LOG_PAGE_LINES = 5000
+
+            /**
+             * The most lines Loki answers in one query, `max_entries_limit_per_query` in `loki.yaml`:
+             * what a log export asks for when a whole page shares one nanosecond.
+             */
+            const val LOG_MAX_LINES = 100_000
+
+            /** The Loki request header that asks for each line's structured metadata apart from the stream labels. */
+            const val LOKI_ENCODING_FLAGS_HEADER = "X-Loki-Response-Encoding-Flags"
+
+            /** The value of [LOKI_ENCODING_FLAGS_HEADER] that categorizes the labels. */
+            const val LOKI_CATEGORIZE_LABELS = "categorize-labels"
+        }
     }
 
     // Proxy configuration

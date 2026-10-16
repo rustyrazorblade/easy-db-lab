@@ -71,7 +71,7 @@ than implying it was checked.
 ## Never edit dashboard JSON with `jq`
 
 `jq` round-trips the whole document. In this repo that has produced a 1,644-line reindent of
-`cluster-comparison.json` for a one-line fix, and unescaped `µ` to `µ` and `—` to `—`
+`cluster-comparison.json` (now `experiment-cassandra.json`) for a one-line fix, and unescaped `µ` to `µ` and `—` to `—`
 across `cassandra-overview.json` — thousands of lines of unrelated churn hiding the real change.
 
 Use a literal, byte-preserving replacement:
@@ -113,7 +113,7 @@ Check `fieldConfig.defaults.unit` and `max` before adding or removing a `* 100`:
 - `percentunit` (often `max: 1`) → 0..1, bare fraction, **no** `* 100`
 
 Applying the percent form to a `percentunit` panel renders 100x over scale and clips silently at
-the axis maximum. `cluster-comparison.json`'s "CPU Usage by Cluster" is `percentunit`/`max: 1`.
+the axis maximum. `experiment-cassandra.json`'s "CPU Usage by Cluster" is `percentunit`/`max: 1`.
 
 ## Known metric traps
 

@@ -980,7 +980,7 @@ easy-db-lab grafana update-config
 
 ### grafana install
 
-Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the copied tree, and the dashboard is updated in place only if the JSON carries a top-level `uid`. Before the upload, the command applies the same defaults `up` applies, from the workspace's cluster state: each tenant picker selects the cluster's own tenant, and `cluster`, `baseline_cluster` and `candidate_cluster` select the current cluster.
+Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the copied tree, and the dashboard is updated in place only if the JSON carries a top-level `uid`. Before the upload, the command applies the same defaults `up` applies, from the workspace's cluster state: each tenant picker selects the cluster's own tenant; `cluster` (except on a dashboard with an experiment picker, where it opens on All, the experiment's clusters) and `cluster_b` select the current cluster; `experiment` selects the cluster's experiment; and the hidden `home_tenant` holds the cluster's tenant.
 
 ```bash
 easy-db-lab grafana install my-dashboard.json --folder=experiments

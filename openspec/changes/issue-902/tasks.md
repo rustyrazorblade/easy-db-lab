@@ -98,8 +98,8 @@
 
 ## 9. Docs, specs and CLAUDE.md
 
-- [ ] 9.1 `dashboards/CLAUDE.md` (`:68-69`, `:89`, `:105-107`, `:127` Tests link to `cluster-pair` with `var-cluster_a`, `:134-135`, `:166`, `:178-182`): experiment picker, `home_tenant`, A/B names, new dashboards, pre-label rule, TraceQL rule.
-- [ ] 9.2 Root `CLAUDE.md`: `TENANT` to `tenant` with `experiment` (debt 2); documents layout `reports/<tenant>/<experiment>/`; `report upload <dir>`; local stack and export; comparison dashboards paragraph (`:388`).
-- [ ] 9.3 `configuration/CLAUDE.md` (`:169`), `events/CLAUDE.md` (new `Report`, `LocalStack` and `Export` events), `commands/CLAUDE.md` (new commands).
-- [ ] 9.4 `docs/user-guide/monitoring.md`: experiments, the report zip, links to the local-stack page.
+- [x] 9.1 `dashboards/CLAUDE.md` (`:68-69`, `:89`, `:105-107`, `:127` Tests link to `cluster-pair` with `var-cluster_a`, `:134-135`, `:166`, `:178-182`): experiment picker, `home_tenant`, A/B names, new dashboards, pre-label rule, TraceQL rule.
+- [x] 9.2 Root `CLAUDE.md`: `TENANT` to `tenant` with `experiment` (debt 2); documents layout `reports/<tenant>/<experiment>/`; `report upload <dir>`; local stack and export; comparison dashboards paragraph (`:388`).
+- [x] 9.3 `configuration/CLAUDE.md` (`:169`), `events/CLAUDE.md` (new `Report`, `LocalStack` and `Export` events), `commands/CLAUDE.md` (new commands).
+- [x] 9.4 `docs/user-guide/monitoring.md`: experiments, the report zip, links to the local-stack page.
 - [ ] 9.5 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21; fix findings with code only), and `./gradlew check` in a subagent.

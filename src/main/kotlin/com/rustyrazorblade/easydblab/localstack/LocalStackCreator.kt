@@ -74,6 +74,10 @@ class LocalStackCreator(
                     eventBus.emit(Event.LocalStack.StoreUnreadable(profile, access.awsErrorCode))
                     throw CommandFailedException("The account bucket is not readable with profile $profile")
                 }
+                is StoreReadResult.Unreachable -> {
+                    eventBus.emit(Event.LocalStack.StoreUnreachable(profile, access.reason))
+                    throw CommandFailedException("The account bucket check could not reach S3")
+                }
             }
         val spec =
             LocalStackSpec(

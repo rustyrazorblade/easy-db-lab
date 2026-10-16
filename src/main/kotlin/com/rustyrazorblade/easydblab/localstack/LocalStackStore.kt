@@ -12,6 +12,10 @@ import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.S3Exception
+import java.io.InterruptedIOException
+import java.net.SocketException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLException
 
 /** What [LocalStackStore.check] found out about the account bucket. */
 sealed interface StoreReadResult {
@@ -34,6 +38,16 @@ sealed interface StoreReadResult {
     data class Unreadable(
         val awsErrorCode: String,
     ) : StoreReadResult
+
+    /**
+     * S3 could not be reached at all: a read or connect timeout, a refused connection, a name that
+     * did not resolve, or a TLS failure. Logging in again would not help, so it is not [Unreadable].
+     *
+     * @property reason the I/O error's class and message.
+     */
+    data class Unreachable(
+        val reason: String,
+    ) : StoreReadResult
 }
 
 /**
@@ -54,6 +68,37 @@ interface LocalStackStore {
         region: String,
         home: String,
     ): TenantSet
+}
+
+/**
+ * Picks the network failure out of an SDK exception, as the stack's store check (`store-check.sh`)
+ * tells a `dial tcp`, `i/o timeout`, `no such host` or TLS failure apart from a credentials one. The
+ * SDK wraps the HTTP client's I/O error in an `SdkClientException`; a credentials failure has no such
+ * cause (a missing SSO token file is an `IOException`, but not one of these).
+ */
+internal object NetworkFailure {
+    /**
+     * What the HTTP client throws when S3 cannot be reached: a refused or reset connection
+     * ([SocketException]), a name that did not resolve, a read or connect timeout (an
+     * [InterruptedIOException], as `SocketTimeoutException` and Apache's `ConnectTimeoutException` are),
+     * or TLS.
+     */
+    private val NETWORK: List<Class<out Throwable>> =
+        listOf(
+            SocketException::class.java,
+            UnknownHostException::class.java,
+            InterruptedIOException::class.java,
+            SSLException::class.java,
+        )
+
+    /** The first network failure in [e]'s cause chain, [e] included; null when there is none. */
+    fun causeOf(e: Throwable): Throwable? =
+        generateSequence(e) { it.cause.takeIf { cause -> cause !== it } }
+            .take(MAX_CAUSES)
+            .firstOrNull { cause -> NETWORK.any { it.isInstance(cause) } }
+
+    /** Enough for any SDK wrapping, and an end to a cycle of causes. */
+    private const val MAX_CAUSES = 16
 }
 
 /** An S3 client for one region, so a bucket is read in its own region and not the profile's. */
@@ -96,10 +141,15 @@ class SdkLocalStackStore(
         } catch (e: S3Exception) {
             StoreReadResult.Unreadable(e.awsErrorDetails()?.errorCode() ?: "HTTP ${e.statusCode()}")
         } catch (e: SdkException) {
-            // The SDK could not load credentials (SdkClientException), or another service refused them:
-            // an expired SSO session is the SSO OIDC service's ExpiredTokenException.
-            val code = (e as? AwsServiceException)?.awsErrorDetails()?.errorCode() ?: e::class.simpleName
-            StoreReadResult.Unreadable("$code: ${e.message}")
+            when (val network = NetworkFailure.causeOf(e)) {
+                null -> {
+                    // The SDK could not load credentials (SdkClientException), or another service refused them:
+                    // an expired SSO session is the SSO OIDC service's ExpiredTokenException.
+                    val code = (e as? AwsServiceException)?.awsErrorDetails()?.errorCode() ?: e::class.simpleName
+                    StoreReadResult.Unreadable("$code: ${e.message}")
+                }
+                else -> StoreReadResult.Unreachable("${network::class.simpleName}: ${network.message}")
+            }
         }
 
     override fun tenants(

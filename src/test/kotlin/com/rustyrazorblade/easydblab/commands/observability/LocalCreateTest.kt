@@ -227,6 +227,21 @@ class LocalCreateTest : BaseKoinTest() {
     }
 
     @Test
+    fun `an unreachable S3 fails saying S3 could not be reached, with no login hint, and writes nothing`() {
+        storeResult = StoreReadResult.Unreachable(reason = "SocketTimeoutException: Read timed out")
+        val dir = stack()
+
+        assertThatThrownBy { create(dir.path) }.isInstanceOf(CommandFailedException::class.java).hasMessageContaining("reach S3")
+
+        val unreachable = events.filterIsInstance<Event.LocalStack.StoreUnreachable>().single()
+        assertThat(unreachable).isEqualTo(Event.LocalStack.StoreUnreachable(profile = "lab-profile", reason = "SocketTimeoutException: Read timed out"))
+        assertThat(unreachable.toDisplayString()).contains("could not reach S3", "Read timed out", "Nothing was written").doesNotContain("aws sso login")
+        assertThat(unreachable.isError()).isTrue()
+        assertThat(events.filterIsInstance<Event.LocalStack.StoreUnreadable>()).isEmpty()
+        assertThat(dir).doesNotExist()
+    }
+
+    @Test
     fun `a profile with no AWS profile name is refused, since the signer reads the profile from ~ aws`() {
         get<User>().awsProfile = ""
 

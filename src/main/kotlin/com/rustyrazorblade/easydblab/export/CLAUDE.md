@@ -29,7 +29,9 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
   write call. `ExportStoreFactory` opens it; `exportModule` binds `CheckedExportStoreFactory`, which runs
   `local create`'s read check first (`LocalStackStore.check`) and, when the credentials cannot read the bucket (an
   expired SSO session is the SSO OIDC `ExpiredTokenException`), emits `Export.StoreUnreadable(profile, awsErrorCode)`
-  with the `aws sso login --profile` hint and throws `CommandFailedException`. Every export opens its store before
+  with the `aws sso login --profile` hint and throws `CommandFailedException`; when S3 cannot be reached at all (the
+  check's `Unreachable`: a timeout, a refused connection, DNS, TLS) it emits `Export.StoreUnreachable(profile, reason)`,
+  "could not reach S3", with no login hint, and throws. Every export opens its store before
   it writes anything, so this leaves no zip and no partial file.
 - `ExportZipWriter` — streams to `<path>.partial-<random>` beside the path (`ZipOutputStream`, Zip64 automatic),
   moves it with a hard link (fails on an existing path; a plain no-replace move where links are unsupported), and

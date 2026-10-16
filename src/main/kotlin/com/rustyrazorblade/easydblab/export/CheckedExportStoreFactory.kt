@@ -56,6 +56,10 @@ class CheckedExportStoreFactory(
                     "The account bucket is not readable with ${profile?.let { "profile $it" } ?: "the profile's access keys"}",
                 )
             }
+            is StoreReadResult.Unreachable -> {
+                eventBus.emit(Event.Export.StoreUnreachable(user.awsProfile.ifBlank { null }, access.reason))
+                throw CommandFailedException("The account bucket check could not reach S3")
+            }
         }
     }
 }

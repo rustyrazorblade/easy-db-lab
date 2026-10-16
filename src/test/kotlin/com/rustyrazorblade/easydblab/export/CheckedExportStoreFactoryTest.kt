@@ -98,6 +98,20 @@ class CheckedExportStoreFactoryTest {
     }
 
     @Test
+    fun `an unreachable S3 says S3 could not be reached, with no login hint, and fails before a client is made`() {
+        access = StoreReadResult.Unreachable("UnknownHostException: acct.s3.eu-west-1.amazonaws.com")
+
+        assertThatThrownBy { factory().open() }.isInstanceOf(CommandFailedException::class.java).hasMessageContaining("reach S3")
+
+        val unreachable = events.filterIsInstance<Event.Export.StoreUnreachable>().single()
+        assertThat(unreachable).isEqualTo(Event.Export.StoreUnreachable(profile = "lab", reason = "UnknownHostException: acct.s3.eu-west-1.amazonaws.com"))
+        assertThat(unreachable.toDisplayString()).contains("could not reach S3", "UnknownHostException", "Nothing was written").doesNotContain("aws sso login")
+        assertThat(unreachable.isError()).isTrue()
+        assertThat(events.filterIsInstance<Event.Export.StoreUnreadable>()).isEmpty()
+        assertThat(regions).isEmpty()
+    }
+
+    @Test
     fun `a query export's store carries the bucket's region and the profile its reader stack signs with`() {
         val access = factory().openForQuery()
 

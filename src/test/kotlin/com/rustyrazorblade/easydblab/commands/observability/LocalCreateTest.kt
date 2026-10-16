@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.localstack.ComposeFile
 import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
 import com.rustyrazorblade.easydblab.localstack.LocalGrafana
 import com.rustyrazorblade.easydblab.localstack.LocalStackCreator
@@ -38,6 +39,7 @@ class LocalCreateTest : BaseKoinTest() {
     private val storeTenants = mutableListOf("acme")
     private var storeResult: StoreReadResult = StoreReadResult.Readable(region = "eu-west-1")
     private var storeChecks = 0
+    private val listedRegions = mutableListOf<String>()
 
     private val store =
         object : LocalStackStore {
@@ -48,8 +50,12 @@ class LocalCreateTest : BaseKoinTest() {
 
             override fun tenants(
                 bucket: String,
+                region: String,
                 home: String,
-            ): TenantSet = TenantSet.of(home, storeTenants.toList())
+            ): TenantSet {
+                listedRegions += region
+                return TenantSet.of(home, storeTenants.toList())
+            }
         }
 
     private val grafana = FakeLocalGrafana()
@@ -141,6 +147,20 @@ class LocalCreateTest : BaseKoinTest() {
         assertThat(File(dir, Constants.LocalStack.COMPOSE_FILE).readText())
             .contains("lab-profile")
             .contains("eu-west-1")
+    }
+
+    @Test
+    fun `the signer signs for, and the tenants are listed in, the bucket's region from the store check`() {
+        storeResult = StoreReadResult.Readable(region = "ap-south-1")
+        val dir = stack()
+
+        create(dir.path)
+
+        assertThat(listedRegions).containsExactly("ap-south-1")
+        val compose = ComposeFile.fromYaml(File(dir, Constants.LocalStack.COMPOSE_FILE).readText())
+        val signer = checkNotNull(compose.services[Constants.LocalStack.Services.STORE_SIGNER])
+        assertThat(signer.command).containsSequence("--region", "ap-south-1")
+        assertThat(signer.command).containsSequence("--host", "s3.ap-south-1.amazonaws.com")
     }
 
     @Test

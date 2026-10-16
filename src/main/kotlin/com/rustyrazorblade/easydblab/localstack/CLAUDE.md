@@ -32,9 +32,13 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
 ## Commands and services
 
 - `observability local create <dir> [--tenant]` → `LocalStackCreator`: tenant rule, `refuseForeign`, profile and
-  bucket from `User`, `LocalStackStore.check` (SDK: bucket region, `HeadBucket`, one-key list of `mimir/`;
+  bucket from `User`, `LocalStackStore.check` (SDK: bucket region from `BucketRegion` with the profile-region
+  client, then `HeadBucket` and a one-key list of `mimir/` with a client for the bucket's region from
+  `S3ClientForRegion`, since S3 answers a `HeadBucket` in another region with a 301;
   `Event.LocalStack.StoreUnreadable(profile, awsErrorCode)` and `CommandFailedException` on failure, nothing
-  written), `LocalStackStore.tenants` (`TenantDirectory`), compose and write, packaged dashboards, then
+  written), `LocalStackStore.tenants(bucket, region, home)` (`TenantDirectory` over a client for the bucket's
+  region), compose and write with `Mode.Live.region` the bucket's region (the signer signs for it), packaged
+  dashboards, then
   `LocalStack.Written` (files, edited files, tenants). On a re-run only (`rewrite`), a Grafana answering on the
   manifest's port reloads its datasources and dashboards (`LocalStack.DatasourcesReloaded`).
 - `observability local dashboards <dir> [--from <dir>]` → `LocalDashboardsRefresher`: reads the manifest, checks

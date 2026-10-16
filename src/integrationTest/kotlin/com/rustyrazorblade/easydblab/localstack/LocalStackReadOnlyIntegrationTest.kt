@@ -9,8 +9,6 @@ import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatal
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.services.TenantDirectory
-import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
@@ -120,12 +118,13 @@ class LocalStackReadOnlyIntegrationTest {
         seeded = StoreSeed(minio, bucket).seed(TENANTS)
 
         stack = File(root, "lab-local")
-        val store = SdkLocalStackStore(minio.s3Client(), TenantDirectory(S3ObjectStore(minio.s3Client(), EventBus())))
+        // MinIO has one endpoint for every region: the bucket's region still picks the client.
+        val store = SdkLocalStackStore(minio.s3Client(), { minio.s3Client() }, EventBus())
         val region = (store.check(bucket) as StoreReadResult.Readable).region
         val spec =
             LocalStackSpec(
                 mode = LocalStackSpec.Mode.Live(bucket = bucket, region = region, awsProfile = PROFILE, home = HOME),
-                tenants = store.tenants(bucket, HOME).all,
+                tenants = store.tenants(bucket, region, HOME).all,
                 grafanaPort = freePort(),
                 documentsPort = freePort(),
             )

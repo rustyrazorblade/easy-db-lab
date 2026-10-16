@@ -43,7 +43,7 @@ import java.util.UUID
  * The live local stack, as `local create` writes it, run with `docker compose up` against a store in
  * MinIO that the cluster's own writers filled for two tenants, `default` and `acme`.
  *
- * The test's `compose.override.yml` changes only what a laptop test needs: the project joins the
+ * The test's `compose.override.yml` changes only what a laptop test needs: the signer's way out is the
  * test's Docker network (where MinIO is), the signer proxies to MinIO over HTTP instead of
  * `s3.<region>.amazonaws.com` with a `~/.aws` holding a static MinIO profile, and the backends' and the
  * gate's ports are published for the test. Everything else, every image, flag, config file, mount,
@@ -87,6 +87,7 @@ class LocalStackReadOnlyIntegrationTest {
         const val BAD_HEALTH_INTERVAL = "5s"
         const val HTTP_OK = 200
         const val HTTP_FORBIDDEN = 403
+        const val PROBE_TIMEOUT_SECONDS = "5"
 
         /** What Mimir and Tempo write when a block is merged away or marked: deletion, no-compact, compacted. */
         val COMPACTION_MARKS = listOf("deletion-mark.json", "no-compact-mark.json", "meta.compacted.json")
@@ -185,7 +186,8 @@ class LocalStackReadOnlyIntegrationTest {
 
         fun published(port: Int) = listOf("${Constants.LocalStack.LOOPBACK}::$port")
         return ComposeOverride(
-            networks = mapOf("default" to ExternalNetwork(networkName, external = true)),
+            // MinIO sits on the signer's own way out, which no other service of the stack joins.
+            networks = mapOf(Constants.LocalStack.Networks.STORE_EGRESS to ExternalNetwork(networkName, external = true)),
             services =
                 mapOf(
                     Constants.LocalStack.Services.STORE_SIGNER to
@@ -565,6 +567,92 @@ class LocalStackReadOnlyIntegrationTest {
 
         awaitUntil(ANSWER_WAIT, "the edited dashboard in Grafana", { "" }) { dashboardStatus(PROBE_DASHBOARD) == HTTP_OK }
         assertThat(project.containerIds(services)).isEqualTo(before)
+        assertThat(listing()).isEqualTo(listingBefore)
+    }
+
+    /**
+     * `wget` of [url] from inside [service]'s network namespace: a one-off busybox joins the running
+     * container's network, so it resolves and reaches exactly what [service] does.
+     */
+    private fun probeFrom(
+        service: String,
+        url: String,
+    ): ComposeProject.Result =
+        project.docker(
+            "run",
+            "--rm",
+            "--network",
+            "container:${project.containerId(service)}",
+            Constants.LocalStack.HEALTHCHECK_TOOLS_IMAGE,
+            "wget",
+            "-q",
+            "-O",
+            "-",
+            "-T",
+            PROBE_TIMEOUT_SECONDS,
+            url,
+        )
+
+    /**
+     * The signer signs any method with the operator's credentials, and Grafana runs anonymous Admin: a
+     * datasource pointed at the signer would bypass the gate. From inside Grafana, a backend and the
+     * documents view, the signer is unreachable by name and by its address, while the gate answers a
+     * read; and Grafana's data source proxy refuses a datasource that names anything but the stack's
+     * backends, even the gate. The stack still answers queries afterwards.
+     */
+    @Test
+    @Order(7)
+    fun `no container but the gate and the store check reaches the signer, and Grafana proxies only to the backends`() {
+        val signerAddress =
+            project.inspect(
+                Constants.LocalStack.Services.STORE_SIGNER,
+                "{{(index .NetworkSettings.Networks \"${project.name}_${Constants.LocalStack.Networks.STORE_ACCESS}\").IPAddress}}",
+            )
+        assertThat(signerAddress).describedAs("the signer's address on the store-access network").isNotBlank()
+        val list = "/$bucket?list-type=2&prefix=mimir%2F&max-keys=1"
+        val port = Constants.LocalStack.STORE_PORT
+        for (service in listOf(
+            Constants.LocalStack.Services.GRAFANA,
+            Constants.LocalStack.Services.MIMIR,
+            Constants.LocalStack.Services.DOCUMENTS,
+        )) {
+            val byName = probeFrom(service, "http://${Constants.LocalStack.Services.STORE_SIGNER}:$port$list")
+            val byAddress = probeFrom(service, "http://$signerAddress:$port$list")
+            val gate = probeFrom(service, "http://${Constants.LocalStack.Services.STORE_GATE}:$port$list")
+
+            assertThat(byName.exitCode).describedAs("$service reaching the signer by name: ${byName.output}").isNotEqualTo(0)
+            assertThat(
+                byAddress.exitCode,
+            ).describedAs("$service reaching the signer at $signerAddress: ${byAddress.output}").isNotEqualTo(0)
+            assertThat(gate.exitCode).describedAs("$service reading through the gate: ${gate.output}").isEqualTo(0)
+            assertThat(gate.output).describedAs(service).contains("<Key>mimir/")
+        }
+
+        val gateDatasource = "edl-it-gate-probe"
+        val created =
+            ObservabilityBackends.send(
+                HttpRequest
+                    .newBuilder(URI("${grafanaBase()}/api/datasources"))
+                    .header("Content-Type", "application/json")
+                    .POST(
+                        HttpRequest.BodyPublishers.ofString(
+                            """{"name":"$gateDatasource","uid":"$gateDatasource","type":"prometheus","access":"proxy",""" +
+                                """"url":"http://${Constants.LocalStack.Services.STORE_GATE}:$port"}""",
+                        ),
+                    ).build(),
+            )
+        assertThat(created.statusCode()).describedAs(created.body()).isEqualTo(HTTP_OK)
+        try {
+            val proxied = ObservabilityBackends.get("${grafanaBase()}/api/datasources/proxy/uid/$gateDatasource$list", HOME)
+            assertThat(proxied.statusCode()).describedAs(proxied.body()).isEqualTo(HTTP_FORBIDDEN)
+            assertThat(proxied.body()).doesNotContain("<Key>")
+        } finally {
+            ObservabilityBackends.send(HttpRequest.newBuilder(URI("${grafanaBase()}/api/datasources/uid/$gateDatasource")).DELETE().build())
+        }
+
+        awaitUntil(ANSWER_WAIT, "metrics of $HOME after the probes", { "" }) {
+            metricSeries(HOME).map { it["cluster"] } == listOf(seeded.cluster(HOME))
+        }
         assertThat(listing()).isEqualTo(listingBefore)
     }
 

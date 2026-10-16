@@ -1118,6 +1118,21 @@ object Constants {
             /** No service answers it until profiles join the stack (issue 1016); the datasource set names it. */
             const val PYROSCOPE = "pyroscope"
         }
+
+        /**
+         * The networks of a stack that reads the live store. The signer signs any request with the
+         * operator's credentials, so it shares a network only with the gate and the store check.
+         */
+        object Networks {
+            /** The project's own network, which every service but the signer and the store check joins. */
+            const val DEFAULT = "default"
+
+            /** The signer, the gate and the store check; internal, so it has no way out. */
+            const val STORE_ACCESS = "store-access"
+
+            /** The signer's way out to S3, which no other service joins. */
+            const val STORE_EGRESS = "store-egress"
+        }
     }
 
     /** `observability export`: a zip of a tenant's or some clusters' data that opens offline as a local stack. */

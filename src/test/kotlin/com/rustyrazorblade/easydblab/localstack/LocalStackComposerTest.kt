@@ -269,6 +269,40 @@ class LocalStackComposerTest {
         assertThat(service("documents-web").ports).containsExactly("127.0.0.1:3380:3080")
     }
 
+    /**
+     * The signer signs any method with the operator's credentials. Grafana runs anonymous Admin, so a
+     * datasource pointed at the signer would bypass the gate and could DELETE the owner's data: no
+     * service but the gate and the store check may reach it.
+     */
+    @Test
+    fun `only the gate and the store check share a network with the signer, whose way out is its own`() {
+        assertThat(ComposeNetworks.sharingWith(compose, "store-signer")).isEqualTo(ComposeNetworks.SIGNER_PEERS)
+        val egress = ComposeNetworks.of(compose, "store-signer") - ComposeNetworks.of(compose, "store-gate")
+        assertThat(egress).describedAs("the signer's egress network").isNotEmpty()
+        assertThat(compose.services.keys - "store-signer").allSatisfy { other ->
+            assertThat(ComposeNetworks.of(compose, other)).describedAs(other).doesNotContainAnyElementsOf(egress)
+        }
+        val access = ComposeNetworks.of(compose, "store-signer") - egress
+        assertThat(
+            access.map { compose.networks.orEmpty()[it]?.internal },
+        ).describedAs("the gate's network to the signer").containsOnly(true)
+    }
+
+    @Test
+    fun `every backend, Grafana and the documents view reach the gate, never the signer`() {
+        for (name in listOf("mimir", "loki", "tempo", "grafana", "documents-web", "memcached")) {
+            assertThat(ComposeNetworks.sharingWith(compose, name)).describedAs(name).contains("store-gate").doesNotContain("store-signer")
+        }
+    }
+
+    /** Defense in depth: Grafana's data source proxy reaches only the stack's own backends, whatever a datasource names. */
+    @Test
+    fun `Grafana's data source proxy is allowed only the stack's backends`() {
+        val allowed = service("grafana").environment.orEmpty()["GF_SECURITY_DATA_SOURCE_PROXY_WHITELIST"]
+
+        assertThat(allowed?.split(' ')).containsExactlyInAnyOrder("mimir:9009", "loki:3100", "tempo:3200", "pyroscope:4040")
+    }
+
     @Test
     fun `Grafana's datasources are a cluster's, on the compose backends`() {
         val datasources = mountedFile("grafana", "/etc/grafana/provisioning/datasources/datasources.yaml")
@@ -294,6 +328,7 @@ class LocalStackComposerTest {
                     dashboardRoot = tree,
                     plugins = emptyList(),
                     dataProxyTimeoutSeconds = Constants.LocalStack.GRAFANA_DATAPROXY_TIMEOUT_SECONDS,
+                    dataSourceProxyAllowList = BackendUrls.LOCAL_COMPOSE.hostPorts(),
                 ).environment().toMap(),
             )
         assertThat(provider).isEqualTo(GrafanaDashboardProvisioningConfig.forDashboardTree(tree).toYaml())

@@ -14,6 +14,11 @@ import com.rustyrazorblade.easydblab.services.TemplateService
  *   endpoint is the gate, so nothing in the stack can write, rewrite or delete an object.
  * - `store-check`: a one-shot read of the bucket that every backend waits for, so expired
  *   credentials stop the stack from starting instead of showing an empty store.
+ *
+ * The signer signs any method, so no other service may reach it: it shares the internal
+ * `store-access` network only with the gate and the store check, and reaches S3 over `store-egress`,
+ * which no other service joins. The gate is also on the project's `default` network, where the
+ * backends, Grafana and the documents view reach it.
  */
 object StoreAccessPart {
     private const val GATE_CONFIG = "store-gate.conf"
@@ -23,6 +28,8 @@ object StoreAccessPart {
     private const val HEALTHCHECK_TIMEOUT = "10s"
     private const val HEALTHCHECK_RETRIES = 2
     private const val HEALTHCHECK_START_PERIOD = "10s"
+    private const val ACCESS = Constants.LocalStack.Networks.STORE_ACCESS
+    private const val EGRESS = Constants.LocalStack.Networks.STORE_EGRESS
 
     /** The part for the live store in [live]'s bucket and region, read with its profile. */
     fun live(live: LocalStackSpec.Mode.Live): ComposePart =
@@ -40,6 +47,7 @@ object StoreAccessPart {
                     LocalStackComposer.configPath(Constants.LocalStack.Services.STORE_CHECK, CHECK_SCRIPT) to
                         LocalStackComposer.resource(CHECK_SCRIPT),
                 ),
+            networks = mapOf(ACCESS to ComposeNetwork(internal = true), EGRESS to ComposeNetwork()),
         )
 
     private fun gateConfig(): String =
@@ -90,6 +98,7 @@ object StoreAccessPart {
                     startPeriod = HEALTHCHECK_START_PERIOD,
                 ),
             restart = "unless-stopped",
+            networks = listOf(ACCESS, EGRESS),
         )
 
     private fun gate(): ComposeService =
@@ -99,6 +108,7 @@ object StoreAccessPart {
             volumes = listOf(LocalStackComposer.configMount(Constants.LocalStack.Services.STORE_GATE, LocalStackComposer.NGINX_CONFIG_DIR)),
             dependsOn = mapOf(Constants.LocalStack.Services.STORE_SIGNER to ComposeDependency.STARTED),
             restart = "unless-stopped",
+            networks = listOf(Constants.LocalStack.Networks.DEFAULT, ACCESS),
         )
 
     private fun check(live: LocalStackSpec.Mode.Live): ComposeService =
@@ -114,5 +124,6 @@ object StoreAccessPart {
             volumes = listOf(LocalStackComposer.configMount(Constants.LocalStack.Services.STORE_CHECK, CHECK_DIR)),
             dependsOn = mapOf(Constants.LocalStack.Services.STORE_SIGNER to ComposeDependency.STARTED),
             restart = "no",
+            networks = listOf(ACCESS),
         )
 }

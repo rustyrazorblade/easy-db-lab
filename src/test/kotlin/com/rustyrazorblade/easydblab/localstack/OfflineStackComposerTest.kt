@@ -50,6 +50,13 @@ class OfflineStackComposerTest {
     }
 
     @Test
+    fun `Grafana's data source proxy is allowed only the stack's backends`() {
+        val allowed = service(Constants.LocalStack.Services.GRAFANA).environment.orEmpty()["GF_SECURITY_DATA_SOURCE_PROXY_WHITELIST"]
+
+        assertThat(allowed?.split(' ')).containsExactlyInAnyOrder("mimir:9009", "loki:3100", "tempo:3200", "pyroscope:4040")
+    }
+
+    @Test
     fun `the zip's data is mounted read-only into every backend and the documents view, and state is written under cache`() {
         (backends + Constants.LocalStack.Services.DOCUMENTS).forEach { name ->
             val data = service(name).volumes.orEmpty().filter { it.source == "./${Constants.Export.DATA_DIR}" }

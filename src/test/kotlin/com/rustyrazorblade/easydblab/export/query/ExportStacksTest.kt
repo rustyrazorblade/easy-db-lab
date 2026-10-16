@@ -6,6 +6,7 @@ import com.charleskorn.kaml.YamlNode
 import com.charleskorn.kaml.YamlScalar
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.localstack.ComposeFile
+import com.rustyrazorblade.easydblab.localstack.ComposeNetworks
 import com.rustyrazorblade.easydblab.localstack.ComposeService
 import com.rustyrazorblade.easydblab.localstack.LocalImages
 import com.rustyrazorblade.easydblab.localstack.LocalStackSpec
@@ -63,6 +64,21 @@ class ExportStacksTest {
         assertThat(
             services.keys,
         ).containsExactlyInAnyOrder("store-signer", "store-gate", "store-check", "memcached", "mimir", "loki", "tempo")
+    }
+
+    @Test
+    fun `only the reader's gate and store check share a network with its signer, whose way out is its own`() {
+        val reader = compose(ExportReaderStack.compose(live))
+        val egress = ComposeNetworks.of(reader, "store-signer") - ComposeNetworks.of(reader, "store-gate")
+
+        assertThat(ComposeNetworks.sharingWith(reader, "store-signer")).isEqualTo(ComposeNetworks.SIGNER_PEERS)
+        assertThat(egress).isNotEmpty()
+        listOf("mimir", "loki", "tempo", "memcached").forEach { backend ->
+            assertThat(
+                ComposeNetworks.sharingWith(reader, backend),
+            ).describedAs(backend).contains("store-gate").doesNotContain("store-signer")
+            assertThat(ComposeNetworks.of(reader, backend)).describedAs(backend).doesNotContainAnyElementsOf(egress)
+        }
     }
 
     @Test

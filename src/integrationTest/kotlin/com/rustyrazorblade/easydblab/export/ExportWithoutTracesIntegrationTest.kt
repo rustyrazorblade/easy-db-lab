@@ -18,7 +18,6 @@ import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy
 import java.io.File
 import java.time.Duration
 import java.util.UUID
-import java.util.zip.ZipFile
 
 /**
  * An export with no traces opens with a running Tempo. The data directory is mounted read-only, and
@@ -66,7 +65,10 @@ class ExportWithoutTracesIntegrationTest {
     fun `an export with no traces opens with a Tempo that answers ready and does not restart`() {
         val zip = File(root, "$ROOT.zip")
         val stackFiles =
-            ExportStackFiles(PackagedDashboardTree(GrafanaDashboardCatalog.discover(), PackagedKitDashboards.discover()), toolVersion = "it")
+            ExportStackFiles(
+                PackagedDashboardTree(GrafanaDashboardCatalog.discover(), PackagedKitDashboards.discover()),
+                toolVersion = "it",
+            )
         ExportZipWriter().write(ExportTarget.of(zip)) { sink -> stackFiles.put(ExportRecorder(sink), TENANT, root = ROOT) }
 
         stack = unzip(zip)
@@ -84,20 +86,10 @@ class ExportWithoutTracesIntegrationTest {
         assertThat(project.inspect(Constants.LocalStack.Services.TEMPO, "{{.RestartCount}}")).isEqualTo("0")
     }
 
-    /** Unpacks [zip] beside it as `unzip` does, directory entries included; returns the stack directory. */
+    /** Unpacks [zip] as `unzip` does; returns the stack directory. */
     private fun unzip(zip: File): File {
         val parent = File(root, "opened").apply { mkdirs() }
-        ZipFile(zip).use { file ->
-            file.entries().asSequence().forEach { entry ->
-                val target = File(parent, entry.name)
-                if (entry.isDirectory) {
-                    target.mkdirs()
-                } else {
-                    target.parentFile.mkdirs()
-                    file.getInputStream(entry).use { input -> target.writeBytes(input.readBytes()) }
-                }
-            }
-        }
+        ExportUnzip.unpack(zip, parent)
         return File(parent, ROOT)
     }
 

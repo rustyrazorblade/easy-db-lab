@@ -47,6 +47,26 @@ class LocalStackCreator(
         val TENANT = Regex(Constants.Observability.TENANT_PATTERN)
     }
 
+    /**
+     * The region of [bucket] once the store check found it readable with [profile]; otherwise the
+     * reason is reported (unreadable credentials, or S3 not reached) and the command fails.
+     */
+    private fun readableRegion(
+        bucket: String,
+        profile: String,
+    ): String =
+        when (val access = store.check(bucket)) {
+            is StoreReadResult.Readable -> access.region
+            is StoreReadResult.Unreadable -> {
+                eventBus.emit(Event.LocalStack.StoreUnreadable(profile, access.awsErrorCode))
+                throw CommandFailedException("The account bucket is not readable with profile $profile")
+            }
+            is StoreReadResult.Unreachable -> {
+                eventBus.emit(Event.LocalStack.StoreUnreachable(profile, access.reason))
+                throw CommandFailedException("The account bucket check could not reach S3")
+            }
+        }
+
     /** Writes, or rewrites, the stack in [directory] with [homeTenant] as the stable datasources' tenant. */
     fun create(
         directory: File,
@@ -67,18 +87,7 @@ class LocalStackCreator(
                 )
             }
         val bucket = user.s3Bucket.ifBlank { error("No account bucket in the profile. Run 'easy-db-lab up' once to create it.") }
-        val region =
-            when (val access = store.check(bucket)) {
-                is StoreReadResult.Readable -> access.region
-                is StoreReadResult.Unreadable -> {
-                    eventBus.emit(Event.LocalStack.StoreUnreadable(profile, access.awsErrorCode))
-                    throw CommandFailedException("The account bucket is not readable with profile $profile")
-                }
-                is StoreReadResult.Unreachable -> {
-                    eventBus.emit(Event.LocalStack.StoreUnreachable(profile, access.reason))
-                    throw CommandFailedException("The account bucket check could not reach S3")
-                }
-            }
+        val region = readableRegion(bucket, profile)
         val spec =
             LocalStackSpec(
                 mode = LocalStackSpec.Mode.Live(bucket = bucket, region = region, awsProfile = profile, home = homeTenant),

@@ -71,34 +71,55 @@ class QueryExporterTest {
                 call.route == "/prometheus/api/v1/series" -> {
                     val cluster = call.param("match[]")!!.substringAfter("cluster=\"").substringBefore('"')
                     val found = clusters[cluster]?.takeIf { it.first in tenants }
-                    val series = listOfNotNull(found?.let { mapOf("cluster" to cluster) + if (tenants.size > 1) mapOf("__tenant_id__" to it.first) else emptyMap() })
+                    val series =
+                        listOfNotNull(
+                            found?.let {
+                                mapOf("cluster" to cluster) +
+                                    if (tenants.size > 1) mapOf("__tenant_id__" to it.first) else emptyMap()
+                            },
+                        )
                     FakeBackends.series(*series.toTypedArray())
                 }
                 call.route == "/prometheus/api/v1/label/cluster/values" -> {
                     val matches = call.params.filter { it.first == "match[]" }.map { it.second }
                     val values =
-                        clusters.filter { (cluster, where) ->
-                            where.first in tenants &&
-                                matches.any { m ->
-                                    val exp = m.substringAfter("experiment=\"", "\u0000").substringBefore('"')
-                                    val named = m.substringAfter("cluster=\"", "\u0000").substringBefore('"')
-                                    val among = m.substringAfter("cluster=~\"", "\u0000").substringBefore('"').split('|')
-                                    when {
-                                        m.contains("cluster=~") -> cluster in among && (exp == "\u0000" || where.second == exp)
-                                        m.contains("experiment=\"\",cluster=") -> where.second == "" && cluster == named
-                                        else -> where.second == exp
+                        clusters
+                            .filter { (cluster, where) ->
+                                where.first in tenants &&
+                                    matches.any { m ->
+                                        val exp = m.substringAfter("experiment=\"", "\u0000").substringBefore('"')
+                                        val named = m.substringAfter("cluster=\"", "\u0000").substringBefore('"')
+                                        val among = m.substringAfter("cluster=~\"", "\u0000").substringBefore('"').split('|')
+                                        when {
+                                            m.contains("cluster=~") -> cluster in among && (exp == "\u0000" || where.second == exp)
+                                            m.contains("experiment=\"\",cluster=") -> where.second == "" && cluster == named
+                                            else -> where.second == exp
+                                        }
                                     }
-                                }
-                        }.keys
+                            }.keys
                     FakeBackends.prometheus(values.joinToString(",", "[", "]") { "\"$it\"" })
                 }
                 call.route == "/prometheus/api/v1/label/experiment/values" -> {
-                    val among = call.param("match[]")!!.substringAfter("cluster=~\"").substringBefore('"').split('|')
-                    val values = clusters.filter { it.key in among && it.value.first in tenants && it.value.second.isNotEmpty() }.values.map { it.second }
+                    val among =
+                        call
+                            .param("match[]")!!
+                            .substringAfter("cluster=~\"")
+                            .substringBefore('"')
+                            .split('|')
+                    val values =
+                        clusters
+                            .filter { it.key in among && it.value.first in tenants && it.value.second.isNotEmpty() }
+                            .values
+                            .map { it.second }
                     FakeBackends.prometheus(values.distinct().joinToString(",", "[", "]") { "\"$it\"" })
                 }
                 call.route == "/prometheus/api/v1/query_range" -> {
-                    val among = call.param("query")!!.substringAfter("cluster=~\"").substringBefore('"').split('|')
+                    val among =
+                        call
+                            .param("query")!!
+                            .substringAfter("cluster=~\"")
+                            .substringBefore('"')
+                            .split('|')
                     val series =
                         among.filter { clusters[it]?.first in tenants }.joinToString(",") {
                             """{"metric":{"cluster":"$it"},"values":[[${now.epochSecond - 7200},"1"],[${now.epochSecond - 3600},"1"]]}"""
@@ -213,7 +234,10 @@ class QueryExporterTest {
             override val origin: String = "packaged dashboards"
 
             override fun render(context: DashboardInstallContext): Map<String, String> =
-                mapOf("home/home.json" to """{"tenants":"${context.tenants.all.joinToString(",")}","experiment":"${context.experiment?.pickerValue}"}""")
+                mapOf(
+                    "home/home.json" to
+                        """{"tenants":"${context.tenants.all.joinToString(",")}","experiment":"${context.experiment?.pickerValue}"}""",
+                )
         }
 
     private val exporter =
@@ -241,7 +265,8 @@ class QueryExporterTest {
             val min = now.minusSeconds(86_400).toEpochMilli()
             store.put("mimir/$tenant/01$tenant/meta.json", """{"ulid":"01$tenant","minTime":$min,"maxTime":${now.toEpochMilli()}}""")
             store.put("mimir/$tenant/01$tenant/index", "index")
-            val index = """{"version":2,"blocks":[{"block_id":"01$tenant","min_time":$min,"max_time":${now.toEpochMilli()}}],"block_deletion_marks":[]}"""
+            val block = """{"block_id":"01$tenant","min_time":$min,"max_time":${now.toEpochMilli()}}"""
+            val index = """{"version":2,"blocks":[$block],"block_deletion_marks":[]}"""
             store.objects["mimir/$tenant/bucket-index.json.gz"] =
                 ByteArrayOutputStream().also { out -> GZIPOutputStream(out).use { it.write(index.toByteArray()) } }.toByteArray() to now
         }
@@ -257,7 +282,12 @@ class QueryExporterTest {
     private fun target(name: String = "out.zip") = ExportTarget.of(File(dir, name))
 
     private fun entries(zip: File): Map<String, String> =
-        ZipFile(zip).use { file -> file.entries().asSequence().associate { it.name.substringAfter('/') to file.getInputStream(it).readBytes().decodeToString() } }
+        ZipFile(zip).use { file ->
+            file.entries().asSequence().associate {
+                it.name.substringAfter('/') to
+                    file.getInputStream(it).readBytes().decodeToString()
+            }
+        }
 
     @Test
     fun `a cluster export holds only the selected clusters' signals, annotations and their experiments' reports`() {
@@ -266,7 +296,10 @@ class QueryExporterTest {
         exporter.export(target, ExportSelector.Clusters(listOf("x-1")), workspace = null)
 
         val zip = entries(target.zip)
-        assertThat(zip.keys.filter { it.startsWith("data/loki/") }).isNotEmpty().allMatch { it.startsWith("data/loki/acme/") || it.startsWith("data/loki/index/") }
+        assertThat(zip.keys.filter { it.startsWith("data/loki/") }).isNotEmpty().allMatch {
+            it.startsWith("data/loki/acme/") ||
+                it.startsWith("data/loki/index/")
+        }
         assertThat(zip.filterKeys { it.startsWith("data/loki/acme/") }.values).allMatch { it.contains("line of x-1") }
         assertThat(zip.keys).contains("data/grafana/annotations/acme/20261015-100000_x-1.json", "data/reports/acme/exp-a/index.html")
         assertThat(zip.keys).doesNotContain(
@@ -327,7 +360,11 @@ class QueryExporterTest {
         exporter.export(target, ExportSelector.Experiment(ExperimentKey("acme", "exp-a")), workspace = null)
 
         val zip = entries(target.zip)
-        assertThat(events.filterIsInstance<Event.Export.ClustersSelected>().single().clusters.map { it.cluster }).containsExactlyInAnyOrder("x-1", "y-2")
+        assertThat(
+            events.filterIsInstance<Event.Export.ClustersSelected>().single().clusters.map {
+                it.cluster
+            },
+        ).containsExactlyInAnyOrder("x-1", "y-2")
         assertThat(reader.calls.map { it.tenant }).containsOnly("acme")
         assertThat(zip.keys).contains("data/reports/acme/exp-a/index.html").doesNotContain("data/reports/default/exp-a/index.html")
         assertThat(zip.getValue("dashboards/current/home/home.json")).contains("acme/exp-a")
@@ -339,7 +376,13 @@ class QueryExporterTest {
 
         exporter.export(target, ExportSelector.Experiment(ExperimentKey("acme", "old-5")), workspace = null)
 
-        assertThat(events.filterIsInstance<Event.Export.ClustersSelected>().single().clusters.map { it.cluster }).containsExactly("old-5")
+        assertThat(
+            events
+                .filterIsInstance<Event.Export.ClustersSelected>()
+                .single()
+                .clusters
+                .map { it.cluster },
+        ).containsExactly("old-5")
         assertThat(entries(target.zip).keys).contains("data/reports/acme/old-5/index.html")
     }
 

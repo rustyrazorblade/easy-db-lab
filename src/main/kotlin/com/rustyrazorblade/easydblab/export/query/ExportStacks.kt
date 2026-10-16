@@ -94,7 +94,6 @@ object ExportWriterStack {
         owner: String,
     ): Map<String, ByteArray> {
         val environment = backendEnvironment(bucket = NONE, region = NONE, home = home)
-        val store = ComposeMount.bind("./$STORE_DIR", STORE, readOnly = false)
         val clusterLoki = LocalStackComposer.resourceNextTo(LokiManifestBuilder::class.java, LokiManifestBuilder.CONFIG_FILE)
         val clusterTempo = LocalStackComposer.resourceNextTo(TempoManifestBuilder::class.java, TEMPO_FILE)
         val offline = ExportedFiles(LocalStackSpec.Mode.Offline(dataDir = STORE_DIR, home = home))
@@ -102,56 +101,68 @@ object ExportWriterStack {
             ComposePart(
                 services =
                     mapOf(
-                        Constants.LocalStack.Services.LOKI to
-                            ComposeService(
-                                image = LocalImages.LOKI,
-                                user = owner,
-                                command =
-                                    listOf(
-                                        "-config.file=$LOKI_CONFIG_DIR/${LokiManifestBuilder.CONFIG_FILE}",
-                                        "-config.expand-env=true",
-                                        "-target=all",
-                                        "-reporting.enabled=false",
-                                    ),
-                                environment = environment,
-                                volumes =
-                                    listOf(
-                                        LocalStackComposer.configMount(Constants.LocalStack.Services.LOKI, LOKI_CONFIG_DIR),
-                                        store,
-                                        state(Constants.LocalStack.Services.LOKI, LOKI_STATE),
-                                    ),
-                                ports = listOf(randomLoopback(Constants.K8s.LOKI_HTTP_PORT)),
-                                restart = "no",
-                            ),
-                        Constants.LocalStack.Services.TEMPO to
-                            ComposeService(
-                                image = LocalImages.TEMPO,
-                                user = owner,
-                                command = listOf("-config.file=$TEMPO_CONFIG_DIR/$TEMPO_FILE", "-config.expand-env=true"),
-                                environment = environment,
-                                volumes =
-                                    listOf(
-                                        LocalStackComposer.configMount(Constants.LocalStack.Services.TEMPO, TEMPO_CONFIG_DIR),
-                                        store,
-                                        state(Constants.LocalStack.Services.TEMPO, TEMPO_STATE),
-                                    ),
-                                ports =
-                                    listOf(
-                                        randomLoopback(Constants.K8s.TEMPO_PORT),
-                                        randomLoopback(Constants.K8s.TEMPO_OTLP_HTTP_PORT),
-                                    ),
-                                restart = "no",
-                            ),
+                        Constants.LocalStack.Services.LOKI to loki(owner, environment),
+                        Constants.LocalStack.Services.TEMPO to tempo(owner, environment),
                     ),
                 files =
                     mapOf(
                         LocalStackComposer.configPath(Constants.LocalStack.Services.LOKI, LokiManifestBuilder.CONFIG_FILE) to
-                            YamlDocument.patch(offline.lokiConfig(clusterLoki), listOf(YamlPatch.set("limits_config.reject_old_samples", "false"))),
+                            YamlDocument.patch(
+                                offline.lokiConfig(clusterLoki),
+                                listOf(YamlPatch.set("limits_config.reject_old_samples", "false")),
+                            ),
                         LocalStackComposer.configPath(Constants.LocalStack.Services.TEMPO, TEMPO_FILE) to tempoConfig(clusterTempo),
                     ),
             )
         return LocalStackComposer.join(listOf(part))
     }
+
+    /** The store both writers write, read-write. */
+    private val store: ComposeMount get() = ComposeMount.bind("./$STORE_DIR", STORE, readOnly = false)
+
+    private fun loki(
+        owner: String,
+        environment: Map<String, String>,
+    ): ComposeService =
+        ComposeService(
+            image = LocalImages.LOKI,
+            user = owner,
+            command =
+                listOf(
+                    "-config.file=$LOKI_CONFIG_DIR/${LokiManifestBuilder.CONFIG_FILE}",
+                    "-config.expand-env=true",
+                    "-target=all",
+                    "-reporting.enabled=false",
+                ),
+            environment = environment,
+            volumes =
+                listOf(
+                    LocalStackComposer.configMount(Constants.LocalStack.Services.LOKI, LOKI_CONFIG_DIR),
+                    store,
+                    state(Constants.LocalStack.Services.LOKI, LOKI_STATE),
+                ),
+            ports = listOf(randomLoopback(Constants.K8s.LOKI_HTTP_PORT)),
+            restart = "no",
+        )
+
+    private fun tempo(
+        owner: String,
+        environment: Map<String, String>,
+    ): ComposeService =
+        ComposeService(
+            image = LocalImages.TEMPO,
+            user = owner,
+            command = listOf("-config.file=$TEMPO_CONFIG_DIR/$TEMPO_FILE", "-config.expand-env=true"),
+            environment = environment,
+            volumes =
+                listOf(
+                    LocalStackComposer.configMount(Constants.LocalStack.Services.TEMPO, TEMPO_CONFIG_DIR),
+                    store,
+                    state(Constants.LocalStack.Services.TEMPO, TEMPO_STATE),
+                ),
+            ports = listOf(randomLoopback(Constants.K8s.TEMPO_PORT), randomLoopback(Constants.K8s.TEMPO_OTLP_HTTP_PORT)),
+            restart = "no",
+        )
 
     /** The writer's Tempo: the local backend over the store, old spans keeping their own times. */
     private fun tempoConfig(clusterYaml: String): String =

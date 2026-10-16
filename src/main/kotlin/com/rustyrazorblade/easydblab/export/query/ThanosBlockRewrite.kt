@@ -86,11 +86,15 @@ class ThanosBlockRewrite(
         require(!tmpDir.absoluteFile.toPath().startsWith(tenantDir.absoluteFile.toPath())) {
             "thanos's scratch $tmpDir must be outside the tenant directory $tenantDir"
         }
+
         fun inContainer(file: File) = "$STAGING/${file.absoluteFile.relativeTo(staging).invariantSeparatorsPath}"
         val directory = File(projects, "rewrite-${tenantDir.name}").apply { mkdirs() }
         File(directory, "config").mkdirs()
         File(directory, "config/$OBJSTORE").writeText(
-            Yaml.default.encodeToString(ThanosObjstore.serializer(), ThanosObjstore("FILESYSTEM", ThanosFilesystem(inContainer(tenantDir)))),
+            Yaml.default.encodeToString(
+                ThanosObjstore.serializer(),
+                ThanosObjstore("FILESYSTEM", ThanosFilesystem(inContainer(tenantDir))),
+            ),
         )
         File(directory, "config/$DELETE").writeText(
             Yaml.default.encodeToString(
@@ -125,7 +129,9 @@ class ThanosBlockRewrite(
         val name = "$project-rewrite-${tenantDir.name}"
         try {
             val result = compose.run(directory, name, listOf("run", "--rm", SERVICE), TIMEOUT)
-            check(result.exitCode == 0) { "thanos could not rewrite the blocks of ${tenantDir.name} (exit ${result.exitCode}):\n${result.output}" }
+            check(
+                result.exitCode == 0,
+            ) { "thanos could not rewrite the blocks of ${tenantDir.name} (exit ${result.exitCode}):\n${result.output}" }
         } finally {
             compose.run(directory, name, listOf("down", "--remove-orphans"), STOP_TIMEOUT)
         }

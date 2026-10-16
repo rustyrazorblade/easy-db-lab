@@ -143,8 +143,12 @@ class QueryExportIntegrationTest {
         putObject("reports/$DEFAULT/e1/index.html", "default e1")
         listingBefore = listing()
 
-        clusters = run("clusters.zip") { exporter, target -> exporter.export(target, ExportSelector.Clusters(listOf(X.name, W.name)), null) }
-        experiment = run("experiment.zip") { exporter, target -> exporter.export(target, ExportSelector.Experiment(ExperimentKey(ACME, "e1")), null) }
+        clusters =
+            run("clusters.zip") { exporter, target -> exporter.export(target, ExportSelector.Clusters(listOf(X.name, W.name)), null) }
+        experiment =
+            run(
+                "experiment.zip",
+            ) { exporter, target -> exporter.export(target, ExportSelector.Experiment(ExperimentKey(ACME, "e1")), null) }
     }
 
     @AfterAll
@@ -224,7 +228,10 @@ class QueryExportIntegrationTest {
                         Constants.LocalStack.Services.STORE_SIGNER to
                             ServiceOverride(
                                 command = signer,
-                                volumes = listOf(ComposeMount.bind(aws.absolutePath, "${Constants.LocalStack.SIGNER_HOME}/.aws", readOnly = true)),
+                                volumes =
+                                    listOf(
+                                        ComposeMount.bind(aws.absolutePath, "${Constants.LocalStack.SIGNER_HOME}/.aws", readOnly = true),
+                                    ),
                             ),
                     ),
             )
@@ -278,7 +285,9 @@ class QueryExportIntegrationTest {
             "reports/$ACME/e1/index.html",
             "reports/$DEFAULT/e1/index.html",
         )
-        assertThat(clusters.data).doesNotContain("grafana/annotations/$ACME/20261015-100000_${Z.name}.json", "reports/$ACME/other/index.html")
+        assertThat(
+            clusters.data,
+        ).doesNotContain("grafana/annotations/$ACME/20261015-100000_${Z.name}.json", "reports/$ACME/other/index.html")
         val signals = clusters.events.filterIsInstance<Event.Export.SignalExported>().associateBy { it.signal }
         assertThat(signals.keys).containsExactlyInAnyOrder("metrics", "logs", "traces")
         assertThat(signals.values).allSatisfy { assertThat(it.items).isPositive() }
@@ -325,11 +334,17 @@ class QueryExportIntegrationTest {
     fun `a days-old span is found by id and by search over its own time, from a Tempo that holds only the zipped blocks`() {
         val from = seeded.oldAt.minus(Duration.ofHours(1)).epochSecond
         val to = seeded.oldAt.plus(Duration.ofHours(1)).epochSecond
-        awaitUntil(ANSWER_WAIT, "the old span by id over its own time", { project.logs(Constants.LocalStack.Services.TEMPO).takeLast(LOG_TAIL) }) {
+        awaitUntil(
+            ANSWER_WAIT,
+            "the old span by id over its own time",
+            { project.logs(Constants.LocalStack.Services.TEMPO).takeLast(LOG_TAIL) },
+        ) {
             traceFound("tempo", seeded.oldTraceId, "start=$from&end=$to")
         }
         val query = encode("{ resource.cluster = \"${X.name}\" }")
-        awaitUntil(ANSWER_WAIT, "the old span by search over its own time", { project.logs(Constants.LocalStack.Services.TEMPO).takeLast(LOG_TAIL) }) {
+        awaitUntil(ANSWER_WAIT, "the old span by search over its own time", {
+            project.logs(Constants.LocalStack.Services.TEMPO).takeLast(LOG_TAIL)
+        }) {
             val body = grafana("/api/datasources/proxy/uid/tempo/api/search?q=$query&start=$from&end=$to") ?: return@awaitUntil false
             runCatching {
                 Json
@@ -337,7 +352,12 @@ class QueryExportIntegrationTest {
                     .jsonObject
                     .getValue("traces")
                     .jsonArray
-                    .map { it.jsonObject.getValue("traceID").jsonPrimitive.content.padStart(32, '0') }
+                    .map {
+                        it.jsonObject
+                            .getValue("traceID")
+                            .jsonPrimitive.content
+                            .padStart(32, '0')
+                    }
             }.getOrDefault(emptyList()).contains(seeded.oldTraceId)
         }
     }
@@ -371,7 +391,16 @@ class QueryExportIntegrationTest {
     /** A GET of Grafana's own API on loopback, from inside its container. Null when the request fails. */
     private fun grafana(path: String): String? {
         val result =
-            project.compose("exec", "-T", Constants.LocalStack.Services.GRAFANA, "wget", "-q", "-O", "-", "http://127.0.0.1:${Constants.K8s.GRAFANA_PORT}$path")
+            project.compose(
+                "exec",
+                "-T",
+                Constants.LocalStack.Services.GRAFANA,
+                "wget",
+                "-q",
+                "-O",
+                "-",
+                "http://127.0.0.1:${Constants.K8s.GRAFANA_PORT}$path",
+            )
         return result.output.takeIf { result.exitCode == 0 }
     }
 
@@ -402,7 +431,9 @@ class QueryExportIntegrationTest {
     /** The clusters of the lines [logql] finds over the last two hours through the all-tenants logs datasource. */
     private fun logClusters(logql: String): Set<String>? {
         val start = Instant.now().minus(Duration.ofHours(2)).epochSecond * 1_000_000_000L
-        val body = grafana("/api/datasources/proxy/uid/loki--all/loki/api/v1/query_range?query=${encode(logql)}&start=$start&limit=1000") ?: return null
+        val body =
+            grafana("/api/datasources/proxy/uid/loki--all/loki/api/v1/query_range?query=${encode(logql)}&start=$start&limit=1000")
+                ?: return null
         return runCatching {
             Json
                 .parseToJsonElement(body)
@@ -426,7 +457,9 @@ class QueryExportIntegrationTest {
         traceId: String,
         window: String = "",
     ): Boolean {
-        val body = grafana("/api/datasources/proxy/uid/$datasource/api/v2/traces/$traceId${if (window.isEmpty()) "" else "?$window"}") ?: return false
+        val body =
+            grafana("/api/datasources/proxy/uid/$datasource/api/v2/traces/$traceId${if (window.isEmpty()) "" else "?$window"}")
+                ?: return false
         return ObservabilityBackends.traceFound(200, body)
     }
 

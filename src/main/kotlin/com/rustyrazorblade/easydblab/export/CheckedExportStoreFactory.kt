@@ -52,7 +52,9 @@ class CheckedExportStoreFactory(
             is StoreReadResult.Unreadable -> {
                 val profile = user.awsProfile.ifBlank { null }
                 eventBus.emit(Event.Export.StoreUnreadable(profile, access.awsErrorCode))
-                throw CommandFailedException("The account bucket is not readable with ${profile?.let { "profile $it" } ?: "the profile's access keys"}")
+                throw CommandFailedException(
+                    "The account bucket is not readable with ${profile?.let { "profile $it" } ?: "the profile's access keys"}",
+                )
             }
         }
     }

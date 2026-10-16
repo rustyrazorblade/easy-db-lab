@@ -72,7 +72,14 @@ class LogExportTest {
                                                 add(JsonPrimitive(line.text))
                                                 add(
                                                     buildJsonObject {
-                                                        put("structuredMetadata", buildJsonObject { line.metadata.forEach { (k, v) -> put(k, v) } })
+                                                        put(
+                                                            "structuredMetadata",
+                                                            buildJsonObject {
+                                                                line.metadata.forEach { (k, v) ->
+                                                                    put(k, v)
+                                                                }
+                                                            },
+                                                        )
                                                     },
                                                 )
                                             },
@@ -89,7 +96,11 @@ class LogExportTest {
 
     private fun parsePush(body: String): List<Line> =
         Json.parseToJsonElement(body).jsonObject.getValue("streams").jsonArray.flatMap { s ->
-            val labels = s.jsonObject.getValue("stream").jsonObject.mapValues { it.value.jsonPrimitive.content }
+            val labels =
+                s.jsonObject
+                    .getValue("stream")
+                    .jsonObject
+                    .mapValues { it.value.jsonPrimitive.content }
             s.jsonObject.getValue("values").jsonArray.map { v ->
                 val entry = v.jsonArray
                 Line(

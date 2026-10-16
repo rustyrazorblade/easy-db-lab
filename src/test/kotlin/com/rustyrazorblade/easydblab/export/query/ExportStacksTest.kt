@@ -21,14 +21,22 @@ import org.junit.jupiter.api.Test
 class ExportStacksTest {
     private val live = LocalStackSpec.Mode.Live(bucket = "acct", region = "eu-west-1", awsProfile = "lab", home = "acme")
 
-    private fun compose(files: Map<String, ByteArray>): ComposeFile = ComposeFile.fromYaml(String(files.getValue(Constants.LocalStack.COMPOSE_FILE)))
+    private fun compose(files: Map<String, ByteArray>): ComposeFile =
+        ComposeFile.fromYaml(String(files.getValue(Constants.LocalStack.COMPOSE_FILE)))
 
     private fun scalar(
         yaml: String,
         path: String,
     ): String? {
         var node: YamlNode? = Yaml.default.parseToYamlNode(yaml)
-        path.split('.').forEach { key -> node = (node as? YamlMap)?.entries?.entries?.firstOrNull { it.key.content == key }?.value }
+        path.split('.').forEach { key ->
+            node =
+                (node as? YamlMap)
+                    ?.entries
+                    ?.entries
+                    ?.firstOrNull { it.key.content == key }
+                    ?.value
+        }
         return (node as? YamlScalar)?.content
     }
 
@@ -37,7 +45,14 @@ class ExportStacksTest {
         path: String,
     ): Boolean {
         var node: YamlNode? = Yaml.default.parseToYamlNode(yaml)
-        path.split('.').forEach { key -> node = (node as? YamlMap)?.entries?.entries?.firstOrNull { it.key.content == key }?.value }
+        path.split('.').forEach { key ->
+            node =
+                (node as? YamlMap)
+                    ?.entries
+                    ?.entries
+                    ?.firstOrNull { it.key.content == key }
+                    ?.value
+        }
         return node != null
     }
 
@@ -45,7 +60,9 @@ class ExportStacksTest {
     fun `the reader is the read-only store access and the backends, with no Grafana`() {
         val services = compose(ExportReaderStack.compose(live)).services
 
-        assertThat(services.keys).containsExactlyInAnyOrder("store-signer", "store-gate", "store-check", "memcached", "mimir", "loki", "tempo")
+        assertThat(
+            services.keys,
+        ).containsExactlyInAnyOrder("store-signer", "store-gate", "store-check", "memcached", "mimir", "loki", "tempo")
     }
 
     @Test
@@ -70,7 +87,12 @@ class ExportStacksTest {
         assertThat(services.getValue("loki").ports).containsExactly("127.0.0.1::3100")
         assertThat(services.getValue("tempo").ports).containsExactly("127.0.0.1::3200", "127.0.0.1::4321")
         services.values.forEach { service: ComposeService ->
-            assertThat(service.volumes.orEmpty().single { it.target == ExportWriterStack.STORE }.readOnly).isFalse()
+            assertThat(
+                service.volumes
+                    .orEmpty()
+                    .single { it.target == ExportWriterStack.STORE }
+                    .readOnly,
+            ).isFalse()
         }
     }
 

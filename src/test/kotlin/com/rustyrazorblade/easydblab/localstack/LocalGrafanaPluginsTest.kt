@@ -51,7 +51,11 @@ class LocalGrafanaPluginsTest {
     /** The plugins the composed stack's Grafana installs at start. */
     private fun installedPlugins(spec: LocalStackSpec): Set<String> {
         val compose = ComposeFile.fromYaml(String(LocalStackComposer.compose(spec).getValue(Constants.LocalStack.COMPOSE_FILE)))
-        val environment = compose.services.getValue(Constants.LocalStack.Services.GRAFANA).environment.orEmpty()
+        val environment =
+            compose.services
+                .getValue(Constants.LocalStack.Services.GRAFANA)
+                .environment
+                .orEmpty()
         return environment["GF_INSTALL_PLUGINS"]
             ?.split(",")
             ?.filter { it.isNotBlank() }

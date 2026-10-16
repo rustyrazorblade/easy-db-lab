@@ -22,7 +22,8 @@ data class QueryStoreAccess(
     val profile: String,
 ) {
     /** The reader's live store, with [home] as the tenant its configuration files expand. */
-    fun live(home: String): LocalStackSpec.Mode.Live = LocalStackSpec.Mode.Live(bucket = bucket, region = region, awsProfile = profile, home = home)
+    fun live(home: String): LocalStackSpec.Mode.Live =
+        LocalStackSpec.Mode.Live(bucket = bucket, region = region, awsProfile = profile, home = home)
 }
 
 /** Opens the account bucket for a query export, after checking it is readable. */
@@ -92,7 +93,8 @@ class DockerQueryRuntime(
             runtime,
         )
 
-    override fun rewrite(work: QueryWorkDirectory): BlockRewrite = ThanosBlockRewrite(runtime.compose, work.projects, work.project, owner(work.root))
+    override fun rewrite(work: QueryWorkDirectory): BlockRewrite =
+        ThanosBlockRewrite(runtime.compose, work.projects, work.project, owner(work.root))
 
     /** The `uid:gid` that owns [directory]: the operator, who made it. */
     private fun owner(directory: File): String {

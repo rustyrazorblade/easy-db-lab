@@ -61,17 +61,25 @@ class QueryZipContents(
                     zip.put("$tenantDir/${TempoTenantIndexWriter.FILE}", tempoIndex.write(zip.directory(tenantDir)))
                 }
             }
-            exportStep(ExportSignal.METRICS, "add the metrics of $tenant") { putTree(File(work.staging, "$METRICS/$tenant"), "$DATA/$METRICS/$tenant", zip) }
+            exportStep(ExportSignal.METRICS, "add the metrics of $tenant") {
+                putTree(File(work.staging, "$METRICS/$tenant"), "$DATA/$METRICS/$tenant", zip)
+            }
             val annotations = "${Constants.Observability.GRAFANA_ROOT}/${Constants.Observability.ANNOTATIONS_DIR}/$tenant/"
             val ofClusters = plan.clustersOf(tenant).toSet()
             store
                 .list(annotations)
-                .filter { it.key.removePrefix(annotations).removeSuffix(JSON_SUFFIX).substringAfter(SNAPSHOT_SEPARATOR) in ofClusters }
-                .forEach { obj -> exportStep(ExportSignal.ANNOTATIONS, "copy ${obj.key}") { copy(obj.key, obj.lastModified, zip) } }
+                .filter {
+                    it.key
+                        .removePrefix(annotations)
+                        .removeSuffix(JSON_SUFFIX)
+                        .substringAfter(SNAPSHOT_SEPARATOR) in ofClusters
+                }.forEach { obj -> exportStep(ExportSignal.ANNOTATIONS, "copy ${obj.key}") { copy(obj.key, obj.lastModified, zip) } }
         }
         plan.covered.forEach { key ->
             val reports = "${Constants.Observability.REPORTS_ROOT}/${key.tenant}/${key.name}/"
-            store.list(reports).forEach { obj -> exportStep(ExportSignal.REPORTS, "copy ${obj.key}") { copy(obj.key, obj.lastModified, zip) } }
+            store.list(reports).forEach { obj ->
+                exportStep(ExportSignal.REPORTS, "copy ${obj.key}") { copy(obj.key, obj.lastModified, zip) }
+            }
         }
     }
 
@@ -87,7 +95,11 @@ class QueryZipContents(
             .filter { it.isFile }
             .sortedBy { it.path }
             .forEach { file ->
-                zip.put("$prefix/${file.relativeTo(directory).invariantSeparatorsPath}", file.inputStream(), Instant.ofEpochMilli(file.lastModified()))
+                zip.put(
+                    "$prefix/${file.relativeTo(directory).invariantSeparatorsPath}",
+                    file.inputStream(),
+                    Instant.ofEpochMilli(file.lastModified()),
+                )
             }
     }
 

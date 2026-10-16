@@ -57,7 +57,7 @@ class MimirApi(
         matches: List<String>,
     ): List<String> {
         val params = matches.map { "match[]" to it } + listOf("start" to "0", "end" to now())
-        return data(tenants, "$PREFIX/label/$label/values?${query(*params.toTypedArray())}").jsonArray.map { it.jsonPrimitive.content }
+        return data(tenants, "$PREFIX/label/$label/values?${query(params)}").jsonArray.map { it.jsonPrimitive.content }
     }
 
     /** The series of the range query [promql] in [tenants] from [start] to [end], every [stepSeconds]. */
@@ -102,7 +102,9 @@ class MimirApi(
             "Mimir answered ${pathAndQuery.substringBefore('?')} in tenant $header with status ${response.code}: ${response.body}"
         }
         val body = JSON.parseToJsonElement(response.body) as JsonObject
-        check(body["status"]?.jsonPrimitive?.content == "success") { "Mimir refused ${pathAndQuery.substringBefore('?')}: ${response.body}" }
+        check(
+            body["status"]?.jsonPrimitive?.content == "success",
+        ) { "Mimir refused ${pathAndQuery.substringBefore('?')}: ${response.body}" }
         body.getValue("data")
     }
 
@@ -110,7 +112,10 @@ class MimirApi(
 }
 
 /** [params] as a URL query string, each name and value encoded. */
-internal fun query(vararg params: Pair<String, String>): String =
+internal fun query(vararg params: Pair<String, String>): String = query(params.asList())
+
+/** [params] as a URL query string, each name and value encoded. */
+internal fun query(params: List<Pair<String, String>>): String =
     params.joinToString("&") { (name, value) ->
         "${URLEncoder.encode(name, StandardCharsets.UTF_8)}=${URLEncoder.encode(value, StandardCharsets.UTF_8)}"
     }

@@ -6690,9 +6690,14 @@ sealed interface Event {
             val excluded: List<Exclusion>,
         ) : Export {
             override fun toDisplayString(): String {
-                val left = excluded.joinToString("\n") { "${it.what.replaceFirstChar(Char::uppercase)} are not included (issue #${it.issue})." }
+                val left =
+                    excluded.joinToString(
+                        "\n",
+                    ) { "${it.what.replaceFirstChar(Char::uppercase)} are not included (issue #${it.issue})." }
                 val size = "$entries files, ${bytes / Constants.Size.BYTES_PER_MIB} MiB before compression"
-                return "Exported ${clusters.joinToString(", ")} (tenant${if (tenants.size == 1) "" else "s"} ${tenants.joinToString(", ")}) " +
+                return "Exported ${clusters.joinToString(
+                    ", ",
+                )} (tenant${if (tenants.size == 1) "" else "s"} ${tenants.joinToString(", ")}) " +
                     "to $path ($size).\n$left\n" +
                     "Open it with: unzip $path, then docker compose up in the directory it makes; see its README.txt."
             }

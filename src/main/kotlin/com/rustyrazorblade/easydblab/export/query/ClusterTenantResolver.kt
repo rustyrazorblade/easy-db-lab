@@ -73,24 +73,22 @@ class ClusterTenantResolver(
 
     private fun tenantOf(cluster: String): String {
         workspace?.takeIf { it.cluster == cluster }?.let { return it.tenant }
-        val match = "up{cluster=\"$cluster\"}"
-        return when (storeTenants.size) {
-            0 -> throw ClusterNotFoundException(cluster, emptyList())
-            1 -> {
-                val tenant = storeTenants.single()
-                if (mimir.series(storeTenants, match).isEmpty()) throw ClusterNotFoundException(cluster, storeTenants)
-                tenant
-            }
-            else -> {
-                val series = mimir.series(storeTenants, match)
-                if (series.isEmpty()) throw ClusterNotFoundException(cluster, storeTenants)
-                val named = series.map { it[Constants.Export.Query.TENANT_ID_LABEL] }
-                if (named.any { it == null }) {
-                    throw ClusterTenantUnknownException(cluster, storeTenants.joinToString(Constants.Export.Query.TENANT_SEPARATOR))
-                }
-                val tenants = named.filterNotNull().distinct().sorted()
-                tenants.singleOrNull() ?: throw ClusterInSeveralTenantsException(cluster, tenants)
-            }
+        val series = if (storeTenants.isEmpty()) emptyList() else mimir.series(storeTenants, "up{cluster=\"$cluster\"}")
+        if (series.isEmpty()) throw ClusterNotFoundException(cluster, storeTenants)
+        // A single-tenant answer names no tenant: it is the one listed.
+        return storeTenants.singleOrNull() ?: federatedTenant(cluster, series)
+    }
+
+    /** The one tenant a federated answer's [series] of [cluster] name in `__tenant_id__`. */
+    private fun federatedTenant(
+        cluster: String,
+        series: List<Map<String, String>>,
+    ): String {
+        val named = series.map { it[Constants.Export.Query.TENANT_ID_LABEL] }
+        if (named.any { it == null }) {
+            throw ClusterTenantUnknownException(cluster, storeTenants.joinToString(Constants.Export.Query.TENANT_SEPARATOR))
         }
+        val tenants = named.filterNotNull().distinct().sorted()
+        return tenants.singleOrNull() ?: throw ClusterInSeveralTenantsException(cluster, tenants)
     }
 }

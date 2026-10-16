@@ -127,6 +127,8 @@ A JSON file at the top of the `--from` directory, or nested more than one direct
 
 The stack reads the bucket as you, with the AWS profile your easy-db-lab profile names. The signer mounts your `~/.aws` read-only, so it can never rewrite your SSO cache.
 
+The signer would sign any request, so only the read gate and the store check can reach it: it shares a network with those two alone, and reaches S3 over a network of its own. Grafana, the documents view and the backends reach the bucket only through the gate, which passes only GET and HEAD. Grafana's data source proxy is also limited to the stack's own backends, so a datasource added in Grafana cannot be pointed at anything else.
+
 A store the stack cannot read fails loudly, at three points:
 
 - `local create` fails, writes nothing, and names the profile, the AWS error code and the fix:
@@ -250,28 +252,30 @@ Remove the override and run `docker compose up -d` again to get the browser view
 `--cluster` (repeatable) exports only the clusters you name, and `--experiment` every cluster of one experiment. The zip opens the same way as a tenant export:
 
 ```bash
-easy-db-lab observability export ~/lab-pair.zip --cluster lab-1a2b --cluster lab-3c4d
+easy-db-lab observability export ~/lab-pair.zip --cluster lab-0f8fad5b-d9cb-469f-a165-70867728950e --cluster lab-7c9e6679-7425-40de-944b-e07fc1f90ae7
 easy-db-lab observability export ~/e1.zip --experiment e1 --tenant acme
 ```
 
 `--experiment` reads the experiment of one tenant: `--tenant`, else the tenant of the cluster workspace you run it in, else `default`, and it says which. Two tenants may each have an experiment of the same name; only the one you name is exported. A cluster from before experiments existed is an experiment of its own, named by its `<name>-<id>`.
+
+`--cluster` takes a cluster's full `<name>-<id>`, as its `cluster` label holds it: the cluster's name, `-`, and its UUID. Any other value is refused, naming it, before anything is read.
 
 `--cluster` finds each cluster's tenant: from the workspace when you run it in that cluster's own workspace, otherwise from the store. Clusters of different tenants may be exported together; the first cluster's tenant is the one the stable datasources read, and the opened stack has datasources for every tenant in the zip.
 
 These exports read by query rather than copying the store. They start two temporary docker compose projects: a read-only reader over the live store, with the same read gate and signer as `local create` (so they need docker and an AWS profile, not access keys), and a writer whose Loki and Tempo keep what is read. Metric blocks are copied and rewritten with thanos, with no network, to keep only the selected clusters' series. The zip holds the selected clusters' metrics, logs and traces, their annotation backups, and every report of each experiment they belong to, and nothing of any other cluster. Nothing in the bucket is written or deleted.
 
 ```
-Exporting 2 clusters: lab-1a2b (tenant acme), lab-3c4d (tenant default). Home tenant: acme
+Exporting 2 clusters: lab-0f8fad5b-d9cb-469f-a165-70867728950e (tenant acme), lab-7c9e6679-7425-40de-944b-e07fc1f90ae7 (tenant default). Home tenant: acme
 Exported metrics: 14 blocks, 38 MiB (39845888 bytes)
 Exported logs: 120433 lines, 22 MiB (23068672 bytes)
 Exported traces: 0 traces, 0 MiB (0 bytes)
-Exported lab-1a2b, lab-3c4d (tenants acme, default) to /Users/you/lab-pair.zip (5512 files, 61 MiB before compression).
+Exported lab-0f8fad5b-d9cb-469f-a165-70867728950e, lab-7c9e6679-7425-40de-944b-e07fc1f90ae7 (tenants acme, default) to /Users/you/lab-pair.zip (5512 files, 61 MiB before compression).
 Profiles are not included (issue #1016).
 Open it with: unzip /Users/you/lab-pair.zip, then docker compose up in the directory it makes; see its README.txt.
 The work directory /Users/you/lab-pair.zip.work-1f3e9a2c (412 MiB, 432013312 bytes) is kept; remove it yourself when you no longer need it.
 ```
 
-A signal with nothing to export is reported as zero. The work directory `<path>.work-<id>/` holds the two projects, their state and the staged blocks. It is kept after the export, and after a failure, so you can look at what happened; nothing removes it. The reader's components run as root, so on Linux you may need `sudo rm -rf` to remove it.
+A signal with nothing to export is reported as zero. The work directory `<path>.work-<id>/` holds the two projects, their state and the staged blocks. It is kept after the export, and after a failure, so you can look at what happened; nothing removes it. Before each temporary project is removed, its `docker compose logs` are saved as `reader/compose.log` and `writer/compose.log` there, and a failed export names them. A project that `docker compose down` cannot remove is reported with the command that removes it, `docker compose -p <project> down --remove-orphans`. The reader's components run as root, so on Linux you may need `sudo rm -rf` to remove it.
 
 A cluster that no tenant holds fails and names the tenants it searched. An experiment with no clusters fails and names the experiment, the tenant and the query it ran. In both cases nothing is left at the path.
 

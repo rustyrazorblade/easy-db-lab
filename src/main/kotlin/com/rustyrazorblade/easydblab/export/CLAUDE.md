@@ -90,7 +90,8 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
      tenant's oldest block (`MimirStoreIndex`), widened by 10 minutes.
    Home tenant: the experiment's, or the first `--cluster`'s; the zip's tenants are the union. Refusals are typed:
    `ClusterNotFound`, `ClusterInSeveralTenants`, `ClusterTenantUnknown`, `ExperimentNotFound`, `InvalidDiscoveredCluster`; then
-   `Export.ClustersSelected`.
+   `Export.ClustersSelected`, which for `--cluster` says where each tenant came from (`ClusterTenantResolver.resolveWithSources`:
+   `workspace` or `query`; `QueryPlan.tenantSources`), as `TenantChosen` does for `--experiment`.
 3. The writer (`ExportWriterStack`: a Loki with the offline stack's filesystem layout and `reject_old_samples: false`, a
    Tempo with the local backend and both WAL `ingestion_time_range_slack: 87600h`, never 0; both as the operator; no
    Mimir, whose shipper needs an xattr a macOS bind mount lacks). `LogExport` per cluster (forward pages of

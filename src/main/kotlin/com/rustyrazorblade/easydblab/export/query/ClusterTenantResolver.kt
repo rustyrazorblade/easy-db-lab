@@ -13,6 +13,28 @@ data class WorkspaceCluster(
     val tenant: String,
 )
 
+/** Where an `export --cluster` found a cluster's tenant, as its output says. */
+enum class ClusterTenantSource(
+    val label: String,
+) {
+    /** The state of the cluster workspace the command runs in; nothing was queried. */
+    WORKSPACE("workspace"),
+
+    /** A series query of the store's tenants. */
+    QUERY("query"),
+}
+
+/**
+ * A cluster's tenant and where it was found.
+ *
+ * @property tenant the tenant.
+ * @property source where it came from.
+ */
+data class ClusterTenant(
+    val tenant: String,
+    val source: ClusterTenantSource,
+)
+
 /** A query export cannot go on with what it was asked for; the message says why. */
 sealed class QueryExportRefused(
     message: String,
@@ -69,14 +91,17 @@ class ClusterTenantResolver(
     private val workspace: WorkspaceCluster?,
 ) {
     /** The tenant of each of [clusters], in the order given. */
-    fun resolve(clusters: List<String>): Map<String, String> = clusters.associateWith(::tenantOf)
+    fun resolve(clusters: List<String>): Map<String, String> = resolveWithSources(clusters).mapValues { it.value.tenant }
 
-    private fun tenantOf(cluster: String): String {
-        workspace?.takeIf { it.cluster == cluster }?.let { return it.tenant }
+    /** The tenant of each of [clusters], in the order given, and where each was found. */
+    fun resolveWithSources(clusters: List<String>): Map<String, ClusterTenant> = clusters.associateWith(::tenantOf)
+
+    private fun tenantOf(cluster: String): ClusterTenant {
+        workspace?.takeIf { it.cluster == cluster }?.let { return ClusterTenant(it.tenant, ClusterTenantSource.WORKSPACE) }
         val series = if (storeTenants.isEmpty()) emptyList() else mimir.series(storeTenants, "up{cluster=\"$cluster\"}")
         if (series.isEmpty()) throw ClusterNotFoundException(cluster, storeTenants)
         // A single-tenant answer names no tenant: it is the one listed.
-        return storeTenants.singleOrNull() ?: federatedTenant(cluster, series)
+        return ClusterTenant(storeTenants.singleOrNull() ?: federatedTenant(cluster, series), ClusterTenantSource.QUERY)
     }
 
     /** The one tenant a federated answer's [series] of [cluster] name in `__tenant_id__`. */

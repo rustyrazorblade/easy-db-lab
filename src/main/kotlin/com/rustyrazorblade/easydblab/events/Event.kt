@@ -6593,11 +6593,15 @@ sealed interface Event {
          *
          * @property cluster the cluster's `<name>-<id>`.
          * @property tenant its tenant.
+         * @property source where a `--cluster` export found [tenant]: `workspace` (this cluster
+         *   workspace's state) or `query` (a series query of the store); null for an experiment
+         *   export, whose tenant `TenantChosen` reports.
          */
         @Serializable
         data class SelectedCluster(
             val cluster: String,
             val tenant: String,
+            val source: String? = null,
         )
 
         /**
@@ -6615,7 +6619,15 @@ sealed interface Event {
         ) : Export {
             override fun toDisplayString(): String =
                 "Exporting ${clusters.size} cluster${if (clusters.size == 1) "" else "s"}: " +
-                    clusters.joinToString(", ") { "${it.cluster} (tenant ${it.tenant})" } + ". Home tenant: $home"
+                    clusters.joinToString(", ") { "${it.cluster} (tenant ${it.tenant}${whereFound(it.source)})" } + ". Home tenant: $home"
+
+            /** Where a cluster export found the tenant; nothing for an experiment's clusters. */
+            private fun whereFound(source: String?): String =
+                when (source) {
+                    null -> ""
+                    "workspace" -> ", from this cluster workspace"
+                    else -> ", found by querying the store"
+                }
         }
 
         /**

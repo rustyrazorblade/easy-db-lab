@@ -14,6 +14,8 @@ import java.time.Instant
  * @property ranges when each cluster ran.
  * @property covered the experiments the clusters belong to, whose reports the zip holds.
  * @property experiment the experiment of an experiment export, which the dashboards open on.
+ * @property tenantSources where a cluster export found each cluster's tenant; empty for an experiment
+ *   export, whose tenant is the experiment's.
  */
 data class QueryPlan(
     val home: String,
@@ -21,6 +23,7 @@ data class QueryPlan(
     val ranges: Map<String, TimeRange>,
     val covered: List<ExperimentKey>,
     val experiment: ExperimentKey?,
+    val tenantSources: Map<String, ClusterTenantSource> = emptyMap(),
 ) {
     /** Every tenant of the clusters, the home tenant first: the zip's tenant set is their union. */
     val tenants: List<String> get() = (listOf(home) + clusters.values).distinct()
@@ -55,12 +58,23 @@ class QueryPlanner(
         workspace: WorkspaceCluster?,
     ): QueryPlan {
         val discovery = ExperimentDiscovery(mimir)
-        val (clusters, experiment) =
-            when (selector) {
-                is ExportSelector.Clusters -> ClusterTenantResolver(mimir, storeTenants, workspace).resolve(selector.ids) to null
-                is ExportSelector.Experiment -> discovery.clustersOf(selector.key).associateWith { selector.key.tenant } to selector.key
-                is ExportSelector.Tenant -> throw IllegalArgumentException("A tenant export copies the store; it is not a query export")
+        val clusters: Map<String, String>
+        val sources: Map<String, ClusterTenantSource>
+        val experiment: ExperimentKey?
+        when (selector) {
+            is ExportSelector.Clusters -> {
+                val resolved = ClusterTenantResolver(mimir, storeTenants, workspace).resolveWithSources(selector.ids)
+                clusters = resolved.mapValues { it.value.tenant }
+                sources = resolved.mapValues { it.value.source }
+                experiment = null
             }
+            is ExportSelector.Experiment -> {
+                clusters = discovery.clustersOf(selector.key).associateWith { selector.key.tenant }
+                sources = emptyMap()
+                experiment = selector.key
+            }
+            is ExportSelector.Tenant -> throw IllegalArgumentException("A tenant export copies the store; it is not a query export")
+        }
         val home = experiment?.tenant ?: clusters.values.first()
         val byTenant = clusters.entries.groupBy({ it.value }, { it.key })
         val ranges =
@@ -68,6 +82,6 @@ class QueryPlanner(
                 found + ClusterTimeRanges(mimir, clock).of(tenant, ofTenant, oldestBlock(tenant) ?: Instant.EPOCH)
             }
         val covered = experiment?.let(::listOf) ?: byTenant.flatMap { (tenant, ofTenant) -> discovery.coveredBy(tenant, ofTenant) }
-        return QueryPlan(home, clusters, ranges, covered.distinct(), experiment)
+        return QueryPlan(home, clusters, ranges, covered.distinct(), experiment, sources)
     }
 }

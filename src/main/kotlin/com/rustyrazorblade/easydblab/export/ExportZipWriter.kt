@@ -7,6 +7,7 @@ import java.io.InputStream
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileSystemException
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
@@ -65,12 +66,16 @@ fun interface ExportZipSink {
  * or 65,535 entries. Only a complete zip is moved to the path, and never over a file: the move is a
  * hard link, which fails when the path exists, then the removal of the partial name (a plain move
  * that refuses an existing path where the file system has no hard links). On any failure the partial
- * file, the tool's own scratch, is removed and nothing is left at the path.
+ * file, the tool's own scratch, is removed and nothing is left at the path. A partial file that cannot
+ * be removed never hides the failure: the failure is thrown with the removal's, which names the file
+ * left behind, attached as suppressed; after a complete move it fails the `stack` step.
  *
  * @property partialSuffix makes the random part of the partial file's name.
+ * @property removePartial removes the partial file; one that is already gone is no failure.
  */
 class ExportZipWriter(
     private val partialSuffix: () -> String = { UUID.randomUUID().toString() },
+    private val removePartial: (Path) -> Unit = { Files.deleteIfExists(it) },
 ) {
     /** Writes the zip of [target] with [body], which puts every entry; returns what [body] returns. */
     fun <T> write(
@@ -78,20 +83,36 @@ class ExportZipWriter(
         body: (ExportZipSink) -> T,
     ): T {
         val partial = File(target.zip.absoluteFile.parentFile, "${target.zip.name}${Constants.Export.PARTIAL_INFIX}${partialSuffix()}")
-        try {
-            // A failure inside the body names its own step; one of the zip file itself is the stack's.
-            val result =
+        val result =
+            try {
+                // A failure inside the body names its own step; one of the zip file itself is the stack's.
                 exportStep(ExportSignal.STACK, "write ${partial.path}") {
                     ZipOutputStream(Files.newOutputStream(partial.toPath()).buffered(Constants.Export.COPY_BUFFER_BYTES)).use { zip ->
                         body(StreamingSink(zip, target.root))
                     }
+                }.also {
+                    exportStep(
+                        ExportSignal.STACK,
+                        "move ${partial.name} to ${target.zip.path}",
+                    ) { moveWithoutOverwrite(partial, target.zip) }
                 }
-            exportStep(ExportSignal.STACK, "move ${partial.name} to ${target.zip.path}") { moveWithoutOverwrite(partial, target.zip) }
-            return result
-        } finally {
-            Files.deleteIfExists(partial.toPath())
-        }
+            } catch (e: Throwable) {
+                // The export's own failure stays the one thrown; a partial file that will not go is attached to it.
+                cleanUp(partial)?.let(e::addSuppressed)
+                throw e
+            }
+        cleanUp(partial)?.let { throw ExportStepFailed(ExportSignal.STACK, "remove ${partial.path}", it) }
+        return result
     }
+
+    /** Removes [partial]; returns the failure, naming the file left behind, when it cannot be removed. */
+    private fun cleanUp(partial: File): IOException? =
+        try {
+            removePartial(partial.toPath())
+            null
+        } catch (e: IOException) {
+            IOException("The partial file ${partial.path} could not be removed and was left behind: ${e.message}", e)
+        }
 
     private fun moveWithoutOverwrite(
         partial: File,

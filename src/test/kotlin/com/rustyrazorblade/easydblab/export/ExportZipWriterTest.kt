@@ -88,6 +88,37 @@ class ExportZipWriterTest {
     }
 
     @Test
+    fun `a partial file that cannot be removed after a failure keeps the failure and names the file left behind`() {
+        val target = ExportTarget.of(File(dir, "out.zip"))
+        val stuck = ExportZipWriter(removePartial = { throw IOException("read-only directory") })
+
+        assertThatThrownBy {
+            stuck.write(target) { sink -> sink.put("data/b", FailingStream()) }
+        }.isInstanceOfSatisfying(ExportStepFailed::class.java) { failed ->
+            assertThat(failed.cause).isInstanceOf(IOException::class.java).hasMessage("connection reset")
+            val cleanup = failed.suppressed.single()
+            val partial = dir.list()!!.single()
+            assertThat(cleanup).hasMessageContaining(File(dir, partial).path).hasMessageContaining("left behind")
+            assertThat(cleanup.cause).hasMessage("read-only directory")
+        }
+        assertThat(target.zip).doesNotExist()
+    }
+
+    @Test
+    fun `a partial file that cannot be removed after the move fails the stack step naming the file left behind`() {
+        val target = ExportTarget.of(File(dir, "out.zip"))
+        val stuck = ExportZipWriter(removePartial = { throw IOException("read-only directory") })
+
+        assertThatThrownBy {
+            stuck.write(target) { sink -> sink.put("data/a", "mine".byteInputStream()) }
+        }.isInstanceOfSatisfying(ExportStepFailed::class.java) { failed ->
+            assertThat(failed.signal).isEqualTo(ExportSignal.STACK)
+            assertThat(failed.step).contains(dir.list()!!.single { it.contains(".partial-") })
+            assertThat(failed.cause).hasMessageContaining("left behind").hasRootCauseMessage("read-only directory")
+        }
+    }
+
+    @Test
     fun `a file that appears at the path while the zip is written is not overwritten`() {
         val target = ExportTarget.of(File(dir, "out.zip"))
 

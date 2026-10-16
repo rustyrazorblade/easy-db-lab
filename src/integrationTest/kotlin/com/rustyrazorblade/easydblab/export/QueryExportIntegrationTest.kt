@@ -438,18 +438,7 @@ class QueryExportIntegrationTest {
 
     private fun openStack(run: Run) {
         val parent = File(root, "opened").apply { mkdirs() }
-        // As `unzip` does, directory entries included.
-        ZipFile(run.zip).use { file ->
-            file.entries().asSequence().forEach { entry ->
-                val target = File(parent, entry.name)
-                if (entry.isDirectory) {
-                    target.mkdirs()
-                } else {
-                    target.parentFile.mkdirs()
-                    file.getInputStream(entry).use { input -> target.writeBytes(input.readBytes()) }
-                }
-            }
-        }
+        ExportUnzip.unpack(run.zip, parent)
         stack = File(parent, run.zip.name.removeSuffix(".zip"))
         val override = NetworkOverride(mapOf("default" to InternalNetwork(internal = true)))
         File(stack, Constants.LocalStack.OVERRIDE_FILE).writeText(Yaml.default.encodeToString(NetworkOverride.serializer(), override))

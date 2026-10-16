@@ -314,24 +314,9 @@ class TenantExportIntegrationTest {
         val networks: Map<String, InternalNetwork>,
     )
 
-    /** Unpacks the zip into [parent], as `unzip` does, directory entries included. */
-    private fun unzip(parent: File) {
-        ZipFile(zip).use { file ->
-            file.entries().asSequence().forEach { entry ->
-                val target = File(parent, entry.name)
-                if (entry.isDirectory) {
-                    target.mkdirs()
-                } else {
-                    target.parentFile.mkdirs()
-                    file.getInputStream(entry).use { input -> target.writeBytes(input.readBytes()) }
-                }
-            }
-        }
-    }
-
     private fun openStack() {
         val parent = File(root, "opened").apply { mkdirs() }
-        unzip(parent)
+        ExportUnzip.unpack(zip, parent)
         stack = File(parent, "$TENANT-export")
         assertThat(File(stack, Constants.Export.README_FILE)).isFile()
         val override = NetworkOverride(mapOf("default" to InternalNetwork(internal = true)))

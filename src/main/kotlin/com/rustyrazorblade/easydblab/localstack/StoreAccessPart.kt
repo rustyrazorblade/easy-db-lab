@@ -19,7 +19,6 @@ object StoreAccessPart {
     private const val GATE_CONFIG = "store-gate.conf"
     private const val CHECK_SCRIPT = "store-check.sh"
     private const val CHECK_DIR = "/store-check"
-    private const val NGINX_CONFIG = "/etc/nginx/nginx.conf"
     private const val HEALTHCHECK_TOOLS_MOUNT = "/healthcheck"
     private const val HEALTHCHECK_TIMEOUT = "10s"
     private const val HEALTHCHECK_RETRIES = 2
@@ -36,8 +35,8 @@ object StoreAccessPart {
                 ),
             files =
                 mapOf(
-                    LocalStackComposer.configPath(GATE_CONFIG) to gateConfig(),
-                    LocalStackComposer.configPath(CHECK_SCRIPT) to LocalStackComposer.resource(CHECK_SCRIPT),
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.STORE_GATE, LocalStackComposer.NGINX_CONFIG_FILE) to gateConfig(),
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.STORE_CHECK, CHECK_SCRIPT) to LocalStackComposer.resource(CHECK_SCRIPT),
                 ),
         )
 
@@ -94,7 +93,8 @@ object StoreAccessPart {
     private fun gate(): ComposeService =
         ComposeService(
             image = LocalImages.GATE,
-            volumes = listOf(LocalStackComposer.configMount(GATE_CONFIG, NGINX_CONFIG)),
+            command = LocalStackComposer.nginxCommand,
+            volumes = listOf(LocalStackComposer.configMount(Constants.LocalStack.Services.STORE_GATE, LocalStackComposer.NGINX_CONFIG_DIR)),
             dependsOn = mapOf(Constants.LocalStack.Services.STORE_SIGNER to ComposeDependency.STARTED),
             restart = "unless-stopped",
         )
@@ -109,7 +109,7 @@ object StoreAccessPart {
                     "PROFILE" to live.awsProfile,
                     "SIGNER" to LocalStackComposer.STORE_SIGNER_ENDPOINT,
                 ),
-            volumes = listOf(LocalStackComposer.configMount(CHECK_SCRIPT, "$CHECK_DIR/$CHECK_SCRIPT")),
+            volumes = listOf(LocalStackComposer.configMount(Constants.LocalStack.Services.STORE_CHECK, CHECK_DIR)),
             dependsOn = mapOf(Constants.LocalStack.Services.STORE_SIGNER to ComposeDependency.STARTED),
             restart = "no",
         )

@@ -23,11 +23,11 @@ import com.rustyrazorblade.easydblab.services.TemplateService
 object GrafanaViewPart {
     private const val GRAFANA_PORT = Constants.K8s.GRAFANA_PORT
     private const val PROVISIONING = "/etc/grafana/provisioning"
-    private const val DATASOURCES_FILE = "grafana/provisioning/datasources/datasources.yaml"
-    private const val DASHBOARDS_FILE = "grafana/provisioning/dashboards/dashboards.yaml"
-    private const val DOCUMENTS_FILE = "documents-nginx.conf"
+    private const val DATASOURCES_DIR = "grafana/provisioning/datasources"
+    private const val DATASOURCES_FILE = "datasources.yaml"
+    private const val DASHBOARDS_DIR = "grafana/provisioning/dashboards"
+    private const val DASHBOARDS_FILE = "dashboards.yaml"
     private const val OFFLINE_DOCUMENTS_TEMPLATE = "documents-nginx-offline.conf"
-    private const val NGINX_CONFIG = "/etc/nginx/nginx.conf"
 
     /** Where the offline documents view sees the export's data directory; its config's `root`. */
     private const val OFFLINE_DOCUMENTS_ROOT = "/data"
@@ -113,11 +113,11 @@ object GrafanaViewPart {
                 ),
             files =
                 mapOf(
-                    LocalStackComposer.configPath(DATASOURCES_FILE) to
+                    LocalStackComposer.configPath(DATASOURCES_DIR, DATASOURCES_FILE) to
                         GrafanaDatasourceSet.build(spec.tenantSet, BackendUrls.LOCAL_COMPOSE).toYaml(),
-                    LocalStackComposer.configPath(DASHBOARDS_FILE) to
+                    LocalStackComposer.configPath(DASHBOARDS_DIR, DASHBOARDS_FILE) to
                         GrafanaDashboardProvisioningConfig.forDashboardTree(DASHBOARD_TREE).toYaml(),
-                    LocalStackComposer.configPath(DOCUMENTS_FILE) to documents.config(),
+                    LocalStackComposer.configPath(Constants.LocalStack.Services.DOCUMENTS, LocalStackComposer.NGINX_CONFIG_FILE) to documents.config(),
                 ),
         )
 
@@ -138,8 +138,8 @@ object GrafanaViewPart {
                     .toMap(),
             volumes =
                 listOf(
-                    LocalStackComposer.configMount(DATASOURCES_FILE, "$PROVISIONING/datasources/datasources.yaml"),
-                    LocalStackComposer.configMount(DASHBOARDS_FILE, "$PROVISIONING/dashboards/dashboards.yaml"),
+                    LocalStackComposer.configMount(DATASOURCES_DIR, "$PROVISIONING/datasources"),
+                    LocalStackComposer.configMount(DASHBOARDS_DIR, "$PROVISIONING/dashboards"),
                     ComposeMount.bind("./${Constants.LocalStack.DASHBOARDS_DIR}", Constants.LocalStack.DASHBOARDS_MOUNT, readOnly = true),
                     ComposeMount.bind("./${Constants.LocalStack.GRAFANA_DATA_DIR}", "/var/lib/grafana", readOnly = false),
                 ),
@@ -156,7 +156,8 @@ object GrafanaViewPart {
     ): ComposeService =
         ComposeService(
             image = LocalImages.DOCUMENTS_WEB,
-            volumes = listOf(LocalStackComposer.configMount(DOCUMENTS_FILE, NGINX_CONFIG)) + documents.mounts,
+            command = LocalStackComposer.nginxCommand,
+            volumes = listOf(LocalStackComposer.configMount(Constants.LocalStack.Services.DOCUMENTS, LocalStackComposer.NGINX_CONFIG_DIR)) + documents.mounts,
             ports = listOf("${Constants.LocalStack.LOOPBACK}:${spec.documentsPort}:${Constants.Grafana.Documents.WEB_PORT}"),
             dependsOn = documents.dependsOn,
             restart = "unless-stopped",

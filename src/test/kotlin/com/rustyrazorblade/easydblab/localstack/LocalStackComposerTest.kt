@@ -28,14 +28,36 @@ class LocalStackComposerTest {
 
     private fun service(name: String): ComposeService = checkNotNull(compose.services[name]) { "no service $name" }
 
+    /** The content of the file [service] sees at [path], through the read-only configuration directory mount that holds it. */
     private fun mountedFile(
         service: String,
-        target: String,
+        path: String,
     ): String {
-        val mount = service(service).volumes.orEmpty().single { it.target == target }
+        val mount = service(service).volumes.orEmpty().single { it.source.startsWith("./config/") && path.startsWith("${it.target}/") }
         assertThat(mount.type).isEqualTo("bind")
         assertThat(mount.readOnly).isTrue()
-        return text(mount.source.removePrefix("./"))
+        return text(mount.source.removePrefix("./") + path.removePrefix(mount.target))
+    }
+
+    /** The configuration file nginx in [service] reads: the one its command names with `-c`. */
+    private fun nginxConfig(service: String): String {
+        val command = service(service).command.orEmpty()
+        return command[command.indexOf("-c") + 1]
+    }
+
+    /**
+     * The tool rewrites a file by renaming a new one over it. A container that bind-mounts the file
+     * itself keeps reading the old one, so Grafana's provisioning reload failed with "no such file";
+     * a mounted directory shows the renamed file.
+     */
+    @Test
+    fun `every configuration is mounted as its directory, so a running container reads a rewritten file`() {
+        val configMounts = compose.services.values.flatMap { it.volumes.orEmpty() }.filter { it.source.startsWith("./config") }
+
+        assertThat(configMounts).isNotEmpty().allSatisfy { mount ->
+            val directory = mount.source.removePrefix("./")
+            assertThat(files.keys).describedAs(directory).doesNotContain(directory).anyMatch { it.startsWith("$directory/") }
+        }
     }
 
     private fun resource(
@@ -224,7 +246,7 @@ class LocalStackComposerTest {
 
     @Test
     fun `the gate passes only GET and HEAD, query strings included, to the signer`() {
-        val gate = mountedFile("store-gate", "/etc/nginx/nginx.conf")
+        val gate = mountedFile("store-gate", nginxConfig("store-gate"))
 
         assertThat(gate).contains("listen 8080;", "proxy_pass http://store-signer:8080;")
         assertThat(gate.replace(Regex("\\s+"), " ")).contains("limit_except GET { deny all; }")
@@ -234,7 +256,7 @@ class LocalStackComposerTest {
 
     @Test
     fun `every backend and the documents view reach S3 only through the gate`() {
-        val documents = mountedFile("documents-web", "/etc/nginx/nginx.conf")
+        val documents = mountedFile("documents-web", nginxConfig("documents-web"))
 
         assertThat(documents).contains("proxy_pass http://store-gate:8080/acct-bucket/reports/;")
         for (name in listOf("mimir", "loki", "tempo", "grafana", "documents-web", "memcached")) {

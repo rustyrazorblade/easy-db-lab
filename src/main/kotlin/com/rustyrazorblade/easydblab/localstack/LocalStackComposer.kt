@@ -65,14 +65,32 @@ object LocalStackComposer {
         name: String,
     ): String = CompactorTaskDefinition.resource(anchor, name)
 
-    /** The relative path of a configuration file the stack mounts. */
-    internal fun configPath(name: String): String = "config/$name"
-
-    /** A read-only bind mount of the configuration file [name] at [target]. */
-    internal fun configMount(
+    /** The relative path of the configuration file [name] in [component]'s configuration directory. */
+    internal fun configPath(
+        component: String,
         name: String,
+    ): String = "$CONFIG_DIR/$component/$name"
+
+    /**
+     * A read-only bind mount of [component]'s configuration directory at [target]. Always a
+     * directory, never a single file: the writer replaces a file by renaming a new one over it, and a
+     * container that mounts the file itself keeps reading the old one.
+     */
+    internal fun configMount(
+        component: String,
         target: String,
-    ): ComposeMount = ComposeMount.bind("./${configPath(name)}", target, readOnly = true)
+    ): ComposeMount = ComposeMount.bind("./$CONFIG_DIR/$component", target, readOnly = true)
+
+    /** Where an nginx of the stack reads its configuration directory; [nginxCommand] points nginx at it. */
+    internal const val NGINX_CONFIG_DIR = "/etc/easy-db-lab/nginx"
+
+    /** The nginx configuration file's name in its directory. */
+    internal const val NGINX_CONFIG_FILE = "nginx.conf"
+
+    /** Runs nginx in the foreground with the configuration in [NGINX_CONFIG_DIR]. */
+    internal val nginxCommand: List<String> = listOf("nginx", "-c", "$NGINX_CONFIG_DIR/$NGINX_CONFIG_FILE", "-g", "daemon off;")
+
+    private const val CONFIG_DIR = "config"
 
     /** The S3 endpoint every component of the stack reads the store through. */
     internal val STORE_GATE_ENDPOINT = "${Constants.LocalStack.Services.STORE_GATE}:${Constants.LocalStack.STORE_PORT}"

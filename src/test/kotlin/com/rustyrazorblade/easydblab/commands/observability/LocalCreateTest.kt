@@ -144,7 +144,7 @@ class LocalCreateTest : BaseKoinTest() {
                 documentsUrl = "http://127.0.0.1:${Constants.LocalStack.DEFAULT_DOCUMENTS_PORT}",
             ),
         )
-        assertThat(File(dir, "config/store-gate.conf")).isFile()
+        assertThat(File(dir, "config/store-gate/nginx.conf")).isFile()
         assertThat(File(dir, Constants.LocalStack.COMPOSE_FILE).readText())
             .contains("lab-profile")
             .contains("eu-west-1")
@@ -257,7 +257,7 @@ class LocalCreateTest : BaseKoinTest() {
     fun `an owned file the user edited is overwritten and named`() {
         val dir = stack()
         create(dir.path)
-        val gate = File(dir, "config/store-gate.conf")
+        val gate = File(dir, "config/store-gate/nginx.conf")
         val original = gate.readText()
         gate.writeText("# my edit\n")
 
@@ -265,8 +265,8 @@ class LocalCreateTest : BaseKoinTest() {
 
         assertThat(gate.readText()).isEqualTo(original)
         val written = events.filterIsInstance<Event.LocalStack.Written>().last()
-        assertThat(written.edited).containsExactly("config/store-gate.conf")
-        assertThat(written.toDisplayString()).contains("config/store-gate.conf")
+        assertThat(written.edited).containsExactly("config/store-gate/nginx.conf")
+        assertThat(written.toDisplayString()).contains("config/store-gate/nginx.conf")
     }
 
     @Test

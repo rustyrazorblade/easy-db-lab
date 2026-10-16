@@ -87,12 +87,12 @@ class OfflineStackComposerTest {
             "-blocks-storage.filesystem.dir=/store",
         )
         assertThat(command("mimir")).noneMatch { it.contains("s3") || it.contains("compactor") }
-        assertThat(text("config/mimir.yaml")).contains("max_stale_period: 87600h", "ignore_blocks_within: 0")
+        assertThat(text("config/mimir/mimir.yaml")).contains("max_stale_period: 87600h", "ignore_blocks_within: 0")
     }
 
     @Test
     fun `Loki runs the live stack's read path over a filesystem store, with retention and deletion off`() {
-        val loki = text("config/loki.yaml")
+        val loki = text("config/loki/loki.yaml")
 
         assertThat(command("loki")).contains(
             "-target=read,query-scheduler",
@@ -109,7 +109,7 @@ class OfflineStackComposerTest {
 
     @Test
     fun `Tempo is the single binary over a local backend, its scheduler inert and its search reading the backend after a minute`() {
-        val tempo = text("config/tempo.yaml")
+        val tempo = text("config/tempo/tempo.yaml")
 
         assertThat(command("tempo")).noneMatch { it.startsWith("-target") }
         assertThat(scalarAt(tempo, "storage", "trace", "backend")).isEqualTo("local")
@@ -125,7 +125,7 @@ class OfflineStackComposerTest {
 
     @Test
     fun `the documents view serves the zip's reports from disk, GET only, with no upstream`() {
-        val nginx = text("config/documents-nginx.conf")
+        val nginx = text("config/documents-web/nginx.conf")
 
         assertThat(nginx).contains("root /data;", "location /reports/", "!= GET")
         assertThat(nginx).doesNotContain("proxy_pass")

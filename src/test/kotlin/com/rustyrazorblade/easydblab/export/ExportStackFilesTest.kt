@@ -37,7 +37,7 @@ class ExportStackFilesTest {
         val compose = ComposeFile.fromYaml(text(Constants.LocalStack.COMPOSE_FILE))
 
         assertThat(compose.services.keys).contains("mimir", "loki", "tempo", "grafana").doesNotContain("store-gate", "store-signer")
-        assertThat(files.keys).contains("config/mimir.yaml", "config/loki.yaml", "config/tempo.yaml", "config/documents-nginx.conf")
+        assertThat(files.keys).contains("config/mimir/mimir.yaml", "config/loki/loki.yaml", "config/tempo/tempo.yaml", "config/documents-web/nginx.conf")
     }
 
     @Test

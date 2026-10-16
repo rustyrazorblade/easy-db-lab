@@ -67,6 +67,18 @@ class HelpTopicServiceTest {
     }
 
     @Test
+    fun `the observability topic describes the export, its three selectors, and that profiles are left out`() {
+        val body = DefaultHelpTopicService().find("observability")!!.body
+
+        assertThat(body)
+            .contains("observability export")
+            .contains("--tenant <t>")
+            .contains("--cluster <name-id>")
+            .contains("--experiment <name>")
+            .contains("no profiles, #1016")
+    }
+
+    @Test
     fun `the packaged seed topics load with valid frontmatter and a body`() {
         // Guards the real seed resources against a malformed frontmatter header slipping in.
         val service = DefaultHelpTopicService()

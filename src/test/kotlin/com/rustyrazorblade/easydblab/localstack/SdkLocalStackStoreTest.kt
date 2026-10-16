@@ -21,6 +21,7 @@ import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.s3.paginators.ListObjectsV2Iterable
+import software.amazon.awssdk.services.ssooidc.model.ExpiredTokenException
 
 /**
  * The store check `local create` runs before it writes anything: the bucket's region, a
@@ -141,6 +142,30 @@ class SdkLocalStackStoreTest {
 
         assertThat(result).isEqualTo(
             StoreReadResult.Unreadable(awsErrorCode = "SdkClientException: The SSO session associated with this profile has expired"),
+        )
+    }
+
+    /**
+     * An expired SSO session reaches the caller as the SSO OIDC service's `ExpiredTokenException`, an
+     * AWS service exception that is neither an [S3Exception] nor an [SdkClientException]; it escaped
+     * the check as a raw exception.
+     */
+    @Test
+    fun `an expired SSO session, refused by the SSO service rather than S3, is unreadable with its code and reason`() {
+        whenever(profileS3.getBucketLocation(any<GetBucketLocationRequest>()))
+            .thenThrow(
+                ExpiredTokenException
+                    .builder()
+                    .message("The SSO session associated with this profile has expired or is otherwise invalid")
+                    .build(),
+            )
+
+        val result = check.check("acct")
+
+        assertThat(result).isEqualTo(
+            StoreReadResult.Unreadable(
+                awsErrorCode = "ExpiredTokenException: The SSO session associated with this profile has expired or is otherwise invalid",
+            ),
         )
     }
 }

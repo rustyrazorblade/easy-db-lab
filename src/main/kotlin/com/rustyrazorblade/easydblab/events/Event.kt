@@ -6384,6 +6384,33 @@ sealed interface Event {
         }
 
         /**
+         * The operator's credentials cannot read the account bucket (an expired SSO session, a
+         * refused bucket); nothing was written.
+         *
+         * @property profile the AWS profile the export reads with, or null when the easy-db-lab
+         *   profile holds access keys instead.
+         * @property awsErrorCode the AWS error code, or the SDK's reason when it loaded no credentials.
+         */
+        @Serializable
+        @SerialName("Export.StoreUnreadable")
+        data class StoreUnreadable(
+            val profile: String?,
+            val awsErrorCode: String,
+        ) : Export {
+            override fun toDisplayString(): String =
+                when (profile) {
+                    null ->
+                        "Cannot read the account bucket with the access keys in the easy-db-lab profile: $awsErrorCode\n" +
+                            "Nothing was written. Fix the access keys and run the command again."
+                    else ->
+                        "Cannot read the account bucket with profile $profile: $awsErrorCode\n" +
+                            "Nothing was written. Log in and run the command again: aws sso login --profile $profile"
+                }
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
          * The export listed what it will copy and found room for it.
          *
          * @property tenant the tenant copied.

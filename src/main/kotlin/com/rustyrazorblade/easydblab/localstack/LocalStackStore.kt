@@ -6,7 +6,8 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.services.TenantDirectory
 import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
-import software.amazon.awssdk.core.exception.SdkClientException
+import software.amazon.awssdk.awscore.exception.AwsServiceException
+import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.HeadBucketRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
@@ -27,7 +28,8 @@ sealed interface StoreReadResult {
      * The profile cannot read the bucket.
      *
      * @property awsErrorCode S3's error code (`AccessDenied`, `NoSuchBucket`, `HTTP 403` for a HEAD,
-     *   which carries none), or the SDK's own reason when it could not load credentials at all.
+     *   which carries none), or, when the SDK could not load credentials or another service refused
+     *   them (an expired SSO session), that exception's code or class and its message.
      */
     data class Unreadable(
         val awsErrorCode: String,
@@ -93,8 +95,11 @@ class SdkLocalStackStore(
             StoreReadResult.Readable(region)
         } catch (e: S3Exception) {
             StoreReadResult.Unreadable(e.awsErrorDetails()?.errorCode() ?: "HTTP ${e.statusCode()}")
-        } catch (e: SdkClientException) {
-            StoreReadResult.Unreadable("${e::class.simpleName}: ${e.message}")
+        } catch (e: SdkException) {
+            // The SDK could not load credentials (SdkClientException), or another service refused them:
+            // an expired SSO session is the SSO OIDC service's ExpiredTokenException.
+            val code = (e as? AwsServiceException)?.awsErrorDetails()?.errorCode() ?: e::class.simpleName
+            StoreReadResult.Unreadable("$code: ${e.message}")
         }
 
     override fun tenants(

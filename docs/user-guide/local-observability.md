@@ -245,6 +245,34 @@ Remove the override and run `docker compose up -d` again to get the browser view
 
 `observability local dashboards` works on an opened export, as on a live stack. `observability local create` refuses an opened export's directory, so it never turns the export into a live stack.
 
-Exporting chosen clusters (`--cluster`) or one experiment (`--experiment`) is not available yet; export their tenant instead.
+## Export clusters or an experiment
+
+`--cluster` (repeatable) exports only the clusters you name, and `--experiment` every cluster of one experiment. The zip opens the same way as a tenant export:
+
+```bash
+easy-db-lab observability export ~/lab-pair.zip --cluster lab-1a2b --cluster lab-3c4d
+easy-db-lab observability export ~/e1.zip --experiment e1 --tenant acme
+```
+
+`--experiment` reads the experiment of one tenant: `--tenant`, else the tenant of the cluster workspace you run it in, else `default`, and it says which. Two tenants may each have an experiment of the same name; only the one you name is exported. A cluster from before experiments existed is an experiment of its own, named by its `<name>-<id>`.
+
+`--cluster` finds each cluster's tenant: from the workspace when you run it in that cluster's own workspace, otherwise from the store. Clusters of different tenants may be exported together; the first cluster's tenant is the one the stable datasources read, and the opened stack has datasources for every tenant in the zip.
+
+These exports read by query rather than copying the store. They start two temporary docker compose projects: a read-only reader over the live store, with the same read gate and signer as `local create` (so they need docker and an AWS profile, not access keys), and a writer whose Loki and Tempo keep what is read. Metric blocks are copied and rewritten with thanos, with no network, to keep only the selected clusters' series. The zip holds the selected clusters' metrics, logs and traces, their annotation backups, and every report of each experiment they belong to, and nothing of any other cluster. Nothing in the bucket is written or deleted.
+
+```
+Exporting 2 clusters: lab-1a2b (tenant acme), lab-3c4d (tenant default). Home tenant: acme
+Exported metrics: 14 blocks, 38 MiB (39845888 bytes)
+Exported logs: 120433 lines, 22 MiB (23068672 bytes)
+Exported traces: 0 traces, 0 MiB (0 bytes)
+Exported lab-1a2b, lab-3c4d (tenants acme, default) to /Users/you/lab-pair.zip (5512 files, 61 MiB before compression).
+Profiles are not included (issue #1016).
+Open it with: unzip /Users/you/lab-pair.zip, then docker compose up in the directory it makes; see its README.txt.
+The work directory /Users/you/lab-pair.zip.work-1f3e9a2c (412 MiB, 432013312 bytes) is kept; remove it yourself when you no longer need it.
+```
+
+A signal with nothing to export is reported as zero. The work directory `<path>.work-<id>/` holds the two projects, their state and the staged blocks. It is kept after the export, and after a failure, so you can look at what happened; nothing removes it. The reader's components run as root, so on Linux you may need `sudo rm -rf` to remove it.
+
+A cluster that no tenant holds fails and names the tenants it searched. An experiment with no clusters fails and names the experiment, the tenant and the query it ran. In both cases nothing is left at the path.
 
 See [`observability local create`](../reference/commands.md#observability-local-create), [`observability local dashboards`](../reference/commands.md#observability-local-dashboards) and [`observability export`](../reference/commands.md#observability-export) for every option.

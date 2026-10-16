@@ -32,7 +32,8 @@ Local stack (no cluster needed; metrics, logs and traces of every tenant, torn-d
 
 Export (a zip that opens offline as the local stack; no profiles, #1016):
 - `easy-db-lab observability export <path>.zip --tenant <t>` — copies tenant `<t>`'s metrics, logs, traces, annotation backups and reports, with the offline stack, the dashboards and a README, into a new zip. Reads the bucket with your AWS profile; writes nothing to S3. Works outside a workspace.
-- Exactly one of `--tenant`, `--cluster <name-id>` (repeatable) or `--experiment <name>` (with `--tenant`, else the workspace's tenant, else `default`, and it says which); `--cluster` and `--experiment` are not available yet.
+- Exactly one of `--tenant`, `--cluster <name-id>` (repeatable) or `--experiment <name>` (with `--tenant`, else the workspace's tenant, else `default`, and it says which).
+- `--cluster <name-id>` (repeatable) and `--experiment <name>` export by query: a temporary read-only stack reads the clusters' metrics, logs and traces from the store and a temporary writer keeps them; only the selected clusters' data, their annotation backups and their experiments' reports go in the zip. Clusters of different tenants may go together (the first one's tenant is the home). A cluster or experiment that is not found fails naming it and the tenants searched. Needs docker and an AWS profile (not access keys). Prints what it exported per signal (zero as zero) and keeps its work directory `<path>.work-<id>/`, printing where and how big; remove it yourself.
 - Fails, leaving nothing at the path: an existing path (never overwritten), too little free disk (checked before copying), a tenant with no data (names the prefixes), or any copy error (names the signal and the step).
 - Open it: pull the images the zip's `README.txt` lists (the zip has none), then `unzip <path>.zip && cd <dir> && docker compose up -d`; no network or AWS credentials needed. `data/` is mounted read-only and never changes.
 

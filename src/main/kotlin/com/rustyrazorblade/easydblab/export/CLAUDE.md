@@ -52,10 +52,51 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
   works on an opened export and `local create` refuses it.
 - `ExportSignal` / `ExportStepFailed` / `exportStep` — every step names its signal and what it was doing.
 
-## Not built yet
+## Flow (query export: `--cluster`, `--experiment`), package `export.query`
 
-`--cluster` and `--experiment` (query exports, tasks section 8) are parsed and checked, and the experiment's tenant
-is reported (`Export.TenantChosen`), then the command fails saying they are not available.
+`QueryExporter.export(target, selector, workspace)`, in order, stopping at the first failure:
+
+1. `CheckedExportStoreFactory.openForQuery()` → `QueryStoreAccess(store, bucket, region, profile)`: the read check, and an
+   AWS profile, which the reader's signer reads `~/.aws` with (`Export.AwsProfileRequired` for access keys).
+   `QueryWorkDirectory.create(target)`: `<path>.work-<id>/` (`Constants.Export.Query.WORK_INFIX`) with `reader/`,
+   `writer/{store,state/loki,state/tempo}`, `metrics/` and `projects/`, made by the operator. It is never removed;
+   `Export.WorkDirectoryKept(path, bytes)` is the last event, on success and on failure (owner decision D17).
+2. The reader (`QueryRuntime.reader`, `ExportReaderStack`: `StoreAccessPart` + `BackendsPart` of the live stack, no
+   Grafana, backends published `127.0.0.1::<port>`) as `edl-export-<id>-reader`. `QueryPlanner` reads its Mimir
+   (`MimirApi`, per tenant header, `|` for federation):
+   - `ClusterTenantResolver` for `--cluster` (spike S7): the workspace's state for its own cluster, no query; one store
+     tenant: that tenant, checked by a single-tenant `/api/v1/series?match[]=up{cluster="x"}&start=0&end=<now>`;
+     several: the same query federated, tenant from `__tenant_id__`. Never `/api/v1/label/__tenant_id__/values`.
+   - `ExperimentDiscovery`: `--experiment` clusters from `label/cluster/values` with `up{experiment="e"}` and the
+     pre-label `up{experiment="",cluster="e"}` in the one tenant; for `--cluster`, the covered experiments are the
+     labelled `experiment` values plus each pre-label cluster's own id.
+   - `ClusterTimeRanges`: each cluster's range from `count by (cluster) (count_over_time(up{...}[step]))` from the
+     tenant's oldest block (`MimirStoreIndex`), widened by 10 minutes.
+   Home tenant: the experiment's, or the first `--cluster`'s; the zip's tenants are the union. Refusals are typed:
+   `ClusterNotFound`, `ClusterInSeveralTenants`, `ClusterTenantUnknown`, `ExperimentNotFound`; then
+   `Export.ClustersSelected`.
+3. The writer (`ExportWriterStack`: a Loki with the offline stack's filesystem layout and `reject_old_samples: false`, a
+   Tempo with the local backend and both WAL `ingestion_time_range_slack: 87600h`, never 0; both as the operator; no
+   Mimir, whose shipper needs an xattr a macOS bind mount lacks). `LogExport` per cluster (forward pages of
+   `query_range` with `X-Loki-Response-Encoding-Flags: categorize-labels`, a nanosecond tie-break, a one-nanosecond
+   query when a page shares one, push with structured metadata), then the Loki flush (`LokiTailFlush.SHUTDOWN_PATH`)
+   and `stop loki`. `TraceExport` per cluster (`{ resource.cluster = "x" }`, windows ≤ 168h split in half while full,
+   fetch by id, only the cluster's resource spans, base64 ids to hex, OTLP/JSON to the writer), then
+   `WriterTempoDrain` (idle, then every completed live-store block `flushed`, listed in the work directory) and
+   `stop tempo`.
+4. `MetricsExport` per tenant: the live blocks overlapping the clusters' ranges staged at `metrics/mimir/<tenant>/`
+   (no marker files), `ThanosBlockRewrite` (`tools bucket rewrite --prom-blocks --no-dry-run`, `FILESYSTEM` objstore at
+   the tenant directory, `--tmp.dir` outside it, delete `{cluster!~"x|y"}`, one `--id` per block, `network_mode: none`,
+   no environment, the operator's uid:gid, never `--delete-blocks` or `--hash-func`; a one-off `docker compose run`),
+   originals and scratch removed, blocks with no series dropped, then `MimirBucketIndexWriter` last.
+5. The zip (`QueryZipContents`): the stack (`ExportStackFiles.files(home, root, tenants, experiment)`), the writer's
+   `store/loki/` as `data/loki/`, its Tempo blocks with the zip's own tenant index, the staged metrics, the selected
+   clusters' annotation backups (`<ts>_<cluster>.json`) and every report of each covered experiment. Then
+   `Export.SignalExported(signal, items, bytes)` for metrics (blocks), logs (lines) and traces, zero as zero, and
+   `Export.QueryCompleted`.
+
+Both stacks are `docker compose down`ed when the export ends (`DockerExportStack`, `ComposeCli`/`DockerComposeCli`).
+`StackRuntime.beforeStart` is where a test writes a project's `compose.override.yml`; production writes none.
 
 ## Tests
 
@@ -64,3 +105,8 @@ Unit: `ExportSelectorTest`, `ExportZipWriterTest`, `MimirBucketIndexWriterTest`,
 plays the compactor), `ExportStackFilesTest`, `ObservabilityExportTest`, `ExportModuleTest`. Integration:
 `TenantExportIntegrationTest` (MinIO filled by the cluster's writers; listing unchanged; only the tenant's data;
 the unzipped stack opened with `docker compose up` on an internal network and queried through its Grafana).
+Query export unit tests in `export/query/` (over `FakeBackends`, one `ObservabilityHttp` per tenant header): the
+resolver, discovery, ranges, log, trace and metrics copies, the stacks, thanos, the drain and `QueryExporterTest`.
+Integration: `QueryExportIntegrationTest` (`QueryStoreSeed`: four clusters in two tenants, a days-old `up`, line and
+span; the real stacks and thanos; listing unchanged; only the selected clusters; mixed tenants; a same-named experiment
+in two tenants; the old span by id and by search from the opened stack's Tempo, which holds only the zipped blocks).

@@ -955,12 +955,14 @@ easy-db-lab observability export ~/acme-export.zip --tenant acme
 |-------------------|-------------|---------|
 | `PATH` | The zip to write (required): a new `.zip` file in a directory that exists. It is never overwritten. The zip holds one directory named after it, without `.zip`. | - |
 | `--tenant` | Export a copy of this tenant's store. With `--experiment`, the experiment's tenant. | - |
-| `--cluster` | Export only this cluster's data (repeatable). Not available yet. | - |
-| `--experiment` | Export every cluster of this experiment, in `--tenant`, the workspace's tenant, or `default` outside a workspace; the command says which tenant it used and why. Not available yet. | - |
+| `--cluster` | Export only this cluster's data, by query (repeatable). Clusters of different tenants may be exported together. | - |
+| `--experiment` | Export every cluster of this experiment, in `--tenant`, the workspace's tenant, or `default` outside a workspace; the command says which tenant it used and why. | - |
 
 Exactly one kind of export is required: `--tenant` alone, `--cluster`, or `--experiment`. No selector, or two kinds, fails and names the three.
 
 A tenant export copies the tenant's directories under `mimir/` and `tempo/`, its Loki chunks and index, its annotation backups under `grafana/annotations/<tenant>/` and its reports under `reports/<tenant>/`, plus the offline stack, the dashboards and a `README.txt` that lists the images to pull. Before copying, it prints the size and fails when the disk does not have that much free space. A tenant with no data fails and names the prefixes it looked under. The zip is written under `<path>.partial-<random>` and moved into place only when complete; on any failure no zip is left at the path and the error names the signal and the step.
+
+A `--cluster` or `--experiment` export reads by query, through two temporary docker compose projects: a read-only reader over the live store (the local stack's read gate and signer, with your AWS profile) and a writer with filesystem backends. It copies only the selected clusters' metrics, logs and traces, their annotation backups, and every report of each experiment they belong to. A `--cluster` finds its tenant from the workspace when run in that cluster's own workspace, else from the store. It prints the clusters and their tenants, what it exported per signal (a signal with nothing as zero), and the work directory `<path>.work-<id>/` with its size; the work directory is kept, also after a failure, and you remove it yourself. It needs docker and an AWS profile in the easy-db-lab profile.
 
 ## Grafana Commands
 

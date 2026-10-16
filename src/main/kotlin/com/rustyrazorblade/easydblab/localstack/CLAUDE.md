@@ -14,7 +14,8 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
 2. `LocalStackComposer.compose(spec)` returns `Map<relative path, bytes>`: `compose.yml` plus `config/...`.
    Live joins three `ComposePart`s: `StoreAccessPart` (`store-signer`, `store-gate`, `store-check`),
    `BackendsPart` (`memcached`, `mimir`, `loki`, `tempo`) and `GrafanaViewPart` (`grafana`, `documents-web`).
-   Offline joins only the last two. `BackendsPart` builds the same services over a `BackendStorage`:
+   Offline joins only the last two. `LocalStackComposer.join(parts)` makes `compose.yml` and the files of any parts; the query
+   export's reader and writer (`export/query/ExportStacks.kt`) use it. `ComposeService.networkMode` is set only for thanos (`none`). `BackendsPart` builds the same services over a `BackendStorage`:
    `GatedStore` (S3 through the gate; Mimir and Loki files byte for byte, flags for the gate and placeholder
    keys) or `ExportedFiles` (the data directory read-only at `/store` in every backend, no dependencies;
    Mimir `-blocks-storage.backend=filesystem -blocks-storage.filesystem.dir=/store`; Loki's file patched:

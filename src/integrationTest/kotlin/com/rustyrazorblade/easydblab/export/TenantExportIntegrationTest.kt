@@ -268,8 +268,36 @@ class TenantExportIntegrationTest {
         assertThat(File(stack, "data/grafana/annotations/$TENANT/20261015-100000_c-$TENANT.json")).isFile()
     }
 
+    /**
+     * The documents view serves the reports from the data directory, which also holds every other
+     * signal: from inside Grafana, nothing outside `/reports/` is served, a `..` in the path does not
+     * leave it, and only GET is answered, while the report itself still is.
+     */
     @Test
     @Order(5)
+    fun `the opened export's documents view serves only GETs of the reports`() {
+        val documents = "http://${Constants.LocalStack.Services.DOCUMENTS}:${Constants.Grafana.Documents.WEB_PORT}"
+        val report = "$documents/reports/$TENANT/exp/index.html"
+        val refused =
+            mapOf(
+                "a Mimir bucket index" to listOf("$documents/mimir/$TENANT/bucket-index.json.gz"),
+                "an annotation backup" to listOf("$documents/grafana/annotations/$TENANT/20261015-100000_c-$TENANT.json"),
+                "a path that leaves /reports/" to listOf("$documents/reports/%2e%2e/mimir/$TENANT/bucket-index.json.gz"),
+                "a POST to the report" to listOf("--post-data=x", report),
+            )
+        assertThat(File(stack, "data/mimir/$TENANT/bucket-index.json.gz")).describedAs("the file the probes ask for").isFile()
+
+        refused.forEach { (what, args) ->
+            val answer = wgetFromGrafana(*args.toTypedArray())
+            assertThat(answer.exitCode).describedAs("$what: ${answer.output}").isNotEqualTo(0)
+        }
+        val served = wgetFromGrafana(report)
+        assertThat(served.exitCode).describedAs(served.output).isEqualTo(0)
+        assertThat(served.output.trimEnd()).isEqualTo(REPORT)
+    }
+
+    @Test
+    @Order(6)
     fun `opening the export changes no file under data`() {
         assertThat(dataSnapshot()).isEqualTo(dataBefore)
         assertThat(listing()).isEqualTo(listingBefore)
@@ -326,9 +354,13 @@ class TenantExportIntegrationTest {
         absolute: Boolean = false,
     ): String? {
         val url = if (absolute) path else "http://127.0.0.1:${Constants.K8s.GRAFANA_PORT}$path"
-        val result = project.compose("exec", "-T", Constants.LocalStack.Services.GRAFANA, "wget", "-q", "-O", "-", url)
+        val result = wgetFromGrafana(url)
         return result.output.takeIf { result.exitCode == 0 }
     }
+
+    /** `wget -q -O - <args>` inside the Grafana container, on the project network. */
+    private fun wgetFromGrafana(vararg args: String): ComposeProject.Result =
+        project.compose("exec", "-T", Constants.LocalStack.Services.GRAFANA, "wget", "-q", "-O", "-", *args)
 
     private fun encode(text: String) = URLEncoder.encode(text, Charsets.UTF_8)
 

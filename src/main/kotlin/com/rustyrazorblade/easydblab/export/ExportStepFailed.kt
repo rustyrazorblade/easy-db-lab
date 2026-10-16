@@ -52,7 +52,9 @@ internal inline fun <T> exportStep(
 
 /**
  * Runs [block]; an [ExportStepFailed] is reported as [Event.Export.Failed] with [target]'s path, its
- * signal, step and reason, and the saved [logs] of any temporary stacks, and fails the command.
+ * signal, step and reason, the saved [logs] of any temporary stacks, and a partial file that could not
+ * be removed ([PartialFileLeft]: suppressed on the export's own failure, or the cause when the zip was
+ * already complete at its path), and fails the command.
  */
 internal fun <T> EventBus.reportingStepFailure(
     target: ExportTarget,
@@ -62,6 +64,19 @@ internal fun <T> EventBus.reportingStepFailure(
     try {
         block()
     } catch (e: ExportStepFailed) {
-        emit(Event.Export.Failed(target.zip.path, e.signal.label, e.step, e.cause?.message ?: e.message.orEmpty(), logs()))
+        val afterMove = e.cause as? PartialFileLeft
+        val left = afterMove ?: e.suppressed.filterIsInstance<PartialFileLeft>().firstOrNull()
+        emit(
+            Event.Export.Failed(
+                path = target.zip.path,
+                signal = e.signal.label,
+                step = e.step,
+                reason = e.cause?.message ?: e.message.orEmpty(),
+                logs = logs(),
+                partialFile = left?.partial?.path,
+                partialFileError = left?.cause?.message,
+                zipComplete = afterMove != null,
+            ),
+        )
         throw CommandFailedException(e.message ?: "The export failed")
     }

@@ -363,6 +363,65 @@ class QueryExportIntegrationTest {
         }
     }
 
+    @Test
+    @Order(6)
+    fun `the days-old log line and up sample are found over their own time in the opened stack`() {
+        val from = seeded.oldAt.minus(Duration.ofHours(1))
+        val to = seeded.oldAt.plus(Duration.ofHours(1))
+        val nanos = { at: Instant -> at.epochSecond * 1_000_000_000L }
+        val logs = encode("{cluster=\"${X.name}\"}")
+        awaitUntil(ANSWER_WAIT, "the old line of ${X.name} over its own time", {
+            project.logs(Constants.LocalStack.Services.LOKI).takeLast(LOG_TAIL)
+        }) {
+            val body =
+                grafana(
+                    "/api/datasources/proxy/uid/loki--all/loki/api/v1/query_range?query=$logs" +
+                        "&start=${nanos(from)}&end=${nanos(to)}&limit=1000",
+                ) ?: return@awaitUntil false
+            runCatching {
+                Json
+                    .parseToJsonElement(body)
+                    .jsonObject
+                    .getValue("data")
+                    .jsonObject
+                    .getValue("result")
+                    .jsonArray
+                    .flatMap { it.jsonObject.getValue("values").jsonArray }
+                    .map { it.jsonArray[1].jsonPrimitive.content }
+            }.getOrDefault(emptyList()).contains("line 0 of ${X.name}")
+        }
+        val up = encode("up{cluster=\"${X.name}\"}")
+        awaitUntil(ANSWER_WAIT, "the old up of ${X.name} over its own time", {
+            project.logs(Constants.LocalStack.Services.MIMIR).takeLast(LOG_TAIL)
+        }) {
+            val body =
+                grafana(
+                    "/api/datasources/proxy/uid/mimir--all/api/v1/query_range?query=$up" +
+                        "&start=${from.epochSecond}&end=${to.epochSecond}&step=60",
+                ) ?: return@awaitUntil false
+            runCatching {
+                Json
+                    .parseToJsonElement(body)
+                    .jsonObject
+                    .getValue("data")
+                    .jsonObject
+                    .getValue("result")
+                    .jsonArray
+                    .filter {
+                        it.jsonObject
+                            .getValue("metric")
+                            .jsonObject["cluster"]
+                            ?.jsonPrimitive
+                            ?.content == X.name
+                    }.sumOf {
+                        it.jsonObject
+                            .getValue("values")
+                            .jsonArray.size
+                    }
+            }.getOrDefault(0) > 0
+        }
+    }
+
     /** The project network, made internal: no container of the stack can reach anything outside it. */
     @Serializable
     private data class InternalNetwork(

@@ -192,6 +192,19 @@ class MetricsExportTest {
         assertThatThrownBy { export.export("acme", listOf("x-1"), ranges, work) }.hasMessageContaining("compactor")
     }
 
+    /** A rewrite that fails, such as one whose thanos may still be writing, must leave the staged sources and write no index. */
+    @Test
+    fun `a failed rewrite keeps the staged source blocks and writes no bucket index`() {
+        seed()
+        val failing = BlockRewrite { _, _, _, _ -> error("thanos may still be running") }
+
+        assertThatThrownBy { MetricsExport(store, failing, MimirBucketIndexWriter()).export("acme", listOf("x-1"), ranges, work) }
+            .hasMessageContaining("thanos may still be running")
+
+        assertThat(File(work, "mimir/acme/01HIT/meta.json")).isFile()
+        assertThat(File(work, "mimir/acme/${MimirBucketIndexWriter.FILE}")).doesNotExist()
+    }
+
     @Test
     fun `nothing in the store is written`() {
         seed()

@@ -9,10 +9,13 @@ import java.util.concurrent.TimeUnit
  *
  * @property exitCode its exit status.
  * @property output its standard output and error, interleaved.
+ * @property timedOut true when the command outlasted its timeout and only the CLI process was killed:
+ *   a container it started may still be running.
  */
 data class ComposeResult(
     val exitCode: Int,
     val output: String,
+    val timedOut: Boolean = false,
 )
 
 /**
@@ -55,7 +58,11 @@ object DockerComposeCli : ComposeCli {
         if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
             process.destroyForcibly()
             reader.join(timeout.toMillis().coerceAtMost(KILL_WAIT_MILLIS))
-            return ComposeResult(KILLED, "docker compose ${args.joinToString(" ")} did not finish within $timeout\n$output")
+            return ComposeResult(
+                KILLED,
+                "docker compose ${args.joinToString(" ")} did not finish within $timeout\n${synchronized(output) { output.toString() }}",
+                timedOut = true,
+            )
         }
         reader.join()
         return ComposeResult(process.exitValue(), synchronized(output) { output.toString() })

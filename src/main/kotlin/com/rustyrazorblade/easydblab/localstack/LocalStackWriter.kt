@@ -7,16 +7,15 @@ import java.io.File
 
 /**
  * A stack directory the tool will not write into: it is not empty and holds no manifest of the tool,
- * so its files are someone else's.
+ * so its files are someone else's; or it is an opened export, whose offline stack a live one must
+ * not replace.
  *
  * @property directory the refused directory.
  */
 class LocalStackDirectoryRefused(
     val directory: File,
-) : IllegalStateException(
-        "$directory is not empty and was not created by observability local create; " +
-            "choose an empty or new directory",
-    )
+    reason: String = "is not empty and was not created by observability local create",
+) : IllegalStateException("$directory $reason; choose an empty or new directory")
 
 /**
  * What one write of a stack did.

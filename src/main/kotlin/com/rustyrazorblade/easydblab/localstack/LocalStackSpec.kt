@@ -43,7 +43,12 @@ data class LocalStackSpec(
             val awsProfile: String,
             override val home: String,
         ) : Mode {
-            override val manifestName: String get() = "live"
+            override val manifestName: String get() = MANIFEST_NAME
+
+            companion object {
+                /** The name the manifest records a live stack under. */
+                const val MANIFEST_NAME = "live"
+            }
         }
 
         /**
@@ -55,7 +60,12 @@ data class LocalStackSpec(
             val dataDir: String,
             override val home: String,
         ) : Mode {
-            override val manifestName: String get() = "offline"
+            override val manifestName: String get() = MANIFEST_NAME
+
+            companion object {
+                /** The name the manifest records an exported, offline stack under. */
+                const val MANIFEST_NAME = "offline"
+            }
         }
     }
 }

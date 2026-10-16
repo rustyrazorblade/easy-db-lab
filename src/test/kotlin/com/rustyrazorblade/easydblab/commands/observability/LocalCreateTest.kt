@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.export.ExportStackFiles
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.localstack.ComposeFile
 import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
@@ -192,6 +193,21 @@ class LocalCreateTest : BaseKoinTest() {
             .isInstanceOf(LocalStackDirectoryRefused::class.java)
             .hasMessageContaining(dir.path)
         assertThat(snapshot(dir)).isEqualTo(mapOf("notes.txt" to "mine"))
+        assertThat(storeChecks).isZero()
+    }
+
+    @Test
+    fun `an opened export is refused, since create would turn its offline stack into a live one`() {
+        val dir = stack().apply { mkdirs() }
+        val export = ExportStackFiles(dashboardSource, toolVersion = "7").files(tenant = "acme")
+        export.forEach { (path, bytes) -> File(dir, path).apply { parentFile.mkdirs() }.writeBytes(bytes) }
+        val before = snapshot(dir)
+
+        assertThatThrownBy { create(dir.path) }
+            .isInstanceOf(LocalStackDirectoryRefused::class.java)
+            .hasMessageContaining(dir.path)
+            .hasMessageContaining("export")
+        assertThat(snapshot(dir)).isEqualTo(before)
         assertThat(storeChecks).isZero()
     }
 

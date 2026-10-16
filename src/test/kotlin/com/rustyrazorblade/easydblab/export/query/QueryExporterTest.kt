@@ -531,6 +531,30 @@ class QueryExporterTest {
         exporter.export(target(), ExportSelector.Clusters(listOf(X1)), WorkspaceCluster(X1, "acme"))
 
         assertThat(reader.calls.map { it.route }).doesNotContain("/prometheus/api/v1/series")
+        val selected = events.filterIsInstance<Event.Export.ClustersSelected>().single()
+        assertThat(selected.clusters.single().source).isEqualTo("workspace")
+        assertThat(selected.toDisplayString()).contains("$X1 (tenant acme, from this cluster workspace)")
+    }
+
+    @Test
+    fun `a cluster export says where each cluster's tenant came from, the workspace or a query of the store`() {
+        exporter.export(target(), ExportSelector.Clusters(listOf(X1, W4)), WorkspaceCluster(X1, "acme"))
+
+        val selected = events.filterIsInstance<Event.Export.ClustersSelected>().single()
+        assertThat(selected.clusters.map { it.cluster to it.source }).containsExactly(X1 to "workspace", W4 to "query")
+        assertThat(selected.toDisplayString()).contains(
+            "$X1 (tenant acme, from this cluster workspace)",
+            "$W4 (tenant default, found by querying the store)",
+        )
+    }
+
+    @Test
+    fun `an experiment export's clusters name no source of their own, since the experiment's tenant was reported`() {
+        exporter.export(target(), ExportSelector.Experiment(ExperimentKey("acme", "exp-a")), workspace = null)
+
+        val selected = events.filterIsInstance<Event.Export.ClustersSelected>().single()
+        assertThat(selected.clusters.map { it.source }).containsOnlyNulls()
+        assertThat(selected.toDisplayString()).contains("$X1 (tenant acme)").doesNotContain("workspace", "querying")
     }
 
     @Test

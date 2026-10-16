@@ -118,7 +118,10 @@ class QueryExporter(
             exportStep(ExportSignal.STACK, "start the reader stack") { runtime.reader(work, access.live(readerHome)) }.use { reader ->
                 val plan = plan(QueryPlanner(MimirApi(reader::http, clock), metrics::oldestBlock, clock), selector, storeTenants, workspace)
                 eventBus.emit(
-                    Event.Export.ClustersSelected(plan.clusters.map { Event.Export.SelectedCluster(it.key, it.value) }, plan.home),
+                    Event.Export.ClustersSelected(
+                        plan.clusters.map { Event.Export.SelectedCluster(it.key, it.value, plan.tenantSources[it.key]?.label) },
+                        plan.home,
+                    ),
                 )
                 val (logs, traces) =
                     exportStep(ExportSignal.STACK, "start the writer stack") {

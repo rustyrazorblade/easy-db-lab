@@ -61,7 +61,7 @@ Open <http://127.0.0.1:3000>. You are in as an anonymous user with the Admin rol
 
 The first start takes a minute or two: Mimir loads the store's block index, Loki its log index, and Tempo lists every tenant's blocks. A cluster torn down a few minutes ago shows too: Tempo finds blocks by listing the bucket, not only from its tenant index.
 
-The first query over older data is slow: nothing is cached yet, and Mimir and Loki read the blocks and chunks from S3. A panel can take a minute or more the first time and is fast after that, while the caches are warm. Grafana waits up to five minutes for a datasource, instead of its default 30 seconds, so a cold query shows its data rather than a 502.
+The first query over older data is slow: nothing is cached yet, and Mimir, Loki and Tempo read the blocks and chunks from S3. A panel can take a minute or more the first time and is fast after that, while the caches are warm. Grafana waits up to five minutes for a datasource, instead of its default 30 seconds, and Tempo waits as long for a cold read of its blocks, instead of its own 30 seconds for a search and 10 seconds for a trace lookup. A cold trace search or trace lookup that takes less than five minutes therefore shows its data rather than a 502.
 
 Grafana installs no plugin at start: no packaged dashboard needs one, and the download from grafana.com could hold its start for minutes. A cluster's Grafana still installs them, since the ClickHouse kit's datasource is one.
 
@@ -220,7 +220,9 @@ docker compose up -d
 
 Open <http://127.0.0.1:3000>. The datasources and dashboards are the ones a cluster has, for the exported tenant; the documents view (<http://127.0.0.1:3080>) serves the tenant's reports from the zip.
 
-The copied data is in `data/` and is mounted read-only into every component, so opening the export never changes it. Nothing compacts, merges or deletes. Tempo logs `failed to write tenant index ... read-only file system` each time it lists its blocks; that is expected and harmless. Grafana installs no plugin at start, since with no network the download would stop it, and no packaged dashboard needs one.
+The copied data is in `data/` and is mounted read-only into every component, so opening the export never changes it. Nothing compacts, merges or deletes. Tempo logs `failed to write tenant index ... read-only file system` each time it lists its blocks, and keeps running; that message is expected and harmless. It is not `failed to create store: mkdir /store/tempo: read-only file system`, which stops Tempo and means `data/tempo/` is missing. Every export holds that directory, even one with no traces. Grafana installs no plugin at start, since with no network the download would stop it, and no packaged dashboard needs one.
+
+Offline, the markers on the dashboards (test runs and other annotations) come from the annotation mirror: every Grafana annotation is also written to Loki, and the export carries those log lines. Grafana's own annotation list is empty in an opened export, so a marker shows only on a dashboard that reads markers from Loki, as the core dashboards do.
 
 #### With and without a network
 
@@ -243,7 +245,7 @@ docker compose exec -T grafana wget -q -O - http://127.0.0.1:3000/api/health
 docker compose exec -T grafana wget -q -O - 'http://127.0.0.1:3000/api/datasources/proxy/uid/mimir/api/v1/labels'
 ```
 
-Remove the override and run `docker compose up -d` again to get the browser view back.
+To get the browser view back, remove the override, then run `docker compose down` and `docker compose up -d` (or `docker compose up -d --force-recreate`). A plain `docker compose up -d` after removing the override leaves the containers unable to resolve each other's names, so the datasources fail.
 
 `observability local dashboards` works on an opened export, as on a live stack. `observability local create` refuses an opened export's directory, so it never turns the export into a live stack.
 

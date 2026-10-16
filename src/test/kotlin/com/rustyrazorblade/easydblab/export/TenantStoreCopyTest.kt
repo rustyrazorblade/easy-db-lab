@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.InputStream
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -34,12 +35,18 @@ class TenantStoreCopyTest {
     /** Every entry the copy put, in order, with its bytes. */
     private val entries = linkedMapOf<String, ByteArray>()
     private val sink =
-        ExportZipSink { path, input ->
-            input
-                .use { it.readBytes() }
-                .also { entries[path] = it }
-                .size
-                .toLong()
+        object : ExportZipSink {
+            override fun put(
+                path: String,
+                input: InputStream,
+            ): Long =
+                input
+                    .use { it.readBytes() }
+                    .also { entries[path] = it }
+                    .size
+                    .toLong()
+
+            override fun putDirectory(path: String) = Unit
         }
 
     private fun run(tenant: String = "acme") = copy.copy(copy.plan(tenant), ExportRecorder(sink), scratch)

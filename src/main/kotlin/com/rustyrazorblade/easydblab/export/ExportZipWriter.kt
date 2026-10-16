@@ -45,7 +45,7 @@ class ExportTarget private constructor(
 }
 
 /** Takes the entries of a zip being written, each under the stack directory. */
-fun interface ExportZipSink {
+interface ExportZipSink {
     /**
      * Streams [input] to the entry [path], relative to the stack directory, and closes [input].
      *
@@ -56,6 +56,14 @@ fun interface ExportZipSink {
         path: String,
         input: InputStream,
     ): Long
+
+    /**
+     * Adds the directory [path], relative to the stack directory, as an entry of its own, so the
+     * unpacked zip has it even when nothing is put under it.
+     *
+     * @throws IllegalArgumentException when [path] is not a plain relative path inside the stack.
+     */
+    fun putDirectory(path: String)
 }
 
 /**
@@ -143,14 +151,25 @@ class ExportZipWriter(
             path: String,
             input: InputStream,
         ): Long {
-            val segments = path.split('/')
-            require(path.isNotEmpty() && !path.startsWith("/") && segments.none { it.isEmpty() || it == "." || it == ".." }) {
-                "$path is not a plain path inside the export"
-            }
+            requirePlain(path)
             zip.putNextEntry(ZipEntry("$root/$path"))
             val copied = input.use { it.copyTo(zip, Constants.Export.COPY_BUFFER_BYTES) }
             zip.closeEntry()
             return copied
+        }
+
+        override fun putDirectory(path: String) {
+            requirePlain(path)
+            // A name ending in a slash is a directory entry.
+            zip.putNextEntry(ZipEntry("$root/$path/"))
+            zip.closeEntry()
+        }
+
+        private fun requirePlain(path: String) {
+            val segments = path.split('/')
+            require(path.isNotEmpty() && !path.startsWith("/") && segments.none { it.isEmpty() || it == "." || it == ".." }) {
+                "$path is not a plain path inside the export"
+            }
         }
     }
 }

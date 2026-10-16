@@ -54,7 +54,10 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
 - `ExportStackFiles` — the offline compose and configs, the dashboards under `dashboards/current` after the
   install-time pass for the export (tenant only; no cluster or experiment), `README.txt` (packaged template; one
   `docker pull` per image the compose names), and the local-stack manifest (mode `offline`), so `local dashboards`
-  works on an opened export and `local create` refuses it.
+  works on an opened export and `local create` refuses it. Both exports write it with `ExportStackFiles.put`, which
+  also adds each `REQUIRED_DIRECTORIES` entry (`ExportZipSink.putDirectory`): `data/tempo/`, always, because the
+  data directory is mounted read-only and the offline Tempo otherwise fails to create its store and restarts forever
+  (`ExportWithoutTracesIntegrationTest`).
 - `ExportSignal` / `ExportStepFailed` / `exportStep` — every step names its signal and what it was doing,
   listings, clean-up, the scratch and work directories and the zip file and its move (`stack`) included, so every
   failure becomes `Export.Failed`. A query export's `Export.Failed` also lists the stacks' saved `compose.log`s.

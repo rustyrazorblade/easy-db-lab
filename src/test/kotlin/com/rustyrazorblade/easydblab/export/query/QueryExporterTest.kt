@@ -351,6 +351,17 @@ class QueryExporterTest {
     }
 
     @Test
+    fun `an export with no traces still holds the traces directory, which the offline Tempo cannot create on its read-only mount`() {
+        traced = emptySet()
+        val target = target()
+
+        exporter.export(target, ExportSelector.Clusters(listOf(X1)), workspace = null)
+
+        val tempo = ZipFile(target.zip).use { file -> file.entries().asSequence().filter { it.name.substringAfter('/') == "data/tempo/" }.toList() }
+        assertThat(tempo).singleElement().satisfies({ assertThat(it.isDirectory).isTrue() })
+    }
+
+    @Test
     fun `clusters of two tenants are exported together, the first one's tenant the home, every tenant in the stack`() {
         val target = target()
 

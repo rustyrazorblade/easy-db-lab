@@ -49,7 +49,7 @@ class QueryZipContents(
         root: String,
     ) {
         exportStep(ExportSignal.STACK, "write the stack") {
-            stack.files(plan.home, root, plan.tenants, plan.experiment).forEach { (path, bytes) -> zip.put(path, bytes) }
+            stack.put(zip, plan.home, root, plan.tenants, plan.experiment)
         }
         exportStep(ExportSignal.LOGS, "add the logs") { putTree(File(work.writerStore, LOGS), "$DATA/$LOGS", zip) }
         plan.tenants.forEach { tenant ->

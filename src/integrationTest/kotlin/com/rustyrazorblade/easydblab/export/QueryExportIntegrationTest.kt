@@ -438,10 +438,16 @@ class QueryExportIntegrationTest {
 
     private fun openStack(run: Run) {
         val parent = File(root, "opened").apply { mkdirs() }
+        // As `unzip` does, directory entries included.
         ZipFile(run.zip).use { file ->
-            file.entries().asSequence().filter { !it.isDirectory }.forEach { entry ->
-                val target = File(parent, entry.name).apply { parentFile.mkdirs() }
-                file.getInputStream(entry).use { input -> target.writeBytes(input.readBytes()) }
+            file.entries().asSequence().forEach { entry ->
+                val target = File(parent, entry.name)
+                if (entry.isDirectory) {
+                    target.mkdirs()
+                } else {
+                    target.parentFile.mkdirs()
+                    file.getInputStream(entry).use { input -> target.writeBytes(input.readBytes()) }
+                }
             }
         }
         stack = File(parent, run.zip.name.removeSuffix(".zip"))

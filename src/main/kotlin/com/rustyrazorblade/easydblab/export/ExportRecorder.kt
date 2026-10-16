@@ -51,6 +51,9 @@ class ExportRecorder(
         bytes: ByteArray,
     ): Long = put(path, bytes.inputStream())
 
+    /** Adds the directory [path] (relative to the stack directory) as an entry of its own; it holds no bytes. */
+    fun putDirectory(path: String) = sink.putDirectory(path)
+
     /** The block directories under [prefix] in the zip (`data/mimir/<tenant>`, for example), with each block's `meta.json`. */
     fun directory(prefix: String): BlockDirectory =
         object : BlockDirectory {

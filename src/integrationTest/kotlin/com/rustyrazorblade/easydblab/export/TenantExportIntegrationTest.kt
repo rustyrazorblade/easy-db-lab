@@ -314,12 +314,17 @@ class TenantExportIntegrationTest {
         val networks: Map<String, InternalNetwork>,
     )
 
-    /** Unpacks the zip into [parent], as `unzip` does. */
+    /** Unpacks the zip into [parent], as `unzip` does, directory entries included. */
     private fun unzip(parent: File) {
         ZipFile(zip).use { file ->
-            file.entries().asSequence().filter { !it.isDirectory }.forEach { entry ->
-                val target = File(parent, entry.name).apply { parentFile.mkdirs() }
-                file.getInputStream(entry).use { input -> target.writeBytes(input.readBytes()) }
+            file.entries().asSequence().forEach { entry ->
+                val target = File(parent, entry.name)
+                if (entry.isDirectory) {
+                    target.mkdirs()
+                } else {
+                    target.parentFile.mkdirs()
+                    file.getInputStream(entry).use { input -> target.writeBytes(input.readBytes()) }
+                }
             }
         }
     }

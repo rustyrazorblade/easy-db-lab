@@ -119,6 +119,28 @@ class TenantExporterTest {
     }
 
     @Test
+    fun `an export with no traces still holds the traces directory, which the offline Tempo cannot create on its read-only mount`() {
+        seed()
+        store.objects.keys.removeIf { it.startsWith("tempo/") }
+        val target = target()
+
+        exporter.export(target, tenant = "acme")
+
+        val tempo = ZipFile(target.zip).use { file -> file.entries().asSequence().filter { it.name == "acme-export/data/tempo/" }.toList() }
+        assertThat(tempo).singleElement().satisfies({ assertThat(it.isDirectory).isTrue() })
+    }
+
+    @Test
+    fun `a tenant export with traces holds the traces directory once, beside its blocks`() {
+        seed()
+        val target = target()
+
+        exporter.export(target, tenant = "acme")
+
+        assertThat(entries(target.zip)).contains("acme-export/data/tempo/", "acme-export/data/tempo/acme/t1/meta.json")
+    }
+
+    @Test
     fun `nothing in the store is written, rewritten or removed`() {
         seed()
         val before = store.objects.mapValues { it.value.first.toList() to it.value.second }

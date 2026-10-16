@@ -36,9 +36,31 @@ class ExportStackFiles(
     private val grafanaPort: Int = Constants.LocalStack.DEFAULT_GRAFANA_PORT,
     private val documentsPort: Int = Constants.LocalStack.DEFAULT_DOCUMENTS_PORT,
 ) {
-    private companion object {
-        const val README_TEMPLATE = "README.txt"
-        const val DASHBOARD_TREE = "${Constants.LocalStack.DASHBOARDS_DIR}/${Constants.LocalStack.DASHBOARDS_TREE}"
+    companion object {
+        private const val README_TEMPLATE = "README.txt"
+        private const val DASHBOARD_TREE = "${Constants.LocalStack.DASHBOARDS_DIR}/${Constants.LocalStack.DASHBOARDS_TREE}"
+
+        /**
+         * The data directories an opened export must have even when it holds nothing under them.
+         * The data directory is mounted read-only, and the offline Tempo creates its local backend's
+         * directory at start: with no `data/tempo/` it fails to create its store and restarts forever.
+         */
+        val REQUIRED_DIRECTORIES: List<String> = listOf("${Constants.Export.DATA_DIR}/${Constants.Observability.TRACES_ROOT}")
+    }
+
+    /**
+     * Puts the stack of [files] (same arguments) into [zip], and every [REQUIRED_DIRECTORIES] entry.
+     * Both exports write their stack through this.
+     */
+    fun put(
+        zip: ExportRecorder,
+        tenant: String,
+        root: String = tenant,
+        tenants: List<String> = listOf(tenant),
+        experiment: ExperimentKey? = null,
+    ) {
+        files(tenant, root, tenants, experiment).forEach { (path, bytes) -> zip.put(path, bytes) }
+        REQUIRED_DIRECTORIES.forEach(zip::putDirectory)
     }
 
     /**

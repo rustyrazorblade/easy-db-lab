@@ -77,7 +77,7 @@ class TenantExporter(
                     zipWriter.write(target) { sink ->
                         val zip = ExportRecorder(sink)
                         exportStep(ExportSignal.STACK, "write the stack") {
-                            stack.files(tenant, root = target.root).forEach { (path, bytes) -> zip.put(path, bytes) }
+                            stack.put(zip, tenant, root = target.root)
                         }
                         withScratch(directory, target) { scratch -> copy.copy(plan, zip, scratch) }
                         zip

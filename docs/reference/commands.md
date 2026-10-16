@@ -875,7 +875,7 @@ On a Cilium cluster, prints the routing mode, IPAM mode, kube-proxy replacement,
 
 ## Observability Commands
 
-These commands manage the [account compactor](../user-guide/compactor.md) and the [local observability stack](../user-guide/local-observability.md). They work outside a cluster workspace: the account bucket comes from the profile.
+These commands manage the [account compactor](../user-guide/compactor.md) and the [local observability stack](../user-guide/local-observability.md), and export observability data. They work outside a cluster workspace: the account bucket comes from the profile.
 
 ### observability compactor start
 
@@ -942,6 +942,25 @@ easy-db-lab observability local dashboards ~/lab-local --from ~/work/dashboards
 | `--from` | A directory of dashboards to use instead of the packaged ones, laid out as `<folder>/<file>.json`; each subdirectory becomes a Grafana folder. No rebuild needed. | the packaged dashboards |
 
 Without `--from`, it uses the core and kit dashboards packaged with the tool and prints `Using packaged dashboards`. When Grafana does not answer on the port recorded in the stack's manifest, the command fails and changes nothing. A JSON file at the top of the `--from` directory, or nested deeper than one folder, is named and nothing changes.
+
+### observability export
+
+Write observability data to a new zip that opens as the [local observability stack](../user-guide/local-observability.md#export-a-tenant) on any machine, with plain `docker compose up`, no network and no AWS credentials once the images it lists are pulled. It reads the account bucket with your AWS profile and writes only the zip: nothing in S3 is written or deleted, and nothing is uploaded. Profiles are not included (issue #1016).
+
+```bash
+easy-db-lab observability export ~/acme-export.zip --tenant acme
+```
+
+| Argument / Option | Description | Default |
+|-------------------|-------------|---------|
+| `PATH` | The zip to write (required): a new `.zip` file in a directory that exists. It is never overwritten. The zip holds one directory named after it, without `.zip`. | - |
+| `--tenant` | Export a copy of this tenant's store. With `--experiment`, the experiment's tenant. | - |
+| `--cluster` | Export only this cluster's data (repeatable). Not available yet. | - |
+| `--experiment` | Export every cluster of this experiment, in `--tenant`, the workspace's tenant, or `default` outside a workspace; the command says which tenant it used and why. Not available yet. | - |
+
+Exactly one kind of export is required: `--tenant` alone, `--cluster`, or `--experiment`. No selector, or two kinds, fails and names the three.
+
+A tenant export copies the tenant's directories under `mimir/` and `tempo/`, its Loki chunks and index, its annotation backups under `grafana/annotations/<tenant>/` and its reports under `reports/<tenant>/`, plus the offline stack, the dashboards and a `README.txt` that lists the images to pull. Before copying, it prints the size and fails when the disk does not have that much free space. A tenant with no data fails and names the prefixes it looked under. The zip is written under `<path>.partial-<random>` and moved into place only when complete; on any failure no zip is left at the path and the error names the signal and the step.
 
 ## Grafana Commands
 

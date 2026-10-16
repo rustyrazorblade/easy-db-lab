@@ -30,6 +30,12 @@ Local stack (no cluster needed; metrics, logs and traces of every tenant, torn-d
 - `easy-db-lab observability local dashboards <dir> [--from <dashboards-dir>]` — replaces the running stack's dashboards and reloads them, no restart, no docker call. `--from` takes any `<folder>/<file>.json` tree; without it, the packaged dashboards ("Using packaged dashboards"). Fails and changes nothing when the stack's Grafana is not running.
 - Credentials: `store-check` must pass before any backend starts; `docker compose ps` shows `store-signer` unhealthy once they expire. Fix with `aws sso login --profile <p>`.
 
+Export (a zip that opens offline as the local stack; no profiles, #1016):
+- `easy-db-lab observability export <path>.zip --tenant <t>` — copies tenant `<t>`'s metrics, logs, traces, annotation backups and reports, with the offline stack, the dashboards and a README, into a new zip. Reads the bucket with your AWS profile; writes nothing to S3. Works outside a workspace.
+- Exactly one of `--tenant`, `--cluster <name-id>` (repeatable) or `--experiment <name>` (with `--tenant`, else the workspace's tenant, else `default`, and it says which); `--cluster` and `--experiment` are not available yet.
+- Fails, leaving nothing at the path: an existing path (never overwritten), too little free disk (checked before copying), a tenant with no data (names the prefixes), or any copy error (names the signal and the step).
+- Open it: pull the images the zip's `README.txt` lists (the zip has none), then `unzip <path>.zip && cd <dir> && docker compose up -d`; no network or AWS credentials needed. `data/` is mounted read-only and never changes.
+
 Dashboards:
 - `easy-db-lab grafana update-config` — redeploy all core dashboards.
 - Kit dashboards: auto-installed from `dashboards/*.json` in kit resource dir after `start`.

@@ -151,4 +151,56 @@ docker compose logs store-gate | grep REFUSED
 - **A tenant is missing from the pickers.** Run `local create` on the directory again.
 - **`docker compose up` fails with `port is already allocated`.** Grafana uses port 3000 and the documents web server port 3080 on `127.0.0.1`. Stop whatever holds them, then run `docker compose up -d` again.
 
-See [`observability local create`](../reference/commands.md#observability-local-create) and [`observability local dashboards`](../reference/commands.md#observability-local-dashboards) for every option.
+## Export a tenant
+
+`observability export` copies a tenant's data into one zip that opens as this same stack on any machine, with no network, no AWS credentials and no cluster:
+
+```bash
+easy-db-lab observability export ~/acme-export.zip --tenant acme
+```
+
+The zip holds the tenant's metrics, logs and traces, its annotation backups and its reports, the stack (`compose.yml` and its configuration), the dashboards, and a `README.txt`. Profiles are not included ([#1016](https://github.com/rustyrazorblade/easy-db-lab/issues/1016)); the command and the README both say so. The command works from any directory, not only a cluster workspace.
+
+The export reads the bucket with your AWS profile, like `local create`, and writes only the zip. Nothing in the bucket is written, changed or deleted, and nothing is uploaded.
+
+```
+Exporting tenant acme: 4210 objects, 812 MiB (851443712 bytes); 120511 MiB free
+Exported tenant acme to /Users/you/acme-export.zip (4231 files, 812 MiB before compression).
+Profiles are not included (issue #1016).
+Open it with: unzip /Users/you/acme-export.zip, then docker compose up in the directory it makes; see its README.txt.
+```
+
+### What the export checks
+
+- The path must be a new `.zip` file in a directory that exists. An existing file is never overwritten.
+- The command lists everything it will copy, prints the size, and fails before copying anything when the disk the zip goes to does not have that much free space.
+- A tenant with no metrics, logs or traces fails and names the prefixes it looked under.
+- The zip is written under a temporary name beside the path (`<path>.partial-<random>`) and moved into place only when it is complete. When anything fails, no zip is left at the path, the temporary file is removed, and the error names what it was copying (metrics, logs, traces, annotations, reports) and the step.
+
+The export is safe to run while clusters write to the store and the account compactor merges blocks: it copies each backend in an order that keeps the copy consistent, and writes the zip's own Mimir and Tempo indexes from the blocks that are in it.
+
+### Open an export
+
+The zip carries no images. The machine that opens it needs the images the stack runs, which the `README.txt` lists as `docker pull` lines. Pull them while you still have a network:
+
+```bash
+docker pull grafana/grafana:13.2.2   # and the others the README lists
+```
+
+Then, with or without a network:
+
+```bash
+unzip acme-export.zip
+cd acme-export
+docker compose up -d
+```
+
+Open <http://127.0.0.1:3000>. The datasources and dashboards are the ones a cluster has, for the exported tenant; the documents view (<http://127.0.0.1:3080>) serves the tenant's reports from the zip.
+
+The copied data is in `data/` and is mounted read-only into every component, so opening the export never changes it. Nothing compacts, merges or deletes. Tempo logs `failed to write tenant index ... read-only file system` each time it lists its blocks; that is expected and harmless. Grafana installs no plugin at start, since with no network the download would stop it, and no packaged dashboard needs one.
+
+`observability local dashboards` works on an opened export, as on a live stack. `observability local create` refuses an opened export's directory, so it never turns the export into a live stack.
+
+Exporting chosen clusters (`--cluster`) or one experiment (`--experiment`) is not available yet; export their tenant instead.
+
+See [`observability local create`](../reference/commands.md#observability-local-create), [`observability local dashboards`](../reference/commands.md#observability-local-dashboards) and [`observability export`](../reference/commands.md#observability-export) for every option.

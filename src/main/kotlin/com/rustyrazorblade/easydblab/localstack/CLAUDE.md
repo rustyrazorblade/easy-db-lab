@@ -8,12 +8,21 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
 ## Flow
 
 1. Build a `LocalStackSpec(mode, tenants, grafanaPort, documentsPort)`. `Mode.Live(bucket, region,
-   awsProfile, home)` reads S3; `Mode.Offline(dataDir, home)` is for the export (task 7.5, not composed yet:
-   `LocalStackComposer` throws `UnsupportedOperationException`). `tenants` is every tenant directory under
-   `mimir/` (`TenantDirectory`); `tenantSet` adds the home tenant.
+   awsProfile, home)` reads S3; `Mode.Offline(dataDir, home)` reads an export's copy on disk (`export/`
+   writes it). `tenants` is every tenant directory under `mimir/` (`TenantDirectory`); `tenantSet` adds the
+   home tenant. The manifest names the modes `Mode.Live.MANIFEST_NAME` and `Mode.Offline.MANIFEST_NAME`.
 2. `LocalStackComposer.compose(spec)` returns `Map<relative path, bytes>`: `compose.yml` plus `config/...`.
-   It joins three `ComposePart`s: `StoreAccessPart` (`store-signer`, `store-gate`, `store-check`),
+   Live joins three `ComposePart`s: `StoreAccessPart` (`store-signer`, `store-gate`, `store-check`),
    `BackendsPart` (`memcached`, `mimir`, `loki`, `tempo`) and `GrafanaViewPart` (`grafana`, `documents-web`).
+   Offline joins only the last two. `BackendsPart` builds the same services over a `BackendStorage`:
+   `GatedStore` (S3 through the gate; Mimir and Loki files byte for byte, flags for the gate and placeholder
+   keys) or `ExportedFiles` (the data directory read-only at `/store` in every backend, no dependencies;
+   Mimir `-blocks-storage.backend=filesystem -blocks-storage.filesystem.dir=/store`; Loki's file patched:
+   `common.storage.s3` removed, filesystem directories `/store`, `schema_config.configs.0.object_store:
+   filesystem`; Tempo `TempoLocalConfig.offline`: `backend: local` at `/store/tempo`, `s3` removed).
+   `GrafanaViewPart.compose(spec, documents, plugins)`: `Documents.FromStore(bucket)` (the cluster's documents
+   nginx forwarding to the gate) or `Documents.FromDisk(dataDir)` (`documents-nginx-offline.conf`, `root /data`
+   over the data directory mounted read-only, GET only under `/reports/`).
 3. `LocalStackWriter(toolVersion).write(dir, spec, files)` writes them atomically and then the manifest
    `.easy-db-lab-local-stack.json` (`LocalStackManifest`: tool version, mode, home tenant, tenants, Grafana
    and documents ports, sha256 per owned file). It returns `LocalStackWriteResult(written, edited, manifest,
@@ -66,6 +75,12 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
   and `AWS_PROFILE`; its healthcheck lists the bucket every 60s. `store-check` (packaged `store-check.sh`,
   POSIX sh, tested by `./gradlew testLocalStoreCheck`) must pass before any backend starts; it treats the
   signer's 502 `unable to proxy request` as a credentials failure, apart from an S3 4xx.
+- An offline Grafana downloads no plugin (`GrafanaServerSettings.plugins` empty, so no `GF_INSTALL_PLUGINS`):
+  with no network the download fails and Grafana 13 exits 1. `OfflineGrafanaPluginsTest` fails if a packaged
+  dashboard starts to use one of `GrafanaServerSettings.DOWNLOADED_PLUGINS`; the plugin would then have to be
+  carried by the export. Grafana's own async preinstall of its default apps still runs and logs failures offline,
+  which do not stop it.
+- `local create` refuses a directory whose manifest is offline (an opened export).
 - Grafana takes its `GF_*` settings from `GrafanaServerSettings` and its datasources from
   `GrafanaDatasourceSet.build(spec.tenantSet, BackendUrls.LOCAL_COMPOSE)`. Its dashboard provider sweeps
   `/var/lib/easy-db-lab/dashboards/current`, which is the stack directory's `dashboards/current`. The

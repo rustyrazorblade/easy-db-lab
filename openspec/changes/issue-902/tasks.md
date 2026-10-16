@@ -85,7 +85,7 @@
 - [ ] 7.5 Offline `compose.yml` (`Mode.Offline`): `data/` read-only, `cache/` writable, retention off, no compaction, merging or deletion; the live stack's read-only component sets and usage-reporting switches; Tempo single binary with `backend: local`, the inert backend scheduler settings and `query_backend_after: 1m`; documents nginx `root /data`; README with the image list from `LocalImages` and the #1016 note; dashboards after `DashboardDefaults` with the export context.
 - [ ] 7.6 Tests: selector errors, path errors, atomicity (fail mid-copy leaves no zip), generated indexes match the copied blocks, nothing written to S3 (listing unchanged).
 - [ ] 7.7 Live check: export a tenant, open it on a machine with networking off and no AWS credentials (images pulled beforehand) with plain `docker compose up`; metrics, logs, traces, annotations, dashboards and the report show.
-- [ ] 7.8 Docs: export section in the new page, `docs/reference/commands.md` `observability export`, `help/observability.md` export section.
+- [x] 7.8 Docs: export section in the new page, `docs/reference/commands.md` `observability export`, `help/observability.md` export section.
 
 ## 8. Phase 6: query exports
 

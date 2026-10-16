@@ -25,7 +25,7 @@ Compaction is on; retention and every other deletion path are off:
 
 - Mimir: `-compactor.blocks-retention-period=0` and `-compactor.partial-block-deletion-delay=0`.
 - Loki: retention disabled, deletion mode `disabled`.
-- Tempo: block retention `876000h` (100 years), no per-trace size limit, and empty tenants are never deleted.
+- Tempo: block retention `876000h` (100 years), no per-trace size limit, and empty tenants are never deleted. A merged source block stays in the store for 48 hours after it is marked compacted (`compacted_block_retention: 48h`), so a tenant export that listed it before the merge can still copy it; the worker lists the store every minute (`blocklist_poll: 1m`).
 
 The compactor removes a source object only after it wrote a merged copy that holds its data. Its task role, `EasyDBLabCompactorTaskRole`, is the only role that may delete under `mimir/`, `loki/` and `tempo/`, and it has no access to `grafana/` or `pyroscope/`. The account bucket policy denies those deletes to every cluster-side role: the EC2 instance role, the EMR service role and the EMR EC2 role. Deletes you make yourself from your workstation are not affected.
 

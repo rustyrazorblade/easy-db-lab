@@ -38,12 +38,18 @@ backend_worker:
     instance_addr: 127.0.0.1
   compaction:
     block_retention: 876000h
+    # A merged source block stays readable for 48 hours after its compacted marker, so a tenant
+    # export that listed it before the merge can still copy it (issue 902). Tempo then removes the
+    # source, whose data the merged block holds: compaction, not deletion.
+    compacted_block_retention: 48h
 
 storage:
   trace:
     backend: s3
     # Never delete a tenant directory, even one that holds no block.
     empty_tenant_deletion_enabled: false
+    # List the store every minute, so the worker sees a cluster's last blocks soon after `down`.
+    blocklist_poll: 1m
     wal:
       path: /var/tempo/wal
     s3:

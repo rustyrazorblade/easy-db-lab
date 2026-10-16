@@ -90,6 +90,20 @@ class CompactorTaskDefinitionTest {
         assertThat(tempo).doesNotContain("per_tenant_override")
     }
 
+    /**
+     * A tenant export lists `tempo/<tenant>/` once and copies every block with a `meta.json` and no
+     * compacted marker. A merged source stays readable for 48 hours after its marker, so a block the
+     * worker merges while the export copies is still there to copy; the 1-minute poll keeps the
+     * worker's view of the store fresh.
+     */
+    @Test
+    fun `Tempo keeps a merged source for 48 hours and polls the store every minute`() {
+        val tempo = writtenConfig(CompactorTaskDefinition.TEMPO_BACKEND_FILE)
+
+        assertThat(scalarAt(tempo, "backend_worker", "compaction", "compacted_block_retention")).isEqualTo("48h")
+        assertThat(scalarAt(tempo, "storage", "trace", "blocklist_poll")).isEqualTo("1m")
+    }
+
     @Test
     fun `the task runs Mimir's and Loki's compactors and Tempo's scheduler and worker, and no Pyroscope`() {
         assertThat(containers.keys).containsExactlyInAnyOrderElementsOf(CompactorTaskDefinition.CONTAINERS)

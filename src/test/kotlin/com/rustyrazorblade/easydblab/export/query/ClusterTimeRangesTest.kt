@@ -45,7 +45,21 @@ class ClusterTimeRangesTest {
         assertThat(call.route).isEqualTo("/prometheus/api/v1/query_range")
         assertThat(call.param("query")).isEqualTo("count by (cluster) (count_over_time(up{cluster=~\"x-1|y-2\"}[3600s]))")
         assertThat(call.param("step")).isEqualTo("3600")
-        assertThat(call.param("start")).isEqualTo(since.epochSecond.toString())
+        assertThat(call.param("end")).isEqualTo(now.epochSecond.toString())
+    }
+
+    @Test
+    fun `the last window ends now and the first starts at or before the oldest block, so recent and old samples are both seen`() {
+        val since = now.minusSeconds(300)
+        times = mapOf("x-1" to listOf(now.epochSecond))
+
+        ranges.of("acme", listOf("x-1"), since)
+
+        val call = backends.calls.single()
+        val start = call.param("start")!!.toLong()
+        val step = call.param("step")!!.toLong()
+        assertThat(start).isLessThanOrEqualTo(since.epochSecond)
+        assertThat((now.epochSecond - start) % step).isZero()
         assertThat(call.param("end")).isEqualTo(now.epochSecond.toString())
     }
 

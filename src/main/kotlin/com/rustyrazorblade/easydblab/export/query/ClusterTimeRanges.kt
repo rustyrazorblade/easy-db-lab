@@ -27,7 +27,8 @@ data class TimeRange(
  * the cluster runs, labelled or from before the label. One range query per tenant counts each
  * cluster's `up` samples in windows one step long, so a cluster that ran for minutes shows in its
  * window however long the step. A cluster's range is one step before its first window to its last,
- * widened by [MARGIN] (a teardown's last log lines come after the last scrape), and never past now.
+ * widened by [MARGIN] (a teardown's last log lines come after the last scrape), and never past now. The
+ * points are a whole number of steps before now, so the last window ends now.
  *
  * @property mimir the reader's Mimir.
  * @property clock now.
@@ -61,10 +62,13 @@ class ClusterTimeRanges(
         val now = clock.instant()
         val span = Duration.between(since, now).seconds.coerceAtLeast(1)
         val step = maxOf(MIN_STEP_SECONDS, (span + MAX_POINTS - 1) / MAX_POINTS)
+        // Points from a whole number of steps before now, so the last window ends now: a cluster that ran only in
+        // the last minutes is in it, and the first window starts at or before the oldest block.
+        val start = now.minusSeconds(((span + step - 1) / step) * step)
         val promql = "count by (cluster) (count_over_time(up{cluster=~\"${PromQlValues.anyOf(clusters)}\"}[${step}s]))"
         val found =
             mimir
-                .queryRange(listOf(tenant), promql, since, now, step)
+                .queryRange(listOf(tenant), promql, start, now, step)
                 .mapNotNull { series -> series.labels["cluster"]?.let { it to series.times } }
                 .toMap()
         return clusters.associateWith { cluster ->

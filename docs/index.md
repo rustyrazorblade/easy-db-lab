@@ -2,7 +2,7 @@
 
 easy-db-lab creates lab environments for database evaluations in AWS. It provisions infrastructure, deploys databases, and sets up a full observability stack so you can focus on testing, benchmarking, and learning.
 
-Supported databases include [Apache Cassandra](user-guide/installing-cassandra.md), [ClickHouse](user-guide/clickhouse.md), [TiDB](user-guide/tidb.md), and [OpenSearch](user-guide/opensearch.md), with [Trino](user-guide/install-trino.md), [Presto](user-guide/install-presto.md), and [Apache Spark](user-guide/spark.md) available for analytics workloads.
+Supported databases include [Apache Cassandra](user-guide/installing-cassandra.md), [ClickHouse](user-guide/clickhouse.md), [TiDB](user-guide/tidb.md), [SingleStore](user-guide/singlestore.md), and [OpenSearch](user-guide/opensearch.md), with [Trino](user-guide/install-trino.md), [Presto](user-guide/install-presto.md), and [Apache Spark](user-guide/spark.md) available for analytics workloads.
 
 If you are looking for a tool to aid in stress testing Cassandra clusters, see the companion project [cassandra-easy-stress](https://github.com/apache/cassandra-easy-stress).
 
@@ -21,6 +21,7 @@ If you're looking for tools to help manage Cassandra in *production* environment
 - **[Apache Cassandra](user-guide/installing-cassandra.md)**: Released versions and branch builds that ship in the AMI, plus custom builds from a local source tree. Includes Cassandra Sidecar and integration with cassandra-easy-stress for benchmarking.
 - **[ClickHouse](user-guide/clickhouse.md)**: Sharded clusters with configurable replication, distributed tables, and S3-tiered storage.
 - **[TiDB](user-guide/tidb.md)**: MySQL-compatible HTAP clusters deployed via the TiDB Operator, with TiKV row storage for OLTP and TiFlash columnar storage for analytics.
+- **[SingleStore](user-guide/singlestore.md)**: Distributed SQL clusters that speak the MySQL wire protocol, deployed via the SingleStore Operator, with one leaf per db node and optional unlimited storage on S3. Needs a SingleStore license key.
 - **[Trino](user-guide/install-trino.md)**: Distributed SQL query engine with federation support for querying across data sources.
 - **[Presto](user-guide/install-presto.md)**: Distributed SQL query engine for in-memory analytics.
 - **[OpenSearch](user-guide/opensearch.md)**: AWS OpenSearch domains for search and analytics.

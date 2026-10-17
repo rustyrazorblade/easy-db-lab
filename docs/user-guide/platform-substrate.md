@@ -148,7 +148,7 @@ Place templates in `~/.easy-db-lab/profiles/<profile>/kits/<name>/` to make them
 
 Kits use **standard pod networking** (not `hostNetwork`). Client and metrics ports are surfaced on each EC2 instance's network interface in one of two ways:
 
-- **NodePort services** — stateful db kits (ClickHouse, TiDB) expose their ports through a NodePort service, remapping native ports into the NodePort range (30000–32767). Example: ClickHouse HTTP `8123 → 30123`.
+- **NodePort services** — stateful db kits (ClickHouse, TiDB, SingleStore) expose their ports through a NodePort service, remapping native ports into the NodePort range (30000–32767). Example: ClickHouse HTTP `8123 → 30123`.
 - **hostPort patches** — helm-based app kits (Presto, Trino) patch `hostPort` mappings onto the coordinator pod at start time, keeping the native port (e.g. `8080 → 8080`).
 
 ### Why ports must reach the host
@@ -169,6 +169,8 @@ The OTel collector DaemonSet runs with `hostNetwork: true` so it can scrape host
 | TiDB | Prometheus (tikv) | 20180 | — | pod SD (per-store) |
 | TiDB | Prometheus (pd) | 2379 | 32379 | pod SD (per-pod); NodePort also exposed |
 | TiDB | Prometheus (tiflash) | 8234 | 32234 | pod SD (per-pod); NodePort also exposed |
+| SingleStore | MySQL wire (every aggregator) | 3306 | 30306 | NodePort |
+| SingleStore | Prometheus (operator exporter, `/cluster-metrics`) | 9104 | — | pod SD (master aggregator pod; reports every node) |
 | Presto | HTTP (coordinator) | 8080 | 8080 | hostPort |
 | Presto | Prometheus | 9090 | 9090 | pod SD; hostPort also exposed |
 | Trino | HTTP (coordinator) | 8080 | 8080 | hostPort |

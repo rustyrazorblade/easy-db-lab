@@ -425,7 +425,18 @@ tasks.register("testScripts") {
         "testSysbenchStopScript",
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
+        "testK3sDataMount",
     )
+}
+
+// Unit-test the runtime K3s start scripts' move of the K3s data directory and /var/log/pods onto
+// the /mnt/db1 data mount, so database data and pod logs never land on the root volume.
+// mountpoint is stubbed; the relocation runs against temporary directories.
+tasks.register<Exec>("testK3sDataMount") {
+    group = "Verification"
+    description = "Unit-test the K3s start scripts' relocation onto the data mount"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/k3s-data-mount.test.sh")
 }
 
 // Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug

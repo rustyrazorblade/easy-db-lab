@@ -13,6 +13,8 @@ The OpenTelemetry Collector runs on every node and reads:
 | Tools run with `exec run` | `/var/log/easydblab/tools/*.log` | `tool-runner` |
 | Pod stdout and stderr (including ClickHouse) | `/var/log/pods/**` | none |
 
+On a node with an NVMe data disk, `/var/log/pods` is a symlink to `/mnt/db1/container-logs`, so pod logs never fill the root volume. The collector follows the link.
+
 Fluent Bit reads the systemd journal on every node and forwards it to the collector with `source="journald"`. OTLP logs (the OpenTelemetry Java agent, Spark jobs) arrive at the collector directly.
 
 Cassandra's application logs (`system.log`, `debug.log`) reach Loki only over OTLP, from the OpenTelemetry Java agent in the Cassandra JVM. They carry `service_name="cassandra"` and no `source` label, and are stored once. The collector tails only the JVM GC log from disk, because the JVM writes it directly and the agent never sees it.

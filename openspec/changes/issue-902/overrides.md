@@ -74,7 +74,7 @@
 
 ### cluster-comparison-dashboard: Latency section with multiple representations (MODIFIED)
 **Currently** (baseline): four latency panels, including "Latency Distribution Heatmap (one per cluster, side by side for two clusters)".
-**This change:** three per-cluster latency panels stay on Experiment: Cassandra; the side-by-side heatmaps move to the cluster pair.
+**This change:** three per-cluster latency panels stay on Experiment: Cassandra, the aggregate being the slowest node's p99 gauge; the cluster pair shows A's and B's Percentile Ladders side by side; no latency heatmap remains, since the latency series are per-node percentile gauges with no histogram buckets (owner decision 21).
 
 ### cluster-comparison-dashboard: Comparison views sit in three new top rows with a curated set of figures (MODIFIED)
 **Currently:** issue-971's delta: the three rows on `cluster-comparison`, `ab-comparison` and `system-ab-comparison`.

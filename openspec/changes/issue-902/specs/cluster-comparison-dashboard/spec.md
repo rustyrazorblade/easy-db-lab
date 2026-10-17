@@ -33,25 +33,29 @@ Experiment: Cassandra SHALL include the `experiment` picker, the hidden `exp_ten
 
 ### Requirement: Latency section with multiple representations
 
+Cassandra latency SHALL be read from the per-node percentile gauges that the OpenTelemetry Java agent exports (`cassandra_client_request_latency_<p>_microseconds`, one series per node and percentile).  These gauges carry no histogram buckets, so no panel of Experiment: Cassandra or the cluster pair SHALL use `histogram_quantile` on them or show them as a heatmap.
+
 Experiment: Cassandra SHALL include three latency panels, each with one series or band per selected cluster:
-- Time Series with one p99 line per cluster (histogram aggregate)
-- Time Series with p50 and p99 overlaid per cluster
+- Time Series with one p99 line per cluster, the slowest node's p99 gauge (`max by (cluster)` over the nodes)
+- Time Series with p50 and p99 overlaid per cluster, each the slowest node's gauge
 - Range Band showing min/max per-node p99 spread per cluster
 
-The side-by-side Latency Distribution Heatmaps for two clusters SHALL be on the cluster pair, one per side.
+The cluster pair SHALL show the Percentile Ladder of A and the Percentile Ladder of B side by side, one per side, for reads and for writes.  A Percentile Ladder SHALL show the p50, p99, p999 and max gauges of every node of its cluster on one log axis.
 
-#### Scenario: Histogram aggregate p99 is mathematically correct
+#### Scenario: The aggregate p99 is the slowest node's p99
 - **WHEN** the p99 time series panel is viewed
-- **THEN** each cluster's p99 line is computed via `histogram_quantile(0.99, sum by (le, cluster) (rate(...)))` which re-aggregates histogram buckets before computing the quantile
+- **THEN** each cluster's p99 line is `max by (cluster)` of the nodes' p99 gauges, so it shows the slowest node's p99
+- **AND** no latency query of the dashboard calls `histogram_quantile` on a Cassandra latency gauge
 
 #### Scenario: Range band shows per-node spread
 - **WHEN** the range band panel is viewed
 - **THEN** the filled area for each cluster represents the spread between the highest and lowest per-node p99 within that cluster
 
-#### Scenario: Latency heatmaps are on the pair
+#### Scenario: Percentile Ladders are side by side on the pair
 - **WHEN** an operator opens the cluster pair with two clusters selected
-- **THEN** it shows a latency distribution heatmap for A and one for B, side by side
-- **AND** each heatmap's Y axis is latency and its colour is request density
+- **THEN** it shows the read Percentile Ladder for A and for B side by side, and the write Percentile Ladder for A and for B side by side
+- **AND** each ladder shows the p50, p99, p999 and max gauges of every node of its cluster on a log axis
+- **AND** the pair has no latency heatmap
 
 ### Requirement: Comparison views sit in three new top rows with a curated set of figures
 
@@ -194,7 +198,7 @@ The cluster pair (`cluster-pair`), `ab-comparison` and `system-ab-comparison` SH
 
 ### Requirement: A cluster pair dashboard compares any two clusters exactly
 
-A core dashboard "Cluster pair", uid `cluster-pair`, at `dashboards/cassandra/cluster-pair.json`, SHALL compare `cluster_a` and `cluster_b` with the Overlay, Side by side and Summary with documents rows, the verdict stats, and the side-by-side latency heatmaps.  It SHALL have no build or host picker.
+A core dashboard "Cluster pair", uid `cluster-pair`, at `dashboards/cassandra/cluster-pair.json`, SHALL compare `cluster_a` and `cluster_b` with the Overlay, Side by side and Summary with documents rows, the verdict stats, and the side-by-side Percentile Ladders.  It SHALL have no build or host picker.
 
 #### Scenario: Two clusters of one experiment are compared exactly
 - **WHEN** an operator selects two clusters of an experiment as A and B

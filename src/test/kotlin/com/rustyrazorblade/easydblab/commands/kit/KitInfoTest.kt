@@ -174,6 +174,32 @@ class KitInfoTest : BaseKoinTest() {
     // ── Kit metadata (reads real kit files, no command-list assertions) ──────
 
     @Test
+    fun `singlestore info lists every arg as a named option and shows the default database`() {
+        val output = runKitInfo("singlestore")
+
+        assertThat(output).contains(
+            "--license",
+            "[required]",
+            "--version",
+            "--operator-version",
+            "--aggregators",
+            "--leaves",
+            "--redundancy",
+            "--size",
+            "--leaf-cores",
+            "--leaf-memory",
+            "--aggregator-cores",
+            "--aggregator-memory",
+            "--password",
+            "--database",
+            "--unlimited-storage",
+            "--blob-cache",
+        )
+        assertThat(output.lines().filter { ":30306" in it }).hasSize(2).allSatisfy { assertThat(it).contains(":30306/test") }
+        assertThat(output).doesNotContainPattern("__[A-Z][A-Z0-9_]*__")
+    }
+
+    @Test
     fun `clickhouse info includes name version and type`() {
         val output = buildInfo("clickhouse")
         assertThat(output).contains("clickhouse")

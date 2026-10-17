@@ -424,6 +424,9 @@ tasks.register("testScripts") {
         "testSysbenchStartScript",
         "testSysbenchStopScript",
         "testSysbenchTargetDb",
+        "testSingleStoreSizing",
+        "testSingleStoreSql",
+        "testSingleStoreCluster",
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
         "testK3sDataMount",
@@ -484,6 +487,34 @@ tasks.register<Exec>("testSysbenchTargetDb") {
     description = "Unit-test the sysbench kit target database args and passwords"
     workingDir = file(".")
     commandLine = listOf("bash", "src/test/shell/sysbench-target-db.test.sh")
+}
+
+// Unit-test the SingleStore kit's sizing (bin/lib/singlestore-sizing.sh): storage, the redundancy
+// rule, the leaf size from the db nodes' allocatable resources and the minimum. kubectl is stubbed.
+tasks.register<Exec>("testSingleStoreSizing") {
+    group = "Verification"
+    description = "Unit-test the SingleStore kit sizing"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/singlestore-sizing.test.sh")
+}
+
+// Unit-test the SingleStore kit's database SQL (bin/lib/singlestore-sql.sh) for both
+// --unlimited-storage settings: escaping, the password off every command line, no local fallback.
+tasks.register<Exec>("testSingleStoreSql") {
+    group = "Verification"
+    description = "Unit-test the SingleStore kit database SQL"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/singlestore-sql.test.sh")
+}
+
+// Unit-test the SingleStore kit's start and wait steps (bin/lib/singlestore-cluster.sh): sizing
+// before any change, leftovers cleared, Secrets before the cluster, license refusal reported with
+// the key masked. kubectl and sleep are stubbed.
+tasks.register<Exec>("testSingleStoreCluster") {
+    group = "Verification"
+    description = "Unit-test the SingleStore kit start and wait steps"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/singlestore-cluster.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,

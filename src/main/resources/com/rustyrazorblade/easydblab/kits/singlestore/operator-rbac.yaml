@@ -1,0 +1,87 @@
+# The SingleStore operator's RBAC, taken from singlestore-labs/singlestore-helm
+# (singlestore/templates/rbac.yaml, commit 10a5743e) with the chart's name helpers resolved to
+# singlestore-operator and the optional monitoring job left out.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: singlestore-operator
+  namespace: default
+  labels:
+    app.kubernetes.io/name: singlestore-operator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: singlestore-operator
+  namespace: default
+  labels:
+    app.kubernetes.io/name: singlestore-operator
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "persistentvolumeclaims", "events", "configmaps", "secrets"]
+    verbs: ["*"]
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["*"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get"]
+  - apiGroups: ["apps", "extensions"]
+    resources: ["deployments", "daemonsets", "replicasets", "statefulsets", "statefulsets/status"]
+    verbs: ["*"]
+  - apiGroups: ["memsql.com"]
+    resources: ["*"]
+    verbs: ["*"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: singlestore-operator
+  namespace: default
+  labels:
+    app.kubernetes.io/name: singlestore-operator
+subjects:
+  - kind: ServiceAccount
+    name: singlestore-operator
+roleRef:
+  kind: Role
+  name: singlestore-operator
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: singlestore-operator
+  labels:
+    app.kubernetes.io/name: singlestore-operator
+rules:
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumes", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: singlestore-operator
+  labels:
+    app.kubernetes.io/name: singlestore-operator
+subjects:
+  - kind: ServiceAccount
+    name: singlestore-operator
+    namespace: default
+roleRef:
+  kind: ClusterRole
+  name: singlestore-operator
+  apiGroup: rbac.authorization.k8s.io

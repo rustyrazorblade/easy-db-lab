@@ -83,7 +83,7 @@ The kit SHALL declare these args, all as named options, each with the listed def
 
 ### Requirement: SingleStore topology
 
-The `MemsqlCluster` SHALL have one master aggregator, `--aggregators` child aggregators, and `--leaves` leaves. `schedulingDetails` SHALL set `nodeSelector: {type: db}` for the master, the aggregators, and every leaf availability group. Each leaf availability group SHALL carry a `podAntiAffinity` on `easydblab/role=leaf`, so each leaf runs on its own db node. `objectMetaOverrides` SHALL label the pods `easydblab/kit=singlestore` and `easydblab/role=master`, `aggregator`, or `leaf`. The master and the child aggregators SHALL also carry `easydblab/tier=aggregator`. `--aggregator-cores` and `--aggregator-memory` SHALL size both `masterAggregatorSpec` and `aggregatorSpec`. `serviceSpec.type` SHALL be `ClusterIP`. The leaves SHALL use the `local-path` storage class. Availability groups SHALL use the operator's default pairing.
+The `MemsqlCluster` SHALL have one master aggregator, `--aggregators` child aggregators, and `--leaves` leaves. `schedulingDetails` SHALL set `nodeSelector: {type: db}` for the master, the aggregators, and every leaf availability group. Each leaf availability group SHALL carry a `podAntiAffinity` on `easydblab/role=leaf`, so each leaf runs on its own db node. The master and the child aggregators SHALL carry a required `podAntiAffinity` on `easydblab/kit=singlestore,easydblab/tier=aggregator` per host, so each db node holds at most one aggregator. `start` SHALL fail before it creates anything when `1 + --aggregators` or `--leaves` is more than the db node count, with a message that names the flag and the db node count. `objectMetaOverrides` SHALL label the pods `easydblab/kit=singlestore` and `easydblab/role=master`, `aggregator`, or `leaf`. The master and the child aggregators SHALL also carry `easydblab/tier=aggregator`. `--aggregator-cores` and `--aggregator-memory` SHALL size both `masterAggregatorSpec` and `aggregatorSpec`. `serviceSpec.type` SHALL be `ClusterIP`. The leaves SHALL use the `local-path` storage class. Availability groups SHALL use the operator's default pairing.
 
 #### Scenario: Default topology on N db nodes
 - **WHEN** the kit starts on N db nodes with default topology args and leaf sizes that fit the license
@@ -96,10 +96,21 @@ The `MemsqlCluster` SHALL have one master aggregator, `--aggregators` child aggr
 - **WHEN** the kit is installed with `--aggregators 2` and started
 - **THEN** two child aggregators run on db nodes
 - **AND** the master and both child aggregators carry `easydblab/tier=aggregator`
+- **AND** no two aggregators run on the same db node
+
+#### Scenario: More aggregators than db nodes
+- **WHEN** `1 + --aggregators` is more than the db node count
+- **THEN** start fails before it creates any cluster resource
+- **AND** the message names `--aggregators` and the db node count
+
+#### Scenario: More leaves than db nodes
+- **WHEN** `--leaves` is more than the db node count
+- **THEN** start fails before it creates any cluster resource
+- **AND** the message names `--leaves` and the db node count
 
 ### Requirement: SingleStore redundancy rule
 
-When `--redundancy` is not set, the redundancy SHALL be 2 when the leaf count is even and 1 when it is odd. `start` SHALL fail before it creates anything when the leaf count is not a multiple of the redundancy, with a message that names `--leaves` and `--redundancy`. `leafSpec.count` SHALL be the leaf count divided by the redundancy, because the count is per availability group. The CR SHALL set `redundancyLevel`.
+When `--redundancy` is not set, the redundancy SHALL be 2 when the leaf count is even and 1 when it is odd. `--redundancy` SHALL accept only 1 or 2; any other value SHALL fail before anything is created, with a message that names `--redundancy`. `start` SHALL fail before it creates anything when the leaf count is not a multiple of the redundancy, with a message that names `--leaves` and `--redundancy`. `leafSpec.count` SHALL be the leaf count divided by the redundancy, because the count is per availability group. The CR SHALL set `redundancyLevel`.
 
 #### Scenario: Even leaf count gives redundancy 2
 - **WHEN** the leaf count is even and `--redundancy` is not set
@@ -121,11 +132,16 @@ When `--redundancy` is not set, the redundancy SHALL be 2 when the leaf count is
 
 ### Requirement: SingleStore leaf sizing
 
-`start` SHALL compute the sizes and apply the CR in one shell step that sources `lib/singlestore-sizing.sh` from the script directory. When `--leaf-cores` and `--leaf-memory` are not set, the leaf size SHALL be the smallest db node allocatable CPU and memory, minus a fixed collector reserve, minus `ceil((1 + aggregators) / leaves)` times the aggregator size, minus the exporter sidecar requests (100m CPU, 200Mi). `start` SHALL fail fast when the computed or given leaf size is below 4 cores or 8192 MB, with a message that gives the values and the minimum. The smallest db instance that works with defaults SHALL be `i4i.2xlarge`.
+`start` SHALL compute the sizes and apply the CR in one shell step that sources `lib/singlestore-sizing.sh` from the script directory. When `--leaf-cores` and `--leaf-memory` are not set, the leaf size SHALL be the smallest db node allocatable CPU and memory, minus a fixed collector reserve, minus one aggregator size (the aggregator anti-affinity puts at most one aggregator on a node), minus the exporter sidecar requests (100m CPU, 200Mi). `start` SHALL fail fast when the computed or given leaf size is below 4 cores or 8192 MB, with a message that gives the values and the minimum. The smallest db instance that works with defaults SHALL be `i4i.2xlarge`.
 
 #### Scenario: Computed leaf size
 - **WHEN** `--leaf-cores` and `--leaf-memory` are not set
-- **THEN** each leaf requests the db node's allocatable CPU and memory minus the collector reserve, the aggregator share, and the exporter sidecar
+- **THEN** each leaf requests the db node's allocatable CPU and memory minus the collector reserve, one aggregator size, and the exporter sidecar
+
+#### Scenario: Aggregators outnumber leaves
+- **WHEN** the kit starts on 3 db nodes of 8 vCPU with `--leaves 2 --aggregators 2` and computed leaf sizes
+- **THEN** each leaf is sized with one aggregator size reserved, not two
+- **AND** sizing passes the minimum check
 
 #### Scenario: Leaf size below the minimum
 - **WHEN** the computed or given leaf size is below 4 cores or 8192 MB

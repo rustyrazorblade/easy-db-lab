@@ -17,6 +17,11 @@ server:
   http_listen_port: 3100
   grpc_listen_port: 9098
   log_level: info
+  # The ingester's shutdown answers 204 only once every flush queue has drained, and down and the
+  # export writer wait up to 10 minutes for it (Constants.TeardownFlush.SHUTDOWN_TIMEOUT_SECONDS).
+  # Past the write timeout the server drops the connection without an answer, so the default 30s
+  # turned a slow flush into an EOF with no status.
+  http_server_write_timeout: 10m
 
 common:
   # /loki is a hostPath on the control node: the WAL, the index head and the uploader's name

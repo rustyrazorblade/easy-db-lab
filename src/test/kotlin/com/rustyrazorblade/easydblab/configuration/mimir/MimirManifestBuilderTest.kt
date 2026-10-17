@@ -21,6 +21,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.time.Duration
 
 /**
  * Tests Mimir's configuration and Deployment as rendered by the real [TemplateService].
@@ -152,6 +153,17 @@ class MimirManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "ignore_blocks_within")).isEqualTo("0")
         // A stopped compactor leaves the bucket index stale; that must never fail a query.
         assertThat(scalarAt(yaml, "blocks_storage", "bucket_store", "bucket_index", "max_stale_period")).isEqualTo("87600h")
+    }
+
+    @Test
+    fun `the HTTP server keeps a synchronous flush's connection open for as long as down waits for it`() {
+        // Past the write timeout the server drops the connection without an answer, and the waiting
+        // client sees an EOF instead of the flush's 2xx.
+        val writeTimeout = scalarAt(config(), "server", "http_server_write_timeout")
+
+        assertThat(writeTimeout).describedAs("server.http_server_write_timeout").isNotNull()
+        assertThat(Duration.parse("PT${writeTimeout.orEmpty().uppercase()}"))
+            .isGreaterThanOrEqualTo(Duration.ofSeconds(Constants.TeardownFlush.SHUTDOWN_TIMEOUT_SECONDS))
     }
 
     @Test

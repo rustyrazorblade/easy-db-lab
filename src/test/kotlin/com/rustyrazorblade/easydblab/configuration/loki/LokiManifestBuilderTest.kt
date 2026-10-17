@@ -18,6 +18,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.time.Duration
 
 /**
  * Tests Loki's configuration and Deployment as rendered by the real [TemplateService].
@@ -59,6 +60,17 @@ class LokiManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(yaml, "target")).isEqualTo("all")
         assertThat(scalarAt(yaml, "auth_enabled")).isEqualTo("true")
         assertThat(scalarAt(yaml, "querier", "multi_tenant_queries_enabled")).isEqualTo("true")
+    }
+
+    @Test
+    fun `the HTTP server keeps a synchronous flush's connection open for as long as down waits for it`() {
+        // Past the write timeout the server drops the connection without an answer, and the waiting
+        // client sees an EOF instead of the shutdown's 204.
+        val writeTimeout = scalarAt(config(), "server", "http_server_write_timeout")
+
+        assertThat(writeTimeout).describedAs("server.http_server_write_timeout").isNotNull()
+        assertThat(Duration.parse("PT${writeTimeout.orEmpty().uppercase()}"))
+            .isGreaterThanOrEqualTo(Duration.ofSeconds(Constants.TeardownFlush.SHUTDOWN_TIMEOUT_SECONDS))
     }
 
     @Test

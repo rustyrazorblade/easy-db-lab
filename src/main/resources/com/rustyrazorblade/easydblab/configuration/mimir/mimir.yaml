@@ -26,6 +26,11 @@ server:
   http_listen_port: 9009
   grpc_listen_port: 9097
   log_level: info
+  # The ingester's shutdown and flush answer only once every block is cut and shipped, and down waits
+  # up to 10 minutes for that (Constants.TeardownFlush.SHUTDOWN_TIMEOUT_SECONDS). Past the write
+  # timeout the server drops the connection without an answer, so the default 2m turned a slow flush
+  # into an EOF ("header parser received no bytes") with no status.
+  http_server_write_timeout: 10m
 
 # Mimir writes a small activity log for crash diagnosis; keep it on the data volume rather than
 # the image's working directory.

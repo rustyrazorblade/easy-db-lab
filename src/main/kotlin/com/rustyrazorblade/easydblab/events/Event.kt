@@ -6768,6 +6768,27 @@ sealed interface Event {
         }
 
         /**
+         * Progress of a query export's trace fetch phase for one cluster, which can run for hours: so
+         * many of the traces its search found have been fetched and replayed. Reported every so many
+         * traces or seconds, and once when all are done.
+         *
+         * @property cluster the cluster.
+         * @property tenant its tenant.
+         * @property fetched the traces fetched and replayed so far.
+         * @property total the traces the search found.
+         */
+        @Serializable
+        @SerialName("Export.TracesFetched")
+        data class TracesFetched(
+            val cluster: String,
+            val tenant: String,
+            val fetched: Int,
+            val total: Int,
+        ) : Export {
+            override fun toDisplayString(): String = "Traces of $cluster ($tenant): fetched $fetched of $total"
+        }
+
+        /**
          * What a query export put in the zip for one signal. A signal with nothing is reported as zero.
          *
          * @property signal `metrics` (items are blocks), `logs` (lines) or `traces` (traces).

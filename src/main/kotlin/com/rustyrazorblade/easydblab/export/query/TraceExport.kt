@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.export.query
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -48,16 +49,23 @@ object OtlpIds {
  * first windows, then the halves of every full one) at once, then every fetch and replay. The first
  * failure fails the export with its own message.
  *
+ * The fetch phase can run for hours, so it reports how many of the traces found are fetched and
+ * replayed ([Event.Export.TracesFetched]) as often as [progress] says, and once when all are done.
+ *
  * @property reader the reader's backends for a tenant.
  * @property writer the writer's backends for a tenant.
  * @property limit the traces one search asks for.
  * @property parallelism how many searches, or fetches and replays, run at once.
+ * @property progress how often the fetch phase reports its progress.
+ * @property onProgress receives the fetch phase's progress.
  */
 class TraceExport(
     private val reader: (String) -> ObservabilityHttp,
     private val writer: (String) -> ObservabilityHttp,
     private val limit: Int = Constants.Export.Query.TRACE_SEARCH_LIMIT,
     private val parallelism: Int = Constants.Export.Query.TRACE_EXPORT_PARALLELISM,
+    private val progress: ProgressPolicy = ProgressPolicy.TRACE_FETCH,
+    private val onProgress: (Event.Export.TracesFetched) -> Unit = {},
 ) {
     private companion object {
         val MAX_WINDOW: Duration = Duration.ofHours(Constants.Export.Query.TRACE_SEARCH_MAX_HOURS)
@@ -86,7 +94,10 @@ class TraceExport(
         val pool = Executors.newFixedThreadPool(parallelism)
         try {
             val ids = searchAll(pool, Search(tenant, cluster), windows(range))
-            return inParallel(pool, ids) { replay(tenant, cluster, it, range) }.fold(SignalCount.ZERO, SignalCount::plus)
+            val report = { done: Int, total: Int -> onProgress(Event.Export.TracesFetched(cluster, tenant, done, total)) }
+            val fetched = progress.throttle(ids.size, report)
+            return inParallel(pool, ids) { id -> replay(tenant, cluster, id, range).also { fetched.advance() } }
+                .fold(SignalCount.ZERO, SignalCount::plus)
         } finally {
             pool.shutdownNow()
         }

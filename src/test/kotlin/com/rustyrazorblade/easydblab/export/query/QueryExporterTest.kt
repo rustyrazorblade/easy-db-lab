@@ -327,6 +327,16 @@ class QueryExporterTest {
     }
 
     @Test
+    fun `the trace fetch phase reports its progress for the cluster, ending with every trace fetched, before the traces are counted`() {
+        exporter.export(target(), ExportSelector.Clusters(listOf(X1)), workspace = null)
+
+        val fetched = events.filterIsInstance<Event.Export.TracesFetched>()
+        assertThat(fetched).containsExactly(Event.Export.TracesFetched(X1, "acme", 1, 1))
+        assertThat(events.indexOf(fetched.single()))
+            .isLessThan(events.indexOfFirst { it is Event.Export.SignalExported && it.signal == "traces" })
+    }
+
+    @Test
     fun `each signal is reported, a signal with nothing as zero, then the export and the kept work directory`() {
         traced = emptySet()
         val target = target()

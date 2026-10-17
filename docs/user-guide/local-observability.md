@@ -285,14 +285,17 @@ These exports read by query rather than copying the store. They start two tempor
 Exporting 2 clusters: lab-0f8fad5b-d9cb-469f-a165-70867728950e (tenant acme, found by querying the store), lab-7c9e6679-7425-40de-944b-e07fc1f90ae7 (tenant default, found by querying the store). Home tenant: acme
 Exported metrics: 14 blocks, 38 MiB (39845888 bytes)
 Exported logs: 120433 lines, 22 MiB (23068672 bytes)
-Exported traces: 0 traces, 0 MiB (0 bytes)
+Traces of lab-0f8fad5b-d9cb-469f-a165-70867728950e (acme): fetched 1000 of 2410
+Traces of lab-0f8fad5b-d9cb-469f-a165-70867728950e (acme): fetched 2000 of 2410
+Traces of lab-0f8fad5b-d9cb-469f-a165-70867728950e (acme): fetched 2410 of 2410
+Exported traces: 2410 traces, 31 MiB (32505856 bytes)
 Exported lab-0f8fad5b-d9cb-469f-a165-70867728950e, lab-7c9e6679-7425-40de-944b-e07fc1f90ae7 (tenants acme, default) to /Users/you/lab-pair.zip (5512 files, 61 MiB before compression).
 Profiles are not included (issue #1016).
 Open it with: unzip /Users/you/lab-pair.zip, then docker compose up in the directory it makes; see its README.txt.
 The work directory /Users/you/lab-pair.zip.work-1f3e9a2c (412 MiB, 432013312 bytes) is kept; remove it yourself when you no longer need it.
 ```
 
-A signal with nothing to export is reported as zero. The work directory `<path>.work-<id>/` holds the two projects, their state and the staged blocks. It is kept after the export, and after a failure, so you can look at what happened; nothing removes it. Before each temporary project is removed, its `docker compose logs` are saved as `reader/compose.log` and `writer/compose.log` there, and a failed export names them. A project that `docker compose down` cannot remove is reported with the command that removes it, `docker compose -p <project> down --remove-orphans`. The reader's components run as root, so on Linux you may need `sudo rm -rf` to remove it.
+A signal with nothing to export is reported as zero. Traces are found by search and then fetched one by one, which can take hours for a cluster with many traces, so the export reports each cluster's fetch progress every 1000 traces or every 30 seconds, whichever comes first, and once when all are fetched. The work directory `<path>.work-<id>/` holds the two projects, their state and the staged blocks. It is kept after the export, and after a failure, so you can look at what happened; nothing removes it. Before each temporary project is removed, its `docker compose logs` are saved as `reader/compose.log` and `writer/compose.log` there, and a failed export names them. A project that `docker compose down` cannot remove is reported with the command that removes it, `docker compose -p <project> down --remove-orphans`. The reader's components run as root, so on Linux you may need `sudo rm -rf` to remove it.
 
 A cluster that no tenant holds fails and names the tenants it searched. An experiment with no clusters fails and names the experiment, the tenant and the query it ran. In both cases nothing is left at the path.
 

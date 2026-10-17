@@ -218,6 +218,8 @@ When developing a new kit, the following is essential:
 - Full integration with the observability stack.
 - Use the open telemetry agant for JVM workloads
 - Dashboards
+- **`kit.yaml` is rendered at install time.** `kit install` runs the installed `kit.yaml` through the same `__VAR__` substitution as a `.template` file (cluster variables plus the resolved install args), so an arg can feed a `sql` capability `password` or an endpoint `database`; every later reader sees the resolved value, and `kit info` renders the packaged file with the arg defaults. A `kit.yaml` with no placeholder installs unchanged (`BuiltinKitYamlRenderTest`). Quote a placeholder that stands for a whole YAML value, and give that arg a `pattern` (a regex the whole value must match, checked before anything is written; the refusal names the flag, never the value) that keeps out whatever would break the YAML or the place the value lands.
+- **Shell a kit's steps source lives in `bin/lib/`.** Every top-level file in `bin/` becomes a kit subcommand; `bin/lib/` does not. Inline `shell` steps run from the kit directory under `/bin/bash`, which is bash 3.2 on macOS, so step code has no associative arrays, namerefs or `${var,,}`, and expands a possibly empty array as `${a[@]+"${a[@]}"}`. Shell tests of step code run every case under `/bin/bash` too (see `src/test/shell/singlestore-*.test.sh`).
 - **Kits expose client ports through a NodePort Service** (range 30000-32767) on a fixed port no other kit uses — never `hostPort` or `hostNetwork`. `hostPort` depends on the CNI chaining the `portmap` plugin, and `hostNetwork` pins the pod to a host and turns a port clash into a CrashLoop. Follow postgres (30432) and clickhouse (30123). See `docs/development/kits.md`.
 
 ## Development Setup

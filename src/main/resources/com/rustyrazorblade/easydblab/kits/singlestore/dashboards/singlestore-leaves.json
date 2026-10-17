@@ -1,0 +1,571 @@
+{
+  "uid": "singlestore-leaves",
+  "title": "SingleStore Leaves and Partitions",
+  "description": "Per-leaf work, memory and partitions of the SingleStore cluster, from the operator's exporter.",
+  "tags": [
+    "singlestore",
+    "kit"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "editable": true,
+  "refresh": "",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "links": [
+    {
+      "title": "SingleStore Cluster Overview",
+      "type": "link",
+      "icon": "dashboard",
+      "url": "/d/singlestore-overview/singlestore-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}"
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "name": "cluster",
+        "label": "Cluster",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
+        "definition": "label_values(up, cluster)",
+        "query": "label_values(up, cluster)",
+        "refresh": 2,
+        "includeAll": true,
+        "allValue": ".+",
+        "multi": true,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "Leaves",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Leaves reporting",
+      "description": "Leaves the exporter reports, across every availability group.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(count by (cluster) (memsql_status_uptime{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Partitions online",
+      "description": "Database partitions that are online, master and replica.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (cluster) (memsql_distributed_partitions_online{cluster=~\"$cluster\", job=\"singlestore\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Partitions offline",
+      "description": "Database partitions that are offline. Anything above 0 means a leaf or its replica is down.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (cluster) (memsql_distributed_partitions_offline{cluster=~\"$cluster\", job=\"singlestore\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "row",
+      "title": "Work per leaf",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Queries per leaf (rate)",
+      "description": "Statements per second each leaf runs for the aggregators. An uneven split points at partition skew.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (cluster, host) (rate(memsql_status_queries{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Running threads per leaf",
+      "description": "Threads executing on each leaf.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (cluster, host) (memsql_status_threads_running{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rows written per leaf (rate)",
+      "description": "Rows each leaf writes per second, replication included.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rowsps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (cluster, host) (rate(memsql_status_rows_affected_by_writes{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Rows read per leaf (rate)",
+      "description": "Rows each leaf returns per second.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "rowsps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (cluster, host) (rate(memsql_status_rows_returned_by_reads{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "row",
+      "title": "Memory per leaf",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Server memory per leaf",
+      "description": "Memory each leaf process holds, in MB. The leaf's memoryMB is its ceiling.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace(max by (cluster, host) (memsql_status_total_server_memory{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 23
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Table memory per leaf",
+      "description": "Memory rowstore tables use on each leaf, in MB.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace(max by (cluster, host) (memsql_status_alloc_table_memory{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 23
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "row",
+      "title": "Partitions per leaf",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Partitions online per leaf",
+      "description": "Partitions each leaf holds online, master and replica.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (cluster, host) (memsql_distributed_partitions_online{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Partitions offline per leaf",
+      "description": "Partitions each leaf holds offline.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "expr": "label_replace(sum by (cluster, host) (memsql_distributed_partitions_offline{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      }
+    }
+  ]
+}

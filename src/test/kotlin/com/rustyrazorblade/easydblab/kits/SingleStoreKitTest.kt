@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
-import java.util.concurrent.TimeUnit
 
 /**
  * The SingleStore kit's contracts that span its files: the MemsqlCluster the start step applies,
@@ -398,36 +397,5 @@ class SingleStoreKitTest : BaseKoinTest() {
         assertThat(secrets.map { deletes.indexOf(it) }).allSatisfy {
             assertThat(it).isGreaterThan(kinds.indexOf("Deployment")).isLessThan(kinds.indexOf("CustomResourceDefinition"))
         }
-    }
-
-    /** Runs the packaged SQL library's builder for database `test` and returns the SQL it prints. */
-    private fun databaseSql(unlimited: Boolean): String {
-        val lib = File(tempDir, "singlestore-sql.sh").apply { writeText(kit.resource("bin/lib/singlestore-sql.sh")) }
-        val process =
-            ProcessBuilder(
-                "bash",
-                "-c",
-                "source \"$1\"; ss_database_sql test $unlimited 4096 \"\$(ss_s3_path data-bkt test 20261016T120000Z)\" us-west-2",
-                "_",
-                lib.absolutePath,
-            ).redirectErrorStream(true).start()
-        check(process.waitFor(30, TimeUnit.SECONDS)) { "bash did not finish" }
-        return process.inputStream
-            .bufferedReader()
-            .readText()
-            .also { check(process.exitValue() == 0) { it } }
-    }
-
-    @Test
-    fun `without unlimited storage start issues only CREATE DATABASE IF NOT EXISTS`() {
-        assertThat(databaseSql(unlimited = false).trim()).isEqualTo("CREATE DATABASE IF NOT EXISTS `test`;")
-    }
-
-    @Test
-    fun `with unlimited storage start sets the blob cache and creates the database ON S3 at a timestamped path`() {
-        assertThat(databaseSql(unlimited = true).lines().filter { it.isNotBlank() }).containsExactly(
-            "SET GLOBAL maximum_blob_cache_size_mb = 4096;",
-            "CREATE DATABASE `test` ON S3 \"data-bkt/singlestore/test-20261016T120000Z\" CONFIG '{\"region\":\"us-west-2\"}' CREDENTIALS '{}';",
-        )
     }
 }

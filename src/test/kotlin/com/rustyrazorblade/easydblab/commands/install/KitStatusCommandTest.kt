@@ -12,6 +12,7 @@ import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitRuntime
+import com.rustyrazorblade.easydblab.services.installConfigYaml
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -89,9 +90,9 @@ class KitStatusCommandTest : BaseKoinTest() {
     private fun runStatus(
         podQuery: Result<List<KubernetesPod>>,
         runtime: KitRuntime?,
-    ): String {
-        whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(podQuery)
-        val config =
+    ): String =
+        runStatus(
+            podQuery,
             KitConfig(
                 name = "mydb",
                 runtime = runtime,
@@ -99,7 +100,14 @@ class KitStatusCommandTest : BaseKoinTest() {
                     listOf(
                         KitEndpoint(name = "bolt", nodeType = "db", port = 30687, type = KitEndpoint.EndpointType.NATIVE),
                     ),
-            )
+            ),
+        )
+
+    private fun runStatus(
+        podQuery: Result<List<KubernetesPod>>,
+        config: KitConfig,
+    ): String {
+        whenever(mockKubeService.listPodsByLabel(any(), any())).thenReturn(podQuery)
         val stdout = ByteArrayOutputStream()
         val original = System.out
         System.setOut(PrintStream(stdout))
@@ -117,6 +125,51 @@ class KitStatusCommandTest : BaseKoinTest() {
 
         assertThat(output).contains("Running (1/1 pods ready)")
         assertThat(output).contains("10.0.2.1:30687", "10.0.2.2:30687")
+    }
+
+    @Test
+    fun `status shows the installed database on the mysql wire and jdbc endpoints and never the password`() {
+        // The installed kit.yaml as `kit install --database bench --password X` renders it.
+        val installed =
+            installConfigYaml.decodeFromString(
+                KitConfig.serializer(),
+                """
+                name: mydb
+                runtime:
+                  type: pods
+                  selector: "easydblab/kit=mydb"
+                endpoints:
+                  - name: "MySQL wire"
+                    node-type: db
+                    port: 30306
+                    type: mysql
+                    database: "bench"
+                  - name: "JDBC"
+                    node-type: db
+                    port: 30306
+                    type: jdbc
+                    scheme: mysql
+                    path: "/bench"
+                  - name: "PG wire"
+                    node-type: db
+                    port: 30432
+                    type: postgresql
+                    database: "pgbench"
+                capabilities:
+                  - type: sql
+                    user: root
+                    password: "installed-secret"
+                """.trimIndent(),
+            )
+
+        val output = runStatus(Result.success(listOf(runningPod)), installed)
+
+        assertThat(output).contains(
+            "mysql://10.0.2.1:30306/bench",
+            "jdbc:mysql://10.0.2.1:30306/bench",
+            "postgresql://10.0.2.2:30432/pgbench",
+        )
+        assertThat(output).doesNotContain("installed-secret")
     }
 
     @Test

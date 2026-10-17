@@ -112,6 +112,65 @@ class KitInfoTest : BaseKoinTest() {
         assertThat(output).doesNotContain("10.0.2.1")
     }
 
+    /** Writes a profile kit whose endpoints and sql password come from install-arg placeholders. */
+    private fun writePlaceholderKit() {
+        val kitDir = File(context.profileDir, "kits/phdb").apply { mkdirs() }
+        File(kitDir, "kit.yaml").writeText(
+            """
+            name: phdb
+            type: db
+            args:
+              - flag: --database
+                variable: PHDB_DATABASE
+                default: "test"
+            endpoints:
+              - name: "MySQL wire"
+                node-type: db
+                port: 30306
+                type: mysql
+                database: "__PHDB_DATABASE__"
+              - name: "JDBC"
+                node-type: db
+                port: 30306
+                type: jdbc
+                scheme: mysql
+                path: "/__PHDB_DATABASE__"
+            capabilities:
+              - type: sql
+                user: root
+                password: "literal-capability-secret"
+            """.trimIndent(),
+        )
+    }
+
+    @Test
+    fun `kit info in a workspace shows endpoints with the arg defaults in place of placeholders`() {
+        writePlaceholderKit()
+        ClusterStateManager(stateFile).save(ClusterState(name = "test-cluster", versions = mutableMapOf(), hosts = dbHosts))
+
+        val output = runKitInfo("phdb")
+
+        assertThat(output).contains("mysql://10.0.2.1:30306/test").contains("jdbc:mysql://10.0.2.1:30306/test")
+        assertThat(output).doesNotContainPattern("__[A-Z][A-Z0-9_]*__")
+    }
+
+    @Test
+    fun `kit info outside a workspace shows each sql endpoint's database after its port`() {
+        writePlaceholderKit()
+
+        val output = runKitInfo("phdb")
+
+        assertThat(output.lines().filter { ":30306" in it }).hasSize(2).allSatisfy { assertThat(it).contains(":30306/test") }
+        assertThat(output).doesNotContainPattern("__[A-Z][A-Z0-9_]*__")
+    }
+
+    @Test
+    fun `kit info never prints a capability password`() {
+        writePlaceholderKit()
+
+        assertThat(runKitInfo("phdb")).doesNotContain("literal-capability-secret")
+    }
+
     // ── Kit metadata (reads real kit files, no command-list assertions) ──────
 
     @Test

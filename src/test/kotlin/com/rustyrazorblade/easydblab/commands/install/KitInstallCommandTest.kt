@@ -17,6 +17,7 @@ import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
+import com.rustyrazorblade.easydblab.services.installConfigYaml
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -460,6 +461,85 @@ class KitInstallCommandTest : BaseKoinTest() {
 
         assertThat(exitCode).isZero()
         assertThat(File(workingDir, "needs-kubectl")).isDirectory()
+    }
+
+    /** A kit whose `kit.yaml` takes its sql password and endpoint database from install args. */
+    private val placeholderKit =
+        KitConfig(
+            name = "ssdb",
+            type = null,
+            args =
+                listOf(
+                    KitArgSpec(flag = "--password", variable = "SSDB_PASSWORD", default = "easydblab"),
+                    KitArgSpec(flag = "--database", variable = "SSDB_DATABASE", default = "test"),
+                ),
+        )
+
+    private val placeholderKitYaml =
+        """
+        name: ssdb
+        endpoints:
+          - name: "JDBC"
+            node-type: db
+            port: 30306
+            type: jdbc
+            scheme: mysql
+            path: "/__SSDB_DATABASE__"
+          - name: "MySQL wire"
+            node-type: db
+            port: 30306
+            type: mysql
+            database: "__SSDB_DATABASE__"
+        capabilities:
+          - type: sql
+            user: root
+            password: "__SSDB_PASSWORD__"
+        """.trimIndent()
+
+    private fun installedKitYaml(kitDir: String): String = File(workingDir, "$kitDir/${Constants.Kit.CONFIG_FILE}").readText()
+
+    private fun installedConfig(kitDir: String): KitConfig =
+        installConfigYaml.decodeFromString(KitConfig.serializer(), installedKitYaml(kitDir))
+
+    @Test
+    fun `the installed kit yaml resolves placeholders from the install args`() {
+        whenever(mockResolver.readInstallYamlContent(org.mockito.kotlin.any())).thenReturn(placeholderKitYaml)
+
+        buildAndRun(placeholderKit, mapOf("SSDB_PASSWORD" to "X y*'z", "SSDB_DATABASE" to "bench"))
+
+        val installed = installedConfig("ssdb")
+        assertThat(installed.capabilities.single().password).isEqualTo("X y*'z")
+        assertThat(installed.endpoints.map { it.database }).contains("bench")
+        assertThat(installed.endpoints.single { it.type == KitEndpoint.EndpointType.JDBC }.path).isEqualTo("/bench")
+        assertThat(installedKitYaml("ssdb")).doesNotContain("__SSDB_")
+    }
+
+    @Test
+    fun `the installed kit yaml resolves placeholders from the arg defaults`() {
+        whenever(mockResolver.readInstallYamlContent(org.mockito.kotlin.any())).thenReturn(placeholderKitYaml)
+
+        buildAndRun(placeholderKit, emptyMap())
+
+        val installed = installedConfig("ssdb")
+        assertThat(installed.capabilities.single().password).isEqualTo("easydblab")
+        assertThat(installed.endpoints.map { it.database }).contains("test")
+    }
+
+    @Test
+    fun `a kit yaml with no placeholder installs unchanged`() {
+        val plain =
+            """
+            name: plain
+            start:
+              - type: shell
+                script: |
+                  echo "${'$'}{KIT_NAME} on ${'$'}{DB_NODE_COUNT} nodes" a__b__c
+            """.trimIndent()
+        whenever(mockResolver.readInstallYamlContent(org.mockito.kotlin.any())).thenReturn(plain)
+
+        buildAndRun(KitConfig(name = "plain", type = null), emptyMap())
+
+        assertThat(installedKitYaml("plain")).isEqualTo(plain)
     }
 
     private fun resolvedArgs(kitDir: String): Map<String, String> =

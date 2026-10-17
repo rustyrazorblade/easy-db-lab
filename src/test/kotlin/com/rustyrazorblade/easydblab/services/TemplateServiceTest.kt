@@ -164,6 +164,18 @@ class TemplateServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `Template substitute inserts a value holding placeholders literally`() {
+        val value = "a__AWS_REGION__b\$__X__c"
+        val template =
+            TemplateService.Template(
+                "name: __JOB_NAME__",
+                mapOf("AWS_REGION" to "us-east-1", "X" to "x"),
+            )
+
+        assertThat(template.substitute(mapOf("JOB_NAME" to value))).isEqualTo("name: $value")
+    }
+
+    @Test
     fun `Template substitute with no matching placeholders returns original`() {
         val template = TemplateService.Template("no placeholders", emptyMap())
 

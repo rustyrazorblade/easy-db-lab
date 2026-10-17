@@ -146,6 +146,25 @@ class InstallFromTest : BaseKoinTest() {
     }
 
     @Test
+    fun `installs an arg value holding placeholders literally and does not warn about them`() {
+        val source = adHocSource("start.sh.template" to "PASSWORD='__SECRET_PASSWORD__'")
+        whenever(mockResolver.readInstallYamlContent(source))
+            .thenReturn("name: mydb\npassword: \"__SECRET_PASSWORD__\"\n")
+
+        Install().renderAndWrite(
+            source = source,
+            kitName = "mydb",
+            storageSize = "50Gi",
+            extraVars = mapOf("SECRET_PASSWORD" to "a__REGION__b\$__X__c__NOT_DEFINED__"),
+        )
+
+        val raw = "a__REGION__b\$__X__c__NOT_DEFINED__"
+        assertThat(File(workingDir, "mydb/start.sh")).hasContent("PASSWORD='$raw'")
+        assertThat(File(workingDir, "mydb/kit.yaml").readText()).contains("password: \"$raw\"")
+        assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("unresolved template variables")
+    }
+
+    @Test
     fun `does not emit UnresolvedVariables when all placeholders are resolved`() {
         val source = adHocSource("start.sh.template" to "echo __KIT_NAME__")
 

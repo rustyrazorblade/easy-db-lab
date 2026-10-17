@@ -184,16 +184,18 @@ class SingleStoreKitIntegrationTest {
         assertThat(stored.get<String>("spec", "licenseSecret", "name")).isEqualTo("singlestore-license")
         assertThat(stored.get<Map<String, String>>("spec", "leafSpec", "objectMetaOverrides", "labels"))
             .containsEntry("easydblab/role", "leaf")
-        assertThat(
-            stored.get<List<Any>>(
-                "spec",
-                "schedulingDetails",
-                "leaf-ag2",
-                "affinity",
-                "podAntiAffinity",
-                "requiredDuringSchedulingIgnoredDuringExecution",
-            ),
-        ).hasSize(1)
+        for (group in listOf("leaf-ag2", "master", "aggregator")) {
+            assertThat(
+                stored.get<List<Any>>(
+                    "spec",
+                    "schedulingDetails",
+                    group,
+                    "affinity",
+                    "podAntiAffinity",
+                    "requiredDuringSchedulingIgnoredDuringExecution",
+                ),
+            ).describedAs(group).hasSize(1)
+        }
     }
 
     @Test

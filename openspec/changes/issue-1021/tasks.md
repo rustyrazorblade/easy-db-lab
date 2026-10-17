@@ -47,7 +47,7 @@
 ## 7. SingleStore kit: tests
 
 - [x] 7.1 Add `SingleStoreKitTest` using `BuiltinKitFixture`, like `TidbKitTest`: rendered CR fields, NodePort, scrape, args and defaults, the rendered `kit.yaml` password and database, the uninstall order, and both `--unlimited-storage` settings
-- [ ] 7.2 Add a K3s TestContainers integration test in `src/integrationTest/` that applies the CRD, RBAC, operator Deployment, a rendered `MemsqlCluster`, and the NodePort Service
+- [x] 7.2 Add a K3s TestContainers integration test in `src/integrationTest/` that applies the CRD, RBAC, operator Deployment, a rendered `MemsqlCluster`, and the NodePort Service
 
 ## 8. SingleStore kit: metrics, dashboards, docs
 

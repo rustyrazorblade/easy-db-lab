@@ -140,6 +140,38 @@ class KitConfigTest {
     }
 
     @Test
+    fun `parses an arg pattern and defaults it to empty`() {
+        val args =
+            parse(
+                """
+                name: mydb
+                args:
+                  - flag: --database
+                    variable: DATABASE
+                    pattern: "[A-Za-z0-9_]+"
+                  - flag: --note
+                    variable: NOTE
+                """.trimIndent(),
+            ).args
+        assertThat(args.map { it.pattern }).containsExactly("[A-Za-z0-9_]+", "")
+    }
+
+    @Test
+    fun `an arg pattern that is not a regular expression is rejected when kit yaml loads`() {
+        assertThatThrownBy {
+            parse(
+                """
+                name: mydb
+                args:
+                  - flag: --database
+                    variable: DATABASE
+                    pattern: "[unclosed"
+                """.trimIndent(),
+            )
+        }.hasStackTraceContaining("--database")
+    }
+
+    @Test
     fun `parses all arg types`() {
         val yaml =
             """

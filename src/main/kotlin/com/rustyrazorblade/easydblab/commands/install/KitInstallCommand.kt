@@ -68,6 +68,11 @@ class KitInstallCommand(
             argValues.putIfAbsent(arg.variable, "")
         }
 
+        if (argRejectedByPattern()) {
+            exitCode = Constants.ExitCodes.ERROR
+            return
+        }
+
         validateKitRefTarget()
 
         val instanceName = resolveInstanceName()
@@ -137,6 +142,20 @@ class KitInstallCommand(
             }
         if (clusterState.getHosts(serverType).isNotEmpty()) return false
         eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
+        return true
+    }
+
+    /**
+     * Checks every arg value against its declared `pattern`, before anything is rendered or
+     * written. Reports the first mismatch as [Event.Install.ArgRejected], which names the flag and
+     * never the value (it may be a password), and returns true.
+     */
+    private fun argRejectedByPattern(): Boolean {
+        val rejected =
+            config.args.firstOrNull { arg ->
+                argValues[arg.variable]?.let { !arg.accepts(it) } ?: false
+            } ?: return false
+        eventBus.emit(Event.Install.ArgRejected(kit = config.name, flag = rejected.flag, pattern = rejected.pattern))
         return true
     }
 

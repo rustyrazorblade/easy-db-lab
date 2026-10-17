@@ -330,6 +330,10 @@ data class KitHooks(
  * A [ArgType.KIT_REF] arg names another installed kit. [capability] and [endpoints] state what
  * that target must declare; `kit install` refuses a target that lacks either
  * ([com.rustyrazorblade.easydblab.commands.install.KitRefTargetValidator]).
+ *
+ * An optional [pattern] is a regular expression the whole value must match. It keeps a value
+ * that would break a YAML or SQL literal out of the installed files: `kit install` refuses a
+ * mismatch, naming the flag but never the value, before it writes anything.
  */
 @Serializable
 data class KitArgSpec(
@@ -342,7 +346,20 @@ data class KitArgSpec(
     val capability: String = "",
     /** Endpoint types a kit-ref target must declare, for example `[native, http]`. */
     val endpoints: List<KitEndpoint.EndpointType> = emptyList(),
+    val pattern: String = "",
 ) {
+    init {
+        if (pattern.isNotEmpty()) {
+            require(runCatching { Regex(pattern) }.isSuccess) { "arg $flag has a pattern that is not a regular expression" }
+        }
+    }
+
+    /**
+     * True when [value] is allowed: the arg declares no [pattern], or the whole value matches it.
+     * `kit install` checks every arg with this before it renders or writes anything.
+     */
+    fun accepts(value: String): Boolean = pattern.isEmpty() || Regex(pattern).matches(value)
+
     /**
      * The value placeholder `--help` and `commands` show for this arg, from its variable name
      * (`NUM_RECORDS` becomes `<num-records>`). A boolean flag shows it as optional,

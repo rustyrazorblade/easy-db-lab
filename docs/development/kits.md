@@ -63,6 +63,7 @@ args:
     endpoints: [native]  # optional: for kit-ref, endpoint types the target must declare
     required: false
     default: "${APP_NODE_COUNT}"
+    pattern: "[0-9]+"    # optional: a regex the whole value must match (see Arg patterns)
 
 hooks:
   post-workload-start:
@@ -77,6 +78,49 @@ stop:     []   # steps to run on `easy-db-lab <name> stop`
 uninstall: []  # steps to run on `easy-db-lab <name> uninstall`
 backup:   []   # steps to run on `easy-db-lab <name> backup <backup-name>`
 restore:  []   # steps to run on `easy-db-lab <name> restore <backup-name>`
+```
+
+### Install-time placeholders in kit.yaml
+
+`kit install` renders `kit.yaml` with the same `__VAR__` substitution as a `.template` file
+before it writes the installed copy: the cluster variables (see Environment Variables) and every
+arg's `variable`, with the value the user passed or the arg's default. Every later reader of the
+installed `kit.yaml` sees the resolved value: `start`, `stop`, `status`, the `sql` command, and
+the `TARGET_*` variables a bench kit gets. Use it for a value that comes from an install arg,
+such as a capability password or an endpoint database:
+
+```yaml
+endpoints:
+  - name: "MySQL wire"
+    node-type: db
+    port: 30306
+    type: mysql
+    database: "__MYDB_DATABASE__"
+capabilities:
+  - type: sql
+    user: root
+    password: "__MYDB_PASSWORD__"
+```
+
+`kit info` renders the packaged `kit.yaml` with the arg defaults, so it shows the default
+database rather than the placeholder. A `kit.yaml` with no placeholder installs unchanged.
+Quote a placeholder that stands for a whole YAML value, and give the arg a `pattern` that refuses
+any character that would break the YAML or the place the value ends up.
+
+### Arg patterns
+
+An arg's optional `pattern` is a regular expression that the whole value must match. `kit install`
+checks every arg that has one, before it renders or writes anything. A value that does not match
+fails the install with a message that names the flag and the pattern, never the value (the arg
+may be a password), and nothing is written to the workspace. An arg without a pattern accepts any
+value. A `pattern` that is not a valid regular expression is rejected when `kit.yaml` loads.
+
+```yaml
+args:
+  - flag: --database
+    variable: MYDB_DATABASE
+    default: "test"
+    pattern: "[A-Za-z0-9_]+"
 ```
 
 ## Lifecycle Phases
@@ -796,15 +840,20 @@ The variables injected depend on what endpoints the target kit declares:
 
 | Endpoint type | Variables injected |
 |---------------|-------------------|
-| `jdbc` | `TARGET_JDBC_URL`, `TARGET_JDBC_USER`, `TARGET_JDBC_DRIVER` |
-| `postgresql` | `TARGET_PG_HOST`, `TARGET_PG_PORT`, `TARGET_PG_USER`, `TARGET_PG_DATABASE` |
-| `mysql` | `TARGET_MYSQL_HOST`, `TARGET_MYSQL_PORT`, `TARGET_MYSQL_USER`, `TARGET_MYSQL_DATABASE` |
+| `jdbc` | `TARGET_JDBC_URL`, `TARGET_JDBC_USER`, `TARGET_JDBC_PASSWORD`, `TARGET_JDBC_DRIVER` |
+| `postgresql` | `TARGET_PG_HOST`, `TARGET_PG_PORT`, `TARGET_PG_USER`, `TARGET_PG_PASSWORD`, `TARGET_PG_DATABASE` |
+| `mysql` | `TARGET_MYSQL_HOST`, `TARGET_MYSQL_PORT`, `TARGET_MYSQL_USER`, `TARGET_MYSQL_PASSWORD`, `TARGET_MYSQL_DATABASE` |
 | `native` | `TARGET_NATIVE_HOST`, `TARGET_NATIVE_PORT`, `TARGET_NATIVE_USER`, `TARGET_NATIVE_DATABASE` |
 | `http` | `TARGET_HTTP_URL` |
 | `kafka` | `TARGET_KAFKA_BOOTSTRAP` |
 
 `https` and `cql` endpoints inject nothing. Every `*_USER` variable comes from the target's `sql`
 capability `user`, and is empty when the target declares no `sql` capability.
+
+The `*_PASSWORD` variables come from the target kit's `sql` capability `password` and are empty
+when it has none. The framework never prints them. A bench kit that passes one to a client must
+keep it off any command line it prints (pass it in an environment variable such as `MYSQL_PWD`,
+and never run `kubectl describe pod` on a pod that has it in its arguments).
 
 If the target kit directory does not exist or its `kit.yaml` is unreadable, no `TARGET_*`
 variables are injected and no error is raised (fail-safe).
@@ -877,11 +926,15 @@ Database kits that expose a SQL interface should declare the `sql` capability:
 capabilities:
   - type: sql
     user: default                            # default username
+    password: ""                             # password (optional; default empty)
     driver-class: com.clickhouse.jdbc.ClickHouseDriver  # JDBC driver (optional)
 ```
 
-The `user` and `driver-class` fields are used when constructing `TARGET_JDBC_USER` and
-`TARGET_JDBC_DRIVER` for bench kits targeting this database.
+The `user`, `password` and `driver-class` fields are used when constructing `TARGET_JDBC_USER`,
+the `TARGET_*_PASSWORD` variables, and `TARGET_JDBC_DRIVER` for bench kits targeting this
+database. The `sql` command sends the password as the JDBC `password` property only when it is
+not blank, and none of its output contains it. A password that comes from an install arg is
+written as a placeholder (`password: "__MYDB_PASSWORD__"`, see Install-time placeholders).
 
 ### Making an external kit targetable by bench kits
 

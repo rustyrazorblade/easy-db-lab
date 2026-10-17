@@ -57,7 +57,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Setup.*` — Profile setup and initialization
 - `Event.Ssh.*` — SSH remote command execution
 - `Event.Platform.*` — Platform substrate operations (StorageClass, PVs, info)
-- `Event.Install.*` — Kit scaffold generation
+- `Event.Install.*` — Kit scaffold generation, `Install.CollisionDetected` when a collision-checked scaffold already exists, and `Install.ArgRejected` (an error: an arg value does not match its `pattern`; carries the flag and the pattern, never the value)
 - `Event.Kit.*` — Kit phase execution (script and step start/finish/failure, `Kit.ShellStepFailed` for a shell step that exited non-zero with its exit code and last output lines (carried as data only: the output was already streamed, so the console line does not repeat it), metrics registration, hooks, requirements, `Kit.HelmReleaseKept` when a `helm-uninstall` step keeps an operator another kit instance still uses, `Kit.CollisionDetected` when a collision-checked kit is started while already running, `Kit.StopIncomplete` when its pods outlive the wait after `stop` or `uninstall` (its `phase` field names which), and `Kit.StopUnverified` when the cluster cannot be queried during that wait) and `Kit.EndpointsAvailable`, the declared endpoints resolved to node private IPs after a successful start
 - `Event.Cleanup.*` — Per-node kit cleanup progress and completion
 - `Event.Server.*` — Server lifecycle (shutdown when the cluster's VPC no longer exists)

@@ -51,11 +51,11 @@
 
 ## 8. SingleStore kit: metrics, dashboards, docs
 
-- [ ] 8.1 Write `METRICS.md` and `metrics-catalog.json` from the exporter's `/cluster-metrics` series
-- [ ] 8.2 Build the cluster overview and the leaf and partition dashboards with the dashboard-editor agent, with the tenant pickers, and keep `DashboardDatasourceVariablesTest` passing
-- [ ] 8.3 Write `README.md.template`
-- [ ] 8.4 Write `docs/user-guide/singlestore.md` (license key, every arg, topology, redundancy rule, minimum `i4i.2xlarge`, connect, sysbench, unlimited storage, license unit formula) and link it in `docs/SUMMARY.md`
-- [ ] 8.5 Update `CLAUDE.md` if a pattern changed (install-time `kit.yaml` render, arg `pattern`)
+- [x] 8.1 Write `METRICS.md` and `metrics-catalog.json` from the exporter's `/cluster-metrics` series
+- [x] 8.2 Build the cluster overview and the leaf and partition dashboards with the dashboard-editor agent, with the tenant pickers, and keep `DashboardDatasourceVariablesTest` passing
+- [x] 8.3 Write `README.md.template`
+- [x] 8.4 Write `docs/user-guide/singlestore.md` (license key, every arg, topology, redundancy rule, minimum `i4i.2xlarge`, connect, sysbench, unlimited storage, license unit formula) and link it in `docs/SUMMARY.md`
+- [x] 8.5 Update `CLAUDE.md` if a pattern changed (install-time `kit.yaml` render, arg `pattern`)
 
 ## 9. Build checks
 

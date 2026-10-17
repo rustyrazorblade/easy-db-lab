@@ -1,0 +1,159 @@
+{
+  "workload": "singlestore",
+  "exported_at": "",
+  "note": "Hand-written from the exporter spike (labels confirmed: host, node_id, role, cluster_name), not exported. Replace it with `bin/export-workload-metrics singlestore` on a live cluster (tasks.md 10.7).",
+  "common_labels": {
+    "cluster_name": [
+      "singlestore"
+    ],
+    "job": [
+      "singlestore"
+    ]
+  },
+  "series": [
+    {
+      "name": "memsql_distributed_partitions_offline",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_distributed_partitions_online",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_exporter_last_scrape_error",
+      "labels": {}
+    },
+    {
+      "name": "memsql_status_aborted_connects",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_alloc_table_memory",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_buffer_manager_memory",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_connections",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_failed_read_queries",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_failed_write_queries",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_queries",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_rows_affected_by_writes",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_rows_returned_by_reads",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_successful_read_queries",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_successful_write_queries",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_threads_connected",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_threads_running",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_total_server_memory",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "memsql_status_uptime",
+      "labels": {
+        "host": [],
+        "node_id": [],
+        "role": ["CA", "LEAF", "MA"]
+      }
+    },
+    {
+      "name": "up",
+      "labels": {}
+    }
+  ]
+}

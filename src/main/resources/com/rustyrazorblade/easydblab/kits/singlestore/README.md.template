@@ -1,0 +1,53 @@
+# SingleStore Kit
+
+A distributed SingleStore cluster on the db nodes, managed by the SingleStore Operator, which
+runs on the control node.
+
+## Cluster Layout
+
+| Component         | Node type | Count                        | Role                                   |
+|-------------------|-----------|------------------------------|----------------------------------------|
+| Operator          | control   | 1                            | Manages the MemsqlCluster              |
+| Master aggregator | db        | 1                            | Takes client queries, holds metadata   |
+| Child aggregators | db        | __SINGLESTORE_AGGREGATORS__  | Take client queries                    |
+| Leaves            | db        | __SINGLESTORE_LEAVES__       | Hold the data, one per db node         |
+
+The master aggregator shares a db node with a leaf. `start` sizes each leaf from the db node's
+allocatable CPU and memory unless `--leaf-cores` and `--leaf-memory` were given, and prints the
+sizes it chose.
+
+## Connection
+
+MySQL wire protocol on NodePort 30306 of any db node, which reaches every aggregator:
+
+```
+mysql -h <db-node-ip> -P 30306 -u root -p __SINGLESTORE_DATABASE__
+```
+
+Or through easy-db-lab, which knows the password from install:
+
+```
+easy-db-lab singlestore sql "SELECT 1"
+```
+
+Benchmark it with sysbench:
+
+```
+easy-db-lab kit install sysbench --target singlestore
+easy-db-lab sysbench-singlestore prepare
+easy-db-lab sysbench-singlestore start
+```
+
+## Lifecycle
+
+- `singlestore start` builds a fresh cluster and creates the `__SINGLESTORE_DATABASE__` database.
+- `singlestore stop` deletes the cluster and its data (PVCs). The next `start` is empty.
+- `singlestore uninstall` stops a running cluster first, then removes the operator and its CRD.
+
+A start the license refuses fails with SingleStore's error. Re-run
+`easy-db-lab kit install singlestore --force` with the same args and smaller `--leaf-cores` and
+`--leaf-memory`, then `singlestore start` again.
+
+## Version
+
+SingleStore node image: singlestore/node:__SINGLESTORE_VERSION__

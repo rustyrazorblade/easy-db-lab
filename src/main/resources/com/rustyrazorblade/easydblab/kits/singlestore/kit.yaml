@@ -68,11 +68,11 @@ args:
     default: "10Ti"
   - flag: --leaf-cores
     variable: SINGLESTORE_LEAF_CORES
-    description: "Cores per leaf. Default: the db node's allocatable CPU less the collectors, the aggregator share and the exporter"
+    description: "Cores per leaf. Default: the db node's allocatable CPU less the collectors, one aggregator and the exporter"
     type: int
   - flag: --leaf-memory
     variable: SINGLESTORE_LEAF_MEMORY
-    description: "Memory per leaf in GB. Default: the db node's allocatable memory less the collectors, the aggregator share and the exporter"
+    description: "Memory per leaf in GB. Default: the db node's allocatable memory less the collectors, one aggregator and the exporter"
     type: int
   - flag: --aggregator-cores
     variable: SINGLESTORE_AGGREGATOR_CORES

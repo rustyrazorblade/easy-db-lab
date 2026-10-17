@@ -96,7 +96,7 @@ ss_redundancy() {
 # Fails, before anything is created, when the pods cannot all schedule on DB_NODES db nodes. Each
 # leaf repels every other leaf, so there are at most DB_NODES leaves. The master and the child
 # aggregators repel each other too, so there are at most DB_NODES of them, and a db node holds at
-# most one: never more than the ceil((1 + aggregators) / leaves) the leaf size leaves room for.
+# most one: the one aggregator size the leaf size reserves.
 ss_check_node_counts() {
   local leaves="$1" aggregators="$2" db_nodes="$3"
   if [ "${leaves}" -gt "${db_nodes}" ]; then
@@ -125,15 +125,14 @@ ss_smallest_allocatable() {
 }
 
 # Prints "<cores> <memoryMB>" for a leaf on a node with ALLOC_MILLI millicores and ALLOC_MB MB
-# allocatable: less the collector reserve, ceil((1 + AGGREGATORS) / LEAVES) aggregators of
-# AGG_CORES cores and AGG_MEM_GB GB (the master and the child aggregators share the leaves' nodes,
-# at most one per node, so a node never holds more than this share), and the exporter sidecar. Cores are whole; a negative remainder prints 0.
+# allocatable: less the collector reserve, one aggregator of AGG_CORES cores and AGG_MEM_GB GB (the
+# aggregators repel each other, so a db node holds at most one, however many there are per leaf),
+# and the exporter sidecar. Cores are whole; a negative remainder prints 0.
 ss_leaf_size() {
-  local alloc_milli="$1" alloc_mb="$2" leaves="$3" aggregators="$4" agg_cores="$5" agg_mem_gb="$6"
-  local share milli mb
-  share=$(((1 + aggregators + leaves - 1) / leaves))
-  milli=$((alloc_milli - SS_COLLECTOR_RESERVE_MILLICORES - share * agg_cores * 1000 - SS_EXPORTER_MILLICORES))
-  mb=$((alloc_mb - SS_COLLECTOR_RESERVE_MB - share * agg_mem_gb * 1024 - SS_EXPORTER_MB))
+  local alloc_milli="$1" alloc_mb="$2" agg_cores="$3" agg_mem_gb="$4"
+  local milli mb
+  milli=$((alloc_milli - SS_COLLECTOR_RESERVE_MILLICORES - agg_cores * 1000 - SS_EXPORTER_MILLICORES))
+  mb=$((alloc_mb - SS_COLLECTOR_RESERVE_MB - agg_mem_gb * 1024 - SS_EXPORTER_MB))
   [ "${milli}" -ge 0 ] || milli=0
   [ "${mb}" -ge 0 ] || mb=0
   echo "$((milli / 1000)) ${mb}"
@@ -173,7 +172,7 @@ singlestore_size() {
   else
     allocatable="$(printf '%s\n' "${nodes}" | ss_smallest_allocatable)" || return 1
     # shellcheck disable=SC2086 # two numbers, split on purpose
-    computed="$(ss_leaf_size ${allocatable} "${leaves}" "${aggregators}" "${agg_cores}" "${agg_mem_gb}")"
+    computed="$(ss_leaf_size ${allocatable} "${agg_cores}" "${agg_mem_gb}")"
     LEAF_CORES="${SINGLESTORE_LEAF_CORES:-${computed% *}}"
     if [ -n "${SINGLESTORE_LEAF_MEMORY:-}" ]; then
       LEAF_MEMORY_MB=$((SINGLESTORE_LEAF_MEMORY * 1024))

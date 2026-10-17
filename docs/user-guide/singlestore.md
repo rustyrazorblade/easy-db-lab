@@ -94,8 +94,8 @@ When `--leaf-cores` and `--leaf-memory` are not set, `start` reads the smallest 
 allocatable CPU and memory and gives each leaf that, less:
 
 - a fixed reserve for the collectors on the node (1 core and 4096 MB),
-- its share of the aggregators: `ceil((1 + aggregators) / leaves)` times `--aggregator-cores` and
-  `--aggregator-memory`,
+- one aggregator size, `--aggregator-cores` and `--aggregator-memory`: a db node holds at most one
+  aggregator, so one is reserved however many aggregators there are per leaf,
 - the operator's exporter sidecar in the master pod (100m CPU and 200 MB).
 
 Cores are rounded down to whole cores. A leaf below 4 cores or 8192 MB fails `start` before

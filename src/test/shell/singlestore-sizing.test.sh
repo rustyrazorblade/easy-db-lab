@@ -6,8 +6,8 @@
 # storageGB, the redundancy is 2 for an even leaf count and 1 for an odd one unless --redundancy
 # sets it, it must be 1 or 2, and the leaf count must be a multiple of it. There are no more leaves
 # than db nodes, and no more aggregators (the master and the child aggregators) than db nodes. A leaf gets the smallest db node's
-# allocatable CPU and memory, less a fixed collector reserve, its share of the aggregators and the
-# exporter sidecar, and must have at least 4 cores and 8192 MB.
+# allocatable CPU and memory, less a fixed collector reserve, one aggregator size (a db node holds
+# at most one aggregator) and the exporter sidecar, and must have at least 4 cores and 8192 MB.
 #
 # kubectl is stubbed: `get nodes` prints the allocatable CPU and memory in STUB_NODES. Every case
 # also runs under the shell a kit step uses on macOS, /bin/bash, when it exists.
@@ -101,13 +101,12 @@ for SH in "${SHELLS[@]}"; do
   done
 
   tests_run=$((tests_run + 1))
-  # 8 vCPU: 8000m - 1000m reserve - 2000m aggregator share - 100m exporter = 4900m, so 4 cores.
-  # 64008 MB - 4096 reserve - 8192 aggregator share - 200 exporter = 51520 MB.
-  [ "$(in_lib ss_leaf_size 8000 64008 3 0 2 8)" = "4 51520" ] || fail "[${SH}] computed leaf on 8 vCPU: $(in_lib ss_leaf_size 8000 64008 3 0 2 8)"
-  # One leaf with two child aggregators carries all three: 16000m - 1000 - 3 * 2000 - 100 = 8900m.
-  [ "$(in_lib ss_leaf_size 16000 128000 1 2 2 8)" = "8 99128" ] || fail "[${SH}] aggregator share: $(in_lib ss_leaf_size 16000 128000 1 2 2 8)"
-  # Four leaves, three aggregators: ceil(4 / 4) = 1 aggregator per leaf.
-  [ "$(in_lib ss_leaf_size 8000 64008 4 3 2 8)" = "4 51520" ] || fail "[${SH}] share of 4 aggregators over 4 leaves"
+  # 8 vCPU: 8000m - 1000m reserve - 2000m aggregator - 100m exporter = 4900m, so 4 cores.
+  # 64008 MB - 4096 reserve - 8192 aggregator - 200 exporter = 51520 MB.
+  [ "$(in_lib ss_leaf_size 8000 64008 2 8)" = "4 51520" ] || fail "[${SH}] computed leaf on 8 vCPU: $(in_lib ss_leaf_size 8000 64008 2 8)"
+  # A db node holds at most one aggregator, so a leaf reserves one aggregator size, here 4 cores
+  # and 16 GB: 16000m - 1000 - 4000 - 100 = 10900m, 128000 - 4096 - 16384 - 200 = 107320 MB.
+  [ "$(in_lib ss_leaf_size 16000 128000 4 16)" = "10 107320" ] || fail "[${SH}] a larger aggregator size: $(in_lib ss_leaf_size 16000 128000 4 16)"
 
   tests_run=$((tests_run + 1))
   in_lib ss_check_leaf_minimum 4 8192 > /dev/null || fail "[${SH}] 4 cores and 8192 MB is the minimum, not below it"
@@ -125,6 +124,14 @@ for SH in "${SHELLS[@]}"; do
   out="$(size_cluster)"
   [ "${out}" = "R=1 N=3 C=4 M=51520 S=10240 A=8192" ] || fail "[${SH}] defaults on 3 leaves: ${out}"
 
+  # Aggregators outnumber leaves: a master and 2 child aggregators over 2 leaves on 3 db nodes of
+  # 8 vCPU. Each node holds at most one aggregator, so a leaf reserves one aggregator size, not
+  # two, and passes the minimum.
+  tests_run=$((tests_run + 1))
+  STUB_ENV=("STUB_NODES=$(nodes 3 "${NODE_8_VCPU}")" "${DEFAULTS[@]}" SINGLESTORE_LEAVES=2 SINGLESTORE_AGGREGATORS=2)
+  out="$(size_cluster)"
+  [ "${out}" = "R=2 N=1 C=4 M=51520 S=10240 A=8192" ] || fail "[${SH}] 2 leaves and 3 aggregators on 3 db nodes of 8 vCPU: ${out}"
+
   # Each leaf repels every other leaf, so a leaf count above the db node count can never schedule.
   # The check holds with the leaf size given too, when nothing else needs the nodes.
   tests_run=$((tests_run + 1))
@@ -136,8 +143,8 @@ for SH in "${SHELLS[@]}"; do
       fail "[${SH}] 4 leaves on 3 db nodes (${given:-computed size}) did not fail naming --leaves and the node count: ${out}"
   done
 
-  # The aggregators repel each other too, so each db node holds at most one of them, the share the
-  # leaf size assumes. More aggregators than db nodes can never schedule.
+  # The aggregators repel each other too, so each db node holds at most one of them, the one the
+  # leaf size reserves. More aggregators than db nodes can never schedule.
   tests_run=$((tests_run + 1))
   STUB_ENV=("STUB_NODES=$(nodes 3 "${NODE_8_VCPU}")" "${DEFAULTS[@]}" SINGLESTORE_LEAVES=3 SINGLESTORE_AGGREGATORS=3
     SINGLESTORE_LEAF_CORES=4 SINGLESTORE_LEAF_MEMORY=16)

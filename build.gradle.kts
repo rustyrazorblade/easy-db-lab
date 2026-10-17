@@ -423,6 +423,7 @@ tasks.register("testScripts") {
         "testCassandraResolveRef",
         "testSysbenchStartScript",
         "testSysbenchStopScript",
+        "testSysbenchTargetDb",
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
         "testK3sDataMount",
@@ -473,6 +474,16 @@ tasks.register<Exec>("testSysbenchStopScript") {
     description = "Unit-test the sysbench kit stop script"
     workingDir = file(".")
     commandLine = listOf("bash", "src/test/shell/sysbench-stop.test.sh")
+}
+
+// Unit-test the sysbench kit's driver args (bin/lib/target-db.sh) in prepare, start and stop: a
+// target password reaches every phase as one argument and is never printed; a passwordless target
+// gets the args it always got. kubectl and curl are stubbed.
+tasks.register<Exec>("testSysbenchTargetDb") {
+    group = "Verification"
+    description = "Unit-test the sysbench kit target database args and passwords"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/sysbench-target-db.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,

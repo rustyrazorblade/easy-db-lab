@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_DIR="$(dirname "${SCRIPT_DIR}")"
+# shellcheck source=lib/target-db.sh
+source "${SCRIPT_DIR}/lib/target-db.sh"
 # Persist the final sysbench summary so a run's numbers survive after stdout scrolls away.
 LAST_RUN_FILE="${KIT_DIR}/last-run.txt"
 
@@ -31,19 +33,7 @@ push_gauges() {
     2>/dev/null || true
 }
 
-if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
-  DB_ARGS="--db-driver=mysql \
-    --mysql-host=${TARGET_MYSQL_HOST} \
-    --mysql-port=${TARGET_MYSQL_PORT} \
-    --mysql-user=${TARGET_MYSQL_USER} \
-    --mysql-db=${TARGET_MYSQL_DATABASE}"
-elif [ -n "${TARGET_PG_HOST:-}" ]; then
-  DB_ARGS="--db-driver=pgsql \
-    --pgsql-host=${TARGET_PG_HOST} \
-    --pgsql-port=${TARGET_PG_PORT} \
-    --pgsql-user=${TARGET_PG_USER} \
-    --pgsql-db=${TARGET_PG_DATABASE}"
-else
+if ! target_db_args; then
   echo "Error: no supported database endpoint found. Ensure the target kit exposes a MySQL or PostgreSQL wire protocol endpoint." >&2
   exit 1
 fi
@@ -55,7 +45,7 @@ kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
   --restart=Never \
   --labels="${LABELS}" \
   --command -- sysbench \
-    ${DB_ARGS} \
+    "${DB_ARGS[@]}" \
     --threads="${THREADS}" \
     --time="${DURATION}" \
     --rate="${RATE}" \

@@ -1,24 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/target-db.sh
+source "${SCRIPT_DIR}/lib/target-db.sh"
+
 SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
 POD_NAME="sysbench-prepare-${KIT_NAME}-$(date +%s)"
 PREPARE_LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-prepare"
 
-if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
-  DB_ARGS="--db-driver=mysql \
-    --mysql-host=${TARGET_MYSQL_HOST} \
-    --mysql-port=${TARGET_MYSQL_PORT} \
-    --mysql-user=${TARGET_MYSQL_USER} \
-    --mysql-db=${TARGET_MYSQL_DATABASE}"
+if ! target_db_args; then
+  echo "Error: no supported database endpoint found. Ensure the target kit exposes a MySQL or PostgreSQL wire protocol endpoint." >&2
+  exit 1
+fi
 
-  # TiDB and MySQL do not ship with the sbtest database — create it before sysbench prepare.
+if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
+  # TiDB and MySQL do not ship with the sbtest database — create it before sysbench prepare. The
+  # password reaches the mysql client through MYSQL_PWD, never its command line.
+  target_mysql_pwd_env
   CREATE_POD="sysbench-createdb-${KIT_NAME}-$(date +%s)"
   echo "Creating database ${TARGET_MYSQL_DATABASE} on ${TARGET_MYSQL_HOST}:${TARGET_MYSQL_PORT}..."
   kubectl --kubeconfig="${KUBECONFIG}" run "${CREATE_POD}" \
     --image="mysql:8.0" \
     --restart=Never \
     --labels="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-createdb" \
+    ${MYSQL_PWD_ENV[@]+"${MYSQL_PWD_ENV[@]}"} \
     --command -- mysql \
       -h "${TARGET_MYSQL_HOST}" \
       -P "${TARGET_MYSQL_PORT}" \
@@ -29,16 +35,6 @@ if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
     --timeout=60s \
     pod/"${CREATE_POD}"
   kubectl --kubeconfig="${KUBECONFIG}" delete pod "${CREATE_POD}" --ignore-not-found
-
-elif [ -n "${TARGET_PG_HOST:-}" ]; then
-  DB_ARGS="--db-driver=pgsql \
-    --pgsql-host=${TARGET_PG_HOST} \
-    --pgsql-port=${TARGET_PG_PORT} \
-    --pgsql-user=${TARGET_PG_USER} \
-    --pgsql-db=${TARGET_PG_DATABASE}"
-else
-  echo "Error: no supported database endpoint found. Ensure the target kit exposes a MySQL or PostgreSQL wire protocol endpoint." >&2
-  exit 1
 fi
 
 # Drop any pre-existing sbtest tables before preparing. sysbench prepare issues a
@@ -46,7 +42,7 @@ fi
 # --tables fails with "error 1050: Table 'sbtest.sbtest1' already exists". sysbench
 # cleanup uses DROP TABLE IF EXISTS, so this is idempotent and safe on a fresh
 # cluster with no existing tables. It runs for whichever driver (mysql/pgsql) was
-# selected above via the shared ${DB_ARGS}.
+# selected above via the shared DB_ARGS.
 CLEANUP_POD="sysbench-cleanup-${KIT_NAME}-$(date +%s)"
 echo "Cleaning up any existing sysbench data before prepare..."
 kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
@@ -54,7 +50,7 @@ kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
   --restart=Never \
   --labels="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-cleanup" \
   --command -- sysbench \
-    ${DB_ARGS} \
+    "${DB_ARGS[@]}" \
     --tables="${TABLES}" \
     "${WORKLOAD}" cleanup
 kubectl --kubeconfig="${KUBECONFIG}" wait \
@@ -70,7 +66,7 @@ kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
   --restart=Never \
   --labels="${PREPARE_LABELS}" \
   --command -- sysbench \
-    ${DB_ARGS} \
+    "${DB_ARGS[@]}" \
     --tables="${TABLES}" \
     --table-size="${SCALE}000" \
     "${WORKLOAD}" prepare

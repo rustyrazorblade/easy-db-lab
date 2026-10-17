@@ -16,6 +16,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEMPLATE="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/stop.sh.template"
+LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/lib"
 
 tests_run=0
 tests_failed=0
@@ -32,13 +33,14 @@ setup() {
   WORK="$(mktemp -d)"
   mkdir -p "${WORK}/stubs" "${WORK}/kit/bin"
   cp "${TEMPLATE}" "${WORK}/kit/bin/stop.sh"
+  cp -R "${LIB}" "${WORK}/kit/bin/lib"
   cat > "${WORK}/stubs/kubectl" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$*" >> "${WORK}/kubectl.calls"
 case " \$* " in
   *" get pod "*) printf '%s' "\${STUB_PHASE}" ;;
   *" logs "*) echo "FATAL: stub cleanup log" ;;
-  *" describe pod "*) echo "Events: stub ErrImagePull" ;;
+  *" get events "*) echo "Events: stub ErrImagePull" ;;
   *" wait "*) [ "\${STUB_PHASE}" = Succeeded ] || { echo "error: timed out waiting for the condition" >&2; exit 1; } ;;
 esac
 exit 0
@@ -72,12 +74,12 @@ test_a_gone_target_still_stops_and_removes_the_cleanup_pod() {
     fail "the log was not read before the pod was deleted: $(cat "${WORK}/kubectl.calls")"
 }
 
-test_a_cleanup_pod_that_never_starts_is_described_and_removed() {
+test_a_cleanup_pod_that_never_starts_shows_its_events_and_is_removed() {
   tests_run=$((tests_run + 1))
   setup
   run_script Pending || { fail "stop exited non-zero with the cleanup pod pending: $(cat "${WORK}/out.txt")"; return; }
   deletes_cleanup_pods || fail "the pending cleanup pod was left: $(cat "${WORK}/kubectl.calls")"
-  grep -q 'Events: stub ErrImagePull' "${WORK}/out.txt" || fail "stop did not describe the pending pod: $(cat "${WORK}/out.txt")"
+  grep -q 'Events: stub ErrImagePull' "${WORK}/out.txt" || fail "stop did not show the pending pod's events: $(cat "${WORK}/out.txt")"
   grep -q 'cleanup ended Pending; the sbtest tables were left' "${WORK}/out.txt" || fail "no neutral message: $(cat "${WORK}/out.txt")"
 }
 
@@ -91,7 +93,7 @@ test_a_live_target_drops_the_tables_and_removes_the_cleanup_pod() {
 
 test_a_gone_target_still_stops_and_removes_the_cleanup_pod
 test_a_live_target_drops_the_tables_and_removes_the_cleanup_pod
-test_a_cleanup_pod_that_never_starts_is_described_and_removed
+test_a_cleanup_pod_that_never_starts_shows_its_events_and_is_removed
 
 echo "${tests_run} tests, ${tests_failed} failed"
 [ "${tests_failed}" -eq 0 ]

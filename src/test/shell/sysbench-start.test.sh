@@ -16,6 +16,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEMPLATE="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/start.sh.template"
+LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/lib"
 
 tests_run=0
 tests_failed=0
@@ -32,6 +33,7 @@ setup() {
   WORK="$(mktemp -d)"
   mkdir -p "${WORK}/stubs" "${WORK}/kit/bin" "${WORK}/calls"
   cp "${TEMPLATE}" "${WORK}/kit/bin/start.sh"
+  cp -R "${LIB}" "${WORK}/kit/bin/lib"
   cat > "${WORK}/sysbench.log" <<'EOF'
 Running the test with following options:
 [ 10s ] thds: 4 tps: 120.50 qps: 2410.00 (r/w/o: 1687.00/482.00/241.00) lat (ms,99%): 45.79 err/s: 0.10 reconn/s: 0.00

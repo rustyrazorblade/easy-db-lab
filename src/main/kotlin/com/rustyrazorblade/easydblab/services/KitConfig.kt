@@ -222,7 +222,7 @@ data class KitCapability(
     @SerialName("driver-class") val driverClass: String = "",
 ) {
     override fun toString(): String =
-        "KitCapability(type=$type, user=$user, password=${if (password.isEmpty()) "" else "****"}, " +
+        "KitCapability(type=$type, user=$user, password=${if (password.isEmpty()) "" else Constants.Kit.PASSWORD_MASK}, " +
             "driverClass=$driverClass)"
 
     /**

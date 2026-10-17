@@ -478,6 +478,10 @@ object Constants {
         /** The variable that holds the absolute path of the workspace's kit shell library, for every kit process. */
         const val LIBRARY_ENV = "EDL_KIT_LIB"
 
+        // What a kit capability's password reads as wherever it would otherwise be printed or
+        // logged: the sql command's error output and KitCapability.toString.
+        const val PASSWORD_MASK = "****"
+
         // After the stop of a kit that declares a runtime, how often and how many times to look for its
         // pods before reporting the stop incomplete: 2s x 150 = 5 minutes, enough for a
         // StatefulSet's or operator's cascading delete plus each pod's termination grace period.

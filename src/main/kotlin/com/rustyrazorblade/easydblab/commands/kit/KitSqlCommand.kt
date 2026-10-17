@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
@@ -110,9 +111,5 @@ class KitSqlCommand(
     }
 
     private fun maskPassword(message: String): String =
-        if (capability.password.isBlank()) message else message.replace(capability.password, PASSWORD_MASK)
-
-    private companion object {
-        const val PASSWORD_MASK = "****"
-    }
+        if (capability.password.isBlank()) message else message.replace(capability.password, Constants.Kit.PASSWORD_MASK)
 }

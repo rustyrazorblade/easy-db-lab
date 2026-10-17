@@ -62,7 +62,7 @@
 - [x] 5.7 TraceQL audit: fix every TraceQL use (system-overview, observability/tempo, clickhouse-logs, tidb and any other) to hold `resource.cluster` against the cluster variable.
 - [x] 5.8 Unit tier green: every guard from section 4 passes on every core and kit dashboard.
 - [ ] 5.9 Live check with `installDist`, `grafana update-config` and read-back from Grafana: newest experiment on open; cluster picker lists only the experiment; pair defaults (A oldest, B current); kept dashboards work with A/B pickers; same-named experiments in two tenants stay apart; All on `mimir--all` shows both tenants; a pre-label cluster shows as an experiment of one and opens its documents.
-- [ ] 5.10 Owner decision 21, through the `dashboard-editor` agent: on `cassandra/cluster-pair.json`, replace the four latency heatmaps with the read and write Percentile Ladders of A and of B, side by side (p50, p99, p999 and max per node, log axis, as on Experiment: Cassandra); no heatmap remains on the pair.
+- [x] 5.10 Owner decision 21, through the `dashboard-editor` agent: on `cassandra/cluster-pair.json`, replace the four latency heatmaps with the read and write Percentile Ladders of A and of B, side by side (p50, p99, p999 and max per node, log axis, as on Experiment: Cassandra); no heatmap remains on the pair.
 
 ## 6. Phase 4: local stack
 

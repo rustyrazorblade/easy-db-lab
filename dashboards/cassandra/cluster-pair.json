@@ -1873,7 +1873,7 @@
       },
       "id": 1040,
       "panels": [],
-      "title": "Latency distribution: A and B side by side",
+      "title": "Percentile Ladder: A and B side by side",
       "type": "row"
     },
     {
@@ -1881,16 +1881,70 @@
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "How cluster A's per-node read latency at ${percentile} is spread over its own window, at its real times. Cassandra exports pre-aggregated percentiles, not a request histogram, so Grafana buckets the nodes' samples: the Y axis is latency and the colour is how many node samples fell in each bucket. Compare the shape and height of the band on the two sides.",
+      "description": "Cluster A's whole read percentile ladder, per node, over its own window at its real times: the p50, p99, p999 and max gauges the OpenTelemetry Java agent exports for every node, on one log axis. The panel ignores the $percentile variable; its job is the shape of the distribution. Compare the height and spread of the rungs on the two sides.",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
             "scaleDistribution": {
-              "type": "linear"
-            }
-          }
+              "log": 10,
+              "type": "log"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "µs"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^p50 "
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^max "
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 9,
@@ -1899,50 +1953,18 @@
         "y": 103
       },
       "id": 1041,
-      "maxDataPoints": 500,
       "options": {
-        "calculate": true,
-        "calculation": {
-          "yBuckets": {
-            "mode": "count",
-            "scale": {
-              "log": 2,
-              "type": "log"
-            },
-            "value": "24"
-          }
-        },
-        "cellGap": 1,
-        "color": {
-          "exponent": 0.5,
-          "fill": "dark-orange",
-          "mode": "scheme",
-          "reverse": false,
-          "scale": "exponential",
-          "scheme": "Oranges",
-          "steps": 64
-        },
-        "exemplars": {
-          "color": "rgba(255,0,255,0.7)"
-        },
-        "filterValues": {
-          "le": 1e-09
-        },
         "legend": {
-          "show": true
-        },
-        "rowsFrame": {
-          "layout": "auto"
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single",
-          "showColorScale": false,
-          "yHistogram": false
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "unit": "µs"
+          "mode": "multi",
+          "sort": "desc"
         }
       },
       "targets": [
@@ -1952,33 +1974,119 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"})",
-          "instant": false,
-          "legendFormat": "A ${cluster_a:text} {{host_name}}",
+          "expr": "cassandra_client_request_latency_p50_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"}",
+          "legendFormat": "p50 {{host_name}}",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"}",
+          "legendFormat": "p99 {{host_name}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_p999_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"}",
+          "legendFormat": "p999 {{host_name}}",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_max_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"read\"}",
+          "legendFormat": "max {{host_name}}",
+          "range": true,
+          "refId": "D"
         }
       ],
       "timeFrom": "${a_len_s}s-${a_len_d}d",
       "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
-      "title": "Read latency ${percentile} distribution: A ${cluster_a:text}",
-      "type": "heatmap"
+      "title": "Read Latency Percentile Ladder: A ${cluster_a:text}",
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "How cluster B's per-node read latency at ${percentile} is spread over its own window, at its real times. Cassandra exports pre-aggregated percentiles, not a request histogram, so Grafana buckets the nodes' samples: the Y axis is latency and the colour is how many node samples fell in each bucket. Compare the shape and height of the band on the two sides.",
+      "description": "Cluster B's whole read percentile ladder, per node, over its own window at its real times: the p50, p99, p999 and max gauges the OpenTelemetry Java agent exports for every node, on one log axis. The panel ignores the $percentile variable; its job is the shape of the distribution. Compare the height and spread of the rungs on the two sides.",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
             "scaleDistribution": {
-              "type": "linear"
-            }
-          }
+              "log": 10,
+              "type": "log"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "µs"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^p50 "
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^max "
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 9,
@@ -1987,50 +2095,18 @@
         "y": 103
       },
       "id": 1042,
-      "maxDataPoints": 500,
       "options": {
-        "calculate": true,
-        "calculation": {
-          "yBuckets": {
-            "mode": "count",
-            "scale": {
-              "log": 2,
-              "type": "log"
-            },
-            "value": "24"
-          }
-        },
-        "cellGap": 1,
-        "color": {
-          "exponent": 0.5,
-          "fill": "dark-orange",
-          "mode": "scheme",
-          "reverse": false,
-          "scale": "exponential",
-          "scheme": "Oranges",
-          "steps": 64
-        },
-        "exemplars": {
-          "color": "rgba(255,0,255,0.7)"
-        },
-        "filterValues": {
-          "le": 1e-09
-        },
         "legend": {
-          "show": true
-        },
-        "rowsFrame": {
-          "layout": "auto"
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single",
-          "showColorScale": false,
-          "yHistogram": false
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "unit": "µs"
+          "mode": "multi",
+          "sort": "desc"
         }
       },
       "targets": [
@@ -2040,33 +2116,119 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"})",
-          "instant": false,
-          "legendFormat": "B ${cluster_b:text} {{host_name}}",
+          "expr": "cassandra_client_request_latency_p50_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"}",
+          "legendFormat": "p50 {{host_name}}",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"}",
+          "legendFormat": "p99 {{host_name}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_p999_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"}",
+          "legendFormat": "p999 {{host_name}}",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_max_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"read\"}",
+          "legendFormat": "max {{host_name}}",
+          "range": true,
+          "refId": "D"
         }
       ],
       "timeFrom": "${b_len_s}s-${b_len_d}d",
       "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
-      "title": "Read latency ${percentile} distribution: B ${cluster_b:text}",
-      "type": "heatmap"
+      "title": "Read Latency Percentile Ladder: B ${cluster_b:text}",
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "How cluster A's per-node write latency at ${percentile} is spread over its own window, at its real times. Cassandra exports pre-aggregated percentiles, not a request histogram, so Grafana buckets the nodes' samples: the Y axis is latency and the colour is how many node samples fell in each bucket. Compare the shape and height of the band on the two sides.",
+      "description": "Cluster A's whole write percentile ladder, per node, over its own window at its real times: the p50, p99, p999 and max gauges the OpenTelemetry Java agent exports for every node, on one log axis. The panel ignores the $percentile variable; its job is the shape of the distribution. Compare the height and spread of the rungs on the two sides.",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
             "scaleDistribution": {
-              "type": "linear"
-            }
-          }
+              "log": 10,
+              "type": "log"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "µs"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^p50 "
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^max "
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 9,
@@ -2075,50 +2237,18 @@
         "y": 112
       },
       "id": 1043,
-      "maxDataPoints": 500,
       "options": {
-        "calculate": true,
-        "calculation": {
-          "yBuckets": {
-            "mode": "count",
-            "scale": {
-              "log": 2,
-              "type": "log"
-            },
-            "value": "24"
-          }
-        },
-        "cellGap": 1,
-        "color": {
-          "exponent": 0.5,
-          "fill": "dark-orange",
-          "mode": "scheme",
-          "reverse": false,
-          "scale": "exponential",
-          "scheme": "Oranges",
-          "steps": 64
-        },
-        "exemplars": {
-          "color": "rgba(255,0,255,0.7)"
-        },
-        "filterValues": {
-          "le": 1e-09
-        },
         "legend": {
-          "show": true
-        },
-        "rowsFrame": {
-          "layout": "auto"
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single",
-          "showColorScale": false,
-          "yHistogram": false
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "unit": "µs"
+          "mode": "multi",
+          "sort": "desc"
         }
       },
       "targets": [
@@ -2128,33 +2258,119 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"})",
-          "instant": false,
-          "legendFormat": "A ${cluster_a:text} {{host_name}}",
+          "expr": "cassandra_client_request_latency_p50_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"}",
+          "legendFormat": "p50 {{host_name}}",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"}",
+          "legendFormat": "p99 {{host_name}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_p999_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"}",
+          "legendFormat": "p999 {{host_name}}",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_max_microseconds{job=\"cassandra\", cluster=\"$cluster_a\", cassandra_operation=\"write\"}",
+          "legendFormat": "max {{host_name}}",
+          "range": true,
+          "refId": "D"
         }
       ],
       "timeFrom": "${a_len_s}s-${a_len_d}d",
       "timeShift": "${a_since_end_s}s-${a_since_end_d}d",
-      "title": "Write latency ${percentile} distribution: A ${cluster_a:text}",
-      "type": "heatmap"
+      "title": "Write Latency Percentile Ladder: A ${cluster_a:text}",
+      "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${metrics_datasource}"
       },
-      "description": "How cluster B's per-node write latency at ${percentile} is spread over its own window, at its real times. Cassandra exports pre-aggregated percentiles, not a request histogram, so Grafana buckets the nodes' samples: the Y axis is latency and the colour is how many node samples fell in each bucket. Compare the shape and height of the band on the two sides.",
+      "description": "Cluster B's whole write percentile ladder, per node, over its own window at its real times: the p50, p99, p999 and max gauges the OpenTelemetry Java agent exports for every node, on one log axis. The panel ignores the $percentile variable; its job is the shape of the distribution. Compare the height and spread of the rungs on the two sides.",
       "fieldConfig": {
         "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
           "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
             "scaleDistribution": {
-              "type": "linear"
-            }
-          }
+              "log": 10,
+              "type": "log"
+            },
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "µs"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^p50 "
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^max "
+            },
+            "properties": [
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 9,
@@ -2163,50 +2379,18 @@
         "y": 112
       },
       "id": 1044,
-      "maxDataPoints": 500,
       "options": {
-        "calculate": true,
-        "calculation": {
-          "yBuckets": {
-            "mode": "count",
-            "scale": {
-              "log": 2,
-              "type": "log"
-            },
-            "value": "24"
-          }
-        },
-        "cellGap": 1,
-        "color": {
-          "exponent": 0.5,
-          "fill": "dark-orange",
-          "mode": "scheme",
-          "reverse": false,
-          "scale": "exponential",
-          "scheme": "Oranges",
-          "steps": 64
-        },
-        "exemplars": {
-          "color": "rgba(255,0,255,0.7)"
-        },
-        "filterValues": {
-          "le": 1e-09
-        },
         "legend": {
-          "show": true
-        },
-        "rowsFrame": {
-          "layout": "auto"
+          "calcs": [
+            "lastNotNull"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single",
-          "showColorScale": false,
-          "yHistogram": false
-        },
-        "yAxis": {
-          "axisPlacement": "left",
-          "reverse": false,
-          "unit": "µs"
+          "mode": "multi",
+          "sort": "desc"
         }
       },
       "targets": [
@@ -2216,17 +2400,49 @@
             "uid": "${metrics_datasource}"
           },
           "editorMode": "code",
-          "expr": "max by (host_name) (cassandra_client_request_latency_${percentile}_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"})",
-          "instant": false,
-          "legendFormat": "B ${cluster_b:text} {{host_name}}",
+          "expr": "cassandra_client_request_latency_p50_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"}",
+          "legendFormat": "p50 {{host_name}}",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_p99_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"}",
+          "legendFormat": "p99 {{host_name}}",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_p999_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"}",
+          "legendFormat": "p999 {{host_name}}",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "cassandra_client_request_latency_max_microseconds{job=\"cassandra\", cluster=\"$cluster_b\", cassandra_operation=\"write\"}",
+          "legendFormat": "max {{host_name}}",
+          "range": true,
+          "refId": "D"
         }
       ],
       "timeFrom": "${b_len_s}s-${b_len_d}d",
       "timeShift": "${b_since_end_s}s-${b_since_end_d}d",
-      "title": "Write latency ${percentile} distribution: B ${cluster_b:text}",
-      "type": "heatmap"
+      "title": "Write Latency Percentile Ladder: B ${cluster_b:text}",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 38,

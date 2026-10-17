@@ -52,10 +52,19 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
                 writtenNames.add(outputName)
             }
 
+            // The installed kit.yaml gets the same __VAR__ substitution as a .template file, so an
+            // install arg (a sql password, an endpoint database) reaches every later reader:
+            // start, stop, status, the sql command and TARGET_* injection. A kit.yaml with no
+            // placeholder renders unchanged.
             val installYamlContent = resolver.readInstallYamlContent(source)
             if (installYamlContent != null) {
-                val renderedYaml = patchKitYaml(installYamlContent, extraVars)
-                File(tempDir, Constants.Kit.CONFIG_FILE).writeText(renderedYaml)
+                val resolvedYaml =
+                    templateService.renderKitTemplate(
+                        templateContent = installYamlContent,
+                        vars = vars,
+                        extraVars = extraVars,
+                    ) { unresolved -> allUnresolved.addAll(unresolved) }
+                File(tempDir, Constants.Kit.CONFIG_FILE).writeText(patchKitYaml(resolvedYaml, extraVars))
             }
 
             // Persist all resolved kit arg values so later phases (start, stop, etc.) can

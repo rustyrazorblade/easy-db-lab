@@ -121,7 +121,9 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
    query when a page shares one, push with structured metadata), then the Loki flush (`LokiTailFlush.SHUTDOWN_PATH`)
    and `stop loki`. `TraceExport` per cluster (`{ resource.cluster = "x" }`, `limit` 20000 and `spss=1`, windows ≤ 168h split
    in half while full, searched in waves and then fetched and replayed on a fixed pool of `TRACE_EXPORT_PARALLELISM`,
-   fetch by id, only the cluster's resource spans, base64 ids to hex, OTLP/JSON to the writer), then
+   fetch by id, only the cluster's resource spans, base64 ids to hex, OTLP/JSON to the writer; the fetch phase emits
+   `Export.TracesFetched` through a `ProgressThrottle` (`ProgressPolicy.TRACE_FETCH`: every 1000 traces or 30 seconds,
+   and at the end)), then
    `WriterTempoDrain` (idle, then every completed live-store block `flushed`, listed in the work directory) and
    `stop tempo`.
 4. `MetricsExport` per tenant: the live blocks overlapping the clusters' ranges staged at `metrics/mimir/<tenant>/`

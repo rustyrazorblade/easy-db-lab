@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.export.query
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -9,6 +10,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.util.Base64
@@ -103,6 +105,31 @@ class TraceExportTest {
 
     private companion object {
         const val HOLD_SECONDS = 5L
+    }
+
+    @Test
+    fun `the fetch phase reports how many of the cluster's traces were fetched, every so many, and once at the end`() {
+        traces = (1..5).associate { "e%030x".format(it) to start.epochSecond + it * 60L }
+        val reported = Collections.synchronizedList(mutableListOf<Event.Export.TracesFetched>())
+        val every = ProgressPolicy(everyItems = 2, interval = Duration.ofHours(1), clock = Clock.systemUTC())
+
+        TraceExport(backends::forTenant, backends::forTenant, progress = every, onProgress = { reported += it })
+            .export("acme", "x-1", range)
+
+        assertThat(reported).containsExactly(
+            Event.Export.TracesFetched("x-1", "acme", 2, 5),
+            Event.Export.TracesFetched("x-1", "acme", 4, 5),
+            Event.Export.TracesFetched("x-1", "acme", 5, 5),
+        )
+    }
+
+    @Test
+    fun `a cluster with no traces reports no fetch progress`() {
+        val reported = mutableListOf<Event.Export.TracesFetched>()
+
+        TraceExport(backends::forTenant, backends::forTenant, onProgress = { reported += it }).export("acme", "x-1", range)
+
+        assertThat(reported).isEmpty()
     }
 
     @Test

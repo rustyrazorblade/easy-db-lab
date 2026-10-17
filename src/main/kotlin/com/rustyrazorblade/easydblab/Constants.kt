@@ -1270,6 +1270,12 @@ object Constants {
              */
             const val TRACE_SEARCH_LIMIT = 20_000
 
+            /** A trace export reports its fetch progress after this many more traces... */
+            const val TRACE_PROGRESS_EVERY_TRACES = 1000
+
+            /** ...or this many seconds after its last report, whichever comes first. */
+            const val TRACE_PROGRESS_INTERVAL_SECONDS = 30L
+
             /**
              * How much longer a trace export waits for the reader's Tempo than Tempo waits for a cold
              * read (`LocalStack.COLD_READ_TIMEOUT_SECONDS`), so Tempo's own answer arrives first.

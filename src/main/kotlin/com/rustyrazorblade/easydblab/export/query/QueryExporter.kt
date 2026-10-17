@@ -202,7 +202,7 @@ class QueryExporter(
             // Its index head is uploaded as it stops.
             writer.stop(Constants.LocalStack.Services.LOKI)
         }
-        val traceExport = TraceExport(reader::http, writer::http)
+        val traceExport = TraceExport(reader::http, writer::http, onProgress = eventBus::emit)
         val traces =
             plan.clusters.entries.fold(SignalCount.ZERO) { count, (cluster, tenant) ->
                 count +

@@ -6,7 +6,8 @@
 # (the MemsqlCluster, its PVCs, the kit's Secrets), writes the license (trailing newline stripped)
 # and the root password to Secrets, and only then applies the MemsqlCluster with the sizes filled
 # in. The wait step waits for every pod and every leaf, and fails with SingleStore's license error,
-# with the key masked, and the --force advice when the license refuses the cluster.
+# with the key masked, and the --force advice when the license refuses the cluster. A wait that
+# times out gives the last error of the pod query and of SHOW LEAVES, with the password masked.
 #
 # kubectl is stubbed: it records each call's arguments one per line, keeps the stdin of each
 # apply, copies every --from-file it is given, and answers the queries from STUB_* variables.
@@ -63,9 +64,16 @@ case " \$* " in
   *" get memsqlcluster "*"creationTimestamp"*) echo "2026-10-16T12:00:00Z" ;;
   *" get memsqlcluster "*) printf '%s' "\${STUB_CR_STATUS:-}" ;;
   *" logs "*) printf '%s\n' "\${STUB_OPERATOR_LOG:-}" ;;
+  *" get pods "*"Ready"*)
+    if [ -n "\${STUB_PODS_ERROR:-}" ]; then echo "\${STUB_PODS_ERROR}" >&2; exit 1; fi
+    printf '%s\n' \${STUB_READY:-} ;;
   *" get pods "*) printf '%s\n' \${STUB_READY:-} ;;
   *" get pod "*) echo "node-singlestore-master-0" ;;
-  *" exec "*) cat > /dev/null; printf '%s\n' "\${STUB_LEAVES:-}" ;;
+  *" exec "*)
+    # A failing mysql echoes the password line it read, so the test sees whether it is masked.
+    IFS= read -r password; cat > /dev/null
+    if [ -n "\${STUB_LEAVES_ERROR:-}" ]; then echo "\${STUB_LEAVES_ERROR} \${password}" >&2; exit 1; fi
+    printf '%s\n' "\${STUB_LEAVES:-}" ;;
 esac
 exit 0
 EOF
@@ -119,7 +127,6 @@ for SH in "${SHELLS[@]}"; do
     fail "[${SH}] the license Secret is not the key with its newline stripped: $(od -c "${license%.args}.file")"
   password="$(grep -l -Fx -- "singlestore-root-password" "${WORK}"/calls/*.args | head -1)"
   [ "$(cat "${password%.args}.file" 2>/dev/null)" = "p w*'d" ] || fail "[${SH}] the root password Secret does not hold the password"
-  grep -Fxq -- "--from-file=ROOT_PASSWORD=" "${password}" 2>/dev/null
   grep -Eq -- "^--from-file=ROOT_PASSWORD=" "${password}" || fail "[${SH}] the password Secret key is not ROOT_PASSWORD"
   for args in "${WORK}"/calls/*.args; do
     grep -Fq -- "${LICENSE_KEY}" "${args}" && fail "[${SH}] the license is on a command line"
@@ -161,6 +168,23 @@ for SH in "${SHELLS[@]}"; do
   STUB_ENV=("STUB_READY=True True" "STUB_LEAVES=")
   in_kit singlestore_wait && fail "[${SH}] the wait passed with two of four pods ready"
   grep -qi "timed out" "${WORK}/out.txt" || fail "[${SH}] the wait did not say it timed out: $(cat "${WORK}/out.txt")"
+
+  # A wrong password or a refused connection is told apart from a slow cluster: the timeout gives
+  # the last error of each query, with the password masked.
+  tests_run=$((tests_run + 1))
+  setup
+  STUB_ENV=("STUB_READY=True True True True" "STUB_LEAVES_ERROR=ERROR 1045 (28000): Access denied for user 'root'@'localhost'")
+  in_kit singlestore_wait && fail "[${SH}] the wait passed with SHOW LEAVES failing"
+  grep -qi "timed out" "${WORK}/out.txt" || fail "[${SH}] the wait did not say it timed out: $(cat "${WORK}/out.txt")"
+  grep -Fq "ERROR 1045 (28000): Access denied" "${WORK}/out.txt" || fail "[${SH}] the timeout does not give the SHOW LEAVES error: $(cat "${WORK}/out.txt")"
+  grep -Fq -- "p w*'d" "${WORK}/out.txt" && fail "[${SH}] the timeout printed the password: $(cat "${WORK}/out.txt")"
+
+  tests_run=$((tests_run + 1))
+  setup
+  STUB_ENV=("STUB_PODS_ERROR=The connection to the server 10.0.0.1:6443 was refused")
+  in_kit singlestore_wait && fail "[${SH}] the wait passed with the pod query failing"
+  grep -Fq "The connection to the server 10.0.0.1:6443 was refused" "${WORK}/out.txt" ||
+    fail "[${SH}] the timeout does not give the pod query error: $(cat "${WORK}/out.txt")"
 
   tests_run=$((tests_run + 1))
   setup

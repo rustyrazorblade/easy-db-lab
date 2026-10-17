@@ -115,23 +115,51 @@ ss_license_refusal() {
   printf '%s\n' "${line}"
 }
 
-# Prints how many SingleStore pods are Ready.
+# Prints how many SingleStore pods are Ready. The query's error goes to file $1, which is empty
+# when it succeeded.
 ss_ready_pods() {
   kubectl get pods -l "${SS_POD_SELECTOR}" -n "${SS_NAMESPACE}" \
-    -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' 2> /dev/null |
+    -o jsonpath='{range .items[*]}{.status.conditions[?(@.type=="Ready")].status}{"\n"}{end}' 2> "$1" |
     grep -c '^True$' || true
 }
 
-# Prints how many leaves the master aggregator reports online.
+# Prints how many leaves the master aggregator reports online. SingleStore's or kubectl's error
+# goes to file $1, which is empty when the query succeeded.
 ss_online_leaves() {
-  echo "SHOW LEAVES;" | ss_mysql 2> /dev/null | grep -ci 'online' || true
+  echo "SHOW LEAVES;" | ss_mysql 2> "$1" | grep -ci 'online' || true
+}
+
+# Prints, for the timeout message, the error the last pod query and the last SHOW LEAVES left in
+# directory $1, with the root password masked, so a wrong password or a refused connection reads
+# differently from a slow cluster. Prints nothing when neither failed.
+ss_last_errors() {
+  local dir="$1" name text
+  for name in pods leaves; do
+    [ -s "${dir}/${name}.err" ] || continue
+    text="$(cat "${dir}/${name}.err")"
+    [ -z "${SINGLESTORE_PASSWORD:-}" ] || text="${text//"${SINGLESTORE_PASSWORD}"/****}"
+    case "${name}" in
+      pods) printf '\nThe last pod query failed: %s' "${text}" ;;
+      leaves) printf '\nThe last SHOW LEAVES failed: %s' "${text}" ;;
+    esac
+  done
 }
 
 # The wait step: succeeds once every pod (the master, --aggregators child aggregators and
 # --leaves leaves) is Ready and the master reports every leaf online. Fails at once on a license
-# refusal, with SingleStore's error and the fix, and at the end of the wait with the pods' state.
+# refusal, with SingleStore's error and the fix, and at the end of the wait with the pods' state
+# and the last error of each query.
 singlestore_wait() {
-  local expected=$((1 + SINGLESTORE_AGGREGATORS + SINGLESTORE_LEAVES)) attempt refusal ready online=0
+  local errors status=0
+  errors="$(mktemp -d)"
+  ss_wait_for_cluster "${errors}" || status=$?
+  rm -rf "${errors}"
+  return "${status}"
+}
+
+# The wait loop of singlestore_wait, which keeps each query's last error in directory $1.
+ss_wait_for_cluster() {
+  local errors="$1" expected=$((1 + SINGLESTORE_AGGREGATORS + SINGLESTORE_LEAVES)) attempt refusal ready=0 online=0
   echo "Waiting for ${expected} SingleStore pods and ${SINGLESTORE_LEAVES} online leaves..."
   for attempt in $(seq 1 "${SS_WAIT_ATTEMPTS}"); do
     if refusal="$(ss_license_refusal)"; then
@@ -140,9 +168,9 @@ The license does not cover this cluster. Re-run 'kit install singlestore --force
 args and smaller --leaf-cores and --leaf-memory, then 'singlestore start'."
       return 1
     fi
-    ready="$(ss_ready_pods)"
+    ready="$(ss_ready_pods "${errors}/pods.err")"
     if [ "${ready}" -ge "${expected}" ]; then
-      online="$(ss_online_leaves)"
+      online="$(ss_online_leaves "${errors}/leaves.err")"
       if [ "${online}" -ge "${SINGLESTORE_LEAVES}" ]; then
         echo "SingleStore is ready: ${expected} pods, ${SINGLESTORE_LEAVES} leaves online"
         return 0
@@ -151,5 +179,5 @@ args and smaller --leaf-cores and --leaf-memory, then 'singlestore start'."
     [ "${attempt}" -lt "${SS_WAIT_ATTEMPTS}" ] && sleep "${SS_WAIT_INTERVAL}"
   done
   kubectl get pods -l "${SS_POD_SELECTOR}" -n "${SS_NAMESPACE}" -o wide >&2 || true
-  ss_cluster_fail "timed out waiting for SingleStore: ${ready} of ${expected} pods Ready, ${online} of ${SINGLESTORE_LEAVES} leaves online"
+  ss_cluster_fail "timed out waiting for SingleStore: ${ready} of ${expected} pods Ready, ${online} of ${SINGLESTORE_LEAVES} leaves online$(ss_last_errors "${errors}")"
 }

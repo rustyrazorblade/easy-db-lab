@@ -1,8 +1,8 @@
 ## 1. Pod logs on the data mount
 
-- [ ] 1.1 In `services/start-k3s-server.sh` and `services/start-k3s-agent.sh`, move `/var/log/pods` to `/mnt/db1/container-logs` when `/mnt/db1` is mounted and `/var/log/pods` is not a symlink, as `packer/base/install/start_k3s_*.sh` do
-- [ ] 1.2 Check that `OtelManifestBuilder` mounts `/mnt/db1/container-logs` on every node that runs pods, and that the `file_log/containers` and `file_log/system` globs still match
-- [ ] 1.3 Update `docs/reference/log-infrastructure.md` and `docs/user-guide/loki.md` if they describe the old location
+- [x] 1.1 In `services/start-k3s-server.sh` and `services/start-k3s-agent.sh`, move `/var/log/pods` to `/mnt/db1/container-logs` when `/mnt/db1` is mounted and `/var/log/pods` is not a symlink, as `packer/base/install/start_k3s_*.sh` do
+- [x] 1.2 Check that `OtelManifestBuilder` mounts `/mnt/db1/container-logs` on every node that runs pods, and that the `file_log/containers` and `file_log/system` globs still match
+- [x] 1.3 Update `docs/reference/log-infrastructure.md` and `docs/user-guide/loki.md` if they describe the old location
 
 ## 2. Framework: password support
 

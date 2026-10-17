@@ -326,6 +326,15 @@ class KitInfoTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a library under bin lib is not listed as a command`() {
+        val output =
+            KitInfo.buildInfoText(syntheticConfig, listOf("bin/start.sh.template", "bin/lib/target-db.sh", "bin/lib/helper.sh.template"))
+
+        assertThat(output).contains("Start the workload")
+        assertThat(output).doesNotContain("lib/", "target-db", "helper")
+    }
+
+    @Test
     fun `capability commands appear in command list`() {
         val config = KitConfig(name = "mykit", capabilities = listOf(KitCapability(type = "sql")))
         val commands = KitInfo.buildCommandList(config, emptySet(), emptyList())

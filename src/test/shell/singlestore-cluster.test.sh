@@ -152,6 +152,12 @@ for SH in "${SHELLS[@]}"; do
 
   tests_run=$((tests_run + 1))
   setup
+  STUB_ENV=("STUB_READY=True True True True" "STUB_LEAVES=$(printf 'h1\t3306\tonline\nh2\t3306\tonline\nh3\t3306\tonline')"
+    "STUB_OPERATOR_LOG=set license: License_type Enterprise, License_capacity 2 units, expires in 30 days")
+  in_kit singlestore_wait || fail "[${SH}] a license the server accepted was read as a refusal: $(cat "${WORK}/out.txt")"
+
+  tests_run=$((tests_run + 1))
+  setup
   STUB_ENV=("STUB_READY=True True" "STUB_LEAVES=")
   in_kit singlestore_wait && fail "[${SH}] the wait passed with two of four pods ready"
   grep -qi "timed out" "${WORK}/out.txt" || fail "[${SH}] the wait did not say it timed out: $(cat "${WORK}/out.txt")"

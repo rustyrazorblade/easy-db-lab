@@ -136,9 +136,10 @@ class KitInfo : BaseInstallCommand() {
             annotatedCommands: List<Pair<String, String>> = emptyList(),
             hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
         ): String {
+            // Only a top-level bin/ file is a command; bin/lib/ holds what the scripts source.
             val scriptCommandNames =
                 templateFiles
-                    .filter { it.startsWith("bin/") }
+                    .filter { it.startsWith("bin/") && '/' !in it.removePrefix("bin/") }
                     .map {
                         it
                             .removePrefix("bin/")

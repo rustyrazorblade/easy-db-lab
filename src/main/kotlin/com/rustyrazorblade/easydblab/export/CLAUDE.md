@@ -114,7 +114,9 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
    `ClusterNotFound`, `ClusterInSeveralTenants`, `ClusterTenantUnknown`, `ExperimentNotFound`, `InvalidDiscoveredCluster`; then
    `Export.ClustersSelected`, which for `--cluster` says where each tenant came from (`ClusterTenantResolver.resolveWithSources`:
    `workspace` or `query`; `QueryPlan.tenantSources`), as `TenantChosen` does for `--experiment`.
-3. The writer (`ExportWriterStack`: a Loki with the offline stack's filesystem layout and `reject_old_samples: false`, a
+3. The writer (`ExportWriterStack`: a Loki with the offline stack's filesystem layout, `reject_old_samples: false` and
+   `ingester.wal.disk_full_threshold: 0` (its WAL is in the work directory on the operator's disk, and at Loki 3.7.8's
+   default 0.90 every push is refused with "Ingester is shutting down" once that disk is 90% used), a
    Tempo with the local backend and both WAL `ingestion_time_range_slack: 87600h`, never 0; both as the operator; no
    Mimir, whose shipper needs an xattr a macOS bind mount lacks). `LogExport` per cluster (forward pages of
    `query_range` with `X-Loki-Response-Encoding-Flags: categorize-labels`, a nanosecond tie-break, a one-nanosecond

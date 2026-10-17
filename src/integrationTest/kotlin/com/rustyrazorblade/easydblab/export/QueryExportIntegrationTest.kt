@@ -37,6 +37,7 @@ import org.junit.jupiter.api.Order
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestMethodOrder
+import org.junit.jupiter.api.io.CleanupMode
 import org.junit.jupiter.api.io.TempDir
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.Network
@@ -129,9 +130,10 @@ class QueryExportIntegrationTest {
 
     private fun freePort(): Int = ServerSocket(0).use { it.localPort }
 
+    /** The directory is kept when the class fails, so the stacks' saved `compose.log`s survive it. */
     @BeforeAll
     fun export(
-        @TempDir tempDir: File,
+        @TempDir(cleanup = CleanupMode.ON_SUCCESS) tempDir: File,
     ) {
         root = tempDir
         network = Network.builder().createNetworkCmdModifier { it.withName(networkName) }.build()
@@ -195,7 +197,12 @@ class QueryExportIntegrationTest {
                 eventBus = eventBus,
             )
         val zip = File(root, name)
-        export(exporter, ExportTarget.of(zip))
+        try {
+            export(exporter, ExportTarget.of(zip))
+        } catch (e: Exception) {
+            val logs = events.filterIsInstance<Event.Export.Failed>().flatMap { it.logs }
+            throw AssertionError("The $name export failed; the stacks' compose logs are kept in $logs", e)
+        }
         return Run(zip, events)
     }
 

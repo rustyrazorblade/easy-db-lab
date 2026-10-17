@@ -148,6 +148,16 @@ class ExportStacksTest {
     }
 
     @Test
+    fun `the writer's Loki takes every line however full the operator's disk is`() {
+        val loki = String(ExportWriterStack.compose("acme", owner = "501:20").getValue("config/loki/loki.yaml"))
+
+        // Loki 3.7.8 refuses every push ("Ingester is shutting down") once the disk under its WAL is
+        // 90% used; the writer's WAL is in the work directory on the operator's own disk.
+        assertThat(scalar(loki, "ingester.wal.disk_full_threshold")).isEqualTo("0")
+        assertThat(scalar(loki, "ingester.wal.enabled")).isEqualTo("true")
+    }
+
+    @Test
     fun `every writer image is a registered pin`() {
         assertThat(compose(ExportWriterStack.compose("acme", "1:1")).services.values.map { it.image }).allSatisfy {
             assertThat(LocalImages.all).contains(it)

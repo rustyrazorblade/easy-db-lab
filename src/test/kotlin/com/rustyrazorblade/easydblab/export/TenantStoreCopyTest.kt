@@ -20,17 +20,56 @@ import java.util.zip.GZIPOutputStream
 
 /**
  * A tenant export copies the tenant's store consistently while the account compactor runs: Loki's
- * index table by table, redoing a table replaced mid-copy; Tempo's blocks by one listing, with the
- * zip's own tenant index; Mimir's blocks from one read of the bucket index, with the zip's own index
- * last; the immutable objects last. Everything lands under `data/` with its store key.
+ * index table by table, redoing a table replaced mid-copy, with the shared multi-tenant files split per
+ * tenant by Loki's compactor and only the tenant's own files kept; Tempo's blocks by one listing, with
+ * the zip's own tenant index; Mimir's blocks from one read of the bucket index, with the zip's own
+ * index last; the immutable objects last. Everything lands under `data/` with its store key.
  */
 class TenantStoreCopyTest {
     @TempDir
-    lateinit var scratch: File
+    lateinit var work: File
+
+    /**
+     * Plays Loki's compactor over the copy: each shared file at a table root holds the tenants named in
+     * its content (comma-separated), becomes one `<table>/<tenant>/split-<name>` per tenant, and is
+     * removed, unless [leaveShared].
+     */
+    private class FakeSplit : LokiIndexSplit {
+        /** The files of the store, relative to it, when each split ran. */
+        val seen = mutableListOf<List<String>>()
+        var leaveShared = false
+        var failure: Exception? = null
+
+        override fun split(
+            store: File,
+            project: File,
+        ) {
+            seen +=
+                store
+                    .walkTopDown()
+                    .filter { it.isFile }
+                    .map { it.relativeTo(store).invariantSeparatorsPath }
+                    .sorted()
+                    .toList()
+            failure?.let { throw it }
+            File(store, "loki/index").listFiles().orEmpty().forEach { table ->
+                table.listFiles().orEmpty().filter { it.isFile }.forEach { shared ->
+                    shared.readText().split(',').forEach { tenant ->
+                        File(
+                            table,
+                            "$tenant/split-${shared.name}",
+                        ).apply { parentFile.mkdirs() }.writeText("$tenant part of ${shared.name}")
+                    }
+                    if (!leaveShared) shared.delete()
+                }
+            }
+        }
+    }
 
     private val store = FakeExportStore()
     private val clock = Clock.fixed(Instant.parse("2026-10-15T12:00:00Z"), ZoneOffset.UTC)
-    private val copy = TenantStoreCopy(store, MimirBucketIndexWriter(clock), TempoTenantIndexWriter(clock))
+    private val split = FakeSplit()
+    private val copy = TenantStoreCopy(store, MimirBucketIndexWriter(clock), TempoTenantIndexWriter(clock), split)
 
     /** Every entry the copy put, in order, with its bytes. */
     private val entries = linkedMapOf<String, ByteArray>()
@@ -49,7 +88,7 @@ class TenantStoreCopyTest {
             override fun putDirectory(path: String) = Unit
         }
 
-    private fun run(tenant: String = "acme") = copy.copy(copy.plan(tenant), ExportRecorder(sink), scratch)
+    private fun run(tenant: String = "acme") = copy.copy(copy.plan(tenant), ExportRecorder(sink), work)
 
     private fun putGzip(
         key: String,
@@ -105,7 +144,7 @@ class TenantStoreCopyTest {
             store.put("grafana/annotations/$tenant/20261015-100000_c-$tenant.json", "[]")
             store.put("reports/$tenant/exp/index.html", "pointer of $tenant")
         }
-        store.put("loki/index/index_20376/ingester-1.tsdb.gz", "multi-tenant head index")
+        store.put("loki/index/index_20376/ingester-1.tsdb.gz", "acme,beta")
         store.put("tempo/acme/index.json.gz", "the live tenant index")
         store.put("tempo/acme/index.pb.zst", "the live tenant index")
     }
@@ -118,7 +157,7 @@ class TenantStoreCopyTest {
 
         assertThat(entries.keys).containsExactlyInAnyOrder(
             "data/loki/index/index_20376/acme/compacted-acme.tsdb.gz",
-            "data/loki/index/index_20376/ingester-1.tsdb.gz",
+            "data/loki/index/index_20376/acme/split-ingester-1.tsdb.gz",
             "data/tempo/acme/t-acme/data.parquet",
             "data/tempo/acme/t-acme/meta.json",
             "data/tempo/acme/index.json.gz",
@@ -275,6 +314,78 @@ class TenantStoreCopyTest {
 
         assertThat(entries.keys.filter { it.startsWith("data/loki/index/") })
             .containsExactly("data/loki/index/index_1/acme/compacted.tsdb.gz")
+    }
+
+    @Test
+    fun `the zip's Loki index holds only the tenant's own files, the shared files split per tenant and left out`() {
+        twoTenants()
+
+        run()
+
+        val index = entries.filterKeys { it.startsWith("data/loki/index/") }
+        assertThat(index.keys).containsExactlyInAnyOrder(
+            "data/loki/index/index_20376/acme/compacted-acme.tsdb.gz",
+            "data/loki/index/index_20376/acme/split-ingester-1.tsdb.gz",
+        )
+        assertThat(index["data/loki/index/index_20376/acme/split-ingester-1.tsdb.gz"]?.decodeToString())
+            .isEqualTo("acme part of ingester-1.tsdb.gz")
+        assertThat(index.values.map { it.decodeToString() }).noneMatch { it.contains("beta") }
+    }
+
+    @Test
+    fun `the split runs once, on a copy of each table's shared files and the tenant's own files, never another tenant's`() {
+        twoTenants()
+        store.put("loki/index/index_20377/ingester-2.tsdb.gz", "beta")
+
+        run()
+
+        assertThat(split.seen).containsExactly(
+            listOf(
+                "loki/index/index_20376/acme/compacted-acme.tsdb.gz",
+                "loki/index/index_20376/ingester-1.tsdb.gz",
+                "loki/index/index_20377/ingester-2.tsdb.gz",
+            ),
+        )
+        assertThat(entries.keys).noneMatch { it.contains("index_20377") }
+    }
+
+    @Test
+    fun `an index with no shared file needs no split, and the tenant's files are copied as they are`() {
+        store.put("loki/acme/fp/chunk", "c")
+        store.put("loki/index/index_1/acme/compacted.tsdb.gz", "compacted")
+        store.put("loki/index/index_1/beta/compacted.tsdb.gz", "beta's")
+
+        run()
+
+        assertThat(split.seen).isEmpty()
+        assertThat(entries.keys.filter { it.startsWith("data/loki/index/") })
+            .containsExactly("data/loki/index/index_1/acme/compacted.tsdb.gz")
+    }
+
+    @Test
+    fun `a shared file left after the split fails the logs copy, naming the table and the file`() {
+        twoTenants()
+        split.leaveShared = true
+
+        assertThatThrownBy { run() }
+            .isInstanceOfSatisfying(ExportStepFailed::class.java) { failure ->
+                assertThat(failure.signal).isEqualTo(ExportSignal.LOGS)
+                assertThat(failure.cause).hasMessageContaining("index_20376").hasMessageContaining("ingester-1.tsdb.gz")
+            }
+        assertThat(entries.keys).noneMatch { it.startsWith("data/loki/index/") }
+    }
+
+    @Test
+    fun `a split that fails fails the logs copy, naming the step`() {
+        twoTenants()
+        split.failure = IllegalStateException("Loki's compactor exited")
+
+        assertThatThrownBy { run() }
+            .isInstanceOfSatisfying(ExportStepFailed::class.java) { failure ->
+                assertThat(failure.signal).isEqualTo(ExportSignal.LOGS)
+                assertThat(failure.step).contains("split")
+                assertThat(failure.cause).hasMessageContaining("Loki's compactor exited")
+            }
     }
 
     /**

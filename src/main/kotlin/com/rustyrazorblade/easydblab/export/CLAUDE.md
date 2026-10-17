@@ -19,9 +19,11 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
    `.zip`.
 3. `TenantExporter.export(target, tenant)`: `TenantStoreCopy.plan` lists everything (empty tenant →
    `Export.EmptyTenant`), the free-space check (`DiskSpace`; short → `Export.InsufficientSpace`, nothing written),
-   `Export.SizeEstimated`, then `ExportZipWriter.write` streams `ExportStackFiles` and the copy into the zip, and
-   `Export.Completed` (with `excluded = [profiles, 1016]`). Any `ExportStepFailed` becomes `Export.Failed(path,
-   signal, step, reason)` and `CommandFailedException`.
+   `Export.SizeEstimated`, then the work directory (`ExportWorkDirectory`, `<path>.work-<id>/`), then
+   `ExportZipWriter.write` streams `ExportStackFiles` and the copy into the zip, and `Export.Completed` (with
+   `excluded = [profiles, 1016]`). Any `ExportStepFailed` becomes `Export.Failed(path, signal, step, reason, logs)`
+   (`logs`: the split's `loki/split/compose.log` when it ran) and `CommandFailedException`. `Export.WorkDirectoryKept`
+   is last, on success and failure; the work directory is never removed (owner decision D17).
 
 ## Pieces
 
@@ -42,15 +44,34 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
   `ExportZipSink.put` refuses a path that leaves the stack.
 - `ExportRecorder` — wraps the sink, keeps every entry's size and source time and each `meta.json`'s bytes;
   `directory(prefix)` is a `BlockDirectory` of what is in the zip.
-- `TenantStoreCopy` — the safe order (design D15): Loki index table by table, each table read into a scratch
-  directory first and redone from a fresh listing when a listed file is gone (`Constants.Export.LOKI_TABLE_ATTEMPTS`;
-  a table's files are its root files and `<table>/<tenant>/`); Tempo by one listing (blocks with `meta.json` and no
+- `TenantStoreCopy` — the safe order (design D15): Loki index first (`LokiIndexCopy`, below); Tempo by one listing (blocks with `meta.json` and no
   `meta.compacted.json`), then `TempoTenantIndexWriter`; Mimir from one read of `bucket-index.json.gz` (blocks minus
   deletion marks; marker files left out), then `MimirBucketIndexWriter` last; then the immutable objects (Loki
   chunks, annotation backups, reports). Everything goes to `data/<key>`, except Loki chunks: the offline Loki
   reads a filesystem store, which names a v13 chunk `<tenant>/<fingerprint>/<base64 of from:through:checksum>`
   (`LokiFilesystemLayout.chunkPath`; S3 keeps the raw name), so the export writes them under that name. The
   index keeps its keys. Mimir blocks with no bucket index fail.
+- `LokiIndexCopy` — the Loki index of a tenant export (owner decision 22). Loki's ingesters upload shared multi-tenant
+  TSDB files at each table's root, `<epoch>-<ingester id>-<nanos>.tsdb.gz` with the ingester id `<tenant>.<cluster>`,
+  holding every tenant that ingester received; only Loki's compactor splits them into `<table>/<tenant>/`. Each table
+  (its root files and `<table>/<tenant>/`) is read into `<work>/loki/store/loki/index/<table>/`, redone from a fresh
+  listing when a listed file is gone (`Constants.Export.LOKI_TABLE_ATTEMPTS`). When any root file was copied,
+  `LokiIndexSplit` runs; a root file left after it fails the `logs` step; then only `<table>/<tenant>/` files go into
+  the zip. No root file copied, no container.
+- `DockerLokiIndexSplit` — the split: one `docker compose` project (`<work>/loki/split/`, `edl-export-loki-<id>`) of
+  `LocalImages.LOKI`, `-target=compactor`, the cluster's `loki.yaml` with the offline filesystem storage
+  (`ExportedFiles.lokiConfig`) over the copy mounted read-write at `/store`, `network_mode: none`, no credentials, the
+  operator's uid:gid (`ExportWorkDirectory.ownerOf`), `-compactor.retention-enabled=false`,
+  `-compactor.deletion-mode=disabled`, memberlist on `127.0.0.1` (with no network Loki 3.7.8 finds no interface
+  address and exits), compaction interval `Constants.Export.LokiSplit.COMPACTION_INTERVAL_SECONDS` (3.7.8 waits one
+  interval before the first pass and has no run-once mode). Done at the log line `msg="compactor started"`, which 3.7.8
+  writes after its first pass over every table; a container no longer running first, or the timeout, fails. Its logs
+  are saved (`ProjectRemoval`) and the project removed whatever happened. Verified on 3.7.8: each tenant gets one
+  `<table>/<tenant>/<nanos>-compactor-<from>-<through>-<checksum>.tsdb.gz` (merged with its existing per-tenant
+  files), the root file is removed, a later pass leaves the split tables unchanged, and the offline read-path Loki
+  answers the tenant's newest lines from the split files.
+- `ExportWorkDirectory` — `<path>.work-<id>/` (`Constants.Export.WORK_INFIX`), its size and owner; kept, never
+  removed. `QueryWorkDirectory` builds on it.
 - `MimirBucketIndexWriter` / `TempoTenantIndexWriter` — built from a `BlockDirectory` (`FileBlockDirectory` on disk,
   for section 8; the recorder in the zip), never from a copy list, and checked with `requireExactBlocks`: an index
   that leaves out or adds a block, or a block with no `meta.json`, throws `IndexMismatchException`. Mimir: version 2,
@@ -63,7 +84,7 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
   data directory is mounted read-only and the offline Tempo otherwise fails to create its store and restarts forever
   (`ExportWithoutTracesIntegrationTest`).
 - `ExportSignal` / `ExportStepFailed` / `exportStep` — every step names its signal and what it was doing,
-  listings, clean-up, the scratch and work directories and the zip file and its move (`stack`) included, so every
+  listings, clean-up, the work directories and the zip file and its move (`stack`) included, so every
   failure becomes `Export.Failed`. A query export's `Export.Failed` also lists the stacks' saved `compose.log`s.
 
 ## Flow (query export: `--cluster`, `--experiment`), package `export.query`
@@ -72,7 +93,7 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
 
 1. `CheckedExportStoreFactory.openForQuery()` → `QueryStoreAccess(store, bucket, region, profile)`: the read check, and an
    AWS profile, which the reader's signer reads `~/.aws` with (`Export.AwsProfileRequired` for access keys).
-   `QueryWorkDirectory.create(target)`: `<path>.work-<id>/` (`Constants.Export.Query.WORK_INFIX`) with `reader/`,
+   `QueryWorkDirectory.create(target)`: `<path>.work-<id>/` (`ExportWorkDirectory`, `Constants.Export.WORK_INFIX`) with `reader/`,
    `writer/{store,state/loki,state/tempo}`, `metrics/` and `projects/`, made by the operator. It is never removed;
    `Export.WorkDirectoryKept(path, bytes)` is the last event, on success and on failure (owner decision D17).
 2. The reader (`QueryRuntime.reader`, `ExportReaderStack`: `StoreAccessPart` + `BackendsPart` of the live stack, no
@@ -131,8 +152,10 @@ reader's override puts MinIO on the signer's `store-egress` network (see `locals
 
 Unit: `ExportSelectorTest`, `ExportZipWriterTest`, `MimirBucketIndexWriterTest`, `TempoTenantIndexWriterTest`,
 `TenantStoreCopyTest` and `TenantExporterTest` (over `FakeExportStore`, an in-memory bucket whose `beforeOpen` hook
-plays the compactor), `ExportStackFilesTest`, `ObservabilityExportTest`, `ExportModuleTest`. Integration:
+plays the compactor, and a fake `LokiIndexSplit` that plays Loki's), `DockerLokiIndexSplitTest` (over a fake
+`ComposeCli`), `ExportStackFilesTest`, `ObservabilityExportTest`, `ExportModuleTest`. Integration:
 `TenantExportIntegrationTest` (MinIO filled by the cluster's writers; listing unchanged; only the tenant's data;
+the Loki index split by the real compactor from one shared file of both tenants, no file naming or holding the other;
 the unzipped stack opened with `docker compose up` on an internal network and queried through its Grafana).
 Query export unit tests in `export/query/` (over `FakeBackends`, one `ObservabilityHttp` per tenant header): the
 resolver, discovery, ranges, log, trace and metrics copies, the stacks, thanos, the drain and `QueryExporterTest`.

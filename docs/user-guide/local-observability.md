@@ -179,14 +179,26 @@ easy-db-lab observability export ~/acme-export.zip --tenant acme
 
 The zip holds the tenant's metrics, logs and traces, its annotation backups and its reports, the stack (`compose.yml` and its configuration), the dashboards, and a `README.txt`. Profiles are not included ([#1016](https://github.com/rustyrazorblade/easy-db-lab/issues/1016)); the command and the README both say so. The command works from any directory, not only a cluster workspace.
 
-The export reads the bucket with your AWS profile, like `local create`, and writes only the zip. Nothing in the bucket is written, changed or deleted, and nothing is uploaded.
+The export reads the bucket with your AWS profile, like `local create`, and writes only the zip and a work directory beside it. Nothing in the bucket is written, changed or deleted, and nothing is uploaded.
 
 ```
 Exporting tenant acme: 4210 objects, 812 MiB (851443712 bytes); 120511 MiB free
 Exported tenant acme to /Users/you/acme-export.zip (4231 files, 812 MiB before compression).
 Profiles are not included (issue #1016).
 Open it with: unzip /Users/you/acme-export.zip, then docker compose up in the directory it makes; see its README.txt.
+The work directory /Users/you/acme-export.zip.work-5c1d9e0a (3 MiB, 3145728 bytes) is kept; remove it yourself when you no longer need it.
 ```
+
+### Only the tenant's logs index
+
+Loki keeps the index of the logs it receives in shared files, one per upload, that hold every tenant the uploading Loki received. Only Loki's compactor splits them into one file per tenant. So that the zip holds nothing of another tenant, the export copies the shared files to its work directory and runs Loki's own compactor there, in a local docker container, to split them; then it puts only the tenant's files into the zip. This is the one step of a tenant export that needs docker:
+
+- The container is the stack's Loki image, so docker must be running and the image must be on the machine or downloadable.
+- It has no network and no AWS credentials, runs as you, and reads and writes only the copy in the work directory. Retention and deletion are off; it only splits and merges index files.
+- When no shared file was copied (the account compactor had already split them all), no container runs.
+- If the container fails, or a shared file is left after it ran, the export fails with the logs signal, leaves no zip, and names the container's saved log, `loki/split/compose.log` in the work directory.
+
+The work directory `<path>.work-<id>/` holds the copy of the index and the compactor's log. It is kept after the export, and after a failure; nothing removes it.
 
 ### What the export checks
 
@@ -201,7 +213,7 @@ Open it with: unzip /Users/you/acme-export.zip, then docker compose up in the di
 - The path must be a new `.zip` file in a directory that exists. An existing file is never overwritten.
 - The command lists everything it will copy, prints the size, and fails before copying anything when the disk the zip goes to does not have that much free space.
 - A tenant with no metrics, logs or traces fails and names the prefixes it looked under.
-- The zip is written under a temporary name beside the path (`<path>.partial-<random>`) and moved into place only when it is complete. When anything fails, no zip is left at the path, the temporary file is removed, and the error names what it was copying (metrics, logs, traces, annotations, reports) and the step.
+- The zip is written under a temporary name beside the path (`<path>.partial-<random>`) and moved into place only when it is complete. When anything fails, no zip is left at the path, the temporary file is removed, the work directory is kept, and the error names what it was copying (metrics, logs, traces, annotations, reports) and the step.
 
 The export is safe to run while clusters write to the store and the account compactor merges blocks: it copies each backend in an order that keeps the copy consistent, and writes the zip's own Mimir and Tempo indexes from the blocks that are in it.
 

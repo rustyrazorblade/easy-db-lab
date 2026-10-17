@@ -1205,11 +1205,35 @@ object Constants {
         /** How many times one Loki index table is copied again after an object listed in it went away mid-copy. */
         const val LOKI_TABLE_ATTEMPTS = 5
 
+        /** Between the zip's path and a random suffix: the export's work directory, kept afterwards. */
+        const val WORK_INFIX = ".work-"
+
+        /** A tenant export's split of Loki's shared index files, by Loki's own compactor in docker (owner decision 22). */
+        object LokiSplit {
+            /**
+             * The compactor's interval. Loki 3.7.8 waits one interval before its first pass, so it is
+             * short; a later pass leaves the split tables as they are.
+             */
+            const val COMPACTION_INTERVAL_SECONDS = 10L
+
+            /** What Loki 3.7.8 logs once its first pass over every table has finished. */
+            const val FIRST_PASS_DONE = "msg=\"compactor started\""
+
+            /** How long the first pass may take. */
+            const val TIMEOUT_MINUTES = 60L
+
+            /** The gap between two looks at the compactor's log. */
+            const val POLL_SECONDS = 2L
+
+            /**
+             * Where Loki's memberlist binds and advertises. With no network the container has no
+             * interface address, and Loki exits at start ("no useable address found").
+             */
+            const val MEMBERLIST_ADDRESS = "127.0.0.1"
+        }
+
         /** Exports by query (`--cluster`, `--experiment`): the temporary reader and writer stacks. */
         object Query {
-            /** Between the zip's path and a random suffix: the query export's work directory, kept afterwards. */
-            const val WORK_INFIX = ".work-"
-
             /** Each temporary stack's `docker compose logs`, saved in its directory before the stack is removed. */
             const val STACK_LOG_FILE = "compose.log"
 

@@ -3,8 +3,6 @@ package com.rustyrazorblade.easydblab.export.query
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.export.ExportStore
 import com.rustyrazorblade.easydblab.localstack.LocalStackSpec
-import java.io.File
-import java.nio.file.Files
 
 /**
  * The account bucket as a query export reads it: the store, and where the reader stack's signer finds
@@ -83,7 +81,7 @@ class DockerQueryRuntime(
             work.writer,
             StackDefinition(
                 project = "${work.project}-writer",
-                files = ExportWriterStack.compose(home, owner(work.root)),
+                files = ExportWriterStack.compose(home, work.owner()),
                 published =
                     mapOf(
                         Constants.LocalStack.Services.LOKI to listOf(Constants.K8s.LOKI_HTTP_PORT),
@@ -94,11 +92,5 @@ class DockerQueryRuntime(
         )
 
     override fun rewrite(work: QueryWorkDirectory): BlockRewrite =
-        ThanosBlockRewrite(runtime.compose, work.projects, work.project, owner(work.root), runtime.eventBus)
-
-    /** The `uid:gid` that owns [directory]: the operator, who made it. */
-    private fun owner(directory: File): String {
-        val path = directory.toPath()
-        return "${Files.getAttribute(path, "unix:uid")}:${Files.getAttribute(path, "unix:gid")}"
-    }
+        ThanosBlockRewrite(runtime.compose, work.projects, work.project, work.owner(), runtime.eventBus)
 }

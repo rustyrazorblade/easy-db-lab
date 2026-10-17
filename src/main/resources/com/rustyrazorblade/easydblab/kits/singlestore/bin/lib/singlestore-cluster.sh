@@ -23,8 +23,9 @@ SS_RUNTIME_VALUES="REDUNDANCY LEAF_COUNT LEAF_CORES LEAF_MEMORY_MB STORAGE_GB AG
 SS_WAIT_INTERVAL="${SS_WAIT_INTERVAL:-10}"
 SS_WAIT_ATTEMPTS="${SS_WAIT_ATTEMPTS:-120}"
 # A license refusal in the operator log or the MemsqlCluster status: an invalid key (1888), no key
-# (2446), or a cluster larger than the license allows.
-SS_LICENSE_REFUSAL='(error (1888|2446))|licen[cs]e[^"]*(invalid|exceed|capacity|limit|expired|not allow|required|units)'
+# (2446), or a cluster larger than the license allows. A line must say the license was refused,
+# not just mention its capacity, which the operator also logs for a key the server accepted.
+SS_LICENSE_REFUSAL='error (1888|2446)|licen[cs]e[^"]*(invalid|exceed|expired|not allow|required|refus)|(invalid|exceed|expired|refus)[^"]*licen[cs]e'
 
 ss_cluster_fail() {
   echo "Error: $*" >&2
@@ -130,7 +131,7 @@ ss_online_leaves() {
 # --leaves leaves) is Ready and the master reports every leaf online. Fails at once on a license
 # refusal, with SingleStore's error and the fix, and at the end of the wait with the pods' state.
 singlestore_wait() {
-  local expected=$((1 + SINGLESTORE_AGGREGATORS + SINGLESTORE_LEAVES)) attempt refusal ready
+  local expected=$((1 + SINGLESTORE_AGGREGATORS + SINGLESTORE_LEAVES)) attempt refusal ready online=0
   echo "Waiting for ${expected} SingleStore pods and ${SINGLESTORE_LEAVES} online leaves..."
   for attempt in $(seq 1 "${SS_WAIT_ATTEMPTS}"); do
     if refusal="$(ss_license_refusal)"; then
@@ -140,12 +141,15 @@ args and smaller --leaf-cores and --leaf-memory, then 'singlestore start'."
       return 1
     fi
     ready="$(ss_ready_pods)"
-    if [ "${ready}" -ge "${expected}" ] && [ "$(ss_online_leaves)" -ge "${SINGLESTORE_LEAVES}" ]; then
-      echo "SingleStore is ready: ${expected} pods, ${SINGLESTORE_LEAVES} leaves online"
-      return 0
+    if [ "${ready}" -ge "${expected}" ]; then
+      online="$(ss_online_leaves)"
+      if [ "${online}" -ge "${SINGLESTORE_LEAVES}" ]; then
+        echo "SingleStore is ready: ${expected} pods, ${SINGLESTORE_LEAVES} leaves online"
+        return 0
+      fi
     fi
     [ "${attempt}" -lt "${SS_WAIT_ATTEMPTS}" ] && sleep "${SS_WAIT_INTERVAL}"
   done
   kubectl get pods -l "${SS_POD_SELECTOR}" -n "${SS_NAMESPACE}" -o wide >&2 || true
-  ss_cluster_fail "timed out waiting for SingleStore: ${ready} of ${expected} pods Ready"
+  ss_cluster_fail "timed out waiting for SingleStore: ${ready} of ${expected} pods Ready, ${online} of ${SINGLESTORE_LEAVES} leaves online"
 }

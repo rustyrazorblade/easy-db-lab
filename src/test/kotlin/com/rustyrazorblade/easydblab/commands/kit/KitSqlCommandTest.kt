@@ -115,8 +115,7 @@ class KitSqlCommandTest : BaseKoinTest() {
     )
 
     /** Everything the command printed or reported, success and error alike. */
-    private fun allOutput(): String =
-        (outputHandler.messages + outputHandler.errors.map { it.first }).joinToString("\n")
+    private fun allOutput(): String = (outputHandler.messages + outputHandler.errors.map { it.first }).joinToString("\n")
 
     @Test
     fun `the capability password reaches the connection but not the output`() {

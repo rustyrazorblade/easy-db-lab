@@ -227,7 +227,11 @@ class KitInfo : BaseInstallCommand() {
         private fun bareAddress(ep: KitEndpoint): String =
             when (ep.type) {
                 KitEndpoint.EndpointType.MYSQL, KitEndpoint.EndpointType.POSTGRESQL ->
-                    ":${ep.port}" + ep.database.takeIf { it.isNotBlank() }?.let { "/$it" }.orEmpty()
+                    ":${ep.port}" +
+                        ep.database
+                            .takeIf { it.isNotBlank() }
+                            ?.let { "/$it" }
+                            .orEmpty()
                 KitEndpoint.EndpointType.JDBC -> ":${ep.port}${ep.path}"
                 else -> ":${ep.port}"
             }

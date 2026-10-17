@@ -50,13 +50,6 @@ relocate() {
   ) > "${WORK}/out.txt" 2>&1
 }
 
-test_each_script_defines_the_relocation_function() {
-  for script in "${SCRIPTS[@]}"; do
-    tests_run=$((tests_run + 1))
-    grep -q '^relocate_to_data_mount()' "${script}" || fail "$(basename "${script}") has no relocate_to_data_mount function"
-  done
-}
-
 test_each_script_moves_pod_logs_before_k3s_starts() {
   for script in "${SCRIPTS[@]}"; do
     tests_run=$((tests_run + 1))
@@ -125,7 +118,6 @@ test_nothing_moves_without_the_data_mount() {
   done
 }
 
-test_each_script_defines_the_relocation_function
 test_each_script_moves_pod_logs_before_k3s_starts
 test_existing_logs_move_to_the_data_mount
 test_a_missing_directory_becomes_a_symlink

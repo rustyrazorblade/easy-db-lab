@@ -1,0 +1,21 @@
+# Client access to SingleStore on every node's port 30306. It selects every aggregator (the
+# master and the child aggregators carry easydblab/tier=aggregator) and never a leaf, which does
+# not take client queries.
+apiVersion: v1
+kind: Service
+metadata:
+  name: singlestore-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: singlestore
+spec:
+  type: NodePort
+  selector:
+    easydblab/kit: singlestore
+    easydblab/tier: aggregator
+  ports:
+    - name: mysql
+      protocol: TCP
+      port: 3306
+      targetPort: 3306
+      nodePort: 30306

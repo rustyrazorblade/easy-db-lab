@@ -1,0 +1,86 @@
+# The SingleStore cluster. kit install fills in the install args. The start step
+# (bin/lib/singlestore-cluster.sh) fills in the run-time values it computes from the db nodes,
+# the dollar-brace names below: the redundancy, the leaf count per availability group, the leaf
+# size, the storage per leaf and the aggregator memory. It applies the result only after both
+# Secrets exist.
+apiVersion: memsql.com/v1alpha1
+kind: MemsqlCluster
+metadata:
+  name: singlestore
+  namespace: default
+spec:
+  licenseSecret:
+    name: singlestore-license
+    key: license
+  rootPasswordSecret:
+    name: singlestore-root-password
+    key: ROOT_PASSWORD
+  nodeImage:
+    repository: singlestore/node
+    tag: "__SINGLESTORE_VERSION__"
+  redundancyLevel: ${REDUNDANCY}
+  serviceSpec:
+    type: ClusterIP
+  schedulingDetails:
+    master:
+      nodeSelector:
+        type: db
+    aggregator:
+      nodeSelector:
+        type: db
+    # One block per availability group (at most two). Each leaf repels every other leaf, so no
+    # two leaves share a db node.
+    leaf-ag1:
+      nodeSelector:
+        type: db
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  easydblab/kit: singlestore
+                  easydblab/role: leaf
+              topologyKey: kubernetes.io/hostname
+    leaf-ag2:
+      nodeSelector:
+        type: db
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  easydblab/kit: singlestore
+                  easydblab/role: leaf
+              topologyKey: kubernetes.io/hostname
+  masterAggregatorSpec:
+    count: 1
+    cores: __SINGLESTORE_AGGREGATOR_CORES__
+    memoryMB: ${AGGREGATOR_MEMORY_MB}
+    storageGB: 256
+    storageClass: local-path
+    objectMetaOverrides:
+      labels:
+        easydblab/kit: singlestore
+        easydblab/role: master
+        easydblab/tier: aggregator
+  aggregatorSpec:
+    count: __SINGLESTORE_AGGREGATORS__
+    cores: __SINGLESTORE_AGGREGATOR_CORES__
+    memoryMB: ${AGGREGATOR_MEMORY_MB}
+    storageGB: 256
+    storageClass: local-path
+    objectMetaOverrides:
+      labels:
+        easydblab/kit: singlestore
+        easydblab/role: aggregator
+        easydblab/tier: aggregator
+  leafSpec:
+    count: ${LEAF_COUNT}
+    cores: ${LEAF_CORES}
+    memoryMB: ${LEAF_MEMORY_MB}
+    storageGB: ${STORAGE_GB}
+    storageClass: local-path
+    objectMetaOverrides:
+      labels:
+        easydblab/kit: singlestore
+        easydblab/role: leaf

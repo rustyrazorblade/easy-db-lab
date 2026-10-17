@@ -63,14 +63,19 @@ class SingleStoreKitTest : BaseKoinTest() {
                 .filterIsInstance<Deployment>()
                 .single()
 
-        assertThat(operator.spec.template.spec.containers
-            .single()
-            .image).isEqualTo("singlestore/operator:4.999.0-test")
+        assertThat(
+            operator.spec.template.spec.containers
+                .single()
+                .image,
+        ).isEqualTo("singlestore/operator:4.999.0-test")
     }
 
     @Test
     fun `install applies the packaged CRD, RBAC and operator, and no chart or URL`() {
-        val manifests = kit.config.install.filterIsInstance<InstallStep.Manifest>().map { it.template }
+        val manifests =
+            kit.config.install
+                .filterIsInstance<InstallStep.Manifest>()
+                .map { it.template }
 
         assertThat(manifests).containsExactly("crd.yaml", "operator-rbac.yaml", "operator-deployment.yaml")
         assertThat(kit.config.install).noneMatch { it is InstallStep.Helm || it is InstallStep.ManifestUrl }
@@ -82,10 +87,14 @@ class SingleStoreKitTest : BaseKoinTest() {
         val cr = cluster()
         val startStep = kit.resource("bin/lib/singlestore-cluster.sh")
 
-        assertThat(cr.get<Map<String, String>>("spec", "licenseSecret")).isEqualTo(mapOf("name" to "singlestore-license", "key" to "license"))
+        assertThat(
+            cr.get<Map<String, String>>("spec", "licenseSecret"),
+        ).isEqualTo(mapOf("name" to "singlestore-license", "key" to "license"))
         assertThat(cr.get<Map<String, String>>("spec", "rootPasswordSecret"))
             .isEqualTo(mapOf("name" to "singlestore-root-password", "key" to "ROOT_PASSWORD"))
-        assertThat(startStep).contains("ss_apply_secret singlestore-license license ", "ss_apply_secret singlestore-root-password ROOT_PASSWORD ")
+        assertThat(
+            startStep,
+        ).contains("ss_apply_secret singlestore-license license ", "ss_apply_secret singlestore-root-password ROOT_PASSWORD ")
     }
 
     @Test
@@ -161,8 +170,13 @@ class SingleStoreKitTest : BaseKoinTest() {
     fun `the start step fills in exactly the run-time values the cluster leaves for it`() {
         val placeholders =
             Regex("""\$\{([A-Z_]+)}""")
-                .findAll(kit.resource("memsqlcluster.yaml.template").lines().filterNot { it.trimStart().startsWith("#") }.joinToString("\n"))
-                .map { it.groupValues[1] }
+                .findAll(
+                    kit
+                        .resource("memsqlcluster.yaml.template")
+                        .lines()
+                        .filterNot { it.trimStart().startsWith("#") }
+                        .joinToString("\n"),
+                ).map { it.groupValues[1] }
                 .toSet()
         val filled =
             Regex("""SS_RUNTIME_VALUES="([^"]+)"""")
@@ -173,7 +187,9 @@ class SingleStoreKitTest : BaseKoinTest() {
                 .split(" ")
                 .toSet()
 
-        assertThat(placeholders).containsExactlyInAnyOrder("REDUNDANCY", "LEAF_COUNT", "LEAF_CORES", "LEAF_MEMORY_MB", "STORAGE_GB", "AGGREGATOR_MEMORY_MB")
+        assertThat(
+            placeholders,
+        ).containsExactlyInAnyOrder("REDUNDANCY", "LEAF_COUNT", "LEAF_CORES", "LEAF_MEMORY_MB", "STORAGE_GB", "AGGREGATOR_MEMORY_MB")
         assertThat(filled).isEqualTo(placeholders)
     }
 
@@ -189,7 +205,11 @@ class SingleStoreKitTest : BaseKoinTest() {
         assertThat(podLabels("masterAggregatorSpec")).containsAllEntriesOf(service.spec.selector)
         assertThat(podLabels("aggregatorSpec")).containsAllEntriesOf(service.spec.selector)
         assertThat(podLabels("leafSpec").entries.containsAll(service.spec.selector.entries)).isFalse()
-        assertThat(kit.config.stop.filterIsInstance<InstallStep.Delete>().map { it.name }).contains(service.metadata.name)
+        assertThat(
+            kit.config.stop
+                .filterIsInstance<InstallStep.Delete>()
+                .map { it.name },
+        ).contains(service.metadata.name)
     }
 
     @Test
@@ -224,7 +244,10 @@ class SingleStoreKitTest : BaseKoinTest() {
 
         assertThat(listOf("masterAggregatorSpec", "aggregatorSpec", "leafSpec"))
             .allSatisfy { assertThat(podLabels(it)).containsAllEntriesOf(runtime) }
-        assertThat(operator.spec.template.metadata.labels.entries.containsAll(runtime.entries)).isFalse()
+        assertThat(
+            operator.spec.template.metadata.labels.entries
+                .containsAll(runtime.entries),
+        ).isFalse()
     }
 
     @Test
@@ -251,7 +274,11 @@ class SingleStoreKitTest : BaseKoinTest() {
             ),
         )
         assertThat(arg("--license").required).isTrue()
-        assertThat(kit.config.args.filter { it.required }.map { it.flag }).containsExactly("--license")
+        assertThat(
+            kit.config.args
+                .filter { it.required }
+                .map { it.flag },
+        ).containsExactly("--license")
         assertThat(arg("--unlimited-storage").type).isEqualTo(KitArgSpec.ArgType.BOOLEAN)
     }
 
@@ -277,7 +304,12 @@ class SingleStoreKitTest : BaseKoinTest() {
         val rendered =
             templateService.renderKitTemplate(
                 templateContent = kit.resource("kit.yaml"),
-                vars = TemplateVariables.from(state = ClusterState(name = "c", versions = mutableMapOf()), kitName = "singlestore", storageSize = "10Ti"),
+                vars =
+                    TemplateVariables.from(
+                        state = ClusterState(name = "c", versions = mutableMapOf()),
+                        kitName = "singlestore",
+                        storageSize = "10Ti",
+                    ),
                 extraVars = defaults + args,
             )
         return installConfigYaml.decodeFromString(KitConfig.serializer(), rendered)
@@ -322,8 +354,12 @@ class SingleStoreKitTest : BaseKoinTest() {
         assertThat(deletes.last()).isEqualTo("CustomResourceDefinition")
         assertThat(deletes.indexOf("Deployment")).isLessThan(deletes.indexOf("CustomResourceDefinition"))
         assertThat(deletes).contains("Role", "RoleBinding", "ServiceAccount", "ClusterRole", "ClusterRoleBinding")
-        assertThat(kit.config.uninstall.filterIsInstance<InstallStep.Delete>().single { it.kind == "CustomResourceDefinition" }.name)
-            .isEqualTo("memsqlclusters.memsql.com")
+        assertThat(
+            kit.config.uninstall
+                .filterIsInstance<InstallStep.Delete>()
+                .single { it.kind == "CustomResourceDefinition" }
+                .name,
+        ).isEqualTo("memsqlclusters.memsql.com")
     }
 
     /** Runs the packaged SQL library's builder for database `test` and returns the SQL it prints. */
@@ -338,7 +374,10 @@ class SingleStoreKitTest : BaseKoinTest() {
                 lib.absolutePath,
             ).redirectErrorStream(true).start()
         check(process.waitFor(30, TimeUnit.SECONDS)) { "bash did not finish" }
-        return process.inputStream.bufferedReader().readText().also { check(process.exitValue() == 0) { it } }
+        return process.inputStream
+            .bufferedReader()
+            .readText()
+            .also { check(process.exitValue() == 0) { it } }
     }
 
     @Test

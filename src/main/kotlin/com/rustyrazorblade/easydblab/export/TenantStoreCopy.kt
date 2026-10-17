@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.export
 
 import com.rustyrazorblade.easydblab.Constants
 import java.io.File
-import java.nio.file.Files
 import java.util.Base64
 
 /**
@@ -58,13 +57,15 @@ data class TenantCopyPlan(
 }
 
 /**
- * Copies one tenant's store into an export, consistently while the account compactor runs, with no
- * docker. Each object goes to `data/<key>`.
+ * Copies one tenant's store into an export, consistently while the account compactor runs. Each
+ * object goes to `data/<key>`. Docker runs for one step only: Loki's compactor splitting the shared
+ * index files ([LokiIndexSplit]).
  *
  * The order (design D15):
- * 1. Loki's index, table by table. The compactor replaces a table's files with a merged one and
- *    removes the merged ones; a table whose listed file is gone when read is listed and copied again
- *    from scratch, so the zip never holds half of one listing.
+ * 1. Loki's index, table by table ([LokiIndexCopy]). The compactor replaces a table's files with a
+ *    merged one and removes the merged ones; a table whose listed file is gone when read is listed and
+ *    copied again from scratch, so the zip never holds half of one listing. The shared multi-tenant
+ *    files are split per tenant on the local copy, and only the tenant's own files go into the zip.
  * 2. Tempo, from one listing of `tempo/<tenant>/`: every block with a `meta.json` and no
  *    `meta.compacted.json` (a merged source stays for 48 hours after its marker), then the zip's own
  *    tenant index of those blocks ([TempoTenantIndexWriter]).
@@ -78,19 +79,29 @@ data class TenantCopyPlan(
  * @property store the account bucket.
  * @property mimirIndex writes the zip's Mimir bucket index.
  * @property tempoIndex writes the zip's Tempo tenant index.
+ * @param lokiSplit splits Loki's shared index files per tenant.
  */
 class TenantStoreCopy(
     private val store: ExportStore,
     private val mimirIndex: MimirBucketIndexWriter,
     private val tempoIndex: TempoTenantIndexWriter,
+    lokiSplit: LokiIndexSplit,
 ) {
-    private companion object {
-        val METRICS = Constants.Observability.METRICS_ROOT
-        val LOGS = Constants.Observability.LOGS_ROOT
-        val TRACES = Constants.Observability.TRACES_ROOT
-        val LOKI_INDEX = "$LOGS/index/"
-        const val META = "meta.json"
-        const val COMPACTED_META = "meta.compacted.json"
+    private val lokiIndex = LokiIndexCopy(store, lokiSplit)
+
+    companion object {
+        private val METRICS = Constants.Observability.METRICS_ROOT
+        private val LOGS = Constants.Observability.LOGS_ROOT
+        private val TRACES = Constants.Observability.TRACES_ROOT
+        private val LOKI_INDEX = "$LOGS/index/"
+        private const val META = "meta.json"
+        private const val COMPACTED_META = "meta.compacted.json"
+
+        /** Loki's index copy and its split, in the work directory. */
+        private const val LOKI_WORK_DIR = "loki"
+
+        /** The logs the Loki index split saved in the work directory [work], those that exist. */
+        fun savedLogs(work: File): List<File> = LokiIndexCopy.savedLogs(File(work, LOKI_WORK_DIR))
     }
 
     /** Lists everything the export of [tenant] copies; fails when the tenant has no data. */
@@ -107,7 +118,7 @@ class TenantStoreCopy(
         return TenantCopyPlan(
             tenant = tenant,
             lokiTables = tables,
-            lokiIndex = tables.flatMap { table -> exportStep(ExportSignal.LOGS, "list $table") { tenantIndexFiles(table, tenant) } },
+            lokiIndex = tables.flatMap { table -> exportStep(ExportSignal.LOGS, "list $table") { lokiIndex.files(table, tenant) } },
             tempoBlocks = tempoBlocks(tempoListing, tenant),
             mimirBlocks = if (mimirListing.isEmpty()) emptyMap() else mimirBlocks(mimirListing, tenant),
             immutable =
@@ -120,15 +131,15 @@ class TenantStoreCopy(
     }
 
     /**
-     * Copies [plan] into [zip], in the order the class describes. [scratch] is a directory of the
-     * tool's own where a Loki index table is held until all of it has been read.
+     * Copies [plan] into [zip], in the order the class describes. [work] is the export's kept work
+     * directory, where the local copy of Loki's index is made and split.
      */
     fun copy(
         plan: TenantCopyPlan,
         zip: ExportRecorder,
-        scratch: File,
+        work: File,
     ) {
-        plan.lokiTables.forEach { table -> copyLokiTable(table, plan.tenant, zip, scratch) }
+        lokiIndex.copy(plan.lokiTables, plan.tenant, zip, File(work, LOKI_WORK_DIR))
 
         plan.tempoBlocks.forEach { (id, objects) ->
             exportStep(ExportSignal.TRACES, "copy block $id of ${plan.tenant}") {
@@ -159,52 +170,6 @@ class TenantStoreCopy(
             objects.forEach { exportStep(signal, "copy ${it.key}") { copyObject(it, zip, path(it.key)) } }
         }
     }
-
-    /** The tenant's files in one index table: the multi-tenant files at its root and the tenant's own directory. */
-    private fun tenantIndexFiles(
-        table: String,
-        tenant: String,
-    ): List<StoreObject> =
-        store.list(table).filter { obj ->
-            val rest = obj.key.removePrefix(table)
-            !rest.contains('/') || rest.startsWith("$tenant/")
-        }
-
-    /**
-     * Copies one Loki index table: every file of the listing is read into [scratch] first and put into
-     * the zip only once all of them were read. A file that is gone means the compactor replaced the
-     * table meanwhile, so the table is listed and read again.
-     */
-    private fun copyLokiTable(
-        table: String,
-        tenant: String,
-        zip: ExportRecorder,
-        scratch: File,
-    ) = exportStep(ExportSignal.LOGS, "copy index table $table") {
-        val staging = Files.createTempDirectory(scratch.toPath(), "loki-table-").toFile()
-        try {
-            val read =
-                (1..Constants.Export.LOKI_TABLE_ATTEMPTS).firstNotNullOfOrNull { _ ->
-                    staging.listFiles()?.forEach { it.deleteRecursively() }
-                    readTable(tenantIndexFiles(table, tenant), staging)
-                } ?: error("$table was replaced while it was read, ${Constants.Export.LOKI_TABLE_ATTEMPTS} times")
-            read.forEach { (obj, file) -> zip.put("${Constants.Export.DATA_DIR}/${obj.key}", file.inputStream(), obj.lastModified) }
-        } finally {
-            staging.deleteRecursively()
-        }
-    }
-
-    /** Every object of [listing] in [staging], or null when one of them is gone. */
-    private fun readTable(
-        listing: List<StoreObject>,
-        staging: File,
-    ): List<Pair<StoreObject, File>>? =
-        listing.withIndex().map { (n, obj) ->
-            val file = File(staging, n.toString())
-            val input = store.open(obj.key) ?: return null
-            input.use { source -> file.outputStream().use { source.copyTo(it, Constants.Export.COPY_BUFFER_BYTES) } }
-            obj to file
-        }
 
     /** Copies [obj] to `data/<path>`, its key unless the offline backend names the object otherwise. */
     private fun copyObject(

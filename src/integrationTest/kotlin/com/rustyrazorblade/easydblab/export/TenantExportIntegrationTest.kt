@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.ObservabilityBackends
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaServerSettings
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.export.query.DockerComposeCli
 import com.rustyrazorblade.easydblab.localstack.ComposeFile
 import com.rustyrazorblade.easydblab.localstack.ComposeProject
 import com.rustyrazorblade.easydblab.localstack.LocalImages
@@ -54,6 +55,11 @@ import java.util.zip.ZipFile
  *   export. The export reads through [S3ExportStore], which has no write call at all.
  * - **The zip holds the tenant's store and nothing of the other tenant**, with its own Mimir bucket
  *   index and Tempo tenant index, each listing exactly the blocks in the zip.
+ * - **The zip's Loki index holds only the tenant.** One Loki wrote both tenants' lines and stopped
+ *   with no compactor run, so both tenants' newest logs are indexed only in one shared file at the
+ *   table root, named after that Loki (`default.seed`). The export splits it with Loki's own compactor
+ *   in docker, and the zip holds only `acme`'s per-tenant files: no file names the other tenant or its
+ *   writer, and no file holds the other tenant's cluster. The offline stack then answers `acme`'s lines.
  * - **The export opens offline.** The unzipped stack runs on a project network made `internal`, so
  *   no container can reach anything outside it; every image is a registered pin and Grafana installs
  *   no plugin. Through the opened stack's own Grafana datasources (its data proxy), the tenant's
@@ -86,6 +92,7 @@ class TenantExportIntegrationTest {
     private lateinit var stack: File
     private lateinit var project: ComposeProject
     private lateinit var dataBefore: Map<String, String>
+    private lateinit var sharedIndexBefore: List<String>
 
     private fun freePort(): Int = ServerSocket(0).use { it.localPort }
 
@@ -117,7 +124,9 @@ class TenantExportIntegrationTest {
                 zipWriter = ExportZipWriter(),
                 diskSpace = { it.usableSpace },
                 eventBus = EventBus(),
+                lokiSplit = DockerLokiIndexSplit(DockerComposeCli, EventBus()),
             )
+        sharedIndexBefore = keys("loki/index/").filter { it.removePrefix("loki/index/").count { c -> c == '/' } == 1 }
         zip = File(root, "$TENANT-export.zip")
         exporter.export(ExportTarget.of(zip), TENANT)
     }
@@ -154,6 +163,8 @@ class TenantExportIntegrationTest {
                 .contents()
                 .associate { it.key() to it.eTag() }
         }
+
+    private fun keys(prefix: String): List<String> = listing().keys.filter { it.startsWith(prefix) }
 
     private fun zipEntries(): Map<String, ByteArray> =
         ZipFile(zip).use { file ->
@@ -215,6 +226,29 @@ class TenantExportIntegrationTest {
             },
         ).containsExactlyInAnyOrderElementsOf(blocksIn("tempo/$TENANT/"))
             .isNotEmpty()
+    }
+
+    @Test
+    @Order(2)
+    fun `the zip's Loki index holds only the tenant's own files, split from the shared file that held both tenants`() {
+        assertThat(sharedIndexBefore).describedAs("the store's shared index files, before the export").isNotEmpty()
+        assertThat(sharedIndexBefore).allMatch { it.contains("$OTHER.") }
+        val entries = zipEntries()
+        val data = entries.filterKeys { it.startsWith("$TENANT-export/data/") }.mapKeys { it.key.removePrefix("$TENANT-export/data/") }
+        val index = data.filterKeys { it.startsWith("loki/index/") }
+
+        assertThat(index.keys).isNotEmpty().allMatch { Regex("loki/index/[^/]+/$TENANT/[^/]+\\.tsdb\\.gz").matches(it) }
+        assertThat(data.keys).noneMatch { it.contains(OTHER) || it.contains("seed") }
+        val otherCluster = seeded.cluster(OTHER)
+        assertThat(index.values.map { GZIPInputStream(it.inputStream()).readBytes().decodeToString() })
+            .anyMatch { it.contains(seeded.cluster(TENANT)) }
+            .noneMatch { it.contains(otherCluster) }
+        assertThat(entries).allSatisfy { name, bytes ->
+            assertThat(bytes.decodeToString()).describedAs(name).doesNotContain(otherCluster)
+        }
+
+        val work = root.listFiles()!!.single { it.name.startsWith("$TENANT-export.zip${Constants.Export.WORK_INFIX}") }
+        assertThat(File(work, "loki/split/${Constants.Export.Query.STACK_LOG_FILE}").readText()).contains("compactor started")
     }
 
     @Test

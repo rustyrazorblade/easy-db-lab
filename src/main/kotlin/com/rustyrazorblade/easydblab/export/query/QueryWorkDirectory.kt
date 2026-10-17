@@ -2,22 +2,28 @@ package com.rustyrazorblade.easydblab.export.query
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.export.ExportTarget
+import com.rustyrazorblade.easydblab.export.ExportWorkDirectory
 import java.io.File
-import java.util.UUID
 
 /**
- * A query export's work directory, `<path>.work-<id>/` beside the zip: the reader's and the writer's
- * compose projects with their state, the staged metric blocks, and thanos's projects. It is kept after
- * the zip is written, and after a failure; the command prints where it is and how big, and nothing
- * removes it (owner decision D17).
+ * A query export's work directory ([ExportWorkDirectory], `<path>.work-<id>/` beside the zip, kept): the
+ * reader's and the writer's compose projects with their state, the staged metric blocks, and thanos's
+ * projects.
  *
- * @property root the directory.
- * @property id its random part, which the temporary projects' names carry.
+ * @property work the kept directory.
  */
 class QueryWorkDirectory private constructor(
-    val root: File,
-    val id: String,
+    private val work: ExportWorkDirectory,
 ) {
+    /** The directory. */
+    val root: File get() = work.root
+
+    /** Its random part, which the temporary projects' names carry. */
+    val id: String get() = work.id
+
+    /** The operator's `uid:gid`, as whom the writers and thanos run. */
+    fun owner(): String = work.owner()
+
     /** The reader's compose project. */
     val reader: File get() = File(root, "reader")
 
@@ -47,19 +53,15 @@ class QueryWorkDirectory private constructor(
     fun stackLogs(): List<File> = listOf(reader, writer).map { File(it, Constants.Export.Query.STACK_LOG_FILE) }.filter { it.isFile }
 
     /** The bytes the directory holds. */
-    fun size(): Long = root.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+    fun size(): Long = work.size()
 
     companion object {
-        private const val ID_LENGTH = 8
-
         /** Makes the work directory of [target], with the writer's directories its containers write into. */
         fun create(
             target: ExportTarget,
-            id: String = UUID.randomUUID().toString().take(ID_LENGTH),
+            id: String = ExportWorkDirectory.newId(),
         ): QueryWorkDirectory {
-            val root = File(target.zip.absoluteFile.parentFile, "${target.zip.name}${Constants.Export.Query.WORK_INFIX}$id")
-            check(root.mkdir()) { "Could not create the work directory $root" }
-            val work = QueryWorkDirectory(root, id)
+            val work = QueryWorkDirectory(ExportWorkDirectory.create(target, id))
             // Made here, so they belong to the operator, as whom the writers run.
             listOf(
                 work.reader,

@@ -31,6 +31,7 @@ val exportModule =
                 zipWriter = ExportZipWriter(),
                 diskSpace = { directory -> directory.usableSpace },
                 eventBus = get(),
+                lokiSplit = DockerLokiIndexSplit(DockerComposeCli, get()),
             )
         }
         factory {

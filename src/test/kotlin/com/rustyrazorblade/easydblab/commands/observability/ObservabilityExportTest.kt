@@ -64,7 +64,16 @@ class ObservabilityExportTest : BaseKoinTest() {
         listOf(
             module {
                 single { stateManager }
-                single { TenantExporter({ store }, ExportStackFiles(dashboards, "16"), ExportZipWriter(), { Long.MAX_VALUE }, get()) }
+                single {
+                    TenantExporter(
+                        { store },
+                        ExportStackFiles(dashboards, "16"),
+                        ExportZipWriter(),
+                        { Long.MAX_VALUE },
+                        get(),
+                        { _, _ -> },
+                    )
+                }
                 single { queryExporter }
             },
         )

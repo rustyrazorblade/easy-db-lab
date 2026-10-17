@@ -22,7 +22,7 @@ import java.util.zip.ZipFile
 /**
  * A tenant export end to end, with the account bucket in memory: the size check before any copy,
  * the zip moved into place only when complete, every failure leaving no zip and naming the signal
- * and the step, and nothing in the store changed.
+ * and the step, the work directory kept and reported, and nothing in the store changed.
  */
 class TenantExporterTest {
     @TempDir
@@ -53,6 +53,7 @@ class TenantExporterTest {
             zipWriter = zipWriter,
             diskSpace = { free },
             eventBus = eventBus,
+            lokiSplit = { _, _ -> },
         )
 
     private val exporter = exporter()
@@ -116,7 +117,23 @@ class TenantExporterTest {
         assertThat(completed.excluded).containsExactly(Event.Export.Exclusion("profiles", 1016))
         assertThat(completed.toDisplayString()).contains("Profiles are not included", "#1016")
         assertThat(events.filterIsInstance<Event.Export.SizeEstimated>().single().bytes).isPositive()
-        assertThat(dir.list()).containsExactly("acme-export.zip")
+        assertThat(dir.list()).hasSize(2).contains("acme-export.zip").anyMatch { it.startsWith("acme-export.zip.work-") }
+    }
+
+    @Test
+    fun `the work directory holds the local copy of Loki's index, and is kept and reported last`() {
+        seed()
+        store.put("loki/index/index_1/acme/compacted.tsdb.gz", "index of acme")
+
+        exporter.export(target(), tenant = "acme")
+
+        val work = dir.listFiles()!!.single { it.name.startsWith("acme-export.zip.work-") }
+        assertThat(File(work, "loki/store/loki/index/index_1/acme/compacted.tsdb.gz")).hasContent("index of acme")
+        val kept = events.last()
+        assertThat(kept).isInstanceOfSatisfying(Event.Export.WorkDirectoryKept::class.java) {
+            assertThat(it.path).isEqualTo(work.path)
+            assertThat(it.bytes).isEqualTo("index of acme".length.toLong())
+        }
     }
 
     @Test
@@ -198,7 +215,10 @@ class TenantExporterTest {
         assertThat(failed.signal).isEqualTo("traces")
         assertThat(failed.step).contains("t1")
         assertThat(failed.toDisplayString()).contains("traces", "No zip was left at ${target.zip.path}")
-        assertThat(dir.list()).describedAs("no zip, no partial file, no scratch").isEmpty()
+        assertThat(dir.list()).describedAs("no zip, no partial file; the work directory kept").singleElement().satisfies({
+            assertThat(it).startsWith("acme-export.zip.work-")
+        })
+        assertThat(events.last()).isInstanceOf(Event.Export.WorkDirectoryKept::class.java)
         assertThat(events.filterIsInstance<Event.Export.Completed>()).isEmpty()
     }
 
@@ -255,12 +275,12 @@ class TenantExporterTest {
     }
 
     /**
-     * The scratch directory is `<zip name>.scratch-<random digits>` beside the zip. A 245-character zip
-     * name leaves room for the partial file (`.partial-x`, 255 characters, the longest file name
-     * allowed) but not for the scratch directory, so only the scratch directory cannot be made.
+     * The work directory is `<zip name>.work-<8 characters>` beside the zip. A 245-character zip name
+     * leaves room for the partial file (`.partial-x`, 255 characters, the longest file name allowed)
+     * but not for the work directory, so only the work directory cannot be made.
      */
     @Test
-    fun `a scratch directory that cannot be made is reported with the logs signal and the step`() {
+    fun `a work directory that cannot be made is reported with the stack signal and the step`() {
         seed()
         val target = ExportTarget.of(File(dir, "a".repeat(241) + ".zip"))
 
@@ -268,8 +288,8 @@ class TenantExporterTest {
             .isInstanceOf(CommandFailedException::class.java)
 
         val failed = events.filterIsInstance<Event.Export.Failed>().single()
-        assertThat(failed.signal).isEqualTo("logs")
-        assertThat(failed.step).contains("scratch directory")
+        assertThat(failed.signal).isEqualTo("stack")
+        assertThat(failed.step).contains("work directory")
         assertThat(dir.list()).describedAs("no zip, no partial file").isEmpty()
     }
 }

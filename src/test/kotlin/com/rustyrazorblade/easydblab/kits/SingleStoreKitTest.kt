@@ -15,6 +15,8 @@ import io.fabric8.kubernetes.api.model.Service
 import io.fabric8.kubernetes.api.model.apps.Deployment
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -111,26 +113,40 @@ class SingleStoreKitTest : BaseKoinTest() {
         assertThat(scheduling.values).allSatisfy { assertThat(it["nodeSelector"]).isEqualTo(mapOf("type" to "db")) }
     }
 
-    @Test
-    fun `every leaf availability group repels every leaf, so each leaf has its own db node`() {
-        val leafLabels = podLabels("leafSpec")
-
-        for (group in listOf("leaf-ag1", "leaf-ag2")) {
-            val terms =
-                cluster().get<List<Map<String, Any>>>(
+    /** The labels the required pod anti-affinity of scheduling group [group] repels, per db node. */
+    private fun repelledLabels(group: String): Map<String, String> {
+        val term =
+            cluster()
+                .get<List<Map<String, Any>>>(
                     "spec",
                     "schedulingDetails",
                     group,
                     "affinity",
                     "podAntiAffinity",
                     "requiredDuringSchedulingIgnoredDuringExecution",
-                )
-            val term = terms.single()
-            assertThat(term["topologyKey"]).isEqualTo("kubernetes.io/hostname")
-            @Suppress("UNCHECKED_CAST")
-            val matchLabels = (term["labelSelector"] as Map<String, Map<String, String>>).getValue("matchLabels")
-            assertThat(leafLabels).containsAllEntriesOf(matchLabels)
+                ).single()
+        assertThat(term["topologyKey"]).isEqualTo("kubernetes.io/hostname")
+        val matchLabels = (term["labelSelector"] as Map<*, *>)["matchLabels"] as Map<*, *>
+        return matchLabels.entries.associate { (key, value) -> key.toString() to value.toString() }
+    }
+
+    @Test
+    fun `every leaf availability group repels every leaf, so each leaf has its own db node`() {
+        for (group in listOf("leaf-ag1", "leaf-ag2")) {
+            val repelled = repelledLabels(group)
+            assertThat(podLabels("leafSpec")).containsAllEntriesOf(repelled)
             assertThat(podLabels("masterAggregatorSpec")).doesNotContainEntry("easydblab/role", "leaf")
+        }
+    }
+
+    @Test
+    fun `the master and the child aggregators repel every aggregator, so a db node holds at most one`() {
+        for (group in listOf("master", "aggregator")) {
+            val repelled = repelledLabels(group)
+            assertThat(repelled).containsEntry("easydblab/tier", "aggregator")
+            assertThat(podLabels("masterAggregatorSpec")).containsAllEntriesOf(repelled)
+            assertThat(podLabels("aggregatorSpec")).containsAllEntriesOf(repelled)
+            assertThat(podLabels("leafSpec")).doesNotContainKey("easydblab/tier")
         }
     }
 
@@ -328,6 +344,21 @@ class SingleStoreKitTest : BaseKoinTest() {
             .startsWith("jdbc:mysql://10.0.0.1:30306/bench?")
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = ["a__REGION__b", "a\$__X__b", "p__KIT_NAME__w"])
+    fun `the installed kit yaml carries a password holding a placeholder exactly as given`(password: String) {
+        val installed = installedKitYaml(mapOf(arg("--password").variable to password))
+
+        assertThat(installed.capabilities.single { it.type == "sql" }.password).isEqualTo(password)
+    }
+
+    @Test
+    fun `the installed kit yaml carries a database named like a placeholder exactly as given`() {
+        val installed = installedKitYaml(mapOf(arg("--database").variable to "__CLUSTER_NAME__"))
+
+        assertThat(installed.endpoints.map { it.database }).containsOnly("__CLUSTER_NAME__")
+    }
+
     @Test
     fun `the installed kit yaml defaults to the easydblab password and the test database`() {
         val installed = installedKitYaml(emptyMap())
@@ -337,29 +368,36 @@ class SingleStoreKitTest : BaseKoinTest() {
     }
 
     @Test
-    fun `stop removes the cluster, the NodePort and the cluster's PVCs`() {
+    fun `stop removes the cluster, the NodePort, the cluster's PVCs and then the Secrets`() {
         val deletes = kit.config.stop.filterIsInstance<InstallStep.Delete>()
 
         assertThat(deletes.filterNot { it.bySelector }.map { it.kind to it.name })
-            .containsExactly("MemsqlCluster" to "singlestore", "Service" to "singlestore-nodeport")
+            .containsExactly(
+                "MemsqlCluster" to "singlestore",
+                "Service" to "singlestore-nodeport",
+                "Secret" to "singlestore-license",
+                "Secret" to "singlestore-root-password",
+            )
         assertThat(deletes.single { it.bySelector }.let { it.kinds to it.selector })
             .isEqualTo(listOf("PersistentVolumeClaim") to "app.kubernetes.io/instance=singlestore")
     }
 
     @Test
-    fun `uninstall removes a leftover cluster before the operator, and the CRD last`() {
-        val deletes = kit.config.uninstall.map { (it as InstallStep.Delete).kind }
+    fun `uninstall removes a leftover cluster, then the operator and the Secrets, and the CRD last`() {
+        val deletes = kit.config.uninstall.map { it as InstallStep.Delete }
+        val kinds = deletes.map { it.kind }
+        val secrets = deletes.filter { it.kind == "Secret" }
 
-        assertThat(deletes.first()).isEqualTo("MemsqlCluster")
-        assertThat(deletes.last()).isEqualTo("CustomResourceDefinition")
-        assertThat(deletes.indexOf("Deployment")).isLessThan(deletes.indexOf("CustomResourceDefinition"))
-        assertThat(deletes).contains("Role", "RoleBinding", "ServiceAccount", "ClusterRole", "ClusterRoleBinding")
-        assertThat(
-            kit.config.uninstall
-                .filterIsInstance<InstallStep.Delete>()
-                .single { it.kind == "CustomResourceDefinition" }
-                .name,
-        ).isEqualTo("memsqlclusters.memsql.com")
+        assertThat(kinds.first()).isEqualTo("MemsqlCluster")
+        assertThat(kinds.last()).isEqualTo("CustomResourceDefinition")
+        assertThat(kinds.indexOf("Deployment")).isLessThan(kinds.indexOf("CustomResourceDefinition"))
+        assertThat(kinds).contains("Role", "RoleBinding", "ServiceAccount", "ClusterRole", "ClusterRoleBinding")
+        assertThat(deletes.single { it.kind == "CustomResourceDefinition" }.name).isEqualTo("memsqlclusters.memsql.com")
+        assertThat(secrets.map { it.name to it.namespace })
+            .containsExactlyInAnyOrder("singlestore-license" to "default", "singlestore-root-password" to "default")
+        assertThat(secrets.map { deletes.indexOf(it) }).allSatisfy {
+            assertThat(it).isGreaterThan(kinds.indexOf("Deployment")).isLessThan(kinds.indexOf("CustomResourceDefinition"))
+        }
     }
 
     /** Runs the packaged SQL library's builder for database `test` and returns the SQL it prints. */

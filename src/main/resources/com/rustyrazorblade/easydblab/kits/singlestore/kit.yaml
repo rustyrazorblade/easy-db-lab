@@ -49,7 +49,7 @@ args:
     default: "4.252.0-3adf6c3d"
   - flag: --aggregators
     variable: SINGLESTORE_AGGREGATORS
-    description: "Number of child aggregators, besides the master aggregator"
+    description: "Number of child aggregators, besides the master aggregator; each aggregator needs a db node of its own"
     type: int
     default: "0"
   - flag: --leaves
@@ -144,7 +144,8 @@ start:
       source bin/lib/singlestore-cluster.sh
       singlestore_create_database
 
-# Every start builds a fresh cluster: stop removes the cluster and its data.
+# Every start builds a fresh cluster: stop removes the cluster and its data, and the Secrets that
+# hold the license key and the root password, which the next start writes again.
 stop:
   - type: delete
     kind: MemsqlCluster
@@ -159,9 +160,18 @@ stop:
     kinds: [PersistentVolumeClaim]
     selector: app.kubernetes.io/instance=singlestore
     namespace: default
+  - type: delete
+    kind: Secret
+    name: singlestore-license
+    namespace: default
+  - type: delete
+    kind: Secret
+    name: singlestore-root-password
+    namespace: default
 
 # A running kit is stopped first by the framework. A cluster a failed start left is removed here,
-# before the operator that manages it; the CRD goes last.
+# before the operator that manages it, and so are the Secrets it left, so neither the license key
+# nor the root password stays in the cluster; the CRD goes last.
 uninstall:
   - type: delete
     kind: MemsqlCluster
@@ -170,6 +180,14 @@ uninstall:
   - type: delete
     kind: Deployment
     name: singlestore-operator
+    namespace: default
+  - type: delete
+    kind: Secret
+    name: singlestore-license
+    namespace: default
+  - type: delete
+    kind: Secret
+    name: singlestore-root-password
     namespace: default
   - type: delete
     kind: RoleBinding

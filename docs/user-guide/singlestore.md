@@ -21,7 +21,7 @@ Customer Portal and pass it to `kit install` with `--license`. The kit
 strips a trailing newline, so `--license "$(cat key.txt)"` is safe.
 
 The license key is written to the kit's directory in the workspace and to a Kubernetes Secret.
-Keep the workspace private.
+Keep the workspace private. `stop` and `uninstall` delete the license and root password Secrets.
 
 ## Quick Start
 
@@ -71,6 +71,11 @@ The message names the flag, never the value. To change an arg, re-run `kit insta
 - `--aggregators` **child aggregators**, which also take client queries.
 - `--leaves` **leaves**, which hold the data. Each leaf runs on its own db node.
 
+The master and the child aggregators each run on a db node of their own too, so a db node holds at
+most one aggregator and one leaf. `start` fails before anything is created when `--leaves` is more
+than the db node count, or when `--aggregators` plus the master is, naming the flag and the db node
+count.
+
 Every SingleStore pod runs on a db node; none runs on an app node or the control node. The
 operator runs on the control node.
 
@@ -78,7 +83,8 @@ operator runs on the control node.
 
 With redundancy 2, the leaves form two availability groups, and every partition has a replica in
 the other group. When `--redundancy` is not set, the kit uses 2 for an even leaf count and 1 for an
-odd one. The leaf count must be a multiple of the redundancy, because each availability group holds
+odd one. `--redundancy` takes 1 or 2 only; any other value fails before anything is created,
+naming `--redundancy`. The leaf count must be a multiple of the redundancy, because each availability group holds
 the same number of leaves: 3 leaves with `--redundancy 2` fails before anything is created, naming
 `--leaves` and `--redundancy`. The operator's default pairing of availability groups is used.
 
@@ -177,9 +183,11 @@ not create a local database instead.
 - `start` clears what a failed start left (the cluster, its volumes and the kit's Secrets), sizes
   the cluster, writes the license and password Secrets, applies the cluster, waits for every pod
   and leaf, opens the NodePort and creates the database.
-- `stop` deletes the cluster, the NodePort and the cluster's volumes. Every `start` is a fresh,
+- `stop` deletes the cluster, the NodePort, the cluster's volumes and the license and password
+  Secrets. Every `start` is a fresh,
   empty cluster.
-- `uninstall` stops a running cluster first, then removes the operator, its RBAC and the CRD.
+- `uninstall` stops a running cluster first, then removes the operator, its RBAC, the license and
+  password Secrets and the CRD.
 
 ## Metrics and dashboards
 

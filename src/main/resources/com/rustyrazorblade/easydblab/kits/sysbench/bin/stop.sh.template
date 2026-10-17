@@ -3,6 +3,10 @@ set -euo pipefail
 
 . "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/target-db.sh
+source "${SCRIPT_DIR}/lib/target-db.sh"
+
 # The cleanup pod runs on an app node, like every sysbench pod. With none, stop fails and the kit
 # stays marked running.
 edl_require_app_node sysbench
@@ -17,19 +21,7 @@ echo "Stopping sysbench pods for kit ${KIT_NAME}..."
 kubectl --kubeconfig="${KUBECONFIG}" delete pods \
   -l "easydblab/kit=${KIT_NAME}" --ignore-not-found
 
-if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
-  DB_ARGS="--db-driver=mysql \
-    --mysql-host=${TARGET_MYSQL_HOST} \
-    --mysql-port=${TARGET_MYSQL_PORT} \
-    --mysql-user=${TARGET_MYSQL_USER} \
-    --mysql-db=${TARGET_MYSQL_DATABASE}"
-elif [ -n "${TARGET_PG_HOST:-}" ]; then
-  DB_ARGS="--db-driver=pgsql \
-    --pgsql-host=${TARGET_PG_HOST} \
-    --pgsql-port=${TARGET_PG_PORT} \
-    --pgsql-user=${TARGET_PG_USER} \
-    --pgsql-db=${TARGET_PG_DATABASE}"
-else
+if ! target_db_args; then
   echo "Warning: no database endpoint found, skipping cleanup." >&2
   exit 0
 fi
@@ -44,7 +36,7 @@ kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
   --overrides="$(edl_pod_overrides)" \
   --override-type=strategic \
   --command -- sysbench \
-    ${DB_ARGS} \
+    "${DB_ARGS[@]}" \
     --tables="${TABLES}" \
     "${WORKLOAD}" cleanup
 
@@ -62,11 +54,13 @@ done
 
 # A cleanup that did not succeed says why before its pod goes: the pod's log when it ran (a gone
 # target, wrong credentials, a missing database), its events when it never started (an image pull).
+# Only the events: `kubectl describe pod` would print the pod's command line, password included.
 if [ "${PHASE}" != "Succeeded" ]; then
   if [ "${PHASE}" = "Failed" ]; then
     kubectl --kubeconfig="${KUBECONFIG}" logs "${CLEANUP_POD}" >&2 || true
   else
-    kubectl --kubeconfig="${KUBECONFIG}" describe pod "${CLEANUP_POD}" >&2 || true
+    kubectl --kubeconfig="${KUBECONFIG}" get events \
+      --field-selector "involvedObject.kind=Pod,involvedObject.name=${CLEANUP_POD}" >&2 || true
   fi
 fi
 

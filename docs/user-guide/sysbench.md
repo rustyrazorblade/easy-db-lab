@@ -109,6 +109,17 @@ Kills any running benchmark pod and runs sysbench cleanup, dropping the test tab
 the target database. If the target database is already stopped, `stop` still finishes and
 removes its pods; it prints why the cleanup did not finish (the cleanup pod's log, or its events if it never started) and says the test tables were left.
 
+## Target passwords
+
+When the target kit declares a password in its `sql` capability (SingleStore does, from its
+`--password` install arg), every phase authenticates with it: the cleanup and the database
+creation in `prepare`, the data load, the `start` run, and the `stop` cleanup. Nothing to pass:
+the password comes from the target's installed `kit.yaml`. A password with spaces, `*` or single
+quotes works. sysbench never prints it, and the database-creation pod gets it through the
+`MYSQL_PWD` environment variable rather than its command line.
+
+A target with no password (TiDB, PostgreSQL, ClickHouse) connects exactly as before.
+
 ## Rate limiting and overload testing
 
 By default (`--rate=0`) sysbench is thread-bound: each of the `--threads` worker threads

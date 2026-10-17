@@ -18,6 +18,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEMPLATE="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/start.sh.template"
 LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
+KIT_LIB_DIR="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/lib"
 # shellcheck source=kit-stubs.sh
 . "${ROOT}/src/test/shell/kit-stubs.sh"
 
@@ -30,6 +31,7 @@ export STUB_STATE="${WORK}/state"
 write_kit_stubs "${WORK}/stubs"
 mkdir -p "${WORK}/kit/bin"
 cp "${TEMPLATE}" "${WORK}/kit/bin/start.sh"
+cp -R "${KIT_LIB_DIR}" "${WORK}/kit/bin/lib"
 
 fail() {
   echo "FAIL: ${current_test}: $1"

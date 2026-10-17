@@ -3,21 +3,32 @@ set -euo pipefail
 
 . "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/target-db.sh
+source "${SCRIPT_DIR}/lib/target-db.sh"
+
 SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
 POD_NAME="sysbench-prepare-${KIT_NAME}-$(date +%s)"
 
-# Runs pod $1 with role $2 and image $3 on an app node, the command after `--` in the rest of the
-# arguments, then waits for it to end. Fails, with the pod's log, when it exits non-zero, and
-# deletes the pod when it succeeds.
+# Runs pod $1 with role $2 and image $3 on an app node, then waits for it to end. Any arguments
+# before `--` are extra `kubectl run` flags (such as --env); the command follows the `--`. Fails,
+# with the pod's log, when it exits non-zero, and deletes the pod when it succeeds.
 run_to_completion() {
   local pod="$1" role="$2" image="$3" code
   shift 3
+  local run_flags=()
+  while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+    run_flags+=("$1")
+    shift
+  done
+  [ "$#" -gt 0 ] && shift
   kubectl --kubeconfig="${KUBECONFIG}" run "${pod}" \
     --image="${image}" \
     --restart=Never \
     --labels="$(edl_labels "${role}")" \
     --overrides="$(edl_pod_overrides)" \
     --override-type=strategic \
+    ${run_flags[@]+"${run_flags[@]}"} \
     --command -- "$@"
   edl_wait_for_pod_running "${pod}"
   code="$(edl_wait_for_pod_exit "${pod}")"
@@ -28,19 +39,7 @@ run_to_completion() {
   kubectl --kubeconfig="${KUBECONFIG}" delete pod "${pod}" --ignore-not-found
 }
 
-if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
-  DB_ARGS="--db-driver=mysql \
-    --mysql-host=${TARGET_MYSQL_HOST} \
-    --mysql-port=${TARGET_MYSQL_PORT} \
-    --mysql-user=${TARGET_MYSQL_USER} \
-    --mysql-db=${TARGET_MYSQL_DATABASE}"
-elif [ -n "${TARGET_PG_HOST:-}" ]; then
-  DB_ARGS="--db-driver=pgsql \
-    --pgsql-host=${TARGET_PG_HOST} \
-    --pgsql-port=${TARGET_PG_PORT} \
-    --pgsql-user=${TARGET_PG_USER} \
-    --pgsql-db=${TARGET_PG_DATABASE}"
-else
+if ! target_db_args; then
   echo "Error: no supported database endpoint found. Ensure the target kit exposes a MySQL or PostgreSQL wire protocol endpoint." >&2
   exit 1
 fi
@@ -48,10 +47,13 @@ fi
 edl_require_app_node sysbench
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
-  # TiDB and MySQL do not ship with the sbtest database — create it before sysbench prepare.
+  # TiDB and MySQL do not ship with the sbtest database — create it before sysbench prepare. The
+  # password reaches the mysql client through MYSQL_PWD, never its command line.
+  target_mysql_pwd_env
   echo "Creating database ${TARGET_MYSQL_DATABASE} on ${TARGET_MYSQL_HOST}:${TARGET_MYSQL_PORT}..."
   run_to_completion "sysbench-createdb-${KIT_NAME}-$(date +%s)" sysbench-createdb "mysql:8.0" \
-    mysql \
+    ${MYSQL_PWD_ENV[@]+"${MYSQL_PWD_ENV[@]}"} \
+    -- mysql \
     -h "${TARGET_MYSQL_HOST}" \
     -P "${TARGET_MYSQL_PORT}" \
     -u "${TARGET_MYSQL_USER}" \
@@ -63,15 +65,13 @@ fi
 # --tables fails with "error 1050: Table 'sbtest.sbtest1' already exists". sysbench
 # cleanup uses DROP TABLE IF EXISTS, so this is idempotent and safe on a fresh
 # cluster with no existing tables. It runs for whichever driver (mysql/pgsql) was
-# selected above via the shared ${DB_ARGS}.
+# selected above via the shared DB_ARGS.
 echo "Cleaning up any existing sysbench data before prepare..."
-# shellcheck disable=SC2086 # DB_ARGS is a list of flags, split on purpose
 run_to_completion "sysbench-cleanup-${KIT_NAME}-$(date +%s)" sysbench-cleanup "${SYSBENCH_IMAGE}" \
-  sysbench ${DB_ARGS} --tables="${TABLES}" "${WORKLOAD}" cleanup
+  -- sysbench "${DB_ARGS[@]}" --tables="${TABLES}" "${WORKLOAD}" cleanup
 
 echo "Preparing sysbench data: ${TABLES} tables, ${SCALE}000 rows each..."
-# shellcheck disable=SC2086 # DB_ARGS is a list of flags, split on purpose
 run_to_completion "${POD_NAME}" sysbench-prepare "${SYSBENCH_IMAGE}" \
-  sysbench ${DB_ARGS} --tables="${TABLES}" --table-size="${SCALE}000" "${WORKLOAD}" prepare
+  -- sysbench "${DB_ARGS[@]}" --tables="${TABLES}" --table-size="${SCALE}000" "${WORKLOAD}" prepare
 
 echo "Data preparation complete."

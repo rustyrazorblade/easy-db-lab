@@ -21,11 +21,11 @@
 
 ## 4. sysbench passwords and debt
 
-- [ ] 4.1 Add `kits/sysbench/bin/lib/target-db.sh`, sourced through the script directory, that builds the driver args once as a shell array for prepare, start, and stop
-- [ ] 4.2 Add `--mysql-password` or `--pgsql-password` when the target password is set. Give the create-database pod `MYSQL_PWD` through `--env` when set
-- [ ] 4.3 In `stop.sh.template`, replace `kubectl describe pod` with an events listing, so the pod's command line is never printed
-- [ ] 4.4 Add `src/test/shell/sysbench-target-db.test.sh` (passwordless targets unchanged; password with spaces, `*`, and single quotes passed as one arg; no password in output), wire it into `testScripts` in `build.gradle.kts`, and keep `sysbench-start.test.sh` and `sysbench-stop.test.sh` passing
-- [ ] 4.5 Update `docs/user-guide/sysbench.md` for target passwords
+- [x] 4.1 Add `kits/sysbench/bin/lib/target-db.sh`, sourced through the script directory, that builds the driver args once as a shell array for prepare, start, and stop
+- [x] 4.2 Add `--mysql-password` or `--pgsql-password` when the target password is set. Give the create-database pod `MYSQL_PWD` through `--env` when set
+- [x] 4.3 In `stop.sh.template`, replace `kubectl describe pod` with an events listing, so the pod's command line is never printed
+- [x] 4.4 Add `src/test/shell/sysbench-target-db.test.sh` (passwordless targets unchanged; password with spaces, `*`, and single quotes passed as one arg; no password in output), wire it into `testScripts` in `build.gradle.kts`, and keep `sysbench-start.test.sh` and `sysbench-stop.test.sh` passing
+- [x] 4.5 Update `docs/user-guide/sysbench.md` for target passwords
 
 ## 5. SingleStore kit: operator and kit.yaml
 

@@ -55,9 +55,10 @@ if (!defined $child) {
   exit 125;
 }
 if ($child == 0) {
-  exec { $ARGV[0] } @ARGV;
-  print STDERR "timeout: failed to run command '$ARGV[0]': $!\n";
-  POSIX::_exit($!{ENOENT} ? 127 : 126);
+  exec { $ARGV[0] } @ARGV or do {
+    print STDERR "timeout: failed to run command '$ARGV[0]': $!\n";
+    POSIX::_exit($!{ENOENT} ? 127 : 126);
+  };
 }
 
 my $timed_out = 0;

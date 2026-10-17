@@ -130,7 +130,7 @@ Factory methods: `from(clusterState)`, `root(bucket)`, `fromKey(bucket, key)`
 
 **Location:** `services/TemplateService.kt` (Koin-managed)
 
-Handles `__KEY__` placeholder substitution in K8s manifests, YAML configs, etc. Uses `__` delimiters (not `${}`) to avoid conflicts with Grafana template syntax.
+Handles `__KEY__` placeholder substitution in K8s manifests, YAML configs, etc. Uses `__` delimiters (not `${}`) to avoid conflicts with Grafana template syntax. Every value goes in literally: a `__KEY__` or a `$` inside a value (a kit `--password`, say) is never substituted again, and `renderKitTemplate` reports as unresolved only the placeholders of the template itself.
 
 **Context variables** (built from cluster state):
 - `ACCOUNT_BUCKET` (the account bucket; the observability stack never writes to the data bucket), `AWS_REGION`, `CLUSTER_ID` (the UUID `up` tags every instance, volume and OpenSearch domain with as `ClusterId`), `CLUSTER_NAME`, `CONTROL_NODE_IP`, `TENANT` (the cluster's observability tenant), `PROFILES_S3_PREFIX` (`pyroscope`)

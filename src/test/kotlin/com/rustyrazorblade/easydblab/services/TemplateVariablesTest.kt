@@ -248,6 +248,37 @@ class TemplateVariablesTest : BaseKoinTest() {
         assertThat(called).isFalse()
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = ["a__REGION__b", "a\$__X__b", "p__KIT_NAME__w", "__CLUSTER_NAME__", "x\${REGION}y"])
+    fun `renderKitTemplate inserts an arg value literally`(value: String) {
+        val state = stateWith()
+        val vars = TemplateVariables.from(state = state, kitName = "mydb", storageSize = "50Gi")
+
+        val rendered =
+            templateService.renderKitTemplate(
+                "password: \"__PASSWORD__\"\ndatabase: __DATABASE__",
+                vars,
+                mapOf("PASSWORD" to value, "DATABASE" to value),
+            )
+
+        assertThat(rendered).isEqualTo("password: \"$value\"\ndatabase: $value")
+    }
+
+    @Test
+    fun `renderKitTemplate does not report a placeholder an arg value itself contains`() {
+        val state = stateWith()
+        val vars = TemplateVariables.from(state = state, kitName = "mydb", storageSize = "50Gi")
+
+        val unresolved = mutableListOf<String>()
+        templateService.renderKitTemplate(
+            "password: __PASSWORD__\nreplicas: __REPLICAS__",
+            vars,
+            mapOf("PASSWORD" to "a__SECRET__b"),
+        ) { unresolved.addAll(it) }
+
+        assertThat(unresolved).containsExactly("REPLICAS")
+    }
+
     @Test
     fun `resolveEasyDbLabExec returns fixed path when file exists`() {
         val fixed = File(tempDir, "easy-db-lab")

@@ -49,7 +49,7 @@ class SingleStoreKitIntegrationTest {
             K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
                 .withPrivilegedMode(true)
                 .withCreateContainerCmdModifier { cmd ->
-                    cmd.hostConfig!!
+                    requireNotNull(cmd.hostConfig) { "the K3s container has no host config" }
                         .withCgroupnsMode("host")
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
                 }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
@@ -78,7 +78,13 @@ class SingleStoreKitIntegrationTest {
             .customResourceDefinitions()
             .withName("memsqlclusters.memsql.com")
             .waitUntilCondition(
-                { crd -> crd?.status?.conditions.orEmpty().any { it.type == "Established" && it.status == "True" } },
+                { crd ->
+                    crd
+                        ?.status
+                        ?.conditions
+                        .orEmpty()
+                        .any { it.type == "Established" && it.status == "True" }
+                },
                 WAIT_SECONDS,
                 TimeUnit.SECONDS,
             )
@@ -96,9 +102,23 @@ class SingleStoreKitIntegrationTest {
 
     @Test
     fun `the operator RBAC is in place and its pod is scheduled on the control-plane node`() {
-        assertThat(client.serviceAccounts().inNamespace(NAMESPACE).withName("singlestore-operator").get()).isNotNull()
-        assertThat(client.rbac().clusterRoleBindings().withName("singlestore-operator").get().subjects.single().namespace)
-            .isEqualTo(NAMESPACE)
+        assertThat(
+            client
+                .serviceAccounts()
+                .inNamespace(NAMESPACE)
+                .withName("singlestore-operator")
+                .get(),
+        ).isNotNull()
+        assertThat(
+            client
+                .rbac()
+                .clusterRoleBindings()
+                .withName("singlestore-operator")
+                .get()
+                .subjects
+                .single()
+                .namespace,
+        ).isEqualTo(NAMESPACE)
 
         val pod =
             client
@@ -180,10 +200,19 @@ class SingleStoreKitIntegrationTest {
     fun `the NodePort Service is accepted on 30306`() {
         kit.render("nodeport-service.yaml").forEach(::apply)
 
-        val service = client.services().inNamespace(NAMESPACE).withName("singlestore-nodeport").get()
+        val service =
+            client
+                .services()
+                .inNamespace(NAMESPACE)
+                .withName("singlestore-nodeport")
+                .get()
 
         assertThat(service.spec.type).isEqualTo("NodePort")
-        assertThat(service.spec.ports.single().nodePort).isEqualTo(30306)
+        assertThat(
+            service.spec.ports
+                .single()
+                .nodePort,
+        ).isEqualTo(30306)
         assertThat(service.spec.selector).containsEntry("easydblab/tier", "aggregator")
     }
 }

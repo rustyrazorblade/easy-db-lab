@@ -175,7 +175,7 @@ NOW=1756000000
 
 setup() {
   SANDBOX="$(mktemp -d)"
-  STUB_BIN="$SANDBOX/bin"
+  STUB_BIN="$STUB_DIR"
   PROFILE_DIR="$SANDBOX/profiles"
   CONFIG="$SANDBOX/profiling.json"
   STUB_LOG="$SANDBOX/stub.log"
@@ -184,11 +184,26 @@ setup() {
   OUTPUT="$SANDBOX/output.txt"
   ASPROF_STATE="$SANDBOX/asprof.state"
   CURL_BODY="$SANDBOX/curl.body"
-  mkdir -p "$STUB_BIN" "$PROFILE_DIR"
+  mkdir -p "$PROFILE_DIR"
   : >"$STUB_LOG"
   : >"$ASPROF_ARGV"
   : >"$CURL_LOG"
   : >"$CURL_BODY"
+}
+
+# The stubs are written once per run, not once per test, and each is run once as soon as it is
+# written. macOS checks the first exec of every newly written executable, and those checks queue
+# behind each other. Under load that writes and execs scripts the way `check`'s other tiers do, one
+# first exec took about ten seconds. Fresh stubs in every sandbox put four of those inside every
+# pass, so a test that times a pass with a real clock, such as the wait for a killed pass to reach
+# its uploads, ran out of time before the pass got there. Running the same file again is not
+# checked again, so after the warm-up below no test pays for it. The stubs keep no state of their
+# own: everything they record goes to the per-test files their environment names.
+STUB_DIR="$(mktemp -d)"
+trap 'rm -rf "$STUB_DIR" ${TIMEOUT_SHIM_DIR:+"$TIMEOUT_SHIM_DIR"}' EXIT
+
+write_stubs() {
+  local STUB_BIN="$STUB_DIR"
 
   # The stub models the one asprof behaviour the reconciler leans on: `status` answers with what the
   # JVM actually has attached, and that changes only when a start or stop *succeeds*. Modelling it
@@ -285,7 +300,19 @@ exit 0
 STUB
 
   chmod +x "$STUB_BIN"/*
+
+  # The warm-up runs: every stub, and the timeout shim when this run has one. What they record goes
+  # nowhere.
+  env STUB_LOG=/dev/null ASPROF_ARGV=/dev/null ASPROF_STATE=/dev/null "$STUB_BIN/asprof" \
+    >/dev/null 2>&1
+  "$STUB_BIN/cassandra-pid" >/dev/null 2>&1
+  env STUB_LOG=/dev/null "$STUB_BIN/cassandra-ready" >/dev/null 2>&1
+  env CURL_LOG=/dev/null CURL_BODY=/dev/null "$STUB_BIN/curl" >/dev/null 2>&1
+  if [[ -n "$TIMEOUT_SHIM_DIR" ]]; then
+    timeout 5 true
+  fi
 }
+write_stubs
 
 teardown() {
   [[ -n "${SANDBOX:-}" ]] && rm -rf "$SANDBOX"

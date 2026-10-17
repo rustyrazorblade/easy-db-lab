@@ -20,6 +20,7 @@ import java.util.Properties
  * @property clusterStateManager Provides cluster state for node IP resolution.
  * @property endpoint JDBC endpoint declared in kit.yaml.
  * @property user JDBC username (from the sql capability config); omitted from properties if blank.
+ * @property password JDBC password (from the sql capability config); omitted from properties if blank.
  * @property connectionFactory Injectable for testing; defaults to [defaultJdbcConnectionFactory].
  * @property bridgeFactory Injectable for testing; defaults to [defaultSocksTcpBridgeFactory].
  */
@@ -27,6 +28,7 @@ class KitJdbcSqlService(
     private val clusterStateManager: ClusterStateManager,
     private val endpoint: KitEndpoint,
     private val user: String,
+    private val password: String = "",
     private val connectionFactory: JdbcConnectionFactory = defaultJdbcConnectionFactory,
     private val bridgeFactory: SocksTcpBridgeFactory = defaultSocksTcpBridgeFactory,
 ) {
@@ -52,6 +54,7 @@ class KitJdbcSqlService(
             val props =
                 Properties().apply {
                     if (user.isNotBlank()) setProperty("user", user)
+                    if (password.isNotBlank()) setProperty("password", password)
                 }
 
             val socksPort = System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()

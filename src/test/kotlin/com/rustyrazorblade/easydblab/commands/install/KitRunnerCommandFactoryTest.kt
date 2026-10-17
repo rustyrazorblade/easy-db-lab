@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.commands.kit.KitSqlCommand
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
@@ -300,6 +301,33 @@ class KitRunnerCommandFactoryTest : BaseKoinTest() {
 
         val groupCl = factory.buildKitGroup("presto", kitDir)
         assertThat(groupCl.subcommands.keys).contains("sql")
+    }
+
+    @Test
+    fun `the sql subcommand connects with the installed kit yaml's capability password`() {
+        writeKitYaml(
+            """
+            name: singlestore
+            endpoints:
+              - name: "JDBC"
+                node-type: db
+                port: 30306
+                type: jdbc
+                scheme: mysql
+                path: /bench
+            capabilities:
+              - type: sql
+                user: root
+                password: "installed-pw"
+                driver-class: com.mysql.cj.jdbc.Driver
+            """.trimIndent(),
+        )
+
+        val sql = factory.buildKitGroup("singlestore", kitDir).subcommands.getValue("sql")
+        val command = sql.commandSpec.userObject() as KitSqlCommand
+
+        assertThat(command.capability.password).isEqualTo("installed-pw")
+        assertThat(command.capability.user).isEqualTo("root")
     }
 
     @Test

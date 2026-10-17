@@ -91,8 +91,7 @@ class KitRunnerCommandFactory {
             KitSqlCommand(
                 kitName = kitName,
                 endpoint = jdbcEndpoint,
-                user = cap.user,
-                driverClass = cap.driverClass,
+                capability = cap,
             )
         val spec = CommandSpec.forAnnotatedObject(command, CommandLine.defaultFactory()).name(commandName)
         spec.usageMessage().description(description)

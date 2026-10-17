@@ -1410,6 +1410,42 @@ class KitConfigTest {
     }
 
     @Test
+    fun `sql capability parses a password`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                capabilities:
+                  - type: sql
+                    user: root
+                    password: "p w*'d"
+                """.trimIndent(),
+            )
+        assertThat(config.capabilities.single().password).isEqualTo("p w*'d")
+    }
+
+    @Test
+    fun `sql capability password defaults to empty`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                capabilities:
+                  - type: sql
+                    user: root
+                """.trimIndent(),
+            )
+        assertThat(config.capabilities.single().password).isEmpty()
+    }
+
+    @Test
+    fun `a logged sql capability does not reveal its password`() {
+        val capability = KitCapability(type = "sql", user = "root", password = "hunter2")
+
+        assertThat(capability.toString()).doesNotContain("hunter2").contains("user=root")
+    }
+
+    @Test
     fun `kit-ref arg parses alongside other arg types`() {
         val config =
             parse(
@@ -1517,5 +1553,37 @@ class KitEndpointToTargetVarsTest {
         val vars = endpoint(KitEndpoint.EndpointType.JDBC, scheme = "postgresql").toTargetVars("10.0.0.6", null)
         assertThat(vars["TARGET_JDBC_USER"]).isEmpty()
         assertThat(vars["TARGET_JDBC_DRIVER"]).isEmpty()
+    }
+
+    @Test
+    fun `every sql wire endpoint carries the capability password`() {
+        val withPassword = sqlCap.copy(password = "s3cret pass")
+
+        assertThat(endpoint(KitEndpoint.EndpointType.JDBC, scheme = "mysql").toTargetVars("10.0.0.7", withPassword))
+            .containsEntry("TARGET_JDBC_PASSWORD", "s3cret pass")
+        assertThat(endpoint(KitEndpoint.EndpointType.POSTGRESQL).toTargetVars("10.0.0.7", withPassword))
+            .containsEntry("TARGET_PG_PASSWORD", "s3cret pass")
+        assertThat(endpoint(KitEndpoint.EndpointType.MYSQL).toTargetVars("10.0.0.7", withPassword))
+            .containsEntry("TARGET_MYSQL_PASSWORD", "s3cret pass")
+    }
+
+    @Test
+    fun `a kit with no password sets an empty password variable`() {
+        assertThat(endpoint(KitEndpoint.EndpointType.JDBC, scheme = "mysql").toTargetVars("10.0.0.8", sqlCap))
+            .containsEntry("TARGET_JDBC_PASSWORD", "")
+        assertThat(endpoint(KitEndpoint.EndpointType.POSTGRESQL).toTargetVars("10.0.0.8", sqlCap))
+            .containsEntry("TARGET_PG_PASSWORD", "")
+        assertThat(endpoint(KitEndpoint.EndpointType.MYSQL).toTargetVars("10.0.0.8", null))
+            .containsEntry("TARGET_MYSQL_PASSWORD", "")
+    }
+
+    @Test
+    fun `endpoints with no sql wire protocol carry no password`() {
+        val withPassword = sqlCap.copy(password = "s3cret")
+
+        assertThat(endpoint(KitEndpoint.EndpointType.HTTP).toTargetVars("10.0.0.9", withPassword).values)
+            .doesNotContain("s3cret")
+        assertThat(endpoint(KitEndpoint.EndpointType.KAFKA).toTargetVars("10.0.0.9", withPassword).values)
+            .doesNotContain("s3cret")
     }
 }

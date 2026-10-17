@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
 import org.assertj.core.api.Assertions.assertThat
@@ -105,13 +106,48 @@ class KitSqlCommandTest : BaseKoinTest() {
     private fun buildCommand(
         connectionFactory: JdbcConnectionFactory = JdbcConnectionFactory { _, _ -> mock() },
         driverClass: String = "",
+        password: String = "",
     ) = KitSqlCommand(
         kitName = "presto",
         endpoint = jdbcEndpoint,
-        user = "easy-db-lab",
-        driverClass = driverClass,
+        capability = KitCapability(type = "sql", user = "easy-db-lab", password = password, driverClass = driverClass),
         connectionFactory = connectionFactory,
     )
+
+    /** Everything the command printed or reported, success and error alike. */
+    private fun allOutput(): String =
+        (outputHandler.messages + outputHandler.errors.map { it.first }).joinToString("\n")
+
+    @Test
+    fun `the capability password reaches the connection but not the output`() {
+        var sentPassword: String? = null
+        val succeeding = mockSuccessConnection(listOf("one"), listOf(listOf("1")))
+        val factory =
+            JdbcConnectionFactory { url, props ->
+                sentPassword = props.getProperty("password")
+                succeeding.connect(url, props)
+            }
+
+        val command = buildCommand(connectionFactory = factory, password = "s3cr3t-pw")
+        command.statement = "SELECT 1"
+        command.execute()
+
+        assertThat(sentPassword).isEqualTo("s3cr3t-pw")
+        assertThat(allOutput()).contains("1").doesNotContain("s3cr3t-pw")
+    }
+
+    @Test
+    fun `a driver error that echoes the password is reported without it`() {
+        val factory =
+            JdbcConnectionFactory { _, _ -> throw java.sql.SQLException("Access denied for root using 's3cr3t-pw'") }
+
+        val command = buildCommand(connectionFactory = factory, password = "s3cr3t-pw")
+        command.statement = "SELECT 1"
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(allOutput()).contains("Access denied").doesNotContain("s3cr3t-pw")
+    }
 
     @Test
     fun `inline sql executes query and emits output`() {

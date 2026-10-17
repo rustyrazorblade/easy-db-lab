@@ -6,10 +6,10 @@
 
 ## 2. Framework: password support
 
-- [ ] 2.1 Add `password` (default `""`) to `KitCapability` in `services/KitConfig.kt`, with a unit test that parses it and defaults it
-- [ ] 2.2 Add `TARGET_MYSQL_PASSWORD`, `TARGET_PG_PASSWORD`, and `TARGET_JDBC_PASSWORD` to `KitEndpoint.toTargetVars`, with unit tests for a set and a blank password
-- [ ] 2.3 Pass the password from `KitSqlCommand` to `KitJdbcSqlService`, and set the JDBC `password` property only when it is not blank. Test the connection properties through a fake connection factory
-- [ ] 2.4 Check every event and `println` on the `sql` path, and add a test that the password does not appear in success or error output
+- [x] 2.1 Add `password` (default `""`) to `KitCapability` in `services/KitConfig.kt`, with a unit test that parses it and defaults it
+- [x] 2.2 Add `TARGET_MYSQL_PASSWORD`, `TARGET_PG_PASSWORD`, and `TARGET_JDBC_PASSWORD` to `KitEndpoint.toTargetVars`, with unit tests for a set and a blank password
+- [x] 2.3 Pass the password from `KitSqlCommand` to `KitJdbcSqlService`, and set the JDBC `password` property only when it is not blank. Test the connection properties through a fake connection factory
+- [x] 2.4 Check every event and `println` on the `sql` path, and add a test that the password does not appear in success or error output
 
 ## 3. Framework: install-time render and arg validation
 

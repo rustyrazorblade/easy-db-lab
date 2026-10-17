@@ -106,17 +106,22 @@ data class KitEndpoint(
      * Produces TARGET_* environment variables for this endpoint given the resolved [ip]
      * and the kit's [sqlCap]. Returns an empty map for endpoint types with no TARGET_*
      * convention (HTTPS, NATIVE, CQL).
+     *
+     * Each SQL wire type (`jdbc`, `postgresql`, `mysql`) carries the capability's password, or an
+     * empty string when the kit has none, so a bench kit can authenticate in every phase.
      */
     fun toTargetVars(
         ip: String,
         sqlCap: KitCapability?,
     ): Map<String, String> {
         val sqlUser = sqlCap?.user.orEmpty()
+        val sqlPassword = sqlCap?.password.orEmpty()
         return when (type) {
             EndpointType.JDBC ->
                 mapOf(
                     "TARGET_JDBC_URL" to formatUrl(ip),
                     "TARGET_JDBC_USER" to sqlUser,
+                    "TARGET_JDBC_PASSWORD" to sqlPassword,
                     "TARGET_JDBC_DRIVER" to sqlCap?.driverClass.orEmpty(),
                 )
             EndpointType.POSTGRESQL ->
@@ -124,6 +129,7 @@ data class KitEndpoint(
                     "TARGET_PG_HOST" to ip,
                     "TARGET_PG_PORT" to port.toString(),
                     "TARGET_PG_USER" to sqlUser,
+                    "TARGET_PG_PASSWORD" to sqlPassword,
                     "TARGET_PG_DATABASE" to database,
                 )
             EndpointType.MYSQL ->
@@ -131,6 +137,7 @@ data class KitEndpoint(
                     "TARGET_MYSQL_HOST" to ip,
                     "TARGET_MYSQL_PORT" to port.toString(),
                     "TARGET_MYSQL_USER" to sqlUser,
+                    "TARGET_MYSQL_PASSWORD" to sqlPassword,
                     "TARGET_MYSQL_DATABASE" to database,
                 )
             EndpointType.HTTP -> mapOf("TARGET_HTTP_URL" to formatUrl(ip))
@@ -193,13 +200,22 @@ enum class KitType {
  *     user: easy-db-lab
  *     driver-class: com.facebook.presto.jdbc.PrestoDriver
  * ```
+ *
+ * [password] is the JDBC password, empty when the database needs none. A kit that takes it as an
+ * install arg writes `password: "__VAR__"`, which `kit install` resolves in the installed
+ * `kit.yaml`. [toString] masks it, so a logged capability never carries it.
  */
 @Serializable
 data class KitCapability(
     val type: String = "",
     val user: String = "",
+    val password: String = "",
     @SerialName("driver-class") val driverClass: String = "",
 ) {
+    override fun toString(): String =
+        "KitCapability(type=$type, user=$user, password=${if (password.isEmpty()) "" else "****"}, " +
+            "driverClass=$driverClass)"
+
     /**
      * Returns the (commandName, description) pair for this capability.
      * Both [KitInfo] and [KitRunnerCommandFactory] use this as the single source of truth

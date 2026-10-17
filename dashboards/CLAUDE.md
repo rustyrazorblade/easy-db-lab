@@ -289,7 +289,7 @@ on the verdict tiles and the delta series, is guarded the same way. The older pa
 pickers, and match A and B on `cluster`: they compare two builds or two host sets inside each
 cluster, never a host against itself in another cluster. To compare two clusters, use the top
 rows. The cluster pair has no older panels: below the top rows its verdict tiles ("B measured
-against A") and side-by-side latency heatmaps are run views too, read A and B only, and its
+against A") and side-by-side read and write Percentile Ladders (each node's p50, p99, p999 and max gauges on a log axis; no heatmap) are run views too, read A and B only, and its
 `cluster` is hidden. `DashboardQueries` gives the helper variables sample values, so
 `PromQlCompatibilityIntegrationTest` runs the negative `offset`, `@` and subquery forms against the
 pinned Mimir.

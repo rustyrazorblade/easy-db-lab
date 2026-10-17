@@ -54,7 +54,7 @@
 ## 5. Phase 3b: dashboard JSON (through the `dashboard-editor` agent)
 
 - [x] 5.1 Rename `cassandra/cluster-comparison.json` to `cassandra/experiment-cassandra.json`, title "Experiment: Cassandra", uid kept; remove the pair variables, `base_*`/`cand_*`, the overlay, side-by-side and summary rows, "A/B verdict"; add `experiment`, `exp_tenant`, `exp_name`, `home_tenant`, the experiment-scoped `cluster`, span helpers, leaderboard, distributions, elapsed-time overlay (Trend with `merge` → `organize` dropping `Time` → `partitionByValues(cluster)` → `joinByField("Value #A", outer)`, `xField: "Value #A"`, `maxDataPoints: 5000`), timeline, report panel; span override on the existing rows. Every `query_result` variable query on one line.
-- [x] 5.2 New `cassandra/cluster-pair.json`, uid `cluster-pair`, from today's top three rows plus the verdict stats and the side-by-side heatmaps; `cluster_a`/`cluster_b`, `a_*`/`b_*`, `a_report`/`b_report`, "B vs A %".
+- [x] 5.2 New `cassandra/cluster-pair.json`, uid `cluster-pair`, from today's top three rows plus the verdict stats and the side-by-side latency panels (amended by owner decision 21: Percentile Ladders, see 5.10); `cluster_a`/`cluster_b`, `a_*`/`b_*`, `a_report`/`b_report`, "B vs A %".
 - [x] 5.3 New `infrastructure/experiment-system.json`, uid `experiment-system`, with system figures, `role`, no host pickers.
 - [x] 5.4 `cassandra/ab-comparison.json`: the A/B rename (`cluster_a`/`cluster_b`, `a_*`/`b_*`, `build_a`/`build_b`), summary labels and difference rule, new variables, oldest-first and newest-first pair lists, narrowed `cluster` default All, report iframes.
 - [x] 5.5 `infrastructure/system-ab-comparison.json`: the same with `hosts_a`/`hosts_b`; link to `ab-comparison` carries `experiment`, `cluster_a`, `cluster_b` and drops `doc_tenant`.
@@ -62,6 +62,7 @@
 - [x] 5.7 TraceQL audit: fix every TraceQL use (system-overview, observability/tempo, clickhouse-logs, tidb and any other) to hold `resource.cluster` against the cluster variable.
 - [x] 5.8 Unit tier green: every guard from section 4 passes on every core and kit dashboard.
 - [ ] 5.9 Live check with `installDist`, `grafana update-config` and read-back from Grafana: newest experiment on open; cluster picker lists only the experiment; pair defaults (A oldest, B current); kept dashboards work with A/B pickers; same-named experiments in two tenants stay apart; All on `mimir--all` shows both tenants; a pre-label cluster shows as an experiment of one and opens its documents.
+- [ ] 5.10 Owner decision 21, through the `dashboard-editor` agent: on `cassandra/cluster-pair.json`, replace the four latency heatmaps with the read and write Percentile Ladders of A and of B, side by side (p50, p99, p999 and max per node, log axis, as on Experiment: Cassandra); no heatmap remains on the pair.
 
 ## 6. Phase 4: local stack
 
@@ -86,6 +87,10 @@
 - [x] 7.6 Tests: selector errors, path errors, atomicity (fail mid-copy leaves no zip), generated indexes match the copied blocks, nothing written to S3 (listing unchanged).
 - [ ] 7.7 Live check: export a tenant, open it on a machine with networking off and no AWS credentials (images pulled beforehand) with plain `docker compose up`; metrics, logs, traces, annotations, dashboards and the report show.
 - [x] 7.8 Docs: export section in the new page, `docs/reference/commands.md` `observability export`, `help/observability.md` export section.
+- [ ] 7.9 Owner decision 22: `LokiIndexSplit` (Loki's compactor, `LocalImages.LOKI`, `-target=compactor`, filesystem store over the work directory's copy, `network_mode: none`, the operator's uid:gid, retention off, deletion disabled, memberlist on `127.0.0.1`), waiting for `compactor started`; logs saved, project removed. Unit tests over a fake `ComposeCli`: the compose file, the wait, a container that exits, the timeout.
+- [ ] 7.10 `TenantStoreCopy`: copy each table's root files and `<table>/<t>/` into the kept work directory with the redo; split only when a root file was copied; fail when a root file is left; put only `<table>/<t>/` into the zip. `TenantExporter`: the work directory `<path>.work-<id>/`, `Export.WorkDirectoryKept` last on success and failure. Unit tests over `FakeExportStore` and a fake split.
+- [ ] 7.11 Integration test: two tenants' logs, the newest only in a shared root file; export one; no zip file names or holds the other tenant's streams or cluster ids; the opened stack returns the exported tenant's newest lines.
+- [ ] 7.12 Docs: `docs/user-guide/local-observability.md`, `export/CLAUDE.md`, the root `CLAUDE.md` export line, `events/CLAUDE.md` if events change.
 
 ## 8. Phase 6: query exports
 

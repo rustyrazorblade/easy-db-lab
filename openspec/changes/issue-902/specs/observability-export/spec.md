@@ -33,7 +33,7 @@ No selector, or more than one kind of selector, SHALL fail and name the three ch
 
 ### Requirement: A tenant export copies the tenant's store consistently
 
-`--tenant <t>` SHALL copy, with no docker, the tenant's directories under `mimir/` and `tempo/`, Loki's chunks of the tenant and the tenant's index under `loki/index/`, the tenant's annotation backups under `grafana/annotations/<t>/`, and every report under `reports/<t>/`.  The copy SHALL stay consistent while the account compactor runs: it SHALL copy Loki's index table by table and redo a table that is replaced during the copy; it SHALL copy every Tempo block that has a `meta.json` and no compacted marker, and write the zip's own Tempo tenant index from the copied blocks; it SHALL read Mimir's bucket index once, copy the blocks with no deletion mark, and write the zip's own bucket index from the copied blocks; and it SHALL copy immutable objects last.  Before it copies, it SHALL sum the listing, print the size, and fail early when free disk space is short.  A tenant with no data SHALL fail and name the tenant and the prefixes it listed.
+`--tenant <t>` SHALL copy, with no docker except the Loki index split below, the tenant's directories under `mimir/` and `tempo/`, Loki's chunks of the tenant and the tenant's index under `loki/index/`, the tenant's annotation backups under `grafana/annotations/<t>/`, and every report under `reports/<t>/`.  The copy SHALL stay consistent while the account compactor runs: it SHALL copy Loki's index table by table and redo a table that is replaced during the copy; it SHALL copy every Tempo block that has a `meta.json` and no compacted marker, and write the zip's own Tempo tenant index from the copied blocks; it SHALL read Mimir's bucket index once, copy the blocks with no deletion mark, and write the zip's own bucket index from the copied blocks; and it SHALL copy immutable objects last.  Before it copies, it SHALL sum the listing, print the size, and fail early when free disk space is short.  A tenant with no data SHALL fail and name the tenant and the prefixes it listed.
 
 #### Scenario: The tenant's store is in the zip
 - **WHEN** `observability export out.zip --tenant acme` runs
@@ -50,6 +50,38 @@ No selector, or more than one kind of selector, SHALL fail and name the three ch
 #### Scenario: Short disk space fails early
 - **WHEN** the tenant's data is larger than the free disk space at the path
 - **THEN** the export fails before copying, naming the size and the free space
+
+### Requirement: A tenant export's Loki index holds only the exported tenant
+
+Loki's ingesters write the index of every tenant they received into shared multi-tenant files at the root of each index table, named after the ingester that uploaded them (its tenant and cluster).  Only Loki's compactor splits these files into per-tenant files under `<table>/<tenant>/`.  A `--tenant <t>` export SHALL put into the zip only the files under `loki/index/<table>/<t>/`, and no shared file.  The zip's Loki index SHALL hold no stream label, chunk reference or series of another tenant, and no file name that names another tenant or another tenant's cluster.
+
+To make these files, the export SHALL copy each table's shared files and the files under `<table>/<t>/` to a local work directory, with the same table-by-table redo as the rest of the Loki index copy.  It SHALL then run Loki's own compactor, from the image the stack uses for Loki, in a local docker container over that copy as a filesystem store.  The container SHALL have no network and no AWS credentials, and SHALL run as the operator.  It SHALL run compaction only, with retention and deletion off.  The export SHALL take `<t>`'s per-tenant files from the compactor's output.  When a table still holds a shared file after the run, the export SHALL fail and name the table.  When no copied table holds a shared file, the export SHALL run no container.
+
+Nothing SHALL be written to S3.  The work directory SHALL be kept after the export, on success and on failure; the command SHALL print its location and size and SHALL NOT remove it.  A failure of the copy, the container or the check SHALL fail the export as `Export.Failed` with the logs signal and the step, and no zip SHALL be left at the path.
+
+#### Scenario: The zip's Loki index holds only the tenant
+- **WHEN** `observability export out.zip --tenant acme` runs, and a shared index file holds the index of `acme` and of `other`
+- **THEN** every Loki index file in the zip is under `loki/index/<table>/acme/`
+- **AND** no file in the zip names `other` or a cluster of `other`, or holds a stream label of `other`
+
+#### Scenario: The tenant's newest logs survive the split
+- **WHEN** the newest logs of `acme` are indexed only in shared files at the table root
+- **THEN** the opened export shows those newest log lines of `acme`
+
+#### Scenario: The split runs locally with no network and no credentials
+- **WHEN** the export splits the Loki index
+- **THEN** Loki's compactor runs in a local container with no network and no AWS credentials, over a copy in the work directory
+- **AND** it runs with retention and deletion off
+- **AND** nothing in S3 is written or deleted
+
+#### Scenario: An index with no shared file needs no container
+- **WHEN** every copied index table holds only per-tenant files
+- **THEN** the export runs no container and copies `acme`'s per-tenant files as they are
+
+#### Scenario: A failed split fails the export
+- **WHEN** the compactor container fails, or a table still holds a shared file after it ran
+- **THEN** the export fails with `Export.Failed`, naming the logs signal and the step
+- **AND** no zip is left at the path, and the work directory is kept and reported
 
 ### Requirement: A query export holds only the selected clusters
 

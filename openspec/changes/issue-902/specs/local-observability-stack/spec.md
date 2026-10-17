@@ -67,7 +67,7 @@ In live mode, the stack SHALL read the live shared store in S3 with the owner's 
 
 ### Requirement: The live local stack writes nothing to the bucket
 
-No component of the live stack SHALL write to the bucket.  Every backend SHALL reach S3 only through a read gate that passes `GET` and `HEAD` requests and refuses every other method.  No component SHALL compact, merge or delete data.  Mimir and Loki SHALL run read-path components only.  Tempo runs as its single binary, which always starts its backend scheduler and worker; they SHALL run inert, with compaction disabled and the scheduler's work file never written, so the only write Tempo attempts is its tenant index, which the gate refuses.  An integration test SHALL list the bucket (key and ETag), run queries for metrics, logs and traces of every tenant through the stack, list the bucket again, and fail if anything was written, rewritten or deleted.
+No component of the live stack SHALL write to the bucket.  Every backend SHALL reach S3 only through a read gate that passes `GET` and `HEAD` requests and refuses every other method.  No component SHALL compact, merge or delete data.  Loki SHALL run read-path components only.  Mimir SHALL run read-path components plus one idle ingester, which the querier needs to answer a query that ends at now; no distributor SHALL run, so the ingester receives no writes and ships no block.  Tempo runs as its single binary, which always starts its backend scheduler and worker; they SHALL run inert, with compaction disabled and the scheduler's work file never written, so the only write Tempo attempts is its tenant index, which the gate refuses.  An integration test SHALL list the bucket (key and ETag), run queries for metrics, logs and traces of every tenant through the stack, list the bucket again, and fail if anything was written, rewritten or deleted.
 
 #### Scenario: The bucket listing is unchanged
 - **WHEN** the live stack runs and serves metrics, logs and traces queries for every tenant
@@ -77,6 +77,11 @@ No component of the live stack SHALL write to the bucket.  Every backend SHALL r
 - **WHEN** any component of the live stack attempts a write to S3, such as Tempo writing its tenant index
 - **THEN** the gate refuses it and nothing reaches S3
 - **AND** the bucket listing is unchanged
+
+#### Scenario: Mimir's ingester stays idle
+- **WHEN** the live stack runs and serves metrics queries
+- **THEN** Mimir runs an ingester and no distributor
+- **AND** the ingester receives no samples and ships no block
 
 #### Scenario: No component compacts, merges or deletes
 - **WHEN** the live stack runs

@@ -82,6 +82,15 @@ SHIM
 chmod +x "${BIN}"/*
 export PATH="${BIN}:${PATH}"
 
+# Run every stub once before any timed run.  macOS scans the first exec of a new executable, and
+# under the load of `check` that scan of the freshly written stubs held the first run's fake clock
+# still for the watchdog's whole window, so the first case was killed as hung.  Measured under
+# load: about 100 idle watchdog ticks at the first run's start, and at most 5 anywhere after.
+echo 1000 >"${STATE}/clock"
+for stub in count-call cassandra-pid ss sjk-mx systemctl journalctl sleep date; do
+  "${BIN}/${stub}" warm-up >/dev/null 2>&1
+done
+
 tests_run=0
 tests_failed=0
 

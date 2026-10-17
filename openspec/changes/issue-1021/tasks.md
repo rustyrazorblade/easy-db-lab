@@ -59,7 +59,7 @@
 
 ## 9. Build checks
 
-- [ ] 9.1 Run `./gradlew ktlintFormat`, `./gradlew detekt` on JDK 21, `./gradlew test`, and `./gradlew integrationTest`, in a subagent, and fix every failure
+- [x] 9.1 Run `./gradlew ktlintFormat`, `./gradlew detekt` on JDK 21, `./gradlew test`, and `./gradlew integrationTest`, in a subagent, and fix every failure
 
 ## 10. Real-cluster test (3 x i4i.2xlarge db nodes, owner's Enterprise key)
 

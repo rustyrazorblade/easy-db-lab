@@ -5587,6 +5587,24 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * `kit install` refused [kit] because the value given for [flag] does not match the arg's
+         * [pattern]. Nothing was written and no install step ran. The value itself is never
+         * carried, since the arg may be a password.
+         */
+        @Serializable
+        @SerialName("Install.ArgRejected")
+        data class ArgRejected(
+            val kit: String,
+            val flag: String,
+            val pattern: String,
+        ) : Install {
+            override fun toDisplayString(): String =
+                "Error: the value of $flag for '$kit' must match the pattern $pattern. Nothing was installed."
+
+            override fun isError(): Boolean = true
+        }
+
         @Serializable
         data class TemplateDetail(
             val name: String,

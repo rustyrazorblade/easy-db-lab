@@ -310,6 +310,14 @@ data class KitHooks(
     val postWorkloadStop: KitHook? = null,
 )
 
+/**
+ * A named option a kit declares in `kit.yaml`, which `kit install` (or a kit command) turns into a
+ * CLI flag and passes to the kit's steps and scripts as the environment variable [variable].
+ *
+ * An optional [pattern] is a regular expression the whole value must match. It keeps a value
+ * that would break a YAML or SQL literal out of the installed files: `kit install` refuses a
+ * mismatch, naming the flag but never the value, before it writes anything.
+ */
 @Serializable
 data class KitArgSpec(
     val flag: String,
@@ -319,7 +327,20 @@ data class KitArgSpec(
     val type: ArgType = ArgType.STRING,
     val default: String = "",
     val capability: String = "",
+    val pattern: String = "",
 ) {
+    init {
+        if (pattern.isNotEmpty()) {
+            require(runCatching { Regex(pattern) }.isSuccess) { "arg $flag has a pattern that is not a regular expression" }
+        }
+    }
+
+    /**
+     * True when [value] is allowed: the arg declares no [pattern], or the whole value matches it.
+     * `kit install` checks every arg with this before it renders or writes anything.
+     */
+    fun accepts(value: String): Boolean = pattern.isEmpty() || Regex(pattern).matches(value)
+
     /**
      * The value placeholder `--help` and `commands` show for this arg, from its variable name
      * (`NUM_RECORDS` becomes `<num-records>`). Picocli omits it for a boolean flag.

@@ -8,6 +8,10 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
@@ -431,6 +435,73 @@ class KitInstallCommandTest : BaseKoinTest() {
         buildAndRun(KitConfig(name = "plain", type = null), emptyMap())
 
         assertThat(installedKitYaml("plain")).isEqualTo(plain)
+    }
+
+    private val patternKit =
+        KitConfig(
+            name = "patterned",
+            type = null,
+            args =
+                listOf(
+                    KitArgSpec(flag = "--database", variable = "PT_DATABASE", default = "test", pattern = "[A-Za-z0-9_]+"),
+                    KitArgSpec(flag = "--note", variable = "PT_NOTE", default = ""),
+                ),
+        )
+
+    /** Runs [config]'s install with [args] through `call()`, returning the exit code and every event. */
+    private fun install(
+        config: KitConfig,
+        args: Map<String, String>,
+    ): Pair<Int, List<Event>> {
+        val events = mutableListOf<Event>()
+        get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        val cmd = factory.build(config, source).commandSpec.userObject() as KitInstallCommand
+        args.forEach { (k, v) -> cmd.argValues[k] = v }
+        return cmd.call() to events
+    }
+
+    @Test
+    fun `a value that matches the arg pattern installs`() {
+        val (exitCode, _) = install(patternKit, mapOf("PT_DATABASE" to "bench_1"))
+
+        assertThat(exitCode).isZero()
+        assertThat(resolvedArgs("patterned")).containsEntry("PT_DATABASE", "bench_1")
+    }
+
+    @Test
+    fun `a value that does not match the arg pattern fails naming the flag and writes nothing`() {
+        val (exitCode, events) = install(patternKit, mapOf("PT_DATABASE" to "my-db"))
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(File(workingDir, "patterned")).doesNotExist()
+        assertThat(workingDir.listFiles().orEmpty().map { it.name }).noneMatch { it.startsWith(".tmp-patterned") }
+        val rejected = events.filterIsInstance<Event.Install.ArgRejected>().single()
+        assertThat(rejected.flag).isEqualTo("--database")
+        assertThat(rejected.toDisplayString()).contains("--database").doesNotContain("my-db")
+        assertThat(rejected.isError()).isTrue()
+        assertThat(events).noneMatch { it is Event.Install.ScaffoldComplete }
+    }
+
+    @Test
+    fun `the pattern must match the whole value`() {
+        val (exitCode, _) = install(patternKit, mapOf("PT_DATABASE" to "ok_prefix; DROP"))
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+    }
+
+    @Test
+    fun `an arg without a pattern accepts any value`() {
+        val (exitCode, _) = install(patternKit, mapOf("PT_NOTE" to "anything \" \\ goes"))
+
+        assertThat(exitCode).isZero()
     }
 
     private fun resolvedArgs(kitDir: String): Map<String, String> =

@@ -16,8 +16,8 @@
 - [x] 3.1 In `BaseInstallCommand.renderAndWrite`, render the `kit.yaml` content through `TemplateService.renderKitTemplate` before the port patch. Test a placeholder from an arg, from a default, and a `kit.yaml` with no placeholder
 - [x] 3.2 In `KitInfo`, render the packaged `kit.yaml` placeholders with the arg defaults before it shows endpoints. Test that no `__VAR__` placeholder is shown and no password is printed
 - [x] 3.3 Check that `<kit> status` shows `mysql` and `postgresql` endpoints from the installed `kit.yaml`, and add a test with an installed database name
-- [ ] 3.4 Add an optional `pattern` to `KitArgSpec`. Check it in `KitInstallCommand` before anything is rendered or written, and fail naming the flag, not the value. Test match, mismatch, and no pattern
-- [ ] 3.5 Update `docs/development/kits.md`: the `TARGET_*_PASSWORD` rows, the `password` capability field, install-time `kit.yaml` placeholders, and the arg `pattern` field
+- [x] 3.4 Add an optional `pattern` to `KitArgSpec`. Check it in `KitInstallCommand` before anything is rendered or written, and fail naming the flag, not the value. Test match, mismatch, and no pattern
+- [x] 3.5 Update `docs/development/kits.md`: the `TARGET_*_PASSWORD` rows, the `password` capability field, install-time `kit.yaml` placeholders, and the arg `pattern` field
 
 ## 4. sysbench passwords and debt
 

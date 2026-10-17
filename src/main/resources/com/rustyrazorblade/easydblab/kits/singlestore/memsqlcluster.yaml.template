@@ -22,14 +22,33 @@ spec:
   serviceSpec:
     type: ClusterIP
   schedulingDetails:
+    # The master and the child aggregators repel every aggregator, so a db node holds at most one
+    # of them: the share of a node the leaf size leaves room for. start fails when there are more
+    # aggregators than db nodes, which could never schedule.
     master:
       nodeSelector:
         type: db
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  easydblab/kit: singlestore
+                  easydblab/tier: aggregator
+              topologyKey: kubernetes.io/hostname
     aggregator:
       nodeSelector:
         type: db
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  easydblab/kit: singlestore
+                  easydblab/tier: aggregator
+              topologyKey: kubernetes.io/hostname
     # One block per availability group (at most two). Each leaf repels every other leaf, so no
-    # two leaves share a db node.
+    # two leaves share a db node; start fails when there are more leaves than db nodes.
     leaf-ag1:
       nodeSelector:
         type: db

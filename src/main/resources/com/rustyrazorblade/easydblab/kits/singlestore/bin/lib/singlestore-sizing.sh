@@ -77,18 +77,36 @@ ss_memory_mb() {
 }
 
 # Prints the redundancy for LEAVES leaves: REDUNDANCY when set, else 2 for an even leaf count and
-# 1 for an odd one. Fails when the leaf count is not a multiple of it, because leafSpec.count is
-# per availability group.
+# 1 for an odd one. Fails when REDUNDANCY is not 1 or 2, the levels SingleStore supports, and when
+# the leaf count is not a multiple of it, because leafSpec.count is per availability group.
 ss_redundancy() {
   local leaves="$1" redundancy="${2:-}"
-  if [ -z "${redundancy}" ]; then
-    if [ $((leaves % 2)) -eq 0 ]; then redundancy=2; else redundancy=1; fi
-  fi
+  case "${redundancy}" in
+    "") if [ $((leaves % 2)) -eq 0 ]; then redundancy=2; else redundancy=1; fi ;;
+    1 | 2) ;;
+    *) ss_fail "--redundancy ${redundancy} is not supported. SingleStore's redundancy level is 1 or 2." || return 1 ;;
+  esac
   if [ "${leaves}" -lt 1 ] || [ "${redundancy}" -lt 1 ] || [ $((leaves % redundancy)) -ne 0 ]; then
     ss_fail "--leaves ${leaves} is not a multiple of --redundancy ${redundancy}. Each availability group holds the same number of leaves, so pick a --leaves that --redundancy divides." ||
       return 1
   fi
   echo "${redundancy}"
+}
+
+# Fails, before anything is created, when the pods cannot all schedule on DB_NODES db nodes. Each
+# leaf repels every other leaf, so there are at most DB_NODES leaves. The master and the child
+# aggregators repel each other too, so there are at most DB_NODES of them, and a db node holds at
+# most one: never more than the ceil((1 + aggregators) / leaves) the leaf size leaves room for.
+ss_check_node_counts() {
+  local leaves="$1" aggregators="$2" db_nodes="$3"
+  if [ "${leaves}" -gt "${db_nodes}" ]; then
+    ss_fail "--leaves ${leaves} is more than the ${db_nodes} db nodes. Each leaf needs a db node of its own, so pick a --leaves of at most ${db_nodes}, or add db nodes." ||
+      return 1
+  fi
+  if [ $((1 + aggregators)) -gt "${db_nodes}" ]; then
+    ss_fail "--aggregators ${aggregators} and the master aggregator are more than the ${db_nodes} db nodes. Each aggregator needs a db node of its own, so pick an --aggregators of at most $((db_nodes - 1)), or add db nodes." ||
+      return 1
+  fi
 }
 
 # Reads "<cpu> <memory>" lines, one per db node, and prints the smallest CPU in millicores and the
@@ -108,8 +126,8 @@ ss_smallest_allocatable() {
 
 # Prints "<cores> <memoryMB>" for a leaf on a node with ALLOC_MILLI millicores and ALLOC_MB MB
 # allocatable: less the collector reserve, ceil((1 + AGGREGATORS) / LEAVES) aggregators of
-# AGG_CORES cores and AGG_MEM_GB GB (the master and the child aggregators share the leaves' nodes),
-# and the exporter sidecar. Cores are whole; a negative remainder prints 0.
+# AGG_CORES cores and AGG_MEM_GB GB (the master and the child aggregators share the leaves' nodes,
+# at most one per node, so a node never holds more than this share), and the exporter sidecar. Cores are whole; a negative remainder prints 0.
 ss_leaf_size() {
   local alloc_milli="$1" alloc_mb="$2" leaves="$3" aggregators="$4" agg_cores="$5" agg_mem_gb="$6"
   local share milli mb
@@ -132,25 +150,28 @@ ss_check_leaf_minimum() {
 
 # Sizes the cluster from the kit args and the db nodes. Sets REDUNDANCY, LEAF_COUNT (leaves per
 # availability group), LEAF_CORES, LEAF_MEMORY_MB, STORAGE_GB and AGGREGATOR_MEMORY_MB, and prints
-# them. Fails, before anything is created, on a bad --size, a leaf count the redundancy does not
-# divide, or a leaf below the minimum.
+# them. Fails, before anything is created, on a bad --size, a --redundancy other than 1 or 2, a
+# leaf count the redundancy does not divide, more leaves or aggregators than db nodes, or a leaf
+# below the minimum.
 singlestore_size() {
   local leaves="${SINGLESTORE_LEAVES}" aggregators="${SINGLESTORE_AGGREGATORS}"
   local agg_cores="${SINGLESTORE_AGGREGATOR_CORES}" agg_mem_gb="${SINGLESTORE_AGGREGATOR_MEMORY}"
-  local allocatable computed
+  local nodes allocatable computed
 
   STORAGE_GB="$(ss_storage_gb "${STORAGE_SIZE}")" || return 1
   REDUNDANCY="$(ss_redundancy "${leaves}" "${SINGLESTORE_REDUNDANCY:-}")" || return 1
   LEAF_COUNT=$((leaves / REDUNDANCY))
   AGGREGATOR_MEMORY_MB=$((agg_mem_gb * 1024))
 
+  nodes="$(kubectl get nodes -l type=db \
+    -o jsonpath='{range .items[*]}{.status.allocatable.cpu}{" "}{.status.allocatable.memory}{"\n"}{end}')" || return 1
+  ss_check_node_counts "${leaves}" "${aggregators}" "$(printf '%s\n' "${nodes}" | grep -c . || true)" || return 1
+
   if [ -n "${SINGLESTORE_LEAF_CORES:-}" ] && [ -n "${SINGLESTORE_LEAF_MEMORY:-}" ]; then
     LEAF_CORES="${SINGLESTORE_LEAF_CORES}"
     LEAF_MEMORY_MB=$((SINGLESTORE_LEAF_MEMORY * 1024))
   else
-    allocatable="$(kubectl get nodes -l type=db \
-      -o jsonpath='{range .items[*]}{.status.allocatable.cpu}{" "}{.status.allocatable.memory}{"\n"}{end}' |
-      ss_smallest_allocatable)" || return 1
+    allocatable="$(printf '%s\n' "${nodes}" | ss_smallest_allocatable)" || return 1
     # shellcheck disable=SC2086 # two numbers, split on purpose
     computed="$(ss_leaf_size ${allocatable} "${leaves}" "${aggregators}" "${agg_cores}" "${agg_mem_gb}")"
     LEAF_CORES="${SINGLESTORE_LEAF_CORES:-${computed% *}}"

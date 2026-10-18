@@ -21,6 +21,7 @@ import org.koin.dsl.module
 import org.koin.test.get
 import picocli.CommandLine
 import java.io.File
+import java.time.Duration
 
 /**
  * `observability local dashboards <dir> [--from <dir>]`: it refreshes only the dashboards of a
@@ -43,7 +44,21 @@ class LocalDashboardsTest : BaseKoinTest() {
         }
 
     override fun additionalTestModules(): List<Module> =
-        listOf(module { single { LocalDashboardsRefresher(grafana, LocalStackDashboards(grafana, packaged), get()) } })
+        listOf(
+            module {
+                single {
+                    LocalDashboardsRefresher(
+                        grafana,
+                        LocalStackDashboards(grafana, packaged, reloadAttempts = RELOADS, reloadInterval = Duration.ofMillis(1)),
+                        get(),
+                    )
+                }
+            },
+        )
+
+    private companion object {
+        const val RELOADS = 3
+    }
 
     @BeforeEach
     fun listen() {
@@ -141,6 +156,22 @@ class LocalDashboardsTest : BaseKoinTest() {
         val refused = events.filterIsInstance<Event.LocalStack.ReloadRefused>().single()
         assertThat(refused.kind).isEqualTo("dashboards")
         assertThat(refused.grafanaUrl).isEqualTo("http://127.0.0.1:3300")
+        assertThat(events.filterIsInstance<Event.LocalStack.DashboardsInstalled>()).isEmpty()
+    }
+
+    @Test
+    fun `a tree Grafana does not serve after every reload fails with a typed event naming the missing dashboards`() {
+        val dir = stack()
+        grafana.serves = false
+
+        assertThatThrownBy { refresh(dir.path) }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(grafana.dashboardReloads).hasSize(RELOADS)
+        val notServed = events.filterIsInstance<Event.LocalStack.DashboardsNotServed>().single()
+        assertThat(notServed.missing).containsExactly("new")
+        assertThat(notServed.reloads).isEqualTo(RELOADS)
+        assertThat(notServed.grafanaUrl).isEqualTo("http://127.0.0.1:3300")
+        assertThat(notServed.isError()).isTrue()
         assertThat(events.filterIsInstance<Event.LocalStack.DashboardsInstalled>()).isEmpty()
     }
 

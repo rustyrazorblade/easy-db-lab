@@ -119,7 +119,7 @@ Without `--from`, it puts back the dashboards packaged with the tool, and says s
 easy-db-lab observability local dashboards ~/lab-local
 ```
 
-The command writes the new tree beside the old one, swaps it into place, and asks Grafana to reload its dashboards. It never calls docker, so no container is recreated and nothing else changes. The stack must be running: when Grafana does not answer on the port the manifest records, the command fails and changes nothing.
+The command writes the new tree beside the old one, swaps it into place, and asks Grafana to reload its dashboards. Grafana's answer to a reload does not say what it read, and right after the swap Docker Desktop can still show the container the old, removed tree for a moment, so the command then looks up every dashboard of the new tree that has a `uid` and reloads again until Grafana serves them all, up to 10 reloads 2 seconds apart. If Grafana still does not serve them, the command fails and names the missing dashboards; `docker compose restart grafana` in the directory loads them. It never calls docker, so no container is recreated and nothing else changes. The stack must be running: when Grafana does not answer on the port the manifest records, the command fails and changes nothing.
 
 `--from` replaces the whole tree: Grafana then shows only the dashboards in that directory, and the packaged core and kit dashboards are gone until you run `local dashboards` again without `--from`.
 

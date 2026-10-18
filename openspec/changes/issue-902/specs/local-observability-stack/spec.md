@@ -123,12 +123,17 @@ Local Grafana's datasources SHALL be built by the same code that builds a cluste
 
 ### Requirement: local dashboards refreshes only the dashboards of a running stack
 
-The CLI SHALL provide `observability local dashboards <dir> [--from <dir>]`.  It SHALL read the stack's manifest and check that its Grafana answers; if Grafana is not running it SHALL fail and change nothing.  It SHALL write the dashboard tree after the install-time pass into a staging directory beside the provisioned tree, rename it into place, and ask Grafana to reload its dashboard provisioning.  It SHALL NOT call docker, so no container is recreated, and no data is lost.  `--from` SHALL name any directory of `<folder>/<file>.json` dashboards, used with no rebuild.  With no `--from` it SHALL use the packaged core and kit dashboards and SHALL say so.
+The CLI SHALL provide `observability local dashboards <dir> [--from <dir>]`.  It SHALL read the stack's manifest and check that its Grafana answers; if Grafana is not running it SHALL fail and change nothing.  It SHALL write the dashboard tree after the install-time pass into a staging directory beside the provisioned tree, rename it into place, and ask Grafana to reload its dashboard provisioning.  It SHALL then check that Grafana serves every dashboard of the tree that has a uid, and SHALL reload again until it does, a bounded number of times; when Grafana still does not serve them it SHALL fail and name the missing dashboards.  It SHALL NOT call docker, so no container is recreated, and no data is lost.  `--from` SHALL name any directory of `<folder>/<file>.json` dashboards, used with no rebuild.  With no `--from` it SHALL use the packaged core and kit dashboards and SHALL say so.
 
 #### Scenario: New dashboards show with no restart
 - **WHEN** `observability local dashboards ~/lab-local` runs against a running stack
 - **THEN** Grafana shows the new dashboards with no restart
 - **AND** no storage container is recreated
+
+#### Scenario: A reload that loaded nothing is reloaded again
+- **WHEN** Grafana answers a dashboard reload but does not serve the new tree
+- **THEN** the command reloads again until Grafana serves it
+- **AND** when Grafana never serves it, the command fails and names the missing dashboards
 
 #### Scenario: Dashboards from a directory
 - **WHEN** `--from ~/work/dashboards` is given

@@ -396,6 +396,14 @@ class FakeLocalGrafana : LocalGrafana {
         dashboardReloads += port
     }
 
+    /** Whether a reloaded dashboard is served; LocalStackDashboardsTest covers a Grafana that lags. */
+    var serves = true
+
+    override fun servesDashboard(
+        port: Int,
+        uid: String,
+    ): Boolean = serves
+
     private fun reload(kind: String) {
         if (refuses ==
             kind

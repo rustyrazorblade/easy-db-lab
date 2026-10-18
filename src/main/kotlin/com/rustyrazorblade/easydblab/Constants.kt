@@ -1305,6 +1305,30 @@ object Constants {
 
             /** How long the export writer's Tempo may take to write every span into a flushed block. */
             const val TEMPO_DRAIN_TIMEOUT_MINUTES = 15L
+
+            /** The gap between two looks at the export writer's Tempo while it drains. */
+            const val TEMPO_DRAIN_POLL_SECONDS = 1L
+
+            /** How long one log export request, a reader query or a writer push, may take. */
+            const val LOKI_REQUEST_TIMEOUT_MINUTES = 5L
+
+            /**
+             * How long the export writer's synchronous Loki flush may take: as long as `down` waits for
+             * a cluster's, which Loki's 10m write timeout covers.
+             */
+            const val LOKI_FLUSH_TIMEOUT_SECONDS = TeardownFlush.SHUTDOWN_TIMEOUT_SECONDS
+
+            /** How long each of thanos's `kill` and `ps` may take after its rewrite outlasted its timeout. */
+            const val THANOS_STOP_TIMEOUT_MINUTES = 2L
+
+            /** The gap between two `/ready` looks at a temporary stack's backend. */
+            const val READY_POLL_SECONDS = 2L
+
+            /** How long `docker compose down` gives a temporary stack's containers to stop (`-t`). */
+            const val STACK_DOWN_SECONDS = 60
+
+            /** How long `docker compose stop` gives a stack's backend to finish writing what it holds (`-t`). */
+            const val STACK_STOP_SECONDS = 120
         }
     }
 

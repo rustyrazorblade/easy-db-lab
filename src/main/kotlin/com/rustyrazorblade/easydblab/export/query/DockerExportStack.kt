@@ -60,7 +60,7 @@ class StackRuntime(
         LocalhostObservabilityHttp(tenant, ports, client)
     },
     val readyTimeout: Duration = Duration.ofMinutes(Constants.Export.Query.READY_TIMEOUT_MINUTES),
-    val pollInterval: Duration = Duration.ofSeconds(2),
+    val pollInterval: Duration = Duration.ofSeconds(Constants.Export.Query.READY_POLL_SECONDS),
     val beforeStart: (File) -> Unit = {},
 )
 
@@ -81,7 +81,7 @@ internal class ProjectRemoval(
 ) {
     companion object {
         private val COMMAND_TIMEOUT: Duration = Duration.ofMinutes(Constants.Export.Query.COMPOSE_COMMAND_TIMEOUT_MINUTES)
-        private const val DOWN_SECONDS = 60
+        private const val DOWN_SECONDS = Constants.Export.Query.STACK_DOWN_SECONDS
     }
 
     /** Where [directory]'s project logs are saved. */
@@ -140,7 +140,7 @@ class DockerExportStack private constructor(
 ) : ExportStack {
     companion object {
         private val COMMAND_TIMEOUT: Duration = Duration.ofMinutes(Constants.Export.Query.COMPOSE_COMMAND_TIMEOUT_MINUTES)
-        private const val STOP_SECONDS = 120
+        private const val STOP_SECONDS = Constants.Export.Query.STACK_STOP_SECONDS
         private const val ANSWER_EXCERPT_CHARS = 500
 
         /**

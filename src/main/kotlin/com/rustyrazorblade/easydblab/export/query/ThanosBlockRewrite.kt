@@ -78,7 +78,7 @@ class ThanosBlockRewrite(
         const val OBJSTORE = "objstore.yaml"
         const val DELETE = "delete.yaml"
         val TIMEOUT: Duration = Duration.ofHours(Constants.Export.Query.REWRITE_TIMEOUT_HOURS)
-        val STOP_TIMEOUT: Duration = Duration.ofMinutes(2)
+        val STOP_TIMEOUT: Duration = Duration.ofMinutes(Constants.Export.Query.THANOS_STOP_TIMEOUT_MINUTES)
     }
 
     override fun rewrite(

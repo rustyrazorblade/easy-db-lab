@@ -28,7 +28,7 @@ class WriterTempoDrain(
     private val http: ObservabilityHttp,
     private val walDir: File,
     private val timeout: Duration = Duration.ofMinutes(Constants.Export.Query.TEMPO_DRAIN_TIMEOUT_MINUTES),
-    private val pollInterval: Duration = Duration.ofSeconds(1),
+    private val pollInterval: Duration = Duration.ofSeconds(Constants.Export.Query.TEMPO_DRAIN_POLL_SECONDS),
 ) {
     private companion object {
         val NAMES = setOf("meta.json", "flushed")

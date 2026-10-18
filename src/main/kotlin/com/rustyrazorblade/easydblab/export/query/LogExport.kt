@@ -60,7 +60,7 @@ class LogExport(
         const val QUERY_PATH = "/loki/api/v1/query_range"
         const val PUSH_PATH = "/loki/api/v1/push"
         const val NANOS_PER_SECOND = 1_000_000_000L
-        val TIMEOUT: Duration = Duration.ofMinutes(5)
+        val TIMEOUT: Duration = Duration.ofMinutes(Constants.Export.Query.LOKI_REQUEST_TIMEOUT_MINUTES)
         val JSON = Json { ignoreUnknownKeys = true }
     }
 

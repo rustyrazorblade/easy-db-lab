@@ -70,7 +70,7 @@ class QueryExporter(
 ) {
     private companion object {
         val EXCLUDED = listOf(Event.Export.Exclusion("profiles", Constants.Export.PROFILES_ISSUE))
-        val LOKI_FLUSH_TIMEOUT: Duration = Duration.ofMinutes(10)
+        val LOKI_FLUSH_TIMEOUT: Duration = Duration.ofSeconds(Constants.Export.Query.LOKI_FLUSH_TIMEOUT_SECONDS)
     }
 
     /** Exports [selector] to [target]; [workspace] is the cluster workspace the command runs in, if any. */

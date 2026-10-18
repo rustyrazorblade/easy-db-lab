@@ -57,6 +57,16 @@ class OfflineStackComposerTest {
     }
 
     @Test
+    fun `an opened export's Grafana answers only its published loopback URL, and redirects any other host to it`() {
+        val environment = service(Constants.LocalStack.Services.GRAFANA).environment.orEmpty()
+
+        assertThat(environment)
+            .containsEntry("GF_SERVER_DOMAIN", Constants.LocalStack.LOOPBACK)
+            .containsEntry("GF_SERVER_ENFORCE_DOMAIN", "true")
+            .containsEntry("GF_SERVER_ROOT_URL", "${grafanaUrl(spec.grafanaPort)}/")
+    }
+
+    @Test
     fun `the zip's data is mounted read-only into every backend and the documents view, and state is written under cache`() {
         (backends + Constants.LocalStack.Services.DOCUMENTS).forEach { name ->
             val data = service(name).volumes.orEmpty().filter { it.source == "./${Constants.Export.DATA_DIR}" }

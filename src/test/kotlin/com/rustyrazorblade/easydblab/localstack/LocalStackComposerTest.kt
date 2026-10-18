@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefini
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardProvisioningConfig
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaServerDomain
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaServerSettings
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
@@ -339,6 +340,21 @@ class LocalStackComposerTest {
         assertThat(allowed?.split(' ')).containsExactlyInAnyOrder("mimir:9009", "loki:3100", "tempo:3200", "pyroscope:4040")
     }
 
+    /**
+     * The data source proxy's allow-list does not cover a backend plugin's queries (`/api/ds/query`),
+     * so Grafana also redirects any request whose Host is not the URL `local create` prints (a page
+     * that rebinds its own name to 127.0.0.1 would otherwise drive the anonymous Admin).
+     */
+    @Test
+    fun `Grafana answers only the host of the URL local create prints, and redirects any other to it`() {
+        val environment = service("grafana").environment.orEmpty()
+
+        assertThat(environment)
+            .containsEntry("GF_SERVER_DOMAIN", Constants.LocalStack.LOOPBACK)
+            .containsEntry("GF_SERVER_ENFORCE_DOMAIN", "true")
+            .containsEntry("GF_SERVER_ROOT_URL", "${grafanaUrl(3300)}/")
+    }
+
     @Test
     fun `Grafana's datasources are a cluster's, on the compose backends`() {
         val datasources = mountedFile("grafana", "/etc/grafana/provisioning/datasources/datasources.yaml")
@@ -365,6 +381,7 @@ class LocalStackComposerTest {
                     plugins = emptyList(),
                     dataProxyTimeoutSeconds = Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS,
                     dataSourceProxyAllowList = BackendUrls.LOCAL_COMPOSE.hostPorts(),
+                    serverDomain = GrafanaServerDomain(Constants.LocalStack.LOOPBACK, "http://127.0.0.1:3300/"),
                 ).environment().toMap(),
             )
         assertThat(provider).isEqualTo(GrafanaDashboardProvisioningConfig.forDashboardTree(tree).toYaml())

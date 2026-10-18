@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardProvisioningConfig
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDocumentsSidecars
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaServerDomain
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaServerSettings
 import com.rustyrazorblade.easydblab.services.TemplateService
 
@@ -16,8 +17,9 @@ import com.rustyrazorblade.easydblab.services.TemplateService
  * spec's tenants and home tenant, so the UIDs and types are a cluster's and only the URLs differ
  * ([BackendUrls.LOCAL_COMPOSE]). Its server settings are a cluster's ([GrafanaServerSettings]), except
  * that it downloads no plugin: offline the download fails and Grafana exits, and live the download
- * stalled Grafana's start for minutes, while no dashboard a local stack installs uses one, and its data
- * source proxy may reach only the stack's own backends. Its one
+ * stalled Grafana's start for minutes, while no dashboard a local stack installs uses one; its data
+ * source proxy route may reach only the stack's own backends; and it answers only its published
+ * loopback URL, redirecting any other Host to it. Its one
  * dashboard provider sweeps the provisioned tree in `dashboards/current`; that tree and the
  * staging trees beside it are written outside the composer. The documents web server is the
  * cluster's, forwarding to the read gate (live) or serving the export's copy from disk (offline).
@@ -131,6 +133,7 @@ object GrafanaViewPart {
                     plugins = emptyList(),
                     dataProxyTimeoutSeconds = Constants.LocalStack.COLD_READ_TIMEOUT_SECONDS,
                     dataSourceProxyAllowList = BackendUrls.LOCAL_COMPOSE.hostPorts(),
+                    serverDomain = GrafanaServerDomain(Constants.LocalStack.LOOPBACK, "${grafanaUrl(spec.grafanaPort)}/"),
                 ).environment()
                     .toMap(),
             volumes =

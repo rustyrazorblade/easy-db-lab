@@ -16,6 +16,19 @@ data class GrafanaImageRenderer(
 )
 
 /**
+ * The one host Grafana answers to (`[server] domain` with `enforce_domain`): a request whose Host,
+ * without its port, is any other is redirected to [rootUrl] with the same path. Grafana's own
+ * health check, `/api/health`, answers every host.
+ *
+ * @property domain the host the browser and every client use.
+ * @property rootUrl Grafana's URL at that host, where a foreign host is redirected; it ends with `/`.
+ */
+data class GrafanaServerDomain(
+    val domain: String,
+    val rootUrl: String,
+)
+
+/**
  * Grafana's server settings, as the `GF_*` environment variables Grafana reads at start.
  *
  * Every Grafana this tool runs takes them from here — the cluster's Deployment
@@ -33,9 +46,17 @@ data class GrafanaImageRenderer(
  *   uses one of these.
  * @property dataProxyTimeoutSeconds how long Grafana waits for a datasource, or Grafana's 30-second
  *   default when null. A local stack sets it: a cold query there reads every block from S3.
- * @property dataSourceProxyAllowList the only `host:port`s Grafana's data source proxy may reach, or
- *   any when empty. A local stack names its own backends, so a datasource an anonymous Admin adds
- *   cannot proxy to anything else on the stack's networks.
+ * @property dataSourceProxyAllowList the only `host:port`s Grafana's data source proxy route
+ *   (`/api/datasources/proxy/...`) may reach, or any when empty. Grafana 13.2.2 checks the list only
+ *   on that route: a backend plugin's queries (`/api/ds/query`) and resource calls
+ *   (`/api/datasources/uid/<uid>/resources/...`), which is how Prometheus, Loki and Tempo
+ *   datasources query, reach whatever URL the datasource names. A local stack names its own
+ *   backends, which narrows the proxy route only; what keeps a datasource an anonymous Admin adds
+ *   from reaching the signer is the stack's networks, on which Grafana cannot reach it.
+ * @property serverDomain the one host Grafana answers to, or any when null. A local stack sets its
+ *   published loopback URL, so a page in the operator's browser that rebinds its own name to
+ *   127.0.0.1 is redirected away instead of driving the anonymous Admin. A cluster's Grafana is
+ *   reached by IP over the tunnel and sets none.
  */
 data class GrafanaServerSettings(
     val appTitle: String,
@@ -44,6 +65,7 @@ data class GrafanaServerSettings(
     val plugins: List<String> = DOWNLOADED_PLUGINS,
     val dataProxyTimeoutSeconds: Int? = null,
     val dataSourceProxyAllowList: List<String> = emptyList(),
+    val serverDomain: GrafanaServerDomain? = null,
 ) {
     companion object {
         /**
@@ -80,12 +102,21 @@ data class GrafanaServerSettings(
                             " ",
                         )
                 },
-            ) +
+            ) + domainEnvironment() +
             // The Tests and comparison dashboards show a test's documents in an iframe in a Text panel.
             listOf(Constants.Grafana.DISABLE_SANITIZE_HTML_ENV to "true")
 
     private fun pluginEnvironment(): List<Pair<String, String>> =
         if (plugins.isEmpty()) emptyList() else listOf("GF_INSTALL_PLUGINS" to plugins.joinToString(","))
+
+    private fun domainEnvironment(): List<Pair<String, String>> =
+        serverDomain?.let {
+            listOf(
+                "GF_SERVER_DOMAIN" to it.domain,
+                "GF_SERVER_ROOT_URL" to it.rootUrl,
+                "GF_SERVER_ENFORCE_DOMAIN" to "true",
+            )
+        } ?: emptyList()
 
     private fun rendererEnvironment(): List<Pair<String, String>> =
         imageRenderer?.let {

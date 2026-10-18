@@ -86,9 +86,14 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
   `ComposeNetworks`; `LocalStackReadOnlyIntegrationTest` probes from inside Grafana, Mimir and the
   documents view (a busybox in the container's network namespace) that the signer is unreachable by name
   and address. A test override that points the signer at MinIO puts MinIO on `store-egress`, never on
-  `default`. Both local Grafanas also allow their data source proxy only the stack's backends
+  `default`. Both local Grafanas also allow their data source proxy route only the stack's backends
   (`GrafanaServerSettings.dataSourceProxyAllowList`, `GF_SECURITY_DATA_SOURCE_PROXY_WHITELIST`, from
-  `BackendUrls.LOCAL_COMPOSE.hostPorts()`).
+  `BackendUrls.LOCAL_COMPOSE.hostPorts()`). Grafana 13.2.2 checks that list only on `/api/datasources/proxy/...`
+  (verified): a backend plugin's `/api/ds/query` and resource calls reach any URL a datasource names, so the networks,
+  not the list, keep Grafana from the signer. Both local Grafanas answer only their printed loopback URL
+  (`GrafanaServerSettings.serverDomain`: `GF_SERVER_DOMAIN=127.0.0.1`, `GF_SERVER_ROOT_URL` the URL `local create`
+  prints, `GF_SERVER_ENFORCE_DOMAIN=true`), so a request under any other Host (DNS rebinding from a page in the
+  browser) is redirected there; `/api/health` answers every host. `LocalStackReadOnlyIntegrationTest` sends one.
 - Mimir and Loki run the cluster's `mimir.yaml` and `loki.yaml` byte for byte with flag overrides
   (read-path targets, usage reporting off, the gate as endpoint, placeholder keys; Mimir's four
   `memcached:11211` cache addresses). Tempo runs as the single binary with `TempoLocalConfig.live`, the

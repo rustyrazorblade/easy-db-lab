@@ -33,6 +33,7 @@ import org.testcontainers.containers.startupcheck.OneShotStartupCheckStrategy
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import java.io.File
 import java.net.ServerSocket
+import java.net.Socket
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpRequest
@@ -697,6 +698,49 @@ class LocalStackReadOnlyIntegrationTest {
             .describedAs("block reads per fetch, in order: $readsPerFetch")
             .containsOnly(0)
     }
+
+    /**
+     * Grafana's data source proxy allow-list does not cover a backend plugin's queries, so Grafana
+     * answers only the URL `local create` prints: a request that reaches its published port under any
+     * other Host (a page in the browser that rebound its own name to 127.0.0.1) is redirected there,
+     * a query included, while the printed URL serves Grafana's page.
+     */
+    @Test
+    @Order(9)
+    fun `Grafana serves the URL local create prints and redirects a request under any other host to it`() {
+        val printed = grafanaUrl(manifest.grafanaPort)
+        assertThat(printed).isEqualTo(grafanaBase())
+        val page = ObservabilityBackends.get("$printed/", HOME)
+        assertThat(page.statusCode()).describedAs(page.body().take(LOG_TAIL)).isEqualTo(HTTP_OK)
+
+        for ((method, path) in listOf("GET" to "/api/datasources", "POST" to "/api/ds/query")) {
+            val answer = rawRequest(method, manifest.grafanaPort, "rebound.example", path)
+            assertThat(answer.lines().first()).describedAs(answer).contains(" 301 ")
+            assertThat(answer.lines()).describedAs(answer).anyMatch { it.equals("Location: $printed$path", ignoreCase = true) }
+        }
+    }
+
+    /**
+     * A bodiless request with its own Host header, over a plain socket: Java's HTTP client will not
+     * send one. Returns the status line and the headers.
+     */
+    private fun rawRequest(
+        method: String,
+        port: Int,
+        host: String,
+        path: String,
+    ): String =
+        Socket(Constants.LocalStack.LOOPBACK, port).use { socket ->
+            socket.soTimeout = Duration.ofSeconds(PROBE_TIMEOUT_SECONDS.toLong()).toMillis().toInt()
+            val request = "$method $path HTTP/1.1\r\nHost: $host\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            socket.getOutputStream().write(request.toByteArray())
+            socket
+                .getInputStream()
+                .bufferedReader()
+                .lineSequence()
+                .takeWhile { it.isNotEmpty() }
+                .joinToString("\n")
+        }
 
     private fun grafanaBase(): String = "http://${Constants.LocalStack.LOOPBACK}:${manifest.grafanaPort}"
 

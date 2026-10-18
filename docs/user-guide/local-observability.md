@@ -57,7 +57,7 @@ cd ~/lab-local
 docker compose up -d
 ```
 
-Open <http://127.0.0.1:3000>. You are in as an anonymous user with the Admin role; there is no login. Grafana and the documents web server (<http://127.0.0.1:3080>, which serves experiment reports to the dashboards) are published on `127.0.0.1` only.
+Open <http://127.0.0.1:3000>. You are in as an anonymous user with the Admin role; there is no login. Grafana and the documents web server (<http://127.0.0.1:3080>, which serves experiment reports to the dashboards) are published on `127.0.0.1` only. Use that address, not `localhost`: Grafana answers only `127.0.0.1` and redirects a request under any other host name there, so a web page that points its own name at your machine cannot drive Grafana.
 
 The first start takes a minute or two: Mimir loads the store's block index, Loki its log index, and Tempo lists every tenant's blocks. A cluster torn down a few minutes ago shows too: Tempo finds blocks by listing the bucket, not only from its tenant index.
 

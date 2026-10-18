@@ -54,10 +54,9 @@ object ExportReaderStack {
  * writer's shipper needs an xattr a macOS bind mount does not support (spike S4).
  *
  * - Loki is the cluster's `loki.yaml` with the offline stack's filesystem storage
- *   ([ExportedFiles.lokiConfig], so the zip's Loki reads what this one wrote), old lines accepted, and
- *   its WAL's disk-full throttle at [LOKI_WAL_DISK_FULL_THRESHOLD]. Its WAL is in the work directory,
- *   on the operator's own disk, and at Loki 3.7.8's default (0.90) the ingester answers every push
- *   with "Ingester is shutting down" once that disk is 90% used, however little the export needs.
+ *   ([ExportedFiles.lokiConfig], so the zip's Loki reads what this one wrote) and old lines accepted.
+ *   Its WAL's disk-full throttle stays off, as in the cluster's file, although that WAL is on the
+ *   operator's own disk.
  * - Tempo is the cluster's `tempo.yaml` with the local backend and both WAL ingestion slacks at
  *   [INGESTION_SLACK]. At the default 2m an old span's block takes the push time as its range and no
  *   reader finds it over its real time; 0 would clamp every span, since the clamp has no "off"
@@ -78,9 +77,6 @@ object ExportWriterStack {
 
     /** Wide enough for any span a cluster wrote; never 0 (spike S3). */
     const val INGESTION_SLACK = "87600h"
-
-    /** Loki's WAL disk-full throttle ratio; 0 is Loki's "never throttle", so the operator's disk use never refuses a line. */
-    const val LOKI_WAL_DISK_FULL_THRESHOLD = "0"
 
     /** Tempo's live-store WAL, relative to its state directory, where the drain looks for `flushed` markers. */
     const val TEMPO_LIVE_WAL = "live-store/wal"
@@ -115,10 +111,7 @@ object ExportWriterStack {
                         LocalStackComposer.configPath(Constants.LocalStack.Services.LOKI, LokiManifestBuilder.CONFIG_FILE) to
                             YamlDocument.patch(
                                 offline.lokiConfig(clusterLoki),
-                                listOf(
-                                    YamlPatch.set("limits_config.reject_old_samples", "false"),
-                                    YamlPatch.set("ingester.wal.disk_full_threshold", LOKI_WAL_DISK_FULL_THRESHOLD),
-                                ),
+                                listOf(YamlPatch.set("limits_config.reject_old_samples", "false")),
                             ),
                         LocalStackComposer.configPath(Constants.LocalStack.Services.TEMPO, TEMPO_FILE) to tempoConfig(clusterTempo),
                     ),

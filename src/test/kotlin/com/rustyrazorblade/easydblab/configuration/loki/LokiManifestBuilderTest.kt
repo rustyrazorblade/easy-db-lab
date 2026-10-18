@@ -74,6 +74,16 @@ class LokiManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the ingester takes every line however full the disk under its WAL is`() {
+        // Loki 3.7.8 refuses every push ("Ingester is shutting down") once that disk is 90% used,
+        // dropping the data; 0 turns the throttle off.
+        val yaml = config()
+
+        assertThat(scalarAt(yaml, "ingester", "wal", "disk_full_threshold")).isEqualTo("0")
+        assertThat(scalarAt(yaml, "ingester", "wal", "enabled")).isEqualTo("true")
+    }
+
+    @Test
     fun `the compactor never runs, and nothing is retained by age or deleted`() {
         val yaml = config()
 

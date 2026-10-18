@@ -66,6 +66,10 @@ ingester:
     dir: /loki/wal
     # A graceful stop flushes every chunk in memory to S3.
     flush_on_shutdown: true
+    # Never throttle on disk use. At the default 0.90 the ingester refuses every push with
+    # "Ingester is shutting down" once the disk under the WAL is 90% used, and the data is dropped
+    # (like a memory limiter). 0 turns the throttle off.
+    disk_full_threshold: 0
   # Flush a chunk once it spans an hour, so a stream that keeps writing reaches S3 within about an hour.
   # This also sets the per-stream out-of-order window to 30 minutes (half this age): a line more
   # than 30 minutes older than its stream's newest line is rejected. The window is wide so that a

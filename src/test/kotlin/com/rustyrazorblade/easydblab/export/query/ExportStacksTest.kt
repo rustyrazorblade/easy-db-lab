@@ -152,7 +152,8 @@ class ExportStacksTest {
         val loki = String(ExportWriterStack.compose("acme", owner = "501:20").getValue("config/loki/loki.yaml"))
 
         // Loki 3.7.8 refuses every push ("Ingester is shutting down") once the disk under its WAL is
-        // 90% used; the writer's WAL is in the work directory on the operator's own disk.
+        // 90% used; the writer's WAL is in the work directory on the operator's own disk. The writer
+        // inherits the cluster file's 0, and its storage rewrite and patches must keep it.
         assertThat(scalar(loki, "ingester.wal.disk_full_threshold")).isEqualTo("0")
         assertThat(scalar(loki, "ingester.wal.enabled")).isEqualTo("true")
     }

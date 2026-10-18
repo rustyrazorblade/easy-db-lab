@@ -18,7 +18,9 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
 2. `ExportTarget.of(path)`: a new `.zip` in an existing directory; the zip's one directory is the name without
    `.zip`.
 3. `TenantExporter.export(target, tenant)`: `TenantStoreCopy.plan` lists everything (empty tenant →
-   `Export.EmptyTenant`), the free-space check (`DiskSpace`; short → `Export.InsufficientSpace`, nothing written),
+   `Export.EmptyTenant`), the free-space check (`DiskSpace` against `TenantCopyPlan.diskBytes`: the data plus
+   `Constants.Export.LOKI_WORK_INDEX_COPIES` times the planned Loki index, for the work directory's local copy and the
+   split's output; short → `Export.InsufficientSpace`, nothing written),
    `Export.SizeEstimated`, then the work directory (`ExportWorkDirectory`, `<path>.work-<id>/`), then
    `ExportZipWriter.write` streams `ExportStackFiles` and the copy into the zip, and `Export.Completed` (with
    `excluded = [profiles, 1016]`). Any `ExportStepFailed` becomes `Export.Failed(path, signal, step, reason, logs)`

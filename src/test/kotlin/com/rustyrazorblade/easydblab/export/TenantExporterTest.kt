@@ -191,6 +191,42 @@ class TenantExporterTest {
         assertThat(dir.list()).isEmpty()
     }
 
+    /** The bytes of everything seeded that goes into the zip: every object but the bucket index, which is only read. */
+    private fun zippedBytes(): Long =
+        store.objects
+            .filterKeys { it != "mimir/acme/bucket-index.json.gz" }
+            .values
+            .sumOf { it.first.size.toLong() }
+
+    @Test
+    fun `the free space must also hold the work directory's copy of Loki's index and its split, one byte short fails`() {
+        seed()
+        val index = "index of acme"
+        store.put("loki/index/index_1/acme/compacted.tsdb.gz", index)
+        val needed = zippedBytes() + 2L * index.length
+        free = needed - 1
+
+        assertThatThrownBy { exporter.export(target(), tenant = "acme") }.isInstanceOf(CommandFailedException::class.java)
+
+        val refused = events.filterIsInstance<Event.Export.InsufficientSpace>().single()
+        assertThat(refused.bytes).isEqualTo(needed)
+        assertThat(refused.freeBytes).isEqualTo(needed - 1)
+        assertThat(dir.list()).isEmpty()
+    }
+
+    @Test
+    fun `an export fits when the free space is exactly the zip's data plus twice the planned Loki index`() {
+        seed()
+        val index = "index of acme"
+        store.put("loki/index/index_1/acme/compacted.tsdb.gz", index)
+        free = zippedBytes() + 2L * index.length
+
+        exporter.export(target(), tenant = "acme")
+
+        assertThat(events.filterIsInstance<Event.Export.InsufficientSpace>()).isEmpty()
+        assertThat(File(dir, "acme-export.zip")).isFile()
+    }
+
     @Test
     fun `an empty tenant fails naming the tenant and the prefixes, and writes nothing`() {
         seed()

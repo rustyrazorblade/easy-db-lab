@@ -49,6 +49,14 @@ data class TenantCopyPlan(
             (lokiIndex + tempoBlocks.values.flatten() + mimirBlocks.values.flatten() + immutable.values.flatten())
                 .sumOf { it.size }
 
+    /**
+     * The bytes the export needs on the disk of the zip and its work directory beside it: the zip's
+     * data ([bytes]), and in the work directory the local copy of Loki's index and the split's output
+     * beside it, each up to the planned index's size.
+     */
+    val diskBytes: Long
+        get() = bytes + Constants.Export.LOKI_WORK_INDEX_COPIES * lokiIndex.sumOf { it.size }
+
     /** The number of objects the plan copies, from its listings. */
     val objects: Int
         get() =

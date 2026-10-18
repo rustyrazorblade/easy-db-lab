@@ -26,8 +26,10 @@ fun interface DiskSpace {
  * In order, stopping at the first failure:
  * 1. list everything the export copies ([TenantStoreCopy.plan]); a tenant with no data fails,
  *    naming the tenant and the prefixes ([Event.Export.EmptyTenant]);
- * 2. fail before copying when the data is larger than the free space where the zip goes
- *    ([Event.Export.InsufficientSpace]), else report the size ([Event.Export.SizeEstimated]);
+ * 2. fail before copying when the free space where the zip goes cannot hold the data and, in the work
+ *    directory beside it, the local copy of Loki's index and the split's output
+ *    ([TenantCopyPlan.diskBytes], [Event.Export.InsufficientSpace]), else report the size
+ *    ([Event.Export.SizeEstimated]);
  * 3. make the work directory ([ExportWorkDirectory]), where Loki's index is copied and split;
  * 4. stream the stack files ([ExportStackFiles]) and the copy into the zip, which [ExportZipWriter]
  *    moves to the path only when complete;
@@ -70,8 +72,8 @@ class TenantExporter(
             val plan = eventBus.reportingStepFailure(target) { plan(copy, tenant) }
             val directory = target.zip.absoluteFile.parentFile
             val free = diskSpace.free(directory)
-            if (plan.bytes > free) {
-                eventBus.emit(Event.Export.InsufficientSpace(target.zip.path, plan.bytes, free))
+            if (plan.diskBytes > free) {
+                eventBus.emit(Event.Export.InsufficientSpace(target.zip.path, plan.diskBytes, free))
                 throw CommandFailedException("Not enough disk space for ${target.zip.path}")
             }
             eventBus.emit(Event.Export.SizeEstimated(tenant, plan.objects, plan.bytes, free))

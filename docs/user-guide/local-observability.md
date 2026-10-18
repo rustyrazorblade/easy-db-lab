@@ -211,7 +211,7 @@ The work directory `<path>.work-<id>/` holds the copy of the index and the compa
 
   A profile that holds access keys instead of an AWS profile is named as such, with no login hint.
 - The path must be a new `.zip` file in a directory that exists. An existing file is never overwritten.
-- The command lists everything it will copy, prints the size, and fails before copying anything when the disk the zip goes to does not have that much free space.
+- The command lists everything it will copy, prints the size, and fails before copying anything when the disk the zip goes to does not have that much free space, plus twice the size of the tenant's Loki index for the copy of it the export splits in its work directory.
 - A tenant with no metrics, logs or traces fails and names the prefixes it looked under.
 - The zip is written under a temporary name beside the path (`<path>.partial-<random>`) and moved into place only when it is complete. When anything fails, no zip is left at the path, the temporary file is removed, the work directory is kept, and the error names what it was copying (metrics, logs, traces, annotations, reports) and the step.
 

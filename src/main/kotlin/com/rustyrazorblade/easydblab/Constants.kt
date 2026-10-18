@@ -1211,6 +1211,12 @@ object Constants {
         /** Between the zip's path and a random suffix: the export's work directory, kept afterwards. */
         const val WORK_INFIX = ".work-"
 
+        /**
+         * The copies of a tenant's planned Loki index the work directory holds, each up to its size:
+         * the local copy and the split's output; the free-space check counts them beside the zip.
+         */
+        const val LOKI_WORK_INDEX_COPIES = 2
+
         /** A tenant export's split of Loki's shared index files, by Loki's own compactor in docker (owner decision 22). */
         object LokiSplit {
             /**

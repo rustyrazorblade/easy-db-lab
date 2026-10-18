@@ -6476,10 +6476,11 @@ sealed interface Event {
         }
 
         /**
-         * The data is larger than the free space where the zip is written; nothing was copied.
+         * The export needs more than the free space where the zip is written; nothing was copied.
          *
          * @property path the zip's path.
-         * @property bytes the data's size.
+         * @property bytes what the export needs there: the zip's data, and the work directory's copy of
+         *   Loki's index and its split.
          * @property freeBytes the free space there.
          */
         @Serializable
@@ -6490,7 +6491,8 @@ sealed interface Event {
             val freeBytes: Long,
         ) : Export {
             override fun toDisplayString(): String =
-                "Not enough disk space for $path: the data is ${bytes / Constants.Size.BYTES_PER_MIB} MiB ($bytes bytes) " +
+                "Not enough disk space for $path: the export needs ${bytes / Constants.Size.BYTES_PER_MIB} MiB ($bytes bytes, " +
+                    "the data and the work directory's copy of Loki's index) " +
                     "and only ${freeBytes / Constants.Size.BYTES_PER_MIB} MiB ($freeBytes bytes) is free. Nothing was written."
 
             override fun isError(): Boolean = true

@@ -188,7 +188,7 @@ class ExperimentLabelCoverageTest : BaseKoinTest() {
             job.spec.template.spec.containers
                 .single { it.name == "stress" }
 
-        assertThat(pyroscopeLabels(javaToolOptions(stress))).containsAllEntriesOf(expected)
+        assertThat(pyroscopeLabels(agentOptions(stress, "JDK_JAVA_OPTIONS"))).containsAllEntriesOf(expected)
     }
 
     private fun stressJobService(): DefaultStressJobService {
@@ -228,7 +228,7 @@ class ExperimentLabelCoverageTest : BaseKoinTest() {
             daemonSet.spec.template.spec.containers
                 .single()
 
-        assertThat(pyroscopeLabels(javaToolOptions(sidecar))).containsAllEntriesOf(expected)
+        assertThat(pyroscopeLabels(agentOptions(sidecar, "JAVA_TOOL_OPTIONS"))).containsAllEntriesOf(expected)
     }
 
     @Test
@@ -438,10 +438,13 @@ class ExperimentLabelCoverageTest : BaseKoinTest() {
 
     private fun envNames(container: Container): Set<String> = container.env.map { it.name }.toSet()
 
-    private fun javaToolOptions(container: Container): String = container.env.single { it.name == "JAVA_TOOL_OPTIONS" }.value
+    private fun agentOptions(
+        container: Container,
+        variable: String,
+    ): String = container.env.single { it.name == variable }.value
 
-    private fun pyroscopeLabels(javaToolOptions: String): Map<String, String> =
-        labelPairs(Regex("""-Dpyroscope\.labels=(\S+)""").find(javaToolOptions)!!.groupValues[1])
+    private fun pyroscopeLabels(options: String): Map<String, String> =
+        labelPairs(Regex("""-Dpyroscope\.labels=(\S+)""").find(options)!!.groupValues[1])
 
     /** `k=v,k=v` as a map; the form every Pyroscope label string here takes. */
     private fun labelPairs(pairs: String): Map<String, String> =

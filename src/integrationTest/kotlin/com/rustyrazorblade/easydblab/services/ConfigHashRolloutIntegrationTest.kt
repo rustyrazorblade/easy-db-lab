@@ -42,6 +42,15 @@ import java.time.Duration
  *
  * The builders place the workloads in `default`; this test moves them into a namespace of its own
  * on the [SharedK3s] cluster.
+ *
+ * Both Deployments use the `Recreate` strategy, under which the controller creates the new
+ * ReplicaSet only once every old pod is gone. A pod still pulling its image from a registry is not
+ * gone until the kubelet finishes the pull, so with pods running, how long a rollout took to show a
+ * new ReplicaSet depended on a registry download outside the test's control (under full-suite load
+ * it outlasted the wait). The test runs every Deployment at zero replicas ([withoutPods]): the
+ * generation and the ReplicaSets, which are all it asserts on, are then the controller's answer to
+ * the template alone. The config hash covers only the pod template, so the replica count does not
+ * change what is hashed or compared.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ConfigHashRolloutIntegrationTest {
@@ -127,8 +136,22 @@ class ConfigHashRolloutIntegrationTest {
                     resource
                 }
             }
-        return (tempoResources + pyroscope.buildServerResources()).onEach { it.metadata.namespace = NAMESPACE }
+        return withoutPods(tempoResources + pyroscope.buildServerResources()).onEach { it.metadata.namespace = NAMESPACE }
     }
+
+    /** [resources] with every Deployment scaled to zero replicas, so a rollout never waits on a pod. */
+    private fun withoutPods(resources: List<HasMetadata>): List<HasMetadata> =
+        resources.map { resource ->
+            if (resource is Deployment) {
+                DeploymentBuilder(resource)
+                    .editSpec()
+                    .withReplicas(0)
+                    .endSpec()
+                    .build()
+            } else {
+                resource
+            }
+        }
 
     private fun generation(
         name: String,
@@ -236,8 +259,7 @@ class ConfigHashRolloutIntegrationTest {
      * namespace is its own so no other test's Pyroscope render is already running there.
      */
     private fun pyroscopeServer(withStartupProbe: Boolean = true): List<HasMetadata> =
-        pyroscope
-            .buildServerResources()
+        withoutPods(pyroscope.buildServerResources())
             .map { resource ->
                 if (resource is Deployment && !withStartupProbe) {
                     DeploymentBuilder(resource)

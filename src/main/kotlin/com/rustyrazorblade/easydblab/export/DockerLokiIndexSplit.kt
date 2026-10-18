@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.localstack.LocalImages
 import com.rustyrazorblade.easydblab.localstack.LocalStackComposer
 import com.rustyrazorblade.easydblab.localstack.LocalStackSpec
 import com.rustyrazorblade.easydblab.localstack.backendEnvironment
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import java.io.File
 import java.time.Duration
 import java.time.Instant
@@ -122,15 +123,26 @@ class DockerLokiIndexSplit(
         logFile: File,
     ) {
         val deadline = Instant.now().plus(timeout)
-        while (Instant.now().isBefore(deadline)) {
-            val logs = compose.run(project, name, listOf("logs", "--no-color", SERVICE), COMMAND_TIMEOUT)
-            if (logs.output.contains(Constants.Export.LokiSplit.FIRST_PASS_DONE)) return
-            val running = compose.run(project, name, listOf("ps", "--status", "running", "-q", SERVICE), COMMAND_TIMEOUT)
-            check(running.exitCode != 0 || running.output.isNotBlank()) {
-                "Loki's compactor exited before it split the index; its log is in ${logFile.path}"
+        val attempts = (timeout.toMillis() / pollInterval.toMillis().coerceAtLeast(1)).toInt().coerceAtLeast(1) + 1
+        val pass =
+            pollUntil("Loki index split", attempts, pollInterval, deadline, transient = { false }, done = { it != Pass.RUNNING }) {
+                look(project, name)
             }
-            Thread.sleep(pollInterval.toMillis())
-        }
-        error("Loki's compactor did not split the index within $timeout; its log is in ${logFile.path}")
+        check(pass != Pass.EXITED) { "Loki's compactor exited before it split the index; its log is in ${logFile.path}" }
+        check(pass == Pass.DONE) { "Loki's compactor did not split the index within $timeout; its log is in ${logFile.path}" }
     }
+
+    /** One look at the compactor: its first pass finished, it is no longer running, or it is still at work. */
+    private fun look(
+        project: File,
+        name: String,
+    ): Pass {
+        val logs = compose.run(project, name, listOf("logs", "--no-color", SERVICE), COMMAND_TIMEOUT)
+        if (logs.output.contains(Constants.Export.LokiSplit.FIRST_PASS_DONE)) return Pass.DONE
+        val running = compose.run(project, name, listOf("ps", "--status", "running", "-q", SERVICE), COMMAND_TIMEOUT)
+        return if (running.exitCode == 0 && running.output.isBlank()) Pass.EXITED else Pass.RUNNING
+    }
+
+    /** Where the compactor's first pass stands at one look. */
+    private enum class Pass { RUNNING, DONE, EXITED }
 }

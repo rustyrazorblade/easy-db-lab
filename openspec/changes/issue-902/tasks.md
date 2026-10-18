@@ -24,8 +24,8 @@
 - [x] 2.7 `ExperimentLabelCoverageTest` (unit tier): layer 1 renders each registered artifact and checks both labels (collector pipelines running `resource/cluster`, relabel lists, Alloy, sidecar and stress args, EMR, kit templates, annotation mirror streams through a fake push client, `loki.yaml` index labels including `edl_tenant`); layer 2 scans `src/main/kotlin`, `src/main/resources` and `packer/` for cluster-setting patterns and fails with "unregistered cluster setter". Include a negative fixture.
 - [x] 2.8 Move `generateDomainName` to `services/aws/OpenSearchDomainName.kt` (`object OpenSearchDomainName { fun of(clusterName: String): String }`); call it from `OpenSearchStart.kt:81` and `ClusterProvisioningService.kt:430`; trim the base, not the joined string. `OpenSearchDomainNameTest`: `_` to `-`, at most 28 characters, `-os` intact, both paths equal.
 - [x] 2.9 Loki integration test (`src/integrationTest/`, TestContainers): ingester id `acme.unthrottled_cursor-<id>` accepts lines, flushes, and the uploaded index file name carries it.
-- [ ] 2.10 Run `./gradlew installDist`, then rebuild the Cassandra AMI with `build-cassandra` (only `packer/cassandra/` changed).
-- [ ] 2.11 Live check on a throwaway cluster named with `_` and `--experiment`: `cluster-config` holds `experiment`; a metric, a log line, a span, an eBPF profile, a JFR profile and a mirrored annotation each carry `experiment` and `edl_tenant`; an OpenSearch domain provisions.
+- [x] 2.10 Run `./gradlew installDist`, then rebuild the Cassandra AMI with `build-cassandra` (only `packer/cassandra/` changed).
+- [x] 2.11 Live check on a throwaway cluster named with `_` and `--experiment`: `cluster-config` holds `experiment`; a metric, a log line, a span, an eBPF profile, a JFR profile and a mirrored annotation each carry `experiment` and `edl_tenant`; an OpenSearch domain provisions.
 - [x] 2.12 Docs: `help/provisioning.md` (`init --experiment`, the rule, the default, unique within a tenant, `_` in cluster names); `docs/reference/commands.md` `init` section; `docs/user-guide/monitoring.md` labels section.
 
 ## 3. Phase 2: report zip and pointer
@@ -38,7 +38,7 @@
 - [x] 3.6 `ReportUpload`: `@Parameters(arity = "1") dir: File`; `report upload a.md b.md` fails naming the directory form; experiment from workspace state; event `Report.Uploaded(zipKey, unpackedPrefix, pointerAdvanced, files)` in `events/Event.kt`.
 - [x] 3.7 `Up.kt:162`: `ReportPointer.ensurePlaceholder(key)` only when absent.
 - [x] 3.8 `AWSPolicy.denyDataDeletes` KDoc (`:217-222`): no report is replaced.
-- [ ] 3.9 Live check: two uploads for one experiment, both zips byte-identical to the local ones, pointer on the newer; a second cluster of the experiment shows the same report; upload after `down`.
+- [x] 3.9 Live check: two uploads for one experiment, both zips byte-identical to the local ones, pointer on the newer; a second cluster of the experiment shows the same report; upload after `down`.
 - [x] 3.10 Docs: `help/observability.md` report section; `docs/reference/commands.md` `report upload`; `docs/user-guide/monitoring.md` documents section and the storage layout table.
 
 ## 4. Phase 3a: shared variables, defaults, guards (tests first)

@@ -187,7 +187,9 @@ class TraceExport(
             )
         val response = reader(tenant).get(Constants.K8s.TEMPO_PORT, "/api/search?$params", TIMEOUT)
         check(response.code == Constants.HttpStatus.OK) {
-            "Tempo answered the trace search of cluster $cluster in tenant $tenant with status ${response.code}: ${response.body}"
+            "Tempo answered the trace search of cluster $cluster in tenant $tenant with status ${response.code}: ${answerExcerpt(
+                response.body,
+            )}"
         }
         val found =
             (JSON.parseToJsonElement(response.body).jsonObject["traces"] as? JsonArray)
@@ -235,7 +237,7 @@ class TraceExport(
         val params = query("start" to range.start.epochSecond.toString(), "end" to range.end.epochSecond.toString())
         val response = reader(tenant).get(Constants.K8s.TEMPO_PORT, "/api/v2/traces/$id?$params", TIMEOUT)
         check(response.code == Constants.HttpStatus.OK) {
-            "Tempo answered trace $id of tenant $tenant with status ${response.code}: ${response.body}"
+            "Tempo answered trace $id of tenant $tenant with status ${response.code}: ${answerExcerpt(response.body)}"
         }
         val resources =
             (
@@ -250,7 +252,7 @@ class TraceExport(
         val body = buildJsonObject { put("resourceSpans", JsonArray(resources.map(::withHexIds))) }.toString()
         val pushed = writer(tenant).post(Constants.K8s.TEMPO_OTLP_HTTP_PORT, "/v1/traces", body, timeout = TIMEOUT)
         check(pushed.code == Constants.HttpStatus.OK) {
-            "The writer's Tempo refused trace $id of tenant $tenant with status ${pushed.code}: ${pushed.body}"
+            "The writer's Tempo refused trace $id of tenant $tenant with status ${pushed.code}: ${answerExcerpt(pushed.body)}"
         }
         return SignalCount(1, body.toByteArray().size.toLong())
     }

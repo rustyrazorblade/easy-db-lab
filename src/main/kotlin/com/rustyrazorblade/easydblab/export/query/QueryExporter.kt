@@ -198,7 +198,7 @@ class QueryExporter(
                     ).post(Constants.K8s.LOKI_HTTP_PORT, LokiTailFlush.SHUTDOWN_PATH, timeout = LOKI_FLUSH_TIMEOUT)
             check(
                 flushed.code == Constants.HttpStatus.NO_CONTENT,
-            ) { "The writer's Loki did not flush (status ${flushed.code}): ${flushed.body}" }
+            ) { "The writer's Loki did not flush (status ${flushed.code}): ${answerExcerpt(flushed.body)}" }
             // Its index head is uploaded as it stops.
             writer.stop(Constants.LocalStack.Services.LOKI)
         }

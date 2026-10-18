@@ -99,12 +99,14 @@ class MimirApi(
         val header = tenants.joinToString(Constants.Export.Query.TENANT_SEPARATOR)
         val response = http(header).get(Constants.K8s.MIMIR_HTTP_PORT, pathAndQuery)
         check(response.code == Constants.HttpStatus.OK) {
-            "Mimir answered ${pathAndQuery.substringBefore('?')} in tenant $header with status ${response.code}: ${response.body}"
+            "Mimir answered ${pathAndQuery.substringBefore(
+                '?',
+            )} in tenant $header with status ${response.code}: ${answerExcerpt(response.body)}"
         }
         val body = JSON.parseToJsonElement(response.body) as JsonObject
         check(
             body["status"]?.jsonPrimitive?.content == "success",
-        ) { "Mimir refused ${pathAndQuery.substringBefore('?')}: ${response.body}" }
+        ) { "Mimir refused ${pathAndQuery.substringBefore('?')}: ${answerExcerpt(response.body)}" }
         body.getValue("data")
     }
 

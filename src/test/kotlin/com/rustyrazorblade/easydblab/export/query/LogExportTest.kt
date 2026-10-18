@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.export.query
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.ObservabilityResponse
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -37,6 +38,7 @@ class LogExportTest {
     private var stored: List<Line> = emptyList()
     private val pushed = mutableListOf<Line>()
     private var pushStatus = 204
+    private var pushAnswer = ""
 
     /** Answers a forward query_range as Loki does: the first `limit` lines at or after start, before end. */
     private val backends =
@@ -45,7 +47,7 @@ class LogExportTest {
                 "/loki/api/v1/query_range" -> page(call)
                 "/loki/api/v1/push" -> {
                     pushed += parsePush(call.body)
-                    ObservabilityResponse(pushStatus, "")
+                    ObservabilityResponse(pushStatus, pushAnswer)
                 }
                 else -> ObservabilityResponse(404, "")
             }
@@ -187,5 +189,16 @@ class LogExportTest {
         pushStatus = 400
 
         assertThatThrownBy { export() }.hasMessageContaining("400")
+    }
+
+    @Test
+    fun `a refused push names only an excerpt of the writer's answer`() {
+        stored = listOf(Line(stream, base + 1, "a"))
+        pushStatus = 500
+        pushAnswer = "e".repeat(Constants.Export.Query.ANSWER_EXCERPT_CHARS) + "TAIL".repeat(1000)
+
+        assertThatThrownBy { export() }
+            .hasMessageContaining("e".repeat(Constants.Export.Query.ANSWER_EXCERPT_CHARS))
+            .hasMessageNotContaining("TAIL")
     }
 }

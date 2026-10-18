@@ -141,7 +141,7 @@ class LogExport(
             )
         check(
             response.code == Constants.HttpStatus.OK,
-        ) { "Loki answered $query in tenant $tenant with status ${response.code}: ${response.body}" }
+        ) { "Loki answered $query in tenant $tenant with status ${response.code}: ${answerExcerpt(response.body)}" }
         val result =
             JSON
                 .parseToJsonElement(response.body)
@@ -194,7 +194,9 @@ class LogExport(
             }
         val response = writer(tenant).post(Constants.K8s.LOKI_HTTP_PORT, PUSH_PATH, body.toString(), timeout = TIMEOUT)
         check(response.code == Constants.HttpStatus.NO_CONTENT) {
-            "The writer's Loki refused ${entries.size} lines of tenant $tenant with status ${response.code}: ${response.body}"
+            "The writer's Loki refused ${entries.size} lines of tenant $tenant with status ${response.code}: ${answerExcerpt(
+                response.body,
+            )}"
         }
         return SignalCount(
             entries.size.toLong(),

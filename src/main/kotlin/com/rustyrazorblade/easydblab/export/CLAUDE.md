@@ -147,7 +147,8 @@ Before every `down`, on close and after a failed start, `ProjectRemoval` saves `
 failed start names it, and so does `Export.Failed`. Every `down`'s exit code is checked: a non-zero one emits
 `Export.StackNotRemoved` (with `docker compose -p <project> down --remove-orphans`) and never hides the export's own
 outcome; after a failed start it is attached as a suppressed exception. A `/ready` timeout names the last status and
-body or error. Each stack makes one direct `OkHttpClient` (`StackRuntime.client`) that every `http(tenant)` and
+body or error. Every refusal message (and so `Export.Failed`'s reason) carries only an excerpt of a backend's answer,
+its first `Constants.Export.Query.ANSWER_EXCERPT_CHARS` characters and how many were left out (`answerExcerpt`). Each stack makes one direct `OkHttpClient` (`StackRuntime.client`) that every `http(tenant)` and
 `/ready` look shares, and evicts its pool on close. thanos's `run` that outlasts its timeout (`ComposeResult.timedOut`)
 is followed by `kill`, `down --remove-orphans` and `ps -a -q`; it fails either way, saying the container may still be
 running unless all three confirm it is gone, and `MetricsExport` then deletes no source block and writes no index.

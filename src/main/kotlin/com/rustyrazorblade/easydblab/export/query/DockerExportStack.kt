@@ -141,7 +141,6 @@ class DockerExportStack private constructor(
     companion object {
         private val COMMAND_TIMEOUT: Duration = Duration.ofMinutes(Constants.Export.Query.COMPOSE_COMMAND_TIMEOUT_MINUTES)
         private const val STOP_SECONDS = Constants.Export.Query.STACK_STOP_SECONDS
-        private const val ANSWER_EXCERPT_CHARS = 500
 
         /**
          * Writes [definition]'s files into [directory], runs the runtime's `beforeStart` on it (where a
@@ -238,7 +237,7 @@ class DockerExportStack private constructor(
                         if (answer.code !=
                             Constants.HttpStatus.OK
                         ) {
-                            last = "status ${answer.code}: ${answer.body.take(ANSWER_EXCERPT_CHARS)}"
+                            last = "status ${answer.code}: ${answerExcerpt(answer.body)}"
                         }
                         answer.code == Constants.HttpStatus.OK
                     },

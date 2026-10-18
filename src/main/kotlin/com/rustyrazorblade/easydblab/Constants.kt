@@ -1329,6 +1329,9 @@ object Constants {
 
             /** How long `docker compose stop` gives a stack's backend to finish writing what it holds (`-t`). */
             const val STACK_STOP_SECONDS = 120
+
+            /** The most characters of a backend's answer a refusal message, and so `Export.Failed`, carries. */
+            const val ANSWER_EXCERPT_CHARS = 500
         }
     }
 

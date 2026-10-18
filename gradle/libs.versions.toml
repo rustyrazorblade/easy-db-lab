@@ -84,6 +84,8 @@ ktlint = "14.2.0"
 detekt = "1.23.8"
 kover = "0.9.8"
 jib = "3.5.2"
+# jib-core: the library the Jib plugin is built on, used by the integration tier to fetch K3s preload images
+jib-core = "0.28.2"
 
 [libraries]
 # Kotlin
@@ -113,6 +115,7 @@ testcontainers-junit = { module = "org.testcontainers:testcontainers-junit-jupit
 testcontainers-cassandra = { module = "org.testcontainers:testcontainers-cassandra", version.ref = "testcontainers" }
 testcontainers-k3s = { module = "org.testcontainers:testcontainers-k3s", version.ref = "testcontainers" }
 testcontainers-localstack = { module = "org.testcontainers:testcontainers-localstack", version.ref = "testcontainers" }
+jib-core = { module = "com.google.cloud.tools:jib-core", version.ref = "jib-core" }
 
 # CLI and UI
 picocli = { module = "info.picocli:picocli", version.ref = "picocli" }

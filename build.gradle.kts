@@ -267,6 +267,7 @@ dependencies {
     "integrationTestImplementation"(libs.bundles.testcontainers)
     "integrationTestImplementation"(libs.fabric8.kubernetes.server.mock)
     "integrationTestImplementation"(libs.okhttpMockwebserver)
+    "integrationTestImplementation"(libs.jib.core)
 
     // The production code and the compiled output of the unit `test` source set (shared helpers
     // like BaseKoinTest, MockSSHClient, custom AssertJ assertions, TestPrompter) reach the
@@ -404,6 +405,23 @@ tasks.named<Test>("test") {
             .get()
             .asFile.absolutePath,
     )
+}
+
+// K3sPreloadedImages keeps the image archives it seeds K3s containers with in this directory,
+// shared by every fork under a file lock, so each image is fetched from its registry once per
+// content digest instead of by every fork at the same time.
+tasks.named<Test>("integrationTest") {
+    systemProperty(
+        "easydblab.test.imageArchiveDir",
+        layout.buildDirectory
+            .dir("k3s-image-archives")
+            .get()
+            .asFile.absolutePath,
+    )
+    // Jib, which fetches those images, ends a registry read that gets no bytes for 20 seconds by
+    // default. In a full run, while the other forks start their containers, a blob download from
+    // Docker Hub went quiet for longer than that, so give a read a minute before it is retried.
+    systemProperty("jib.httpTimeout", "60000")
 }
 
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).

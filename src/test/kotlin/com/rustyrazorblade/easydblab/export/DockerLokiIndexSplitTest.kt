@@ -30,7 +30,7 @@ class DockerLokiIndexSplitTest {
     private var up = ComposeResult(0, "")
 
     /** What each `docker compose logs` of the service answers, in turn; the last one repeats. */
-    private var logs = listOf("loki-1  | level=info msg=\"Loki started\"", "loki-1  | level=info msg=\"compactor started\"")
+    private var logs = listOf("loki-1  | level=info msg=\"Loki started\"", "loki-1  | level=info msg=\"single compaction finished\"")
     private var running = "abc123"
     private val compose =
         ComposeCli { _, name, args, _ ->
@@ -71,11 +71,13 @@ class DockerLokiIndexSplitTest {
         assertThat(service.user).matches("\\d+:\\d+")
         assertThat(service.command).contains(
             "-target=compactor",
+            "-compactor.run-once",
             "-compactor.retention-enabled=false",
             "-compactor.deletion-mode=disabled",
             "-memberlist.bind-addr=127.0.0.1",
             "-memberlist.advertise-addr=127.0.0.1",
         )
+        assertThat(service.command).noneMatch { it.startsWith("-compactor.compaction-interval") }
         assertThat(service.environment.orEmpty().keys).noneMatch { it.startsWith("AWS_") && it != "AWS_REGION" }
         assertThat(service.volumes.orEmpty().map { it.source }).noneMatch { it.contains(".aws") }
         val storeMount = service.volumes.orEmpty().single { it.source == store.absolutePath }
@@ -98,7 +100,7 @@ class DockerLokiIndexSplitTest {
 
     @Test
     fun `the split waits until Loki's first pass over every table finished, then saves the logs and removes the project`() {
-        logs = listOf("starting", "still waiting for the ring", "loki-1  | level=info msg=\"compactor started\"")
+        logs = listOf("starting", "still waiting for the ring", "loki-1  | level=info msg=\"single compaction finished\"")
 
         split()
 
@@ -117,6 +119,22 @@ class DockerLokiIndexSplitTest {
 
         assertThatThrownBy { split() }
             .hasMessageContaining("exited")
+            .hasMessageContaining(File(project, Constants.Export.Query.STACK_LOG_FILE).path)
+        assertThat(runs.last()).containsExactly("down", "--remove-orphans", "-t", "60")
+    }
+
+    @Test
+    fun `a single compaction that reports an error fails the split, naming its saved log, though Loki says it finished`() {
+        logs =
+            listOf(
+                """
+                loki-1  | level=error msg="compaction encountered an error" err="failed to compact table"
+                loki-1  | level=info msg="single compaction finished"
+                """.trimIndent(),
+            )
+
+        assertThatThrownBy { split() }
+            .hasMessageContaining("error")
             .hasMessageContaining(File(project, Constants.Export.Query.STACK_LOG_FILE).path)
         assertThat(runs.last()).containsExactly("down", "--remove-orphans", "-t", "60")
     }

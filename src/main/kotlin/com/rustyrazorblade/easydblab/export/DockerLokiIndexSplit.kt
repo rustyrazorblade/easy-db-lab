@@ -26,16 +26,18 @@ import java.time.Instant
  * operator (the owner of [split]'s project directory), retention off and deletion disabled, its
  * memberlist on loopback.
  *
- * Loki 3.7.8 has no run-once mode: the compactor waits one compaction interval, passes over every
- * table, logs [Constants.Export.LokiSplit.FIRST_PASS_DONE], and then waits for the next interval. The
- * split looks at the log until that line, failing when the container is no longer running first or
- * when [timeout] passes. Whatever happened, the project's logs are saved in its directory
- * ([ProjectRemoval]) and the project is removed; a project compose cannot remove is reported.
+ * The compactor runs once (`-compactor.run-once`): Loki 3.7.8 joins its ring, compacts every table
+ * one time, logs [Constants.Export.LokiSplit.RUN_FAILED] if that failed, then always logs
+ * [Constants.Export.LokiSplit.RUN_DONE], and waits for a signal; the process does not exit by itself.
+ * The split looks at the log until the done line and fails when the failure line came with it, when
+ * the container is no longer running first, or when [timeout] passes. Whatever happened, the
+ * project's logs are saved in its directory ([ProjectRemoval]) and the project is removed; a project
+ * compose cannot remove is reported.
  *
  * @property compose runs docker compose.
  * @property eventBus reports a project that cannot be removed.
  * @property pollInterval the gap between two looks at the log.
- * @property timeout how long the first pass may take.
+ * @property timeout how long the one compaction may take.
  * @property projectName the compose project's name, new for each split.
  */
 class DockerLokiIndexSplit(
@@ -69,7 +71,7 @@ class DockerLokiIndexSplit(
         try {
             val up = compose.run(project, name, listOf("up", "-d"), COMMAND_TIMEOUT)
             check(up.exitCode == 0) { "docker compose could not start Loki's compactor (exit ${up.exitCode}):\n${up.output}" }
-            awaitFirstPass(project, name, removal.logFile(project))
+            awaitRun(project, name, removal.logFile(project))
         } finally {
             removal.saveLogs(project, name)
             removal.down(project, name)
@@ -95,7 +97,7 @@ class DockerLokiIndexSplit(
                         "-config.expand-env=true",
                         "-target=compactor",
                         "-reporting.enabled=false",
-                        "-compactor.compaction-interval=${Constants.Export.LokiSplit.COMPACTION_INTERVAL_SECONDS}s",
+                        "-compactor.run-once",
                         "-compactor.retention-enabled=false",
                         "-compactor.deletion-mode=disabled",
                         "-memberlist.bind-addr=$address",
@@ -116,33 +118,39 @@ class DockerLokiIndexSplit(
         )
     }
 
-    /** Looks at the compactor's log until its first pass finished; fails when it stopped first or at [timeout]. */
-    private fun awaitFirstPass(
+    /**
+     * Looks at the compactor's log until its one compaction ended; fails when that compaction
+     * reported an error, when the container stopped first, or at [timeout].
+     */
+    private fun awaitRun(
         project: File,
         name: String,
         logFile: File,
     ) {
         val deadline = Instant.now().plus(timeout)
         val attempts = (timeout.toMillis() / pollInterval.toMillis().coerceAtLeast(1)).toInt().coerceAtLeast(1) + 1
-        val pass =
-            pollUntil("Loki index split", attempts, pollInterval, deadline, transient = { false }, done = { it != Pass.RUNNING }) {
+        val run =
+            pollUntil("Loki index split", attempts, pollInterval, deadline, transient = { false }, done = { it != Run.RUNNING }) {
                 look(project, name)
             }
-        check(pass != Pass.EXITED) { "Loki's compactor exited before it split the index; its log is in ${logFile.path}" }
-        check(pass == Pass.DONE) { "Loki's compactor did not split the index within $timeout; its log is in ${logFile.path}" }
+        check(run != Run.FAILED) { "Loki's compactor reported an error splitting the index; its log is in ${logFile.path}" }
+        check(run != Run.EXITED) { "Loki's compactor exited before it split the index; its log is in ${logFile.path}" }
+        check(run == Run.DONE) { "Loki's compactor did not split the index within $timeout; its log is in ${logFile.path}" }
     }
 
-    /** One look at the compactor: its first pass finished, it is no longer running, or it is still at work. */
+    /** One look at the compactor: its compaction ended (well or not), it is no longer running, or it is still at work. */
     private fun look(
         project: File,
         name: String,
-    ): Pass {
-        val logs = compose.run(project, name, listOf("logs", "--no-color", SERVICE), COMMAND_TIMEOUT)
-        if (logs.output.contains(Constants.Export.LokiSplit.FIRST_PASS_DONE)) return Pass.DONE
+    ): Run {
+        val logs = compose.run(project, name, listOf("logs", "--no-color", SERVICE), COMMAND_TIMEOUT).output
+        if (logs.contains(Constants.Export.LokiSplit.RUN_DONE)) {
+            return if (logs.contains(Constants.Export.LokiSplit.RUN_FAILED)) Run.FAILED else Run.DONE
+        }
         val running = compose.run(project, name, listOf("ps", "--status", "running", "-q", SERVICE), COMMAND_TIMEOUT)
-        return if (running.exitCode == 0 && running.output.isBlank()) Pass.EXITED else Pass.RUNNING
+        return if (running.exitCode == 0 && running.output.isBlank()) Run.EXITED else Run.RUNNING
     }
 
-    /** Where the compactor's first pass stands at one look. */
-    private enum class Pass { RUNNING, DONE, EXITED }
+    /** Where the compactor's one compaction stands at one look. */
+    private enum class Run { RUNNING, DONE, FAILED, EXITED }
 }

@@ -248,7 +248,9 @@ class TenantExportIntegrationTest {
         }
 
         val work = root.listFiles()!!.single { it.name.startsWith("$TENANT-export.zip${Constants.Export.WORK_INFIX}") }
-        assertThat(File(work, "loki/split/${Constants.Export.Query.STACK_LOG_FILE}").readText()).contains("compactor started")
+        assertThat(File(work, "loki/split/${Constants.Export.Query.STACK_LOG_FILE}").readText())
+            .contains("running single compaction", Constants.Export.LokiSplit.RUN_DONE)
+            .doesNotContain(Constants.Export.LokiSplit.RUN_FAILED)
     }
 
     @Test

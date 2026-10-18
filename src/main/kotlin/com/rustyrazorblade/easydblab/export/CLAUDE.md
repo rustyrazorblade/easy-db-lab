@@ -63,13 +63,14 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
   (`ExportedFiles.lokiConfig`) over the copy mounted read-write at `/store`, `network_mode: none`, no credentials, the
   operator's uid:gid (`ExportWorkDirectory.ownerOf`), `-compactor.retention-enabled=false`,
   `-compactor.deletion-mode=disabled`, memberlist on `127.0.0.1` (with no network Loki 3.7.8 finds no interface
-  address and exits), compaction interval `Constants.Export.LokiSplit.COMPACTION_INTERVAL_SECONDS` (3.7.8 waits one
-  interval before the first pass and has no run-once mode). Done at the log line `msg="compactor started"`, which 3.7.8
-  writes after its first pass over every table; a container no longer running first, or the timeout, fails. Its logs
-  are saved (`ProjectRemoval`) and the project removed whatever happened. Verified on 3.7.8: each tenant gets one
+  address and exits), `-compactor.run-once`: 3.7.8 compacts every table one time, logs `msg="compaction encountered
+  an error"` if that failed, then always `msg="single compaction finished"` (`Constants.Export.LokiSplit.RUN_DONE`),
+  and waits for a signal (the process does not exit by itself; verified on 3.7.8). Done at the finished line; the error
+  line with it, a container no longer running first, or the timeout, fails. Its logs are saved (`ProjectRemoval`) and
+  the project removed whatever happened. Verified on 3.7.8: each tenant gets one
   `<table>/<tenant>/<nanos>-compactor-<from>-<through>-<checksum>.tsdb.gz` (merged with its existing per-tenant
-  files), the root file is removed, a later pass leaves the split tables unchanged, and the offline read-path Loki
-  answers the tenant's newest lines from the split files.
+  files), the root file is removed, and the offline read-path Loki answers the tenant's newest lines from the split
+  files.
 - `ExportWorkDirectory` — `<path>.work-<id>/` (`Constants.Export.WORK_INFIX`), its size and owner; kept, never
   removed. `QueryWorkDirectory` builds on it.
 - `MimirBucketIndexWriter` / `TempoTenantIndexWriter` — built from a `BlockDirectory` (`FileBlockDirectory` on disk,

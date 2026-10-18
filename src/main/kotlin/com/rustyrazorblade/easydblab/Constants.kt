@@ -1214,15 +1214,15 @@ object Constants {
         /** A tenant export's split of Loki's shared index files, by Loki's own compactor in docker (owner decision 22). */
         object LokiSplit {
             /**
-             * The compactor's interval. Loki 3.7.8 waits one interval before its first pass, so it is
-             * short; a later pass leaves the split tables as they are.
+             * What Loki 3.7.8 logs once its one compaction (`-compactor.run-once`) over every table has
+             * ended, whether it succeeded or not; the process then waits for a signal and never exits.
              */
-            const val COMPACTION_INTERVAL_SECONDS = 10L
+            const val RUN_DONE = "msg=\"single compaction finished\""
 
-            /** What Loki 3.7.8 logs once its first pass over every table has finished. */
-            const val FIRST_PASS_DONE = "msg=\"compactor started\""
+            /** What Loki 3.7.8 logs, before [RUN_DONE], when its one compaction failed. */
+            const val RUN_FAILED = "msg=\"compaction encountered an error\""
 
-            /** How long the first pass may take. */
+            /** How long the one compaction may take. */
             const val TIMEOUT_MINUTES = 60L
 
             /** The gap between two looks at the compactor's log. */

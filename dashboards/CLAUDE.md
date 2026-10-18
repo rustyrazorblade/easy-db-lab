@@ -160,6 +160,10 @@ Six dashboards select one experiment: Tests, Experiment: Cassandra, Experiment: 
 three pair dashboards (cluster pair, A/B Comparison, System A/B Comparison). An experiment is a
 tenant and a name together (`ExperimentKey`), so the picker never merges two experiments of one
 name in two tenants. `ExperimentPickerTest` checks the rules below on every core and kit dashboard.
+`ExperimentPickerQueriesIntegrationTest` runs the shipped `experiment`, `exp_tenant`, `exp_name` and
+`cluster` queries of Tests, Experiment: Cassandra and Experiment: System, and the Tests listing, against
+`up` in the pinned Mimir (two tenants with an `e1` each, an older experiment and a pre-label cluster),
+single-tenant and federated, through each variable's regex over Grafana's `query_result` rows.
 
 - **The picker.** `experiment` is a single-select query variable whose value and text are
   `<tenant>/<name>` (`ExperimentKey.pickerValue`). It lists newest first,

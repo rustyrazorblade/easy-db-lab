@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.localstack
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -43,10 +44,6 @@ class LocalStackCreator(
     private val dashboards: LocalStackDashboards,
     private val eventBus: EventBus,
 ) {
-    private companion object {
-        val TENANT = Regex(Constants.Observability.TENANT_PATTERN)
-    }
-
     /**
      * The region of [bucket] once the store check found it readable with [profile]; otherwise the
      * reason is reported (unreadable credentials, or S3 not reached) and the command fails.
@@ -72,10 +69,7 @@ class LocalStackCreator(
         directory: File,
         homeTenant: String,
     ) {
-        require(TENANT.matches(homeTenant) && homeTenant != Constants.Observability.RESERVED_TENANT) {
-            "--tenant $homeTenant is not a tenant name: it must match ${Constants.Observability.TENANT_PATTERN} " +
-                "and not be '${Constants.Observability.RESERVED_TENANT}'"
-        }
+        ExperimentKey.requireValidTenant(homeTenant)
         val existing = writer.refuseForeign(directory)
         if (existing?.mode == LocalStackSpec.Mode.Offline.MANIFEST_NAME) {
             throw LocalStackDirectoryRefused(directory, "is an opened export, which local create would turn into a live stack")

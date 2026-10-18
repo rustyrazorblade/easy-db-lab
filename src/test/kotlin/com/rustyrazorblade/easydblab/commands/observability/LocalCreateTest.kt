@@ -187,6 +187,17 @@ class LocalCreateTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the reserved tenant name is refused before anything is read or written`() {
+        val dir = stack()
+
+        assertThatThrownBy { create(dir.path, "--tenant", Constants.Observability.RESERVED_TENANT) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("'${Constants.Observability.RESERVED_TENANT}'")
+        assertThat(dir).doesNotExist()
+        assertThat(storeChecks).isZero()
+    }
+
+    @Test
     fun `a foreign directory is refused and named, before the store is read, and nothing in it changes`() {
         val dir = stack().apply { mkdirs() }
         File(dir, "notes.txt").writeText("mine")

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.configuration.beyla
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -108,7 +107,6 @@ class BeylaManifestBuilder(
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()
-            .addToEnv(clusterConfigEnv("EXPERIMENT", "experiment"), clusterConfigEnv("TENANT", "tenant"))
             .addNewEnv()
             .withName("BEYLA_CONFIG_PATH")
             .withValue("/etc/beyla/beyla-config.yaml")

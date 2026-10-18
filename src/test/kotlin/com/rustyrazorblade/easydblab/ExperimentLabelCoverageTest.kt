@@ -315,15 +315,33 @@ class ExperimentLabelCoverageTest : BaseKoinTest() {
         ).contains("CLUSTER_NAME", "EXPERIMENT", "TENANT")
     }
 
+    /**
+     * Beyla's own configuration sets no label: its series get theirs from the collector job that
+     * scrapes its metrics port, whose relabels read the collector DaemonSet's variables.
+     */
     @Test
-    fun `Beyla is given the experiment and the tenant beside the cluster`() {
-        val beyla =
+    fun `Beyla's series get all three from the collector job that scrapes its metrics port`() {
+        val beylaPort =
             BeylaManifestBuilder(templateService)
                 .buildDaemonSet()
                 .spec.template.spec.containers
                 .single()
+                .ports
+                .single { it.name == "metrics" }
+                .containerPort
+        val jobs = nodeAt(collectorConfig(), "receivers", "prometheus", "config", "scrape_configs") as YamlList
+        val scrapingBeyla =
+            jobs.items.map { it as YamlMap }.filter { job ->
+                job
+                    .get<YamlList>("static_configs")
+                    ?.items
+                    .orEmpty()
+                    .flatMap { (it as YamlMap).get<YamlList>("targets")?.items.orEmpty() }
+                    .any { (it as YamlScalar).content == "localhost:$beylaPort" }
+            }
 
-        assertThat(envNames(beyla)).contains("CLUSTER_NAME", "EXPERIMENT", "TENANT")
+        assertThat(scrapingBeyla).hasSize(1)
+        assertThat(relabelTargets(scrapingBeyla.single()).filterKeys { it in expected }).isEqualTo(ENV_SOURCES)
     }
 
     @Test
@@ -480,7 +498,6 @@ class ExperimentLabelCoverageTest : BaseKoinTest() {
                 "packer/cassandra/bin/edl-profiling-reconcile",
                 "$RES/configuration/tempo/tempo.yaml",
                 "$MAIN/configuration/tempo/TempoManifestBuilder.kt",
-                "$MAIN/configuration/beyla/BeylaManifestBuilder.kt",
                 "$RES/configuration/loki/loki.yaml",
                 "$MAIN/services/AnnotationMirror.kt",
                 "$MAIN/configuration/ClusterLabels.kt",

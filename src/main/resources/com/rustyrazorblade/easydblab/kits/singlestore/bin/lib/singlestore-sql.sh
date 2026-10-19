@@ -4,8 +4,8 @@
 # builders are pure shell functions, so src/test/shell/singlestore-sql.test.sh can test both
 # --unlimited-storage settings with kubectl stubbed.
 #
-# The root password reaches mysql through MYSQL_PWD, read from stdin inside the pod, so it is on
-# no command line on this machine or in the pod. A kit shell step runs under /bin/bash, which is
+# The root password reaches the SQL client through MYSQL_PWD, read from stdin inside the pod, so it
+# is on no command line on this machine or in the pod. A kit shell step runs under /bin/bash, which is
 # bash 3.2 on macOS.
 
 ss_sql_fail() {
@@ -61,14 +61,17 @@ ss_master_pod() {
 }
 
 # Runs the SQL on stdin as root in the master pod and prints the rows, tab separated, with no
-# header. The password is the first line mysql's shell reads; SingleStore's error goes to stderr.
+# header. The password is the first line the pod's shell reads; SingleStore's error goes to stderr.
+# The singlestore/node image has no `mysql`, so this runs the image's own client directly (its
+# /usr/bin/singlestore wrapper needs getopt, which the image also lacks). --no-defaults skips
+# option files, and --protocol=tcp to 127.0.0.1:3306 does not depend on the client's socket path.
 ss_mysql() {
   local pod
   pod="$(ss_master_pod)"
   [ -n "${pod}" ] || ss_sql_fail "no SingleStore master aggregator pod is running" || return 1
   { printf '%s\n' "${SINGLESTORE_PASSWORD}"; cat; } |
     kubectl exec -i -n default -c node "${pod}" -- \
-      sh -c 'IFS= read -r MYSQL_PWD; export MYSQL_PWD; exec mysql -u root -N -B'
+      sh -c 'IFS= read -r MYSQL_PWD; export MYSQL_PWD; exec /usr/lib/singlestore-client/singlestore-client --no-defaults --protocol=tcp -h 127.0.0.1 -P 3306 -u root -N -B'
 }
 
 # Creates the --database database. With --unlimited-storage it is created ON S3 at a new path,

@@ -21,6 +21,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/singlestore/bin/lib/singlestore-sql.sh"
 PASSWORD="p w*'d"
+CLIENT="/usr/lib/singlestore-client/singlestore-client --no-defaults --protocol=tcp -h 127.0.0.1 -P 3306 -u root -N -B"
 
 tests_run=0
 tests_failed=0
@@ -106,6 +107,13 @@ for SH in "${SHELLS[@]}"; do
   [ "$(exec_stdin | head -1)" = "${PASSWORD}" ] || fail "[${SH}] the password did not reach mysql on stdin"
   grep -Fq "MYSQL_PWD" "${WORK}"/calls/*.args || fail "[${SH}] mysql does not read the password from MYSQL_PWD"
   grep -Fq -- "p w*" "${WORK}/out.txt" && fail "[${SH}] the step printed the password"
+
+  # The singlestore/node image has no `mysql`; its client is singlestore-client. --no-defaults
+  # skips option files, and the TCP connection to 127.0.0.1:3306 avoids the client's socket path.
+  tests_run=$((tests_run + 1))
+  grep -Fq -- "exec ${CLIENT}" "${WORK}"/calls/*.args ||
+    fail "[${SH}] the SQL does not run through ${CLIENT}: $(cat "${WORK}"/calls/*.args)"
+  grep -Eq -- "exec mysql( |\$)" "${WORK}"/calls/*.args && fail "[${SH}] the SQL runs mysql, which the node image lacks"
 
   tests_run=$((tests_run + 1))
   setup

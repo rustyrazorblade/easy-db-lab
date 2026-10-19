@@ -64,19 +64,27 @@ target kit has no password. The framework SHALL NOT print the password.
 
 ### Requirement: sysbench authenticates with the target password
 
-The sysbench kit SHALL build its database driver args once, as a shell array, in `bin/lib/target-db.sh`, which `prepare`, `start`, and `stop` source from the script directory. When `TARGET_MYSQL_PASSWORD` or `TARGET_PG_PASSWORD` is not empty, the args SHALL include `--mysql-password` or `--pgsql-password`. The create-database pod SHALL get the password through the `MYSQL_PWD` environment variable, not on its command line. `stop` SHALL list the pod's events instead of running `kubectl describe pod`, so the pod's command line is never printed. When the target has no password, sysbench SHALL behave as it does today. The SQL that `oltp_read_write` runs SHALL work on SingleStore with its default table type.
+The sysbench kit SHALL build its database driver args once, as a shell array, in `bin/lib/target-db.sh`, which `prepare`, `start`, and `stop` source from the script directory. When `TARGET_MYSQL_PASSWORD` or `TARGET_PG_PASSWORD` is not empty, the args SHALL include `--mysql-password` or `--pgsql-password`. The create-database pod SHALL get the password through the `MYSQL_PWD` environment variable, not on its command line. `stop` SHALL list the pod's events instead of running `kubectl describe pod`, so the pod's command line is never printed. When the target has no password, sysbench SHALL behave as it does today. The SQL that `oltp_read_write` runs SHALL work on SingleStore with its default table type. A target kit's `mysql` endpoint MAY declare `ignore-errors` (a comma-separated list of MySQL error codes); the framework SHALL inject it as `TARGET_MYSQL_IGNORE_ERRORS`, and sysbench SHALL pass it as `--mysql-ignore-errors` when it is not empty. The SingleStore kit SHALL declare `ignore-errors: "1062"`, because concurrent `oltp_read_write` transactions on the same id hit duplicate-key errors there that MySQL's row locks prevent. sysbench SHALL exit non-zero when a phase hits a fatal SQL error.
 
 #### Scenario: oltp_read_write on SingleStore
-- **WHEN** `sysbench --target <singlestore kit>` runs prepare and then start with `oltp_read_write`
-- **THEN** both finish with no SQL errors
+- **WHEN** `sysbench --target <singlestore kit>` runs prepare and then start with `oltp_read_write` and the default threads
+- **THEN** both finish with no SQL errors other than ignored 1062s, which sysbench's output counts
 - **AND** start reports non-zero TPS
+
+#### Scenario: Fatal SQL error fails the phase
+- **WHEN** a sysbench phase hits a SQL error that is not ignored
+- **THEN** the phase exits non-zero and the kit reports the failure
+
+#### Scenario: Targets without ignore-errors
+- **WHEN** the target's `mysql` endpoint declares no `ignore-errors`
+- **THEN** `TARGET_MYSQL_IGNORE_ERRORS` is empty and sysbench passes no `--mysql-ignore-errors`
 
 #### Scenario: Every phase uses the password
 - **WHEN** the target has a password
 - **THEN** the cleanup, create-database, prepare, run, and stop steps all authenticate with it
 
 #### Scenario: Password with special characters
-- **WHEN** the target password holds spaces, `*`, or single quotes
+- **WHEN** the target password holds spaces or `*`
 - **THEN** every sysbench phase authenticates with it
 - **AND** the password does not appear in sysbench output
 

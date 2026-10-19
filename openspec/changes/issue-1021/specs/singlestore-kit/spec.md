@@ -31,7 +31,7 @@ The kit SHALL declare these args, all as named options, each with the listed def
 - `--unlimited-storage` (default `false`)
 - `--blob-cache` (blob cache size in MB for unlimited storage)
 
-`--database` SHALL accept only letters, digits, and `_`. `--password` SHALL refuse `"`, `\`, and control characters. Both checks SHALL run at `kit install`, before any file is written.
+`--database` SHALL accept only letters, digits, and `_`. `--password` SHALL refuse `"`, `'`, `\`, and control characters (the node image's own startup cannot set a root password that holds `'`). Both checks SHALL run at `kit install`, before any file is written.
 
 #### Scenario: Install without a license fails
 - **WHEN** `kit install singlestore` runs without `--license`
@@ -48,7 +48,7 @@ The kit SHALL declare these args, all as named options, each with the listed def
 - **AND** no file is written
 
 #### Scenario: Invalid password is refused
-- **WHEN** `kit install singlestore` runs with a `--password` that holds `"`, `\`, or a control character
+- **WHEN** `kit install singlestore` runs with a `--password` that holds `"`, `'`, `\`, or a control character
 - **THEN** the command fails with a message that names `--password`
 - **AND** no file is written
 
@@ -83,7 +83,7 @@ The kit SHALL declare these args, all as named options, each with the listed def
 
 ### Requirement: SingleStore topology
 
-The `MemsqlCluster` SHALL have one master aggregator, `--aggregators` child aggregators, and `--leaves` leaves. `schedulingDetails` SHALL set `nodeSelector: {type: db}` for the master, the aggregators, and every leaf availability group. Each leaf availability group SHALL carry a `podAntiAffinity` on `easydblab/role=leaf`, so each leaf runs on its own db node. The master and the child aggregators SHALL carry a required `podAntiAffinity` on `easydblab/kit=singlestore,easydblab/tier=aggregator` per host, so each db node holds at most one aggregator. `start` SHALL fail before it creates anything when `1 + --aggregators` or `--leaves` is more than the db node count, with a message that names the flag and the db node count. `objectMetaOverrides` SHALL label the pods `easydblab/kit=singlestore` and `easydblab/role=master`, `aggregator`, or `leaf`. The master and the child aggregators SHALL also carry `easydblab/tier=aggregator`. `--aggregator-cores` and `--aggregator-memory` SHALL size both `masterAggregatorSpec` and `aggregatorSpec`. `serviceSpec.type` SHALL be `ClusterIP`. The leaves SHALL use the `local-path` storage class. Availability groups SHALL use the operator's default pairing.
+The `MemsqlCluster` SHALL have one master aggregator, `--aggregators` child aggregators, and `--leaves` leaves. `schedulingDetails` SHALL set `nodeSelector: {type: db}` for the master, the aggregators, and every leaf availability group. Each leaf availability group SHALL carry a `podAntiAffinity` on `easydblab/role=leaf`, so each leaf runs on its own db node. The master and the child aggregators SHALL carry a required `podAntiAffinity` on `easydblab/kit=singlestore,easydblab/tier=aggregator` per host, so each db node holds at most one aggregator. `start` SHALL fail before it creates anything when `1 + --aggregators` or `--leaves` is more than the db node count, with a message that names the flag and the db node count. `objectMetaOverrides` SHALL label the pods `easydblab/kit=singlestore` and `easydblab/role=master`, `aggregator`, or `leaf`. The master and the child aggregators SHALL also carry `easydblab/tier=aggregator`. `--aggregator-cores` and `--aggregator-memory` SHALL size both `masterAggregatorSpec` and `childAggregatorSpec`. The child aggregators SHALL be declared in `childAggregatorSpec`, because the operator refuses a non-zero `aggregatorSpec.count` next to a `masterAggregatorSpec`. `serviceSpec.type` SHALL be `ClusterIP`. The leaves SHALL use the `local-path` storage class. Availability groups SHALL use the operator's default pairing.
 
 #### Scenario: Default topology on N db nodes
 - **WHEN** the kit starts on N db nodes with default topology args and leaf sizes that fit the license
@@ -163,12 +163,22 @@ The wait step SHALL detect a license refusal in the `MemsqlCluster` status or th
 
 ### Requirement: SingleStore start clears leftovers from a failed start
 
-Before it applies anything, `start` SHALL delete any leftover `MemsqlCluster`, the cluster's PVCs (selected by `app.kubernetes.io/instance=singlestore`), and the kit's Secrets.
+When the wait step fails, `start` SHALL first print what failed (the pod list and the last errors it collected), and then delete the `MemsqlCluster`, the cluster's PVCs (selected by `app.kubernetes.io/instance=singlestore`), and the kit's Secrets before it exits non-zero, so no pod is left for the framework's collision check to refuse the next `start` on. Before it applies anything, `start` SHALL also delete any leftover `MemsqlCluster`, PVCs, and Secrets that no pod holds. The wait step SHALL fail at once, not at its timeout, when the operator reports a validation error for the `MemsqlCluster` or a SingleStore pod is in `CrashLoopBackOff`, and its message SHALL quote the operator's error or the pod's last log lines with the password masked.
 
 #### Scenario: Start after a failed start
 - **WHEN** a start failed and `start` runs again
-- **THEN** it clears the leftover CR, PVCs, and Secrets first
-- **AND** it builds a fresh cluster
+- **THEN** the failed start already removed its CR, PVCs, and Secrets
+- **AND** the collision check lets the new start run, and it builds a fresh cluster
+
+#### Scenario: Operator validation error
+- **WHEN** the operator refuses the `MemsqlCluster` spec
+- **THEN** the wait step fails within a poll interval, quoting the operator's error
+- **AND** start then removes the CR, PVCs, and Secrets
+
+#### Scenario: Crash loop
+- **WHEN** a SingleStore pod enters `CrashLoopBackOff`
+- **THEN** the wait step fails within a poll interval, quoting the pod's last log lines with the password masked
+- **AND** start then removes the CR, PVCs, and Secrets
 
 ### Requirement: SingleStore data and logs on the data disk
 

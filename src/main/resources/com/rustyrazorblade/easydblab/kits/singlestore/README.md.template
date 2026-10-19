@@ -44,9 +44,12 @@ easy-db-lab sysbench-singlestore start
 - `singlestore stop` deletes the cluster and its data (PVCs). The next `start` is empty.
 - `singlestore uninstall` stops a running cluster first, then removes the operator and its CRD.
 
-A start the license refuses fails with SingleStore's error. Re-run
-`easy-db-lab kit install singlestore --force` with the same args and smaller `--leaf-cores` and
-`--leaf-memory`, then `singlestore start` again.
+A start that fails while it waits for the cluster (a refused license, a spec the operator
+refuses, a crash-looping pod, or the 20-minute limit) prints why, then deletes the cluster, its
+PVCs and the Secrets, so the next `singlestore start` needs no `stop` first.
+
+Each leaf costs max(host vCPU / 8, host RAM GB / 32) license units, whatever `--leaf-cores` and
+`--leaf-memory` say, and aggregators cost none. Over capacity, SingleStore only logs a warning.
 
 ## Version
 

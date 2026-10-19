@@ -58,8 +58,9 @@ them with their defaults.
 `kit install` checks two values before it writes anything:
 
 - `--database` takes letters, digits and `_` only.
-- `--password` may not hold `"`, `\` or a control character, and may not be empty. The operator
-  needs a password, so a blank one is not offered.
+- `--password` may not hold `"`, `'`, `\` or a control character, and may not be empty. The
+  operator needs a password, so a blank one is not offered. The `singlestore/node` image sets the
+  root password at startup in a way that breaks on a `'`, and every pod would crash-loop.
 
 The message names the flag, never the value. To change an arg, re-run `kit install singlestore
 --force` with the new value, then `singlestore start`.
@@ -104,13 +105,21 @@ defaults, each leaf gets 4 cores and about 50 GB.
 
 ### License units
 
-The license caps the cluster's size in license units. The test key reported 2 units. When the
-leaves are bigger than the license allows, `start` fails with SingleStore's error and says to
-re-run `kit install singlestore --force` with smaller `--leaf-cores` and `--leaf-memory`. It does not
-fall back to a smaller cluster.
+The license caps the cluster's size in license units. Each leaf costs
 
-The formula for the units a leaf of a given size uses has not been measured yet. It will be stated
-here once a real cluster has recorded the units the server reports for a known leaf size.
+    max(host vCPU / 8, host RAM in GB / 32)
+
+units, measured on the host the leaf runs on. A leaf sees the whole host, so `--leaf-cores` and
+`--leaf-memory` do not change what it costs; only fewer leaves (`--leaves`) or smaller db nodes do.
+Aggregators, master and child, cost nothing. On `i4i.2xlarge` db nodes (8 vCPU, 64 GiB) each leaf
+costs 2 units, so a 2-unit license covers one leaf.
+
+A cluster over its license's capacity keeps working: SingleStore only writes a warning to its
+tracelog (`CheckCapacity: Used cluster capacity (N units) has exceeded the maximum cluster capacity
+of your license`). The `Used_cluster_capacity` and `Maximum_cluster_capacity` status variables show
+the units in use and allowed. When the server does refuse the license (an invalid or missing key,
+for example), `start` fails at once with SingleStore's error, removes the failed cluster, and does
+not fall back to a smaller one.
 
 ## Storage
 
@@ -147,7 +156,10 @@ easy-db-lab singlestore sql --file query.sql
 ## Benchmarking with sysbench
 
 The [sysbench](sysbench.md) kit can target SingleStore, and authenticates with the installed
-password in every phase:
+password in every phase. `prepare` loads its tables into the `--database` database (`test` by
+default). The kit's MySQL endpoint tells sysbench to ignore error 1062: concurrent
+`oltp_read_write` transactions on the same id hit duplicate-key errors on SingleStore, and the run
+counts them as `ignored errors` in its summary (see [Ignored errors](sysbench.md#ignored-errors)).
 
 ```bash
 easy-db-lab kit install sysbench --target singlestore
@@ -180,9 +192,14 @@ not create a local database instead.
 
 ## Lifecycle
 
-- `start` clears what a failed start left (the cluster, its volumes and the kit's Secrets), sizes
-  the cluster, writes the license and password Secrets, applies the cluster, waits for every pod
-  and leaf, opens the NodePort and creates the database.
+- `start` sizes the cluster, clears any cluster, volumes and Secrets an earlier start left, writes
+  the license and password Secrets, applies the cluster, waits for every pod and leaf, opens the
+  NodePort and creates the database.
+- When the wait fails, `start` prints why and the pods' state, then deletes the cluster, its
+  volumes and the kit's Secrets before it exits non-zero, so the next `start` can run without a
+  `stop` first. The wait fails at once, not after its 20-minute limit, when the license is refused,
+  when the operator refuses the cluster spec (quoting the operator's error), or when a SingleStore
+  pod is in `CrashLoopBackOff` (quoting the pod's last log lines, with the password masked).
 - `stop` deletes the cluster, the NodePort, the cluster's volumes and the license and password
   Secrets. Every `start` is a fresh,
   empty cluster.

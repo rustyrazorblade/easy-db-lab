@@ -82,7 +82,9 @@ spec:
         easydblab/kit: singlestore
         easydblab/role: master
         easydblab/tier: aggregator
-  aggregatorSpec:
+  # The child aggregators. The operator refuses a non-zero aggregatorSpec.count next to a
+  # masterAggregatorSpec, so they are declared here.
+  childAggregatorSpec:
     count: __SINGLESTORE_AGGREGATORS__
     cores: __SINGLESTORE_AGGREGATOR_CORES__
     memoryMB: ${AGGREGATOR_MEMORY_MB}

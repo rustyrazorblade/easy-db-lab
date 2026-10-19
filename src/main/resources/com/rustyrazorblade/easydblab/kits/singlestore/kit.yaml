@@ -24,6 +24,9 @@ endpoints:
     port: 30306
     type: mysql
     database: "__SINGLESTORE_DATABASE__"
+    # Concurrent oltp_read_write transactions on the same id hit duplicate-key errors (1062) on
+    # SingleStore, where MySQL's row locks would make them wait. A bench kit ignores them.
+    ignore-errors: "1062"
   - name: "MySQL JDBC"
     node-type: db
     port: 30306
@@ -86,10 +89,12 @@ args:
     default: "8"
   - flag: --password
     variable: SINGLESTORE_PASSWORD
-    description: "root password; may not hold \", \\ or a control character"
+    description: "root password; may not hold \", ', \\ or a control character"
     type: string
     default: "easydblab"
-    pattern: '[^"\\\p{Cntrl}]+'
+    # The node image's startup puts the password in a single-quoted SQL literal unescaped, so a '
+    # crash-loops every pod. ('' is a single quote inside this YAML single-quoted string.)
+    pattern: '[^"''\\\p{Cntrl}]+'
   - flag: --database
     variable: SINGLESTORE_DATABASE
     description: "Database start creates; letters, digits and _ only"
@@ -130,7 +135,9 @@ start:
       source bin/lib/singlestore-cluster.sh
       singlestore_start_cluster
   # Waits for every pod and every leaf. Fails at once, with SingleStore's error and the fix, when
-  # the license refuses the cluster.
+  # the license refuses the cluster, and with the operator's error or the pod's last log lines when
+  # the operator refuses the spec or a pod crash-loops. A failed wait prints the pods, then removes
+  # the cluster, its PVCs and the Secrets, so the next start is not refused as already running.
   - type: shell
     script: |
       set -euo pipefail

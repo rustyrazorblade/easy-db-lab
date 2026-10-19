@@ -105,7 +105,7 @@ class SingleStoreKitTest : BaseKoinTest() {
         assertThat(cr.get<String>("spec", "nodeImage", "tag")).isEqualTo("alma-9.9.9-test")
         assertThat(cr.get<String>("spec", "nodeImage", "repository")).isEqualTo("singlestore/node")
         assertThat(cr.get<String>("spec", "serviceSpec", "type")).isEqualTo("ClusterIP")
-        assertThat(listOf("masterAggregatorSpec", "aggregatorSpec", "leafSpec"))
+        assertThat(listOf("masterAggregatorSpec", "childAggregatorSpec", "leafSpec"))
             .allSatisfy { assertThat(cr.get<String>("spec", it, "storageClass")).isEqualTo("local-path") }
         val scheduling = cr.get<Map<String, Map<String, Any>>>("spec", "schedulingDetails")
         assertThat(scheduling.keys).containsExactlyInAnyOrder("master", "aggregator", "leaf-ag1", "leaf-ag2")
@@ -144,7 +144,7 @@ class SingleStoreKitTest : BaseKoinTest() {
             val repelled = repelledLabels(group)
             assertThat(repelled).containsEntry("easydblab/tier", "aggregator")
             assertThat(podLabels("masterAggregatorSpec")).containsAllEntriesOf(repelled)
-            assertThat(podLabels("aggregatorSpec")).containsAllEntriesOf(repelled)
+            assertThat(podLabels("childAggregatorSpec")).containsAllEntriesOf(repelled)
             assertThat(podLabels("leafSpec")).doesNotContainKey("easydblab/tier")
         }
     }
@@ -155,7 +155,7 @@ class SingleStoreKitTest : BaseKoinTest() {
             .containsEntry("easydblab/kit", "singlestore")
             .containsEntry("easydblab/role", "master")
             .containsEntry("easydblab/tier", "aggregator")
-        assertThat(podLabels("aggregatorSpec"))
+        assertThat(podLabels("childAggregatorSpec"))
             .containsEntry("easydblab/kit", "singlestore")
             .containsEntry("easydblab/role", "aggregator")
             .containsEntry("easydblab/tier", "aggregator")
@@ -176,9 +176,11 @@ class SingleStoreKitTest : BaseKoinTest() {
             )
 
         assertThat(cr.get<Int>("spec", "masterAggregatorSpec", "count")).isEqualTo(1)
-        assertThat(cr.get<Int>("spec", "aggregatorSpec", "count")).isEqualTo(2)
+        assertThat(cr.get<Int>("spec", "childAggregatorSpec", "count")).isEqualTo(2)
         assertThat(cr.get<Int>("spec", "masterAggregatorSpec", "cores")).isEqualTo(3)
-        assertThat(cr.get<Int>("spec", "aggregatorSpec", "cores")).isEqualTo(3)
+        assertThat(cr.get<Int>("spec", "childAggregatorSpec", "cores")).isEqualTo(3)
+        // The operator refuses a non-zero aggregatorSpec.count next to a masterAggregatorSpec.
+        assertThat(cr.get<Map<String, Any>>("spec")).doesNotContainKey("aggregatorSpec")
     }
 
     @Test
@@ -218,7 +220,7 @@ class SingleStoreKitTest : BaseKoinTest() {
         assertThat(port.targetPort.intVal).isEqualTo(3306)
         assertThat(service.spec.selector).containsEntry("easydblab/tier", "aggregator")
         assertThat(podLabels("masterAggregatorSpec")).containsAllEntriesOf(service.spec.selector)
-        assertThat(podLabels("aggregatorSpec")).containsAllEntriesOf(service.spec.selector)
+        assertThat(podLabels("childAggregatorSpec")).containsAllEntriesOf(service.spec.selector)
         assertThat(podLabels("leafSpec").entries.containsAll(service.spec.selector.entries)).isFalse()
         assertThat(
             kit.config.stop
@@ -240,6 +242,13 @@ class SingleStoreKitTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a bench kit on the MySQL endpoint ignores the duplicate-key errors concurrent transactions hit`() {
+        val mysql = kit.config.endpoints.single { it.type == KitEndpoint.EndpointType.MYSQL }
+
+        assertThat(mysql.toTargetVars("10.0.0.1", null)).containsEntry("TARGET_MYSQL_IGNORE_ERRORS", "1062")
+    }
+
+    @Test
     fun `the exporter sidecar of the master pod is scraped and nothing else`() {
         val scrape = kit.scrapeMetrics.single()
         val selector = parseLabelSelector(scrape.podSelector)
@@ -247,7 +256,7 @@ class SingleStoreKitTest : BaseKoinTest() {
         assertThat(scrape.port).isEqualTo(9104)
         assertThat(scrape.path).isEqualTo("/cluster-metrics")
         assertThat(podLabels("masterAggregatorSpec")).containsAllEntriesOf(selector)
-        assertThat(podLabels("aggregatorSpec").entries.containsAll(selector.entries)).isFalse()
+        assertThat(podLabels("childAggregatorSpec").entries.containsAll(selector.entries)).isFalse()
         assertThat(podLabels("leafSpec").entries.containsAll(selector.entries)).isFalse()
         assertThat(kit.resource("kit.yaml")).doesNotContain("exporter_port")
     }
@@ -257,7 +266,7 @@ class SingleStoreKitTest : BaseKoinTest() {
         val runtime = parseLabelSelector(requireNotNull(kit.config.runtime).selector)
         val operator = kit.render("operator-deployment.yaml.template").filterIsInstance<Deployment>().single()
 
-        assertThat(listOf("masterAggregatorSpec", "aggregatorSpec", "leafSpec"))
+        assertThat(listOf("masterAggregatorSpec", "childAggregatorSpec", "leafSpec"))
             .allSatisfy { assertThat(podLabels(it)).containsAllEntriesOf(runtime) }
         assertThat(
             operator.spec.template.metadata.labels.entries
@@ -306,11 +315,13 @@ class SingleStoreKitTest : BaseKoinTest() {
     }
 
     @Test
-    fun `--password refuses a double quote, a backslash and a control character, and nothing else`() {
+    fun `--password refuses a double quote, a single quote, a backslash and a control character, and nothing else`() {
         val password = arg("--password")
 
-        assertThat(listOf("easydblab", "p w*'d", "s!ngle\$tore#1")).allSatisfy { assertThat(password.accepts(it)).isTrue() }
-        assertThat(listOf("a\"b", "a\\b", "a\tb", "a\nb", "")).allSatisfy { assertThat(password.accepts(it)).isFalse() }
+        assertThat(listOf("easydblab", "p w*d", "s!ngle\$tore#1")).allSatisfy { assertThat(password.accepts(it)).isTrue() }
+        // The node image's startup puts the root password in a single-quoted SQL literal unescaped,
+        // so a password holding ' crash-loops every SingleStore pod.
+        assertThat(listOf("a\"b", "a'b", "a\\b", "a\tb", "a\nb", "")).allSatisfy { assertThat(password.accepts(it)).isFalse() }
     }
 
     /** The installed `kit.yaml` as `kit install` renders it with the defaults overlaid by [args]. */
@@ -332,11 +343,11 @@ class SingleStoreKitTest : BaseKoinTest() {
 
     @Test
     fun `the installed kit yaml carries the installed password and database`() {
-        val installed = installedKitYaml(mapOf(arg("--password").variable to "X y*'z", arg("--database").variable to "bench"))
+        val installed = installedKitYaml(mapOf(arg("--password").variable to "X y*z", arg("--database").variable to "bench"))
         val sql = installed.capabilities.single { it.type == "sql" }
 
         assertThat(sql.user).isEqualTo("root")
-        assertThat(sql.password).isEqualTo("X y*'z")
+        assertThat(sql.password).isEqualTo("X y*z")
         assertThat(sql.driverClass).isEqualTo("com.mysql.cj.jdbc.Driver")
         assertThat(installed.endpoints.single { it.type == KitEndpoint.EndpointType.MYSQL }.database).isEqualTo("bench")
         assertThat(installed.endpoints.single { it.type == KitEndpoint.EndpointType.JDBC }.formatUrl("10.0.0.1"))

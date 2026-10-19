@@ -26,6 +26,11 @@ SS_WAIT_ATTEMPTS="${SS_WAIT_ATTEMPTS:-120}"
 # (2446), or a cluster larger than the license allows. A line must say the license was refused,
 # not just mention its capacity, which the operator also logs for a key the server accepted.
 SS_LICENSE_REFUSAL='error (1888|2446)|licen[cs]e[^"]*(invalid|exceed|expired|not allow|required|refus)|(invalid|exceed|expired|refus)[^"]*licen[cs]e'
+# The operator refusing the MemsqlCluster spec, in its log or the MemsqlCluster status. It never
+# creates a pod for a spec it refused, so the wait could only time out.
+SS_OPERATOR_REFUSAL='ERROR while validating spec|failed to validate MemSQL Cluster'
+# How many of a crash-looping container's last log lines the failure quotes.
+SS_CRASH_LOG_LINES=20
 
 ss_cluster_fail() {
   echo "Error: $*" >&2
@@ -115,6 +120,52 @@ ss_license_refusal() {
   printf '%s\n' "${line}"
 }
 
+# Prints $1 with the root password and the license key masked.
+ss_mask() {
+  local text="$1" key="${SINGLESTORE_LICENSE%%[[:space:]]*}"
+  [ -z "${SINGLESTORE_PASSWORD:-}" ] || text="${text//"${SINGLESTORE_PASSWORD}"/****}"
+  [ -z "${key}" ] || text="${text//"${key}"/****}"
+  printf '%s\n' "${text}"
+}
+
+# Prints the latest error with which the operator refused the MemsqlCluster spec, from the
+# MemsqlCluster status or the operator's log since the cluster was created, masked, and succeeds;
+# fails when there is none.
+ss_operator_refusal() {
+  local created status log line
+  created="$(kubectl get memsqlcluster "${SS_CLUSTER}" -n "${SS_NAMESPACE}" \
+    -o jsonpath='{.metadata.creationTimestamp}' 2> /dev/null || true)"
+  status="$(kubectl get memsqlcluster "${SS_CLUSTER}" -n "${SS_NAMESPACE}" -o jsonpath='{.status}' 2> /dev/null || true)"
+  log="$(kubectl logs deployment/singlestore-operator -n "${SS_NAMESPACE}" ${created:+"--since-time=${created}"} \
+    --tail=2000 2> /dev/null || true)"
+  line="$(printf '%s\n%s\n' "${status}" "${log}" | grep -E "${SS_OPERATOR_REFUSAL}" | tail -1)"
+  [ -n "${line}" ] || return 1
+  ss_mask "${line}"
+}
+
+# Prints, for the first SingleStore container in CrashLoopBackOff, its pod, its name and the last
+# SS_CRASH_LOG_LINES lines of its previous run, masked, and succeeds; fails when none is.
+ss_crash_loop() {
+  local pods line pod states state container log
+  pods="$(kubectl get pods -l "${SS_POD_SELECTOR}" -n "${SS_NAMESPACE}" \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.containerStatuses[*]}{.name}{"="}{.state.waiting.reason}{" "}{end}{"\n"}{end}' \
+    2> /dev/null || true)"
+  while IFS= read -r line; do
+    pod="${line%%$'\t'*}"
+    states="${line#*$'\t'}"
+    for state in ${states}; do
+      [ "${state#*=}" = "CrashLoopBackOff" ] || continue
+      container="${state%%=*}"
+      log="$(kubectl logs "${pod}" -n "${SS_NAMESPACE}" -c "${container}" --previous \
+        --tail="${SS_CRASH_LOG_LINES}" 2>&1 || true)"
+      printf 'pod %s is in CrashLoopBackOff (container %s). Its last log lines:\n' "${pod}" "${container}"
+      ss_mask "${log}"
+      return 0
+    done
+  done <<< "${pods}"
+  return 1
+}
+
 # Prints how many SingleStore pods are Ready. The query's error goes to file $1, which is empty
 # when it succeeded.
 ss_ready_pods() {
@@ -147,13 +198,19 @@ ss_last_errors() {
 
 # The wait step: succeeds once every pod (the master, --aggregators child aggregators and
 # --leaves leaves) is Ready and the master reports every leaf online. Fails at once on a license
-# refusal, with SingleStore's error and the fix, and at the end of the wait with the pods' state
-# and the last error of each query.
+# refusal, with SingleStore's error and the fix, on the operator refusing the spec, with its
+# error, and on a crash-looping pod, with its last log lines; and at the end of the wait with the
+# last error of each query. A failed wait prints the pods and then removes the cluster, its PVCs
+# and the kit's Secrets, so no pod is left for the next start's collision check to refuse.
 singlestore_wait() {
   local errors status=0
   errors="$(mktemp -d)"
   ss_wait_for_cluster "${errors}" || status=$?
   rm -rf "${errors}"
+  [ "${status}" = 0 ] && return 0
+  kubectl get pods -l "${SS_POD_SELECTOR}" -n "${SS_NAMESPACE}" -o wide >&2 || true
+  echo "Removing the failed SingleStore cluster, its PVCs and Secrets so the next start can run..." >&2
+  ss_clear_leftovers >&2 || true
   return "${status}"
 }
 
@@ -168,6 +225,14 @@ The license does not cover this cluster. Re-run 'kit install singlestore --force
 args and smaller --leaf-cores and --leaf-memory, then 'singlestore start'."
       return 1
     fi
+    if refusal="$(ss_operator_refusal)"; then
+      ss_cluster_fail "the SingleStore operator refused the MemsqlCluster: ${refusal}"
+      return 1
+    fi
+    if refusal="$(ss_crash_loop)"; then
+      ss_cluster_fail "SingleStore ${refusal}"
+      return 1
+    fi
     ready="$(ss_ready_pods "${errors}/pods.err")"
     if [ "${ready}" -ge "${expected}" ]; then
       online="$(ss_online_leaves "${errors}/leaves.err")"
@@ -178,6 +243,5 @@ args and smaller --leaf-cores and --leaf-memory, then 'singlestore start'."
     fi
     [ "${attempt}" -lt "${SS_WAIT_ATTEMPTS}" ] && sleep "${SS_WAIT_INTERVAL}"
   done
-  kubectl get pods -l "${SS_POD_SELECTOR}" -n "${SS_NAMESPACE}" -o wide >&2 || true
   ss_cluster_fail "timed out waiting for SingleStore: ${ready} of ${expected} pods Ready, ${online} of ${SINGLESTORE_LEAVES} leaves online$(ss_last_errors "${errors}")"
 }

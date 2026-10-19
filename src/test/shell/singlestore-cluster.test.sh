@@ -7,7 +7,10 @@
 # and the root password to Secrets, and only then applies the MemsqlCluster with the sizes filled
 # in. The wait step waits for every pod and every leaf, and fails with SingleStore's license error,
 # with the key masked, and the --force advice when the license refuses the cluster. A wait that
-# times out gives the last error of the pod query and of SHOW LEAVES, with the password masked.
+# times out gives the last error of the pod query and of SHOW LEAVES, with the password masked. An
+# operator validation error or a crash-looping pod fails the wait at the first poll, quoting the
+# operator's error or the pod's last log lines with the password masked. A failed wait prints the
+# pods and then deletes the MemsqlCluster, its PVCs and the kit's Secrets.
 #
 # kubectl is stubbed: it records each call's arguments one per line, keeps the stdin of each
 # apply, copies every --from-file it is given, and answers the queries from STUB_* variables.
@@ -58,12 +61,17 @@ for arg in "\$@"; do
   esac
 done
 case " \$* " in
+  *" delete memsqlcluster "*) : > "${WORK}/cr-deleted" ;;
   *" apply "*) cat > "\${call}.stdin" ;;
   *" create secret "*) echo "kind: Secret" ;;
   *" get nodes "*) printf '%s\n' "8 65544428Ki" "8 65544428Ki" "8 65544428Ki" ;;
   *" get memsqlcluster "*"creationTimestamp"*) echo "2026-10-16T12:00:00Z" ;;
   *" get memsqlcluster "*) printf '%s' "\${STUB_CR_STATUS:-}" ;;
+  *" logs "*" --previous "*) printf '%s\n' "\${STUB_POD_LOG:-}" ;;
   *" logs "*) printf '%s\n' "\${STUB_OPERATOR_LOG:-}" ;;
+  *" get pods "*"waiting.reason"*) printf '%s\n' "\${STUB_WAITING:-}" ;;
+  # Once the MemsqlCluster is deleted, its pods are gone.
+  *" get pods "*"--no-headers"*) [ -e "${WORK}/cr-deleted" ] || printf '%s\n' \${STUB_READY:-} ;;
   *" get pods "*"Ready"*)
     if [ -n "\${STUB_PODS_ERROR:-}" ]; then echo "\${STUB_PODS_ERROR}" >&2; exit 1; fi
     printf '%s\n' \${STUB_READY:-} ;;
@@ -77,7 +85,7 @@ case " \$* " in
 esac
 exit 0
 EOF
-  printf '#!/usr/bin/env bash\nexit 0\n' > "${WORK}/stubs/sleep"
+  printf '#!/usr/bin/env bash\necho "$*" >> "%s/sleeps"\nexit 0\n' "${WORK}" > "${WORK}/stubs/sleep"
   chmod +x "${WORK}/stubs/kubectl" "${WORK}/stubs/sleep"
 }
 
@@ -106,6 +114,21 @@ first_call() {
     if [ "${all}" = 1 ]; then basename "${file}" .args; return; fi
   done
   echo 999
+}
+
+# How many times the step slept between polls.
+sleeps() { [ -f "${WORK}/sleeps" ] && wc -l < "${WORK}/sleeps" | tr -d ' ' || echo 0; }
+
+# Fails the case unless the failed wait printed the pod list and then deleted the MemsqlCluster,
+# the cluster's PVCs and the kit's Secrets, in that order, so the next start is not refused.
+removes_the_failed_cluster() {
+  local pods cr pvc secrets
+  pods="$(first_call get pods -l easydblab/kit=singlestore wide)"
+  cr="$(first_call delete memsqlcluster singlestore)"
+  pvc="$(first_call delete pvc -l app.kubernetes.io/instance=singlestore)"
+  secrets="$(first_call delete secret -l easydblab/kit=singlestore)"
+  [ "${pods}" -lt "${cr}" ] && [ "${cr}" -lt "${pvc}" ] && [ "${pvc}" -lt "${secrets}" ] && [ "${secrets}" != 999 ] ||
+    fail "[${SH}] $1: the failed wait did not print the pods, then delete the CR, PVCs and Secrets (${pods} ${cr} ${pvc} ${secrets})"
 }
 
 for SH in "${SHELLS[@]}"; do
@@ -168,6 +191,7 @@ for SH in "${SHELLS[@]}"; do
   STUB_ENV=("STUB_READY=True True" "STUB_LEAVES=")
   in_kit singlestore_wait && fail "[${SH}] the wait passed with two of four pods ready"
   grep -qi "timed out" "${WORK}/out.txt" || fail "[${SH}] the wait did not say it timed out: $(cat "${WORK}/out.txt")"
+  removes_the_failed_cluster "timeout"
 
   # A wrong password or a refused connection is told apart from a slow cluster: the timeout gives
   # the last error of each query, with the password masked.
@@ -194,13 +218,52 @@ for SH in "${SHELLS[@]}"; do
   grep -Fq "kit install singlestore --force" "${WORK}/out.txt" || fail "[${SH}] no --force advice: $(cat "${WORK}/out.txt")"
   grep -Fq -- "--leaf-cores" "${WORK}/out.txt" && grep -Fq -- "--leaf-memory" "${WORK}/out.txt" || fail "[${SH}] the advice does not name the leaf flags"
   grep -Fq -- "${LICENSE_KEY}" "${WORK}/out.txt" && fail "[${SH}] the failure printed the license key"
-  [ "$(grep -c "get pods" "${WORK}"/calls/*.args | awk -F: '{s+=$2} END {print s}')" -le 1 ] || fail "[${SH}] the wait kept polling after the refusal"
+  [ "$(sleeps)" = 0 ] || fail "[${SH}] the wait kept polling after the refusal ($(sleeps) sleeps)"
+  removes_the_failed_cluster "license refusal"
 
   tests_run=$((tests_run + 1))
   setup
   STUB_ENV=("STUB_READY=" "STUB_CR_STATUS={\"phase\":\"Failed\",\"message\":\"license capacity exceeded: 2 units\"}")
   in_kit singlestore_wait && fail "[${SH}] the wait passed a license refusal in the CR status"
   grep -Fq "license capacity exceeded" "${WORK}/out.txt" || fail "[${SH}] the CR status refusal is not shown: $(cat "${WORK}/out.txt")"
+
+  # The operator refusing the spec fails the wait at the first poll, not at its timeout.
+  tests_run=$((tests_run + 1))
+  setup
+  STUB_ENV=("STUB_READY=" "STUB_OPERATOR_LOG=2026-10-19T20:40:00Z ERROR controller/controller.go:324 failed to validate MemSQL Cluster. {\"Request.Name\": \"singlestore\", \"error\": \"ERROR while validating spec: \`spec.aggregatorSpec.count\` can not be non 0 when \`spec.masterAggregatorSpec\` is specified\"}")
+  in_kit singlestore_wait && fail "[${SH}] the wait passed an operator validation error"
+  grep -Fq "ERROR while validating spec: \`spec.aggregatorSpec.count\` can not be non 0" "${WORK}/out.txt" ||
+    fail "[${SH}] the failure does not quote the operator's error: $(cat "${WORK}/out.txt")"
+  grep -qi "timed out" "${WORK}/out.txt" && fail "[${SH}] a validation error waited for the timeout: $(cat "${WORK}/out.txt")"
+  grep -Fq "refused the license" "${WORK}/out.txt" && fail "[${SH}] a validation error was read as a license refusal"
+  [ "$(sleeps)" = 0 ] || fail "[${SH}] the wait kept polling after the validation error ($(sleeps) sleeps)"
+  removes_the_failed_cluster "validation error"
+
+  # A crash-looping pod fails the wait at the first poll, quoting its last log lines with the
+  # password masked. The node image's startup prints the SQL it could not run, password included.
+  tests_run=$((tests_run + 1))
+  setup
+  STUB_ENV=("STUB_READY=False False"
+    "STUB_WAITING=$(printf 'node-singlestore-master-0\texporter= node=CrashLoopBackOff \nnode-singlestore-leaf-ag1-0\tnode=CrashLoopBackOff ')"
+    "STUB_POD_LOG=$(printf 'Ensuring the root password is setup\nerror setting root password: Error 1064 (42000): near %s at line 1' "'p w*'d'")")
+  in_kit singlestore_wait && fail "[${SH}] the wait passed a crash-looping pod"
+  grep -Fq "node-singlestore-master-0" "${WORK}/out.txt" && grep -Fq "CrashLoopBackOff" "${WORK}/out.txt" ||
+    fail "[${SH}] the failure does not name the crash-looping pod: $(cat "${WORK}/out.txt")"
+  grep -Fq "error setting root password: Error 1064 (42000)" "${WORK}/out.txt" ||
+    fail "[${SH}] the failure does not quote the pod's last log lines: $(cat "${WORK}/out.txt")"
+  grep -Fq -- "p w*" "${WORK}/out.txt" && fail "[${SH}] the crash loop failure printed the password: $(cat "${WORK}/out.txt")"
+  grep -Fq -- "****" "${WORK}/out.txt" || fail "[${SH}] the password is not shown masked: $(cat "${WORK}/out.txt")"
+  first_call logs node-singlestore-master-0 -c node --previous | grep -qv 999 ||
+    fail "[${SH}] the log is not the crash-looping container's previous run: $(cat "${WORK}"/calls/*.args)"
+  [ "$(sleeps)" = 0 ] || fail "[${SH}] the wait kept polling after the crash loop ($(sleeps) sleeps)"
+  removes_the_failed_cluster "crash loop"
+
+  # A pod that is only waiting (an image pull, a container creating) is not a crash loop.
+  tests_run=$((tests_run + 1))
+  setup
+  STUB_ENV=("STUB_READY=True True True True" "STUB_LEAVES=$(printf 'h1\t3306\tonline\nh2\t3306\tonline\nh3\t3306\tonline')"
+    "STUB_WAITING=$(printf 'node-singlestore-master-0\tnode=ContainerCreating ')")
+  in_kit singlestore_wait || fail "[${SH}] a waiting, not crash-looping, pod failed the wait: $(cat "${WORK}/out.txt")"
 done
 
 echo "${tests_run} tests, ${tests_failed} failed"

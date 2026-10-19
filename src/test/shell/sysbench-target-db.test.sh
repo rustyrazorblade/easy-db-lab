@@ -4,7 +4,8 @@
 # bin/prepare.sh, bin/start.sh and bin/stop.sh.
 #
 # The driver args are built once, as a shell array, from the TARGET_* variables the framework
-# injects. A target with a password (TARGET_MYSQL_PASSWORD or TARGET_PG_PASSWORD) adds
+# injects. A MySQL target that declares ignore-errors (TARGET_MYSQL_IGNORE_ERRORS) adds
+# --mysql-ignore-errors; one that declares none adds nothing. A target with a password (TARGET_MYSQL_PASSWORD or TARGET_PG_PASSWORD) adds
 # --mysql-password or --pgsql-password as one argument, however many spaces, `*` or quotes it holds.
 # The create-database pod gets the password through MYSQL_PWD, never on its command line. No phase
 # prints the password. A target without one gets exactly the args it got before.
@@ -123,6 +124,21 @@ test_a_pgsql_password_is_one_argument() {
   grep -Fxq -- "--pgsql-password=${PASSWORD}" <<< "${actual}" || fail "no single --pgsql-password arg: ${actual}"
 }
 
+test_a_mysql_target_with_ignore_errors_passes_them_to_sysbench() {
+  tests_run=$((tests_run + 1))
+  local actual
+  actual="$(db_args_for "${MYSQL_TARGET[@]}" TARGET_MYSQL_IGNORE_ERRORS=1062,1213)"
+  grep -Fxq -- "--mysql-ignore-errors=1062,1213" <<< "${actual}" || fail "no --mysql-ignore-errors arg: ${actual}"
+}
+
+test_a_mysql_target_without_ignore_errors_passes_none() {
+  tests_run=$((tests_run + 1))
+  local actual
+  actual="$(db_args_for "${MYSQL_TARGET[@]}" TARGET_MYSQL_IGNORE_ERRORS=)"
+  grep -q -- "--mysql-ignore-errors" <<< "${actual}" && fail "an empty ignore list passed --mysql-ignore-errors: ${actual}"
+  return 0
+}
+
 test_no_endpoint_is_reported() {
   tests_run=$((tests_run + 1))
   db_args_for > /dev/null 2>&1 && fail "target_db_args succeeded with no TARGET_* endpoint"
@@ -199,6 +215,8 @@ test_a_passwordless_mysql_target_gets_the_args_it_always_got
 test_a_passwordless_pgsql_target_gets_the_args_it_always_got
 test_a_mysql_password_is_one_argument
 test_a_pgsql_password_is_one_argument
+test_a_mysql_target_with_ignore_errors_passes_them_to_sysbench
+test_a_mysql_target_without_ignore_errors_passes_none
 test_no_endpoint_is_reported
 test_prepare_authenticates_every_pod_and_never_prints_the_password
 test_prepare_of_a_passwordless_target_has_no_password_anywhere

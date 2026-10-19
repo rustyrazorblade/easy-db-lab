@@ -44,6 +44,14 @@ sealed class KitMetrics {
     data object HelmNative : KitMetrics()
 }
 
+/**
+ * A connection point a kit exposes on one node type, which `kit info` prints and from which a
+ * bench kit that targets this kit gets its `TARGET_*` variables ([toTargetVars]).
+ *
+ * A `mysql` endpoint may declare [ignoreErrors], the MySQL error codes (comma separated) a bench
+ * kit should ignore against this database, for errors its concurrency model raises where MySQL's
+ * row locks would wait instead.
+ */
 @Serializable
 data class KitEndpoint(
     val name: String,
@@ -54,7 +62,18 @@ data class KitEndpoint(
     val scheme: String = "",
     val path: String = "",
     val database: String = "",
+    @SerialName("ignore-errors")
+    val ignoreErrors: String = "",
 ) {
+    init {
+        if (ignoreErrors.isNotEmpty()) {
+            require(type == EndpointType.MYSQL) { "endpoint $name declares ignore-errors, which only a mysql endpoint may" }
+            require(ERROR_CODES.matches(ignoreErrors)) {
+                "endpoint $name has ignore-errors '$ignoreErrors'; it must be MySQL error codes separated by commas, such as 1062,1213"
+            }
+        }
+    }
+
     @Serializable
     enum class EndpointType {
         @SerialName("http")
@@ -111,6 +130,7 @@ data class KitEndpoint(
      *
      * Each SQL wire type (`jdbc`, `postgresql`, `mysql`) carries the capability's password, or an
      * empty string when the kit has none, so a bench kit can authenticate in every phase.
+     * A `mysql` endpoint also carries its [ignoreErrors], empty when it declares none.
      */
     fun toTargetVars(
         ip: String,
@@ -141,6 +161,7 @@ data class KitEndpoint(
                     "TARGET_MYSQL_USER" to sqlUser,
                     "TARGET_MYSQL_PASSWORD" to sqlPassword,
                     "TARGET_MYSQL_DATABASE" to database,
+                    "TARGET_MYSQL_IGNORE_ERRORS" to ignoreErrors,
                 )
             EndpointType.HTTP -> mapOf("TARGET_HTTP_URL" to formatUrl(ip))
             EndpointType.NATIVE ->
@@ -153,6 +174,10 @@ data class KitEndpoint(
             EndpointType.KAFKA -> mapOf("TARGET_KAFKA_BOOTSTRAP" to formatUrl(ip))
             EndpointType.HTTPS, EndpointType.CQL -> emptyMap()
         }
+    }
+
+    private companion object {
+        val ERROR_CODES = Regex("[0-9]+(,[0-9]+)*")
     }
 }
 

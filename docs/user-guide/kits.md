@@ -88,6 +88,7 @@ injects it as environment variables into every phase script:
 | `TARGET_MYSQL_PORT` | Port for MySQL wire protocol connections |
 | `TARGET_MYSQL_USER` | Username for MySQL wire protocol connections |
 | `TARGET_MYSQL_DATABASE` | Database name for MySQL wire protocol connections |
+| `TARGET_MYSQL_IGNORE_ERRORS` | MySQL error codes the target asks a benchmark to ignore (comma separated; empty when it asks none) |
 | `TARGET_HTTP_URL` | Full URL for HTTP endpoint connections |
 
 Which variables are populated depends on what endpoints the target kit declares. A kit that

@@ -5,6 +5,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 
 class KitConfigTest {
     private fun parse(yaml: String): KitConfig = installConfigYaml.decodeFromString(KitConfig.serializer(), yaml)
@@ -1217,6 +1219,38 @@ class KitConfigTest {
     }
 
     @Test
+    fun `a mysql endpoint may declare the MySQL error codes a bench kit ignores`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                endpoints:
+                  - name: "MySQL wire"
+                    node-type: db
+                    port: 3306
+                    type: mysql
+                    ignore-errors: "1062,1213"
+                """.trimIndent(),
+            )
+        assertThat(config.endpoints.single().ignoreErrors).isEqualTo("1062,1213")
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["1062,", "duplicate", "1062;1213", "1062 1213"])
+    fun `ignore-errors that is not a comma-separated list of error codes is refused`(codes: String) {
+        assertThatThrownBy {
+            KitEndpoint(name = "w", nodeType = "db", port = 3306, type = KitEndpoint.EndpointType.MYSQL, ignoreErrors = codes)
+        }.isInstanceOf(IllegalArgumentException::class.java).hasMessageContaining("ignore-errors")
+    }
+
+    @Test
+    fun `ignore-errors on an endpoint that is not mysql is refused`() {
+        assertThatThrownBy {
+            KitEndpoint(name = "w", nodeType = "db", port = 5432, type = KitEndpoint.EndpointType.POSTGRESQL, ignoreErrors = "1062")
+        }.isInstanceOf(IllegalArgumentException::class.java).hasMessageContaining("ignore-errors").hasMessageContaining("mysql")
+    }
+
+    @Test
     fun `database field defaults to empty string when absent`() {
         val config =
             parse(
@@ -1547,6 +1581,21 @@ class KitEndpointToTargetVarsTest {
         assertThat(vars["TARGET_MYSQL_PORT"]).isEqualTo("3306")
         assertThat(vars["TARGET_MYSQL_USER"]).isEqualTo("bench")
         assertThat(vars["TARGET_MYSQL_DATABASE"]).isEqualTo("sbtest")
+    }
+
+    @Test
+    fun `a mysql endpoint passes its ignore-errors as TARGET_MYSQL_IGNORE_ERRORS`() {
+        val vars =
+            endpoint(KitEndpoint.EndpointType.MYSQL, port = 3306)
+                .copy(ignoreErrors = "1062")
+                .toTargetVars("10.0.0.3", sqlCap)
+        assertThat(vars).containsEntry("TARGET_MYSQL_IGNORE_ERRORS", "1062")
+    }
+
+    @Test
+    fun `a mysql endpoint without ignore-errors sets an empty TARGET_MYSQL_IGNORE_ERRORS`() {
+        val vars = endpoint(KitEndpoint.EndpointType.MYSQL, port = 3306).toTargetVars("10.0.0.3", sqlCap)
+        assertThat(vars).containsEntry("TARGET_MYSQL_IGNORE_ERRORS", "")
     }
 
     @Test

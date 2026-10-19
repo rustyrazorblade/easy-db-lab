@@ -12,9 +12,10 @@ POD_NAME="sysbench-prepare-${KIT_NAME}-$(date +%s)"
 
 # Runs pod $1 with role $2 and image $3 on an app node, then waits for it to end. Any arguments
 # before `--` are extra `kubectl run` flags (such as --env); the command follows the `--`. Fails,
-# with the pod's log, when it exits non-zero, and deletes the pod when it succeeds.
+# with the pod's log, when it exits non-zero or its log holds a sysbench FATAL error, and deletes
+# the pod when it succeeds.
 run_to_completion() {
-  local pod="$1" role="$2" image="$3" code
+  local pod="$1" role="$2" image="$3" code log fatal
   shift 3
   local run_flags=()
   while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
@@ -32,10 +33,21 @@ run_to_completion() {
     --command -- "$@"
   edl_wait_for_pod_running "${pod}"
   code="$(edl_wait_for_pod_exit "${pod}")"
+  log="$(mktemp)"
+  kubectl --kubeconfig="${KUBECONFIG}" logs "${pod}" > "${log}" 2>&1 || true
+  fatal="$(sysbench_fatal_lines "${log}")"
   if [ "${code}" != 0 ]; then
-    kubectl --kubeconfig="${KUBECONFIG}" logs "${pod}" >&2 || true
+    cat "${log}" >&2
+    rm -f "${log}"
     edl_fail "pod ${pod} failed with exit code ${code}"
   fi
+  if [ -n "${fatal}" ]; then
+    cat "${log}" >&2
+    rm -f "${log}"
+    edl_fail "pod ${pod} hit a fatal SQL error:
+${fatal}"
+  fi
+  rm -f "${log}"
   kubectl --kubeconfig="${KUBECONFIG}" delete pod "${pod}" --ignore-not-found
 }
 

@@ -53,6 +53,7 @@ endpoints:
     scheme: ""           # optional: used for JDBC URLs (jdbc type only)
     path: ""             # optional: appended to URL (http/https/jdbc only)
     database: ""         # optional: logical database name (postgresql and mysql types)
+    ignore-errors: ""    # optional, mysql type only: MySQL error codes a bench kit ignores, e.g. "1062"
 
 args:
   - flag: --workers
@@ -842,7 +843,7 @@ The variables injected depend on what endpoints the target kit declares:
 |---------------|-------------------|
 | `jdbc` | `TARGET_JDBC_URL`, `TARGET_JDBC_USER`, `TARGET_JDBC_PASSWORD`, `TARGET_JDBC_DRIVER` |
 | `postgresql` | `TARGET_PG_HOST`, `TARGET_PG_PORT`, `TARGET_PG_USER`, `TARGET_PG_PASSWORD`, `TARGET_PG_DATABASE` |
-| `mysql` | `TARGET_MYSQL_HOST`, `TARGET_MYSQL_PORT`, `TARGET_MYSQL_USER`, `TARGET_MYSQL_PASSWORD`, `TARGET_MYSQL_DATABASE` |
+| `mysql` | `TARGET_MYSQL_HOST`, `TARGET_MYSQL_PORT`, `TARGET_MYSQL_USER`, `TARGET_MYSQL_PASSWORD`, `TARGET_MYSQL_DATABASE`, `TARGET_MYSQL_IGNORE_ERRORS` |
 | `native` | `TARGET_NATIVE_HOST`, `TARGET_NATIVE_PORT`, `TARGET_NATIVE_USER`, `TARGET_NATIVE_DATABASE` |
 | `http` | `TARGET_HTTP_URL` |
 | `kafka` | `TARGET_KAFKA_BOOTSTRAP` |
@@ -854,6 +855,13 @@ The `*_PASSWORD` variables come from the target kit's `sql` capability `password
 when it has none. The framework never prints them. A bench kit that passes one to a client must
 keep it off any command line it prints (pass it in an environment variable such as `MYSQL_PWD`,
 and never run `kubectl describe pod` on a pod that has it in its arguments).
+
+`TARGET_MYSQL_IGNORE_ERRORS` is the `mysql` endpoint's `ignore-errors`, a comma-separated list
+of MySQL error codes, and is empty when the endpoint declares none. A target declares it for
+errors that its concurrency model raises where MySQL's row locks would wait instead: SingleStore
+declares `1062`, the duplicate-key error concurrent `oltp_read_write` transactions hit there. The
+sysbench kit passes a non-empty list as `--mysql-ignore-errors`. `ignore-errors` on any other
+endpoint type, or a value that is not error codes separated by commas, fails the `kit.yaml` load.
 
 If the target kit directory does not exist or its `kit.yaml` is unreadable, no `TARGET_*`
 variables are injected and no error is raised (fail-safe).

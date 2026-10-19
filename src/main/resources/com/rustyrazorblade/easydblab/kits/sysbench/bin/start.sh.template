@@ -74,6 +74,7 @@ EXIT_CODE="$(edl_wait_for_pod_exit "${POD_NAME}")"
 # The full log, read once the pod has ended, holds every line exactly once.
 LOG_FILE="$(mktemp)"
 kubectl --kubeconfig="${KUBECONFIG}" logs "${POD_NAME}" > "${LOG_FILE}" 2>&1 || true
+FATAL_LINES="$(sysbench_fatal_lines "${LOG_FILE}")"
 
 # Persist the run metadata, the exit code and the final sysbench report (SQL statistics /
 # Throughput / Latency percentiles / errors), which starts at "SQL statistics:" and runs to the end
@@ -90,6 +91,11 @@ kubectl --kubeconfig="${KUBECONFIG}" logs "${POD_NAME}" > "${LOG_FILE}" 2>&1 || 
   echo "started:   ${STARTED}"
   echo "exit code: ${EXIT_CODE}"
   echo
+  if [ -n "${FATAL_LINES}" ]; then
+    echo "fatal errors:"
+    printf '%s\n' "${FATAL_LINES}"
+    echo
+  fi
   if grep -q '^SQL statistics:' "${LOG_FILE}"; then
     awk '/^SQL statistics:/ { insummary = 1 } insummary' "${LOG_FILE}"
   else
@@ -101,6 +107,14 @@ kubectl --kubeconfig="${KUBECONFIG}" logs "${POD_NAME}" > "${LOG_FILE}" 2>&1 || 
 if [ "${EXIT_CODE}" != 0 ]; then
   rm -f "${LOG_FILE}"
   edl_fail "The sysbench run failed with exit code ${EXIT_CODE}. Its settings and log are in ${LAST_RUN_FILE}"
+fi
+
+# A fatal SQL error fails the run whatever the exit code: sysbench stops the thread that hit it.
+if [ -n "${FATAL_LINES}" ]; then
+  rm -f "${LOG_FILE}"
+  edl_fail "The sysbench run hit a fatal SQL error:
+${FATAL_LINES}
+Its settings and log are in ${LAST_RUN_FILE}"
 fi
 
 # Derive whole-run p50/p95/p99 from the final latency histogram (values in ms).

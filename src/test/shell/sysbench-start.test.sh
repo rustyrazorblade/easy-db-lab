@@ -193,8 +193,21 @@ EOF
   grep -q "logs sysbench-sb1-" "${STUB_STATE}/kubectl.calls" || fail "did not read the full log"
 }
 
+# A run that hit a fatal SQL error fails start, even when the pod reported exit code 0.
+test_a_fatal_sql_error_fails_the_run() {
+  start_test "FATAL with exit 0"
+  printf '%s\n' "Running the test with following options:" \
+    "FATAL: mysql_stmt_execute() returned error 1062 (Duplicate entry '4976' for key 'PRIMARY') for query 'INSERT INTO sbtest1'" \
+    "FATAL: \`thread_run' function failed: /usr/share/sysbench/oltp_common.lua:488: SQL error, errno = 1062" > "${STUB_STATE}/full-log"
+  run_script && fail "exited 0 after a fatal SQL error"
+  grep -q "error 1062" "${WORK}/out.txt" || fail "the failure does not quote the fatal error: $(cat "${WORK}/out.txt")"
+  if grep -q "Run summary written to" "${WORK}/out.txt"; then fail "printed the success line"; fi
+  grep -q "${WORK}/kit/last-run.txt" "${WORK}/out.txt" || fail "the failure does not name last-run.txt: $(cat "${WORK}/out.txt")"
+}
+
 test_pushes_otlp_json_to_the_collector
 test_pushes_interval_and_run_figures_labelled_with_the_kit
+test_a_fatal_sql_error_fails_the_run
 test_a_repeated_stream_does_not_repeat_the_summary_or_the_histogram
 test_the_run_pod_is_pinned_to_an_app_node
 test_no_app_node_runs_no_pod

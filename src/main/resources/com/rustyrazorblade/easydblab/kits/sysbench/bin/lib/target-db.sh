@@ -22,6 +22,10 @@ target_db_args() {
     if [ -n "${TARGET_MYSQL_PASSWORD:-}" ]; then
       DB_ARGS+=("--mysql-password=${TARGET_MYSQL_PASSWORD}")
     fi
+    # The MySQL error codes the target kit's mysql endpoint declares as ignore-errors.
+    if [ -n "${TARGET_MYSQL_IGNORE_ERRORS:-}" ]; then
+      DB_ARGS+=("--mysql-ignore-errors=${TARGET_MYSQL_IGNORE_ERRORS}")
+    fi
   elif [ -n "${TARGET_PG_HOST:-}" ]; then
     DB_ARGS=(
       --db-driver=pgsql
@@ -36,6 +40,12 @@ target_db_args() {
   else
     return 1
   fi
+}
+
+# Prints the FATAL lines in sysbench output file $1, if any. sysbench prints FATAL for an SQL
+# error it does not ignore; a phase that printed one failed, whatever its exit code.
+sysbench_fatal_lines() {
+  grep '^FATAL:' "$1" || true
 }
 
 # Sets MYSQL_PWD_ENV to the `kubectl run` flag that hands a mysql client pod the target password

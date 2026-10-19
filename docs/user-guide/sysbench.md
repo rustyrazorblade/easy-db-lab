@@ -68,9 +68,12 @@ easy-db-lab sysbench-tidb start --threads 32 --duration 300
 easy-db-lab sysbench-tidb prepare
 ```
 
-Creates the `sbtest` database on the target if it doesn't exist, then loads the test
-tables (`--tables` tables with `--scale` thousand rows each). Run this once before the
-first benchmark run.
+On a MySQL wire target, creates the database the target's `mysql` endpoint names if it doesn't
+exist (`sbtest` for TiDB, the `--database` install arg for SingleStore, `test` by default), then
+loads the test tables (`--tables` tables with `--scale` thousand rows each) into it. A PostgreSQL
+target's database must already exist. Run this once before the first benchmark run.
+
+`prepare` fails, with the pod's log, when a pod exits non-zero or sysbench prints a `FATAL` error.
 
 ### start
 
@@ -91,7 +94,9 @@ scrolls away and the file never shows an older run.
 When the run pod ends, `start` reads its exit code. When sysbench exits non-zero (for example after
 `FATAL: event queue is full`), `start` says the run failed, gives the exit code, names
 `last-run.txt` (which then holds the end of the run's log when sysbench printed no summary) and
-exits non-zero, and does not print `Run summary written to ...`. A run pod that cannot pull its image
+exits non-zero, and does not print `Run summary written to ...`. A run that prints a `FATAL` SQL
+error fails `start` the same way, quoting the `FATAL` lines, even if sysbench exited 0, and
+`last-run.txt` lists them. A run pod that cannot pull its image
 fails `start` at once, with the reason and the pod's events; one that stays Pending fails it after
 10 minutes.
 
@@ -114,11 +119,22 @@ removes its pods; it prints why the cleanup did not finish (the cleanup pod's lo
 When the target kit declares a password in its `sql` capability (SingleStore does, from its
 `--password` install arg), every phase authenticates with it: the cleanup and the database
 creation in `prepare`, the data load, the `start` run, and the `stop` cleanup. Nothing to pass:
-the password comes from the target's installed `kit.yaml`. A password with spaces, `*` or single
-quotes works. sysbench never prints it, and the database-creation pod gets it through the
+the password comes from the target's installed `kit.yaml`. A password with spaces or `*`
+works. sysbench never prints it, and the database-creation pod gets it through the
 `MYSQL_PWD` environment variable rather than its command line.
 
 A target with no password (TiDB, PostgreSQL, ClickHouse) connects exactly as before.
+
+## Ignored errors
+
+A target kit's `mysql` endpoint can name MySQL error codes that sysbench should ignore, and sysbench
+then runs with `--mysql-ignore-errors=<codes>`. SingleStore names `1062`: concurrent
+`oltp_read_write` transactions on the same id hit duplicate-key errors there that MySQL's row locks
+prevent, and without it a run with several threads ends at the first one with
+`FATAL: ... error 1062 ... Duplicate entry`. sysbench counts every ignored error in its summary, as
+`ignored errors: N`, so check that line in `last-run.txt` when you compare a SingleStore run with
+another database. A target that names no codes (TiDB, PostgreSQL) runs as before, and any SQL error
+there ends the run.
 
 ## Rate limiting and overload testing
 

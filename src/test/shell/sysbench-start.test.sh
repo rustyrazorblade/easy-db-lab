@@ -139,7 +139,7 @@ test_a_pull_error_fails_fast() {
   echo "Pending|ErrImagePull|pull access denied|" > "${STUB_STATE}/state.default"
   run_script && fail "exited 0"
   grep -q "ErrImagePull" "${WORK}/out.txt" || fail "no reason: $(cat "${WORK}/out.txt")"
-  grep -q "Events: stub describe events" "${WORK}/out.txt" || fail "no events: $(cat "${WORK}/out.txt")"
+  grep -q "Events: stub events for sysbench-sb1-" "${WORK}/out.txt" || fail "no events: $(cat "${WORK}/out.txt")"
   [ "$(grep -c '^get pod ' "${STUB_STATE}/kubectl.calls")" -eq 1 ] || fail "did not fail on the first poll"
   grep -q "delete pod sysbench-sb1-.* --ignore-not-found" "${STUB_STATE}/kubectl.calls" || fail "left the pending pod behind"
 }

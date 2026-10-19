@@ -130,6 +130,12 @@ edl_pod_get() {
   printf '%s\n' "${out#*|}"
 }
 
+# Prints pod $1's events. Never `kubectl describe pod`: it prints the pod's command line, which can
+# hold a target kit's password (a sysbench run passes --mysql-password).
+edl_pod_events() {
+  kubectl get events --field-selector "involvedObject.kind=Pod,involvedObject.name=$1" || true
+}
+
 # Deletes pod $1 that never started. Left Pending, it would keep its role label, so the start guard
 # and edl_active_pods would refuse the next run until `stop`. Its events were printed already.
 edl_delete_unstarted_pod() {
@@ -161,7 +167,7 @@ edl_wait_for_pod_running() {
         case "${reason}" in
           ErrImagePull | ImagePullBackOff | InvalidImageName)
             printf 'pod %s cannot start: %s: %s\n' "${pod}" "${reason}" "${message}" >&2
-            kubectl describe pod "${pod}" >&2 || true
+            edl_pod_events "${pod}" >&2
             edl_delete_unstarted_pod "${pod}"
             edl_fail "pod ${pod} cannot pull its image (${reason})"
             ;;
@@ -169,7 +175,7 @@ edl_wait_for_pod_running() {
         ;;
     esac
     if [ $(($(date +%s) - started)) -ge "${EDL_POD_START_TIMEOUT_SECONDS}" ]; then
-      kubectl describe pod "${pod}" >&2 || true
+      edl_pod_events "${pod}" >&2
       edl_delete_unstarted_pod "${pod}"
       edl_fail "pod ${pod} did not start within ${EDL_POD_START_TIMEOUT_SECONDS} seconds"
     fi

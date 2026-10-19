@@ -57,6 +57,12 @@ case "$1" in
   get)
     case "$2" in
       nodes) cat "${S}/app-nodes" 2>/dev/null; exit 0 ;;
+      events)
+        for a in "$@"; do
+          case "${a}" in *involvedObject.name=*) echo "Events: stub events for ${a##*involvedObject.name=}" ;; esac
+        done
+        exit 0
+        ;;
       pods)
         filter=""
         for a in "$@"; do

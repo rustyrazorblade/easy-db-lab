@@ -174,14 +174,16 @@ test_each_pull_error_fails_fast_with_reason_message_and_events() {
     [ "${rc}" -ne 0 ] || fail "exited 0"
     grep -q "${reason}" <<< "${err}" || fail "did not print the reason: ${err}"
     grep -q "Back-off pulling image clickhouse/clickhouse-server:25.44" <<< "${err}" || fail "did not print the message: ${err}"
-    grep -q "Events: stub describe events for p1" <<< "${err}" || fail "did not print the events: ${err}"
+    grep -q "Events: stub events for p1" <<< "${err}" || fail "did not print the events: ${err}"
+    # describe prints the pod's command line, which can hold a target kit's password.
+    if grep -q '^describe' <<< "$(calls)"; then fail "ran kubectl describe: $(calls)"; fi
     [ "$(grep -c '^get pod' <<< "$(calls)")" -eq 1 ] || fail "did not fail on the first poll: $(calls)"
     # A pod left Pending would keep its role label and block the next start or prepare.
     grep -Fqx "delete pod p1 --ignore-not-found" <<< "$(calls)" || fail "did not delete the pod: $(calls)"
   done
 }
 
-test_a_pod_pending_past_the_limit_fails_and_is_described() {
+test_a_pod_pending_past_the_limit_fails_and_shows_its_events() {
   start_test "start timeout"
   echo "Pending|ContainerCreating||" > "${STUB_STATE}/state.default"
   export EDL_POD_START_TIMEOUT_SECONDS=3
@@ -189,7 +191,8 @@ test_a_pod_pending_past_the_limit_fails_and_is_described() {
   unset EDL_POD_START_TIMEOUT_SECONDS
   [ "${rc}" -ne 0 ] || fail "exited 0"
   grep -q "pod p1 did not start within 3 seconds" <<< "${err}" || fail "no limit message: ${err}"
-  grep -q "Events: stub describe events for p1" <<< "${err}" || fail "did not describe the pod: ${err}"
+  grep -q "Events: stub events for p1" <<< "${err}" || fail "did not print the pod's events: ${err}"
+  if grep -q '^describe' <<< "$(calls)"; then fail "ran kubectl describe: $(calls)"; fi
   grep -Fqx "delete pod p1 --ignore-not-found" <<< "$(calls)" || fail "did not delete the pod: $(calls)"
 }
 
@@ -336,7 +339,7 @@ test_configmap_is_created_with_its_labels_in_one_call
 test_active_pods_lists_only_pods_that_have_not_ended
 test_a_pod_that_ended_before_it_was_seen_running_returns_at_once
 test_each_pull_error_fails_fast_with_reason_message_and_events
-test_a_pod_pending_past_the_limit_fails_and_is_described
+test_a_pod_pending_past_the_limit_fails_and_shows_its_events
 test_a_failed_get_is_a_retry_not_a_phase
 test_a_deleted_pod_fails_every_wait
 test_a_cut_stream_resumes_from_the_last_timestamp_while_the_pod_runs

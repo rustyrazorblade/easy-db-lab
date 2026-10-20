@@ -10,26 +10,21 @@ source "${SCRIPT_DIR}/lib/target-db.sh"
 SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
 POD_NAME="sysbench-prepare-${KIT_NAME}-$(date +%s)"
 
-# Runs pod $1 with role $2 and image $3 on an app node, then waits for it to end. Any arguments
-# before `--` are extra `kubectl run` flags (such as --env); the command follows the `--`. Fails,
-# with the pod's log, when it exits non-zero or its log holds a sysbench FATAL error, and deletes
-# the pod when it succeeds.
+# Runs pod $1 with role $2 and image $3 on an app node, then waits for it to end. When the target
+# has a password, the pod reads it from the credentials Secret into env var $4. The command follows.
+# Fails, with the pod's log, when it exits non-zero or its log holds a sysbench FATAL error, and
+# deletes the pod when it succeeds.
 run_to_completion() {
-  local pod="$1" role="$2" image="$3" code log fatal
-  shift 3
-  local run_flags=()
-  while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
-    run_flags+=("$1")
-    shift
-  done
-  [ "$#" -gt 0 ] && shift
+  local pod="$1" role="$2" image="$3" password_env="$4" code log fatal labels overrides
+  shift 4
+  labels="$(edl_labels "${role}")"
+  overrides="$(target_pod_overrides "${pod}" "${password_env}")"
   kubectl --kubeconfig="${KUBECONFIG}" run "${pod}" \
     --image="${image}" \
     --restart=Never \
-    --labels="$(edl_labels "${role}")" \
-    --overrides="$(edl_pod_overrides)" \
+    --labels="${labels}" \
+    --overrides="${overrides}" \
     --override-type=strategic \
-    ${run_flags[@]+"${run_flags[@]}"} \
     --command -- "$@"
   edl_wait_for_pod_running "${pod}"
   code="$(edl_wait_for_pod_exit "${pod}")"
@@ -57,15 +52,15 @@ if ! target_db_args; then
 fi
 
 edl_require_app_node sysbench
+target_apply_credentials
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
   # TiDB and MySQL do not ship with the sbtest database — create it before sysbench prepare. The
-  # password reaches the mysql client through MYSQL_PWD, never its command line.
-  target_mysql_pwd_env
+  # password reaches the mysql client as MYSQL_PWD, from the credentials Secret, never its command
+  # line.
   echo "Creating database ${TARGET_MYSQL_DATABASE} on ${TARGET_MYSQL_HOST}:${TARGET_MYSQL_PORT}..."
-  run_to_completion "sysbench-createdb-${KIT_NAME}-$(date +%s)" sysbench-createdb "mysql:8.0" \
-    ${MYSQL_PWD_ENV[@]+"${MYSQL_PWD_ENV[@]}"} \
-    -- mysql \
+  run_to_completion "sysbench-createdb-${KIT_NAME}-$(date +%s)" sysbench-createdb "mysql:8.0" MYSQL_PWD \
+    mysql \
     -h "${TARGET_MYSQL_HOST}" \
     -P "${TARGET_MYSQL_PORT}" \
     -u "${TARGET_MYSQL_USER}" \
@@ -79,11 +74,13 @@ fi
 # cluster with no existing tables. It runs for whichever driver (mysql/pgsql) was
 # selected above via the shared DB_ARGS.
 echo "Cleaning up any existing sysbench data before prepare..."
-run_to_completion "sysbench-cleanup-${KIT_NAME}-$(date +%s)" sysbench-cleanup "${SYSBENCH_IMAGE}" \
-  -- sysbench "${DB_ARGS[@]}" --tables="${TABLES}" "${WORKLOAD}" cleanup
+sysbench_command --tables="${TABLES}" "${WORKLOAD}" cleanup
+run_to_completion "sysbench-cleanup-${KIT_NAME}-$(date +%s)" sysbench-cleanup "${SYSBENCH_IMAGE}" "${SYSBENCH_PASSWORD_ENV}" \
+  "${SYSBENCH_CMD[@]}"
 
 echo "Preparing sysbench data: ${TABLES} tables, ${SCALE}000 rows each..."
-run_to_completion "${POD_NAME}" sysbench-prepare "${SYSBENCH_IMAGE}" \
-  -- sysbench "${DB_ARGS[@]}" --tables="${TABLES}" --table-size="${SCALE}000" "${WORKLOAD}" prepare
+sysbench_command --tables="${TABLES}" --table-size="${SCALE}000" "${WORKLOAD}" prepare
+run_to_completion "${POD_NAME}" sysbench-prepare "${SYSBENCH_IMAGE}" "${SYSBENCH_PASSWORD_ENV}" \
+  "${SYSBENCH_CMD[@]}"
 
 echo "Data preparation complete."

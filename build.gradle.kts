@@ -574,8 +574,9 @@ tasks.register<Exec>("testSysbenchStopScript") {
 }
 
 // Unit-test the sysbench kit's driver args (bin/lib/target-db.sh) in prepare, start and stop: a
-// target password reaches every phase as one argument and is never printed; a passwordless target
-// gets the args it always got. kubectl and curl are stubbed.
+// target password reaches every phase as one argument through a labelled Secret and secretKeyRef,
+// never a pod spec or a command line, and is never printed; stop deletes the Secret; a passwordless
+// target gets the args it always got and no Secret. kubectl and curl are stubbed.
 tasks.register<Exec>("testSysbenchTargetDb") {
     group = "Verification"
     description = "Unit-test the sysbench kit target database args and passwords"

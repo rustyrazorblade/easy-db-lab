@@ -11,6 +11,15 @@ source "${SCRIPT_DIR}/lib/target-db.sh"
 # stays marked running.
 edl_require_app_node sysbench
 
+# The credentials Secret goes when stop ends, whichever way: after the cleanup pod has read it, and
+# also when there is no endpoint to clean up or a step fails.
+delete_credentials() {
+  kubectl --kubeconfig="${KUBECONFIG}" delete secret \
+    -l "$(edl_labels "${SYSBENCH_CREDENTIALS_ROLE}")" --ignore-not-found > /dev/null ||
+    echo "Warning: could not delete the sysbench credentials Secret; run stop again to remove it." >&2
+}
+trap delete_credentials EXIT
+
 # stop has no args of its own, so default any prepare/start-only vars safely
 # to keep the script working under `set -u`. Defaults match the kit.yaml
 # prepare defaults so cleanup drops the standard set of sbtest tables.
@@ -26,19 +35,20 @@ if ! target_db_args; then
   exit 0
 fi
 
+target_apply_credentials
+
 echo "Running sysbench cleanup..."
 CLEANUP_POD="sysbench-cleanup-${KIT_NAME}-$(date +%s)"
 CLEANUP_LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-cleanup"
+sysbench_command --tables="${TABLES}" "${WORKLOAD}" cleanup
+OVERRIDES="$(target_pod_overrides "${CLEANUP_POD}" "${SYSBENCH_PASSWORD_ENV}")"
 kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
   --image="docker.io/severalnines/sysbench" \
   --restart=Never \
   --labels="${CLEANUP_LABELS}" \
-  --overrides="$(edl_pod_overrides)" \
+  --overrides="${OVERRIDES}" \
   --override-type=strategic \
-  --command -- sysbench \
-    "${DB_ARGS[@]}" \
-    --tables="${TABLES}" \
-    "${WORKLOAD}" cleanup
+  --command -- "${SYSBENCH_CMD[@]}"
 
 # Wait for the cleanup pod to end either way. When the target database is already gone the pod
 # fails at once; waiting only for Succeeded timed out, failed stop and left the kit marked running.
@@ -54,7 +64,7 @@ done
 
 # A cleanup that did not succeed says why before its pod goes: the pod's log when it ran (a gone
 # target, wrong credentials, a missing database), its events when it never started (an image pull).
-# Only the events: `kubectl describe pod` would print the pod's command line, password included.
+# Only the events: `kubectl describe pod` would print the whole pod spec, which says nothing more.
 if [ "${PHASE}" != "Succeeded" ]; then
   if [ "${PHASE}" = "Failed" ]; then
     kubectl --kubeconfig="${KUBECONFIG}" logs "${CLEANUP_POD}" >&2 || true

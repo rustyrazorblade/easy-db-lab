@@ -20,26 +20,28 @@ if ! target_db_args; then
 fi
 
 edl_require_app_node sysbench
+target_apply_credentials
 
 echo "Starting sysbench: workload=${WORKLOAD}, threads=${THREADS}, duration=${DURATION}s..."
 
+sysbench_command \
+  --threads="${THREADS}" \
+  --time="${DURATION}" \
+  --rate="${RATE}" \
+  --skip-trx="${SKIP_TRX}" \
+  --rand-type="${RAND_TYPE}" \
+  --report-interval=10 \
+  --percentile=99 \
+  --histogram \
+  "${WORKLOAD}" run
+OVERRIDES="$(target_pod_overrides "${POD_NAME}" "${SYSBENCH_PASSWORD_ENV}")"
 kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
   --image="${SYSBENCH_IMAGE}" \
   --restart=Never \
   --labels="${LABELS}" \
-  --overrides="$(edl_pod_overrides)" \
+  --overrides="${OVERRIDES}" \
   --override-type=strategic \
-  --command -- sysbench \
-    "${DB_ARGS[@]}" \
-    --threads="${THREADS}" \
-    --time="${DURATION}" \
-    --rate="${RATE}" \
-    --skip-trx="${SKIP_TRX}" \
-    --rand-type="${RAND_TYPE}" \
-    --report-interval=10 \
-    --percentile=99 \
-    --histogram \
-    "${WORKLOAD}" run
+  --command -- "${SYSBENCH_CMD[@]}"
 
 edl_wait_for_pod_running "${POD_NAME}"
 

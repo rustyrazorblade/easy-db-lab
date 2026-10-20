@@ -120,8 +120,14 @@ When the target kit declares a password in its `sql` capability (SingleStore doe
 `--password` install arg), every phase authenticates with it: the cleanup and the database
 creation in `prepare`, the data load, the `start` run, and the `stop` cleanup. Nothing to pass:
 the password comes from the target's installed `kit.yaml`. A password with spaces or `*`
-works. sysbench never prints it, and the database-creation pod gets it through the
-`MYSQL_PWD` environment variable rather than its command line.
+works. sysbench never prints it.
+
+The password never appears in a pod spec, so `kubectl get pod -o yaml` and
+`kubectl describe pod` cannot show it. Each phase stores it in the Secret `<kit>-credentials`
+(labelled `easydblab/role=sysbench-credentials`), and every pod reads it from there as an
+environment variable: the sysbench pods as `TARGET_PASSWORD`, which the container hands to
+sysbench as `--mysql-password` or `--pgsql-password` when it starts, and the database-creation
+pod as `MYSQL_PWD`. `stop` deletes the Secret.
 
 A target with no password (TiDB, PostgreSQL, ClickHouse) connects exactly as before.
 

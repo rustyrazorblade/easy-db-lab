@@ -762,6 +762,8 @@ the environment. A function that fails prints why to stderr and exits the script
 | `edl_resource_name <role>` | Prints `${KIT_NAME}-<role>-$(date +%s)`, a unique pod or ConfigMap name |
 | `edl_require_app_node <kit>` | Fails with `<kit> needs an app node (type=app); this cluster has none` when no node is labelled `type=app` |
 | `edl_pod_overrides [<configmap> <mount-path> <container>]` | Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: `nodeSelector: {type: app}`, and a mount of the ConfigMap when one is given. `kubectl run` names the container after the pod |
+| `edl_pod_overrides_secret_env <container> <env-var> <secret> <key>` | Prints the same JSON with `nodeSelector: {type: app}` and an env var on the container that reads the key of the Secret through `valueFrom.secretKeyRef`, so the pod spec names the Secret and never holds the value. Pass the pod name as the container |
+| `edl_apply_secret <name> <role> <key>` | Creates or updates a labelled Secret holding the key, set to what stdin holds (`printf '%s' "${PASSWORD}" \| edl_apply_secret ...`; `printf` is a builtin, so no process gets the value as an argument). The value goes through a temp file only the user can read, removed before it returns, and the apply is server-side, so no last-applied annotation copies it. Fails on an empty value. Delete it by label (`kubectl delete secret -l "$(edl_labels <role>)"`) in `stop` |
 | `edl_create_configmap <name> <role> <key>=<path>...` | Creates a labelled ConfigMap from files in one call; fails on a missing or empty file, or more than 1,000,000 bytes in all |
 | `edl_active_pods <role>` | Prints this instance's pods of that role that have not ended |
 | `edl_wait_for_pod_running <pod>` | Returns once the pod leaves Pending (Running, Succeeded or Failed); fails at once on an image pull error with the reason and the pod's events, and after 10 minutes otherwise, and deletes the pod first so it does not block the next run. It lists the events with `kubectl get events`, never `kubectl describe pod`, which would print the pod's command line and any password in it |
@@ -852,9 +854,15 @@ The variables injected depend on what endpoints the target kit declares:
 capability `user`, and is empty when the target declares no `sql` capability.
 
 The `*_PASSWORD` variables come from the target kit's `sql` capability `password` and are empty
-when it has none. The framework never prints them. A bench kit that passes one to a client must
-keep it off any command line it prints (pass it in an environment variable such as `MYSQL_PWD`,
-and never run `kubectl describe pod` on a pod that has it in its arguments).
+when it has none. The framework never prints them. A bench kit that passes one to a pod must keep
+it out of the pod spec and off every command line, where `kubectl get pod -o yaml` or
+`kubectl describe pod` would show it. Put it in a labelled Secret with `edl_apply_secret`, and give
+the pod an env var that reads it through `secretKeyRef` with `edl_pod_overrides_secret_env` (see
+[Shared shell library](#shared-shell-library)). A client that reads the variable itself (the
+`mysql` client's `MYSQL_PWD`) needs nothing more; one that takes the password as a flag runs
+through `sh -c`, so the flag is expanded from the variable when the container starts. `stop`
+deletes the Secret by label. The sysbench kit (`kits/sysbench/bin/lib/target-db.sh`) does all of
+this.
 
 `TARGET_MYSQL_IGNORE_ERRORS` is the `mysql` endpoint's `ignore-errors`, a comma-separated list
 of MySQL error codes, and is empty when the endpoint declares none. A target declares it for

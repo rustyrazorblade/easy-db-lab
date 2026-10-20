@@ -121,7 +121,7 @@
     {
       "type": "stat",
       "title": "Partitions online",
-      "description": "Database partitions that are online, master and replica.",
+      "description": "Master partitions of every database that are online. The exporter counts master partitions (role Master) per database, not replicas.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -169,7 +169,7 @@
     {
       "type": "stat",
       "title": "Partitions offline",
-      "description": "Database partitions that are offline. Anything above 0 means a leaf or its replica is down.",
+      "description": "Master partitions of every database that are offline. Anything above 0 means a leaf holding a master partition is down and no replica has taken over.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -478,7 +478,7 @@
     },
     {
       "type": "row",
-      "title": "Partitions per leaf",
+      "title": "Partitions, cluster-wide",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -489,11 +489,13 @@
     },
     {
       "type": "timeseries",
-      "title": "Partitions online per leaf",
-      "description": "Partitions each leaf holds online, master and replica.",
+      "title": "Master partitions online, offline and total",
+      "description": "Master partitions of every database, online, offline and in total. The exporter reports partitions per database and partition role (role Master), not per leaf, so this is the cluster's count. Offline above 0 means a leaf holding a master partition is down and no replica has taken over.",
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "min": 0,
+          "decimals": 0,
           "custom": {
             "lineWidth": 1,
             "fillOpacity": 10
@@ -511,9 +513,19 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by (cluster, host) (memsql_distributed_partitions_online{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} {{host}}",
+          "expr": "label_replace(sum by (cluster) (memsql_distributed_partitions_online{cluster=~\"$cluster\", job=\"singlestore\", role=\"Master\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} online",
           "refId": "A"
+        },
+        {
+          "expr": "label_replace(sum by (cluster) (memsql_distributed_partitions_offline{cluster=~\"$cluster\", job=\"singlestore\", role=\"Master\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} offline",
+          "refId": "B"
+        },
+        {
+          "expr": "label_replace(sum by (cluster) (memsql_distributed_partitions_total{cluster=~\"$cluster\", job=\"singlestore\", role=\"Master\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} total",
+          "refId": "C"
         }
       ],
       "gridPos": {
@@ -529,11 +541,14 @@
     },
     {
       "type": "timeseries",
-      "title": "Partitions offline per leaf",
-      "description": "Partitions each leaf holds offline.",
+      "title": "Cluster has unavailable partitions (1 = yes, 0 = no)",
+      "description": "1 while any partition of the cluster is unavailable, 0 otherwise. The exporter reports one cluster-wide flag; the host label it carries names one node only, not the node with the unavailable partition, so this is not a per-leaf view.",
       "fieldConfig": {
         "defaults": {
           "unit": "short",
+          "min": 0,
+          "max": 1,
+          "decimals": 0,
           "custom": {
             "lineWidth": 1,
             "fillOpacity": 10
@@ -551,8 +566,8 @@
       },
       "targets": [
         {
-          "expr": "label_replace(sum by (cluster, host) (memsql_distributed_partitions_offline{cluster=~\"$cluster\", job=\"singlestore\", role=\"LEAF\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
-          "legendFormat": "{{cluster_name}} {{host}}",
+          "expr": "label_replace(max by (cluster) (memsql_distributed_partitions_has_unavailable{cluster=~\"$cluster\", job=\"singlestore\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}}",
           "refId": "A"
         }
       ],

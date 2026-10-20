@@ -77,8 +77,16 @@ name, for legends.
 
 | Metric | Labels | Description |
 |--------|--------|-------------|
-| `memsql_distributed_partitions_online` | `host`, `node_id`, `role` | Database partitions online on the node, master and replica |
-| `memsql_distributed_partitions_offline` | `host`, `node_id`, `role` | Database partitions offline on the node |
+| `memsql_distributed_partitions_online` | `database_name`, `role` | Master partitions of the database that are online |
+| `memsql_distributed_partitions_offline` | `database_name`, `role` | Master partitions of the database that are offline |
+| `memsql_distributed_partitions_total` | `database_name`, `role` | Master partitions of the database |
+| `memsql_distributed_partitions_has_unavailable` | `host`, `ws_id`, `ws_name` | 1 while any partition of the cluster is unavailable, 0 otherwise |
+
+The partition counts are per database, not per node: they carry no `host`, and `role` is the
+partition's role, `Master`, not the node role (`MA`, `CA`, `LEAF`) the other series carry. The
+exporter reports no replica partitions and no per-leaf partition count. `has_unavailable` is one
+cluster-wide flag; its `host` names one node only, not the node holding the unavailable
+partition, so read it with `max by (cluster)`, never by `host`.
 
 ## Disk
 

@@ -12,19 +12,32 @@
   },
   "series": [
     {
-      "name": "memsql_distributed_partitions_offline",
+      "name": "memsql_distributed_partitions_has_unavailable",
       "labels": {
         "host": [],
-        "node_id": [],
-        "role": ["CA", "LEAF", "MA"]
+        "ws_id": [],
+        "ws_name": []
+      }
+    },
+    {
+      "name": "memsql_distributed_partitions_offline",
+      "labels": {
+        "database_name": [],
+        "role": ["Master"]
       }
     },
     {
       "name": "memsql_distributed_partitions_online",
       "labels": {
-        "host": [],
-        "node_id": [],
-        "role": ["CA", "LEAF", "MA"]
+        "database_name": [],
+        "role": ["Master"]
+      }
+    },
+    {
+      "name": "memsql_distributed_partitions_total",
+      "labels": {
+        "database_name": [],
+        "role": ["Master"]
       }
     },
     {

@@ -779,7 +779,7 @@
     {
       "type": "timeseries",
       "title": "Partitions online and offline",
-      "description": "Database partitions, master and replica, that are online and offline. With redundancy 2 every partition has a replica in the other availability group.",
+      "description": "Master partitions of every database that are online and offline. The exporter counts master partitions (role Master) per database, not replicas; with redundancy 2 a replica in the other availability group takes over when a master goes offline.",
       "fieldConfig": {
         "defaults": {
           "unit": "short",

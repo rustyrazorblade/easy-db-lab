@@ -1215,3 +1215,738 @@ rules:
       Max:
         metric: cassandra.table.cas.commit.latency.max
         desc: Maximum local Paxos commit latency.
+
+  # ==============================================================================================
+  # Accord. Every ObjectName and attribute is checked against the Cassandra 6.0 source, cited next
+  # to its rule. On a cluster with Accord off, the beans still exist and report zero.
+  #
+  # The Accord client request scopes get names of their own, cassandra.accord.client.request.*.
+  # Cassandra also records every Accord request in the plain Read or Write scope
+  # (service/accord/ClientRequestBookkeeping.java:71-83 marks the shared Read or Write metrics too), so putting
+  # AccordRead and AccordWrite into cassandra.client.request.* would count each Accord request
+  # twice in every panel that sums over all operations.
+  #
+  # Timers (Latency, the coordinator phases) report in microseconds like every other latency here
+  # (metrics/CassandraMetricsRegistry.java:104, DEFAULT_TIMER_UNIT). The replica and executor
+  # histograms are decaying histograms of nanoseconds, not timers, so their unit is ns, and their
+  # Count decays, so it is not a counter and is not mapped.
+  # ==============================================================================================
+
+  # --- Accord client requests: latency and count -------------------------------------------------
+  # Source: metrics/ClientRequestsMetricsHolder.java:35-36 registers scope=AccordRead and
+  # scope=AccordWrite; LatencyMetrics.java:94 names the timer Latency.
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=Latency
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=Latency
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.client.request.latency.p50
+        desc: Accord request latency 50th percentile by operation.
+      99thPercentile:
+        metric: cassandra.accord.client.request.latency.p99
+        desc: Accord request latency 99th percentile by operation.
+      999thPercentile:
+        metric: cassandra.accord.client.request.latency.p999
+        desc: Accord request latency 99.9th percentile by operation.
+      Max:
+        metric: cassandra.accord.client.request.latency.max
+        desc: Maximum Accord request latency by operation.
+      Count:
+        metric: cassandra.accord.client.request.count
+        type: counter
+        unit: "{request}"
+        desc: Number of Accord requests by operation.
+
+  # --- Accord client requests: errors ------------------------------------------------------------
+  # Meters in the base class (metrics/ClientRequestMetrics.java:51-53). One rule per error type,
+  # with the status hardcoded, as in the cassandra.client.request.error rules above.
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=Timeouts
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=Timeouts
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+      cassandra.status: const(timeout)
+    mapping:
+      Count:
+        metric: cassandra.accord.client.request.error
+        type: counter
+        unit: "{error}"
+        desc: Number of Accord request errors by operation.
+
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=Failures
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=Failures
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+      cassandra.status: const(failure)
+    mapping:
+      Count:
+        metric: cassandra.accord.client.request.error
+        type: counter
+        unit: "{error}"
+        desc: Number of Accord request errors by operation.
+
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=Unavailables
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=Unavailables
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+      cassandra.status: const(unavailable)
+    mapping:
+      Count:
+        metric: cassandra.accord.client.request.error
+        type: counter
+        unit: "{error}"
+        desc: Number of Accord request errors by operation.
+
+  # --- Accord client requests: other events ------------------------------------------------------
+  # Meters. RetryDifferentSystem and RetryCoordinatorBehind are in the base class
+  # (metrics/ClientRequestMetrics.java:59-60); the other five are Accord only
+  # (metrics/AccordClientRequestMetrics.java:57-61). The event is the lowercased bean name, for
+  # example cassandra_event="preempted" or "retrydifferentsystem".
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=Preempted
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=Preempted
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=TopologyMismatches
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=TopologyMismatches
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=AccordMigrationRejects
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=AccordMigrationRejects
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=MigrationSkippedReads
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=MigrationSkippedReads
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=PaxosKeyMigrations
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=PaxosKeyMigrations
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=RetryDifferentSystem
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=RetryDifferentSystem
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=RetryCoordinatorBehind
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=RetryCoordinatorBehind
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+      cassandra.event: lowercase(param(name))
+    mapping:
+      Count:
+        metric: cassandra.accord.client.request.events
+        type: counter
+        unit: "{request}"
+        desc: Accord request events (preemption, topology mismatch, migration, retry) by operation.
+
+  # Keys per Accord transaction. A plain Histogram of key counts
+  # (metrics/AccordClientRequestMetrics.java:56; updated at service/accord/AccordService.java:1274).
+  - beans:
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordRead,name=KeySizeHistogram
+      - org.apache.cassandra.metrics:type=ClientRequest,scope=AccordWrite,name=KeySizeHistogram
+    metricAttribute:
+      cassandra.operation: lowercase(param(scope))
+    type: gauge
+    unit: "{key}"
+    mapping:
+      Max:
+        metric: cassandra.accord.client.request.keys.max
+        desc: Most keys in one Accord transaction by operation.
+      Mean:
+        metric: cassandra.accord.client.request.keys.mean
+        desc: Mean keys per Accord transaction by operation.
+
+  # --- AccordCoordinator -------------------------------------------------------------------------
+  # One scope per transaction kind: ro (read), rw (write), rx (sync point)
+  # (metrics/AccordCoordinatorMetrics.java:47-49). scope=* matches those three only.
+  # The phase timers are microseconds; Count is the number of transactions that reached the phase.
+  - bean: org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=PreAcceptLatency
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.coordinator.preaccept.p50
+        desc: Coordinator time to PreAccept, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.coordinator.preaccept.p99
+        desc: Coordinator time to PreAccept, 99th percentile.
+      Max:
+        metric: cassandra.accord.coordinator.preaccept.max
+        desc: Coordinator time to PreAccept, maximum.
+      Count:
+        metric: cassandra.accord.coordinator.preaccept.count
+        type: counter
+        unit: "{txn}"
+        desc: Transactions that completed PreAccept at this coordinator.
+
+  - bean: org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=ExecuteLatency
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.coordinator.execute.p50
+        desc: Coordinator time to begin execution, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.coordinator.execute.p99
+        desc: Coordinator time to begin execution, 99th percentile.
+      Max:
+        metric: cassandra.accord.coordinator.execute.max
+        desc: Coordinator time to begin execution, maximum.
+      Count:
+        metric: cassandra.accord.coordinator.execute.count
+        type: counter
+        unit: "{txn}"
+        desc: Transactions that began execution at this coordinator.
+
+  - bean: org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=ApplyLatency
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.coordinator.apply.p50
+        desc: Coordinator time to complete execution, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.coordinator.apply.p99
+        desc: Coordinator time to complete execution, 99th percentile.
+      Max:
+        metric: cassandra.accord.coordinator.apply.max
+        desc: Coordinator time to complete execution, maximum.
+      Count:
+        metric: cassandra.accord.coordinator.apply.count
+        type: counter
+        unit: "{txn}"
+        desc: Transactions that completed execution at this coordinator.
+
+  - bean: org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=RecoveryDelay
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.coordinator.recovery_delay.p50
+        desc: Time from transaction start to recovery start, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.coordinator.recovery_delay.p99
+        desc: Time from transaction start to recovery start, 99th percentile.
+      Max:
+        metric: cassandra.accord.coordinator.recovery_delay.max
+        desc: Time from transaction start to recovery start, maximum.
+      Count:
+        metric: cassandra.accord.coordinator.recovery_delay.count
+        type: counter
+        unit: "{txn}"
+        desc: Transactions this coordinator recovered.
+
+  - bean: org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=RecoveryTime
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    unit: us
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.coordinator.recovery_time.p50
+        desc: Time from recovery start to execution, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.coordinator.recovery_time.p99
+        desc: Time from recovery start to execution, 99th percentile.
+      Max:
+        metric: cassandra.accord.coordinator.recovery_time.max
+        desc: Time from recovery start to execution, maximum.
+      Count:
+        metric: cassandra.accord.coordinator.recovery_time.count
+        type: counter
+        unit: "{txn}"
+        desc: Recoveries this coordinator completed.
+
+  # Transaction outcomes, all Meters (metrics/AccordCoordinatorMetrics.java:172-179). Ephemeral is
+  # included because FastPathToTotal divides by Ephemeral + FastPaths + MediumPaths + SlowPaths
+  # (:182). The outcome is the lowercased bean name, for example accord_outcome="fastpaths".
+  - beans:
+      - org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=Ephemeral
+      - org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=FastPaths
+      - org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=MediumPaths
+      - org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=SlowPaths
+      - org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=Preempted
+      - org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=Rejected
+      - org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=Timeouts
+      - org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=Invalidations
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+      accord.outcome: lowercase(param(name))
+    mapping:
+      Count:
+        metric: cassandra.accord.coordinator.outcome
+        type: counter
+        unit: "{txn}"
+        desc: Accord transactions at this coordinator by outcome.
+
+  # Plain Histograms of counts per transaction (metrics/AccordCoordinatorMetrics.java:164, :169).
+  - bean: org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=Dependencies
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    type: gauge
+    unit: "{txn}"
+    mapping:
+      Max:
+        metric: cassandra.accord.coordinator.dependencies.max
+        desc: Most dependencies of one transaction at this coordinator.
+      Mean:
+        metric: cassandra.accord.coordinator.dependencies.mean
+        desc: Mean dependencies per transaction at this coordinator.
+
+  - bean: org.apache.cassandra.metrics:type=AccordCoordinator,scope=*,name=Keys
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    type: gauge
+    unit: "{key}"
+    mapping:
+      Max:
+        metric: cassandra.accord.coordinator.keys.max
+        desc: Most keys in one transaction at this coordinator.
+      Mean:
+        metric: cassandra.accord.coordinator.keys.mean
+        desc: Mean keys per transaction at this coordinator.
+
+  # --- AccordReplica -----------------------------------------------------------------------------
+  # Same three scopes as the coordinator. Decaying histograms of nanoseconds since the transaction
+  # started (metrics/AccordReplicaMetrics.java, registered in the constructor). Count decays
+  # (metrics/LogLinearDecayingHistograms.java decay()), so it is not mapped.
+  - bean: org.apache.cassandra.metrics:type=AccordReplica,scope=*,name=StableLatency
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    unit: ns
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.replica.stable.p50
+        desc: Replica time until the transaction is stable, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.replica.stable.p99
+        desc: Replica time until the transaction is stable, 99th percentile.
+      Max:
+        metric: cassandra.accord.replica.stable.max
+        desc: Replica time until the transaction is stable, maximum.
+
+  - bean: org.apache.cassandra.metrics:type=AccordReplica,scope=*,name=PreApplyLatency
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    unit: ns
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.replica.preapply.p50
+        desc: Replica time until the transaction is ready to apply, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.replica.preapply.p99
+        desc: Replica time until the transaction is ready to apply, 99th percentile.
+      Max:
+        metric: cassandra.accord.replica.preapply.max
+        desc: Replica time until the transaction is ready to apply, maximum.
+
+  - bean: org.apache.cassandra.metrics:type=AccordReplica,scope=*,name=ApplyLatency
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    unit: ns
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.replica.apply.p50
+        desc: Replica time until the transaction is applied, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.replica.apply.p99
+        desc: Replica time until the transaction is applied, 99th percentile.
+      Max:
+        metric: cassandra.accord.replica.apply.max
+        desc: Replica time until the transaction is applied, maximum.
+
+  - bean: org.apache.cassandra.metrics:type=AccordReplica,scope=*,name=Dependencies
+    metricAttribute:
+      accord.scope: lowercase(param(scope))
+    type: gauge
+    unit: "{txn}"
+    mapping:
+      Max:
+        metric: cassandra.accord.replica.dependencies.max
+        desc: Most dependencies of one transaction at this replica.
+      Mean:
+        metric: cassandra.accord.replica.dependencies.mean
+        desc: Mean dependencies per transaction at this replica.
+
+  # --- AccordSystem ------------------------------------------------------------------------------
+  # Node-wide, no scope (metrics/AccordSystemMetrics.java:156-174).
+  #
+  # ProgressLogActive returns the durability queue's active count (:166), the same value as
+  # DurabilityQueueActive (:164), not a progress log value. It is a Cassandra bug. The rule exports
+  # it so the bean is visible; do not read it as the progress log.
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=MinEpoch
+    mapping:
+      Value:
+        metric: cassandra.accord.system.min_epoch
+        type: gauge
+        unit: "{epoch}"
+        desc: Lowest Accord topology epoch this node still keeps.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=MaxEpoch
+    mapping:
+      Value:
+        metric: cassandra.accord.system.max_epoch
+        type: gauge
+        unit: "{epoch}"
+        desc: Highest Accord topology epoch this node has.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=MaxPendingEpoch
+    mapping:
+      Value:
+        metric: cassandra.accord.system.max_pending_epoch
+        type: gauge
+        unit: "{epoch}"
+        desc: Highest Accord topology epoch this node knows of but has not yet taken up.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=DurabilityQueueActive
+    mapping:
+      Value:
+        metric: cassandra.accord.system.durability_queue_active
+        type: gauge
+        unit: "{task}"
+        desc: Durability tasks running now.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=DurabilityQueuePending
+    mapping:
+      Value:
+        metric: cassandra.accord.system.durability_queue_pending
+        type: gauge
+        unit: "{task}"
+        desc: Durability tasks waiting to run.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=ProgressLogActive
+    mapping:
+      Value:
+        metric: cassandra.accord.system.progress_log_active
+        type: gauge
+        unit: "{task}"
+        desc: Reports the durability queue's active count (Cassandra bug), not the progress log.
+
+  # Counters (:160-163).
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=Errors
+    mapping:
+      Count:
+        metric: cassandra.accord.system.errors
+        type: counter
+        unit: "{error}"
+        desc: Accord errors on this node since startup.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=EpochWaits
+    mapping:
+      Count:
+        metric: cassandra.accord.system.epoch_waits
+        type: counter
+        unit: "{wait}"
+        desc: Times this node waited for a topology epoch, since startup.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=EpochTimeouts
+    mapping:
+      Count:
+        metric: cassandra.accord.system.epoch_timeouts
+        type: counter
+        unit: "{timeout}"
+        desc: Waits for a topology epoch that timed out, since startup.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=PausedExecutorLoading
+    mapping:
+      Count:
+        metric: cassandra.accord.system.paused_executor_loading
+        type: counter
+        unit: "{pause}"
+        desc: Times an Accord executor paused loading, since startup.
+
+  # On-demand histograms, rebuilt from every command store at most every few seconds
+  # (refreshHistograms, :195-233). Count is the number of samples in the rebuild, not a running
+  # total, so only Max and Mean are mapped. ProgressLogSize has one sample per command store, in
+  # transactions. ProgressLogAge has one per transaction in a progress log, and the lag histograms
+  # one per range, all in seconds (ageSeconds, :235-238).
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=ProgressLogSize
+    type: gauge
+    unit: "{txn}"
+    mapping:
+      Max:
+        metric: cassandra.accord.system.progress_log_size.max
+        desc: Largest progress log of any command store.
+      Mean:
+        metric: cassandra.accord.system.progress_log_size.mean
+        desc: Mean progress log size per command store.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=ProgressLogAge
+    type: gauge
+    unit: s
+    mapping:
+      Max:
+        metric: cassandra.accord.system.progress_log_age.max
+        desc: Age of the oldest transaction in any progress log.
+      Mean:
+        metric: cassandra.accord.system.progress_log_age.mean
+        desc: Mean age of the transactions in the progress logs.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=SyncPointAgreedLag
+    type: gauge
+    unit: s
+    mapping:
+      Max:
+        metric: cassandra.accord.system.sync_point_agreed_lag.max
+        desc: Largest age of the last agreed sync point over all ranges.
+      Mean:
+        metric: cassandra.accord.system.sync_point_agreed_lag.mean
+        desc: Mean age of the last agreed sync point over all ranges.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=LocallyAppliedLag
+    type: gauge
+    unit: s
+    mapping:
+      Max:
+        metric: cassandra.accord.system.locally_applied_lag.max
+        desc: Largest locally applied lag over all ranges.
+      Mean:
+        metric: cassandra.accord.system.locally_applied_lag.mean
+        desc: Mean locally applied lag over all ranges.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=LocallyDurableLag
+    type: gauge
+    unit: s
+    mapping:
+      Max:
+        metric: cassandra.accord.system.locally_durable_lag.max
+        desc: Largest locally durable lag over all ranges.
+      Mean:
+        metric: cassandra.accord.system.locally_durable_lag.mean
+        desc: Mean locally durable lag over all ranges.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=QuorumAppliedLag
+    type: gauge
+    unit: s
+    mapping:
+      Max:
+        metric: cassandra.accord.system.quorum_applied_lag.max
+        desc: Largest quorum applied lag over all ranges.
+      Mean:
+        metric: cassandra.accord.system.quorum_applied_lag.mean
+        desc: Mean quorum applied lag over all ranges.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=ShardAppliedLag
+    type: gauge
+    unit: s
+    mapping:
+      Max:
+        metric: cassandra.accord.system.shard_applied_lag.max
+        desc: Largest shard applied lag over all ranges.
+      Mean:
+        metric: cassandra.accord.system.shard_applied_lag.mean
+        desc: Mean shard applied lag over all ranges.
+
+  - bean: org.apache.cassandra.metrics:type=AccordSystem,name=GCLag
+    type: gauge
+    unit: s
+    mapping:
+      Max:
+        metric: cassandra.accord.system.gc_lag.max
+        desc: Largest GC lag over all ranges.
+      Mean:
+        metric: cassandra.accord.system.gc_lag.mean
+        desc: Mean GC lag over all ranges.
+
+  # --- AccordExecutor ----------------------------------------------------------------------------
+  # Node-wide, summed over the executors (metrics/AccordExecutorMetrics.java:59-61).
+  - bean: org.apache.cassandra.metrics:type=AccordExecutor,name=PreparingToRun
+    mapping:
+      Value:
+        metric: cassandra.accord.executor.preparing_to_run
+        type: gauge
+        unit: "{task}"
+        desc: Accord executor tasks preparing to run.
+
+  - bean: org.apache.cassandra.metrics:type=AccordExecutor,name=WaitingToRun
+    mapping:
+      Value:
+        metric: cassandra.accord.executor.waiting_to_run
+        type: gauge
+        unit: "{task}"
+        desc: Accord executor tasks waiting to run.
+
+  - bean: org.apache.cassandra.metrics:type=AccordExecutor,name=Running
+    mapping:
+      Value:
+        metric: cassandra.accord.executor.running
+        type: gauge
+        unit: "{task}"
+        desc: Accord executor tasks running now.
+
+  # Decaying histograms of nanoseconds (:39-41, registered at :54-56), so the unit is ns and Count is not mapped.
+  - bean: org.apache.cassandra.metrics:type=AccordExecutor,name=ElapsedPreparingToRun
+    unit: ns
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.executor.elapsed_preparing_to_run.p50
+        desc: Time a task spent preparing to run, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.executor.elapsed_preparing_to_run.p99
+        desc: Time a task spent preparing to run, 99th percentile.
+      Max:
+        metric: cassandra.accord.executor.elapsed_preparing_to_run.max
+        desc: Time a task spent preparing to run, maximum.
+
+  - bean: org.apache.cassandra.metrics:type=AccordExecutor,name=ElapsedWaitingToRun
+    unit: ns
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.executor.elapsed_waiting_to_run.p50
+        desc: Time a task waited to run, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.executor.elapsed_waiting_to_run.p99
+        desc: Time a task waited to run, 99th percentile.
+      Max:
+        metric: cassandra.accord.executor.elapsed_waiting_to_run.max
+        desc: Time a task waited to run, maximum.
+
+  - bean: org.apache.cassandra.metrics:type=AccordExecutor,name=ElapsedRunning
+    unit: ns
+    type: gauge
+    mapping:
+      50thPercentile:
+        metric: cassandra.accord.executor.elapsed_running.p50
+        desc: Time a task spent running, 50th percentile.
+      99thPercentile:
+        metric: cassandra.accord.executor.elapsed_running.p99
+        desc: Time a task spent running, 99th percentile.
+      Max:
+        metric: cassandra.accord.executor.elapsed_running.max
+        desc: Time a task spent running, maximum.
+
+  - bean: org.apache.cassandra.metrics:type=AccordExecutor,name=Keys
+    type: gauge
+    unit: "{key}"
+    mapping:
+      Max:
+        metric: cassandra.accord.executor.keys.max
+        desc: Most keys in one executor task.
+      Mean:
+        metric: cassandra.accord.executor.keys.mean
+        desc: Mean keys per executor task.
+
+  # --- AccordCache -------------------------------------------------------------------------------
+  # Two kinds of bean (metrics/AccordCacheMetrics.java). UsedBytes and UnreferencedBytes are
+  # node-wide, with no scope (:49-50). The rest are per cache, scope=Commands or
+  # scope=CommandsForKey (:36-37); scope=* matches those two only.
+  - bean: org.apache.cassandra.metrics:type=AccordCache,name=UsedBytes
+    mapping:
+      Value:
+        metric: cassandra.accord.cache.used
+        type: gauge
+        unit: By
+        desc: Memory the Accord caches use, summed over the executors.
+
+  - bean: org.apache.cassandra.metrics:type=AccordCache,name=UnreferencedBytes
+    mapping:
+      Value:
+        metric: cassandra.accord.cache.unreferenced
+        type: gauge
+        unit: By
+        desc: Accord cache memory that no running task references.
+
+  # Hits and Misses are Gauges that count from startup (:95-96), so they are read as Value and
+  # typed counter, which makes rate() work.
+  - bean: org.apache.cassandra.metrics:type=AccordCache,scope=*,name=Hits
+    metricAttribute:
+      accord.cache: lowercase(param(scope))
+    mapping:
+      Value:
+        metric: cassandra.accord.cache.hits
+        type: counter
+        unit: "{request}"
+        desc: Accord cache hits since startup.
+
+  - bean: org.apache.cassandra.metrics:type=AccordCache,scope=*,name=Misses
+    metricAttribute:
+      accord.cache: lowercase(param(scope))
+    mapping:
+      Value:
+        metric: cassandra.accord.cache.misses
+        type: counter
+        unit: "{request}"
+        desc: Accord cache misses since startup.
+
+  # RatioGaugeSet.ONE_MINUTE + "HitRate" (:101). Plain HitRate covers all time since startup.
+  - bean: org.apache.cassandra.metrics:type=AccordCache,scope=*,name=OneMinuteHitRate
+    metricAttribute:
+      accord.cache: lowercase(param(scope))
+    mapping:
+      Value:
+        metric: cassandra.accord.cache.one_minute.hit_ratio
+        type: gauge
+        unit: "1"
+        desc: Accord cache hit ratio over the last minute.
+
+  - bean: org.apache.cassandra.metrics:type=AccordCache,scope=*,name=EntrySize
+    metricAttribute:
+      accord.cache: lowercase(param(scope))
+    type: gauge
+    unit: By
+    mapping:
+      Max:
+        metric: cassandra.accord.cache.entry_size.max
+        desc: Largest Accord cache entry.
+      Mean:
+        metric: cassandra.accord.cache.entry_size.mean
+        desc: Mean Accord cache entry size.
+
+  # --- per-table Accord repair -------------------------------------------------------------------
+  # Source: metrics/TableMetrics.java:854-856. createLatencyMetrics appends "Latency"
+  # (LatencyMetrics.java:94). Timers in microseconds.
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=AccordRepairLatency
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    unit: us
+    type: gauge
+    mapping:
+      99thPercentile:
+        metric: cassandra.table.accord_repair.latency.p99
+        desc: Accord repair (range migration) latency, 99th percentile.
+      Max:
+        metric: cassandra.table.accord_repair.latency.max
+        desc: Maximum Accord repair (range migration) latency.
+      Count:
+        metric: cassandra.table.accord_repair.count
+        type: counter
+        unit: "{repair}"
+        desc: Accord repairs (range migrations) run for this table.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=AccordPostStreamRepairLatency
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    unit: us
+    type: gauge
+    mapping:
+      99thPercentile:
+        metric: cassandra.table.accord_post_stream_repair.latency.p99
+        desc: Accord repair after streaming, 99th percentile.
+      Max:
+        metric: cassandra.table.accord_post_stream_repair.latency.max
+        desc: Maximum Accord repair after streaming latency.
+      Count:
+        metric: cassandra.table.accord_post_stream_repair.count
+        type: counter
+        unit: "{repair}"
+        desc: Accord repairs after streaming run for this table.
+
+  - bean: org.apache.cassandra.metrics:type=Table,keyspace=*,scope=*,name=AccordRepairUnexpectedFailures
+    metricAttribute:
+      keyspace: param(keyspace)
+      table: param(scope)
+    mapping:
+      Count:
+        metric: cassandra.table.accord_repair.unexpected_failures
+        type: counter
+        unit: "{failure}"
+        desc: Accord repairs for this table that failed unexpectedly.

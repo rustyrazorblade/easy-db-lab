@@ -432,6 +432,162 @@ class CassandraJmxRulesTest {
     }
 
     @Test
+    fun `Accord client requests have names of their own, so no existing sum counts them twice`() {
+        // Cassandra records every Accord request in the plain Read or Write scope as well
+        // (service/accord/ClientRequestBookkeeping.java). If AccordRead and AccordWrite fed
+        // cassandra.client.request.*, every panel that sums over all operations would count each
+        // Accord request twice.
+        val plainFamilies =
+            rules.rules.filter { rule -> rule.mapping.values.any { it.metric.startsWith("cassandra.client.request.") } }
+
+        assertThat(plainFamilies.flatMap { it.beans + it.bean }).noneSatisfy { assertThat(it).contains("scope=Accord") }
+
+        val accordFamilies =
+            rules.rules.filter { rule -> rule.mapping.values.any { it.metric.startsWith("cassandra.accord.client.request.") } }
+
+        assertThat(accordFamilies).isNotEmpty()
+        assertThat(accordFamilies).allSatisfy { rule ->
+            assertThat(rule.bean).isEmpty()
+            assertThat(rule.beans).isNotEmpty()
+            assertThat(rule.beans).allSatisfy { bean ->
+                assertThat(bean).matches("org\\.apache\\.cassandra\\.metrics:type=ClientRequest,scope=Accord(Read|Write),name=\\w+")
+            }
+            assertThat(rule.metricAttribute).containsEntry("cassandra.operation", "lowercase(param(scope))")
+        }
+    }
+
+    @Test
+    fun `Accord client request latency matches the plain latency family`() {
+        val rule =
+            rules.rules.single { r -> r.mapping.values.any { it.metric == "cassandra.accord.client.request.latency.p99" } }
+
+        assertThat(rule.unit).isEqualTo(latencyRule.unit)
+        assertThat(rule.sourceUnit).isEmpty()
+        assertThat(rule.mapping.keys).containsExactlyInAnyOrder(
+            "50thPercentile",
+            "99thPercentile",
+            "999thPercentile",
+            "Max",
+            "Count",
+        )
+        assertThat(rule.mapping.getValue("Count").metric).isEqualTo("cassandra.accord.client.request.count")
+        assertThat(rule.mapping.getValue("Count").type).isEqualTo("counter")
+    }
+
+    @Test
+    fun `every Accord error rule carries a distinct status`() {
+        val statuses =
+            rules.rules
+                .filter { rule -> rule.mapping.values.any { it.metric == "cassandra.accord.client.request.error" } }
+                .map { it.metricAttribute["cassandra.status"] }
+
+        assertThat(statuses).containsExactlyInAnyOrder(
+            "const(unavailable)",
+            "const(timeout)",
+            "const(failure)",
+        )
+    }
+
+    @Test
+    fun `the Accord families are all present`() {
+        assertThat(metricNames).contains(
+            "cassandra.accord.client.request.latency.p99",
+            "cassandra.accord.client.request.count",
+            "cassandra.accord.client.request.error",
+            "cassandra.accord.client.request.events",
+            "cassandra.accord.client.request.keys.max",
+            "cassandra.accord.coordinator.preaccept.p99",
+            "cassandra.accord.coordinator.execute.p99",
+            "cassandra.accord.coordinator.apply.p99",
+            "cassandra.accord.coordinator.recovery_delay.p99",
+            "cassandra.accord.coordinator.recovery_time.p99",
+            "cassandra.accord.coordinator.outcome",
+            "cassandra.accord.coordinator.dependencies.max",
+            "cassandra.accord.coordinator.keys.max",
+            "cassandra.accord.replica.stable.p99",
+            "cassandra.accord.replica.preapply.p99",
+            "cassandra.accord.replica.apply.p99",
+            "cassandra.accord.replica.dependencies.max",
+            "cassandra.accord.system.min_epoch",
+            "cassandra.accord.system.max_epoch",
+            "cassandra.accord.system.max_pending_epoch",
+            "cassandra.accord.system.durability_queue_active",
+            "cassandra.accord.system.durability_queue_pending",
+            "cassandra.accord.system.progress_log_active",
+            "cassandra.accord.system.errors",
+            "cassandra.accord.system.epoch_waits",
+            "cassandra.accord.system.epoch_timeouts",
+            "cassandra.accord.system.paused_executor_loading",
+            "cassandra.accord.system.progress_log_size.max",
+            "cassandra.accord.system.progress_log_age.max",
+            "cassandra.accord.system.sync_point_agreed_lag.max",
+            "cassandra.accord.system.locally_applied_lag.max",
+            "cassandra.accord.system.locally_durable_lag.max",
+            "cassandra.accord.system.quorum_applied_lag.max",
+            "cassandra.accord.system.shard_applied_lag.max",
+            "cassandra.accord.system.gc_lag.max",
+            "cassandra.accord.executor.preparing_to_run",
+            "cassandra.accord.executor.waiting_to_run",
+            "cassandra.accord.executor.running",
+            "cassandra.accord.executor.elapsed_preparing_to_run.p99",
+            "cassandra.accord.executor.elapsed_waiting_to_run.p99",
+            "cassandra.accord.executor.elapsed_running.p99",
+            "cassandra.accord.executor.keys.max",
+            "cassandra.accord.cache.used",
+            "cassandra.accord.cache.unreferenced",
+            "cassandra.accord.cache.hits",
+            "cassandra.accord.cache.misses",
+            "cassandra.accord.cache.one_minute.hit_ratio",
+            "cassandra.accord.cache.entry_size.max",
+            "cassandra.table.accord_repair.latency.p99",
+            "cassandra.table.accord_repair.count",
+            "cassandra.table.accord_post_stream_repair.latency.p99",
+            "cassandra.table.accord_repair.unexpected_failures",
+        )
+    }
+
+    @Test
+    fun `decaying Accord histograms are nanoseconds and do not map their decaying Count`() {
+        // AccordReplica and AccordExecutor latencies are ShardedDecayingHistograms of nanoseconds,
+        // not Timers. Their Count decays with the buckets, so a counter on it would see resets.
+        listOf(
+            "cassandra.accord.replica.stable.p99",
+            "cassandra.accord.replica.preapply.p99",
+            "cassandra.accord.replica.apply.p99",
+            "cassandra.accord.executor.elapsed_preparing_to_run.p99",
+            "cassandra.accord.executor.elapsed_waiting_to_run.p99",
+            "cassandra.accord.executor.elapsed_running.p99",
+        ).forEach { metric ->
+            val rule = rules.rules.single { r -> r.mapping.values.any { it.metric == metric } }
+
+            assertThat(rule.unit).describedAs(metric).isEqualTo("ns")
+            assertThat(rule.mapping.keys).describedAs(metric).doesNotContain("Count")
+        }
+    }
+
+    @Test
+    fun `Accord system histograms map Max and Mean only`() {
+        // On-demand histograms rebuilt from the command stores on each refresh: Count is the
+        // number of samples in the last rebuild, not a running total.
+        val rules = rules.rules.filter { it.bean.contains("type=AccordSystem") && it.mapping.containsKey("Max") }
+
+        assertThat(rules).hasSize(8)
+        assertThat(rules).allSatisfy { rule -> assertThat(rule.mapping.keys).containsExactlyInAnyOrder("Max", "Mean") }
+    }
+
+    @Test
+    fun `Accord cache hits and misses are counters read from a Value gauge`() {
+        // AccordCache Hits and Misses are Gauges that count from startup, so the attribute is
+        // Value and the type is counter, which is what lets rate() work.
+        listOf("cassandra.accord.cache.hits", "cassandra.accord.cache.misses").forEach { metric ->
+            val rule = rules.rules.single { r -> r.mapping.values.any { it.metric == metric } }
+
+            assertThat(rule.mapping.keys).describedAs(metric).containsExactly("Value")
+            assertThat(rule.mapping.getValue("Value").type).describedAs(metric).isEqualTo("counter")
+        }
+    }
+
+    @Test
     fun `cassandra_in_sh labels every metric with the build the node is running`() {
         // A mixed-version A/B is the normal case here, and which nodes hold which build changes
         // between runs. The label is what lets a dashboard group by variant instead of by host
@@ -466,8 +622,8 @@ class CassandraJmxRulesTest {
     @Test
     fun `only the error and consistency level families repeat a metric name`() {
         // Two rules emitting one name give the same series conflicting attribute sets. Two families
-        // are the deliberate exceptions: three rules feed the error family, separated by
-        // cassandra.status, and one rule per scope feeds the consistency level latency family,
+        // are the deliberate exceptions: three rules feed each error family (plain and Accord),
+        // separated by cassandra.status, and one rule per scope feeds the consistency level latency family,
         // separated by cassandra.operation and cassandra.consistency_level.
         val repeated =
             metricNames
@@ -477,6 +633,7 @@ class CassandraJmxRulesTest {
 
         assertThat(repeated).containsOnlyKeys(
             "cassandra.client.request.error",
+            "cassandra.accord.client.request.error",
             "cassandra.client.request.consistency.latency.p50",
             "cassandra.client.request.consistency.latency.p99",
             "cassandra.client.request.consistency.latency.p999",

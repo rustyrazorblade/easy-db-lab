@@ -35,12 +35,14 @@ start_test() {
 }
 
 # Runs shell code $1 after sourcing the library, under set -euo pipefail. Sets rc, and out and err
-# to what it printed.
+# to what it printed. Any further arguments are the code's positional parameters.
 run_lib() {
+  local code="$1"
+  shift
   (
     cd "${WORK}" &&
       PATH="${WORK}/stubs:${PATH}" KIT_NAME=bench-ch KUBECONFIG="${WORK}/kubeconfig" CONTROL_HOST_PRIVATE=10.0.0.5 \
-        EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 "${BASH}" -c "set -euo pipefail; . \"\${EDL_KIT_LIB}\"; $1"
+        EDL_KIT_LIB="${LIB}" EDL_POLL_SECONDS=0 "${BASH}" -c "set -euo pipefail; . \"\${EDL_KIT_LIB}\"; ${code}" _ "$@"
   ) > "${WORK}/out" 2> "${WORK}/err"
   rc=$?
   out="$(cat "${WORK}/out")"
@@ -146,6 +148,68 @@ test_configmap_is_created_with_its_labels_in_one_call() {
   grep -Fqx "create -f -" <<< "${all}" || fail "did not end with create: ${all}"
   if grep -q '^apply' <<< "${all}"; then fail "used apply: ${all}"; fi
   grep -Fq "# label easydblab/role=benchmark-run" "${STUB_STATE}/configmap.1" || fail "the created ConfigMap has no labels: $(cat "${STUB_STATE}/configmap.1")"
+}
+
+SECRET_VALUE="p w*'d \"x"
+
+# The value comes from stdin and reaches the Secret, but no kubectl command line, through a private
+# temp file the function removes. It is applied server-side, so no last-applied annotation copies it.
+test_secret_is_applied_with_its_labels_and_the_value_on_no_command_line() {
+  start_test "Secret labelled apply"
+  run_lib "printf '%s' \"\$1\" | edl_apply_secret bench-ch-credentials bench-credentials password" "${SECRET_VALUE}"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  local all from
+  all="$(calls)"
+  grep -Eqx "create secret generic bench-ch-credentials --from-file=password=[^ ]+ --dry-run=client -o yaml" <<< "${all}" ||
+    fail "no client-side secret render: ${all}"
+  grep -Fqx "label --local -f - easydblab/kit=bench-ch easydblab/role=bench-credentials -o yaml" <<< "${all}" || fail "no local label: ${all}"
+  grep -Fqx "apply --server-side --force-conflicts -f -" <<< "${all}" || fail "not applied server-side: ${all}"
+  grep -Fq -- "p w*" <<< "${all}" && fail "the value is on a kubectl command line: ${all}"
+  grep -Fqx "# data password=${SECRET_VALUE}" "${STUB_STATE}/applied.1" || fail "the Secret does not hold the value: $(cat "${STUB_STATE}/applied.1")"
+  grep -Fq "# label easydblab/role=bench-credentials" "${STUB_STATE}/applied.1" || fail "the Secret has no labels: $(cat "${STUB_STATE}/applied.1")"
+  from="$(sed -n 's/^create secret generic [^ ]* --from-file=password=\([^ ]*\) .*/\1/p' <<< "${all}")"
+  [ -n "${from}" ] && [ ! -e "${from}" ] || fail "the temp file ${from} was left behind"
+  [ -z "${out}${err}" ] || fail "printed something: ${out}${err}"
+}
+
+test_an_empty_secret_value_fails_before_the_cluster() {
+  start_test "empty Secret value"
+  run_lib "printf '' | edl_apply_secret bench-ch-credentials bench-credentials password"
+  [ "${rc}" -ne 0 ] || fail "exited 0"
+  grep -q "bench-ch-credentials" <<< "${err}" || fail "did not name the Secret: ${err}"
+  [ -z "$(calls)" ] || fail "called kubectl: $(calls)"
+}
+
+test_a_secret_with_a_bad_name_or_key_fails_before_the_cluster() {
+  start_test "bad Secret name or key"
+  run_lib "printf x | edl_apply_secret Bad_Name bench-credentials password"
+  [ "${rc}" -ne 0 ] || fail "accepted a bad Secret name"
+  run_lib "printf x | edl_apply_secret bench-ch-credentials bench-credentials 'pass word'"
+  [ "${rc}" -ne 0 ] || fail "accepted a bad key"
+  [ -z "$(calls)" ] || fail "called kubectl: $(calls)"
+}
+
+test_secret_env_overrides_pin_to_app_nodes_and_reference_the_secret() {
+  start_test "overrides with a Secret env"
+  run_lib 'edl_pod_overrides_secret_env run TARGET_PASSWORD bench-ch-credentials password'
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  [ "$(jq -r '.spec.nodeSelector.type' <<< "${out}")" = app ] || fail "no app nodeSelector: ${out}"
+  [ "$(jq -r '.spec.containers | length' <<< "${out}")" = 1 ] || fail "not one container: ${out}"
+  [ "$(jq -r '.spec.containers[0].name' <<< "${out}")" = run ] || fail "wrong container: ${out}"
+  [ "$(jq -c '.spec.containers[0].env' <<< "${out}")" = '[{"name":"TARGET_PASSWORD","valueFrom":{"secretKeyRef":{"name":"bench-ch-credentials","key":"password"}}}]' ] ||
+    fail "env does not reference the Secret: ${out}"
+}
+
+test_secret_env_overrides_reject_bad_names() {
+  start_test "Secret env overrides reject bad names"
+  run_lib 'edl_pod_overrides_secret_env Run TARGET_PASSWORD bench-ch-credentials password'
+  [ "${rc}" -ne 0 ] || fail "accepted a bad container name"
+  run_lib "edl_pod_overrides_secret_env run 'TARGET-PASSWORD' bench-ch-credentials password"
+  [ "${rc}" -ne 0 ] || fail "accepted a bad variable name"
+  run_lib 'edl_pod_overrides_secret_env run TARGET_PASSWORD Bad_Name password'
+  [ "${rc}" -ne 0 ] || fail "accepted a bad Secret name"
+  run_lib "edl_pod_overrides_secret_env run TARGET_PASSWORD bench-ch-credentials 'pa\"ss'"
+  [ "${rc}" -ne 0 ] || fail "accepted a bad key"
 }
 
 test_active_pods_lists_only_pods_that_have_not_ended() {
@@ -336,6 +400,11 @@ test_configmap_missing_file_calls_no_create
 test_configmap_empty_file_fails
 test_configmap_over_the_size_limit_fails_before_the_cluster
 test_configmap_is_created_with_its_labels_in_one_call
+test_secret_is_applied_with_its_labels_and_the_value_on_no_command_line
+test_an_empty_secret_value_fails_before_the_cluster
+test_a_secret_with_a_bad_name_or_key_fails_before_the_cluster
+test_secret_env_overrides_pin_to_app_nodes_and_reference_the_secret
+test_secret_env_overrides_reject_bad_names
 test_active_pods_lists_only_pods_that_have_not_ended
 test_a_pod_that_ended_before_it_was_seen_running_returns_at_once
 test_each_pull_error_fails_fast_with_reason_message_and_events

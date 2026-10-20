@@ -79,6 +79,46 @@ edl_pod_overrides() {
   esac
 }
 
+# Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: the pod runs on an
+# app node, and container $1 gets env var $2 from key $4 of Secret $3 through valueFrom.secretKeyRef.
+# The value stays in the Secret: the pod spec names it and never holds it, so `kubectl get pod -o
+# yaml` and `kubectl describe pod` cannot show it. kubectl run names the container after the pod.
+edl_pod_overrides_secret_env() {
+  [ "$#" -eq 4 ] || edl_fail "edl_pod_overrides_secret_env takes a container, an env var, a Secret and a key"
+  edl_require_dns_name "container" "$1" 63
+  [[ "$2" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || edl_fail "Env var name '$2' is not a shell variable name"
+  edl_require_dns_name "Secret" "$3" 253
+  edl_require_secret_key "$4"
+  printf '{"spec":{"nodeSelector":{"type":"app"},"containers":[{"name":"%s","env":[{"name":"%s","valueFrom":{"secretKeyRef":{"name":"%s","key":"%s"}}}]}]}}\n' \
+    "$1" "$2" "$3" "$4"
+}
+
+# Fails unless $1 is a valid Secret key: letters, digits, '-', '_' and '.'.
+edl_require_secret_key() {
+  [[ "$1" =~ ^[-._a-zA-Z0-9]+$ ]] || edl_fail "Secret key '$1' holds a character other than letters, digits, '-', '_' and '.'"
+}
+
+# Creates or updates Secret $1, with role $2's labels, holding key $3 set to what stdin holds. The
+# value never reaches a command line: it goes through a temp file only this user can read, which is
+# removed before the function returns. The apply is server-side, so no last-applied annotation
+# keeps a copy of the value, and running it again replaces the value in place. Fails on an empty
+# value.
+edl_apply_secret() {
+  local name="$1" role="$2" key="$3"
+  edl_require_dns_name "Secret" "${name}" 253
+  edl_require_secret_key "${key}"
+  (
+    set -o pipefail
+    value_file="$(mktemp)" || exit 1
+    trap 'rm -f "${value_file}"' EXIT
+    cat > "${value_file}" || exit 1
+    [ -s "${value_file}" ] || { printf 'Secret %s would be empty\n' "${name}" >&2; exit 2; }
+    kubectl create secret generic "${name}" "--from-file=${key}=${value_file}" --dry-run=client -o yaml |
+      kubectl label --local -f - "easydblab/kit=${KIT_NAME}" "easydblab/role=${role}" -o yaml |
+      kubectl apply --server-side --force-conflicts -f - > /dev/null
+  ) || edl_fail "Could not apply Secret ${name}"
+}
+
 # Fails unless $2 is a lowercase DNS-1123 name of at most $3 characters; $1 says what it names.
 edl_require_dns_name() {
   [ "${#2}" -le "$3" ] && [[ "$2" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]] ||
@@ -130,8 +170,8 @@ edl_pod_get() {
   printf '%s\n' "${out#*|}"
 }
 
-# Prints pod $1's events. Never `kubectl describe pod`: it prints the pod's command line, which can
-# hold a target kit's password (a sysbench run passes --mysql-password).
+# Prints pod $1's events. Never `kubectl describe pod`: it prints the pod's command line and env,
+# which a kit that does not keep its secrets in a Secret (edl_apply_secret) could leak.
 edl_pod_events() {
   kubectl get events --field-selector "involvedObject.kind=Pod,involvedObject.name=$1" || true
 }

@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.providers.aws.RegionalClients
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
@@ -9,15 +10,18 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doCallRealMethod
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DescribeRegionsResponse
 import software.amazon.awssdk.services.ec2.model.DescribeVpcsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeVpcsResponse
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.Region
 import software.amazon.awssdk.services.ec2.model.Vpc
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * How `down` counts the clusters that still use the account bucket: the tagged VPCs naming the
@@ -29,14 +33,14 @@ class ClusterCensusTest {
 
     private fun regionalEc2(
         vpcs: Map<String, List<String>>,
-        beforeAnswer: () -> Unit = {},
+        beforeAnswer: (region: String) -> Unit = {},
     ) = object : RegionalClients {
         override fun ec2(region: String): Ec2Client =
             mock<Ec2Client>().also { client ->
                 doCallRealMethod().whenever(client).describeVpcsPaginator(any<DescribeVpcsRequest>())
                 whenever(client.describeVpcs(any<DescribeVpcsRequest>())).thenAnswer { invocation ->
                     requests += invocation.getArgument<DescribeVpcsRequest>(0)
-                    beforeAnswer()
+                    beforeAnswer(region)
                     DescribeVpcsResponse
                         .builder()
                         .vpcs(vpcs[region].orEmpty().map { Vpc.builder().vpcId(it).build() })
@@ -84,12 +88,49 @@ class ClusterCensusTest {
         val census =
             ClusterCensus(
                 profileEc2(*regions),
-                regionalEc2(emptyMap()) {
+                regionalEc2(emptyMap()) { _ ->
                     asked.countDown()
                     check(asked.await(5, TimeUnit.SECONDS)) { "The regions were asked one after the other" }
                 },
             )
 
         assertThat(census.clusterVpcs(bucket)).isEmpty()
+    }
+
+    @Test
+    fun `a region that cannot be reached fails the census and names the region`() {
+        val timeout = SdkClientException.create("Unable to execute HTTP request: Read timed out")
+        val census =
+            ClusterCensus(
+                profileEc2("us-west-2", "ap-south-1"),
+                regionalEc2(mapOf("us-west-2" to listOf("vpc-a"))) { region -> if (region == "ap-south-1") throw timeout },
+            )
+
+        assertThatThrownBy { census.clusterVpcs(bucket) }
+            .isInstanceOf(ClusterCensusException::class.java)
+            .hasMessageContaining("ap-south-1")
+            .hasCause(timeout)
+    }
+
+    /** An EC2 server error is retried like every other EC2 describe call (`withAwsRetry`). */
+    @Test
+    fun `an EC2 server error in one region is retried`() {
+        val failures = AtomicInteger()
+        val census =
+            ClusterCensus(
+                profileEc2("ap-south-1"),
+                regionalEc2(mapOf("ap-south-1" to listOf("vpc-a"))) {
+                    if (failures.getAndIncrement() == 0) {
+                        throw Ec2Exception
+                            .builder()
+                            .statusCode(503)
+                            .message("Service Unavailable")
+                            .build()
+                    }
+                },
+            )
+
+        assertThat(census.clusterVpcs(bucket)).containsExactly(ClusterVpc("ap-south-1", "vpc-a"))
+        assertThat(failures.get()).isEqualTo(2)
     }
 }

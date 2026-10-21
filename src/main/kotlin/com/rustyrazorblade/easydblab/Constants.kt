@@ -219,6 +219,9 @@ object Constants {
         // eventual consistency, not a missing instance.
         const val EC2_INSTANCE_NOT_FOUND = "InvalidInstanceID.NotFound"
 
+        // EC2 error code for a VPC id it does not know: the VPC has been deleted.
+        const val EC2_VPC_NOT_FOUND = "InvalidVpcID.NotFound"
+
         // IAM Role Names
         object Roles {
             const val EC2_INSTANCE_ROLE = "EasyDBLabEC2Role"

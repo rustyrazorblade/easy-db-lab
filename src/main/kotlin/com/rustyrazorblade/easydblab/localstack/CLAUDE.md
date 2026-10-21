@@ -64,21 +64,8 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
   `LocalGrafana.isRunning` on its port (`LocalStack.GrafanaNotRunning` and nothing changed when it does not
   answer), installs and reloads (`LocalStack.DashboardsInstalled`, "Using packaged dashboards" when no `--from`).
   It never calls docker.
-- Every dashboard reload (`local dashboards`, a `local create` re-run) goes through `DashboardReload`: reload, then
-  look up every uid of the installed tree (`LocalGrafana.servesDashboard`), and reload again until all are served
-  (`Constants.LocalStack.DASHBOARD_RELOAD_ATTEMPTS` 10, `DASHBOARD_RELOAD_INTERVAL_MS` 2000, resilience4j
-  `createBooleanPollRetryConfig`); a dashboard with no uid is not looked up. Grafana 13.2.2 answers a reload 200
-  whatever its walk found, and right after the rename Docker Desktop's file sharing can show the container the old,
-  removed `current`, empty (measured: a process in a container saw 0 files in 11 of 60 swaps, the right tree 0.5s
-  later); that walk deletes every provisioned dashboard and saves none, and nothing walks again, because a provider
-  with `updateIntervalSeconds` of 10 or less watches file events instead of polling. Still missing after the last
-  reload is `GrafanaDashboardsNotServed`, reported by `reportingReloadRefusal` as `LocalStack.DashboardsNotServed`
-  (the missing uids, the restart hint), and fails the command. `LocalStackDashboardsReloadIntegrationTest` swaps the
-  packaged and a one-dashboard tree 10 times against a real Grafana and checks each install returns with its tree
-  served.
-- `LocalGrafanaHttp`: `GET /api/health`, `POST /api/admin/provisioning/{datasources,dashboards}/reload` and
-  `GET /api/dashboards/uid/<uid>` (200 served, 404 not, anything else an error) as the server admin
-  (`Constants.Grafana.ADMIN_USER`, basic auth), direct with `Proxy.NO_PROXY`.
+- `LocalGrafanaHttp`: `GET /api/health`, and `POST /api/admin/provisioning/{datasources,dashboards}/reload` as the
+  server admin (`Constants.Grafana.ADMIN_USER`, basic auth), direct with `Proxy.NO_PROXY`.
 - Wiring: `localStackModule`.
 
 ## Rules the stack encodes

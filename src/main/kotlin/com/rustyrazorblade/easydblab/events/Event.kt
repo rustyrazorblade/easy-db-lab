@@ -6337,32 +6337,6 @@ sealed interface Event {
         }
 
         /**
-         * A running Grafana answered every dashboard reload but, after the last one, still did not serve
-         * these dashboards of the tree the command had installed. The files on disk are the new ones; a
-         * restart loads them.
-         *
-         * @property directory the stack directory.
-         * @property grafanaUrl the Grafana that was asked.
-         * @property missing the uids of the dashboards it does not serve.
-         * @property reloads how many reloads were asked.
-         */
-        @Serializable
-        @SerialName("LocalStack.DashboardsNotServed")
-        data class DashboardsNotServed(
-            val directory: String,
-            val grafanaUrl: String,
-            val missing: List<String>,
-            val reloads: Int,
-        ) : LocalStack {
-            override fun toDisplayString(): String =
-                "The dashboards in $directory were replaced, but after $reloads reloads Grafana at $grafanaUrl " +
-                    "still does not serve ${missing.size} of them: ${missing.joinToString(", ")}.\n" +
-                    "Load them with: cd $directory && docker compose restart grafana"
-
-            override fun isError(): Boolean = true
-        }
-
-        /**
          * `local dashboards` found no Grafana answering for the stack, and changed nothing.
          *
          * @property directory the stack directory.

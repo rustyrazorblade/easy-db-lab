@@ -85,35 +85,6 @@ class LocalGrafanaHttpTest {
     }
 
     @Test
-    fun `a dashboard Grafana answers by uid as the server admin is served`() {
-        server.enqueue(MockResponse(code = 200, body = """{"dashboard":{"uid":"probe"}}"""))
-
-        assertThat(grafana.servesDashboard(server.port, "probe")).isTrue()
-
-        val request = request()
-        assertThat(request.method).isEqualTo("GET")
-        assertThat(request.url.encodedPath).isEqualTo("/api/dashboards/uid/probe")
-        assertThat(request.headers["Authorization"]).isEqualTo(Credentials.basic("admin", "admin"))
-    }
-
-    @Test
-    fun `a dashboard Grafana answers 404 for is not served`() {
-        server.enqueue(MockResponse(code = 404, body = """{"message":"Dashboard not found"}"""))
-
-        assertThat(grafana.servesDashboard(server.port, "probe")).isFalse()
-    }
-
-    @Test
-    fun `any other answer to a dashboard lookup fails with Grafana's status and answer`() {
-        server.enqueue(MockResponse(code = 500, body = """{"message":"database is locked"}"""))
-
-        assertThatThrownBy { grafana.servesDashboard(server.port, "probe") }
-            .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("500")
-            .hasMessageContaining("database is locked")
-    }
-
-    @Test
     fun `a refused reload fails with Grafana's status and answer`() {
         server.enqueue(MockResponse(code = 403, body = """{"message":"Permission denied"}"""))
 

@@ -1076,17 +1076,6 @@ object Constants {
         /** The provisioned tree under [DASHBOARDS_DIR], which Grafana's dashboard provider sweeps. */
         const val DASHBOARDS_TREE = "current"
 
-        /**
-         * How many dashboard reloads an install asks of a running Grafana before it gives up on Grafana
-         * serving the new tree. Right after the tree is renamed into [DASHBOARDS_TREE], Docker Desktop's
-         * file sharing can show the container the old, removed directory, empty, for under half a second
-         * (measured); a reload then loads nothing and still answers 200.
-         */
-        const val DASHBOARD_RELOAD_ATTEMPTS = 10
-
-        /** The wait between the reloads of [DASHBOARD_RELOAD_ATTEMPTS]. */
-        const val DASHBOARD_RELOAD_INTERVAL_MS = 2_000L
-
         /** The port the read gate and the signer listen on inside the project network. */
         const val STORE_PORT = 8080
 

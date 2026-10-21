@@ -20,8 +20,8 @@ import com.rustyrazorblade.easydblab.services.TemplateService
  * stalled Grafana's start for minutes, while no dashboard a local stack installs uses one; its data
  * source proxy route may reach only the stack's own backends; and it answers only its published
  * loopback URL, redirecting any other Host to it. Its one
- * dashboard provider sweeps the provisioned tree in `dashboards/current`; that tree and the
- * staging trees beside it are written outside the composer. The documents web server is the
+ * dashboard provider sweeps the provisioned tree in `dashboards/current`; that tree is written,
+ * file by file in place, outside the composer. The documents web server is the
  * cluster's, forwarding to the read gate (live) or serving the export's copy from disk (offline).
  */
 object GrafanaViewPart {

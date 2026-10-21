@@ -25,14 +25,15 @@ import java.time.Duration
 import java.util.Base64
 
 /**
- * A dashboard install with a reload returns only once the running Grafana serves the new tree.
+ * A dashboard install with its one reload returns with the running Grafana serving the new tree.
  *
- * Grafana 13.2.2 reads the tree through a bind mount of the stack's `dashboards/` directory. Right
- * after the installer renames a new tree into `current`, Docker Desktop's file sharing can still show
- * the container the old, removed directory, empty, for a few hundred milliseconds. A reload that walks
- * it then deletes every provisioned dashboard, saves none, and answers 200, and nothing walks the tree
- * again. Each cycle here swaps the packaged tree and a one-dashboard tree with a new uid, as
- * `local dashboards --from` does, and checks with no wait that Grafana serves the tree just installed.
+ * Grafana 13.2.2 reads the tree through a bind mount of the stack's `dashboards/` directory. An
+ * installer that renamed a new tree into `current` lost it: right after the rename, Docker Desktop's
+ * file sharing could still show the container the old, removed directory, empty, and a reload that
+ * walked it deleted every provisioned dashboard, saved none, and answered 200, and nothing walked the
+ * tree again. The installer now writes each file in place and keeps the directory. Each cycle here
+ * swaps the packaged tree and a one-dashboard tree with a new uid, as `local dashboards --from` does,
+ * and checks with no wait that Grafana serves the tree just installed.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class LocalStackDashboardsReloadIntegrationTest {

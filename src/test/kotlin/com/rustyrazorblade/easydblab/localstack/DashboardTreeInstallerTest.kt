@@ -6,12 +6,15 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
-import java.io.IOException
+import java.nio.file.Files
+import java.nio.file.attribute.BasicFileAttributes
 
 /**
- * Putting a dashboard tree where a local stack's Grafana reads it: staged beside the provisioned
- * tree, inside the directory Grafana mounts, then renamed into place, so Grafana never reads a
- * half-written tree.
+ * Putting a dashboard tree where a local stack's Grafana reads it: written file by file into the
+ * provisioned tree itself, each file renamed over its old copy, and the files the new tree drops
+ * removed. The provisioned directory is never renamed or removed: right after such a swap, Docker
+ * Desktop's file sharing can show the container the old, removed directory, empty, and a Grafana
+ * reload of that view deletes every dashboard.
  */
 class DashboardTreeInstallerTest {
     @TempDir
@@ -28,6 +31,8 @@ class DashboardTreeInstallerTest {
             .sorted()
             .toList()
 
+    private fun identity(dir: File): Any = Files.readAttributes(dir.toPath(), BasicFileAttributes::class.java).fileKey()
+
     @Test
     fun `a first install writes the tree as the provisioned tree`() {
         DashboardTreeInstaller.install(stack, mapOf("cassandra/a.json" to "{}", "home/h.json" to "{\"h\":1}"))
@@ -37,41 +42,42 @@ class DashboardTreeInstallerTest {
     }
 
     @Test
-    fun `a new tree replaces the old one whole, and nothing is left beside it`() {
-        DashboardTreeInstaller.install(stack, mapOf("old/gone.json" to "{}", "kept/k.json" to "{\"v\":1}"))
+    fun `a new tree adds its new files, replaces changed ones and removes dropped ones`() {
+        DashboardTreeInstaller.install(
+            stack,
+            mapOf("old/gone.json" to "{}", "kept/k.json" to "{\"v\":1}", "kept/drop.json" to "{}"),
+        )
 
-        DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":2}"))
+        DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":2}", "new/n.json" to "{\"n\":1}"))
 
-        assertThat(filesUnder(current)).containsExactly("kept/k.json")
+        assertThat(filesUnder(current)).containsExactly("kept/k.json", "new/n.json")
         assertThat(File(current, "kept/k.json").readText()).isEqualTo("{\"v\":2}")
+        assertThat(File(current, "new/n.json").readText()).isEqualTo("{\"n\":1}")
+        assertThat(current.list()).containsExactlyInAnyOrder("kept", "new")
         assertThat(dashboards.list()).containsExactly(Constants.LocalStack.DASHBOARDS_TREE)
     }
 
     @Test
-    fun `when the new tree cannot be renamed into place, the old tree is put back`() {
+    fun `the provisioned directory and a kept folder stay the same directories across installs`() {
         DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":1}"))
+        val tree = identity(current)
+        val folder = identity(File(current, "kept"))
 
-        assertThatThrownBy {
-            DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":2}"), moveIntoPlace = {
-                _,
-                _,
-                ->
-                throw IOException("disk said no")
-            })
-        }.isInstanceOf(IOException::class.java)
+        DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":2}", "other/o.json" to "{}"))
+        DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{\"v\":3}"))
 
-        assertThat(filesUnder(current)).containsExactly("kept/k.json")
-        assertThat(File(current, "kept/k.json").readText()).isEqualTo("{\"v\":1}")
-        assertThat(dashboards.list()).containsExactly(Constants.LocalStack.DASHBOARDS_TREE)
+        assertThat(identity(current)).isEqualTo(tree)
+        assertThat(identity(File(current, "kept"))).isEqualTo(folder)
     }
 
     @Test
-    fun `an old tree left aside by an install that was stopped is removed by the next install`() {
-        File(dashboards, ".previous-123/old/o.json").apply { parentFile.mkdirs() }.writeText("{}")
+    fun `a temporary file an install that was stopped left in the tree is removed by the next install`() {
+        DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{}"))
+        File(current, "kept/.k.json.123.tmp").writeText("{")
 
         DashboardTreeInstaller.install(stack, mapOf("kept/k.json" to "{}"))
 
-        assertThat(dashboards.list()).containsExactly(Constants.LocalStack.DASHBOARDS_TREE)
+        assertThat(filesUnder(current)).containsExactly("kept/k.json")
     }
 
     @Test

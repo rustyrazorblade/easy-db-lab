@@ -33,10 +33,15 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
    that is `compose.override.yml`, the manifest, or under `data/`, `cache/`, `grafana-data/` or `dashboards/`.
 4. The dashboard tree goes in separately: `LocalStackDashboards.install(dir, manifest, source, reload)` renders a
    `DashboardTreeSource` with the live context (`cluster` and `experiment` null, the manifest's tenants, the
-   documents URL on its port) through `GrafanaDashboardTreeWriter.render`, and `DashboardTreeInstaller` stages
-   it in `dashboards/.staging-*`, renames the old `current` aside, renames the staged tree into place and
-   removes the old one. When that rename fails it renames the old tree back; it first removes any
-   `.previous-*` a stopped install left. Sources: `PackagedDashboardTree` (the core catalog plus every packaged kit,
+   documents URL on its port) through `GrafanaDashboardTreeWriter.render`, and `DashboardTreeInstaller` writes
+   it into `dashboards/current` in place: each file to a temporary file (not `*.json`) in its folder directory,
+   renamed over the old copy, folder directories created as needed, then every file and folder of the previous
+   tree that is not in the new one removed. `current` itself is never renamed or removed: right after such a
+   rename Docker Desktop's file sharing can show the container the old, removed directory, empty, and Grafana
+   13.2.2's reload of that view deletes every provisioned dashboard and answers 200, with nothing walking the tree
+   again (a provider with `updateIntervalSeconds` of 10 or less watches file events instead of polling).
+   `LocalStackDashboardsReloadIntegrationTest` swaps the packaged and a one-dashboard tree 10 times against a real
+   Grafana and checks each install's single reload leaves its tree served. Sources: `PackagedDashboardTree` (the core catalog plus every packaged kit,
    `PackagedKitDashboards`, one folder per instance as a cluster installs it: `<kit>` and `<kit>-<extension>`)
    and `DirectoryDashboardTree` (`--from`, `<folder>/<file>.json` only).
 
@@ -125,8 +130,8 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
 - Grafana takes its `GF_*` settings from `GrafanaServerSettings` and its datasources from
   `GrafanaDatasourceSet.build(spec.tenantSet, BackendUrls.LOCAL_COMPOSE)`. Its dashboard provider sweeps
   `/var/lib/easy-db-lab/dashboards/current`, which is the stack directory's `dashboards/current`. The
-  composer writes no dashboards: the command that writes the tree stages it beside `current` under
-  `dashboards/` and renames it into place.
+  composer writes no dashboards: the command that writes the tree writes each file into `current` in
+  place (`DashboardTreeInstaller`) and never replaces the directory.
 - Only Grafana and the documents web server are published, on `127.0.0.1`. Component state lives under
   `cache/<component>`, Grafana's under `grafana-data/`; the backends and Grafana run as root so they can
   write the directories docker creates.

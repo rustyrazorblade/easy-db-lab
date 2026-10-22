@@ -63,6 +63,8 @@ data class ThanosDeletion(
  * @property project the export's project name, which each rewrite project's name starts with.
  * @property owner the operator's `uid:gid`.
  * @property eventBus reports a rewrite project that cannot be removed.
+ * @property shutdownHooks where the hook that kills and removes a running rewrite's project when the
+ *   JVM is killed (Ctrl-C, SIGTERM) is registered while thanos runs.
  */
 class ThanosBlockRewrite(
     private val compose: ComposeCli,
@@ -70,6 +72,7 @@ class ThanosBlockRewrite(
     private val project: String,
     private val owner: String,
     private val eventBus: EventBus,
+    private val shutdownHooks: ShutdownHooks = JvmShutdownHooks,
 ) : BlockRewrite {
     private companion object {
         const val SERVICE = "thanos"
@@ -134,15 +137,30 @@ class ThanosBlockRewrite(
         File(directory, Constants.LocalStack.COMPOSE_FILE).writeText(ComposeFile(mapOf(SERVICE to service)).toYaml())
         val name = "$project-rewrite-${tenantDir.name}"
         val removal = ProjectRemoval(compose, eventBus)
+        // Killing the JVM does not stop the compose CLI's container: the hook kills and removes it.
+        val shutdown =
+            ShutdownGuard(shutdownHooks, "remove $name") {
+                compose.run(directory, name, listOf("kill"), STOP_TIMEOUT)
+                removal.down(directory, name)
+            }
         val result =
             try {
                 compose.run(directory, name, listOf("run", "--rm", SERVICE), TIMEOUT)
             } catch (e: Exception) {
-                removal.down(directory, name)?.let(e::addSuppressed)
+                shutdown.use { it.run { removal.down(directory, name)?.let(e::addSuppressed) } }
                 throw e
             }
-        if (result.timedOut) throw stopAfterTimeout(directory, name, tenantDir.name, staging, result)
-        removal.down(directory, name)
+        var timeout: IllegalStateException? = null
+        shutdown.use {
+            it.run {
+                if (result.timedOut) {
+                    timeout = stopAfterTimeout(directory, name, tenantDir.name, staging, result)
+                } else {
+                    removal.down(directory, name)
+                }
+            }
+        }
+        timeout?.let { throw it }
         check(result.exitCode == 0) {
             "thanos could not rewrite the blocks of ${tenantDir.name} (exit ${result.exitCode}):\n${result.output}"
         }

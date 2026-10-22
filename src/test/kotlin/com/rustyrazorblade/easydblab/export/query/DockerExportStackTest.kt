@@ -49,6 +49,20 @@ class DockerExportStackTest {
             if (call.route == "/ready" && readyAfter-- > 0) ObservabilityResponse(503, "not ready") else ObservabilityResponse(200, "ready")
         }
     private val events = mutableListOf<Event>()
+
+    /** The JVM's shutdown hooks, as a test sees them: registered, run by hand, removed. */
+    private val hooks =
+        object : ShutdownHooks {
+            val registered = mutableListOf<Thread>()
+
+            override fun add(hook: Thread) {
+                registered += hook
+            }
+
+            override fun remove(hook: Thread) {
+                registered -= hook
+            }
+        }
     private val eventBus =
         EventBus().apply {
             addListener(
@@ -81,6 +95,7 @@ class DockerExportStackTest {
                 },
                 readyTimeout = Duration.ofSeconds(3),
                 pollInterval = Duration.ofMillis(1),
+                shutdownHooks = hooks,
             ),
         )
 
@@ -130,6 +145,46 @@ class DockerExportStackTest {
         )
         assertThat(logFile.readText()).contains("mimir | the log line")
         assertThat(events).isEmpty()
+    }
+
+    /** A killed export (Ctrl-C, SIGTERM) left both stacks' seven containers running. */
+    @Test
+    fun `a stack that is up has a shutdown hook that saves its logs and removes it, the way closing does`() {
+        start()
+        val hook = hooks.registered.single()
+        commands.clear()
+
+        hook.run()
+
+        assertThat(commands).containsExactly(
+            listOf("edl-export-1-reader", "logs", "--no-color", "--timestamps"),
+            listOf("edl-export-1-reader", "down", "--remove-orphans", "-t", "60"),
+        )
+        assertThat(logFile.readText()).contains("mimir | the log line")
+    }
+
+    @Test
+    fun `closing a stack removes its shutdown hook, and a hook that already removed it leaves closing nothing to do`() {
+        val closed = start()
+        closed.close()
+        assertThat(hooks.registered).isEmpty()
+
+        val killed = start()
+        hooks.registered.single().run()
+        commands.clear()
+        killed.close()
+
+        assertThat(commands).isEmpty()
+        assertThat(hooks.registered).isEmpty()
+    }
+
+    @Test
+    fun `a project that does not start leaves no shutdown hook behind`() {
+        upResult = ComposeResult(1, "store-check exited 1")
+
+        assertThatThrownBy { start() }
+
+        assertThat(hooks.registered).isEmpty()
     }
 
     @Test

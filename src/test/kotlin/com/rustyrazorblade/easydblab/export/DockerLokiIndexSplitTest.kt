@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.export.query.ComposeCli
 import com.rustyrazorblade.easydblab.export.query.ComposeResult
+import com.rustyrazorblade.easydblab.export.query.ShutdownHooks
 import com.rustyrazorblade.easydblab.localstack.ComposeFile
 import com.rustyrazorblade.easydblab.localstack.LocalImages
 import org.assertj.core.api.Assertions.assertThat
@@ -32,12 +33,26 @@ class DockerLokiIndexSplitTest {
     /** What each `docker compose logs` of the service answers, in turn; the last one repeats. */
     private var logs = listOf("loki-1  | level=info msg=\"Loki started\"", "loki-1  | level=info msg=\"single compaction finished\"")
     private var running = "abc123"
+
+    /** The JVM's shutdown hooks; [killAtStart] runs them right after `up`, as a SIGTERM would. */
+    private val hooks = mutableListOf<Thread>()
+    private var killAtStart = false
+    private val shutdownHooks =
+        object : ShutdownHooks {
+            override fun add(hook: Thread) {
+                hooks += hook
+            }
+
+            override fun remove(hook: Thread) {
+                hooks -= hook
+            }
+        }
     private val compose =
         ComposeCli { _, name, args, _ ->
             assertThat(name).isEqualTo("edl-export-loki-1")
             runs += args
             when {
-                args.first() == "up" -> up
+                args.first() == "up" -> up.also { if (killAtStart) hooks.toList().forEach { it.run() } }
                 args ==
                     listOf(
                         "logs",
@@ -57,9 +72,26 @@ class DockerLokiIndexSplitTest {
             pollInterval = Duration.ofMillis(1),
             timeout = timeout,
             projectName = { "edl-export-loki-1" },
+            shutdownHooks = shutdownHooks,
         ).split(store, project)
 
     private fun service() = ComposeFile.fromYaml(File(project, Constants.LocalStack.COMPOSE_FILE).readText()).services.getValue("loki")
+
+    /** A killed export left Loki's compactor container running. */
+    @Test
+    fun `an export killed while the compactor runs saves its logs and removes the project once, and a finished split leaves no hook`() {
+        killAtStart = true
+
+        split()
+
+        val saved = listOf("logs", "--no-color", "--timestamps")
+        val down = runs.filter { it.first() == "down" }
+        // The hook ran right after up, before the split looked at the compactor's log.
+        assertThat(runs.take(3)).containsExactly(listOf("up", "-d"), saved, down.first())
+        assertThat(down).hasSize(1)
+        assertThat(runs.count { it == saved }).isEqualTo(1)
+        assertThat(hooks).isEmpty()
+    }
 
     @Test
     fun `Loki's compactor runs with no network, no credentials, retention and deletion off, as the operator`() {

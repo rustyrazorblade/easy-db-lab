@@ -51,6 +51,7 @@ class StackDefinition(
  * @property pollInterval the gap between two `/ready` looks.
  * @property beforeStart runs on a project's directory once its files are written; where a test puts
  *   its `compose.override.yml`. Production does nothing.
+ * @property shutdownHooks where each project registers the hook that removes it when the JVM is killed.
  */
 class StackRuntime(
     val compose: ComposeCli,
@@ -62,6 +63,7 @@ class StackRuntime(
     val readyTimeout: Duration = Duration.ofMinutes(Constants.Export.Query.READY_TIMEOUT_MINUTES),
     val pollInterval: Duration = Duration.ofSeconds(Constants.Export.Query.READY_POLL_SECONDS),
     val beforeStart: (File) -> Unit = {},
+    val shutdownHooks: ShutdownHooks = JvmShutdownHooks,
 )
 
 /**
@@ -128,6 +130,8 @@ internal class ProjectRemoval(
  * @property ports the published loopback port of each backend port.
  * @property client the one HTTP client of every request to this project.
  * @property http the backends for a tenant over [ports] and [client].
+ * @property shutdown removes the project, saving its logs first, once: on [close], or from the JVM
+ *   shutdown hook when the export is killed (Ctrl-C, SIGTERM) while the project runs.
  */
 class DockerExportStack private constructor(
     override val directory: File,
@@ -137,6 +141,7 @@ class DockerExportStack private constructor(
     private val ports: Map<Int, Int>,
     private val client: OkHttpClient,
     private val http: (String, Map<Int, Int>, OkHttpClient) -> ObservabilityHttp,
+    private val shutdown: ShutdownGuard,
 ) : ExportStack {
     companion object {
         private val COMMAND_TIMEOUT: Duration = Duration.ofMinutes(Constants.Export.Query.COMPOSE_COMMAND_TIMEOUT_MINUTES)
@@ -158,6 +163,11 @@ class DockerExportStack private constructor(
             definition.files.forEach { (path, bytes) -> File(directory, path).apply { parentFile.mkdirs() }.writeBytes(bytes) }
             runtime.beforeStart(directory)
             val client = runtime.client()
+            val shutdown =
+                ShutdownGuard(runtime.shutdownHooks, "remove $project") {
+                    removal.saveLogs(directory, project)
+                    removal.down(directory, project)
+                }
             try {
                 val up = compose.run(directory, project, listOf("up", "-d"), COMMAND_TIMEOUT)
                 check(up.exitCode == 0) { "docker compose could not start $project (exit ${up.exitCode}):\n${up.output}" }
@@ -165,16 +175,23 @@ class DockerExportStack private constructor(
                     definition.published
                         .flatMap { (service, servicePorts) -> servicePorts.map { it to port(compose, directory, project, service, it) } }
                         .toMap()
-                val started = DockerExportStack(directory, project, compose, removal, ports, client, runtime.http)
+                val started = DockerExportStack(directory, project, compose, removal, ports, client, runtime.http, shutdown)
                 definition.published.forEach { (service, servicePorts) ->
                     started.awaitReady(service, servicePorts.first(), runtime.readyTimeout, runtime.pollInterval)
                 }
                 return started
             } catch (e: Exception) {
-                val logs = removal.saveLogs(directory, project)
-                val failed = IllegalStateException("${e.message}\nThe project's docker compose logs are in ${logs.path}", e)
-                removal.down(directory, project)?.let(failed::addSuppressed)
-                release(client)
+                var failed = IllegalStateException(e.message, e)
+                try {
+                    shutdown.run {
+                        val logs = removal.saveLogs(directory, project)
+                        failed = IllegalStateException("${e.message}\nThe project's docker compose logs are in ${logs.path}", e)
+                        removal.down(directory, project)?.let(failed::addSuppressed)
+                    }
+                } finally {
+                    shutdown.close()
+                    release(client)
+                }
                 throw failed
             }
         }
@@ -214,9 +231,9 @@ class DockerExportStack private constructor(
 
     override fun close() {
         try {
-            removal.saveLogs(directory, project)
-            removal.down(directory, project)
+            shutdown.run()
         } finally {
+            shutdown.close()
             release(client)
         }
     }

@@ -92,5 +92,5 @@ class DockerQueryRuntime(
         )
 
     override fun rewrite(work: QueryWorkDirectory): BlockRewrite =
-        ThanosBlockRewrite(runtime.compose, work.projects, work.project, work.owner(), runtime.eventBus)
+        ThanosBlockRewrite(runtime.compose, work.projects, work.project, work.owner(), runtime.eventBus, runtime.shutdownHooks)
 }

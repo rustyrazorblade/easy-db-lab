@@ -4,7 +4,10 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.export.query.ComposeCli
+import com.rustyrazorblade.easydblab.export.query.JvmShutdownHooks
 import com.rustyrazorblade.easydblab.export.query.ProjectRemoval
+import com.rustyrazorblade.easydblab.export.query.ShutdownGuard
+import com.rustyrazorblade.easydblab.export.query.ShutdownHooks
 import com.rustyrazorblade.easydblab.localstack.ComposeFile
 import com.rustyrazorblade.easydblab.localstack.ComposeMount
 import com.rustyrazorblade.easydblab.localstack.ComposeService
@@ -39,6 +42,7 @@ import java.time.Instant
  * @property pollInterval the gap between two looks at the log.
  * @property timeout how long the one compaction may take.
  * @property projectName the compose project's name, new for each split.
+ * @property shutdownHooks where the hook that removes the project when the export is killed is registered while it runs.
  */
 class DockerLokiIndexSplit(
     private val compose: ComposeCli,
@@ -46,6 +50,7 @@ class DockerLokiIndexSplit(
     private val pollInterval: Duration = Duration.ofSeconds(Constants.Export.LokiSplit.POLL_SECONDS),
     private val timeout: Duration = Duration.ofMinutes(Constants.Export.LokiSplit.TIMEOUT_MINUTES),
     private val projectName: () -> String = { "edl-export-loki-${ExportWorkDirectory.newId()}" },
+    private val shutdownHooks: ShutdownHooks = JvmShutdownHooks,
 ) : LokiIndexSplit {
     private companion object {
         val SERVICE = Constants.LocalStack.Services.LOKI
@@ -68,13 +73,18 @@ class DockerLokiIndexSplit(
         }
         val name = projectName()
         val removal = ProjectRemoval(compose, eventBus)
-        try {
-            val up = compose.run(project, name, listOf("up", "-d"), COMMAND_TIMEOUT)
-            check(up.exitCode == 0) { "docker compose could not start Loki's compactor (exit ${up.exitCode}):\n${up.output}" }
-            awaitRun(project, name, removal.logFile(project))
-        } finally {
+        // The same removal when the export is killed (Ctrl-C, SIGTERM) while the compactor runs.
+        ShutdownGuard(shutdownHooks, "remove $name") {
             removal.saveLogs(project, name)
             removal.down(project, name)
+        }.use { shutdown ->
+            try {
+                val up = compose.run(project, name, listOf("up", "-d"), COMMAND_TIMEOUT)
+                check(up.exitCode == 0) { "docker compose could not start Loki's compactor (exit ${up.exitCode}):\n${up.output}" }
+                awaitRun(project, name, removal.logFile(project))
+            } finally {
+                shutdown.run()
+            }
         }
     }
 

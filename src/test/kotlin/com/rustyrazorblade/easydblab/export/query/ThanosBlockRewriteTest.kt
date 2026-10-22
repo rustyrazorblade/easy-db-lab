@@ -32,11 +32,28 @@ class ThanosBlockRewriteTest {
     private var killResult = ComposeResult(0, "")
     private var downResult = ComposeResult(0, "")
     private var stillThere = ""
+
+    /** The JVM's shutdown hooks; [killDuringRun] runs them while thanos runs, as a SIGTERM would. */
+    private val hooks = mutableListOf<Thread>()
+    private var killDuringRun = false
+    private val shutdownHooks =
+        object : ShutdownHooks {
+            override fun add(hook: Thread) {
+                hooks += hook
+            }
+
+            override fun remove(hook: Thread) {
+                hooks -= hook
+            }
+        }
     private val compose =
         ComposeCli { directory, project, args, _ ->
             runs += Triple(directory, project, args)
             when (args.first()) {
-                "run" -> runResult ?: ComposeResult(exitCode, "thanos output")
+                "run" -> {
+                    if (killDuringRun) hooks.toList().forEach { it.run() }
+                    runResult ?: ComposeResult(exitCode, "thanos output")
+                }
                 "kill" -> killResult
                 "down" -> downResult
                 "ps" -> ComposeResult(0, stillThere)
@@ -62,8 +79,30 @@ class ThanosBlockRewriteTest {
     private val tmpDir get() = File(staging, ".thanos-tmp-acme")
 
     private fun rewrite() =
-        ThanosBlockRewrite(compose, projects = File(work, "projects"), project = "edl-export-1", owner = "501:20", eventBus = eventBus)
-            .rewrite(tenantDir, tmpDir, listOf("01A", "01B"), listOf("x-1", "y-2"))
+        ThanosBlockRewrite(
+            compose,
+            projects = File(work, "projects"),
+            project = "edl-export-1",
+            owner = "501:20",
+            eventBus = eventBus,
+            shutdownHooks = shutdownHooks,
+        ).rewrite(tenantDir, tmpDir, listOf("01A", "01B"), listOf("x-1", "y-2"))
+
+    /** A killed export left thanos's one-off container running, writing into the staging directory. */
+    @Test
+    fun `an export killed while thanos runs kills and removes thanos's project, and a finished rewrite leaves no hook`() {
+        killDuringRun = true
+
+        rewrite()
+
+        val project = "edl-export-1-rewrite-acme"
+        assertThat(runs.map { listOf(it.second) + it.third }).containsSubsequence(
+            listOf(project, "run", "--rm", "thanos"),
+            listOf(project, "kill"),
+            listOf(project, "down", "--remove-orphans", "-t", "60"),
+        )
+        assertThat(hooks).isEmpty()
+    }
 
     private val timedOut = ComposeResult(-1, "docker compose run --rm thanos did not finish within PT6H", timedOut = true)
 

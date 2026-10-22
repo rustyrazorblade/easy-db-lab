@@ -153,6 +153,12 @@ its first `Constants.Export.Query.ANSWER_EXCERPT_CHARS` characters and how many 
 `/ready` look shares, and evicts its pool on close. thanos's `run` that outlasts its timeout (`ComposeResult.timedOut`)
 is followed by `kill`, `down --remove-orphans` and `ps -a -q`; it fails either way, saying the container may still be
 running unless all three confirm it is gone, and `MetricsExport` then deletes no source block and writes no index.
+A killed export (Ctrl-C, SIGTERM) removes its projects too: while a project runs, a JVM shutdown hook
+(`ShutdownGuard` over `ShutdownHooks`, `JvmShutdownHooks` in production, `StackRuntime.shutdownHooks`) does the
+same removal as the normal path (the stacks: save `compose.log`, then `down`; thanos's `run`: `kill`, then `down`;
+the tenant export's Loki split: save its log, then `down`). The removal runs at most once, a hook that fires during
+the normal one waits for it, and the hook is removed once the project is down. `KilledExportIntegrationTest` sends
+SIGTERM to a child JVM (`KilledExportHarness`) whose stack is up and checks no container is left.
 `StackRuntime.beforeStart` is where a test writes a project's `compose.override.yml`; production writes none. The
 reader's override puts MinIO on the signer's `store-egress` network (see `localstack/CLAUDE.md`).
 

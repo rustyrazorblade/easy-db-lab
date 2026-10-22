@@ -138,7 +138,7 @@ Tempo freshness (D19, changed by spikes S5 and S1-tempo): the local and reader T
 
 ### 5. `observability local dashboards <dir> [--from <dir>]` (D13)
 
-Read the manifest. Check Grafana `/api/health` on the recorded port; if it is down, fail and change nothing. Write the tree after the `GrafanaDashboardTreeWriter` pass into a staging directory inside the mounted parent, rename it into place, and call `POST /api/admin/provisioning/dashboards/reload`. No docker call, so no container is recreated. `--from` names any `<folder>/<file>.json` tree. Without it, the command uses the packaged catalog plus every kit's dashboards and says "using packaged dashboards".
+Read the manifest. Check Grafana `/api/health` on the recorded port; if it is down, fail and change nothing. Write each dashboard of the tree, after the `GrafanaDashboardTreeWriter` pass, in place in the provisioned tree, each file by an atomic rename (no staging directory, and the tree directory itself is never renamed), remove the files of the previous tree that are not in the new one, and call `POST /api/admin/provisioning/dashboards/reload` once. No docker call, so no container is recreated. `--from` names any `<folder>/<file>.json` tree. Without it, the command uses the packaged catalog plus every kit's dashboards and says "using packaged dashboards".
 
 ### 6. Export: selector, atomic write, tenant copy (D15)
 

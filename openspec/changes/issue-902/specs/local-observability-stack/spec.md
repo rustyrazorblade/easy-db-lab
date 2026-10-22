@@ -123,7 +123,7 @@ Local Grafana's datasources SHALL be built by the same code that builds a cluste
 
 ### Requirement: local dashboards refreshes only the dashboards of a running stack
 
-The CLI SHALL provide `observability local dashboards <dir> [--from <dir>]`.  It SHALL read the stack's manifest and check that its Grafana answers; if Grafana is not running it SHALL fail and change nothing.  It SHALL write the dashboard tree after the install-time pass into a staging directory beside the provisioned tree, rename it into place, and ask Grafana to reload its dashboard provisioning.  It SHALL NOT call docker, so no container is recreated, and no data is lost.  `--from` SHALL name any directory of `<folder>/<file>.json` dashboards, used with no rebuild.  With no `--from` it SHALL use the packaged core and kit dashboards and SHALL say so.
+The CLI SHALL provide `observability local dashboards <dir> [--from <dir>]`.  It SHALL read the stack's manifest and check that its Grafana answers; if Grafana is not running it SHALL fail and change nothing.  It SHALL write each dashboard of the tree, after the install-time pass, in place in the provisioned tree, each file by an atomic rename, remove the files of the previous tree that are not in the new one, and ask Grafana to reload its dashboard provisioning once.  It SHALL NOT call docker, so no container is recreated, and no data is lost.  `--from` SHALL name any directory of `<folder>/<file>.json` dashboards, used with no rebuild.  With no `--from` it SHALL use the packaged core and kit dashboards and SHALL say so.
 
 #### Scenario: New dashboards show with no restart
 - **WHEN** `observability local dashboards ~/lab-local` runs against a running stack

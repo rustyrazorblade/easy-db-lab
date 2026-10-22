@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -302,9 +303,9 @@ class PyroscopeManifestBuilder(
     /**
      * Builds the eBPF agent ConfigMap containing config.alloy.
      *
-     * config.alloy carries no `__KEY__` placeholders: the cluster name and the Pyroscope write URL
-     * are read at runtime from the `CLUSTER_NAME` and `PYROSCOPE_WRITE_URL` env vars set on the
-     * DaemonSet ([buildEbpfDaemonSet]). This is deliberate — Alloy's own `__meta_kubernetes_*`
+     * config.alloy carries no `__KEY__` placeholders: the cluster name, experiment, tenant and the
+     * Pyroscope write URL are read at runtime from the `CLUSTER_NAME`, `EXPERIMENT`, `TENANT` and
+     * `PYROSCOPE_WRITE_URL` env vars set on the DaemonSet ([buildEbpfDaemonSet]). This is deliberate — Alloy's own `__meta_kubernetes_*`
      * labels collide with the `__`/`__` template delimiters, so a build-time substitution of those
      * two values silently left them unresolved. `substitute()` runs with no resolvable variables
      * and leaves the Alloy meta labels untouched.
@@ -420,6 +421,7 @@ class PyroscopeManifestBuilder(
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()
+            .addToEnv(clusterConfigEnv("EXPERIMENT", "experiment"))
             .withSecurityContext(
                 SecurityContextBuilder()
                     .withPrivileged(true)

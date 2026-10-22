@@ -169,6 +169,10 @@ data class InitConfig(
     // The observability tenant the cluster's data belongs to. Fixed at init; a state file written
     // before tenants existed has no field and reads as the default tenant.
     val tenant: String = Constants.Observability.DEFAULT_TENANT,
+    // The experiment the cluster belongs to, within its tenant. Fixed at init, which stores the
+    // resolved value; a state file written before experiments existed has none and reads as the
+    // cluster's own <name>-<id> (ClusterState.experiment()).
+    val experiment: String? = null,
 ) {
     companion object {
         /**
@@ -374,6 +378,23 @@ data class ClusterState(
             "Invalid tenant '$tenant' in state.json: '${Constants.Observability.RESERVED_TENANT}' is reserved"
         }
         return tenant
+    }
+
+    /**
+     * The experiment this cluster belongs to, within [tenant]. A state with no init configuration,
+     * or one written before experiments existed, is an experiment of one: its own `<name>-<id>`.
+     *
+     * @throws IllegalStateException if state.json holds an experiment that breaks
+     *   [Constants.Observability.EXPERIMENT_PATTERN]. `init` checks it, but the value goes into
+     *   labels, JVM options and S3 keys, so a hand-edited one is refused here too.
+     */
+    fun experiment(): String {
+        val experiment = initConfig?.experiment ?: clusterLabelName()
+        check(Regex(Constants.Observability.EXPERIMENT_PATTERN).matches(experiment)) {
+            "Invalid experiment '$experiment' in state.json: an experiment must match " +
+                Constants.Observability.EXPERIMENT_PATTERN
+        }
+        return experiment
     }
 
     /** Returns the S3 metrics config ID: "edl-{name}-{clusterId}", truncated to API limit. */

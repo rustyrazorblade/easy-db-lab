@@ -4,6 +4,7 @@ import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
+import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -31,8 +32,8 @@ import kotlinx.serialization.builtins.ListSerializer
  * Exports metrics to Mimir, logs to Loki and traces to Tempo, each with the cluster's tenant.
  *
  * Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:CLUSTER_NAME}`,
- * `${env:TENANT}`), not `__KEY__` template substitution. `CLUSTER_NAME` and `TENANT` come from the
- * cluster-config ConfigMap.
+ * `${env:EXPERIMENT}`, `${env:TENANT}`), not `__KEY__` template substitution. `CLUSTER_NAME`,
+ * `EXPERIMENT` and `TENANT` come from the cluster-config ConfigMap.
  *
  * @property templateService Used for loading config files from classpath resources
  */
@@ -72,6 +73,17 @@ class OtelManifestBuilder(
             "http://${Constants.K8s.LOKI_APP_LABEL}.default.svc.cluster.local:${Constants.K8s.LOKI_HTTP_PORT}/otlp"
         private val LOCAL_TEMPO_ENDPOINT =
             "tempo.default.svc.cluster.local:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}"
+
+        /**
+         * The relabels every scrape job ends with: the cluster, its experiment and its tenant, read
+         * from the collector's environment. Every place that sets `cluster` sets all three.
+         */
+        private val CLUSTER_LABEL_RELABELS =
+            listOf(
+                PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+                PrometheusRelabelConfig(targetLabel = Constants.Observability.EXPERIMENT_LABEL, replacement = "\${env:EXPERIMENT}"),
+                PrometheusRelabelConfig(targetLabel = Constants.Observability.TENANT_LABEL, replacement = "\${env:TENANT}"),
+            )
     }
 
     /**
@@ -313,8 +325,7 @@ class OtelManifestBuilder(
         relabelConfigs =
             listOf(
                 PrometheusRelabelConfig(targetLabel = "instance", replacement = "\${env:HOSTNAME}:$port"),
-                PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
-            ),
+            ) + CLUSTER_LABEL_RELABELS,
     )
 
     private fun buildCiliumOperatorScrapeJob() =
@@ -376,8 +387,7 @@ class OtelManifestBuilder(
                     sourceLabels = listOf("__meta_kubernetes_pod_name"),
                     targetLabel = "instance",
                 ),
-                PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
-            ),
+            ) + CLUSTER_LABEL_RELABELS,
     )
 
     private fun renderScrapeJobs(jobs: List<PrometheusScrapeJob>): String {
@@ -411,8 +421,7 @@ class OtelManifestBuilder(
                     // Prometheus queries like job="postgres" continue to work across instances.
                     PrometheusRelabelConfig(targetLabel = "job", replacement = config.jobName),
                     PrometheusRelabelConfig(targetLabel = "instance", replacement = "\${env:HOSTNAME}:${config.port}"),
-                    PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
-                ),
+                ) + CLUSTER_LABEL_RELABELS,
             basicAuth = if (config.username.isNotBlank()) PrometheusBasicAuth(username = config.username) else null,
         )
 
@@ -471,8 +480,7 @@ class OtelManifestBuilder(
                             targetLabel = "instance",
                         ),
                         PrometheusRelabelConfig(targetLabel = "job", replacement = config.jobName),
-                        PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
-                    ),
+                    ) + CLUSTER_LABEL_RELABELS,
             basicAuth = if (config.username.isNotBlank()) PrometheusBasicAuth(username = config.username) else null,
         )
     }
@@ -579,6 +587,7 @@ class OtelManifestBuilder(
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()
+            .addToEnv(clusterConfigEnv("EXPERIMENT", "experiment"))
             .addToVolumeMounts(
                 VolumeMountBuilder()
                     .withName("config")

@@ -55,9 +55,10 @@ if (!defined $child) {
   exit 125;
 }
 if ($child == 0) {
-  exec { $ARGV[0] } @ARGV;
-  print STDERR "timeout: failed to run command '$ARGV[0]': $!\n";
-  POSIX::_exit($!{ENOENT} ? 127 : 126);
+  exec { $ARGV[0] } @ARGV or do {
+    print STDERR "timeout: failed to run command '$ARGV[0]': $!\n";
+    POSIX::_exit($!{ENOENT} ? 127 : 126);
+  };
 }
 
 my $timed_out = 0;
@@ -175,7 +176,7 @@ NOW=1756000000
 
 setup() {
   SANDBOX="$(mktemp -d)"
-  STUB_BIN="$SANDBOX/bin"
+  STUB_BIN="$STUB_DIR"
   PROFILE_DIR="$SANDBOX/profiles"
   CONFIG="$SANDBOX/profiling.json"
   STUB_LOG="$SANDBOX/stub.log"
@@ -184,11 +185,26 @@ setup() {
   OUTPUT="$SANDBOX/output.txt"
   ASPROF_STATE="$SANDBOX/asprof.state"
   CURL_BODY="$SANDBOX/curl.body"
-  mkdir -p "$STUB_BIN" "$PROFILE_DIR"
+  mkdir -p "$PROFILE_DIR"
   : >"$STUB_LOG"
   : >"$ASPROF_ARGV"
   : >"$CURL_LOG"
   : >"$CURL_BODY"
+}
+
+# The stubs are written once per run, not once per test, and each is run once as soon as it is
+# written. macOS checks the first exec of every newly written executable, and those checks queue
+# behind each other. Under load that writes and execs scripts the way `check`'s other tiers do, one
+# first exec took about ten seconds. Fresh stubs in every sandbox put four of those inside every
+# pass, so a test that times a pass with a real clock, such as the wait for a killed pass to reach
+# its uploads, ran out of time before the pass got there. Running the same file again is not
+# checked again, so after the warm-up below no test pays for it. The stubs keep no state of their
+# own: everything they record goes to the per-test files their environment names.
+STUB_DIR="$(mktemp -d)"
+trap 'rm -rf "$STUB_DIR" ${TIMEOUT_SHIM_DIR:+"$TIMEOUT_SHIM_DIR"}' EXIT
+
+write_stubs() {
+  local STUB_BIN="$STUB_DIR"
 
   # The stub models the one asprof behaviour the reconciler leans on: `status` answers with what the
   # JVM actually has attached, and that changes only when a start or stop *succeeds*. Modelling it
@@ -285,7 +301,19 @@ exit 0
 STUB
 
   chmod +x "$STUB_BIN"/*
+
+  # The warm-up runs: every stub, and the timeout shim when this run has one. What they record goes
+  # nowhere.
+  env STUB_LOG=/dev/null ASPROF_ARGV=/dev/null ASPROF_STATE=/dev/null "$STUB_BIN/asprof" \
+    >/dev/null 2>&1
+  "$STUB_BIN/cassandra-pid" >/dev/null 2>&1
+  env STUB_LOG=/dev/null "$STUB_BIN/cassandra-ready" >/dev/null 2>&1
+  env CURL_LOG=/dev/null CURL_BODY=/dev/null "$STUB_BIN/curl" >/dev/null 2>&1
+  if [[ -n "$TIMEOUT_SHIM_DIR" ]]; then
+    timeout 5 true
+  fi
 }
+write_stubs
 
 teardown() {
   [[ -n "${SANDBOX:-}" ]] && rm -rf "$SANDBOX"
@@ -937,7 +965,9 @@ test_successful_upload_is_marked_shipped() {
   log="$(curl_log)"
   assert_contains "the upload targets the ingest endpoint" "$log" "http://10.0.1.5:4040/ingest"
   assert_contains "the upload declares JFR format" "$log" "format=jfr"
-  assert_contains "the upload is labelled with hostname and cluster" "$log" "name=cassandra%7Bhostname%3Ddb0%2Ccluster%3Dtest-cluster%7D"
+  # A document with no experiment (written before experiments existed) is an experiment of one.
+  assert_contains "the upload is labelled with hostname, cluster, experiment and tenant" "$log" \
+    "name=cassandra%7Bhostname%3Ddb0%2Ccluster%3Dtest-cluster%2Cexperiment%3Dtest-cluster%2Cedl_tenant%3Dacme%7D"
   assert_contains "the upload sends raw octet-stream bytes" "$log" "application/octet-stream"
   assert_not_contains "the upload is not gzipped" "$log" "gzip"
 
@@ -1527,6 +1557,57 @@ test_the_reserved_tenant_makes_the_config_unreadable() {
   teardown
 }
 
+# --- experiment --------------------------------------------------------------
+
+# Every JFR profile carries cluster, experiment and edl_tenant, like every other signal, so the
+# experiment dashboards find it.
+test_uploads_carry_the_experiment_and_the_tenant() {
+  setup
+  write_config true '["-e", "cpu"]'
+  yq -i -p=json -o=json '.experiment = "2026-10-13-ab"' "$CONFIG"
+  make_chunk "cassandra-1-100.jfr" 600
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  assert_contains "the series name carries all three labels" "$(curl_log)" \
+    "name=cassandra%7Bhostname%3Ddb0%2Ccluster%3Dtest-cluster%2Cexperiment%3D2026-10-13-ab%2Cedl_tenant%3Dacme%7D"
+  assert_eq "and the experiment is recorded for a pass whose config goes unreadable" "2026-10-13-ab" \
+    "$(state_field '.experiment')"
+  teardown
+}
+
+# The counters reach Mimir as OTLP; they carry the same three labels as the profiles.
+test_the_counters_carry_the_experiment_and_the_tenant() {
+  setup
+  write_config true '["-e", "cpu"]'
+  yq -i -p=json -o=json '.experiment = "e1"' "$CONFIG"
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  local body
+  body="$(cat "$CURL_BODY")"
+  assert_eq "the counters carry the experiment" "e1" \
+    "$(jq -r '.resourceMetrics[0].resource.attributes[] | select(.key == "experiment") | .value.stringValue' <<<"$body")"
+  assert_eq "the counters carry the tenant" "acme" \
+    "$(jq -r '.resourceMetrics[0].resource.attributes[] | select(.key == "edl_tenant") | .value.stringValue' <<<"$body")"
+  teardown
+}
+
+# A pass whose document has gone unreadable keeps shipping under the experiment it last shipped under.
+test_an_unreadable_config_ships_under_the_last_experiment() {
+  setup
+  write_config true '["-e", "cpu"]'
+  yq -i -p=json -o=json '.experiment = "e1"' "$CONFIG"
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+  write_config true '["-e", "cpu"]' "1m" "60" "2147483648" 'Bad Tenant'
+  make_chunk "cassandra-1-100.jfr" 600
+  make_chunk "cassandra-1-200.jfr" 5
+  run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
+
+  assert_eq "the document is unreadable" "config_unreadable" "$(state_field '.configError')"
+  assert_contains "the pass ships under the last experiment" "$(curl_log)" "experiment%3De1%2C"
+  teardown
+}
+
 # --- observability -----------------------------------------------------------
 
 test_metrics_and_effective_state_are_written() {
@@ -2000,7 +2081,7 @@ test_the_effective_state_key_set_is_the_contract() {
   run_pass STUB_CASSANDRA_PID=4242 STUB_ASPROF_RUNNING=true >/dev/null
 
   assert_eq "the document carries exactly the keys the Kotlin reader models" \
-    "running,desiredEnabled,pid,args,loopInterval,retentionMinutes,maxBytes,pyroscopeUrl,clusterName,tenant,startedAt,chunksPending,chunksShipped,chunksRejected,shipFailures,prunedForAge,prunedForSize,bytesOnDisk,lastError,attachFailures,lastAttachError,attachDeferred,recordingStopped,configError,updatedAt" \
+    "running,desiredEnabled,pid,args,loopInterval,retentionMinutes,maxBytes,pyroscopeUrl,clusterName,experiment,tenant,startedAt,chunksPending,chunksShipped,chunksRejected,shipFailures,prunedForAge,prunedForSize,bytesOnDisk,lastError,attachFailures,lastAttachError,attachDeferred,recordingStopped,configError,updatedAt" \
     "$(jq -r 'keys_unsorted | join(",")' <"$PROFILE_DIR/effective-state.json")"
   teardown
 }
@@ -2175,6 +2256,9 @@ test_uploads_carry_the_tenant
 test_a_config_without_a_tenant_uploads_to_the_default_tenant
 test_a_malformed_tenant_makes_the_config_unreadable
 test_the_reserved_tenant_makes_the_config_unreadable
+test_uploads_carry_the_experiment_and_the_tenant
+test_the_counters_carry_the_experiment_and_the_tenant
+test_an_unreadable_config_ships_under_the_last_experiment
 test_metrics_and_effective_state_are_written
 test_counters_are_exported_to_the_node_otel_collector
 test_hostile_labels_cannot_corrupt_the_otlp_payload

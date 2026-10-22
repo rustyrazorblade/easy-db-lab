@@ -23,6 +23,8 @@ import kotlinx.serialization.Serializable
  *   when only unshipped or rejected chunks remain at the ceiling, the node stops recording instead.
  * @property pyroscopeUrl Ingest base URL; the reconciler POSTs to `$pyroscopeUrl/ingest`.
  * @property clusterName Shipped as a Pyroscope series label alongside the node's hostname.
+ * @property experiment Shipped as the `experiment` series label. A document written before experiments
+ *   existed carries none, and the node labels its profiles with [clusterName], an experiment of one.
  * @property tenant The cluster's observability tenant, sent in `X-Scope-OrgID` on every upload. A
  *   document written before tenants existed reads as the default tenant.
  * @property updatedAt When the CLI last wrote this document, for operator forensics.
@@ -36,6 +38,7 @@ data class ProfilingConfig(
     val maxBytes: Long = Constants.Profiling.DEFAULT_MAX_BYTES,
     val pyroscopeUrl: String = "",
     val clusterName: String = "",
+    val experiment: String = "",
     val tenant: String = Constants.Observability.DEFAULT_TENANT,
     val updatedAt: String = "",
 )

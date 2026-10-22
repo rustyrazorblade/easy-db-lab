@@ -17,6 +17,11 @@ server:
   http_listen_port: 3100
   grpc_listen_port: 9098
   log_level: info
+  # The ingester's shutdown answers 204 only once every flush queue has drained, and down and the
+  # export writer wait up to 10 minutes for it (Constants.TeardownFlush.SHUTDOWN_TIMEOUT_SECONDS).
+  # Past the write timeout the server drops the connection without an answer, so the default 30s
+  # turned a slow flush into an EOF with no status.
+  http_server_write_timeout: 10m
 
 common:
   # /loki is a hostPath on the control node: the WAL, the index head and the uploader's name
@@ -61,6 +66,10 @@ ingester:
     dir: /loki/wal
     # A graceful stop flushes every chunk in memory to S3.
     flush_on_shutdown: true
+    # Never throttle on disk use. At the default 0.90 the ingester refuses every push with
+    # "Ingester is shutting down" once the disk under the WAL is 90% used, and the data is dropped
+    # (like a memory limiter). 0 turns the throttle off.
+    disk_full_threshold: 0
   # Flush a chunk once it spans an hour, so a stream that keeps writing reaches S3 within about an hour.
   # This also sets the per-stream out-of-order window to 30 minutes (half this age): a line more
   # than 30 minutes older than its stream's newest line is rejected. The window is wide so that a
@@ -90,14 +99,17 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 8760h
   creation_grace_period: 24h
-  # Every OTLP resource attribute but these four stays structured metadata. `source` is moved onto
-  # the resource by the collector so it can be a label.
+  # Every OTLP resource attribute but these six stays structured metadata. `source` is moved onto
+  # the resource by the collector so it can be a label. The collector stamps `cluster`,
+  # `experiment` and `edl_tenant` on every resource.
   otlp_config:
     resource_attributes:
       attributes_config:
         - action: index_label
           attributes:
             - cluster
+            - experiment
+            - edl_tenant
             - host.name
             - node_role
             - source

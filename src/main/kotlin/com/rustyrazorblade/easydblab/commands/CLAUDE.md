@@ -71,11 +71,11 @@ commands/
 │   ├── KitSqlCommand.kt   # <kit> sql — runs SQL over the kit's JDBC endpoint; SOCKS-bridged when tunnel-only (#740)
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
 ├── logs/                  # logs query — reads the cluster's logs from Loki
-├── observability/         # observability compactor start|stop|status — the account compactor; no cluster workspace needed (bucket from the profile), status is read-only println
+├── observability/         # observability compactor start|stop|status — the account compactor; no cluster workspace needed (bucket from the profile), status is read-only println. observability local create <dir> [--tenant] and local dashboards <dir> [--from] — the local stack (localstack/: LocalStackCreator, LocalDashboardsRefresher); observability export <path> --tenant|--cluster|--experiment — a zip that opens offline as the local stack (export/: TenantExporter for --tenant; export/query/: QueryExporter for --cluster and --experiment, whose tenant is --tenant, else the workspace's, else default); no workspace needed
 ├── opensearch/            # OpenSearch commands
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
 ├── profile/               # Profile inspection and setup (profile show, profile setup)
-├── report/                # report upload — a test's markdown documents in the account bucket; works after down
+├── report/                # report upload <dir> — one zip per upload in the experiment's report folder; works after down
 ├── socks/                 # socks start, socks stop — the workspace SOCKS5 tunnel for tools outside the CLI
 ├── spark/                 # Spark commands
 ├── tailscale/             # Tailscale VPN commands
@@ -236,8 +236,8 @@ Commands should delegate to these services:
 | `SshIngressService` | SSH ingress rules on the workspace cluster's security group (`services.aws`), for `ingress allow` / `ingress revoke`: validates every `--cidr` with `network/Ipv4Cidr` before any AWS call (or uses the detected public IP), changes one exact tcp/22 rule per CIDR, and returns a sealed `IngressResult`; it emits no events |
 | `GrafanaDeployService` | Grafana deployment: datasources, the dashboard tree, the Grafana K8s resources |
 | `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
-| `TestDocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
-| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki on the control node (SOCKS unless Tailscale) |
+| `ReportArchiveService` | An experiment's reports under `reports/<tenant>/<experiment>/` (`services/documents/`): `report upload` stores each directory as one zip, unpacks it beside the zip and moves the forward-only pointer (`ReportPointer`), which `up` creates as a placeholder only when absent |
+| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir, Loki and Tempo. The injected one reaches the control node (SOCKS unless Tailscale); `LocalhostObservabilityHttp` reaches a local docker compose stack on its published ports. Both go through the `ObservabilityEndpoint` seam |
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |

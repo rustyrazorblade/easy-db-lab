@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab.configuration.tempo
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.clusterConfigEnv
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -187,6 +188,7 @@ class TempoManifestBuilder(
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()
+            .addToEnv(clusterConfigEnv("EXPERIMENT", "experiment"), clusterConfigEnv("TENANT", "tenant"))
             .addNewPort()
             .withContainerPort(Constants.K8s.TEMPO_PORT)
             .withHostPort(Constants.K8s.TEMPO_PORT)

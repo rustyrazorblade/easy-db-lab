@@ -74,8 +74,12 @@ class MimirManifestBuilder(
         private const val MEMCACHED_MAX_CONNECTIONS = "4096"
         private const val MEMCACHED_THREADS = "4"
 
-        /** The memcached sidecar's arguments: listening on loopback, where `mimir.yaml` addresses its caches. */
-        val MEMCACHED_ARGS =
+        /**
+         * The cluster sidecar's memcached size, connection and thread settings. The local docker
+         * compose stack sizes its own (`Constants.LocalStack.MEMCACHED_MEMORY_MB`), since it also
+         * holds Tempo's block reads.
+         */
+        val MEMCACHED_SERVER_ARGS =
             listOf(
                 "-m",
                 MEMCACHED_MEMORY_MB,
@@ -85,11 +89,17 @@ class MimirManifestBuilder(
                 MEMCACHED_MAX_CONNECTIONS,
                 "-t",
                 MEMCACHED_THREADS,
-                "-l",
-                "127.0.0.1",
-                "-p",
-                "${Constants.K8s.MIMIR_MEMCACHED_PORT}",
             )
+
+        /** The memcached sidecar's arguments: listening on loopback, where `mimir.yaml` addresses its caches. */
+        val MEMCACHED_ARGS =
+            MEMCACHED_SERVER_ARGS +
+                listOf(
+                    "-l",
+                    "127.0.0.1",
+                    "-p",
+                    "${Constants.K8s.MIMIR_MEMCACHED_PORT}",
+                )
     }
 
     /**

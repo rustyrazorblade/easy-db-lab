@@ -4,10 +4,10 @@
 # Cassandra reports OperationMode NORMAL.  It used to wait for the JMX port with no liveness check
 # and no deadline, so a Cassandra that died before JMX opened hung `cassandra start` for minutes.
 #
-# cassandra-pid, ss, sjk-mx, systemctl, journalctl, sleep and date are stubbed on PATH.  `sleep`
-# advances a fake clock that `date +%s` reads, so the timeout cases run in well under a second.
-# Each run is also killed after a real deadline, so a regression fails the test instead of
-# hanging it.
+# cassandra-pid, ss, sjk-mx, systemctl, journalctl, sleep and date are stubbed as exported bash
+# functions.  `sleep` advances a fake clock that `date +%s` reads, so the timeout cases need no
+# real waiting.  A run whose fake clock stops moving is killed, so a regression fails the test
+# instead of hanging it.
 #
 # Run directly:  ./wait-for-up-normal.test.sh
 # Or via gradle: ./gradlew testCassandraWaitScript
@@ -21,66 +21,67 @@ REAL_SLEEP="$(command -v sleep)"
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT
 
-BIN="${SANDBOX}/bin"
 STATE="${SANDBOX}/state"
-mkdir -p "$BIN" "$STATE"
+mkdir -p "$STATE"
 export STATE
 
+# The stubs are exported bash functions, not scripts on PATH.  macOS checks the first exec of
+# every newly written executable, and those checks queue behind each other: while `check` runs
+# the other test tiers, which write and exec scripts of their own, one first exec took seconds and
+# the five before the first fake `sleep` together took over 30, so the watchdog in run_script saw
+# a frozen clock and killed a healthy run.  A function is never exec'd, so there is nothing new to
+# check.  The script runs under bash, which looks a function up before PATH.
+
 # Each stub counts its calls in $STATE/<name>.calls.
-cat >"${BIN}/count-call" <<'SHIM'
-#!/bin/bash
-f="${STATE}/$1.calls"
-n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 ))
-echo "$n" >"$f"
-echo "$n"
-SHIM
+count-call() {
+  local f="${STATE}/$1.calls" n
+  n=$(( $(cat "$f" 2>/dev/null || echo 0) + 1 ))
+  echo "$n" >"$f"
+  echo "$n"
+}
 
 # Cassandra's pid is 1234 until call PID_GONE_AT, then 0 (no process).
-cat >"${BIN}/cassandra-pid" <<'SHIM'
-#!/bin/bash
-n=$(count-call cassandra-pid)
-if [[ $n -ge ${PID_GONE_AT:-999999} ]]; then echo 0; else echo 1234; fi
-SHIM
+cassandra-pid() {
+  local n
+  n=$(count-call cassandra-pid)
+  if [[ $n -ge ${PID_GONE_AT:-999999} ]]; then echo 0; else echo 1234; fi
+}
 
 # The JMX port is listening from call JMX_OPEN_AT on.
-cat >"${BIN}/ss" <<'SHIM'
-#!/bin/bash
-n=$(count-call ss)
-echo "Netid State  Recv-Q Send-Q Local Address:Port Peer Address:Port"
-if [[ $n -ge ${JMX_OPEN_AT:-999999} ]]; then echo "tcp   LISTEN 0      50     *:7199             *:*"; fi
-SHIM
+ss() {
+  local n
+  n=$(count-call ss)
+  echo "Netid State  Recv-Q Send-Q Local Address:Port Peer Address:Port"
+  if [[ $n -ge ${JMX_OPEN_AT:-999999} ]]; then echo "tcp   LISTEN 0      50     *:7199             *:*"; fi
+}
 
 # OperationMode is NORMAL from call NORMAL_AT on.
-cat >"${BIN}/sjk-mx" <<'SHIM'
-#!/bin/bash
-n=$(count-call sjk-mx)
-if [[ $n -ge ${NORMAL_AT:-999999} ]]; then echo "NORMAL"; else echo "JOINING"; fi
-SHIM
+sjk-mx() {
+  local n
+  n=$(count-call sjk-mx)
+  if [[ $n -ge ${NORMAL_AT:-999999} ]]; then echo "NORMAL"; else echo "JOINING"; fi
+}
 
-cat >"${BIN}/systemctl" <<'SHIM'
-#!/bin/bash
-if [[ "$1" == "is-active" ]]; then exit 3; fi
-echo "cassandra.service - Apache Cassandra: failed"
-SHIM
+systemctl() {
+  if [[ "$1" == "is-active" ]]; then return 3; fi
+  echo "cassandra.service - Apache Cassandra: failed"
+}
 
-cat >"${BIN}/journalctl" <<'SHIM'
-#!/bin/bash
-echo "journal"
-SHIM
+journalctl() {
+  echo "journal"
+}
 
-cat >"${BIN}/sleep" <<'SHIM'
-#!/bin/bash
-now=$(cat "${STATE}/clock")
-echo $(( now + ${1:-1} )) >"${STATE}/clock"
-SHIM
+sleep() {
+  local now
+  now=$(cat "${STATE}/clock")
+  echo $(( now + ${1:-1} )) >"${STATE}/clock"
+}
 
-cat >"${BIN}/date" <<'SHIM'
-#!/bin/bash
-if [[ "${1:-}" == "+%s" ]]; then cat "${STATE}/clock"; else exec /bin/date "$@"; fi
-SHIM
+date() {
+  if [[ "${1:-}" == "+%s" ]]; then cat "${STATE}/clock"; else command date "$@"; fi
+}
 
-chmod +x "${BIN}"/*
-export PATH="${BIN}:${PATH}"
+export -f count-call cassandra-pid ss sjk-mx systemctl journalctl sleep date
 
 tests_run=0
 tests_failed=0

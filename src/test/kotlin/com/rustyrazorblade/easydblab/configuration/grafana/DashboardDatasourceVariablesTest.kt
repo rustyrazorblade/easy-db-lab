@@ -190,5 +190,38 @@ class DashboardDatasourceVariablesTest {
 
             assertThat(violations).isEmpty()
         }
+
+        @Test
+        fun `a link that drops the experiment or a pair side is reported`() {
+            val violations =
+                DashboardDatasourceGuards.linkViolations(
+                    dashboard(listOf("experiment", "cluster_a", "cluster_b"), "/d/x/x?\${cluster_a:queryparam}"),
+                )
+
+            assertThat(violations).hasSize(2).anyMatch { "does not pass experiment" in it }.anyMatch { "does not pass cluster_b" in it }
+        }
+
+        @Test
+        fun `an explicit cluster_a value satisfies the rule for the pair link`() {
+            val violations =
+                DashboardDatasourceGuards.linkViolations(
+                    dashboard(
+                        listOf("experiment", "cluster_a", "cluster_b"),
+                        "/d/cluster-pair/x?\${experiment:queryparam}&var-cluster_a=\${__data.fields.cluster}&\${cluster_b:queryparam}",
+                    ),
+                )
+
+            assertThat(violations).isEmpty()
+        }
+
+        @Test
+        fun `the retired doc_tenant is no longer carried`() {
+            val violations =
+                DashboardDatasourceGuards.linkViolations(
+                    dashboard(listOf("doc_tenant", "cluster"), "/d/x/x?\${cluster:queryparam}"),
+                )
+
+            assertThat(violations).isEmpty()
+        }
     }
 }

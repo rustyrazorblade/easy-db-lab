@@ -112,6 +112,11 @@ tool wrappers into the workspace's `bin/`. This also keeps a source checkout fro
 workspace. With `--clean`, the check runs after the cleanup, which removes a `bin/` that holds only
 easy-db-lab's wrappers.
 
+The cluster name must match `^[a-z][a-z0-9_-]{0,39}$`: it starts with a lowercase letter, then
+lowercase letters, digits, `_` or `-`, at most 40 characters. `_` lets a cluster be named for the
+variant it tests, such as `unthrottled_cursor`; the OpenSearch domain name, which does not accept
+`_`, turns it into `-`.
+
 The database and application node groups are configured through a namespaced
 `--db.*` / `--app.*` scheme. Every pre-existing flag continues to work as an
 **alias** carrying its established default. When both a namespaced option and its
@@ -146,6 +151,7 @@ determined fails at `init`, before any instance is created.
 | `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
+| `--experiment` | Experiment the cluster belongs to: one test, grouping one or more clusters of the tenant. Must match `^[a-z0-9][a-z0-9_-]{0,79}$` (a `YYYY-MM-DD` prefix sorts experiments by date); checked before anything is created. Names are unique within a tenant, so the same name in two tenants is two experiments; `init` makes no check against other tenants. Fixed for the life of the cluster. See [Experiment and tenant labels](../user-guide/monitoring.md#experiment-and-tenant-labels) | the cluster's `<name>-<id>` |
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
 
@@ -871,7 +877,7 @@ On a Cilium cluster, prints the routing mode, IPAM mode, kube-proxy replacement,
 
 ## Observability Commands
 
-These commands manage the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
+These commands manage the [account compactor](../user-guide/compactor.md) and the [local observability stack](../user-guide/local-observability.md), and export observability data. They work outside a cluster workspace: the account bucket comes from the profile.
 
 ### observability compactor start
 
@@ -903,6 +909,63 @@ If your IAM user lacks the `EasyDBLabCompactor` policy, `observability compactor
 easy-db-lab observability compactor status
 ```
 
+### observability local create
+
+Write a local Grafana, Mimir, Loki and Tempo stack into `DIR`, a docker compose project that reads the shared store in the account bucket with your AWS profile and writes nothing to it. Start it with `docker compose up -d` in `DIR`, and open Grafana at `http://127.0.0.1:3000`. See [Local Observability Stack](../user-guide/local-observability.md).
+
+```bash
+easy-db-lab observability local create ~/lab-local
+easy-db-lab observability local create ~/lab-local --tenant acme
+```
+
+| Argument / Option | Description | Default |
+|-------------------|-------------|---------|
+| `DIR` | The stack directory (required). Created when missing, used when empty, rewritten when it holds a stack this command wrote. | - |
+| `--tenant` | The home tenant: the tenant of the stable `mimir`, `loki` and `tempo` datasources. Must match `^[a-z][a-z0-9_-]{0,62}$`. | `default` |
+
+Before writing anything, the command checks that the profile can read the account bucket and list `mimir/`. If it cannot, it fails, writes nothing, and names the AWS profile, the AWS error code and, for an SSO profile, `aws sso login --profile <profile>` (for a profile with static keys it says the keys were refused). If it cannot reach S3 at all (a timeout, a refused connection, DNS, TLS), it fails, writes nothing, and says it could not reach S3, with no login hint. It also fails, writing nothing, for a directory that holds files and no `.easy-db-lab-local-stack.json`, and for an easy-db-lab profile that names no AWS profile.
+
+It prints the tenants it found (every directory under `mimir/`, plus the home tenant). Grafana gets the datasources a cluster's Grafana has for them, with the same UIDs.
+
+Run it again on the same directory to pick up new tenants: it rewrites only the files it owns, each atomically, and names any owned file you edited, whose edit it replaced. It never opens `cache/`, `grafana-data/` or your `compose.override.yml`. When the stack is running, Grafana reloads its datasources and then its dashboards, with no restart; if Grafana refuses a reload, the command fails and says the files were rewritten and that `docker compose restart grafana` loads them. A re-run keeps the stack's Grafana and documents ports.
+
+### observability local dashboards
+
+Replace the dashboards of the running local stack in `DIR` and have Grafana reload them, with no restart. It never calls docker, so no container is recreated.
+
+```bash
+easy-db-lab observability local dashboards ~/lab-local
+easy-db-lab observability local dashboards ~/lab-local --from ~/work/dashboards
+```
+
+| Argument / Option | Description | Default |
+|-------------------|-------------|---------|
+| `DIR` | The stack directory `observability local create` wrote (required). | - |
+| `--from` | A directory of dashboards to use instead of the packaged ones, laid out as `<folder>/<file>.json`; each subdirectory becomes a Grafana folder. No rebuild needed. | the packaged dashboards |
+
+Without `--from`, it uses the core and kit dashboards packaged with the tool and prints `Using packaged dashboards`. When Grafana does not answer on the port recorded in the stack's manifest, the command fails and changes nothing. A JSON file at the top of the `--from` directory, or nested deeper than one folder, is named and nothing changes.
+
+### observability export
+
+Write observability data to a new zip that opens as the [local observability stack](../user-guide/local-observability.md#export-a-tenant) on any machine, with plain `docker compose up`, no network and no AWS credentials once the images it lists are pulled. It reads the account bucket with your AWS profile and writes only the zip: nothing in S3 is written or deleted, and nothing is uploaded. Profiles are not included (issue #1016).
+
+```bash
+easy-db-lab observability export ~/acme-export.zip --tenant acme
+```
+
+| Argument / Option | Description | Default |
+|-------------------|-------------|---------|
+| `PATH` | The zip to write (required): a new `.zip` file in a directory that exists. It is never overwritten. The zip holds one directory named after it, without `.zip`. | - |
+| `--tenant` | Export a copy of this tenant's store. With `--experiment`, the experiment's tenant. | - |
+| `--cluster` | Export only this cluster's data, by query (repeatable). The value is the cluster's full `<name>-<id>` (its name, `-`, and its UUID); any other value is refused before anything is read. Clusters of different tenants may be exported together. | - |
+| `--experiment` | Export every cluster of this experiment, in `--tenant`, the workspace's tenant, or `default` outside a workspace; the command says which tenant it used and why. Every cluster found must carry a `<name>-<id>` `cluster` label; otherwise the export stops, naming each such value. | - |
+
+Exactly one kind of export is required: `--tenant` alone, `--cluster`, or `--experiment`. No selector, or two kinds, fails and names the three.
+
+A tenant export copies the tenant's directories under `mimir/` and `tempo/`, its Loki chunks and only its own Loki index, its annotation backups under `grafana/annotations/<tenant>/` and its reports under `reports/<tenant>/`, plus the offline stack, the dashboards and a `README.txt` that lists the images to pull. Before copying, it prints the size and fails when the disk does not have that much free space, plus twice the size of the tenant's Loki index for the copy split in the work directory. A tenant with no data fails and names the prefixes it looked under. The zip is written under `<path>.partial-<random>` and moved into place only when complete; on any failure no zip is left at the path and the error names the signal and the step. Loki keeps every tenant's index in shared files, so the export copies them to the work directory `<path>.work-<id>/` and splits them with Loki's own compactor in a local docker container, with no network and no AWS credentials, retention and deletion off; only the tenant's files go into the zip. It runs no container when no shared file was copied. The work directory is kept, also after a failure, and its size printed; the compactor's `docker compose logs` are saved there as `loki/split/compose.log`, and a failure names it.
+
+A `--cluster` or `--experiment` export reads by query, through two temporary docker compose projects: a read-only reader over the live store (the local stack's read gate and signer, with your AWS profile) and a writer with filesystem backends. It copies only the selected clusters' metrics, logs and traces, their annotation backups, and every report of each experiment they belong to. A `--cluster` finds its tenant from the workspace when run in that cluster's own workspace, else from the store. It prints the clusters and their tenants, what it exported per signal (a signal with nothing as zero), and the work directory `<path>.work-<id>/` with its size; the work directory is kept, also after a failure, and you remove it yourself. Each temporary project's `docker compose logs` are saved there as `reader/compose.log` and `writer/compose.log`, and a failure names them. It needs docker and an AWS profile in the easy-db-lab profile.
+
 ## Grafana Commands
 
 ### grafana update-config
@@ -917,7 +980,7 @@ easy-db-lab grafana update-config
 
 ### grafana install
 
-Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the copied tree, and the dashboard is updated in place only if the JSON carries a top-level `uid`. Before the upload, the command applies the same defaults `up` applies, from the workspace's cluster state: each tenant picker selects the cluster's own tenant, and `cluster`, `baseline_cluster` and `candidate_cluster` select the current cluster.
+Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the copied tree, and the dashboard is updated in place only if the JSON carries a top-level `uid`. Before the upload, the command applies the same defaults `up` applies, from the workspace's cluster state: each tenant picker selects the cluster's own tenant; `cluster` (except on a dashboard with an experiment picker, where it opens on All, the experiment's clusters) and `cluster_b` select the current cluster; `experiment` selects the cluster's experiment; and the hidden `home_tenant` holds the cluster's tenant.
 
 ```bash
 easy-db-lab grafana install my-dashboard.json --folder=experiments
@@ -968,21 +1031,31 @@ This backup also runs automatically before teardown; see [`down`](#down).
 
 ### report upload
 
-Attach markdown documents to the current test. Each file is stored in the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, with an HTML copy, and the test's `index.html` is rebuilt to hold every document, each under its own heading, in name order. The Tests and comparison dashboards show that index. A file with the name of a stored document replaces it.
-
-The command accepts only `.md` files whose names hold letters, digits, `.`, `_` and `-`, and refuses `index.md` and a name given twice. It checks every file first; if it refuses any, it names each one and uploads nothing. It uses your own AWS credentials and needs only the workspace's `state.json`, so it works before and after `down`.
-
-If an upload fails, the command names the failed file and each document it already stored.  Those documents are in the bucket but not yet in the index.  Run the command again.
+Upload one directory as a report of the current experiment. The directory is zipped, and the zip is stored unchanged as `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip` in the account bucket, where the timestamp is the upload time in UTC. The report belongs to the experiment, not to one cluster, so every cluster of the experiment shows it. The tenant and the experiment come from the workspace's `state.json` (`init --tenant` and `init --experiment`); there is no option for them.
 
 ```bash
-easy-db-lab report upload results.md notes.md
+easy-db-lab report upload results/
 ```
 
 | Argument | Description |
 |----------|-------------|
-| `FILE...` | One or more markdown files (required) |
+| `DIR` | The one directory to upload (required). Any file types; subdirectories are kept. |
 
-Two uploads for one test at the same moment can each rebuild the index without the other's document; the next upload restores it.
+**No upload replaces another.** The zip is written only if no object exists at its key; if another upload already took that second, it takes the next free second. Every upload is kept. Each zip holds a random upload id in its zip comment, so two uploads of an unchanged directory store different zips with the same files inside.
+
+**What is stored.** Next to the zip, the same zip is unpacked to `report-<yyyyMMdd-HHmmss>/`, with an HTML copy of each `.md` file and a generated `_files.html` that lists the upload's files. The experiment's `index.html` is a pointer that the documents panels show. It leads to the newest upload: to the upload's `index.html` when the directory holds `index.md` or `index.html` at its root, or to its `_files.html` otherwise. The pointer only moves forward. An upload named for an earlier second than the one shown leaves the pointer alone, and its zip is still kept. The pointer is the only object in the folder that is ever rewritten. Uploads are ordered by the clock of the machine that ran them, so two machines whose clocks differ can, within a few seconds, leave the older of their uploads shown. Both are kept.
+
+**What the directory may hold.** The command checks the whole directory before it uploads anything. If any check fails, it names every file that fails and uploads nothing:
+
+- the directory exists and holds at least one file;
+- every part of every path holds only letters, digits, `.`, `_` and `-`, and no path holds `..`;
+- nothing is a symbolic link;
+- the root holds no `_files.html`, which the command generates, and no `_files.md`, whose HTML copy would be named for it;
+- no `X.md` sits beside an `X.html` at any depth, because the HTML copy would replace it. Both files are named.
+
+`report upload a.md b.md` fails: the command takes one directory. Put the files in a directory and upload that.
+
+The command uses your own AWS credentials and needs only the workspace's `state.json`, so it works before and after `down`. `up` writes the experiment's pointer, saying "No report yet", only when the experiment has none, so a second cluster of an experiment never hides its report. If unpacking or the pointer fails after the zip is stored, the command names the stored zip; run it again to make a new upload.
 
 ---
 

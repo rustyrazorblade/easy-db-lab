@@ -131,6 +131,34 @@ class GrafanaManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
+    fun `the cluster's Grafana runs with exactly these server settings`() {
+        // Pins the whole environment, so moving the settings into a shared place changes none of them.
+        val env = grafanaContainer().env.associate { it.name to it.value }
+
+        // The title is the cluster's <name>-<id>, and the test state's id is random.
+        assertThat(env["GF_BRANDING_APP_TITLE"]).startsWith("test-cluster-")
+        assertThat(env - "GF_BRANDING_APP_TITLE").containsExactlyInAnyOrderEntriesOf(
+            mapOf(
+                "GF_INSTALL_PLUGINS" to "grafana-clickhouse-datasource,grafana-polystat-panel",
+                "GF_SECURITY_ADMIN_USER" to "admin",
+                "GF_SECURITY_ADMIN_PASSWORD" to "admin",
+                "GF_USERS_ALLOW_SIGN_UP" to "false",
+                "GF_AUTH_ANONYMOUS_ENABLED" to "true",
+                "GF_USERS_DEFAULT_ORG_NAME" to "Main Org.",
+                "GF_AUTH_ANONYMOUS_ORG_NAME" to "Main Org.",
+                "GF_AUTH_ANONYMOUS_ORG_ROLE" to "Admin",
+                "GF_AUTH_DISABLE_LOGIN_FORM" to "false",
+                "GF_AUTH_BASIC_ENABLED" to "true",
+                "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH" to "/var/lib/grafana/dashboards/infrastructure/system-overview.json",
+                "GF_RENDERING_SERVER_URL" to "http://localhost:8081/render",
+                "GF_RENDERING_CALLBACK_URL" to "http://localhost:3000/",
+                "GF_RENDERING_RENDERER_TOKEN" to "easydblab-renderer",
+                "GF_PANELS_DISABLE_SANITIZE_HTML" to "true",
+            ),
+        )
+    }
+
+    @Test
     fun `Grafana lets a Text panel hold the documents iframe`() {
         val env = grafanaContainer().env.associate { it.name to it.value }
 

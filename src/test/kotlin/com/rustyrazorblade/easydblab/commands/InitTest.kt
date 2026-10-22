@@ -27,7 +27,9 @@ import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.s3.S3Client
 import java.io.File
 
 class InitTest : BaseKoinTest() {
@@ -477,10 +479,72 @@ class InitTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class Experiment {
+        @Test
+        fun `the experiment defaults to the cluster's own name and id, and is stored`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("lab")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.experiment == "lab-$clusterId" && experiment() == "lab-$clusterId" },
+            )
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = ["2026-10-13-ab", "unthrottled_cursor", "e1"])
+        fun `--experiment is stored next to the tenant`(experiment: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", "acme", "--experiment", experiment)
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.experiment == experiment && initConfig?.tenant == "acme" },
+            )
+        }
+
+        /** `default/e1` may exist already; `acme/e1` is another experiment, and nothing asks S3. */
+        @Test
+        fun `init makes no S3 call for the experiment`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", "acme", "--experiment", "e1")
+            command.clean = true
+            command.execute()
+
+            verifyNoInteractions(getKoin().get<S3Client>())
+        }
+
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                "AB-test",
+                "-ab",
+                "a/b",
+                // 81 characters: one past the limit.
+                "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijk",
+            ],
+        )
+        fun `an invalid experiment fails stating the rule, and creates nothing`(experiment: String) {
+            val command = Init()
+            // `=` so picocli takes `-ab` as the value rather than as an option.
+            picocli.CommandLine(command).parseArgs("--experiment=$experiment")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("^[a-z0-9][a-z0-9_-]{0,79}$")
+            verify(mockClusterStateManager, never()).save(any())
+            assertThat(File(context.workingDirectory, "setup_instance.sh")).doesNotExist()
+        }
+    }
+
+    @Nested
     inner class ClusterName {
         /** 40 characters is the longest name the rule allows. */
         @ParameterizedTest
-        @ValueSource(strings = ["abcdefghijabcdefghijabcdefghijabcdefghij", "lab-1", "z"])
+        @ValueSource(strings = ["abcdefghijabcdefghijabcdefghijabcdefghij", "lab-1", "z", "unthrottled_cursor", "lab_1"])
         fun `a valid cluster name at the edge of the rule is saved`(name: String) {
             val command = Init()
             picocli.CommandLine(command).parseArgs(name)
@@ -497,7 +561,7 @@ class InitTest : BaseKoinTest() {
                 "db:1",
                 "Lab",
                 "1lab",
-                "lab_1",
+                "_lab",
                 // 41 characters: one past the limit.
                 "abcdefghijabcdefghijabcdefghijabcdefghijk",
             ],
@@ -509,7 +573,7 @@ class InitTest : BaseKoinTest() {
 
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
+                .hasMessageContaining("^[a-z][a-z0-9_-]{0,39}$")
             verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
         }
     }

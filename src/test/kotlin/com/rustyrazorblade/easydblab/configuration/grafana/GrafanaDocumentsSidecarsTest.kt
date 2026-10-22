@@ -40,7 +40,7 @@ class GrafanaDocumentsSidecarsTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         templateService = getKoin().get()
-        sidecars = GrafanaDocumentsSidecars(templateService)
+        sidecars = GrafanaDocumentsSidecars()
     }
 
     private fun container(name: String) = sidecars.containers(documents).single { it.name == name }

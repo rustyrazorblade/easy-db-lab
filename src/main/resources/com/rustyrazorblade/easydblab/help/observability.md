@@ -17,6 +17,26 @@ CLI access:
 - Logs: `easy-db-lab logs query` — this cluster's logs from Loki; `-q '<LogQL>'` sends a raw query.
 - Annotations: `easy-db-lab grafana annotate`, `easy-db-lab grafana backup`.
 
+Reports:
+- An experiment is one test: one or more clusters of one tenant, named at `init --experiment <name>` (default: the cluster's own `<name>-<id>`). A report belongs to the experiment, so every cluster of it shows the same report.
+- `easy-db-lab report upload <dir>` — zips the directory (any file types) and stores the zip as `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip`, timestamped with the upload time in UTC. No upload ever overwrites an earlier one; every zip is kept. Works after `down`, with your own AWS credentials.
+- Each upload is unpacked beside its zip, with an HTML copy of each `.md` and a `_files.html` list. The documents panels show the newest upload: its `index.md` (or `index.html`) at the root, else `_files.html`.
+- The command checks the whole directory first and names every file that fails: path parts hold only letters, digits, `.`, `_`, `-` (no `..`), no symlinks, no root `_files.html` or `_files.md`, no `X.md` beside `X.html`. It takes one directory, never a list of files.
+
+Local stack (no cluster needed; metrics, logs and traces of every tenant, torn-down clusters included; no profiles yet):
+- `easy-db-lab observability local create <dir> [--tenant <home>]` — writes a docker compose stack (Grafana, Mimir with memcached, Loki, Tempo, the documents view) into `<dir>`, which is required. It reads the account bucket with your AWS profile and never writes to it: a read gate passes only GET and HEAD. Fails, writing nothing, if the profile cannot read the bucket (it prints `aws sso login --profile <p>`) or `<dir>` holds files that are not a stack. `--tenant` (default `default`) is the tenant of the stable `mimir`/`loki`/`tempo` datasources; every tenant gets `<signal>-<tenant>` and `<signal>--all` datasources, as on a cluster.
+- Then `cd <dir> && docker compose up -d` and open http://127.0.0.1:3000. Put your own changes in `<dir>/compose.override.yml`; the tool never touches it, `cache/` or `grafana-data/`.
+- Re-run `local create` on the same `<dir>` for new tenants: it rewrites only its own files, names any you edited, and a running Grafana reloads with no restart.
+- `easy-db-lab observability local dashboards <dir> [--from <dashboards-dir>]` — replaces the running stack's dashboards and reloads them, no restart, no docker call. `--from` takes any `<folder>/<file>.json` tree; without it, the packaged dashboards ("Using packaged dashboards"). Fails and changes nothing when the stack's Grafana is not running.
+- Credentials: `store-check` must pass before any backend starts; `docker compose ps` shows `store-signer` unhealthy once they expire. Fix with `aws sso login --profile <p>`.
+
+Export (a zip that opens offline as the local stack; no profiles, #1016):
+- `easy-db-lab observability export <path>.zip --tenant <t>` — copies tenant `<t>`'s metrics, logs, traces, annotation backups and reports, with the offline stack, the dashboards and a README, into a new zip. Reads the bucket with your AWS profile; writes nothing to S3. Works outside a workspace. Loki's shared index files hold every tenant, so the export splits them with Loki's own compactor in a local docker container (no network, no credentials) over a copy in the work directory `<path>.work-<id>/`, and the zip holds only `<t>`'s index; the work directory is kept and its size printed.
+- Exactly one of `--tenant`, `--cluster <name-id>` (repeatable) or `--experiment <name>` (with `--tenant`, else the workspace's tenant, else `default`, and it says which).
+- `--cluster <name-id>` (repeatable) and `--experiment <name>` export by query: a temporary read-only stack reads the clusters' metrics, logs and traces from the store and a temporary writer keeps them; only the selected clusters' data, their annotation backups and their experiments' reports go in the zip. Clusters of different tenants may go together (the first one's tenant is the home). A cluster or experiment that is not found fails naming it and the tenants searched. Needs docker and an AWS profile (not access keys). Prints what it exported per signal (zero as zero) and keeps its work directory `<path>.work-<id>/`, printing where and how big; remove it yourself.
+- Fails, leaving nothing at the path: an existing path (never overwritten), too little free disk (checked before copying), a tenant with no data (names the prefixes), or any copy error (names the signal and the step).
+- Open it: pull the images the zip's `README.txt` lists (the zip has none), then `unzip <path>.zip && cd <dir> && docker compose up -d`; no network or AWS credentials needed. `data/` is mounted read-only and never changes.
+
 Dashboards:
 - `easy-db-lab grafana update-config` — redeploy all core dashboards.
 - Kit dashboards: auto-installed from `dashboards/*.json` in kit resource dir after `start`.

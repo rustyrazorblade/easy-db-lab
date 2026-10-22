@@ -14,6 +14,7 @@ import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping
 import software.amazon.awssdk.services.ec2.model.EbsBlockDevice
 import software.amazon.awssdk.services.ec2.model.RegisterImageRequest
+import java.util.UUID
 
 /**
  * Integration tests for AMIService low-level EC2 operations using LocalStack.
@@ -46,6 +47,12 @@ class AMIServiceIntegrationTest {
         val aws: AWS = mock()
         amiService = AMIService(ec2Client, eventBus, aws)
     }
+
+    /**
+     * A name no other registration in the shared LocalStack uses, so a listing by it holds only
+     * the image this test registered: LocalStack, unlike EC2, accepts a second image of a name.
+     */
+    private fun uniqueName(base: String): String = "$base-${UUID.randomUUID().toString().take(8)}"
 
     /**
      * Registers a test AMI in LocalStack and returns the AMI ID.
@@ -108,14 +115,15 @@ class AMIServiceIntegrationTest {
 
         @Test
         fun `should return AMI with correct fields populated`() {
-            val amiId = registerTestAMI("test-fields-populated")
+            val name = uniqueName("test-fields-populated")
+            val amiId = registerTestAMI(name)
 
-            val result = amiService.listPrivateAMIs("test-fields-populated")
+            val result = amiService.listPrivateAMIs(name)
 
             assertThat(result).hasSize(1)
             val ami = result.first()
             assertThat(ami.id).isEqualTo(amiId)
-            assertThat(ami.name).isEqualTo("test-fields-populated")
+            assertThat(ami.name).isEqualTo(name)
             assertThat(ami.creationDate).isNotNull()
             assertThat(ami.ownerId).isNotBlank()
         }
@@ -139,14 +147,13 @@ class AMIServiceIntegrationTest {
     inner class DeregisterAMI {
         @Test
         fun `should deregister an AMI without error`() {
-            val amiId = registerTestAMI("test-deregister-ami")
+            val name = uniqueName("test-deregister-ami")
+            val amiId = registerTestAMI(name)
+            assertThat(amiService.listPrivateAMIs(name).map { it.id }).containsExactly(amiId)
 
-            // Should not throw
             amiService.deregisterAMI(amiId)
 
-            // After deregistering, listing should not return it
-            val result = amiService.listPrivateAMIs("test-deregister-ami")
-            assertThat(result).isEmpty()
+            assertThat(amiService.listPrivateAMIs(name)).isEmpty()
         }
     }
 }

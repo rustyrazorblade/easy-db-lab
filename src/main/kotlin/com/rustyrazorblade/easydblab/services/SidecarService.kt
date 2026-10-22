@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterLabels
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -65,9 +66,6 @@ class DefaultSidecarService(
     ): Result<Unit> =
         runCatching {
             val state = clusterStateManager.load()
-            // The cluster label every signal carries, <name>-<id>, not the bare name.
-            val clusterName = state.clusterLabelName()
-
             val pullSecretName = ecrPullSecrets.ensureFor(controlHost, image, Constants.K8s.NAMESPACE)
 
             log.info { "Deploying sidecar DaemonSet image=$image to K3s" }
@@ -75,8 +73,7 @@ class DefaultSidecarService(
                 manifestBuilder.buildAllResources(
                     image = image,
                     controlNodeIp = controlHost.privateIp,
-                    clusterName = clusterName,
-                    tenant = state.tenant(),
+                    labels = ClusterLabels.of(state),
                     imagePullSecretName = pullSecretName,
                     telemetryRedirect = state.initConfig?.telemetryRedirect,
                 )

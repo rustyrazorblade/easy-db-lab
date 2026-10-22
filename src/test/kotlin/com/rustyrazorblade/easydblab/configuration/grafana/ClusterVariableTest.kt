@@ -5,23 +5,35 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.io.File
 
 /**
- * Every `cluster` variable lists the clusters of the tenant the Metrics picker selects the same way:
- * `label_values(up, cluster)` on `${metrics_datasource}`, multi-select with "All". The Tests dashboard
- * selects one test, so its `cluster` is single-select, and it lists the clusters over `lookback`, as
- * its test listing does, so a 24-hour default range still offers every test.
+ * Every `cluster` variable is multi-select with "All" on `${metrics_datasource}`, and lists one of
+ * two sets:
+ *
+ * - on a dashboard with no `experiment` variable, every cluster of the tenant the Metrics picker
+ *   selects, with `label_values(up, cluster)`;
+ * - on a dashboard that declares `experiment`, only the selected experiment's clusters, filtered by
+ *   `edl_tenant=~"$exp_tenant"` and `experiment=~"$exp_name"` and joined with the branch for the
+ *   clusters from before the label. Its "All" carries no `allValue`, so it means the experiment's
+ *   clusters and not every cluster.
+ *
+ * The Tests dashboard selects one experiment in place of one cluster, listed over `lookback`, as
+ * its listing is, so a 24-hour default range still offers every experiment.
  */
 class ClusterVariableTest {
     private val clusterQuery = "label_values(up, cluster)"
 
     private fun parse(file: File): JsonObject = Json.parseToJsonElement(file.readText()).jsonObject
+
+    private fun declaresExperiment(dashboard: JsonObject): Boolean = variables(dashboard).any { it.string("name") == "experiment" }
 
     private fun variables(dashboard: JsonObject): List<JsonObject> =
         (
@@ -49,8 +61,8 @@ class ClusterVariableTest {
         }
 
     @Test
-    fun `every cluster variable reads the metrics picker with label_values of up`() {
-        val clusters = clusterVariables().filterNot { (_, pair) -> pair.first.string("uid") == TESTS_UID }
+    fun `every cluster variable outside an experiment dashboard reads the metrics picker with label_values of up`() {
+        val clusters = clusterVariables().filterNot { (_, pair) -> declaresExperiment(pair.first) }
         assertThat(clusters).isNotEmpty()
 
         val wrong =
@@ -67,11 +79,59 @@ class ClusterVariableTest {
         assertThat(wrong).isEmpty()
     }
 
+    /** What is wrong with [variable] as the `cluster` list of a dashboard that declares `experiment`. */
+    private fun experimentClusterProblems(variable: JsonObject): List<String> {
+        val query = queryOf(variable).orEmpty()
+        return listOfNotNull(
+            "reads ${variable["datasource"]?.jsonObject?.string("uid")}, not \${metrics_datasource}"
+                .takeUnless { variable["datasource"]?.jsonObject?.string("uid") == "\${metrics_datasource}" },
+            "does not list the experiment's clusters with $EXPERIMENT_CLUSTERS and $PRE_LABEL_CLUSTERS"
+                .takeUnless { EXPERIMENT_CLUSTERS in query && PRE_LABEL_CLUSTERS in query && " or " in query },
+            "its definition differs from its query".takeUnless { (variable.string("definition") ?: query) == query },
+            "its All has an allValue, so it is not the experiment's clusters".takeUnless { variable.string("allValue").isNullOrEmpty() },
+        )
+    }
+
     @Test
-    fun `every cluster variable but the Tests dashboard's is multi-select with All`() {
+    fun `an experiment cluster list that reads every cluster, or All past the experiment, is reported`() {
+        val good =
+            buildJsonObject {
+                put("name", "cluster")
+                put("type", "query")
+                put("datasource", buildJsonObject { put("uid", "\${metrics_datasource}") })
+                put(
+                    "query",
+                    buildJsonObject {
+                        put(
+                            "query",
+                            "query_result(max by (cluster) (count by (cluster) (up{$EXPERIMENT_CLUSTERS}) " +
+                                "or count by (cluster) (up{$PRE_LABEL_CLUSTERS})))",
+                        )
+                    },
+                )
+            }
+
+        assertThat(experimentClusterProblems(good)).isEmpty()
+        assertThat(experimentClusterProblems(JsonObject(good + ("allValue" to JsonPrimitive(".*")))))
+            .containsExactly("its All has an allValue, so it is not the experiment's clusters")
+        assertThat(experimentClusterProblems(JsonObject(good + ("query" to JsonPrimitive(clusterQuery)))))
+            .containsExactly("does not list the experiment's clusters with $EXPERIMENT_CLUSTERS and $PRE_LABEL_CLUSTERS")
+    }
+
+    @Test
+    fun `every cluster variable on an experiment dashboard lists the experiment's clusters`() {
         val wrong =
             clusterVariables()
-                .filterNot { (_, pair) -> pair.first.string("uid") == TESTS_UID }
+                .filter { (_, pair) -> declaresExperiment(pair.first) }
+                .flatMap { (path, pair) -> experimentClusterProblems(pair.second).map { "$path: $it" } }
+
+        assertThat(wrong).isEmpty()
+    }
+
+    @Test
+    fun `every cluster variable is multi-select with All`() {
+        val wrong =
+            clusterVariables()
                 .mapNotNull { (path, pair) ->
                     val variable = pair.second
                     "$path: multi=${variable.string("multi")} includeAll=${variable.string("includeAll")}".takeUnless {
@@ -83,20 +143,22 @@ class ClusterVariableTest {
 
     /**
      * The Tests dashboard opens on the last 24 hours: at 180 days Grafana sent the markers annotation
-     * as 180 one-day Loki requests in a row. Its listing and its `cluster` variable both read over
-     * `lookback`, so the short range still lists and offers every test.
+     * as 180 one-day Loki requests in a row. Its listing and its `experiment` variable both read over
+     * `lookback`, so the short range still lists and offers every experiment. A single-select
+     * `experiment` replaces the single-select `cluster`.
      */
     @Test
-    fun `the Tests dashboard opens on 24 hours and selects one test from those within lookback`() {
+    fun `the Tests dashboard opens on 24 hours and selects one experiment from those within lookback`() {
         val tests = parse(File("dashboards/infrastructure/tests.json"))
-        val cluster = variables(tests).single { it.string("name") == "cluster" }
+        val experiment = variables(tests).firstOrNull { it.string("name") == "experiment" }
+        val singleCluster = variables(tests).filter { it.string("name") == "cluster" && it.string("multi") != "true" }
 
-        assertThat(cluster.string("multi")).isEqualTo("false")
-        assertThat(cluster.string("includeAll")).isEqualTo("false")
-        assertThat(cluster["datasource"]?.jsonObject?.string("uid")).isEqualTo("\${metrics_datasource}")
-        assertThat(queryOf(cluster)).isEqualTo(TESTS_CLUSTER_QUERY)
-        assertThat(cluster.string("definition")).isEqualTo(TESTS_CLUSTER_QUERY)
-        assertThat(cluster.string("regex")).isEqualTo(TESTS_CLUSTER_REGEX)
+        assertThat(experiment).describedAs("Tests declares experiment").isNotNull()
+        assertThat(experiment?.string("multi")).isEqualTo("false")
+        assertThat(experiment?.string("includeAll")).isEqualTo("false")
+        assertThat(experiment?.get("datasource")?.jsonObject?.string("uid")).isEqualTo("\${metrics_datasource}")
+        assertThat(experiment?.let { queryOf(it) }).contains("[\$lookback:")
+        assertThat(singleCluster).describedAs("Tests no longer selects one cluster").isEmpty()
         assertThat(tests.getValue("time").jsonObject.string("from")).isEqualTo("now-24h")
         assertThat(tests.getValue("time").jsonObject.string("to")).isEqualTo("now")
     }
@@ -126,10 +188,10 @@ class ClusterVariableTest {
     }
 
     private companion object {
-        const val TESTS_UID = "tests"
-        const val TESTS_CLUSTER_QUERY = "query_result(count by (cluster) (last_over_time(up[\$lookback])))"
+        /** The labelled series of the selected experiment, in its own tenant. */
+        const val EXPERIMENT_CLUSTERS = "edl_tenant=~\"\$exp_tenant\", experiment=~\"\$exp_name\""
 
-        /** The option's value is the full id and its text the short name `<name>-<first 8 of id>`. */
-        const val TESTS_CLUSTER_REGEX = """/cluster="(?<value>(?<text>[^"]+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)"/"""
+        /** A cluster from before the label is the experiment of one named for it. */
+        const val PRE_LABEL_CLUSTERS = "experiment=\"\", cluster=~\"\$exp_name\""
     }
 }

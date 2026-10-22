@@ -89,7 +89,7 @@ class AnnotationMirrorTest {
     private fun JsonObject.entry(): JsonArray = getValue("values").jsonArray.single().jsonArray
 
     @Test
-    fun `an annotation becomes its own stream in Loki, labelled with the cluster and its Grafana id`() {
+    fun `an annotation becomes its own stream in Loki, labelled with the cluster, experiment, tenant and its Grafana id`() {
         val http = RecordingObservabilityHttp(ObservabilityResponse(204, ""))
 
         mirror(http)
@@ -102,7 +102,13 @@ class AnnotationMirrorTest {
         assertThat(call.path).isEqualTo("/loki/api/v1/push")
         val stream = streams(call).single()
         assertThat(stream.labels()).containsExactlyInAnyOrderEntriesOf(
-            mapOf("cluster" to "lab-c1", "source" to "annotation", "annotation_id" to "42"),
+            mapOf(
+                "cluster" to "lab-c1",
+                "experiment" to "lab-c1",
+                "edl_tenant" to "default",
+                "source" to "annotation",
+                "annotation_id" to "42",
+            ),
         )
         val entry = stream.entry()
         assertThat(entry[0].jsonPrimitive.content).isEqualTo("${ago(MINUTE)}000000")

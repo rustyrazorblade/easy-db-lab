@@ -50,17 +50,24 @@ object SeriesClusterGuards {
         Regex("""label_format\s+cluster_name\s*=\s*`\{\{\s*regexReplaceAll\s+"([^"]*)"\s+\.cluster\s+"([^"]*)"\s*}}`""")
     private val shortName = Regex(""""cluster_name"\s*,\s*"\$1"\s*,\s*"cluster"""")
     private val clusterVariable = Regex("""cluster\s*=~?\s*"\$\{?cluster\b""")
-    private val sideVariable = Regex("""\$\{?(baseline_cluster|candidate_cluster)\b""")
+    private val sideVariable = Regex("""\$\{?(${DashboardVariables.PAIR.joinToString("|")})\b""")
+    private val seriesLanguages = setOf(Language.PROMQL, Language.LOGQL)
     private val labelFunction = Regex("""\blabel_(join|replace)\s*\(""")
     private val vectorFallback = Regex("""\bor\s+vector\s*\(""")
     private val joinTransformations = setOf("seriesToColumns", "joinByField", "concatenate")
     private val numberingTransformations = joinTransformations
 
     /**
+     * Whether the series rules hold [query] at all. They are about PromQL and LogQL aggregations and
+     * legends; a TraceQL pipeline groups by span attributes and a profile query draws no series.
+     */
+    fun appliesTo(query: Query): Boolean = query.language in seriesLanguages
+
+    /**
      * The queries that read one cluster, or every cluster, on purpose: the variables that list
-     * clusters, the Tests dashboard's listing, the comparison views' baseline and candidate run
-     * queries (one cluster per side), and the AWS/S3 queries, which count the shared bucket once
-     * across clusters (`SharedBucketCountTest`).
+     * clusters or experiments, the Tests dashboard's listing, the pair views' A and B queries (one
+     * cluster per side), and the AWS/S3 queries, which count the shared bucket once across clusters
+     * (`SharedBucketCountTest`).
      */
     fun exempt(
         query: Query,
@@ -293,9 +300,15 @@ object SeriesClusterGuards {
      * instance, such as `cluster_instance`. Every target writes it with `label_join` or
      * `label_replace`, and builds it from the long `cluster`, because two clusters can share a
      * short `cluster_name`.
+     *
+     * A join that a `partitionByValues` on `cluster` precedes in the chain is exempt: that
+     * transformation splits the data into one frame per cluster, so every frame the join sees
+     * holds one cluster, and the join lines the frames up side by side (the Trend overlay joins
+     * the clusters on their elapsed time). A partition after the join, one on other fields, or one
+     * followed by a `merge` before the join, does not exempt it.
      */
     fun joinProblems(panel: JsonObject): List<String> =
-        joins(panel).flatMap { join ->
+        joins(panel).filterNot { partitionedByCluster(panel, it) }.flatMap { join ->
             val id = join.string("id")
             val key = (join["options"] as? JsonObject)?.string("byField").orEmpty()
             listOfNotNull("$id joins on '$key', which does not hold the cluster".takeUnless { CLUSTER in key }) +
@@ -501,6 +514,26 @@ object SeriesClusterGuards {
 
     private fun joins(panel: JsonObject): List<JsonObject> = transformations(panel).filter { it.string("id") in joinTransformations }
 
+    /**
+     * Whether a `partitionByValues` whose fields include `cluster` comes before [join] in [panel]'s
+     * chain with no `merge` between them. A `merge` after the partition puts every cluster's frame
+     * back into one, so the join again sees rows of several clusters.
+     */
+    private fun partitionedByCluster(
+        panel: JsonObject,
+        join: JsonObject,
+    ): Boolean {
+        val before = transformations(panel).let { chain -> chain.take(chain.indexOf(join)) }
+        val partition =
+            before.indexOfLast { step ->
+                step.string("id") == "partitionByValues" &&
+                    ((step["options"] as? JsonObject)?.get("fields") as? JsonArray).orEmpty().any {
+                        (it as? JsonPrimitive)?.content == CLUSTER
+                    }
+            }
+        return partition >= 0 && before.drop(partition + 1).none { it.string("id") == "merge" }
+    }
+
     private fun transformations(panel: JsonObject): List<JsonObject> =
         (panel["transformations"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
 
@@ -526,7 +559,7 @@ object SeriesClusterGuards {
 
     /**
      * Each field override of a series panel that matched a legend before the cluster was put in
-     * front of it, and no longer does: `byName "baseline"` stops matching "db-a baseline". A legend
+     * front of it, and no longer does: `byName "build_a"` stops matching "db-a build_a". A legend
      * is read with every `{{label}}` as a sample value.
      */
     fun staleOverrides(

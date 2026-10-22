@@ -1,0 +1,123 @@
+package com.rustyrazorblade.easydblab.export
+
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
+import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
+import com.rustyrazorblade.easydblab.localstack.ComposeFile
+import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
+import com.rustyrazorblade.easydblab.localstack.LocalStackComposer
+import com.rustyrazorblade.easydblab.localstack.LocalStackManifest
+import com.rustyrazorblade.easydblab.localstack.LocalStackSpec
+import com.rustyrazorblade.easydblab.services.TemplateService
+
+/**
+ * Everything an export carries besides the copied data, by path relative to the stack directory, all
+ * from resources packaged in the distribution:
+ *
+ * - the offline compose stack and its configuration ([LocalStackComposer] in [LocalStackSpec.Mode.Offline]);
+ * - the dashboards under `dashboards/current`, after the install-time pass for the export: its
+ *   tenants, no current cluster, the experiment of an experiment export (otherwise each opens on the
+ *   newest), and the documents view on loopback;
+ * - `README.txt`: how to open it, the images the opening machine needs (exactly those the compose
+ *   file names, each a `LocalImages` pin), and that profiles are left out (issue 1016);
+ * - the manifest, so `observability local dashboards` works on the opened export.
+ *
+ * The zip carries no images (owner decision 15): the opening machine pulls them beforehand.
+ *
+ * @property dashboards the dashboards to install, the packaged ones.
+ * @property toolVersion the version the manifest and the README record.
+ * @property grafanaPort Grafana's port on `127.0.0.1` when the export is opened.
+ * @property documentsPort the documents view's port on `127.0.0.1` when the export is opened.
+ */
+class ExportStackFiles(
+    private val dashboards: DashboardTreeSource,
+    private val toolVersion: String,
+    private val grafanaPort: Int = Constants.LocalStack.DEFAULT_GRAFANA_PORT,
+    private val documentsPort: Int = Constants.LocalStack.DEFAULT_DOCUMENTS_PORT,
+) {
+    companion object {
+        private const val README_TEMPLATE = "README.txt"
+        private const val DASHBOARD_TREE = "${Constants.LocalStack.DASHBOARDS_DIR}/${Constants.LocalStack.DASHBOARDS_TREE}"
+
+        /**
+         * The data directories an opened export must have even when it holds nothing under them.
+         * The data directory is mounted read-only, and the offline Tempo creates its local backend's
+         * directory at start: with no `data/tempo/` it fails to create its store and restarts forever.
+         */
+        val REQUIRED_DIRECTORIES: List<String> = listOf("${Constants.Export.DATA_DIR}/${Constants.Observability.TRACES_ROOT}")
+    }
+
+    /**
+     * Puts the stack of [files] (same arguments) into [zip], and every [REQUIRED_DIRECTORIES] entry.
+     * Both exports write their stack through this.
+     */
+    fun put(
+        zip: ExportRecorder,
+        tenant: String,
+        root: String = tenant,
+        tenants: List<String> = listOf(tenant),
+        experiment: ExperimentKey? = null,
+    ) {
+        files(tenant, root, tenants, experiment).forEach { (path, bytes) -> zip.put(path, bytes) }
+        REQUIRED_DIRECTORIES.forEach(zip::putDirectory)
+    }
+
+    /**
+     * The stack files of an export whose home tenant is [tenant]; [root] is the directory the zip
+     * unpacks to. A query export may cover several [tenants], and an experiment export opens its
+     * dashboards on [experiment].
+     */
+    fun files(
+        tenant: String,
+        root: String = tenant,
+        tenants: List<String> = listOf(tenant),
+        experiment: ExperimentKey? = null,
+    ): Map<String, ByteArray> {
+        val spec =
+            LocalStackSpec(
+                mode = LocalStackSpec.Mode.Offline(dataDir = Constants.Export.DATA_DIR, home = tenant),
+                tenants = tenants,
+                grafanaPort = grafanaPort,
+                documentsPort = documentsPort,
+            )
+        val stack = LocalStackComposer.compose(spec)
+        val owned = stack + (Constants.Export.README_FILE to readme(spec, stack, root).toByteArray())
+        val context =
+            DashboardInstallContext(
+                cluster = null,
+                experiment = experiment,
+                tenants = spec.tenantSet,
+                documentsUrl = "http://${Constants.LocalStack.LOOPBACK}:${spec.documentsPort}",
+            )
+        val tree = dashboards.render(context).map { (path, json) -> "$DASHBOARD_TREE/$path" to json.toByteArray() }.toMap()
+        val manifest = LocalStackManifest.of(toolVersion, spec, owned).toJson().toByteArray()
+        return owned + tree + (Constants.LocalStack.MANIFEST_FILE to manifest)
+    }
+
+    private fun readme(
+        spec: LocalStackSpec,
+        stack: Map<String, ByteArray>,
+        root: String,
+    ): String {
+        val images =
+            ComposeFile
+                .fromYaml(String(stack.getValue(Constants.LocalStack.COMPOSE_FILE)))
+                .services.values
+                .map { it.image }
+                .distinct()
+                .sorted()
+        return TemplateService
+            .Template(CompactorTaskDefinition.resource(ExportStackFiles::class.java, README_TEMPLATE), emptyMap())
+            .substitute(
+                mapOf(
+                    "TENANT" to spec.mode.home,
+                    "TOOL_VERSION" to toolVersion,
+                    "ROOT" to root,
+                    "GRAFANA_URL" to "http://${Constants.LocalStack.LOOPBACK}:${spec.grafanaPort}",
+                    "IMAGES" to images.joinToString("\n") { "    docker pull $it" },
+                    "PROFILES_ISSUE" to Constants.Export.PROFILES_ISSUE.toString(),
+                ),
+            )
+    }
+}

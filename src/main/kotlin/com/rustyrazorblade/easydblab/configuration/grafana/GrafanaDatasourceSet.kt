@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.configuration.grafana
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.LogQl
+import java.net.URI
 import java.security.MessageDigest
 
 /**
@@ -38,6 +39,10 @@ data class BackendUrls(
     val traces: String,
     val profiles: String,
 ) {
+    /** The `host:port` of every backend, as Grafana's data source proxy allow-list names them. */
+    fun hostPorts(): List<String> =
+        listOf(metrics, logs, traces, profiles).map { url -> URI(url).let { "${it.host}:${it.port}" } }.distinct()
+
     companion object {
         /** The backends on the control node, where Grafana runs with the host's network. */
         val CONTROL_NODE =
@@ -46,6 +51,19 @@ data class BackendUrls(
                 logs = "http://localhost:${Constants.K8s.LOKI_HTTP_PORT}",
                 traces = "http://localhost:${Constants.K8s.TEMPO_PORT}",
                 profiles = "http://localhost:${Constants.K8s.PYROSCOPE_PORT}",
+            )
+
+        /**
+         * The backends of the local docker compose stack, by service name on the project network.
+         * No profiles service runs there until issue 1016; its datasource keeps its uid and answers
+         * nothing.
+         */
+        val LOCAL_COMPOSE =
+            BackendUrls(
+                metrics = "http://${Constants.LocalStack.Services.MIMIR}:${Constants.K8s.MIMIR_HTTP_PORT}/prometheus",
+                logs = "http://${Constants.LocalStack.Services.LOKI}:${Constants.K8s.LOKI_HTTP_PORT}",
+                traces = "http://${Constants.LocalStack.Services.TEMPO}:${Constants.K8s.TEMPO_PORT}",
+                profiles = "http://${Constants.LocalStack.Services.PYROSCOPE}:${Constants.K8s.PYROSCOPE_PORT}",
             )
     }
 }

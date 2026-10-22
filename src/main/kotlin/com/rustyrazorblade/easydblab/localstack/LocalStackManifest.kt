@@ -1,0 +1,69 @@
+package com.rustyrazorblade.easydblab.localstack
+
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import java.io.File
+import java.security.MessageDigest
+
+/**
+ * The record a stack directory keeps of what the tool wrote there (`.easy-db-lab-local-stack.json`).
+ *
+ * Its presence marks the directory as the tool's, so a re-run may rewrite the files it lists, and
+ * only those. The checksums tell a re-run which owned files the user edited. `local dashboards`
+ * reads the Grafana and documents ports from it.
+ *
+ * @property toolVersion the easy-db-lab version that wrote the stack.
+ * @property mode `live` or `offline` ([LocalStackSpec.Mode.manifestName]).
+ * @property homeTenant the tenant of the stable datasources.
+ * @property tenants every tenant Grafana got datasources for, sorted, the home tenant included.
+ * @property grafanaPort Grafana's port on `127.0.0.1`.
+ * @property documentsPort the documents web server's port on `127.0.0.1`, which the dashboards'
+ *   documents URL names.
+ * @property files the sha256 (hex) of each owned file as written, by path relative to the directory.
+ */
+@Serializable
+data class LocalStackManifest(
+    val toolVersion: String,
+    val mode: String,
+    val homeTenant: String,
+    val tenants: List<String>,
+    val grafanaPort: Int,
+    val documentsPort: Int,
+    val files: Map<String, String>,
+) {
+    /** This manifest as JSON. */
+    fun toJson(): String = JSON.encodeToString(serializer(), this)
+
+    companion object {
+        private val JSON =
+            Json {
+                prettyPrint = true
+                ignoreUnknownKeys = true
+            }
+
+        /** Reads the manifest at [file]. */
+        fun read(file: File): LocalStackManifest = fromJson(file.readText())
+
+        /** Reads a manifest written by [toJson]. */
+        fun fromJson(text: String): LocalStackManifest = JSON.decodeFromString(serializer(), text)
+
+        /** The manifest of the stack [spec] whose owned [files] (by relative path) [toolVersion] wrote. */
+        fun of(
+            toolVersion: String,
+            spec: LocalStackSpec,
+            files: Map<String, ByteArray>,
+        ): LocalStackManifest =
+            LocalStackManifest(
+                toolVersion = toolVersion,
+                mode = spec.mode.manifestName,
+                homeTenant = spec.mode.home,
+                tenants = spec.tenantSet.all,
+                grafanaPort = spec.grafanaPort,
+                documentsPort = spec.documentsPort,
+                files = files.mapValues { sha256(it.value) },
+            )
+
+        /** The sha256 of [bytes], in hex, as the manifest records an owned file. */
+        fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+    }
+}

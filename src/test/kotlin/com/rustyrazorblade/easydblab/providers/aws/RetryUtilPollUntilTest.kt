@@ -29,6 +29,12 @@ class RetryUtilPollUntilTest {
         ) { results[looks.getAndIncrement()]() }
 
     @Test
+    fun `a retried look is logged with its attempt number and the bound`() {
+        assertThat(pollRetryWarning("create-thing", attempt = 3, maxAttempts = 12))
+            .isEqualTo("create-thing: look 3 of 12 failed; retrying")
+    }
+
+    @Test
     fun `returns the first result that satisfies the condition and looks no further`() {
         val result = poll(maxAttempts = 5, results = listOf({ "pending" }, { "ready" }, { "never" }))
 
@@ -118,5 +124,34 @@ class RetryUtilPollUntilTest {
             }
         }.isInstanceOf(IllegalStateException::class.java).hasMessage("connection reset")
         assertThat(looks.get()).isEqualTo(1)
+    }
+
+    @Test
+    fun `a look whose exception is not transient fails the poll at once`() {
+        assertThatThrownBy {
+            pollUntil<String>(
+                operationName = "test-poll",
+                maxAttempts = 5,
+                interval = Duration.ZERO,
+                transient = { false },
+                done = { it == "ready" },
+            ) { listOf({ error("no such bucket") }, { "ready" })[looks.getAndIncrement()]() }
+        }.isInstanceOf(IllegalStateException::class.java).hasMessage("no such bucket")
+        assertThat(looks.get()).isEqualTo(1)
+    }
+
+    @Test
+    fun `a poll whose exceptions are not transient still awaits its result`() {
+        val result =
+            pollUntil(
+                operationName = "test-poll",
+                maxAttempts = 5,
+                interval = Duration.ZERO,
+                transient = { false },
+                done = { it == "ready" },
+            ) { listOf("pending", "ready", "never")[looks.getAndIncrement()] }
+
+        assertThat(result).isEqualTo("ready")
+        assertThat(looks.get()).isEqualTo(2)
     }
 }

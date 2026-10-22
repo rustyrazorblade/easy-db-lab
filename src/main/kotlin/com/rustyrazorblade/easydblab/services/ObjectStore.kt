@@ -30,7 +30,7 @@ import java.nio.file.Path
  * val result = objectStore.uploadFile(localJar, s3Path, showProgress = true)
  * ```
  */
-interface ObjectStore {
+interface ObjectStore : ConditionalObjectStore {
     /**
      * Uploads a local file to cloud storage with retry logic.
      *
@@ -224,5 +224,87 @@ interface ObjectStore {
         val remotePath: ClusterS3Path,
         val filesUploaded: Int,
         val totalBytes: Long,
+    )
+}
+
+/**
+ * The conditional writes of an object store: write only if absent, replace only the version that
+ * was read, and read with that version.
+ *
+ * They are what lets a writer never replace an object it did not mean to, even when another
+ * writer acts at the same moment. It is its own interface so that code that needs only these,
+ * such as the report pointer, depends on nothing more; [ObjectStore] offers them too.
+ */
+interface ConditionalObjectStore {
+    /**
+     * Writes [content] to [remotePath] only if no object is there, in one conditional request
+     * (`If-None-Match: *`), so it can never replace an object, not even one another writer stores
+     * at the same moment.
+     *
+     * @return [Written], or [AlreadyExists] when the write was refused and wrote nothing. A refusal
+     *   does not say whose object is there: it may be another writer's, this writer's own (an
+     *   earlier attempt of the request committed and lost its response), or none yet (a write is
+     *   still in flight at the key). A caller that must tell them apart reads the key back.
+     */
+    fun putIfAbsent(
+        content: ByteArray,
+        remotePath: ClusterS3Path,
+        contentType: String,
+    ): PutIfAbsentResult
+
+    /**
+     * Replaces the object at [remotePath] with [content] only while its version is still [etag]
+     * (`If-Match`), as read with [readVersioned].
+     *
+     * @return [Written], or [PreconditionFailed] when the write was refused and wrote nothing: the
+     *   object was changed or removed since it was read, by another writer, by this writer's own
+     *   earlier attempt whose response was lost, or by a write still in flight. A caller that must
+     *   tell them apart reads the key back.
+     */
+    fun putIfMatch(
+        content: ByteArray,
+        remotePath: ClusterS3Path,
+        etag: String,
+        contentType: String,
+    ): PutIfMatchResult
+
+    /**
+     * Reads the object at [remotePath] as UTF-8 together with the version it was read at.
+     *
+     * @return the content and its ETag, or null when no object is there.
+     */
+    fun readVersioned(remotePath: ClusterS3Path): Versioned?
+
+    /**
+     * Reads the object at [remotePath] as bytes, exactly as stored.
+     *
+     * @return its bytes, or null when no object is there.
+     */
+    fun readBytes(remotePath: ClusterS3Path): ByteArray?
+
+    /** The outcome of [putIfAbsent]. */
+    sealed interface PutIfAbsentResult
+
+    /** The outcome of [putIfMatch]. */
+    sealed interface PutIfMatchResult
+
+    /** A conditional write stored its content. */
+    data object Written : PutIfAbsentResult, PutIfMatchResult
+
+    /** [putIfAbsent] was refused because the path was not free, and wrote nothing. */
+    data object AlreadyExists : PutIfAbsentResult
+
+    /** [putIfMatch] was refused because the object was not the version read, and wrote nothing. */
+    data object PreconditionFailed : PutIfMatchResult
+
+    /**
+     * An object's content and the version it was read at.
+     *
+     * @property content The object, as UTF-8.
+     * @property etag The object's ETag, for [putIfMatch].
+     */
+    data class Versioned(
+        val content: String,
+        val etag: String,
     )
 }

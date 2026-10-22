@@ -104,6 +104,7 @@ object ClusterConfigWriter {
      * @param writer BufferedWriter to write environment file to
      * @param hosts Map of server types to their hosts
      * @param clusterName Name of the cluster for prompt customization
+     * @param experiment the cluster's experiment, written as `EXPERIMENT`
      * @param proxyCommands the same per-host `ProxyCommand`s as the cluster's `sshConfig`, so the
      *   fallback config this file writes when `sshConfig` is missing routes hosts the same way
      */
@@ -111,6 +112,7 @@ object ClusterConfigWriter {
         writer: BufferedWriter,
         hosts: Map<ServerType, List<ClusterHost>>,
         clusterName: String,
+        experiment: String,
         proxyCommands: Map<String, String> = emptyMap(),
     ) {
         // write the initial SSH aliases
@@ -127,6 +129,7 @@ object ClusterConfigWriter {
 
         // Cluster metadata for prompt customization
         writer.appendLine("CLUSTER_NAME=\"$clusterName\"")
+        writer.appendLine("EXPERIMENT=\"$experiment\"")
         writer.appendLine("DB_NODE_COUNT=${hosts[ServerType.Cassandra]?.size ?: 0}")
         writer.appendLine("APP_NODE_COUNT=${hosts[ServerType.Stress]?.size ?: 0}")
 

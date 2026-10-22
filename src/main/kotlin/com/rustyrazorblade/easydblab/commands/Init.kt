@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.SparkInitMixin
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
@@ -262,6 +263,16 @@ class Init : PicoBaseCommand() {
     var tenant: String = Constants.Observability.DEFAULT_TENANT
 
     @Option(
+        names = ["--experiment"],
+        description = [
+            "Experiment the cluster belongs to: one test, grouping one or more clusters of the tenant. " +
+                "Names are unique within a tenant. Must match ^[a-z0-9][a-z0-9_-]{0,79}$ " +
+                "(default: the cluster's own <name>-<id>).",
+        ],
+    )
+    var experiment: String? = null
+
+    @Option(
         names = ["--redirect-telemetry"],
         description = [
             "Ship all telemetry to an external observability stack at this base host instead of " +
@@ -389,16 +400,11 @@ class Init : PicoBaseCommand() {
         cidr?.let { CidrBlock(it) }
         require(Regex(Constants.Observability.CLUSTER_NAME_PATTERN).matches(name)) {
             "Invalid cluster name '$name': a cluster name must match ${Constants.Observability.CLUSTER_NAME_PATTERN} " +
-                "(start with a lowercase letter; then lowercase letters, digits or '-'; at most 40 characters)."
+                "(start with a lowercase letter; then lowercase letters, digits, '_' or '-'; at most 40 characters)."
         }
-        require(Regex(Constants.Observability.TENANT_PATTERN).matches(tenant)) {
-            "Invalid tenant '$tenant': a tenant must match ${Constants.Observability.TENANT_PATTERN} " +
-                "(start with a lowercase letter; then lowercase letters, digits, '_' or '-'; at most 63 characters)."
-        }
-        require(tenant != Constants.Observability.RESERVED_TENANT) {
-            "Invalid tenant '$tenant': '${Constants.Observability.RESERVED_TENANT}' is reserved " +
-                "(a Loki tenant with that name would collide with Loki's index path)."
-        }
+        ExperimentKey.requireValidTenant(tenant)
+        // The default, <name>-<id>, fits the rule for every valid cluster name.
+        experiment?.let(ExperimentKey::requireValidName)
         resolvedTelemetryRedirect?.validate()?.let { offending ->
             require(offending.isEmpty()) {
                 "Telemetry redirect endpoints are missing or malformed for: " +
@@ -457,6 +463,8 @@ class Init : PicoBaseCommand() {
                     ),
                 tailscaleActive = userConfig.isTailscaleEnabled() && !noTailscale,
             )
+        // Stored resolved, so the experiment never changes after init; the default needs the id.
+        state.initConfig = state.initConfig?.copy(experiment = experiment ?: state.clusterLabelName())
         clusterStateManager.save(state)
         return state
     }

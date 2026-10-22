@@ -18,6 +18,7 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import java.time.Duration
 
 /**
  * Tests Loki's configuration and Deployment as rendered by the real [TemplateService].
@@ -59,6 +60,27 @@ class LokiManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(yaml, "target")).isEqualTo("all")
         assertThat(scalarAt(yaml, "auth_enabled")).isEqualTo("true")
         assertThat(scalarAt(yaml, "querier", "multi_tenant_queries_enabled")).isEqualTo("true")
+    }
+
+    @Test
+    fun `the HTTP server keeps a synchronous flush's connection open for as long as down waits for it`() {
+        // Past the write timeout the server drops the connection without an answer, and the waiting
+        // client sees an EOF instead of the shutdown's 204.
+        val writeTimeout = scalarAt(config(), "server", "http_server_write_timeout")
+
+        assertThat(writeTimeout).describedAs("server.http_server_write_timeout").isNotNull()
+        assertThat(Duration.parse("PT${writeTimeout.orEmpty().uppercase()}"))
+            .isGreaterThanOrEqualTo(Duration.ofSeconds(Constants.TeardownFlush.SHUTDOWN_TIMEOUT_SECONDS))
+    }
+
+    @Test
+    fun `the ingester takes every line however full the disk under its WAL is`() {
+        // Loki 3.7.8 refuses every push ("Ingester is shutting down") once that disk is 90% used,
+        // dropping the data; 0 turns the throttle off.
+        val yaml = config()
+
+        assertThat(scalarAt(yaml, "ingester", "wal", "disk_full_threshold")).isEqualTo("0")
+        assertThat(scalarAt(yaml, "ingester", "wal", "enabled")).isEqualTo("true")
     }
 
     @Test
@@ -127,7 +149,7 @@ class LokiManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the cluster, host, role and source are index labels`() {
+    fun `the cluster, experiment, tenant, host, role and source are index labels`() {
         val yaml = config()
         val rules = nodeAt(yaml, "limits_config", "otlp_config", "resource_attributes", "attributes_config") as YamlList
         val indexLabels =
@@ -136,7 +158,7 @@ class LokiManifestBuilderTest : BaseKoinTest() {
                 .filter { it.get<YamlScalar>("action")?.content == "index_label" }
                 .flatMap { rule -> (rule.get<YamlList>("attributes")?.items.orEmpty()).map { (it as YamlScalar).content } }
 
-        assertThat(indexLabels).containsExactlyInAnyOrder("cluster", "host.name", "node_role", "source")
+        assertThat(indexLabels).containsExactlyInAnyOrder("cluster", "experiment", "edl_tenant", "host.name", "node_role", "source")
     }
 
     @Test

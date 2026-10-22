@@ -81,12 +81,27 @@ class SeriesClusterTest {
     }
 
     @Test
+    fun `the series rules apply to PromQL and LogQL, not to traces or profiles`() {
+        val grouped = "{ resource.cluster =~ \"${'$'}{cluster:regex}\" } | rate() by (resource.service.name)"
+
+        assertThat(SeriesClusterGuards.appliesTo(Query("p", Language.PROMQL, "sum(up)"))).isTrue()
+        assertThat(SeriesClusterGuards.appliesTo(Query("p", Language.LOGQL, "sum(count_over_time({a=\"b\"}[5m]))"))).isTrue()
+        assertThat(SeriesClusterGuards.appliesTo(Query("p", Language.TRACEQL, grouped))).isFalse()
+        assertThat(SeriesClusterGuards.appliesTo(Query("p", Language.PROFILES, "{}"))).isFalse()
+    }
+
+    @Test
     fun `the queries that read one cluster, or every cluster, on purpose are exempt`() {
-        val side = """sum(rate(a{cluster="${'$'}baseline_cluster"}[5m]))"""
-        val both = """sum(a{cluster="${'$'}baseline_cluster"}) + sum(a{cluster=~"${'$'}cluster"})"""
+        val side = """sum(rate(a{cluster="${'$'}cluster_a"}[5m]))"""
+        val both = """sum(a{cluster="${'$'}cluster_b"}) + sum(a{cluster=~"${'$'}cluster"})"""
+        val retired = """sum(rate(a{cluster="${'$'}baseline_cluster"}[5m]))"""
 
         assertThat(SeriesClusterGuards.exempt(Query("variable 'cluster'", Language.PROMQL, "count by (cluster) (up)"), false)).isTrue()
+        assertThat(
+            SeriesClusterGuards.exempt(Query("variable 'experiment'", Language.PROMQL, "count by (experiment) (up)"), false),
+        ).isTrue()
         assertThat(SeriesClusterGuards.exempt(Query("panel 'p'", Language.PROMQL, side), false)).isTrue()
+        assertThat(SeriesClusterGuards.exempt(Query("panel 'p'", Language.PROMQL, retired), false)).isFalse()
         assertThat(SeriesClusterGuards.exempt(Query("panel 'p'", Language.PROMQL, both), false)).isFalse()
         assertThat(SeriesClusterGuards.exempt(Query("panel 'p'", Language.PROMQL, "max by (name) (aws_s3_x)"), false)).isTrue()
         assertThat(SeriesClusterGuards.exempt(Query("panel 'p'", Language.PROMQL, "sum(up)"), true)).isTrue()
@@ -137,7 +152,7 @@ class SeriesClusterTest {
                 val variables = customValues(dashboard)
                 ClusterFilterGuards
                     .queries(dashboard)
-                    .filter { it.language != Language.PROFILES }
+                    .filter { SeriesClusterGuards.appliesTo(it) }
                     .flatMap { query ->
                         SeriesClusterGuards.repeatedGrouping(query.text, variables).map { "${file.path} ${query.where}: $it" }
                     }
@@ -201,16 +216,16 @@ class SeriesClusterTest {
 
     @Test
     fun `an override that only matched the legend without its cluster is reported`() {
-        val legends = listOf("{{cluster_name}} baseline", "{{cluster_name}} candidate {{host_name}}")
+        val legends = listOf("{{cluster_name}} build_a", "{{cluster_name}} build_b {{host_name}}")
 
         assertThat(
             SeriesClusterGuards.staleOverrides(
                 legends,
-                listOf("byName" to "baseline", "byRegexp" to "^candidate.*", "byRegexp" to ".*candidate.*"),
+                listOf("byName" to "build_a", "byRegexp" to "^build_b.*", "byRegexp" to ".*build_b.*"),
             ),
-        ).containsExactly("byName 'baseline'", "byRegexp '^candidate.*'")
+        ).containsExactly("byName 'build_a'", "byRegexp '^build_b.*'")
         assertThat(
-            SeriesClusterGuards.staleOverrides(legends, listOf("byRegexp" to "^(.* )?baseline$", "byRegexp" to "^(.* )?candidate.*")),
+            SeriesClusterGuards.staleOverrides(legends, listOf("byRegexp" to "^(.* )?build_a$", "byRegexp" to "^(.* )?build_b.*")),
         ).isEmpty()
     }
 
@@ -267,6 +282,31 @@ class SeriesClusterTest {
         assertThat(SeriesClusterGuards.joinProblems(parse("""{"transformations": [{"id": "merge", "options": {}}]}"""))).isEmpty()
         assertThat(SeriesClusterGuards.joinProblems(parse("""{"transformations": [{"id": "concatenate", "options": {}}]}""")))
             .containsExactly("concatenate joins on '', which does not hold the cluster")
+    }
+
+    @Test
+    fun `a join after a partition by cluster joins one-cluster frames and is accepted`() {
+        val merge = """{"id": "merge", "options": {}}"""
+        val join = """{"id": "joinByField", "options": {"byField": "Value #A", "mode": "outer"}}"""
+
+        fun partition(vararg fields: String) =
+            """{"id": "partitionByValues", "options": {"fields": [${fields.joinToString(", ") { "\"$it\"" }}]}}"""
+
+        fun trend(vararg chain: String) =
+            parse(
+                """{"type": "trend", "targets": [{"refId": "A", "expr": "up"}, {"refId": "B", "expr": "up"}], """ +
+                    """"transformations": [${chain.joinToString(", ")}]}""",
+            )
+
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, partition("cluster", "cluster_name"), join))).isEmpty()
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, join)))
+            .contains("joinByField joins on 'Value #A', which does not hold the cluster")
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, join, partition("cluster"))))
+            .contains("joinByField joins on 'Value #A', which does not hold the cluster")
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, partition("host_name"), join)))
+            .contains("joinByField joins on 'Value #A', which does not hold the cluster")
+        assertThat(SeriesClusterGuards.joinProblems(trend(merge, partition("cluster"), merge, join)))
+            .contains("joinByField joins on 'Value #A', which does not hold the cluster")
     }
 
     @Test
@@ -473,7 +513,7 @@ class SeriesClusterTest {
                 .queries(dashboard)
                 .takeIf { hasClusterVariable(dashboard) }
                 .orEmpty()
-                .filter { it.language != Language.PROFILES && !SeriesClusterGuards.exempt(it, testsListing) }
+                .filter { SeriesClusterGuards.appliesTo(it) && !SeriesClusterGuards.exempt(it, testsListing) }
                 .map { file.path to it }
         }
 

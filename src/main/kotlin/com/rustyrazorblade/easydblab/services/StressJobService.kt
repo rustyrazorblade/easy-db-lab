@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterLabels
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
@@ -384,17 +385,16 @@ class DefaultStressJobService(
                     ecrPullSecrets.ensureFor(control, config.image, Constants.Stress.NAMESPACE)
                 }.orEmpty()
 
+        val clusterLabels = ClusterLabels.of(clusterState)
         val stressContainer =
             buildStressContainer(
                 config,
                 region,
                 controlNodeIp,
-                clusterState.clusterLabelName(),
-                clusterState.tenant(),
+                clusterLabels,
                 clusterState.initConfig?.telemetryRedirect,
             )
-        val otelSidecar =
-            buildOtelSidecarContainer(config.jobName, config.tags, config.promPort, clusterState.clusterLabelName())
+        val otelSidecar = buildOtelSidecarContainer(config.jobName, config.tags, config.promPort, clusterLabels)
 
         return assembleJob(config.jobName, labels, stressContainer, otelSidecar, pullSecretName)
     }
@@ -403,12 +403,11 @@ class DefaultStressJobService(
         config: StressJobConfig,
         region: String,
         controlNodeIp: String,
-        clusterName: String,
-        tenant: String,
+        clusterLabels: ClusterLabels,
         telemetryRedirect: TelemetryRedirect?,
     ): Container {
         val pyroscopeServerAddress = pyroscopeIngestBaseUrl(controlNodeIp, telemetryRedirect)
-        val pyroscopeLabels = "cluster=$clusterName,job_name=${config.jobName}"
+        val pyroscopeLabels = "${clusterLabels.pyroscopePairs()},job_name=${config.jobName}"
 
         // Client spans come from here or from nowhere. Cassandra has no OTel server-side
         // instrumentation, so the only thing on this cluster that can produce a trace is the driver
@@ -421,8 +420,9 @@ class DefaultStressJobService(
         //
         // Resource attributes come from the same helper the sidecar uses, so a span and the stress
         // metrics from the same run carry the same job_name and tags and can be lined up. The
-        // cluster label is NOT added here: the collector's traces pipeline stamps it with
-        // resource/cluster, so every span producer gets it, not just this one.
+        // cluster, experiment and tenant labels are NOT added here: the collector's traces
+        // pipeline stamps them with resource/cluster, so every span producer gets them, not just
+        // this one.
         //
         // Logs are the one signal turned off. The pod's stdout already reaches Loki through
         // the collector's filelog receiver, so exporting them again from inside the JVM would file
@@ -450,7 +450,7 @@ class DefaultStressJobService(
                 "-Dpyroscope.profiler.lock=10ms",
                 "-Dpyroscope.labels=$pyroscopeLabels",
                 // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
-                "-Dpyroscope.tenant.id=$tenant",
+                "-Dpyroscope.tenant.id=${clusterLabels.tenant}",
                 "-javaagent:$OTEL_AGENT_MOUNT_PATH/opentelemetry-javaagent.jar",
                 "-Dotel.service.name=cassandra-easy-stress",
                 "-Dotel.resource.attributes=$otelResourceAttributes",
@@ -504,7 +504,7 @@ class DefaultStressJobService(
         jobName: String,
         tags: Map<String, String>,
         promPort: Int,
-        clusterName: String,
+        clusterLabels: ClusterLabels,
     ): Container {
         val resourceAttributes = buildResourceAttributes(jobName, tags)
 
@@ -529,16 +529,24 @@ class DefaultStressJobService(
                     .endFieldRef()
                     .endValueFrom()
                     .build(),
-                // Inject the cluster label directly from cluster state rather than via a
-                // `cluster-config` ConfigMap. That ConfigMap is created by the separate
-                // `grafana update-config` command and is not guaranteed to exist when a stress
-                // job starts; a non-optional configMapKeyRef to a missing ConfigMap causes
-                // CreateContainerConfigError and fails the Job (issue #733). The value matches
-                // `clusterLabelName()` so the sidecar's `cluster` metric label lines up with the
-                // rest of the observability stack.
+                // Inject the cluster, experiment and tenant labels directly from cluster state
+                // rather than via a `cluster-config` ConfigMap. That ConfigMap is created by the
+                // separate `grafana update-config` command and is not guaranteed to exist when a
+                // stress job starts; a non-optional configMapKeyRef to a missing ConfigMap causes
+                // CreateContainerConfigError and fails the Job (issue #733). The values match
+                // ClusterLabels so the sidecar's metric labels line up with the rest of the
+                // observability stack.
                 EnvVarBuilder()
                     .withName("CLUSTER_NAME")
-                    .withValue(clusterName)
+                    .withValue(clusterLabels.cluster)
+                    .build(),
+                EnvVarBuilder()
+                    .withName("EXPERIMENT")
+                    .withValue(clusterLabels.experiment)
+                    .build(),
+                EnvVarBuilder()
+                    .withName("TENANT")
+                    .withValue(clusterLabels.tenant)
                     .build(),
                 EnvVarBuilder()
                     .withName("GOMEMLIMIT")

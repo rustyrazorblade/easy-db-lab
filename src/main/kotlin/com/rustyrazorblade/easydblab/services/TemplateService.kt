@@ -43,6 +43,7 @@ class TemplateService(
             "CLUSTER_S3_PREFIX" to buildClusterPrefix(state),
             "PROFILES_S3_PREFIX" to store.profilesPrefix(),
             "TENANT" to store.tenant,
+            "EXPERIMENT" to state.experiment(),
         )
     }
 

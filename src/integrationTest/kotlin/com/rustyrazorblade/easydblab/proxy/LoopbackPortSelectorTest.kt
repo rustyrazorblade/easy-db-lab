@@ -11,8 +11,8 @@ import java.net.ServerSocket
 /**
  * Integration-tier tests for [LoopbackPortSelector]: whether a port counts as free depends on a real
  * bind probe, so these hold real listening sockets. Every occupied port is OS-assigned via
- * `ServerSocket(0)` and handed to the selector as a candidate, so no test binds a hardcoded port
- * (issue #750).
+ * `ServerSocket(0)` and handed to the selector as a candidate, and every free one is a random port
+ * outside the ephemeral ranges, so no test binds a hardcoded port (issue #750).
  */
 class LoopbackPortSelectorTest {
     @Test
@@ -66,7 +66,14 @@ class LoopbackPortSelectorTest {
         }
     }
 
-    private fun freePort(): Int = ServerSocket(0).use { it.localPort }
+    /**
+     * A port free on 127.0.0.1 that no other process takes before the selector probes it. An
+     * OS-assigned port (`ServerSocket(0)`) is ephemeral: once it was released, an outgoing connection
+     * from another test JVM or Docker's port forwarding could take it as its local port, both
+     * candidates were then bound, and the selector drew a third from an empty queue. This one comes
+     * from outside every ephemeral range, as the tunnel tests' ports do.
+     */
+    private fun freePort(): Int = TunnelTestProcesses.freeTunnelPort()
 
     private companion object {
         const val PICKS = 10

@@ -3,12 +3,15 @@ package com.rustyrazorblade.easydblab.services.aws
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.services.ConditionalObjectStore
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
+import software.amazon.awssdk.core.ResponseBytes
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
+import software.amazon.awssdk.services.s3.model.GetObjectResponse
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.NoSuchKeyException
@@ -357,6 +360,124 @@ class S3ObjectStore(
                 .key(remotePath.getKey())
                 .build()
         return s3Client.getObjectAsBytes(getRequest).asUtf8String()
+    }
+
+    override fun putIfAbsent(
+        content: ByteArray,
+        remotePath: ClusterS3Path,
+        contentType: String,
+    ): ConditionalObjectStore.PutIfAbsentResult {
+        val request = putRequest(remotePath, contentType).ifNoneMatch("*").build()
+        return if (conditionalPut(request, content, WriteCondition.IF_NONE_MATCH)) {
+            ConditionalObjectStore.Written
+        } else {
+            ConditionalObjectStore.AlreadyExists
+        }
+    }
+
+    override fun putIfMatch(
+        content: ByteArray,
+        remotePath: ClusterS3Path,
+        etag: String,
+        contentType: String,
+    ): ConditionalObjectStore.PutIfMatchResult {
+        val request = putRequest(remotePath, contentType).ifMatch(etag).build()
+        return if (conditionalPut(request, content, WriteCondition.IF_MATCH)) {
+            ConditionalObjectStore.Written
+        } else {
+            ConditionalObjectStore.PreconditionFailed
+        }
+    }
+
+    override fun readVersioned(remotePath: ClusterS3Path): ConditionalObjectStore.Versioned? =
+        readObject(remotePath)?.let { ConditionalObjectStore.Versioned(it.asUtf8String(), it.response().eTag()) }
+
+    override fun readBytes(remotePath: ClusterS3Path): ByteArray? = readObject(remotePath)?.asByteArray()
+
+    /**
+     * Reads [remotePath]: null when no object is there. Any other S3 error is thrown as an
+     * [S3Exception] whose message names the key, S3's error code and the HTTP status, keeping the
+     * status, error details, request id and the original as its cause.
+     */
+    private fun readObject(remotePath: ClusterS3Path): ResponseBytes<GetObjectResponse>? {
+        val getRequest =
+            GetObjectRequest
+                .builder()
+                .bucket(remotePath.bucket)
+                .key(remotePath.getKey())
+                .build()
+        return try {
+            s3Client.getObjectAsBytes(getRequest)
+        } catch (_: NoSuchKeyException) {
+            null
+        } catch (e: S3Exception) {
+            val code = e.awsErrorDetails()?.errorCode() ?: "unknown"
+            throw S3Exception
+                .builder()
+                .message("Read of ${remotePath.toUri()} failed with S3 error $code (HTTP ${e.statusCode()})")
+                .statusCode(e.statusCode())
+                .awsErrorDetails(e.awsErrorDetails())
+                .requestId(e.requestId())
+                .cause(e)
+                .build()
+        }
+    }
+
+    private fun putRequest(
+        remotePath: ClusterS3Path,
+        contentType: String,
+    ): PutObjectRequest.Builder =
+        PutObjectRequest
+            .builder()
+            .bucket(remotePath.bucket)
+            .key(remotePath.getKey())
+            .contentType(contentType)
+
+    /**
+     * Sends a conditional PUT carrying [condition], retrying only server errors, and tells whether
+     * it was written. S3 refusing it because its condition does not hold ([ConditionalWriteRefusal])
+     * is false, never retried, whichever attempt it came on; the caller decides what the key holds.
+     * Any other error is thrown as an [S3Exception] whose message names the key, S3's error code,
+     * the HTTP status and how many attempts were made.
+     */
+    private fun conditionalPut(
+        request: PutObjectRequest,
+        content: ByteArray,
+        condition: WriteCondition,
+    ): Boolean {
+        val retryName = "s3-put-${condition.name.lowercase().replace('_', '-')}"
+        val retry = Retry.of(retryName, RetryUtil.createAwsRetryConfig<Unit>())
+        var attempts = 0
+        return try {
+            Retry
+                .decorateRunnable(retry) {
+                    attempts++
+                    s3Client.putObject(
+                        request,
+                        software.amazon.awssdk.core.sync.RequestBody
+                            .fromBytes(content),
+                    )
+                }.run()
+            log.info { "Wrote ${content.size} bytes to s3://${request.bucket()}/${request.key()}" }
+            true
+        } catch (e: S3Exception) {
+            val uri = "s3://${request.bucket()}/${request.key()}"
+            val code = e.awsErrorDetails()?.errorCode() ?: "unknown"
+            val attemptsMade = maxOf(attempts, e.numAttempts() ?: 1)
+            if (!ConditionalWriteRefusal.isRefused(condition, e)) {
+                throw S3Exception
+                    .builder()
+                    .message(
+                        "Conditional write to $uri failed with S3 error $code (HTTP ${e.statusCode()}), attempts: $attemptsMade",
+                    ).statusCode(e.statusCode())
+                    .awsErrorDetails(e.awsErrorDetails())
+                    .requestId(e.requestId())
+                    .cause(e)
+                    .build()
+            }
+            log.info { "Conditional write to $uri refused: S3 error $code (HTTP ${e.statusCode()}), attempts: $attemptsMade" }
+            false
+        }
     }
 
     override fun directoryExists(remotePath: ClusterS3Path): Boolean {

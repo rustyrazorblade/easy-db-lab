@@ -215,11 +215,13 @@ sealed class AWSPolicy {
                 ).toJson()
 
             /**
-             * No code path on a cluster may delete observability data or test documents. An
-             * explicit deny beats the s3:* above; the owner's own deletes from a workstation are
-             * not affected, so `report upload` still replaces a document. pyroscope/ is left out:
-             * Pyroscope v2 compaction writes a merged block and then removes the segments it
-             * merged. Compaction is not deletion.
+             * No code path on a cluster may delete observability data or reports. An explicit
+             * deny beats the s3:* above; the owner's own deletes from a workstation are not
+             * affected. No report is ever replaced: `report upload` writes each upload as a new
+             * zip only where no object is, and the only object under reports/ it rewrites is the
+             * derived pointer, with the operator's credentials. pyroscope/ is left out: Pyroscope
+             * v2 compaction writes a merged block and then removes the segments it merged.
+             * Compaction is not deletion.
              */
             private fun denyDataDeletes() =
                 IamPolicyStatement(

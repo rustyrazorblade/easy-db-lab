@@ -354,9 +354,13 @@ class TeardownFlushIntegrationTest : BaseKoinTest() {
             found =
                 traceIds
                     .filter { id ->
-                        ObservabilityBackends
-                            .get("${ObservabilityBackends.baseUrl(reader, Constants.K8s.TEMPO_PORT)}/api/v2/traces/$id", TENANT)
-                            .statusCode() == 200
+                        val answer =
+                            ObservabilityBackends.get(
+                                "${ObservabilityBackends.baseUrl(reader, Constants.K8s.TEMPO_PORT)}/api/v2/traces/$id",
+                                TENANT,
+                            )
+                        // Tempo answers 200 {"trace":{}} for a trace it does not have; only spans mean found.
+                        ObservabilityBackends.traceFound(answer.statusCode(), answer.body())
                     }.toSet()
             if (found.size < traceIds.size) Thread.sleep(POLL.toMillis())
         }

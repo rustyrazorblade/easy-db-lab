@@ -5,15 +5,16 @@ import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
 
 /**
- * Parent command for a test's documents: the operator's markdown notes and results, stored with the
- * test in the account bucket and shown on the Tests and comparison dashboards.
+ * Parent command for an experiment's reports: directories of the operator's notes, results and
+ * graphs, stored with the experiment in the account bucket and shown on the Tests and comparison
+ * dashboards of every cluster of the experiment.
  *
  * Available sub-commands:
- * - upload: store markdown files in the test's folder and rebuild its index
+ * - upload: zip one directory and store it as a new report of the experiment
  */
 @Command(
     name = "report",
-    description = ["Attach documents to the current test"],
+    description = ["Upload reports of the current experiment"],
     mixinStandardHelpOptions = true,
     subcommands = [
         ReportUpload::class,

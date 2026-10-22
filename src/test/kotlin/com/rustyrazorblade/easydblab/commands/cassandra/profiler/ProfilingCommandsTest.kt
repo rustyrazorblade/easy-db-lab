@@ -147,7 +147,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
                 clusterId = "abc123",
                 versions = mutableMapOf(),
                 hosts = hosts,
-                initConfig = InitConfig(tenant = "acme"),
+                initConfig = InitConfig(tenant = "acme", experiment = "e1"),
             ),
         )
     }
@@ -356,6 +356,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
         assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
         assertThat(config.tenant).isEqualTo("acme")
+        assertThat(config.experiment).isEqualTo("e1")
         assertThat(config.updatedAt).isNotEmpty()
     }
 
@@ -454,6 +455,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
         assertThat(config.loopInterval).isEqualTo("30s")
         assertThat(config.updatedAt).isNotEqualTo("2026-08-24T10:15:30Z")
         assertThat(config.tenant).describedAs("the cluster's tenant wins over the node document's").isEqualTo("acme")
+        assertThat(config.experiment).describedAs("the cluster's experiment wins over the node document's").isEqualTo("e1")
     }
 
     @Test
@@ -469,6 +471,7 @@ class ProfilingCommandsTest : BaseKoinTest() {
         assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
         assertThat(config.tenant).isEqualTo("acme")
+        assertThat(config.experiment).isEqualTo("e1")
 
         // Nothing was lost, so nothing to report.
         assertThat(emitted.filterIsInstance<Event.Profiling.DesiredStateUnreadable>()).isEmpty()

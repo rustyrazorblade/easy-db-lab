@@ -17,47 +17,72 @@ When running multiple environments side by side, Grafana displays the cluster na
 
 Every dashboard has a picker for each kind of data it shows: **Metrics**, **Logs** and **Traces**. Each picker lists the cluster's own tenant (the default), every tenant in the shared store by name, and one "all tenants" choice. Change the pickers to read another tenant's tests; every panel, variable, annotation and link on the dashboard follows them, and a link to another dashboard keeps them. Profiles have one datasource only, so there is no profiles picker.
 
-A dashboard with a `cluster` variable opens on the current cluster, so it shows this cluster's data with no selection by hand.  The variable lists every cluster of the tenant the Metrics picker selects.  You can select more than one cluster, or "All".  With the "all tenants" datasource in each picker and "All" in `cluster`, a dashboard shows every cluster of every tenant.  Every place a dashboard shows a cluster names it by its short name: its name and the first 8 characters of its id, for example `test-1a2b3c4d`.  That covers the cluster pickers, legends, panel titles and tables.  The pickers still select the full id, so queries and links read the whole `<name>-<id>`.
+A dashboard with a `cluster` variable opens on the current cluster, so it shows this cluster's data with no selection by hand.  The variable lists every cluster of the tenant the Metrics picker selects.  You can select more than one cluster, or "All".  On a dashboard with an **Experiment** picker (see [Experiments](#experiments)), `cluster` lists only the selected experiment's clusters and opens on "All", which means all of them.  With the "all tenants" datasource in each picker and "All" in `cluster`, a dashboard shows every cluster of every tenant.  Every place a dashboard shows a cluster names it by its short name: its name and the first 8 characters of its id, for example `test-1a2b3c4d`.  That covers the cluster pickers, legends, panel titles and tables.  The pickers still select the full id, so queries and links read the whole `<name>-<id>`.
+
+### Experiments
+
+An experiment groups the clusters of one test (see [Experiment and tenant labels](#experiment-and-tenant-labels)). Six dashboards pick one with the **Experiment** picker: Tests, Experiment: Cassandra, Experiment: System, Cluster pair, A/B Comparison and System A/B Comparison. Each option is `<tenant>/<name>`, so two tenants' experiments of the same name are two options and never mix. The picker lists the newest experiment first and, except on Tests, ends with "All". On a cluster it opens on the cluster's own experiment; in the [local stack](local-observability.md) it opens on the newest experiment. A cluster from before experiments existed is listed as an experiment of its own, `<tenant>/<name>-<id>`.
+
+With "All" on the "all tenants" datasource, every tenant's clusters show together. "All" has no single report, so a report panel asks you to select one experiment.
 
 ### Tests
 
-The **Tests** dashboard (Infrastructure folder) lists every test (cluster) of the tenant the Metrics picker selects, with its start, end and duration: its first and last `up` sample within **Lookback** (default 180 days).  The dashboard opens on the last 24 hours; the list and the **Test** picker still cover the whole **Lookback**.  Torn-down clusters are listed too. Click a cluster for:
+The **Tests** dashboard (Infrastructure folder) lists every experiment of the tenant the Metrics picker selects: its tenant, its name, the first start and last end of its clusters, how many clusters it has, and their short names. Start and end are the first and last `up` sample within **Lookback** (default 180 days). The dashboard opens on the last 24 hours; the list and the **Experiment** picker still cover the whole **Lookback**, so torn-down clusters are listed too. Click an experiment for:
 
-- **System Overview** or **Cassandra Overview**, opened on that test's window;
-- **Compare with the current cluster**, which opens Cluster Comparison with that test as the baseline and the current cluster as the candidate;
-- **Show documents**, which selects the test and shows its documents below the list.
+- **Newest report**, the experiment's newest report;
+- **Compare clusters**, which opens Experiment: Cassandra on all of its clusters;
+- **Show here**, which selects the experiment on this dashboard.
 
-### Comparing two tests
+Below the list, **Clusters of** the selected experiment lists each of its clusters with its start and end, and the experiment's report. Click a cluster for:
 
-Cluster Comparison, A/B Comparison and System A/B Comparison compare two runs of any lengths: pick them in **Baseline** and **Candidate** (any cluster of the tenant within Lookback; both default to the current cluster). Three rows at the top show:
+- **System Overview** or **Cassandra Overview**, opened on that cluster's window;
+- **Open as A in the cluster pair**, which opens Cluster pair with that cluster as A. B is the current cluster on a cluster; the local stack and an opened export have no current cluster, so B is the experiment's newest cluster there.
 
-- **Overlay**: both runs on one time axis, from a common start. The axis covers the longer run.
-- **Side by side**: each run on its own time range, at its real times.
-- **Summary and documents**: each figure over each run's whole window, the difference in percent, and both runs' documents.
+### Comparing an experiment's clusters
 
-A/B Comparison compares builds within one cluster, so its deltas are per cluster.  To compare two clusters, use Cluster Comparison.
+**Experiment: Cassandra** (Cassandra folder) and **Experiment: System** (Infrastructure folder) compare any number of an experiment's clusters, each over its own window:
 
-These rows need the dashboard's relative time range (the default, ending now); an absolute range turns their own time ranges off. In the overlay, annotations sit at their real time, so they line up only with a run that did not move.
+- **Leaderboard**: one row per cluster, each figure over the cluster's own active window.
+- **Distributions**: the median, p90 and p99 of each figure per cluster.
+- **Elapsed-time overlay**: each cluster drawn by hours since its own start, so clusters that ran on different days line up.
+- **Timeline**: the experiment's whole span at real times.
+- **Report**: the experiment's report.
 
-### Test documents
+Experiment: Cassandra keeps the per-cluster sections of the former Cluster Comparison below these rows. Experiment: System reads host metrics and eBPF only, so it works whatever database runs on the hosts, and has a **Role** picker. Every panel covers the experiment's span on its own, so the dashboard range can stay at its relative default.
 
-Attach notes and results to a test as markdown files:
+### Comparing two clusters
+
+**Cluster pair**, **A/B Comparison** and **System A/B Comparison** compare cluster A and cluster B of the selected experiment, runs of any lengths. Pick them in **Cluster A** and **Cluster B**: both list the experiment's clusters within Lookback, A oldest first and B newest first. A opens on the experiment's oldest cluster and B on the current cluster. Three rows at the top show:
+
+- **Overlay**: both clusters on one time axis, from a common start. The axis covers the longer run.
+- **Side by side**: each cluster on its own time range, at its real times.
+- **Summary and reports**: each figure over each cluster's whole window, B against A in percent, and each cluster's experiment report. B vs A % is empty when A is 0.
+
+Cluster pair adds verdict tiles (B measured against A) and the latency distributions of both clusters side by side. A/B Comparison and System A/B Comparison keep their older panels below the three rows: those compare two builds (**Build A**, **Build B**) or two host sets (**Hosts A**, **Hosts B**) inside each cluster that **Cluster** selects, so their deltas are per cluster. To compare two clusters, use the three rows at the top.
+
+These rows need the dashboard's relative time range (the default, ending now); an absolute range turns their own time ranges off. A link from another dashboard into Tests, the Experiment dashboards or the pair dashboards keeps this relative range. In the overlay, annotations sit at their real time, so they line up only with a run that did not move.
+
+### Reports
+
+Attach notes, results and graphs to an experiment by uploading a directory:
 
 ```bash
-easy-db-lab report upload results.md notes.md
+easy-db-lab report upload results/
 ```
 
-The files go to the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, each with an HTML copy, and one `index.html` holds them all, each under its own heading. Only `.md` files named with letters, digits, `.`, `_` and `-` are accepted, and `index.md` is refused.  Each name can occur only one time in a command.  The command names every file it refuses and uploads nothing.  If an upload fails, the command names the failed file and each document it already stored; run the command again. A file with the name of a stored document replaces it. The command uses your own AWS credentials and needs only the workspace, so it works after `down`. `up` writes the index of a new test, which says "No documents yet".
+The directory can hold any file types. It is zipped, and the zip is stored unchanged as `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip` in the account bucket, named for the upload time in UTC. The report belongs to the experiment, so every cluster of the experiment shows the same report. A cluster initialized without `--experiment` is an experiment of its own, `<name>-<id>`. No upload replaces another: if an upload already took that second, the next one takes the next free second, and every zip is kept.
 
-The Tests dashboard and the comparison dashboards show the documents through a read-only web server in the Grafana pod (port 3080 of the control node).  The server answers only `GET` requests for document paths under `/reports/`; it answers 400 for a path with other characters, and it drops the query string.  Pick the tenant folder with **Documents tenant**; it defaults to the cluster's own tenant.
+Each upload is also unpacked next to its zip, to `report-<yyyyMMdd-HHmmss>/`, with an HTML copy of each `.md` file and a generated `_files.html` that lists the upload's files. The experiment's `index.html` leads to the newest upload: to its `index.html` when the directory holds `index.md` or `index.html` at its root, and to `_files.html` otherwise. An upload named for an earlier second than the one shown does not move it back. `up` writes "No report yet" there only for an experiment that has no report, so a cluster that joins an experiment never hides its report.
 
-Two `report upload` runs for one test at the same moment can each rebuild the index without the other's document. The document itself is stored; the next upload puts it back in the index.
+Before it uploads anything, the command checks the whole directory and names every file that fails: every part of every path may hold only letters, digits, `.`, `_` and `-`, with no `..`; no symbolic links; no `_files.html` or `_files.md` at the root; and no `X.md` beside an `X.html`. A missing or empty directory is refused too. The command uses your own AWS credentials and needs only the workspace, so it works after `down`. See [`report upload`](../reference/commands.md#report-upload).
+
+Tests, the Experiment dashboards and the pair dashboards show the reports through a read-only web server in the Grafana pod (port 3080 of the control node).  The server answers only `GET` requests for paths under `/reports/`; it answers 400 for a path with other characters, and it drops the query string.  A report panel shows the selected experiment's report, `reports/<tenant>/<experiment>/index.html`, so the **Experiment** picker chooses both the tenant and the experiment; on a pair dashboard each cluster shows its own experiment's report.  The [local stack](local-observability.md) and an [export](local-observability.md#export-a-tenant) serve the same reports on <http://127.0.0.1:3080>, and an export carries the reports in its zip.
 
 ### System Dashboard
 
 Shows CPU, memory, disk I/O, network I/O, and load average for all cluster nodes via OpenTelemetry metrics.
 
-System Overview and System A/B Comparison have a **Role** picker.  It selects hosts by the role in their name:
+System Overview, System A/B Comparison and Experiment: System have a **Role** picker.  It selects hosts by the role in their name:
 
 | Role | Hosts |
 |------|-------|
@@ -66,7 +91,7 @@ System Overview and System A/B Comparison have a **Role** picker.  It selects ho
 | control | `control0` |
 | spark | EMR nodes, which EC2 names `ip-...` |
 
-Pick one or more roles to show every host of those roles, with no host selection by hand.  The host pickers list only hosts of the selected roles, and every panel shows only them.  The default is All, which shows every host.  A link from these dashboards to another dashboard keeps the selected roles.
+Pick one or more roles to show every host of those roles, with no host selection by hand.  The host pickers (**Hostname** on System Overview, **Hosts A** and **Hosts B** on System A/B Comparison; Experiment: System has none) list only hosts of the selected roles, and every panel shows only them.  The default is All, which shows every host.  A link from these dashboards to another dashboard keeps the selected roles.
 
 ### AWS CloudWatch Overview
 
@@ -206,11 +231,15 @@ All of a cluster's observability data lands in the account bucket. Each backend 
 | `mimir/<tenant>/` | Mimir blocks | Mimir, while the cluster runs, and its flush at `down` |
 | `loki/` | Loki chunks (under the tenant) and TSDB index (under `index/`) | Loki, while the cluster runs, and its flush at `down` |
 | `grafana/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json` | Grafana annotations | `grafana backup`, and `down` |
-| `reports/<tenant>/<name>-<id>/` | Test documents: your `.md` files, an HTML copy of each, and `index.html` | `report upload`, and `up` (the index) |
+| `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>.zip` | One report upload, stored unchanged and never replaced | `report upload` |
+| `reports/<tenant>/<experiment>/report-<yyyyMMdd-HHmmss>/` | That zip unpacked, with an HTML copy of each `.md` and `_files.html` | `report upload` |
+| `reports/<tenant>/<experiment>/index.html` | The pointer to the newest upload, the only object under `reports/` that is rewritten | `report upload`, and `up` ("No report yet", only when absent) |
 
 An annotations backup never overwrites another: when one of the same cluster already exists under that second's name (a `grafana backup` just before `down`, say), the new one takes the next free second.
 
 Cluster configuration stays under `clusters/<name>-<id>/config/`. The observability stack writes nothing to the per-cluster data bucket. `easy-db-lab status` shows the tenant and every location.
+
+The data stays readable after `down`. `observability local create <dir>` writes a Grafana with read-only Mimir, Loki and Tempo on your own machine that reads the store directly, with no cluster running: every experiment of every tenant the store held when you ran it (run it again to pick up a new tenant). `observability export <path>` copies a tenant (`--tenant`), some clusters (`--cluster`, repeatable) or one experiment (`--experiment`) into a zip that opens the same way on any machine, offline. See [Local Observability Stack](local-observability.md).
 
 **Native multi-tenancy.** Mimir, Loki, Tempo and Pyroscope run with multi-tenancy on; the tenant is their tenant ID. Every writer sends it in the `X-Scope-OrgID` header — the OTel collector's metrics, logs and trace exporters, Tempo's metrics generator, the Alloy eBPF profiler, the Pyroscope Java agent (stress jobs, the Cassandra sidecar, EMR Spark, the Trino and Presto kits) and the Cassandra JFR shipper — on redirected clusters too. Every Grafana datasource sends it on every query, so a query from the cluster's Grafana returns its tenant's data. A query that sends no tenant, such as one made directly against a backend's HTTP API, reads nothing; add `-H 'X-Scope-OrgID: <tenant>'`. Pyroscope's own UI on port 4040 asks for the tenant once per browser; see [Profiling](profiling.md#pyroscope-ui).
 
@@ -225,6 +254,22 @@ Cluster configuration stays under `clusters/<name>-<id>/config/`. The observabil
 **Restarts.** `up` and `grafana update-config` restart an observability workload only when its configuration changed: each workload's pod template carries a hash of the pod template itself (image, probes, environment, volumes) and of the ConfigMaps it reads. A dashboard edit no longer restarts Tempo or Pyroscope. Both commands print, for each workload, whether its configuration changed (and it is rolling) or is unchanged (and it is left running). A new image or probe counts as a change, because Kubernetes rolls the workload for it.
 
 **Versions.** Tempo 3.0.3, Pyroscope 2.3.1, Grafana 13.2.2 with image renderer v5.12.4, Alloy v1.20.0, Beyla 3.36.0, Mimir 3.2.1, Loki 3.7.8, the OpenTelemetry collector 0.161.0 (cluster, stress-job sidecar and EMR), and Fluent Bit 5.1.2. No observability image runs `latest`. The collector also scrapes its own telemetry (`:8888`, job `otel-collector`), so exporter send failures are visible in Mimir. In local mode it also scrapes the Mimir (`:9009`, job `mimir`), Loki (`:3100`, job `loki`), Tempo (`:3200`, job `tempo`) and Pyroscope (`:4040`, job `pyroscope`) servers' own metrics. Only the collector on the node running each server scrapes it, so each job has one target, and `instance` is the server's pod name. A redirect cluster runs none of these servers and renders none of these jobs.
+
+### Experiment and tenant labels
+
+Every cluster also belongs to an **experiment**: one test, which groups one or more clusters of one tenant. Choose it at `init --experiment <name>`; the name matches `^[a-z0-9][a-z0-9_-]{0,79}$`, so a `YYYY-MM-DD` prefix such as `2026-10-13-ab` sorts experiments by date. Without `--experiment`, the experiment is the cluster's own `<name>-<id>`, an experiment of one. An experiment is identified by its tenant and its name together: names are unique within a tenant, and the same name in two tenants is two experiments. The experiment is fixed for the life of the cluster.
+
+Every metric series, log line, span, eBPF profile, JFR profile and mirrored annotation a cluster produces carries three labels:
+
+| Label | Value |
+|-------|-------|
+| `cluster` | the cluster's `<name>-<id>` |
+| `experiment` | the cluster's experiment |
+| `edl_tenant` | the cluster's tenant |
+
+Spans carry them as the resource attributes `cluster`, `experiment` and `edl_tenant`. Loki indexes all three, beside `host.name`, `node_role` and `source`, so `{experiment="2026-10-13-ab"}` selects every log line of an experiment. The tenant label is `edl_tenant`, not `tenant`, because Tempo's own metrics already carry a `tenant` label. The `cluster-config` ConfigMap holds the experiment under the key `experiment`, beside `tenant`. Data written by a cluster from before experiments existed has no `experiment` or `edl_tenant` label.
+
+Cluster names may hold `_` (`^[a-z][a-z0-9_-]{0,39}$`), so a cluster can be named for the variant it tests, such as `unthrottled_cursor`. The OpenSearch domain name, which does not accept `_`, turns it into `-`.
 
 ## eBPF Observability
 

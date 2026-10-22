@@ -13,7 +13,7 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * A dashboard names its datasources only through the pickers (`metrics_datasource`,
  * `logs_datasource`, `traces_datasource`), declares a picker for each signal it uses, and passes
- * its pickers and selected clusters on every link to another dashboard. A fixed `mimir`, `loki` or
+ * its pickers, selected clusters and experiment on every link to another dashboard. A fixed `mimir`, `loki` or
  * `tempo` uid anywhere, or a link that drops a picker, pins part of the dashboard to the cluster's
  * own tenant while the rest follows the picker. Each check returns what it found, so a test can
  * report every problem in a file at once and the checks themselves can be tested on small samples.
@@ -23,20 +23,18 @@ object DashboardDatasourceGuards {
     val FIXED_UIDS = setOf("mimir", "loki", "tempo")
 
     /** The picker a dashboard declares for each datasource type it uses. */
-    val PICKERS = mapOf("prometheus" to "metrics_datasource", "loki" to "logs_datasource", "tempo" to "traces_datasource")
+    val PICKERS =
+        mapOf(
+            "prometheus" to DashboardVariables.METRICS_DATASOURCE,
+            "loki" to DashboardVariables.LOGS_DATASOURCE,
+            "tempo" to DashboardVariables.TRACES_DATASOURCE,
+        )
 
     /** The variables a `/d/` link must pass when its source dashboard declares them. */
     val CARRIED =
-        listOf(
-            "metrics_datasource",
-            "logs_datasource",
-            "traces_datasource",
-            "cluster",
-            "baseline_cluster",
-            "candidate_cluster",
-            "doc_tenant",
-            "role",
-        )
+        PICKERS.values.toList() +
+            DashboardVariables.CLUSTER_FILTERS +
+            listOf(DashboardVariables.EXPERIMENT, DashboardVariables.ROLE)
 
     private val encodedUidRef = Regex(""""(uid|datasource)"\s*:\s*"(mimir|loki|tempo)"""")
     private val encodedTypeRef = Regex(""""type"\s*:\s*"(prometheus|loki|tempo)"""")

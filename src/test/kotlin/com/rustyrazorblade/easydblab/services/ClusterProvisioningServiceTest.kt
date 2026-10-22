@@ -17,6 +17,9 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.services.aws.DomainState
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpec
+import com.rustyrazorblade.easydblab.services.aws.LONG_UNDERSCORE_DOMAIN
+import com.rustyrazorblade.easydblab.services.aws.LONG_UNDERSCORE_NAME
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainConfig
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchDomainResult
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import org.assertj.core.api.Assertions.assertThat
@@ -349,6 +352,40 @@ class ClusterProvisioningServiceTest {
             assertThat(result.errors).isEmpty()
             assertThat(result.openSearchDomain).isNotNull
             assertThat(openSearchCreated).isNotNull
+        }
+
+        /**
+         * A cluster may be named with `_`, which an OpenSearch domain name does not accept, and a
+         * 40-character name used to lose its `-os` suffix to the cut. `opensearch start` derives the
+         * same name (OpenSearchStartTest).
+         */
+        @Test
+        fun `the OpenSearch domain name converts an underscore and keeps its suffix`() {
+            val specs =
+                listOf(
+                    InstanceSpec(
+                        serverType = ServerType.Cassandra,
+                        configuredCount = 1,
+                        existingCount = 0,
+                        instanceType = "m5.large",
+                        ebsConfig = null,
+                        amiId = "ami-12345",
+                    ),
+                )
+            val initConfig = createInitConfig(opensearchEnabled = true).copy(name = LONG_UNDERSCORE_NAME)
+            setupMockInstanceCreation()
+            setupMockOpenSearchCreation()
+
+            service.provisionAll(
+                instanceConfig = createInstanceConfig(specs = specs),
+                servicesConfig = createServicesConfig(initConfig),
+                existingHosts = emptyMap(),
+                callbacks = ProvisioningCallbacks(onHostsCreated = { _, _ -> }, onEmrCreated = { }, onOpenSearchCreated = { }),
+            )
+
+            val config = argumentCaptor<OpenSearchDomainConfig>()
+            verify(openSearchService).createDomain(config.capture())
+            assertThat(config.firstValue.domainName).isEqualTo(LONG_UNDERSCORE_DOMAIN)
         }
 
         @Test

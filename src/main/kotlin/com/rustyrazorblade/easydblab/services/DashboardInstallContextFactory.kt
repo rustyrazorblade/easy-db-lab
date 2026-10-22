@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.services
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ExperimentKey
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
 import com.rustyrazorblade.easydblab.configuration.grafana.documentsUrl
@@ -21,6 +22,7 @@ class DashboardInstallContextFactory(
     ): DashboardInstallContext =
         DashboardInstallContext(
             cluster = clusterState.clusterLabelName(),
+            experiment = ExperimentKey.of(clusterState),
             tenants = tenantDirectory.list(ObservabilityStore.from(clusterState).bucket, clusterState.tenant()),
             documentsUrl = documentsUrl(controlHost),
         )

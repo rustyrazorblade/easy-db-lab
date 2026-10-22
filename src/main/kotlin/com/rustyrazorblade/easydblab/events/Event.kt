@@ -6203,16 +6203,22 @@ sealed interface Event {
          *
          * @property profile the AWS profile the stack would read the store with.
          * @property awsErrorCode S3's error code, or the SDK's reason when it loaded no credentials.
+         * @property ssoProfile whether the profile signs in through SSO: only then is the hint
+         *   `aws sso login`; otherwise the profile's keys were refused.
          */
         @Serializable
         @SerialName("LocalStack.StoreUnreadable")
         data class StoreUnreadable(
             val profile: String,
             val awsErrorCode: String,
+            val ssoProfile: Boolean,
         ) : LocalStack {
             override fun toDisplayString(): String =
                 "Cannot read the account bucket with profile $profile: $awsErrorCode\n" +
-                    "Nothing was written. Log in and run the command again: aws sso login --profile $profile"
+                    when (ssoProfile) {
+                        true -> "Nothing was written. Log in and run the command again: aws sso login --profile $profile"
+                        false -> "Nothing was written. The keys of profile $profile were refused; fix them and run again."
+                    }
 
             override fun isError(): Boolean = true
         }
@@ -6411,12 +6417,15 @@ sealed interface Event {
          * @property profile the AWS profile the export reads with, or null when the easy-db-lab
          *   profile holds access keys instead.
          * @property awsErrorCode the AWS error code, or the SDK's reason when it loaded no credentials.
+         * @property ssoProfile whether [profile] signs in through SSO: only then is the hint
+         *   `aws sso login`; otherwise the profile's keys were refused. False for access keys.
          */
         @Serializable
         @SerialName("Export.StoreUnreadable")
         data class StoreUnreadable(
             val profile: String?,
             val awsErrorCode: String,
+            val ssoProfile: Boolean,
         ) : Export {
             override fun toDisplayString(): String =
                 when (profile) {
@@ -6425,7 +6434,10 @@ sealed interface Event {
                             "Nothing was written. Fix the access keys and run the command again."
                     else ->
                         "Cannot read the account bucket with profile $profile: $awsErrorCode\n" +
-                            "Nothing was written. Log in and run the command again: aws sso login --profile $profile"
+                            when (ssoProfile) {
+                                true -> "Nothing was written. Log in and run the command again: aws sso login --profile $profile"
+                                false -> "Nothing was written. The keys of profile $profile were refused; fix them and run again."
+                            }
                 }
 
             override fun isError(): Boolean = true

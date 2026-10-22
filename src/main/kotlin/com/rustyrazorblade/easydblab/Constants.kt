@@ -218,6 +218,12 @@ object Constants {
         const val NO_CONFIG_FILE = "/dev/null"
         const val SSH_KEY_ENV = "EASY_DB_LAB_SSH_KEY"
 
+        /**
+         * The AWS config properties that make a profile sign in through IAM Identity Center: the
+         * session form and the legacy start URL. Only such a profile gets the `aws sso login` hint.
+         */
+        val SSO_PROFILE_PROPERTIES = listOf("sso_session", "sso_start_url")
+
         // AMI configuration
         const val AMI_PATTERN_TEMPLATE = "rustyrazorblade/images/easy-db-lab-cassandra-%s-*"
 

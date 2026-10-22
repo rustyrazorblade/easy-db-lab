@@ -507,6 +507,7 @@ class LocalStackReadOnlyIntegrationTest {
                         PackagedDashboardTree(GrafanaDashboardCatalog.discover(), PackagedKitDashboards.discover()),
                     ),
                 eventBus = eventBus,
+                loginKind = ProfileFileLoginKind(),
             )
 
         creator.create(stack, HOME)

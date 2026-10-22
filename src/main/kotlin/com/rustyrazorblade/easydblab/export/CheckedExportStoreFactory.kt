@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.export.query.QueryStoreAccess
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.localstack.AwsLoginKind
 import com.rustyrazorblade.easydblab.localstack.LocalStackStore
 import com.rustyrazorblade.easydblab.localstack.S3ClientForRegion
 import com.rustyrazorblade.easydblab.localstack.StoreReadResult
@@ -21,12 +22,14 @@ import com.rustyrazorblade.easydblab.localstack.StoreReadResult
  * @property check the read check.
  * @property clients makes the client for the bucket's own region.
  * @property eventBus reports an unreadable bucket.
+ * @property loginKind whether the AWS profile signs in through SSO, which decides the hint.
  */
 class CheckedExportStoreFactory(
     private val user: User,
     private val check: LocalStackStore,
     private val clients: S3ClientForRegion,
     private val eventBus: EventBus,
+    private val loginKind: AwsLoginKind,
 ) : ExportStoreFactory {
     override fun open(): ExportStore = readable().let { (bucket, region) -> S3ExportStore(clients.forRegion(region), bucket) }
 
@@ -51,7 +54,7 @@ class CheckedExportStoreFactory(
             is StoreReadResult.Readable -> bucket to access.region
             is StoreReadResult.Unreadable -> {
                 val profile = user.awsProfile.ifBlank { null }
-                eventBus.emit(Event.Export.StoreUnreadable(profile, access.awsErrorCode))
+                eventBus.emit(Event.Export.StoreUnreadable(profile, access.awsErrorCode, profile?.let(loginKind::usesSso) ?: false))
                 throw CommandFailedException(
                     "The account bucket is not readable with ${profile?.let { "profile $it" } ?: "the profile's access keys"}",
                 )

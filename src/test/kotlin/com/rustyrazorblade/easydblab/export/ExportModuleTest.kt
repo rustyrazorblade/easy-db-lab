@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.localstack.AwsLoginKind
 import com.rustyrazorblade.easydblab.localstack.localStackModule
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
@@ -39,6 +40,8 @@ class ExportModuleTest : BaseKoinTest() {
             module {
                 single { GrafanaDashboardCatalog.discover() }
                 single<AwsCredentialsProvider> { mock() }
+                // ~/.aws of whoever runs the tests is not read: lab-profile is an SSO profile.
+                single<AwsLoginKind> { AwsLoginKind { it == "lab-profile" } }
                 // Not a cluster workspace.
                 single<ClusterStateManager> { mock { on { exists() } doReturn false } }
             },

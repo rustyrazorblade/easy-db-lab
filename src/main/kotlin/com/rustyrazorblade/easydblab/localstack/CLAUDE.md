@@ -52,7 +52,9 @@ from classpath resources; nothing reads a source checkout. Nothing here needs a 
   client, then `HeadBucket` and a one-key list of `mimir/` with a client for the bucket's region from
   `S3ClientForRegion`, since S3 answers a `HeadBucket` in another region with a 301; an
   `S3Exception` is its error code, any other SDK exception its code or class and message, which covers an expired
-  SSO session, the SSO OIDC service's `ExpiredTokenException`; `Event.LocalStack.StoreUnreadable(profile, awsErrorCode)` and `CommandFailedException` on failure, nothing
+  SSO session, the SSO OIDC service's `ExpiredTokenException`; `Event.LocalStack.StoreUnreadable(profile, awsErrorCode, ssoProfile)` (the `aws sso login` hint only when
+  `AwsLoginKind` finds `sso_session` or `sso_start_url` in the profile's section, `ProfileFileLoginKind`; otherwise "the
+  profile's keys were refused") and `CommandFailedException` on failure, nothing
   written; an SDK exception whose cause chain holds a network failure (`NetworkFailure`: `SocketException`,
   `UnknownHostException`, `InterruptedIOException` such as a read or connect timeout, `SSLException`) is
   `StoreReadResult.Unreachable` instead, reported as `Event.LocalStack.StoreUnreachable(profile, reason)`, "could not

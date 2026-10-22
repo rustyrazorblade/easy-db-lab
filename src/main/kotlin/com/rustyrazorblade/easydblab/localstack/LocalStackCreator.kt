@@ -35,6 +35,7 @@ import java.io.File
  * @property grafana the stack's Grafana, for the datasource reload.
  * @property dashboards installs the dashboard tree.
  * @property eventBus reports what was written.
+ * @property loginKind whether the AWS profile signs in through SSO, which decides an unreadable store's hint.
  */
 class LocalStackCreator(
     private val user: User,
@@ -43,6 +44,7 @@ class LocalStackCreator(
     private val grafana: LocalGrafana,
     private val dashboards: LocalStackDashboards,
     private val eventBus: EventBus,
+    private val loginKind: AwsLoginKind,
 ) {
     /**
      * The region of [bucket] once the store check found it readable with [profile]; otherwise the
@@ -55,7 +57,7 @@ class LocalStackCreator(
         when (val access = store.check(bucket)) {
             is StoreReadResult.Readable -> access.region
             is StoreReadResult.Unreadable -> {
-                eventBus.emit(Event.LocalStack.StoreUnreadable(profile, access.awsErrorCode))
+                eventBus.emit(Event.LocalStack.StoreUnreadable(profile, access.awsErrorCode, loginKind.usesSso(profile)))
                 throw CommandFailedException("The account bucket is not readable with profile $profile")
             }
             is StoreReadResult.Unreachable -> {

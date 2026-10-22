@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.export.ExportStackFiles
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.localstack.AwsLoginKind
 import com.rustyrazorblade.easydblab.localstack.ComposeFile
 import com.rustyrazorblade.easydblab.localstack.DashboardTreeSource
 import com.rustyrazorblade.easydblab.localstack.GrafanaReloadRefused
@@ -42,6 +43,7 @@ class LocalCreateTest : BaseKoinTest() {
     private val storeTenants = mutableListOf("acme")
     private var storeResult: StoreReadResult = StoreReadResult.Readable(region = "eu-west-1")
     private var storeChecks = 0
+    private var ssoProfiles = setOf("lab-profile")
     private val listedRegions = mutableListOf<String>()
 
     private val store =
@@ -86,6 +88,7 @@ class LocalCreateTest : BaseKoinTest() {
                         grafana = grafana,
                         dashboards = LocalStackDashboards(grafana, dashboardSource),
                         eventBus = get(),
+                        loginKind = AwsLoginKind { it in ssoProfiles },
                     )
                 }
             },
@@ -232,8 +235,26 @@ class LocalCreateTest : BaseKoinTest() {
         assertThatThrownBy { create(dir.path) }.isInstanceOf(CommandFailedException::class.java)
 
         val unreadable = events.filterIsInstance<Event.LocalStack.StoreUnreadable>().single()
-        assertThat(unreadable).isEqualTo(Event.LocalStack.StoreUnreadable(profile = "lab-profile", awsErrorCode = "ExpiredToken"))
+        assertThat(
+            unreadable,
+        ).isEqualTo(Event.LocalStack.StoreUnreadable(profile = "lab-profile", awsErrorCode = "ExpiredToken", ssoProfile = true))
         assertThat(unreadable.toDisplayString()).contains("aws sso login --profile lab-profile")
+        assertThat(dir).doesNotExist()
+    }
+
+    @Test
+    fun `a profile with static keys that the store refuses is told its keys were refused, with no SSO login hint`() {
+        ssoProfiles = emptySet()
+        storeResult = StoreReadResult.Unreadable(awsErrorCode = "InvalidAccessKeyId")
+        val dir = stack()
+
+        assertThatThrownBy { create(dir.path) }.isInstanceOf(CommandFailedException::class.java)
+
+        val unreadable = events.filterIsInstance<Event.LocalStack.StoreUnreadable>().single()
+        assertThat(unreadable.ssoProfile).isFalse()
+        assertThat(unreadable.toDisplayString())
+            .contains("lab-profile", "InvalidAccessKeyId", "keys", "refused", "Nothing was written")
+            .doesNotContain("sso")
         assertThat(dir).doesNotExist()
     }
 

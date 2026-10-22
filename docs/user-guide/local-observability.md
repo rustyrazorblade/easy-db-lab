@@ -140,6 +140,8 @@ A store the stack cannot read fails loudly, at three points:
   Nothing was written. Log in and run the command again: aws sso login --profile edl
   ```
 
+  The `aws sso login` hint is given only for an SSO profile (one with `sso_session` or `sso_start_url` in `~/.aws/config`). For a profile with static keys the message says instead that the profile's keys were refused (for example `InvalidAccessKeyId`).
+
 - `docker compose up` runs a one-shot `store-check` first. When it cannot read the bucket it exits non-zero with `cannot read the account bucket ... with profile edl: ...`, and no backend starts. See its message with `docker compose logs store-check`. A credentials failure (an expired SSO token, no credentials for the profile) says `credentials: ...` and prints `aws sso login --profile edl`; a signer that could not reach S3 at all (a DNS, TCP or TLS error) says `the signer could not reach S3: ...` instead, since logging in again would not help.
 - While the stack runs, the signer checks the bucket every minute. `store-signer` is the only service with a health status: `docker compose ps` shows it `healthy` or `unhealthy`, and every other service just `Up`.
 
@@ -209,7 +211,7 @@ The work directory `<path>.work-<id>/` holds the copy of the index and the compa
   Nothing was written. Log in and run the command again: aws sso login --profile lab
   ```
 
-  A profile that holds access keys instead of an AWS profile is named as such, with no login hint.
+  A profile that holds access keys instead of an AWS profile is named as such, with no login hint. An AWS profile with static keys gets no login hint either: the message says that the profile's keys were refused.
 - The path must be a new `.zip` file in a directory that exists. An existing file is never overwritten.
 - The command lists everything it will copy, prints the size, and fails before copying anything when the disk the zip goes to does not have that much free space, plus twice the size of the tenant's Loki index for the copy of it the export splits in its work directory.
 - A tenant with no metrics, logs or traces fails and names the prefixes it looked under.

@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.localstack.AwsLoginKind
 import com.rustyrazorblade.easydblab.localstack.LocalStackStore
 import com.rustyrazorblade.easydblab.localstack.S3ClientForRegion
 import com.rustyrazorblade.easydblab.localstack.StoreReadResult
@@ -28,6 +29,7 @@ class CheckedExportStoreFactoryTest {
     private val eventBus = EventBus()
     private val regions = mutableListOf<String>()
     private var access: StoreReadResult = StoreReadResult.Readable("ap-south-1")
+    private var ssoProfiles = setOf("lab")
 
     private val check =
         object : LocalStackStore {
@@ -60,6 +62,7 @@ class CheckedExportStoreFactoryTest {
                 mock<S3Client>()
             },
             eventBus,
+            AwsLoginKind { it in ssoProfiles },
         )
 
     @BeforeEach
@@ -92,9 +95,26 @@ class CheckedExportStoreFactoryTest {
         val unreadable = events.filterIsInstance<Event.Export.StoreUnreadable>().single()
         assertThat(unreadable.profile).isEqualTo("lab")
         assertThat(unreadable.awsErrorCode).startsWith("ExpiredTokenException")
+        assertThat(unreadable.ssoProfile).isTrue()
         assertThat(unreadable.toDisplayString()).contains("aws sso login --profile lab", "Nothing was written")
         assertThat(unreadable.isError()).isTrue()
         assertThat(regions).isEmpty()
+    }
+
+    @Test
+    fun `a profile with static keys that S3 refuses is told its keys were refused, with no SSO login hint`() {
+        ssoProfiles = emptySet()
+        access = StoreReadResult.Unreadable("InvalidAccessKeyId")
+
+        assertThatThrownBy { factory().open() }.isInstanceOf(CommandFailedException::class.java)
+
+        val unreadable = events.filterIsInstance<Event.Export.StoreUnreadable>().single()
+        assertThat(
+            unreadable,
+        ).isEqualTo(Event.Export.StoreUnreadable(profile = "lab", awsErrorCode = "InvalidAccessKeyId", ssoProfile = false))
+        assertThat(unreadable.toDisplayString())
+            .contains("profile lab", "InvalidAccessKeyId", "keys", "refused", "Nothing was written")
+            .doesNotContain("sso")
     }
 
     @Test

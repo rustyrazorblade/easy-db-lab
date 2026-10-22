@@ -26,6 +26,7 @@ val localStackModule =
         }
         factory<LocalStackStore> { SdkLocalStackStore(get(), get(), get()) }
         factory<LocalGrafana> { LocalGrafanaHttp() }
+        factory<AwsLoginKind> { ProfileFileLoginKind() }
         factory { LocalStackDashboards(get(), PackagedDashboardTree(get(), PackagedKitDashboards.discover())) }
         factory {
             LocalStackCreator(
@@ -35,6 +36,7 @@ val localStackModule =
                 grafana = get(),
                 dashboards = get(),
                 eventBus = get(),
+                loginKind = get(),
             )
         }
         factory { LocalDashboardsRefresher(get(), get(), get()) }

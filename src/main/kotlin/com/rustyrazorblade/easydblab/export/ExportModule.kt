@@ -22,7 +22,7 @@ private fun Scope.stackFiles(): ExportStackFiles =
  */
 val exportModule =
     module {
-        factory { CheckedExportStoreFactory(get(), get(), get(), get()) }
+        factory { CheckedExportStoreFactory(get(), get(), get(), get(), get()) }
         factory<ExportStoreFactory> { get<CheckedExportStoreFactory>() }
         factory {
             TenantExporter(

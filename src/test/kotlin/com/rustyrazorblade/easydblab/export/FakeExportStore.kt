@@ -11,8 +11,8 @@ class FakeExportStore : ExportStore {
     /** Every object, by key, with its bytes and its last-modified time. */
     val objects = sortedMapOf<String, Pair<ByteArray, Instant>>()
 
-    /** Keys in the order they were opened. */
-    val opened = mutableListOf<String>()
+    /** Keys in the order they were opened, whole or by range (once per ranged read). */
+    val opened: MutableList<String> = java.util.Collections.synchronizedList(mutableListOf())
 
     /** Runs before the object [key] is opened. */
     var beforeOpen: (key: String) -> Unit = {}
@@ -49,5 +49,23 @@ class FakeExportStore : ExportStore {
         beforeOpen(key)
         opened += key
         return objects[key]?.first?.inputStream()
+    }
+
+    /** Every ranged read, in the order it was opened. */
+    val openedRanges: MutableList<Pair<String, LongRange>> = java.util.Collections.synchronizedList(mutableListOf())
+
+    /** Answers a ranged read of an object that is there, from its bytes; a test replaces it to fail or slow one. */
+    var rangeStream: (key: String, range: LongRange, bytes: ByteArray) -> InputStream = { _, range, bytes ->
+        bytes.copyOfRange(range.first.toInt(), minOf(range.last + 1, bytes.size.toLong()).toInt()).inputStream()
+    }
+
+    override fun openRange(
+        key: String,
+        range: LongRange,
+    ): InputStream? {
+        beforeOpen(key)
+        openedRanges += key to range
+        opened += key
+        return objects[key]?.first?.let { rangeStream(key, range, it) }
     }
 }

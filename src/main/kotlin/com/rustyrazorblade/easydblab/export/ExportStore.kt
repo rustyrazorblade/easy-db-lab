@@ -39,6 +39,15 @@ interface ExportStore : AutoCloseable {
 
     /** The content of [key], or null when it is gone; the caller closes the stream. */
     fun open(key: String): InputStream?
+
+    /**
+     * The bytes [range] (inclusive, as HTTP `Range: bytes=a-b`) of [key], or null when it is gone; the
+     * caller closes the stream.
+     */
+    fun openRange(
+        key: String,
+        range: LongRange,
+    ): InputStream?
 }
 
 /**
@@ -75,15 +84,23 @@ class S3ExportStore(
 
     override fun close() = s3.close()
 
-    override fun open(key: String): InputStream? =
+    override fun open(key: String): InputStream? = get(GetObjectRequest.builder().bucket(bucket).key(key))
+
+    override fun openRange(
+        key: String,
+        range: LongRange,
+    ): InputStream? =
+        get(
+            GetObjectRequest
+                .builder()
+                .bucket(bucket)
+                .key(key)
+                .range("bytes=${range.first}-${range.last}"),
+        )
+
+    private fun get(request: GetObjectRequest.Builder): InputStream? =
         try {
-            s3.getObject(
-                GetObjectRequest
-                    .builder()
-                    .bucket(bucket)
-                    .key(key)
-                    .build(),
-            )
+            s3.getObject(request.build())
         } catch (_: NoSuchKeyException) {
             null
         }

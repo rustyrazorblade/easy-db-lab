@@ -7,6 +7,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.RetryConfig
 import org.apache.sshd.common.SshException
 import software.amazon.awssdk.awscore.exception.AwsServiceException
+import software.amazon.awssdk.core.exception.SdkClientException
 import software.amazon.awssdk.core.exception.SdkException
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ecs.model.ClientException
@@ -15,7 +16,10 @@ import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.s3.model.S3Exception
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.BindException
+import java.net.SocketTimeoutException
+import java.nio.channels.ClosedByInterruptException
 import java.time.Duration
 import java.time.Instant
 
@@ -302,6 +306,46 @@ object RetryUtil {
             .intervalFunction { _ -> retryInterval.toMillis() }
             .retryOnResult { done -> !done }
             .build()
+
+    /**
+     * Creates retry configuration for one ranged read of an S3 object, which a parallel download
+     * reads again from its start when it fails.
+     *
+     * - Retries a broken read: an [IOException] while the body streams (a reset, a socket timeout),
+     *   or an [SdkClientException] whose cause chain holds one (the request could not be sent).
+     *   The body reads through checked I/O, so callers decorate with the checked decorators.
+     * - Retries S3's 5xx answers.
+     * - Never retries an interrupt ([ClosedByInterruptException], any other
+     *   [InterruptedIOException] than a socket timeout, or an interrupted thread), and fails fast on
+     *   everything else, a missing object and a short read included.
+     *
+     * Exponential backoff from [firstWait], up to [Constants.Export.Query.STAGE_READ_ATTEMPTS] attempts.
+     *
+     * @param firstWait the wait before the first retry; tests pass zero
+     * @return RetryConfig configured for a ranged read
+     */
+    fun createRangedReadRetryConfig(firstWait: Duration = Duration.ofMillis(Constants.Export.Query.STAGE_READ_RETRY_MILLIS)): RetryConfig =
+        RetryConfig
+            .custom<Any>()
+            .maxAttempts(Constants.Export.Query.STAGE_READ_ATTEMPTS)
+            .intervalFunction { attempt -> firstWait.toMillis() * (1L shl (attempt - 1)) }
+            .retryOnException { throwable ->
+                !Thread.currentThread().isInterrupted &&
+                    when (throwable) {
+                        is AwsServiceException -> throwable.statusCode() >= Constants.HttpStatus.CLIENT_ERROR_THRESHOLD
+                        is SdkClientException -> generateSequence(throwable.cause) { it.cause }.any(::isTransientRead)
+                        else -> isTransientRead(throwable)
+                    }
+            }.build()
+
+    /** Whether [throwable] is a broken read that reading again can clear, and not an interrupt. */
+    private fun isTransientRead(throwable: Throwable): Boolean =
+        when (throwable) {
+            is SocketTimeoutException -> true
+            is ClosedByInterruptException, is InterruptedIOException -> false
+            is IOException -> true
+            else -> false
+        }
 
     /**
      * Creates retry configuration for creating a VPC on an auto-selected CIDR.

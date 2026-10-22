@@ -6,7 +6,8 @@ import com.rustyrazorblade.easydblab.export.ExportStore
 import com.rustyrazorblade.easydblab.export.FileBlockDirectory
 import com.rustyrazorblade.easydblab.export.MimirBucketIndexWriter
 import com.rustyrazorblade.easydblab.export.MimirStoreIndex
-import com.rustyrazorblade.easydblab.export.ObjectGoneException
+import com.rustyrazorblade.easydblab.export.ObjectDownload
+import com.rustyrazorblade.easydblab.export.ParallelObjectDownload
 import com.rustyrazorblade.easydblab.export.exportStep
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -36,7 +37,8 @@ fun interface BlockRewrite {
  * not have), so the tenant's own blocks are copied and rewritten:
  *
  * 1. from one read of the tenant's bucket index, every block with no deletion mark that overlaps one
- *    of the clusters' ranges is staged at `<staging>/mimir/<tenant>/<ulid>/`, marker files left out;
+ *    of the clusters' ranges is staged at `<staging>/mimir/<tenant>/<ulid>/`, marker files left out,
+ *    as parallel ranged reads of every object of every chosen block ([ParallelObjectDownload]);
  * 2. [rewrite] writes new blocks that keep only the selected clusters' series;
  * 3. the source blocks and the scratch are removed, then every rewritten block with no series;
  * 4. the bucket index is written last, from exactly the blocks left ([MimirBucketIndexWriter]).
@@ -46,11 +48,14 @@ fun interface BlockRewrite {
  * @property store the account bucket.
  * @property rewrite the block rewrite (thanos).
  * @property indexWriter writes the bucket index.
+ * @property download stages the blocks' objects.
  */
 class MetricsExport(
     private val store: ExportStore,
     private val rewrite: BlockRewrite,
     private val indexWriter: MimirBucketIndexWriter,
+    private val download: ParallelObjectDownload =
+        ParallelObjectDownload(store, Constants.Export.Query.STAGE_PARALLELISM, Constants.Export.Query.STAGE_PART_BYTES),
 ) {
     private companion object {
         val METRICS = Constants.Observability.METRICS_ROOT
@@ -82,7 +87,9 @@ class MetricsExport(
                 .sorted()
         if (chosen.isEmpty()) return SignalCount.ZERO
         val tenantDir = File(staging, "$METRICS/$tenant")
-        chosen.forEach { id -> exportStep(ExportSignal.METRICS, "stage block $id of $tenant") { stage(tenant, id, tenantDir) } }
+        exportStep(ExportSignal.METRICS, "stage ${chosen.size} blocks of $tenant") {
+            download.download(chosen.flatMap { id -> objectsOf(tenant, id, tenantDir) })
+        }
         val tmpDir = File(staging, ".thanos-tmp-$tenant")
         exportStep(ExportSignal.METRICS, "rewrite the blocks of $tenant to keep only ${clusters.joinToString(", ")}") {
             rewrite.rewrite(tenantDir, tmpDir, chosen, clusters)
@@ -103,21 +110,17 @@ class MetricsExport(
         return SignalCount(kept.toLong(), tenantDir.walkTopDown().filter { it.isFile }.sumOf { it.length() })
     }
 
-    /** Copies block [id] of [tenant] from the store into [tenantDir], without its marker files. */
-    private fun stage(
+    /** The objects of block [id] of [tenant], without its marker files, each with its place in [tenantDir]. */
+    private fun objectsOf(
         tenant: String,
         id: String,
         tenantDir: File,
-    ) {
+    ): List<ObjectDownload> {
         val prefix = "$METRICS/$tenant/$id/"
-        store
+        return store
             .list(prefix)
             .filter { it.key.substringAfterLast('/') !in MimirStoreIndex.MARKER_FILES }
-            .forEach { obj ->
-                val target = File(tenantDir, "$id/${obj.key.removePrefix(prefix)}").apply { parentFile.mkdirs() }
-                val input = store.open(obj.key) ?: throw ObjectGoneException(obj.key)
-                input.use { source -> target.outputStream().use { source.copyTo(it, Constants.Export.COPY_BUFFER_BYTES) } }
-            }
+            .map { obj -> ObjectDownload(obj, File(tenantDir, "$id/${obj.key.removePrefix(prefix)}")) }
     }
 
     /** The series [block] holds, by its `meta.json`; 0 when the stats name none. */

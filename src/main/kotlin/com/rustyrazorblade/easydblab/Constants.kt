@@ -1338,6 +1338,25 @@ object Constants {
 
             /** The most characters of a backend's answer a refusal message, and so `Export.Failed`, carries. */
             const val ANSWER_EXCERPT_CHARS = 500
+
+            /**
+             * How many ranged reads of the staged metric blocks run at once. One stream read a compacted
+             * block at 1-3 MB/s, so a 9 GB block took most of an hour; the SDK's client keeps up to 50
+             * connections, so this stays below that.
+             */
+            const val STAGE_PARALLELISM = 32
+
+            /** The bytes of one ranged read of a staged object. */
+            const val STAGE_PART_BYTES = 64L * 1024 * 1024
+
+            /** Beside a staged object's name: the file its parts are written into until all are there. */
+            const val STAGE_PARTIAL_SUFFIX = ".partial"
+
+            /** How many times one ranged read is tried when its connection breaks or S3 answers 5xx. */
+            const val STAGE_READ_ATTEMPTS = 5
+
+            /** The wait before the first retry of a ranged read; it doubles each time. */
+            const val STAGE_READ_RETRY_MILLIS = 1000L
         }
     }
 

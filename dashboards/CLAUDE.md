@@ -251,7 +251,13 @@ cluster A and cluster B of the selected experiment, each over its own window.
   (`query_result(sort(min by (cluster) (min_over_time(...`) and has no installed default, so it
   opens on the experiment's oldest cluster. B lists newest first
   (`query_result(sort_desc(max by (cluster) (max_over_time(...`) and defaults to the current
-  cluster. `lookback` defaults to `180d`. The dashboard range stays relative and ends at now.
+  cluster. Each step's value is `time()` less (A) or plus (B) a thousandth of the cluster's
+  `count_over_time(up[${resolution}s])` in that step: two clusters that start (or end) in the same
+  step tied on the step's timestamp, and A's default fell to `sort()`'s tie order; the one with more
+  samples in that step started earlier (or ended later), and a thousandth per sample never reaches
+  the next step. One `count_over_time` per step reads each sample once, as the instant selector it
+  replaced did. `ExperimentPickerQueriesIntegrationTest` starts two clusters 15s apart in one
+  5-minute step and checks the older is A's first and the later-ending B's first. `lookback` defaults to `180d`. The dashboard range stays relative and ends at now.
 - **Each side's report.** The hidden `a_report` and `b_report` read `$cluster_a` and `$cluster_b`:
   the `<tenant>/<experiment>` of that cluster's last `up` within `lookback`, with the pre-label
   fallback. A side whose cluster has no `up` sample within `lookback` has no report path; the panel

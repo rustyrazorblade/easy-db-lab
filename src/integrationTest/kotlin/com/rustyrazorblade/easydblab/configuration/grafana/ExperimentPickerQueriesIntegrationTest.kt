@@ -78,6 +78,17 @@ class ExperimentPickerQueriesIntegrationTest {
             Seeded(ACME, labelled(c3, ACME, "e1"), endsSecondsAgo = 470),
         )
 
+    /**
+     * Tenant `pair`, experiment `ep`: two clusters that start 15s apart and end 15s apart, both inside
+     * one 5-minute step of the pair pickers. The older is named to sort last, so a tie that falls back
+     * to label order puts the wrong one first.
+     */
+    private val pairOld = cluster("zz_older")
+    private val pairNew = cluster("aa_newer")
+
+    /** The 5-minute step boundary the two pair clusters start after, about 20 minutes before [now]. */
+    private val pairStep: Long = (now.epochSecond - PAIR_AGO_SECONDS) / PAIR_STEP_SECONDS * PAIR_STEP_SECONDS
+
     @BeforeAll
     fun startMimir() {
         SharedLocalStack.createBucketIfMissing(s3, bucket)
@@ -100,6 +111,22 @@ class ExperimentPickerQueriesIntegrationTest {
                 }
             push(cluster.tenant, samples)
         }
+        // Scraped every 15s: the older from 60s after the step boundary to 30s ago, the newer 15s later on each end.
+        val pairEnd = now.epochSecond - PAIR_END_AGO_SECONDS
+        push(
+            PAIR,
+            listOf(pairOld to pairStep + PAIR_START_OFFSET_SECONDS, pairNew to pairStep + PAIR_START_OFFSET_SECONDS + SCRAPE_SECONDS)
+                .flatMap { (cluster, start) ->
+                    val end = if (cluster == pairOld) pairEnd else pairEnd + SCRAPE_SECONDS
+                    (start..end step SCRAPE_SECONDS).map { at ->
+                        PrometheusRemoteWrite.Series(
+                            mapOf("__name__" to "up", "job" to "node") + labelled(cluster, PAIR, "ep"),
+                            1.0,
+                            at * MILLIS_PER_SECOND,
+                        )
+                    }
+                }.sortedBy { it.timestampMillis },
+        )
     }
 
     @AfterAll
@@ -169,6 +196,27 @@ class ExperimentPickerQueriesIntegrationTest {
         val order = listOf("default/e1", "default/$p") + (if (tenant == FEDERATED) listOf("acme/e1") else emptyList()) + "default/e0"
         assertThat(newestFirst).containsExactlyElementsOf(order)
     }
+
+    /**
+     * Two clusters that started in the same 5-minute step tied on the step's timestamp, so the
+     * default A (the first, oldest) fell to `sort()`'s tie order; the pickers resolve the real start
+     * and end.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = [CLUSTER_PAIR, AB_COMPARISON, SYSTEM_AB_COMPARISON])
+    fun `two clusters that start 15s apart in one 5-minute step list the older first in A, and the later-ending first in B`(path: String) {
+        val selected = mapOf("exp_tenant" to PAIR, "exp_name" to "ep", "resolution" to PAIR_STEP_SECONDS.toString())
+
+        assertThat(pairOptions(path, "cluster_a", selected)).containsExactly(pairOld, pairNew)
+        assertThat(pairOptions(path, "cluster_b", selected)).containsExactly(pairNew, pairOld)
+    }
+
+    /** [name]'s values on [path] in tenant `pair`, with a 5-minute step. */
+    private fun pairOptions(
+        path: String,
+        name: String,
+        selected: Map<String, String>,
+    ): List<String> = options(path, name, PAIR, selected).map { it.first }
 
     // ---------------------------------------------------------------- Grafana's variable flow
 
@@ -352,6 +400,25 @@ class ExperimentPickerQueriesIntegrationTest {
         const val EXPERIMENT_SYSTEM = "dashboards/infrastructure/experiment-system.json"
         const val EXPERIMENT_CASSANDRA = "dashboards/cassandra/experiment-cassandra.json"
         const val TESTS = "dashboards/infrastructure/tests.json"
+        const val CLUSTER_PAIR = "dashboards/cassandra/cluster-pair.json"
+        const val AB_COMPARISON = "dashboards/cassandra/ab-comparison.json"
+        const val SYSTEM_AB_COMPARISON = "dashboards/infrastructure/system-ab-comparison.json"
+        const val PAIR = "pair"
+
+        /** The pair pickers' default step, 5 minutes. */
+        const val PAIR_STEP_SECONDS = 300L
+
+        /** About how long before now the two pair clusters start. */
+        const val PAIR_AGO_SECONDS = 1200L
+
+        /** How far after the step boundary the older pair cluster's first sample lands. */
+        const val PAIR_START_OFFSET_SECONDS = 60L
+
+        /** How long before now the older pair cluster's last sample lands. */
+        const val PAIR_END_AGO_SECONDS = 30L
+
+        /** The pair clusters' scrape interval, and how far apart they start and end. */
+        const val SCRAPE_SECONDS = 15L
 
         /** The pickers' `lookback`, longer than every seeded sample's age. */
         const val LOOKBACK = "1h"

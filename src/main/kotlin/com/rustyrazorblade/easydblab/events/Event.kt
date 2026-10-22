@@ -6803,6 +6803,31 @@ sealed interface Event {
         }
 
         /**
+         * Progress of a query export's metrics staging for one tenant, which reads whole compacted
+         * blocks from S3 and can run for many minutes: so many of the chosen blocks and their bytes
+         * are on disk. Reported every so many bytes or seconds, and once when all are staged.
+         *
+         * @property tenant the tenant.
+         * @property blocks the blocks whose every object is staged.
+         * @property totalBlocks the blocks chosen.
+         * @property bytes the bytes staged.
+         * @property totalBytes the bytes of the chosen blocks, marker files left out.
+         */
+        @Serializable
+        @SerialName("Export.MetricsStaged")
+        data class MetricsStaged(
+            val tenant: String,
+            val blocks: Int,
+            val totalBlocks: Int,
+            val bytes: Long,
+            val totalBytes: Long,
+        ) : Export {
+            override fun toDisplayString(): String =
+                "Metrics of $tenant: staged $blocks of $totalBlocks blocks, " +
+                    "${bytes / Constants.Size.BYTES_PER_MIB} of ${totalBytes / Constants.Size.BYTES_PER_MIB} MiB"
+        }
+
+        /**
          * What a query export put in the zip for one signal. A signal with nothing is reported as zero.
          *
          * @property signal `metrics` (items are blocks), `logs` (lines) or `traces` (traces).

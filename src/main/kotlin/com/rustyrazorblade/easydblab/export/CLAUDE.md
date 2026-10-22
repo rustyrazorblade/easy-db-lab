@@ -137,7 +137,9 @@ local zip: nothing in S3 is written, deleted or uploaded. The zip carries no ima
    one stream read a compacted 9 GB block at 1-3 MB/s), each written at its offset into `<file>.partial` and renamed onto
    the file only once whole; a broken read is read again (`RetryUtil.createRangedReadRetryConfig`), a gone object or a
    short read fails the step and removes every partial file (`ParallelObjectDownloadIntegrationTest` checks byte
-   identity against MinIO). No transfer manager or CRT client is a dependency. Then `ThanosBlockRewrite` (`tools bucket rewrite --prom-blocks --no-dry-run`, `FILESYSTEM` objstore at
+   identity against MinIO). No transfer manager or CRT client is a dependency. The staging emits
+   `Export.MetricsStaged` (blocks and bytes staged of the tenant's total) through a `ProgressThrottle`
+   (`ProgressPolicy.METRICS_STAGE`: every 1 GiB or 30 seconds, and at the end). Then `ThanosBlockRewrite` (`tools bucket rewrite --prom-blocks --no-dry-run`, `FILESYSTEM` objstore at
    the tenant directory, `--tmp.dir` outside it, delete `{cluster!~"x|y"}`, one `--id` per block, `network_mode: none`,
    no environment, the operator's uid:gid, never `--delete-blocks` or `--hash-func`; a one-off `docker compose run`),
    originals and scratch removed, blocks with no series dropped, then `MimirBucketIndexWriter` last.

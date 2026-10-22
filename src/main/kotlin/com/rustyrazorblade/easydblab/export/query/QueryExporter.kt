@@ -113,7 +113,7 @@ class QueryExporter(
             }
         val readerHome =
             (selector as? ExportSelector.Experiment)?.key?.tenant ?: storeTenants.firstOrNull() ?: Constants.Observability.DEFAULT_TENANT
-        val metrics = MetricsExport(store, runtime.rewrite(work), MimirBucketIndexWriter(clock))
+        val metrics = MetricsExport(store, runtime.rewrite(work), MimirBucketIndexWriter(clock), onProgress = eventBus::emit)
         val (plan, counts) =
             exportStep(ExportSignal.STACK, "start the reader stack") { runtime.reader(work, access.live(readerHome)) }.use { reader ->
                 val plan = plan(QueryPlanner(MimirApi(reader::http, clock), metrics::oldestBlock, clock), selector, storeTenants, workspace)

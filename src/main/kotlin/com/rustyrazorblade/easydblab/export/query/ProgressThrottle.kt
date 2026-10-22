@@ -37,6 +37,14 @@ data class ProgressPolicy(
                 interval = Duration.ofSeconds(Constants.Export.Query.TRACE_PROGRESS_INTERVAL_SECONDS),
                 clock = Clock.systemUTC(),
             )
+
+        /** A query export's metrics staging, in bytes. */
+        val METRICS_STAGE =
+            ProgressPolicy(
+                every = Constants.Export.Query.STAGE_PROGRESS_EVERY_BYTES,
+                interval = Duration.ofSeconds(Constants.Export.Query.STAGE_PROGRESS_INTERVAL_SECONDS),
+                clock = Clock.systemUTC(),
+            )
     }
 }
 

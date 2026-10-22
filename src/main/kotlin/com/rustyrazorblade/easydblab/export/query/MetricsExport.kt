@@ -1,6 +1,8 @@
 package com.rustyrazorblade.easydblab.export.query
 
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.export.DownloadProgress
 import com.rustyrazorblade.easydblab.export.ExportSignal
 import com.rustyrazorblade.easydblab.export.ExportStore
 import com.rustyrazorblade.easydblab.export.FileBlockDirectory
@@ -15,6 +17,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
 import java.io.File
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Rewrites staged Mimir blocks to hold only some clusters' series. */
 fun interface BlockRewrite {
@@ -49,6 +52,8 @@ fun interface BlockRewrite {
  * @property rewrite the block rewrite (thanos).
  * @property indexWriter writes the bucket index.
  * @property download stages the blocks' objects.
+ * @property progress how often the staging reports.
+ * @property onProgress receives the staging's progress.
  */
 class MetricsExport(
     private val store: ExportStore,
@@ -56,6 +61,8 @@ class MetricsExport(
     private val indexWriter: MimirBucketIndexWriter,
     private val download: ParallelObjectDownload =
         ParallelObjectDownload(store, Constants.Export.Query.STAGE_PARALLELISM, Constants.Export.Query.STAGE_PART_BYTES),
+    private val progress: ProgressPolicy = ProgressPolicy.METRICS_STAGE,
+    private val onProgress: (Event.Export.MetricsStaged) -> Unit = {},
 ) {
     private companion object {
         val METRICS = Constants.Observability.METRICS_ROOT
@@ -88,7 +95,8 @@ class MetricsExport(
         if (chosen.isEmpty()) return SignalCount.ZERO
         val tenantDir = File(staging, "$METRICS/$tenant")
         exportStep(ExportSignal.METRICS, "stage ${chosen.size} blocks of $tenant") {
-            download.download(chosen.flatMap { id -> objectsOf(tenant, id, tenantDir) })
+            val objects = chosen.associateWith { id -> objectsOf(tenant, id, tenantDir) }
+            download.download(objects.values.flatten(), StagingProgress(tenant, objects))
         }
         val tmpDir = File(staging, ".thanos-tmp-$tenant")
         exportStep(ExportSignal.METRICS, "rewrite the blocks of $tenant to keep only ${clusters.joinToString(", ")}") {
@@ -121,6 +129,33 @@ class MetricsExport(
             .list(prefix)
             .filter { it.key.substringAfterLast('/') !in MimirStoreIndex.MARKER_FILES }
             .map { obj -> ObjectDownload(obj, File(tenantDir, "$id/${obj.key.removePrefix(prefix)}")) }
+    }
+
+    /**
+     * Counts the bytes and the whole blocks of one tenant's staging, reporting them through
+     * [progress] to [onProgress]. A block is staged once every one of its objects is in place.
+     */
+    private inner class StagingProgress(
+        private val tenant: String,
+        blocks: Map<String, List<ObjectDownload>>,
+    ) : DownloadProgress {
+        private val totalBlocks = blocks.size
+        private val blockOf = blocks.flatMap { (id, objects) -> objects.map { it to id } }.toMap()
+        private val objectsLeft = blocks.mapValues { (_, objects) -> AtomicInteger(objects.size) }
+        private val blocksDone = AtomicInteger(blocks.values.count { it.isEmpty() })
+        private val throttle =
+            progress.throttle(blocks.values.flatten().sumOf { it.source.size }) { done, total ->
+                onProgress(Event.Export.MetricsStaged(tenant, blocksDone.get(), totalBlocks, done, total))
+            }
+
+        override fun objectDone(job: ObjectDownload) {
+            if (objectsLeft.getValue(blockOf.getValue(job)).decrementAndGet() == 0) blocksDone.incrementAndGet()
+        }
+
+        override fun partDone(
+            job: ObjectDownload,
+            bytes: Long,
+        ) = throttle.advance(bytes)
     }
 
     /** The series [block] holds, by its `meta.json`; 0 when the stats name none. */

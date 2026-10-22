@@ -1357,6 +1357,12 @@ object Constants {
 
             /** The wait before the first retry of a ranged read; it doubles each time. */
             const val STAGE_READ_RETRY_MILLIS = 1000L
+
+            /** A query export reports its metrics staging after this many more bytes... */
+            const val STAGE_PROGRESS_EVERY_BYTES = 1024L * 1024 * 1024
+
+            /** ...or this many seconds after its last report, whichever comes first. */
+            const val STAGE_PROGRESS_INTERVAL_SECONDS = 30L
         }
     }
 

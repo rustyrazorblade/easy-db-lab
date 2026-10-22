@@ -205,6 +205,43 @@ class MetricsExportTest {
         assertThat(File(work, "mimir/acme/${MimirBucketIndexWriter.FILE}")).doesNotExist()
     }
 
+    /** A 9 GB tenant staged for 20 minutes with nothing on screen. */
+    @Test
+    fun `staging reports the blocks and bytes staged of the tenant's total, and once at the end`() {
+        seed()
+        keptSeries = mapOf("01HIT" to 3)
+        val staged =
+            java.util.Collections.synchronizedList(
+                mutableListOf<com.rustyrazorblade.easydblab.events.Event.Export.MetricsStaged>(),
+            )
+        val total = store.list("mimir/acme/").filter { it.key.contains("01HIT/") || it.key.contains("01EMP/") }
+        val totalBytes = total.filterNot { it.key.endsWith("no-compact-mark.json") }.sumOf { it.size }
+        val everyByte = ProgressPolicy(every = 1, interval = java.time.Duration.ofHours(1), clock = java.time.Clock.systemUTC())
+
+        MetricsExport(store, rewrite, MimirBucketIndexWriter(), progress = everyByte, onProgress = { staged += it })
+            .export("acme", listOf("x-1"), ranges, work)
+
+        assertThat(staged).isNotEmpty().allMatch { it.tenant == "acme" && it.totalBlocks == 2 && it.totalBytes == totalBytes }
+        assertThat(staged.map { it.bytes }).isSorted().doesNotHaveDuplicates()
+        assertThat(staged.map { it.blocks }).isSorted()
+        assertThat(staged.last()).isEqualTo(
+            com.rustyrazorblade.easydblab.events.Event.Export
+                .MetricsStaged("acme", 2, 2, totalBytes, totalBytes),
+        )
+        assertThat(staged.last().toDisplayString()).contains("acme", "2 of 2 blocks")
+    }
+
+    @Test
+    fun `a tenant with no block to stage reports no progress`() {
+        seed()
+        val staged = mutableListOf<com.rustyrazorblade.easydblab.events.Event.Export.MetricsStaged>()
+        val farAway = listOf(TimeRange(Instant.ofEpochMilli(day0 + 100 * hour), Instant.ofEpochMilli(day0 + 101 * hour)))
+
+        MetricsExport(store, rewrite, MimirBucketIndexWriter(), onProgress = { staged += it }).export("acme", listOf("x-1"), farAway, work)
+
+        assertThat(staged).isEmpty()
+    }
+
     @Test
     fun `nothing in the store is written`() {
         seed()

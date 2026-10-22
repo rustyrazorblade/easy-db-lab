@@ -29,6 +29,21 @@ data class ObjectDownload(
     val target: File,
 )
 
+/** What a [ParallelObjectDownload] reports as it goes, from its download threads. */
+interface DownloadProgress {
+    /** A part of [job] of [bytes] bytes is written. */
+    fun partDone(
+        job: ObjectDownload,
+        bytes: Long,
+    ) = Unit
+
+    /** [job]'s target is in place, whole; reported before its last part's [partDone]. */
+    fun objectDone(job: ObjectDownload) = Unit
+
+    /** Reports nothing. */
+    object None : DownloadProgress
+}
+
 /** A ranged read answered fewer bytes than it asked for: the object is not the one the listing showed. */
 class ShortReadException(
     key: String,
@@ -76,10 +91,10 @@ class ParallelObjectDownload(
         val THREADS = AtomicInteger()
     }
 
-    /** Downloads every object of [objects], calling [partDone] with each part's object and bytes as it lands. */
+    /** Downloads every object of [objects], reporting each part and each object to [progress] as it lands. */
     fun download(
         objects: List<ObjectDownload>,
-        partDone: (ObjectDownload, Long) -> Unit = { _, _ -> },
+        progress: DownloadProgress = DownloadProgress.None,
     ) {
         val failed = AtomicBoolean(false)
         val pool = Executors.newFixedThreadPool(parallelism, daemonThreads())
@@ -92,14 +107,18 @@ class ParallelObjectDownload(
                     if (ranges.isEmpty()) {
                         partial.createNewFile()
                         complete(job, partial)
+                        progress.objectDone(job)
                     }
                     val left = AtomicInteger(ranges.size)
                     ranges.map { range ->
                         pool.submit {
                             if (!failed.get()) {
                                 read(job, partial, range, failed)
-                                partDone(job, range.last - range.first + 1)
-                                if (left.decrementAndGet() == 0) complete(job, partial)
+                                if (left.decrementAndGet() == 0) {
+                                    complete(job, partial)
+                                    progress.objectDone(job)
+                                }
+                                progress.partDone(job, range.last - range.first + 1)
                             }
                         }
                     }

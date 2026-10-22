@@ -35,7 +35,7 @@ class ProgressThrottleTest {
         total: Int,
         everyItems: Int = 3,
         interval: Duration = Duration.ofHours(1),
-    ) = ProgressThrottle(total, everyItems, interval, clock) { done, all -> reported += done to all }
+    ) = ProgressThrottle(total.toLong(), everyItems.toLong(), interval, clock) { done, all -> reported += done.toInt() to all.toInt() }
 
     @Test
     fun `progress is reported every so many items, and at the end`() {

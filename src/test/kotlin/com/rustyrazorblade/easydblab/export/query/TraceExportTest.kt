@@ -111,7 +111,7 @@ class TraceExportTest {
     fun `the fetch phase reports how many of the cluster's traces were fetched, every so many, and once at the end`() {
         traces = (1..5).associate { "e%030x".format(it) to start.epochSecond + it * 60L }
         val reported = Collections.synchronizedList(mutableListOf<Event.Export.TracesFetched>())
-        val every = ProgressPolicy(everyItems = 2, interval = Duration.ofHours(1), clock = Clock.systemUTC())
+        val every = ProgressPolicy(every = 2, interval = Duration.ofHours(1), clock = Clock.systemUTC())
 
         TraceExport(backends::forTenant, backends::forTenant, progress = every, onProgress = { reported += it })
             .export("acme", "x-1", range)

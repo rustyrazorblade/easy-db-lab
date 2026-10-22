@@ -94,8 +94,8 @@ class TraceExport(
         val pool = Executors.newFixedThreadPool(parallelism)
         try {
             val ids = searchAll(pool, Search(tenant, cluster), windows(range))
-            val report = { done: Int, total: Int -> onProgress(Event.Export.TracesFetched(cluster, tenant, done, total)) }
-            val fetched = progress.throttle(ids.size, report)
+            val report = { done: Long, total: Long -> onProgress(Event.Export.TracesFetched(cluster, tenant, done.toInt(), total.toInt())) }
+            val fetched = progress.throttle(ids.size.toLong(), report)
             return inParallel(pool, ids) { id -> replay(tenant, cluster, id, range).also { fetched.advance() } }
                 .fold(SignalCount.ZERO, SignalCount::plus)
         } finally {

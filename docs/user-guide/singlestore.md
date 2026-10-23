@@ -164,7 +164,7 @@ default). The kit's MySQL endpoint tells sysbench to ignore error 1062: concurre
 counts them as `ignored errors` in its summary (see [Ignored errors](sysbench.md#ignored-errors)).
 sysbench still ignores its own default errors too, including lock wait timeout (1205).
 
-`oltp_read_write` at the default 8 threads can hit deadlocks between transactions that SingleStore
+`oltp_read_write` at the default 4 threads can hit deadlocks between transactions that SingleStore
 does not detect as deadlocks, so it raises no error 1213. Each one stalls the run at zero
 throughput until `@@lock_wait_timeout` passes (60 seconds by default). The waiting transaction then
 fails with error 1205, which sysbench ignores and retries, so the run continues. sysbench prints

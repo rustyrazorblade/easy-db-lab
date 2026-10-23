@@ -148,7 +148,7 @@ MySQL's row locks prevent, and without it a run with several threads ends at the
 another database. A target that names no codes (TiDB, PostgreSQL) keeps sysbench's defaults, and
 any other SQL error there ends the run.
 
-On SingleStore, `oltp_read_write` at the default 8 threads can also stall. Two transactions can
+On SingleStore, `oltp_read_write` at the default 4 threads can also stall. Two transactions can
 deadlock in a way SingleStore does not detect as a deadlock, so there is no error 1213. The run
 then sits at zero throughput until `@@lock_wait_timeout` passes (60 seconds by default). The
 waiting transaction then fails with error 1205, which sysbench ignores and retries, and the run

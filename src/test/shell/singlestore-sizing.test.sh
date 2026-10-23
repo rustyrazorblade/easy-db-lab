@@ -176,6 +176,13 @@ for SH in "${SHELLS[@]}"; do
   STUB_ENV=("STUB_NODES=$(nodes 3 "${NODE_8_VCPU}")" "${DEFAULTS[@]}" SINGLESTORE_LEAVES=3 SINGLESTORE_REDUNDANCY=2)
   out="$(size_cluster)"
   [[ "${out}" == *"--leaves"* && "${out}" == *"--redundancy"* ]] || fail "[${SH}] a non-dividing redundancy did not fail naming both flags: ${out}"
+
+  # SingleStore's redundancy level is 1 or 2: a 3 is refused even though it divides 3 leaves.
+  tests_run=$((tests_run + 1))
+  STUB_ENV=("STUB_NODES=$(nodes 3 "${NODE_8_VCPU}")" "${DEFAULTS[@]}" SINGLESTORE_LEAVES=3 SINGLESTORE_REDUNDANCY=3)
+  out="$(size_cluster)"
+  [[ "${out}" == *"--redundancy 3 is not supported"* ]] || fail "[${SH}] --redundancy 3 did not fail naming the flag: ${out}"
+  [[ "${out}" == *"R="* ]] && fail "[${SH}] --redundancy 3 sized a cluster: ${out}"
 done
 
 echo "${tests_run} tests, ${tests_failed} failed"

@@ -32,6 +32,16 @@ The `easy-db-lab` launcher decides this before the JVM starts. The agent's own d
 
 Setting any of them leaves every export setting to the agent, including its error reporting, so a misconfigured collector still shows up as export errors. The check has to happen in the launcher because the agent gives system properties priority over environment variables: an unconditional `-D` would override the user's `OTEL_*` settings.
 
+### The command line is never exported
+
+The agent's process resource provider would record the CLI's full command line (`process.command_args` and `process.command_line`) on every span, metric and log it exports. A command line can hold a secret, such as `kit install singlestore --license <key> --password <password>`. So every launcher of the CLI, the `easy-db-lab` start script and the container image, always passes:
+
+```
+-Dotel.java.disabled.resource.providers=io.opentelemetry.instrumentation.resources.ProcessResourceProvider
+```
+
+This holds whatever the export settings are. Exported telemetry therefore carries no `process.*` attributes from that provider, including `process.pid` and `process.executable.path`. If you set `OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS` to turn off other providers, the launcher adds your list to the property, so those stay off too.
+
 The agent uses automatic instrumentation only - there is no custom manual instrumentation in the CLI tool code.
 
 ## Cluster Node Instrumentation

@@ -35,6 +35,11 @@ val copyOtelAgent =
         rename { "opentelemetry-javaagent.jar" }
     }
 
+// The agent's resource provider that records the process command line, which can hold a secret.
+// Every launcher of the CLI disables it (the start script and the container image below). The
+// class name is the one the agent version above registers.
+val otelProcessResourceProvider = "io.opentelemetry.instrumentation.resources.ProcessResourceProvider"
+
 dependencies {
     otelAgentConfig("io.opentelemetry.javaagent:opentelemetry-javaagent:${libs.versions.opentelemetry.agent.get()}")
 }
@@ -98,6 +103,8 @@ ktor {
 }
 
 tasks.named<CreateStartScripts>("startScripts") {
+    // Read at configuration time, so the task action captures a String, not the build script.
+    val processResourceProvider = otelProcessResourceProvider
     doLast {
         // Update the Unix / Mac / Linux start script.
         //
@@ -106,9 +113,20 @@ tasks.named<CreateStartScripts>("startScripts") {
         // xargs|sed|eval arg-splitting pipeline runs. Args placed in `applicationDefaultJvmArgs`
         // are treated literally by that pipeline, so `$APP_HOME` cannot be referenced there —
         // both the apphome system property and the OTel java agent path are injected here.
+        //
+        // The agent's ProcessResourceProvider puts the full argv (process.command_args and
+        // process.command_line) on every span, metric and log it exports, and a command line can
+        // hold a secret (`kit install singlestore --license ... --password ...`). It is always
+        // off, whatever the export settings. The system property outranks the agent's
+        // OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS variable, so a list the user set there is appended.
         val agentOpts =
-            "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\$APP_HOME " +
-                "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+            listOf(
+                "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\$APP_HOME " +
+                    "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar\"",
+                "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Dotel.java.disabled.resource.providers=" +
+                    "$processResourceProvider\${OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS:+," +
+                    "\$OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS}\"",
+            ).joinToString("\n")
 
         // The agent's exporters default to OTLP on localhost:4318. With no collector there, every
         // export fails and the agent prints a stack trace to stderr on every run — the normal case
@@ -1007,6 +1025,8 @@ jib {
                 // CDS off: see applicationDefaultJvmArgs. The agent would trigger the same warning.
                 "-Xshare:off",
                 "-javaagent:/agents/opentelemetry-javaagent.jar",
+                // The command line, which can hold a secret, never becomes a resource attribute.
+                "-Dotel.java.disabled.resource.providers=$otelProcessResourceProvider",
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",
                 "-Deasydblab.apphome=/app",

@@ -5,7 +5,8 @@
 #
 # The driver args are built once, as a shell array, from the TARGET_* variables the framework
 # injects. A MySQL target that declares ignore-errors (TARGET_MYSQL_IGNORE_ERRORS) adds
-# --mysql-ignore-errors; one that declares none adds nothing.
+# --mysql-ignore-errors with sysbench's own default codes plus the target's, each once, since the
+# flag replaces sysbench's defaults; one that declares none adds nothing, so sysbench keeps them.
 #
 # A target with a password (TARGET_MYSQL_PASSWORD or TARGET_PG_PASSWORD) never puts it in a pod
 # spec or on a kubectl command line. Each phase applies it, from stdin, to the Secret
@@ -208,11 +209,21 @@ test_the_driver_args_never_hold_a_password() {
   return 0
 }
 
-test_a_mysql_target_with_ignore_errors_passes_them_to_sysbench() {
+test_a_mysql_target_with_ignore_errors_keeps_the_sysbench_defaults() {
   tests_run=$((tests_run + 1))
   local actual
-  actual="$(db_args_for "${MYSQL_TARGET[@]}" TARGET_MYSQL_IGNORE_ERRORS=1062,1213)"
-  grep -Fxq -- "--mysql-ignore-errors=1062,1213" <<< "${actual}" || fail "no --mysql-ignore-errors arg: ${actual}"
+  actual="$(db_args_for "${MYSQL_TARGET[@]}" TARGET_MYSQL_IGNORE_ERRORS=1062)"
+  grep -Fxq -- "--mysql-ignore-errors=1213,1020,1205,1062" <<< "${actual}" ||
+    fail "the ignore list is not sysbench's defaults plus the target's codes: ${actual}"
+  [ "$(grep -c -- "--mysql-ignore-errors" <<< "${actual}")" -eq 1 ] || fail "more than one --mysql-ignore-errors arg: ${actual}"
+}
+
+test_a_target_code_that_is_already_a_default_is_not_repeated() {
+  tests_run=$((tests_run + 1))
+  local actual
+  actual="$(db_args_for "${MYSQL_TARGET[@]}" "TARGET_MYSQL_IGNORE_ERRORS=1205, 1062,1062")"
+  grep -Fxq -- "--mysql-ignore-errors=1213,1020,1205,1062" <<< "${actual}" ||
+    fail "the ignore list repeats a code: ${actual}"
 }
 
 test_a_mysql_target_without_ignore_errors_passes_none() {
@@ -344,7 +355,8 @@ test_a_cleanup_pod_that_never_starts_lists_its_events_not_its_description() {
 test_a_passwordless_mysql_target_gets_the_args_it_always_got
 test_a_passwordless_pgsql_target_gets_the_args_it_always_got
 test_the_driver_args_never_hold_a_password
-test_a_mysql_target_with_ignore_errors_passes_them_to_sysbench
+test_a_mysql_target_with_ignore_errors_keeps_the_sysbench_defaults
+test_a_target_code_that_is_already_a_default_is_not_repeated
 test_a_mysql_target_without_ignore_errors_passes_none
 test_no_endpoint_is_reported
 test_prepare_reads_the_password_from_a_secret_in_every_pod

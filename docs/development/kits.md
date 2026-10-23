@@ -868,7 +868,8 @@ this.
 of MySQL error codes, and is empty when the endpoint declares none. A target declares it for
 errors that its concurrency model raises where MySQL's row locks would wait instead: SingleStore
 declares `1062`, the duplicate-key error concurrent `oltp_read_write` transactions hit there. The
-sysbench kit passes a non-empty list as `--mysql-ignore-errors`. `ignore-errors` on any other
+sysbench kit passes a non-empty list as `--mysql-ignore-errors`, after sysbench's own defaults
+(`1213,1020,1205`), each code once, because the flag replaces those defaults. `ignore-errors` on any other
 endpoint type, or a value that is not error codes separated by commas, fails the `kit.yaml` load.
 
 If the target kit directory does not exist or its `kit.yaml` is unreadable, no `TARGET_*`

@@ -18,10 +18,30 @@ SYSBENCH_CREDENTIALS_ROLE=sysbench-credentials
 SYSBENCH_CREDENTIALS_KEY=password
 # The env var a sysbench pod reads the password into.
 SYSBENCH_PASSWORD_ENV=TARGET_PASSWORD
+# sysbench 1.0's own default for --mysql-ignore-errors (`sysbench --help`): deadlock (1213),
+# record changed since last read (1020) and lock wait timeout (1205). Passing the flag replaces
+# this list, so a target's codes are added to it, never passed alone.
+SYSBENCH_DEFAULT_MYSQL_IGNORE_ERRORS=1213,1020,1205
 
 # Prints the name of this instance's credentials Secret.
 sysbench_credentials_secret() {
   printf '%s-credentials\n' "${KIT_NAME}"
+}
+
+# Prints the comma-separated codes of lists $1 and $2, in order, each code once, without spaces or
+# empty entries.
+merge_ignore_errors() {
+  local merged="" code
+  local IFS=,
+  for code in $1 $2; do
+    code="${code// /}"
+    [ -n "${code}" ] || continue
+    case ",${merged}," in
+      *",${code},"*) ;;
+      *) merged="${merged:+${merged},}${code}" ;;
+    esac
+  done
+  printf '%s\n' "${merged}"
 }
 
 # Sets DB_ARGS to the driver args for the target's MySQL or PostgreSQL wire endpoint, without the
@@ -41,9 +61,10 @@ target_db_args() {
     )
     DB_PASSWORD="${TARGET_MYSQL_PASSWORD:-}"
     DB_PASSWORD_FLAG=--mysql-password
-    # The MySQL error codes the target kit's mysql endpoint declares as ignore-errors.
+    # The MySQL error codes the target kit's mysql endpoint declares as ignore-errors, after
+    # sysbench's defaults. With none declared there is no flag, and sysbench keeps its defaults.
     if [ -n "${TARGET_MYSQL_IGNORE_ERRORS:-}" ]; then
-      DB_ARGS+=("--mysql-ignore-errors=${TARGET_MYSQL_IGNORE_ERRORS}")
+      DB_ARGS+=("--mysql-ignore-errors=$(merge_ignore_errors "${SYSBENCH_DEFAULT_MYSQL_IGNORE_ERRORS}" "${TARGET_MYSQL_IGNORE_ERRORS}")")
     fi
   elif [ -n "${TARGET_PG_HOST:-}" ]; then
     DB_ARGS=(

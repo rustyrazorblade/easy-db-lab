@@ -160,6 +160,18 @@ password in every phase. `prepare` loads its tables into the `--database` databa
 default). The kit's MySQL endpoint tells sysbench to ignore error 1062: concurrent
 `oltp_read_write` transactions on the same id hit duplicate-key errors on SingleStore, and the run
 counts them as `ignored errors` in its summary (see [Ignored errors](sysbench.md#ignored-errors)).
+sysbench still ignores its own default errors too, including lock wait timeout (1205).
+
+`oltp_read_write` at the default 8 threads can hit deadlocks between transactions that SingleStore
+does not detect as deadlocks, so it raises no error 1213. Each one stalls the run at zero
+throughput until `@@lock_wait_timeout` passes (60 seconds by default). The waiting transaction then
+fails with error 1205, which sysbench ignores and retries, so the run continues. sysbench prints
+the count of ignored errors in its summary. The kit leaves `lock_wait_timeout` at SingleStore's
+default. For shorter stalls, set it yourself:
+
+```bash
+easy-db-lab singlestore sql "SET GLOBAL lock_wait_timeout = <seconds>"
+```
 
 ```bash
 easy-db-lab kit install sysbench --target singlestore

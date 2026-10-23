@@ -133,14 +133,23 @@ A target with no password (TiDB, PostgreSQL, ClickHouse) connects exactly as bef
 
 ## Ignored errors
 
-A target kit's `mysql` endpoint can name MySQL error codes that sysbench should ignore, and sysbench
-then runs with `--mysql-ignore-errors=<codes>`. SingleStore names `1062`: concurrent
-`oltp_read_write` transactions on the same id hit duplicate-key errors there that MySQL's row locks
-prevent, and without it a run with several threads ends at the first one with
+sysbench ignores some MySQL errors by default and retries the transaction: deadlock (1213),
+record changed since last read (1020) and lock wait timeout (1205). A target kit's `mysql` endpoint
+can name more codes to ignore. sysbench then runs with `--mysql-ignore-errors` set to its defaults
+plus the target's codes, for example `--mysql-ignore-errors=1213,1020,1205,1062`. SingleStore names
+`1062`: concurrent `oltp_read_write` transactions on the same id hit duplicate-key errors there that
+MySQL's row locks prevent, and without it a run with several threads ends at the first one with
 `FATAL: ... error 1062 ... Duplicate entry`. sysbench counts every ignored error in its summary, as
 `ignored errors: N`, so check that line in `last-run.txt` when you compare a SingleStore run with
-another database. A target that names no codes (TiDB, PostgreSQL) runs as before, and any SQL error
-there ends the run.
+another database. A target that names no codes (TiDB, PostgreSQL) keeps sysbench's defaults, and
+any other SQL error there ends the run.
+
+On SingleStore, `oltp_read_write` at the default 8 threads can also stall. Two transactions can
+deadlock in a way SingleStore does not detect as a deadlock, so there is no error 1213. The run
+then sits at zero throughput until `@@lock_wait_timeout` passes (60 seconds by default). The
+waiting transaction then fails with error 1205, which sysbench ignores and retries, and the run
+continues. See [SingleStore](singlestore.md#benchmarking-with-sysbench) for how to shorten the
+stalls.
 
 ## Rate limiting and overload testing
 

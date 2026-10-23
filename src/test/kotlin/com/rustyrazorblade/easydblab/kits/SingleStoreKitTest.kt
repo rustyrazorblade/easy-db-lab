@@ -12,7 +12,9 @@ import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.installConfigYaml
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource
 import io.fabric8.kubernetes.api.model.Service
+import io.fabric8.kubernetes.api.model.ServiceAccount
 import io.fabric8.kubernetes.api.model.apps.Deployment
+import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBinding
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -69,6 +71,21 @@ class SingleStoreKitTest : BaseKoinTest() {
                 .single()
                 .image,
         ).isEqualTo("singlestore/operator:4.999.0-test")
+    }
+
+    @Test
+    fun `the operator's ClusterRoleBinding names its ServiceAccount in the namespace the kit puts it in`() {
+        val rbac = kit.render("operator-rbac.yaml")
+        val account = rbac.filterIsInstance<ServiceAccount>().single()
+        val subject =
+            rbac
+                .filterIsInstance<ClusterRoleBinding>()
+                .single()
+                .subjects
+                .single()
+
+        assertThat(subject.name).isEqualTo(account.metadata.name)
+        assertThat(subject.namespace).isEqualTo(account.metadata.namespace)
     }
 
     @Test

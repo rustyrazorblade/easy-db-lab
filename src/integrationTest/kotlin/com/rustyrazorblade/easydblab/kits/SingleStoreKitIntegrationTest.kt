@@ -1,27 +1,18 @@
 package com.rustyrazorblade.easydblab.kits
 
-import com.github.dockerjava.api.model.Ulimit
-import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.HasMetadata
-import io.fabric8.kubernetes.client.Config
+import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBinding
 import io.fabric8.kubernetes.client.KubernetesClient
-import io.fabric8.kubernetes.client.KubernetesClientBuilder
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.mock
-import org.slf4j.LoggerFactory
-import org.testcontainers.containers.output.Slf4jLogConsumer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.k3s.K3sContainer
-import org.testcontainers.utility.DockerImageName
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.TimeUnit
@@ -31,30 +22,19 @@ import java.util.concurrent.TimeUnit
  * vendored CRD, the operator RBAC and Deployment, the MemsqlCluster the start step renders (through
  * the packaged shell library, with the run-time sizes filled in), and the NodePort Service.
  *
- * The cluster has its own container because the kit creates cluster-scoped objects (the CRD, a
- * ClusterRole and its binding). The operator image is not preloaded and need not run: the test
- * checks that the API server accepts every object as the kit writes it, that the stored cluster keeps
- * the computed sizes as numbers, and that the operator pod is scheduled onto the control-plane node.
+ * It runs on [SharedK3s] in a namespace of its own: every namespaced object the kit writes for
+ * `default` is applied there instead, and the ClusterRoleBinding's subject follows its
+ * ServiceAccount. The cluster-scoped objects (the `memsqlclusters.memsql.com` CRD and the
+ * `singlestore-operator` ClusterRole and binding) belong to no other test. The operator image is not
+ * preloaded and need not run: the test checks that the API server accepts every object as the kit
+ * writes it, that the stored cluster keeps the computed sizes as numbers, and that the operator pod
+ * is scheduled onto the control-plane node.
  */
-@Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class SingleStoreKitIntegrationTest {
     companion object {
         private const val WAIT_SECONDS = 120L
-        private const val NAMESPACE = "default"
-
-        @Container
-        @JvmStatic
-        val k3s: K3sContainer =
-            K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
-                .withPrivilegedMode(true)
-                .withCreateContainerCmdModifier { cmd ->
-                    requireNotNull(cmd.hostConfig) { "the K3s container has no host config" }
-                        .withCgroupnsMode("host")
-                        .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
-                }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
-                .withEnv("K3S_SNAPSHOTTER", "native")
-                .let { (it as K3sContainer).withPreloadedImages() }
+        private const val NAMESPACE = "singlestore-kit"
     }
 
     private val workDir: File = Files.createTempDirectory("singlestore-kit").toFile()
@@ -63,12 +43,8 @@ class SingleStoreKitIntegrationTest {
 
     @BeforeAll
     fun installTheOperator() {
-        client = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
-        client
-            .serviceAccounts()
-            .inNamespace(NAMESPACE)
-            .withName("default")
-            .waitUntilCondition({ it != null }, WAIT_SECONDS, TimeUnit.SECONDS)
+        SharedK3s.createNamespace(NAMESPACE)
+        client = SharedK3s.client()
         for (manifest in listOf("crd.yaml", "operator-rbac.yaml", "operator-deployment.yaml.template")) {
             kit.render(manifest).forEach(::apply)
         }
@@ -96,7 +72,13 @@ class SingleStoreKitIntegrationTest {
         workDir.deleteRecursively()
     }
 
+    /**
+     * Applies [resource] in this test's namespace: a namespaced object moves from the kit's
+     * `default`, and the ClusterRoleBinding's ServiceAccount subject moves with it.
+     */
     private fun apply(resource: HasMetadata) {
+        if (resource.metadata.namespace != null) resource.metadata.namespace = NAMESPACE
+        if (resource is ClusterRoleBinding) resource.subjects.forEach { it.namespace = NAMESPACE }
         client.resource(resource).forceConflicts().serverSideApply()
     }
 

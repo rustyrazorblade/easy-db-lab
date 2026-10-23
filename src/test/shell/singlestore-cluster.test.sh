@@ -23,6 +23,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 KIT="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/singlestore"
+KIT_LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
 LICENSE_KEY="FAKE-LICENSE-NOT-A-REAL-KEY"
 
 tests_run=0
@@ -62,8 +63,19 @@ for arg in "\$@"; do
 done
 case " \$* " in
   *" delete memsqlcluster "*) : > "${WORK}/cr-deleted" ;;
+  # STUB_FAIL_FIRST_SECRET_APPLY makes the first server-side apply (the license Secret) fail.
+  *" apply --server-side "*)
+    cat > "\${call}.stdin"
+    if [ -n "\${STUB_FAIL_FIRST_SECRET_APPLY:-}" ] && [ ! -e "${WORK}/secret-apply-failed" ]; then
+      : > "${WORK}/secret-apply-failed"
+      exit 1
+    fi ;;
   *" apply "*) cat > "\${call}.stdin" ;;
   *" create secret "*) echo "kind: Secret" ;;
+  # A local label passes the object through with a line per label, as it would be on the object.
+  *" label --local "*)
+    cat
+    for arg in "\$@"; do case "\${arg}" in easydblab/*) echo "# label \${arg}" ;; esac; done ;;
   *" get nodes "*) printf '%s\n' "8 65544428Ki" "8 65544428Ki" "8 65544428Ki" ;;
   *" get memsqlcluster "*"creationTimestamp"*) echo "2026-10-16T12:00:00Z" ;;
   *" get memsqlcluster "*) printf '%s' "\${STUB_CR_STATUS:-}" ;;
@@ -96,7 +108,7 @@ SHELLS=(bash)
 in_kit() {
   (
     cd "${WORK}/kit" &&
-      env -i PATH="${WORK}/stubs:/usr/bin:/bin" HOME="${WORK}" \
+      env -i PATH="${WORK}/stubs:/usr/bin:/bin" HOME="${WORK}" KIT_NAME=singlestore EDL_KIT_LIB="${KIT_LIB}" \
         "SINGLESTORE_LICENSE=${LICENSE_KEY}"$'\n' SINGLESTORE_PASSWORD="p w*'d" SINGLESTORE_DATABASE=test \
         SINGLESTORE_LEAVES=3 SINGLESTORE_AGGREGATORS=0 SINGLESTORE_AGGREGATOR_CORES=2 SINGLESTORE_AGGREGATOR_MEMORY=8 \
         STORAGE_SIZE=10Ti SINGLESTORE_UNLIMITED_STORAGE=false SS_WAIT_ATTEMPTS=3 \
@@ -157,6 +169,29 @@ for SH in "${SHELLS[@]}"; do
   done
   grep -Fq -- "${LICENSE_KEY}" "${WORK}/out.txt" && fail "[${SH}] start printed the license"
 
+  # Both Secrets are applied server-side, so no last-applied annotation (which `kubectl describe
+  # secret` prints) holds a copy of the license or the password, and they carry the kit's labels in
+  # that same apply, never in a later `kubectl label` of the live object.
+  tests_run=$((tests_run + 1))
+  secret_applies=0
+  for stdin in "${WORK}"/calls/*.stdin; do
+    grep -Fqx "kind: Secret" "${stdin}" || continue
+    secret_applies=$((secret_applies + 1))
+    args="${stdin%.stdin}.args"
+    grep -Fqx -- "--server-side" "${args}" || fail "[${SH}] a Secret was applied client-side: $(tr '\n' ' ' < "${args}")"
+    grep -Fqx "# label easydblab/kit=singlestore" "${stdin}" || fail "[${SH}] an applied Secret has no kit label"
+    grep -Fqx "# label easydblab/role=credentials" "${stdin}" || fail "[${SH}] an applied Secret has no role label"
+  done
+  [ "${secret_applies}" = 2 ] || fail "[${SH}] ${secret_applies} Secret applies, not 2"
+  for args in "${WORK}"/calls/*.args; do
+    [ "$(head -1 "${args}")" = label ] && ! grep -Fqx -- "--local" "${args}" &&
+      fail "[${SH}] a live object was labelled after the apply: $(tr '\n' ' ' < "${args}")"
+  done
+  for name in singlestore-license singlestore-root-password; do
+    args="$(grep -l -Fx -- "${name}" "${WORK}"/calls/*.args | head -1)"
+    grep -Fqx -- "-n" "${args}" && grep -Fqx -- "default" "${args}" || fail "[${SH}] ${name} is not created in namespace default"
+  done
+
   tests_run=$((tests_run + 1))
   cr_call="$(basename "${cr}" .stdin)"
   clear_cr="$(first_call delete memsqlcluster singlestore)"
@@ -166,6 +201,16 @@ for SH in "${SHELLS[@]}"; do
   [ "${clear_cr}" -lt "${clear_pvc}" ] && [ "${clear_pvc}" -lt "${clear_secrets}" ] && [ "${clear_secrets}" -lt "${secret_apply}" ] ||
     fail "[${SH}] leftovers are not cleared CR, PVCs, Secrets before the Secrets are applied (${clear_cr} ${clear_pvc} ${clear_secrets} ${secret_apply})"
   [ "${secret_apply}" -lt "${cr_call}" ] || fail "[${SH}] the Secrets are not applied before the MemsqlCluster"
+
+  # A license Secret that cannot be applied fails the start before the password Secret or the
+  # MemsqlCluster is applied.
+  tests_run=$((tests_run + 1))
+  setup
+  STUB_ENV=(STUB_FAIL_FIRST_SECRET_APPLY=1)
+  in_kit singlestore_start_cluster && fail "[${SH}] start passed with the license Secret not applied"
+  grep -q "singlestore-license" "${WORK}/out.txt" || fail "[${SH}] the failure does not name the Secret: $(cat "${WORK}/out.txt")"
+  [ "$(first_call singlestore-root-password)" = 999 ] || fail "[${SH}] the password Secret was written after the license failed"
+  grep -lq "kind: MemsqlCluster" "${WORK}"/calls/*.stdin && fail "[${SH}] the MemsqlCluster was applied after the license failed"
 
   tests_run=$((tests_run + 1))
   setup

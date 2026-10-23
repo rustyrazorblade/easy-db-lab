@@ -21,7 +21,9 @@ Customer Portal and pass it to `kit install` with `--license`. The kit
 strips a trailing newline, so `--license "$(cat key.txt)"` is safe.
 
 The license key is written to the kit's directory in the workspace and to a Kubernetes Secret.
-Keep the workspace private. `stop` and `uninstall` delete the license and root password Secrets.
+Keep the workspace private. The Secrets are applied server-side, so `kubectl describe secret` shows
+no copy of the key or the password in a last-applied annotation. `stop` and `uninstall` delete the
+license and root password Secrets.
 
 ## Quick Start
 

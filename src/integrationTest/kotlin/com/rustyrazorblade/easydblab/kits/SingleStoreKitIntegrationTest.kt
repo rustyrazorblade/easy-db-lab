@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.kits
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
@@ -124,6 +125,14 @@ class SingleStoreKitIntegrationTest {
         for (file in listOf("singlestore-cluster.sh", "singlestore-sizing.sh", "singlestore-sql.sh")) {
             File(lib, file).writeText(kit.resource("bin/lib/$file"))
         }
+        val kitLibrary =
+            File(workDir, Constants.ToolWrappers.KIT_LIBRARY).apply {
+                writeText(
+                    requireNotNull(SingleStoreKitIntegrationTest::class.java.getResource(Constants.ToolWrappers.KIT_LIBRARY_RESOURCE)) {
+                        "the kit shell library is not on the classpath"
+                    }.readText(),
+                )
+            }
         val process =
             ProcessBuilder("bash", "-c", "set -euo pipefail; source bin/lib/singlestore-cluster.sh; ss_render_cluster")
                 .directory(kitDir)
@@ -131,6 +140,8 @@ class SingleStoreKitIntegrationTest {
                 .apply {
                     environment().putAll(
                         mapOf(
+                            Constants.Kit.LIBRARY_ENV to kitLibrary.absolutePath,
+                            "KIT_NAME" to "singlestore",
                             "REDUNDANCY" to "2",
                             "LEAF_COUNT" to "1",
                             "LEAF_CORES" to "4",

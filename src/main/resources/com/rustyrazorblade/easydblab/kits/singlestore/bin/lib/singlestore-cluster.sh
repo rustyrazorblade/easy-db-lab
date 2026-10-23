@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 #
 # The SingleStore kit's start and wait steps. kit.yaml sources this file from the kit directory;
-# it sources the sizing and SQL libraries from its own directory. src/test/shell/
+# it sources the shared kit shell library (EDL_KIT_LIB), and the sizing and SQL libraries from its
+# own directory. src/test/shell/
 # singlestore-cluster.test.sh tests it with kubectl stubbed.
 #
 # A kit shell step runs under /bin/bash, which is bash 3.2 on macOS.
 
 SS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SS_KIT_DIR="$(cd "${SS_LIB_DIR}/../.." && pwd)"
+# The shared kit shell library, for edl_apply_secret.
+# shellcheck source=/dev/null
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
 # shellcheck source=singlestore-sizing.sh
 source "${SS_LIB_DIR}/singlestore-sizing.sh"
 # shellcheck source=singlestore-sql.sh
@@ -17,6 +21,10 @@ SS_NAMESPACE=default
 SS_CLUSTER=singlestore
 SS_POD_SELECTOR="easydblab/kit=singlestore"
 SS_PVC_SELECTOR="app.kubernetes.io/instance=singlestore"
+# The role label of the license and root password Secrets. edl_apply_secret labels them
+# easydblab/kit=${KIT_NAME}, which is singlestore (the kit has no instance arg), so the leftover
+# cleanup's SS_POD_SELECTOR finds them.
+SS_SECRET_ROLE=credentials
 # The values start computes and memsqlcluster.yaml leaves for it, as ${NAME}.
 SS_RUNTIME_VALUES="REDUNDANCY LEAF_COUNT LEAF_CORES LEAF_MEMORY_MB STORAGE_GB AGGREGATOR_MEMORY_MB"
 # The wait polls every SS_WAIT_INTERVAL seconds, SS_WAIT_ATTEMPTS times (20 minutes).
@@ -51,18 +59,13 @@ ss_clear_leftovers() {
   kubectl delete secret -l "${SS_POD_SELECTOR}" -n "${SS_NAMESPACE}" --ignore-not-found
 }
 
-# Creates or updates Secret $1 with key $2 holding the contents of file $3, labelled with the kit,
-# apply-style. The value goes through a file, never a command line.
-ss_apply_secret() {
-  kubectl create secret generic "$1" -n "${SS_NAMESPACE}" "--from-file=$2=$3" --dry-run=client -o yaml |
-    kubectl apply -f -
-  kubectl label secret "$1" -n "${SS_NAMESPACE}" "${SS_POD_SELECTOR}" --overwrite > /dev/null
-}
-
 # Writes the license, with every trailing newline stripped (SingleStore refuses a key that ends
-# with one), and the root password to the Secrets the MemsqlCluster names.
+# with one), and the root password to the Secrets the MemsqlCluster names, through the shared
+# library's edl_apply_secret: each value reaches it on stdin (printf is a builtin, so no process
+# holds it in its arguments), and the apply is server-side, with the kit's labels on the object,
+# so no last-applied annotation that `kubectl describe secret` prints keeps a copy.
 ss_apply_secrets() {
-  local license="${SINGLESTORE_LICENSE}" dir status=0
+  local license="${SINGLESTORE_LICENSE}"
   while :; do
     case "${license}" in
       *$'\n' | *$'\r') license="${license%?}" ;;
@@ -70,13 +73,11 @@ ss_apply_secrets() {
     esac
   done
   [ -n "${license}" ] || ss_cluster_fail "--license is empty" || return 1
-  dir="$(umask 077 && mktemp -d)"
-  printf '%s' "${license}" > "${dir}/license"
-  printf '%s' "${SINGLESTORE_PASSWORD}" > "${dir}/password"
-  ss_apply_secret singlestore-license license "${dir}/license" &&
-    ss_apply_secret singlestore-root-password ROOT_PASSWORD "${dir}/password" || status=$?
-  rm -rf "${dir}"
-  return "${status}"
+  # Each pipeline runs edl_apply_secret in a subshell, whose exit on a failure only ends the
+  # pipeline, and the caller's `|| return 1` turns set -e off here: so stop on a failure by hand.
+  printf '%s' "${license}" | edl_apply_secret singlestore-license "${SS_SECRET_ROLE}" license "${SS_NAMESPACE}" || return 1
+  printf '%s' "${SINGLESTORE_PASSWORD}" |
+    edl_apply_secret singlestore-root-password "${SS_SECRET_ROLE}" ROOT_PASSWORD "${SS_NAMESPACE}"
 }
 
 # Prints memsqlcluster.yaml with each ${NAME} in SS_RUNTIME_VALUES replaced by that variable.

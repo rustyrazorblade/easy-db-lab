@@ -172,6 +172,18 @@ test_secret_is_applied_with_its_labels_and_the_value_on_no_command_line() {
   [ -z "${out}${err}" ] || fail "printed something: ${out}${err}"
 }
 
+# A namespace, when given, is set on the rendered object, which the server-side apply then honours.
+test_secret_in_a_namespace_is_rendered_there() {
+  start_test "Secret in a namespace"
+  run_lib "printf x | edl_apply_secret bench-ch-credentials bench-credentials password dbs"
+  [ "${rc}" -eq 0 ] || { fail "exited ${rc}: ${err}"; return; }
+  grep -Eqx "create secret generic bench-ch-credentials -n dbs --from-file=password=[^ ]+ --dry-run=client -o yaml" <<< "$(calls)" ||
+    fail "not rendered in namespace dbs: $(calls)"
+  grep -Fqx "apply --server-side --force-conflicts -f -" <<< "$(calls)" || fail "not applied server-side: $(calls)"
+  run_lib "printf x | edl_apply_secret bench-ch-credentials bench-credentials password Bad_NS"
+  [ "${rc}" -ne 0 ] || fail "accepted a bad namespace"
+}
+
 test_an_empty_secret_value_fails_before_the_cluster() {
   start_test "empty Secret value"
   run_lib "printf '' | edl_apply_secret bench-ch-credentials bench-credentials password"
@@ -401,6 +413,7 @@ test_configmap_empty_file_fails
 test_configmap_over_the_size_limit_fails_before_the_cluster
 test_configmap_is_created_with_its_labels_in_one_call
 test_secret_is_applied_with_its_labels_and_the_value_on_no_command_line
+test_secret_in_a_namespace_is_rendered_there
 test_an_empty_secret_value_fails_before_the_cluster
 test_a_secret_with_a_bad_name_or_key_fails_before_the_cluster
 test_secret_env_overrides_pin_to_app_nodes_and_reference_the_secret

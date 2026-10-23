@@ -101,19 +101,21 @@ edl_require_secret_key() {
 # Creates or updates Secret $1, with role $2's labels, holding key $3 set to what stdin holds. The
 # value never reaches a command line: it goes through a temp file only this user can read, which is
 # removed before the function returns. The apply is server-side, so no last-applied annotation
-# keeps a copy of the value, and running it again replaces the value in place. Fails on an empty
-# value.
+# keeps a copy of the value, and running it again replaces the value in place. The Secret goes in
+# namespace $4 when it is given, else in the kubeconfig's namespace. Fails on an empty value.
 edl_apply_secret() {
-  local name="$1" role="$2" key="$3"
+  local name="$1" role="$2" key="$3" namespace="${4:-}"
   edl_require_dns_name "Secret" "${name}" 253
   edl_require_secret_key "${key}"
+  [ -z "${namespace}" ] || edl_require_dns_name "Namespace" "${namespace}" 63
   (
     set -o pipefail
     value_file="$(mktemp)" || exit 1
     trap 'rm -f "${value_file}"' EXIT
     cat > "${value_file}" || exit 1
     [ -s "${value_file}" ] || { printf 'Secret %s would be empty\n' "${name}" >&2; exit 2; }
-    kubectl create secret generic "${name}" "--from-file=${key}=${value_file}" --dry-run=client -o yaml |
+    kubectl create secret generic "${name}" ${namespace:+-n "${namespace}"} "--from-file=${key}=${value_file}" \
+      --dry-run=client -o yaml |
       kubectl label --local -f - "easydblab/kit=${KIT_NAME}" "easydblab/role=${role}" -o yaml |
       kubectl apply --server-side --force-conflicts -f - > /dev/null
   ) || edl_fail "Could not apply Secret ${name}"

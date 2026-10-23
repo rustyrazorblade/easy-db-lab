@@ -112,7 +112,10 @@ class SingleStoreKitTest : BaseKoinTest() {
             .isEqualTo(mapOf("name" to "singlestore-root-password", "key" to "ROOT_PASSWORD"))
         assertThat(
             startStep,
-        ).contains("ss_apply_secret singlestore-license license ", "ss_apply_secret singlestore-root-password ROOT_PASSWORD ")
+        ).contains(
+            "edl_apply_secret singlestore-license \"\${SS_SECRET_ROLE}\" license ",
+            "edl_apply_secret singlestore-root-password \"\${SS_SECRET_ROLE}\" ROOT_PASSWORD ",
+        )
     }
 
     @Test

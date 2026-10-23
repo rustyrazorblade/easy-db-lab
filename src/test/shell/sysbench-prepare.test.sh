@@ -14,6 +14,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 TEMPLATE="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/prepare.sh.template"
 LIB="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/edl-kit-lib.sh"
+KIT_LIB_DIR="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/kits/sysbench/bin/lib"
 # shellcheck source=kit-stubs.sh
 . "${ROOT}/src/test/shell/kit-stubs.sh"
 
@@ -26,6 +27,7 @@ export STUB_STATE="${WORK}/state"
 write_kit_stubs "${WORK}/stubs"
 mkdir -p "${WORK}/kit/bin"
 cp "${TEMPLATE}" "${WORK}/kit/bin/prepare.sh"
+cp -R "${KIT_LIB_DIR}" "${WORK}/kit/bin/lib"
 
 fail() {
   echo "FAIL: ${current_test}: $1"
@@ -88,8 +90,19 @@ test_no_app_node_fails_before_any_pod() {
   [ -z "$(run_calls)" ] || fail "created a pod: $(run_calls)"
 }
 
+# A pod whose sysbench hit a fatal SQL error fails prepare, even when it reported exit code 0.
+test_a_fatal_sql_error_fails_prepare() {
+  start_test "FATAL with exit 0"
+  printf '%s\n' "Creating table 'sbtest1'..." \
+    "FATAL: mysql_drv_query() returned error 1105 (Unknown error) for query 'CREATE TABLE sbtest1'" > "${STUB_STATE}/full-log"
+  run_script && fail "exited 0 after a fatal SQL error"
+  grep -q "returned error 1105" "${WORK}/out.txt" || fail "the failure does not quote the fatal error: $(cat "${WORK}/out.txt")"
+  if grep -q "Data preparation complete." "${WORK}/out.txt"; then fail "reported success"; fi
+}
+
 test_every_pod_is_pinned_and_a_quick_pod_does_not_wait
 test_a_failed_pod_fails_prepare
+test_a_fatal_sql_error_fails_prepare
 test_no_app_node_fails_before_any_pod
 
 echo "sysbench prepare (${BASH_VERSION}): ${tests_run} tests, ${tests_failed} failed"

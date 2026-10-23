@@ -1,0 +1,56 @@
+# SingleStore Kit
+
+A distributed SingleStore cluster on the db nodes, managed by the SingleStore Operator, which
+runs on the control node.
+
+## Cluster Layout
+
+| Component         | Node type | Count                        | Role                                   |
+|-------------------|-----------|------------------------------|----------------------------------------|
+| Operator          | control   | 1                            | Manages the MemsqlCluster              |
+| Master aggregator | db        | 1                            | Takes client queries, holds metadata   |
+| Child aggregators | db        | __SINGLESTORE_AGGREGATORS__  | Take client queries                    |
+| Leaves            | db        | __SINGLESTORE_LEAVES__       | Hold the data, one per db node         |
+
+The master aggregator shares a db node with a leaf. `start` sizes each leaf from the db node's
+allocatable CPU and memory unless `--leaf-cores` and `--leaf-memory` were given, and prints the
+sizes it chose.
+
+## Connection
+
+MySQL wire protocol on NodePort 30306 of any db node, which reaches every aggregator:
+
+```
+mysql -h <db-node-ip> -P 30306 -u root -p __SINGLESTORE_DATABASE__
+```
+
+Or through easy-db-lab, which knows the password from install:
+
+```
+easy-db-lab singlestore sql "SELECT 1"
+```
+
+Benchmark it with sysbench:
+
+```
+easy-db-lab kit install sysbench --target singlestore
+easy-db-lab sysbench-singlestore prepare
+easy-db-lab sysbench-singlestore start
+```
+
+## Lifecycle
+
+- `singlestore start` builds a fresh cluster and creates the `__SINGLESTORE_DATABASE__` database.
+- `singlestore stop` deletes the cluster and its data (PVCs). The next `start` is empty.
+- `singlestore uninstall` stops a running cluster first, then removes the operator and its CRD.
+
+A start that fails while it waits for the cluster (a refused license, a spec the operator
+refuses, a crash-looping pod, or the 20-minute limit) prints why, then deletes the cluster, its
+PVCs and the Secrets, so the next `singlestore start` needs no `stop` first.
+
+Each leaf costs max(host vCPU / 8, host RAM GB / 32) license units, whatever `--leaf-cores` and
+`--leaf-memory` say, and aggregators cost none. Over capacity, SingleStore only logs a warning.
+
+## Version
+
+SingleStore node image: singlestore/node:__SINGLESTORE_VERSION__

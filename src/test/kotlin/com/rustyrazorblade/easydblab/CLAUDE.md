@@ -171,6 +171,10 @@ The `K8sServiceIntegrationTest` runs K3s inside Docker via TestContainers. This 
 
 If K3s fails to start with `ContainerLaunchException` inside a nested container environment (e.g. CI), ensure the outer container is configured with `--privileged`, `--cgroupns=host`, and `/sys/fs/cgroup` mounted read-write.
 
+### Preloaded pod images
+
+A K3s container's pods must never pull from a registry. Seed every K3s container with `K3sPreloadedImages.withPreloadedImages(...)` (it always adds the pause image) and list every image its pods run. Each image is fetched once per run on the host by `RegistryImageSource` (jib-core, for the Docker host's Linux platform, keyed by the registry digest) into a docker-load archive in `build/k3s-image-archives/`, shared by every fork through `ImageArchiveCache`, and copied into K3s's airgap directory. Never use `docker save` for this: with the containerd image store it exports images that carry attestation manifests without their layers. `DockerArchive.missingEntries` refuses an incomplete archive, and `K3sPreloadedImagesIntegrationTest` checks that K3s imports every archive.
+
 ## Test Data Quality
 
 **Never assert specific content from real kit files in behaviour tests.** Kit YAML files evolve — commands get added, removed, or renamed. Tests that check `assertThat(output).contains("presto start")` or `assertThat(output).contains("clickhouse backup")` will break whenever a kit changes, even though the code under test is correct.

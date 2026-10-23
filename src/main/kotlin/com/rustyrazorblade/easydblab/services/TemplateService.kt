@@ -50,6 +50,13 @@ class TemplateService(
 
     private fun buildClusterPrefix(state: ClusterState): String = state.clusterPrefix()
 
+    /**
+     * Renders a kit template, inserting every value exactly as given.
+     *
+     * [onUnresolved] receives the placeholders of [templateContent] that no variable names. A
+     * placeholder that only appears inside an inserted value is part of that value, not of the
+     * template, so it is never reported.
+     */
     fun renderKitTemplate(
         templateContent: String,
         vars: TemplateVariables,
@@ -57,10 +64,14 @@ class TemplateService(
         onUnresolved: (List<String>) -> Unit = {},
     ): String {
         val allVars = vars.toMap() + extraVars
-        val rendered = StringSubstitutor(allVars, "__", "__").replace(templateContent)
-        val unresolved = UNRESOLVED_VAR_PATTERN.findAll(rendered).map { it.groupValues[1] }.toList()
+        val unresolved =
+            UNRESOLVED_VAR_PATTERN
+                .findAll(templateContent)
+                .map { it.groupValues[1] }
+                .filterNot { it in allVars }
+                .toList()
         if (unresolved.isNotEmpty()) onUnresolved(unresolved)
-        return rendered
+        return substituteLiterally(templateContent, allVars)
     }
 
     /**
@@ -113,7 +124,21 @@ class TemplateService(
          */
         fun substitute(extraVars: Map<String, String> = emptyMap()): String {
             val allVars = contextVariables + extraVars
-            return StringSubstitutor(allVars, "__", "__").replace(template)
+            return substituteLiterally(template, allVars)
         }
     }
 }
+
+/**
+ * Replaces each `__KEY__` placeholder of [template] with its value from [vars].
+ *
+ * A value goes in exactly as given: a `__KEY__` or a `$` inside it is never substituted or
+ * treated as an escape, so a password such as `a__REGION__b` comes out unchanged.
+ */
+private fun substituteLiterally(
+    template: String,
+    vars: Map<String, String>,
+): String =
+    StringSubstitutor(vars, "__", "__")
+        .setDisableSubstitutionInValues(true)
+        .replace(template)

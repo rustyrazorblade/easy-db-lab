@@ -5,6 +5,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 
 class KitConfigTest {
     private fun parse(yaml: String): KitConfig = installConfigYaml.decodeFromString(KitConfig.serializer(), yaml)
@@ -137,6 +139,38 @@ class KitConfigTest {
         assertThat(arg.required).isFalse()
         assertThat(arg.type).isEqualTo(KitArgSpec.ArgType.STRING)
         assertThat(arg.default).isEmpty()
+    }
+
+    @Test
+    fun `parses an arg pattern and defaults it to empty`() {
+        val args =
+            parse(
+                """
+                name: mydb
+                args:
+                  - flag: --database
+                    variable: DATABASE
+                    pattern: "[A-Za-z0-9_]+"
+                  - flag: --note
+                    variable: NOTE
+                """.trimIndent(),
+            ).args
+        assertThat(args.map { it.pattern }).containsExactly("[A-Za-z0-9_]+", "")
+    }
+
+    @Test
+    fun `an arg pattern that is not a regular expression is rejected when kit yaml loads`() {
+        assertThatThrownBy {
+            parse(
+                """
+                name: mydb
+                args:
+                  - flag: --database
+                    variable: DATABASE
+                    pattern: "[unclosed"
+                """.trimIndent(),
+            )
+        }.hasStackTraceContaining("--database")
     }
 
     @Test
@@ -1185,6 +1219,38 @@ class KitConfigTest {
     }
 
     @Test
+    fun `a mysql endpoint may declare the MySQL error codes a bench kit ignores`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                endpoints:
+                  - name: "MySQL wire"
+                    node-type: db
+                    port: 3306
+                    type: mysql
+                    ignore-errors: "1062,1213"
+                """.trimIndent(),
+            )
+        assertThat(config.endpoints.single().ignoreErrors).isEqualTo("1062,1213")
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["1062,", "duplicate", "1062;1213", "1062 1213"])
+    fun `ignore-errors that is not a comma-separated list of error codes is refused`(codes: String) {
+        assertThatThrownBy {
+            KitEndpoint(name = "w", nodeType = "db", port = 3306, type = KitEndpoint.EndpointType.MYSQL, ignoreErrors = codes)
+        }.isInstanceOf(IllegalArgumentException::class.java).hasMessageContaining("ignore-errors")
+    }
+
+    @Test
+    fun `ignore-errors on an endpoint that is not mysql is refused`() {
+        assertThatThrownBy {
+            KitEndpoint(name = "w", nodeType = "db", port = 5432, type = KitEndpoint.EndpointType.POSTGRESQL, ignoreErrors = "1062")
+        }.isInstanceOf(IllegalArgumentException::class.java).hasMessageContaining("ignore-errors").hasMessageContaining("mysql")
+    }
+
+    @Test
     fun `database field defaults to empty string when absent`() {
         val config =
             parse(
@@ -1410,6 +1476,42 @@ class KitConfigTest {
     }
 
     @Test
+    fun `sql capability parses a password`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                capabilities:
+                  - type: sql
+                    user: root
+                    password: "p w*'d"
+                """.trimIndent(),
+            )
+        assertThat(config.capabilities.single().password).isEqualTo("p w*'d")
+    }
+
+    @Test
+    fun `sql capability password defaults to empty`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                capabilities:
+                  - type: sql
+                    user: root
+                """.trimIndent(),
+            )
+        assertThat(config.capabilities.single().password).isEmpty()
+    }
+
+    @Test
+    fun `a logged sql capability does not reveal its password`() {
+        val capability = KitCapability(type = "sql", user = "root", password = "hunter2")
+
+        assertThat(capability.toString()).doesNotContain("hunter2").contains("user=root")
+    }
+
+    @Test
     fun `kit-ref arg parses alongside other arg types`() {
         val config =
             parse(
@@ -1482,6 +1584,21 @@ class KitEndpointToTargetVarsTest {
     }
 
     @Test
+    fun `a mysql endpoint passes its ignore-errors as TARGET_MYSQL_IGNORE_ERRORS`() {
+        val vars =
+            endpoint(KitEndpoint.EndpointType.MYSQL, port = 3306)
+                .copy(ignoreErrors = "1062")
+                .toTargetVars("10.0.0.3", sqlCap)
+        assertThat(vars).containsEntry("TARGET_MYSQL_IGNORE_ERRORS", "1062")
+    }
+
+    @Test
+    fun `a mysql endpoint without ignore-errors sets an empty TARGET_MYSQL_IGNORE_ERRORS`() {
+        val vars = endpoint(KitEndpoint.EndpointType.MYSQL, port = 3306).toTargetVars("10.0.0.3", sqlCap)
+        assertThat(vars).containsEntry("TARGET_MYSQL_IGNORE_ERRORS", "")
+    }
+
+    @Test
     fun `http endpoint produces TARGET_HTTP_URL`() {
         val vars = endpoint(KitEndpoint.EndpointType.HTTP, port = 8080, database = "").toTargetVars("10.0.0.4", null)
         assertThat(vars["TARGET_HTTP_URL"]).isEqualTo("http://10.0.0.4:8080")
@@ -1517,5 +1634,37 @@ class KitEndpointToTargetVarsTest {
         val vars = endpoint(KitEndpoint.EndpointType.JDBC, scheme = "postgresql").toTargetVars("10.0.0.6", null)
         assertThat(vars["TARGET_JDBC_USER"]).isEmpty()
         assertThat(vars["TARGET_JDBC_DRIVER"]).isEmpty()
+    }
+
+    @Test
+    fun `every sql wire endpoint carries the capability password`() {
+        val withPassword = sqlCap.copy(password = "s3cret pass")
+
+        assertThat(endpoint(KitEndpoint.EndpointType.JDBC, scheme = "mysql").toTargetVars("10.0.0.7", withPassword))
+            .containsEntry("TARGET_JDBC_PASSWORD", "s3cret pass")
+        assertThat(endpoint(KitEndpoint.EndpointType.POSTGRESQL).toTargetVars("10.0.0.7", withPassword))
+            .containsEntry("TARGET_PG_PASSWORD", "s3cret pass")
+        assertThat(endpoint(KitEndpoint.EndpointType.MYSQL).toTargetVars("10.0.0.7", withPassword))
+            .containsEntry("TARGET_MYSQL_PASSWORD", "s3cret pass")
+    }
+
+    @Test
+    fun `a kit with no password sets an empty password variable`() {
+        assertThat(endpoint(KitEndpoint.EndpointType.JDBC, scheme = "mysql").toTargetVars("10.0.0.8", sqlCap))
+            .containsEntry("TARGET_JDBC_PASSWORD", "")
+        assertThat(endpoint(KitEndpoint.EndpointType.POSTGRESQL).toTargetVars("10.0.0.8", sqlCap))
+            .containsEntry("TARGET_PG_PASSWORD", "")
+        assertThat(endpoint(KitEndpoint.EndpointType.MYSQL).toTargetVars("10.0.0.8", null))
+            .containsEntry("TARGET_MYSQL_PASSWORD", "")
+    }
+
+    @Test
+    fun `endpoints with no sql wire protocol carry no password`() {
+        val withPassword = sqlCap.copy(password = "s3cret")
+
+        assertThat(endpoint(KitEndpoint.EndpointType.HTTP).toTargetVars("10.0.0.9", withPassword).values)
+            .doesNotContain("s3cret")
+        assertThat(endpoint(KitEndpoint.EndpointType.KAFKA).toTargetVars("10.0.0.9", withPassword).values)
+            .doesNotContain("s3cret")
     }
 }

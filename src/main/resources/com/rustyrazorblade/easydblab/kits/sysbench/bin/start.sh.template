@@ -5,6 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 KIT_DIR="$(dirname "${SCRIPT_DIR}")"
+# shellcheck source=lib/target-db.sh
+source "${SCRIPT_DIR}/lib/target-db.sh"
 # Persist the final sysbench summary so a run's numbers survive after stdout scrolls away.
 LAST_RUN_FILE="${KIT_DIR}/last-run.txt"
 
@@ -12,44 +14,34 @@ SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
 POD_NAME="sysbench-${KIT_NAME}-$(date +%s)"
 LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
 
-if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
-  DB_ARGS="--db-driver=mysql \
-    --mysql-host=${TARGET_MYSQL_HOST} \
-    --mysql-port=${TARGET_MYSQL_PORT} \
-    --mysql-user=${TARGET_MYSQL_USER} \
-    --mysql-db=${TARGET_MYSQL_DATABASE}"
-elif [ -n "${TARGET_PG_HOST:-}" ]; then
-  DB_ARGS="--db-driver=pgsql \
-    --pgsql-host=${TARGET_PG_HOST} \
-    --pgsql-port=${TARGET_PG_PORT} \
-    --pgsql-user=${TARGET_PG_USER} \
-    --pgsql-db=${TARGET_PG_DATABASE}"
-else
+if ! target_db_args; then
   echo "Error: no supported database endpoint found. Ensure the target kit exposes a MySQL or PostgreSQL wire protocol endpoint." >&2
   exit 1
 fi
 
 edl_require_app_node sysbench
+target_apply_credentials
 
 echo "Starting sysbench: workload=${WORKLOAD}, threads=${THREADS}, duration=${DURATION}s..."
 
+sysbench_command \
+  --threads="${THREADS}" \
+  --time="${DURATION}" \
+  --rate="${RATE}" \
+  --skip-trx="${SKIP_TRX}" \
+  --rand-type="${RAND_TYPE}" \
+  --report-interval=10 \
+  --percentile=99 \
+  --histogram \
+  "${WORKLOAD}" run
+OVERRIDES="$(target_pod_overrides "${POD_NAME}" "${SYSBENCH_PASSWORD_ENV}")"
 kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
   --image="${SYSBENCH_IMAGE}" \
   --restart=Never \
   --labels="${LABELS}" \
-  --overrides="$(edl_pod_overrides)" \
+  --overrides="${OVERRIDES}" \
   --override-type=strategic \
-  --command -- sysbench \
-    ${DB_ARGS} \
-    --threads="${THREADS}" \
-    --time="${DURATION}" \
-    --rate="${RATE}" \
-    --skip-trx="${SKIP_TRX}" \
-    --rand-type="${RAND_TYPE}" \
-    --report-interval=10 \
-    --percentile=99 \
-    --histogram \
-    "${WORKLOAD}" run
+  --command -- "${SYSBENCH_CMD[@]}"
 
 edl_wait_for_pod_running "${POD_NAME}"
 
@@ -84,6 +76,7 @@ EXIT_CODE="$(edl_wait_for_pod_exit "${POD_NAME}")"
 # The full log, read once the pod has ended, holds every line exactly once.
 LOG_FILE="$(mktemp)"
 kubectl --kubeconfig="${KUBECONFIG}" logs "${POD_NAME}" > "${LOG_FILE}" 2>&1 || true
+FATAL_LINES="$(sysbench_fatal_lines "${LOG_FILE}")"
 
 # Persist the run metadata, the exit code and the final sysbench report (SQL statistics /
 # Throughput / Latency percentiles / errors), which starts at "SQL statistics:" and runs to the end
@@ -100,6 +93,11 @@ kubectl --kubeconfig="${KUBECONFIG}" logs "${POD_NAME}" > "${LOG_FILE}" 2>&1 || 
   echo "started:   ${STARTED}"
   echo "exit code: ${EXIT_CODE}"
   echo
+  if [ -n "${FATAL_LINES}" ]; then
+    echo "fatal errors:"
+    printf '%s\n' "${FATAL_LINES}"
+    echo
+  fi
   if grep -q '^SQL statistics:' "${LOG_FILE}"; then
     awk '/^SQL statistics:/ { insummary = 1 } insummary' "${LOG_FILE}"
   else
@@ -111,6 +109,14 @@ kubectl --kubeconfig="${KUBECONFIG}" logs "${POD_NAME}" > "${LOG_FILE}" 2>&1 || 
 if [ "${EXIT_CODE}" != 0 ]; then
   rm -f "${LOG_FILE}"
   edl_fail "The sysbench run failed with exit code ${EXIT_CODE}. Its settings and log are in ${LAST_RUN_FILE}"
+fi
+
+# A fatal SQL error fails the run whatever the exit code: sysbench stops the thread that hit it.
+if [ -n "${FATAL_LINES}" ]; then
+  rm -f "${LOG_FILE}"
+  edl_fail "The sysbench run hit a fatal SQL error:
+${FATAL_LINES}
+Its settings and log are in ${LAST_RUN_FILE}"
 fi
 
 # Derive whole-run p50/p95/p99 from the final latency histogram (values in ms).

@@ -2,6 +2,24 @@
 
 set -euo pipefail
 
+# Moves the directory $2 onto the data mount $1 as $3 and leaves a symlink at $2, so its contents
+# live on the NVMe data disk instead of the root volume. Runs only when $1 is a mount point and $2
+# is not already a symlink, so a second run leaves the link alone. Existing contents are copied.
+relocate_to_data_mount() {
+    local mount="$1" dir="$2" target="$3"
+    if mountpoint -q "$mount" && [ ! -L "$dir" ]; then
+        echo "Relocating $dir to $target..."
+        mkdir -p "$target"
+        if [ -d "$dir" ]; then
+            cp -a "$dir/." "$target/"
+            rm -rf "$dir"
+        fi
+        mkdir -p "$(dirname "$dir")"
+        ln -s "$target" "$dir"
+        echo "$dir relocated to $target"
+    fi
+}
+
 echo "=== Starting K3s Server ==="
 
 # Parse flags
@@ -10,18 +28,11 @@ for arg in "$@"; do
     [ "$arg" = "--flannel-backend=none" ] && NO_FLANNEL=true
 done
 
-# Relocate K3s data directory to NVMe storage if available
-# This prevents the root EBS volume from filling up with container images
-if mountpoint -q /mnt/db1 && [ ! -L /var/lib/rancher/k3s ]; then
-    echo "Relocating K3s data to NVMe at /mnt/db1/k3s..."
-    mkdir -p /mnt/db1/k3s
-    if [ -d /var/lib/rancher/k3s ]; then
-        cp -a /var/lib/rancher/k3s/. /mnt/db1/k3s/
-        rm -rf /var/lib/rancher/k3s
-    fi
-    ln -s /mnt/db1/k3s /var/lib/rancher/k3s
-    echo "K3s data relocated to NVMe"
-fi
+# The K3s data directory holds container images and every local-path PVC, so database data lands on
+# NVMe and the root EBS volume does not fill up. Pod logs (/var/log/pods) move too: database logs
+# never live on the root volume. The OTel Collector mounts /mnt/db1/container-logs to follow the link.
+relocate_to_data_mount /mnt/db1 /var/lib/rancher/k3s /mnt/db1/k3s
+relocate_to_data_mount /mnt/db1 /var/log/pods /mnt/db1/container-logs
 
 # Cilium chains the portmap CNI plugin for hostPort. With --flannel-backend=none, K3s leaves
 # containerd on its default CNI bin dir, /opt/cni/bin, where Cilium installs only cilium-cni.

@@ -2,12 +2,16 @@ package com.rustyrazorblade.easydblab.commands.kit
 
 import com.rustyrazorblade.easydblab.commands.install.BaseInstallCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
 import com.rustyrazorblade.easydblab.services.KitConfig
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.KitEndpointAddresses
+import com.rustyrazorblade.easydblab.services.TemplateVariables
+import com.rustyrazorblade.easydblab.services.installConfigYaml
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters
@@ -37,13 +41,31 @@ class KitInfo : BaseInstallCommand() {
 
     override fun execute() {
         val source = resolver.resolve(kitName)
-        val config =
-            resolver.loadInstallConfig(source)
-                ?: error("No kit.yaml found for '$kitName'")
+        val inWorkspace = clusterStateManager.exists()
+        val config = renderedConfig(source, if (inWorkspace) clusterState else ClusterState(name = "", versions = mutableMapOf()))
         val templateFiles = resolver.listTemplateFiles(source).map { it.name }
         val annotatedCommands = scanner.forKit(kitName).map { it.name to it.description }
-        val hosts = if (clusterStateManager.exists()) clusterState.hosts else emptyMap()
+        val hosts = if (inWorkspace) clusterState.hosts else emptyMap()
         println(buildInfoText(config, templateFiles, annotatedCommands, hosts))
+    }
+
+    /**
+     * The kit's descriptor with its `__VAR__` placeholders resolved from the arg defaults, as an
+     * install with no flags would write it, so an endpoint shows a real database name.
+     */
+    private fun renderedConfig(
+        source: InstallTemplateResolver.TemplateSource,
+        state: ClusterState,
+    ): KitConfig {
+        val packaged = resolver.loadInstallConfig(source) ?: error("No kit.yaml found for '$kitName'")
+        val yaml = resolver.readInstallYamlContent(source) ?: return packaged
+        val rendered =
+            templateService.renderKitTemplate(
+                templateContent = yaml,
+                vars = TemplateVariables.from(state = state, kitName = packaged.name, storageSize = ""),
+                extraVars = packaged.args.associate { it.variable to it.default },
+            )
+        return installConfigYaml.decodeFromString(KitConfig.serializer(), rendered)
     }
 
     companion object {
@@ -114,9 +136,10 @@ class KitInfo : BaseInstallCommand() {
             annotatedCommands: List<Pair<String, String>> = emptyList(),
             hosts: Map<ServerType, List<ClusterHost>> = emptyMap(),
         ): String {
+            // Only a top-level bin/ file is a command; bin/lib/ holds what the scripts source.
             val scriptCommandNames =
                 templateFiles
-                    .filter { it.startsWith("bin/") }
+                    .filter { it.startsWith("bin/") && '/' !in it.removePrefix("bin/") }
                     .map {
                         it
                             .removePrefix("bin/")
@@ -179,7 +202,7 @@ class KitInfo : BaseInstallCommand() {
         /**
          * Lists each endpoint once per host of its node type, at the host's private IP.
          * With no such host in [hosts] (no cluster yet, or none of that node type) the
-         * endpoint is listed by its bare NodePort.
+         * endpoint is listed by its bare NodePort, followed by the database a SQL endpoint uses.
          */
         private fun StringBuilder.appendEndpoints(
             endpoints: List<KitEndpoint>,
@@ -192,7 +215,7 @@ class KitInfo : BaseInstallCommand() {
                     KitEndpointAddresses
                         .privateIps(ep.nodeType, hosts)
                         .map { ep.formatUrl(it) }
-                        .ifEmpty { listOf(":${ep.port}") }
+                        .ifEmpty { listOf(bareAddress(ep)) }
                 for (address in addresses) {
                     appendLine(
                         "  ${ep.name.padEnd(nameWidth)}  ${ep.nodeType.padEnd(nodeTypeWidth)}  $address  ${ep.type.name.lowercase()}",
@@ -200,6 +223,19 @@ class KitInfo : BaseInstallCommand() {
                 }
             }
         }
+
+        /** The NodePort of [ep] with no host: the database of a wire endpoint, or a JDBC endpoint's path. */
+        private fun bareAddress(ep: KitEndpoint): String =
+            when (ep.type) {
+                KitEndpoint.EndpointType.MYSQL, KitEndpoint.EndpointType.POSTGRESQL ->
+                    ":${ep.port}" +
+                        ep.database
+                            .takeIf { it.isNotBlank() }
+                            ?.let { "/$it" }
+                            .orEmpty()
+                KitEndpoint.EndpointType.JDBC -> ":${ep.port}${ep.path}"
+                else -> ":${ep.port}"
+            }
 
         private fun StringBuilder.appendCommands(
             kitName: String,

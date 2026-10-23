@@ -21,6 +21,7 @@ import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.ResultSetMetaData
 import java.sql.Statement
+import java.util.Properties
 
 /**
  * Tests for [KitJdbcSqlService]. Verifies node resolution from cluster state and
@@ -266,6 +267,37 @@ class KitJdbcSqlServiceTest : BaseKoinTest() {
 
         assertThat(result.isFailure).isTrue()
         assertThat(result.exceptionOrNull()?.message).contains("Connection refused")
+    }
+
+    /** The connection properties [password] produces, captured from the connection attempt. */
+    private fun propertiesSentWith(password: String): Properties {
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithAppNode())
+        var captured = Properties()
+        KitJdbcSqlService(
+            clusterStateManager = getKoin().get(),
+            endpoint = prestoJdbcEndpoint,
+            user = "root",
+            password = password,
+            connectionFactory = { _, props ->
+                captured = props
+                throw RuntimeException("stop here")
+            },
+        ).execute("SELECT 1")
+        return captured
+    }
+
+    @Test
+    fun `a set password is sent as the jdbc password property`() {
+        val props = propertiesSentWith("p w*'d")
+
+        assertThat(props.getProperty("password")).isEqualTo("p w*'d")
+        assertThat(props.getProperty("user")).isEqualTo("root")
+    }
+
+    @Test
+    fun `a blank password sends no password property`() {
+        assertThat(propertiesSentWith("").containsKey("password")).isFalse()
+        assertThat(propertiesSentWith("  ").containsKey("password")).isFalse()
     }
 
     @Test

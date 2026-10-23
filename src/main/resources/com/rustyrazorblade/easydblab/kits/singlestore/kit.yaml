@@ -1,0 +1,225 @@
+name: singlestore
+type: db
+description: Deploy a distributed SingleStore cluster (aggregators and leaves on the db nodes) via the SingleStore Operator. Needs a license key.
+version: "1.0.0"
+collision-check: true
+metrics:
+  # The operator runs an exporter sidecar in the master aggregator pod. Its /cluster-metrics
+  # endpoint reports every node of the cluster, labelled host, node_id and role, so one scrape of
+  # the master covers them all. `port` is the sidecar's container port.
+  - type: scrape
+    job: singlestore
+    port: 9104
+    path: /cluster-metrics
+    pod-selector: "easydblab/kit=singlestore,easydblab/role=master"
+# The database pods a start creates. The operator, which install leaves running, carries no
+# easydblab/kit label, so an installed but stopped kit is not seen as running.
+runtime:
+  type: pods
+  selector: "easydblab/kit=singlestore"
+  namespace: default
+endpoints:
+  - name: "MySQL wire"
+    node-type: db
+    port: 30306
+    type: mysql
+    database: "__SINGLESTORE_DATABASE__"
+    # Concurrent oltp_read_write transactions on the same id hit duplicate-key errors (1062) on
+    # SingleStore, where MySQL's row locks would make them wait. A bench kit ignores them.
+    ignore-errors: "1062"
+  - name: "MySQL JDBC"
+    node-type: db
+    port: 30306
+    type: jdbc
+    scheme: mysql
+    path: "/__SINGLESTORE_DATABASE__?useSSL=false&allowPublicKeyRetrieval=true"
+    database: "__SINGLESTORE_DATABASE__"
+args:
+  - flag: --license
+    variable: SINGLESTORE_LICENSE
+    description: "SingleStore license key (from the Customer Portal); required"
+    type: string
+    required: true
+  - flag: --version
+    variable: SINGLESTORE_VERSION
+    description: "singlestore/node image tag"
+    type: string
+    default: "alma-9.0.44-1322a9e639"
+  - flag: --operator-version
+    variable: OPERATOR_VERSION
+    description: "singlestore/operator image tag"
+    type: string
+    default: "4.252.0-3adf6c3d"
+  - flag: --aggregators
+    variable: SINGLESTORE_AGGREGATORS
+    description: "Number of child aggregators, besides the master aggregator; each aggregator needs a db node of its own"
+    type: int
+    default: "0"
+  - flag: --leaves
+    variable: SINGLESTORE_LEAVES
+    description: "Number of leaves, at most one per db node"
+    type: int
+    default: "${DB_NODE_COUNT}"
+  - flag: --redundancy
+    variable: SINGLESTORE_REDUNDANCY
+    description: "Redundancy level (1 or 2); must divide --leaves. Default: 2 for an even leaf count, 1 for an odd one"
+    type: int
+  - flag: --size
+    variable: STORAGE_SIZE
+    description: "Storage per leaf (e.g. 10Ti, 500Gi)"
+    type: string
+    default: "10Ti"
+  - flag: --leaf-cores
+    variable: SINGLESTORE_LEAF_CORES
+    description: "Cores per leaf. Default: the db node's allocatable CPU less the collectors, one aggregator and the exporter"
+    type: int
+  - flag: --leaf-memory
+    variable: SINGLESTORE_LEAF_MEMORY
+    description: "Memory per leaf in GB. Default: the db node's allocatable memory less the collectors, one aggregator and the exporter"
+    type: int
+  - flag: --aggregator-cores
+    variable: SINGLESTORE_AGGREGATOR_CORES
+    description: "Cores per aggregator (master and child)"
+    type: int
+    default: "2"
+  - flag: --aggregator-memory
+    variable: SINGLESTORE_AGGREGATOR_MEMORY
+    description: "Memory per aggregator in GB (master and child)"
+    type: int
+    default: "8"
+  - flag: --password
+    variable: SINGLESTORE_PASSWORD
+    description: "root password; may not hold \", ', \\ or a control character"
+    type: string
+    default: "easydblab"
+    # The node image's startup puts the password in a single-quoted SQL literal unescaped, so a '
+    # crash-loops every pod. ('' is a single quote inside this YAML single-quoted string.)
+    pattern: '[^"''\\\p{Cntrl}]+'
+  - flag: --database
+    variable: SINGLESTORE_DATABASE
+    description: "Database start creates; letters, digits and _ only"
+    type: string
+    default: "test"
+    pattern: "[A-Za-z0-9_]+"
+  - flag: --unlimited-storage
+    variable: SINGLESTORE_UNLIMITED_STORAGE
+    description: "Create the database ON S3 (unlimited storage) under the cluster's data bucket, at a new path each start"
+    type: boolean
+    default: "false"
+  - flag: --blob-cache
+    variable: SINGLESTORE_BLOB_CACHE
+    description: "Blob cache size in MB for unlimited storage; required with --unlimited-storage"
+    type: int
+
+install:
+  - type: manifest
+    template: crd.yaml
+  - type: manifest
+    template: operator-rbac.yaml
+  - type: manifest
+    template: operator-deployment.yaml
+  - type: wait
+    kind: deployment
+    name: singlestore-operator
+    namespace: default
+    condition: Available
+    timeout: "300s"
+
+start:
+  # Sizes the cluster from the db nodes and fails before anything changes when the redundancy
+  # does not divide the leaves or a leaf would be below 4 cores or 8192 MB. Then clears what a
+  # failed start left, writes the license and root password Secrets, and applies the cluster.
+  - type: shell
+    script: |
+      set -euo pipefail
+      source bin/lib/singlestore-cluster.sh
+      singlestore_start_cluster
+  # Waits for every pod and every leaf. Fails at once, with SingleStore's error and the fix, when
+  # the license refuses the cluster, and with the operator's error or the pod's last log lines when
+  # the operator refuses the spec or a pod crash-loops. A failed wait prints the pods, then removes
+  # the cluster, its PVCs and the Secrets, so the next start is not refused as already running.
+  - type: shell
+    script: |
+      set -euo pipefail
+      source bin/lib/singlestore-cluster.sh
+      singlestore_wait
+  - type: manifest
+    template: nodeport-service.yaml
+  - type: shell
+    script: |
+      set -euo pipefail
+      source bin/lib/singlestore-cluster.sh
+      singlestore_create_database
+
+# Every start builds a fresh cluster: stop removes the cluster and its data, and the Secrets that
+# hold the license key and the root password, which the next start writes again.
+stop:
+  - type: delete
+    kind: MemsqlCluster
+    name: singlestore
+    namespace: default
+  - type: delete
+    kind: Service
+    name: singlestore-nodeport
+    namespace: default
+  # The operator labels the cluster's PVCs with its instance, not with easydblab/kit.
+  - type: delete
+    kinds: [PersistentVolumeClaim]
+    selector: app.kubernetes.io/instance=singlestore
+    namespace: default
+  - type: delete
+    kind: Secret
+    name: singlestore-license
+    namespace: default
+  - type: delete
+    kind: Secret
+    name: singlestore-root-password
+    namespace: default
+
+# A running kit is stopped first by the framework. A cluster a failed start left is removed here,
+# before the operator that manages it, and so are the Secrets it left, so neither the license key
+# nor the root password stays in the cluster; the CRD goes last.
+uninstall:
+  - type: delete
+    kind: MemsqlCluster
+    name: singlestore
+    namespace: default
+  - type: delete
+    kind: Deployment
+    name: singlestore-operator
+    namespace: default
+  - type: delete
+    kind: Secret
+    name: singlestore-license
+    namespace: default
+  - type: delete
+    kind: Secret
+    name: singlestore-root-password
+    namespace: default
+  - type: delete
+    kind: RoleBinding
+    name: singlestore-operator
+    namespace: default
+  - type: delete
+    kind: Role
+    name: singlestore-operator
+    namespace: default
+  - type: delete
+    kind: ServiceAccount
+    name: singlestore-operator
+    namespace: default
+  - type: delete
+    kind: ClusterRoleBinding
+    name: singlestore-operator
+  - type: delete
+    kind: ClusterRole
+    name: singlestore-operator
+  - type: delete
+    kind: CustomResourceDefinition
+    name: memsqlclusters.memsql.com
+
+capabilities:
+  - type: sql
+    user: root
+    password: "__SINGLESTORE_PASSWORD__"
+    driver-class: com.mysql.cj.jdbc.Driver

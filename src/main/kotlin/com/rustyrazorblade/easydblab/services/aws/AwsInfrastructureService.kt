@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import java.util.concurrent.CompletableFuture
 
 /**
@@ -358,6 +359,10 @@ class AwsInfrastructureService(
     /**
      * Tears down a specific VPC and all its resources.
      *
+     * A VPC EC2 no longer knows (`InvalidVpcID.NotFound`) was deleted by an earlier teardown, which
+     * then failed at a later step. Its teardown is done, so this succeeds with nothing deleted and
+     * lets the caller finish the remaining steps. Every other EC2 error propagates.
+     *
      * @param vpcId The VPC ID to tear down
      * @param dryRun If true, only discover and report resources without deleting
      * @return TeardownResult with information about deleted resources or errors
@@ -368,7 +373,14 @@ class AwsInfrastructureService(
     ): TeardownResult {
         log.info { "Starting teardown of VPC: $vpcId (dryRun=$dryRun)" }
 
-        val resources = discoverResources(vpcId)
+        val resources =
+            try {
+                discoverResources(vpcId)
+            } catch (e: Ec2Exception) {
+                if (e.awsErrorDetails()?.errorCode() != Constants.AWS.EC2_VPC_NOT_FOUND) throw e
+                eventBus.emit(Event.Infra.VpcAlreadyDeleted(vpcId))
+                return TeardownResult.success(emptyList())
+            }
 
         if (dryRun) {
             return TeardownResult.success(resources)

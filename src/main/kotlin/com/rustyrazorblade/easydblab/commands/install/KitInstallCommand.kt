@@ -58,14 +58,11 @@ class KitInstallCommand(
             return
         }
 
-        for ((variable, default) in resolvedDefaults) {
-            argValues.putIfAbsent(variable, default)
-        }
-        // After the defaults, so an unresolved ${VAR} default (never handed to picocli) is kept.
-        // Recording "" for the rest means an exported shell variable of the same name cannot
-        // reach a kit process in its place.
-        for (arg in config.args) {
-            argValues.putIfAbsent(arg.variable, "")
+        recordUnsetArgs()
+
+        if (argRejectedByPattern()) {
+            exitCode = Constants.ExitCodes.ERROR
+            return
         }
 
         validateKitRefTarget()
@@ -125,6 +122,21 @@ class KitInstallCommand(
     }
 
     /**
+     * Gives every arg the user left out its resolved default, or an empty string when it has none.
+     */
+    private fun recordUnsetArgs() {
+        for ((variable, default) in resolvedDefaults) {
+            argValues.putIfAbsent(variable, default)
+        }
+        // After the defaults, so an unresolved ${VAR} default (never handed to picocli) is kept.
+        // Recording "" for the rest means an exported shell variable of the same name cannot
+        // reach a kit process in its place.
+        for (arg in config.args) {
+            argValues.putIfAbsent(arg.variable, "")
+        }
+    }
+
+    /**
      * Fails fast when the cluster has no node in the pool the kit's `type` declares: reports
      * [Event.Kit.RequirementNotMet] and returns true. A kit with no `type` needs no pool.
      */
@@ -137,6 +149,20 @@ class KitInstallCommand(
             }
         if (clusterState.getHosts(serverType).isNotEmpty()) return false
         eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
+        return true
+    }
+
+    /**
+     * Checks every arg value against its declared `pattern`, before anything is rendered or
+     * written. Reports the first mismatch as [Event.Install.ArgRejected], which names the flag and
+     * never the value (it may be a password), and returns true.
+     */
+    private fun argRejectedByPattern(): Boolean {
+        val rejected =
+            config.args.firstOrNull { arg ->
+                argValues[arg.variable]?.let { !arg.accepts(it) } ?: false
+            } ?: return false
+        eventBus.emit(Event.Install.ArgRejected(kit = config.name, flag = rejected.flag, pattern = rejected.pattern))
         return true
     }
 

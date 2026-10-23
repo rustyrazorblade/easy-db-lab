@@ -55,7 +55,20 @@ class BuiltinKitFixture(
     fun render(
         templateFile: String,
         args: Map<String, String> = emptyMap(),
-    ): List<HasMetadata> {
+    ): List<HasMetadata> =
+        renderText(templateFile, args)
+            .split(DOCUMENT_SEPARATOR)
+            .filter { it.isNotBlank() }
+            .map { Serialization.unmarshal(it, HasMetadata::class.java) }
+
+    /**
+     * Renders [templateFile] as `kit install` writes it, with the kit's arg defaults overlaid by
+     * [args], failing on any placeholder left unresolved.
+     */
+    fun renderText(
+        templateFile: String,
+        args: Map<String, String> = emptyMap(),
+    ): String {
         val unresolved = mutableListOf<String>()
         val rendered =
             templateService.renderKitTemplate(
@@ -65,9 +78,6 @@ class BuiltinKitFixture(
             ) { unresolved.addAll(it) }
         check(unresolved.isEmpty()) { "Unresolved variables in $templateFile: $unresolved" }
         return rendered
-            .split(DOCUMENT_SEPARATOR)
-            .filter { it.isNotBlank() }
-            .map { Serialization.unmarshal(it, HasMetadata::class.java) }
     }
 
     /** Reads a file from the kit's resource directory. */

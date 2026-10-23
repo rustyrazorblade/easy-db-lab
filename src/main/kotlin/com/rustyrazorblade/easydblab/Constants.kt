@@ -219,6 +219,9 @@ object Constants {
         // eventual consistency, not a missing instance.
         const val EC2_INSTANCE_NOT_FOUND = "InvalidInstanceID.NotFound"
 
+        // EC2 error code for a VPC id it does not know: the VPC has been deleted.
+        const val EC2_VPC_NOT_FOUND = "InvalidVpcID.NotFound"
+
         // IAM Role Names
         object Roles {
             const val EC2_INSTANCE_ROLE = "EasyDBLabEC2Role"
@@ -477,6 +480,10 @@ object Constants {
 
         /** The variable that holds the absolute path of the workspace's kit shell library, for every kit process. */
         const val LIBRARY_ENV = "EDL_KIT_LIB"
+
+        // What a kit capability's password reads as wherever it would otherwise be printed or
+        // logged: the sql command's error output and KitCapability.toString.
+        const val PASSWORD_MASK = "****"
 
         // After the stop of a kit that declares a runtime, how often and how many times to look for its
         // pods before reporting the stop incomplete: 2s x 150 = 5 minutes, enough for a

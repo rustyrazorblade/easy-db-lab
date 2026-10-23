@@ -216,6 +216,8 @@ Every step has a timeout. `down` only flushes, waits for the flush to finish, an
 
 **The account compactor.** After the infrastructure teardown succeeds, `down` counts the VPCs tagged `easy_cass_lab=1`, in every enabled region, whose `bucket` tag names the account bucket, leaving out the ones it just removed. When none is left, it stops the [account compactor](../user-guide/compactor.md); otherwise the compactor keeps running.
 
+**A failure after the VPC is gone.** `down` marks the cluster's infrastructure as down in the cluster state as soon as the VPC is deleted, before the compactor step. If the compactor step then fails (for example, a region the count cannot reach), `down` names the region and the cause with the teardown errors and exits non-zero, and the cluster state still says the infrastructure is down. Run `down` again to finish: it reports that the infrastructure was already torn down and runs the compactor step again. A `down` that finds the recorded VPC already deleted, because an earlier `down` deleted it before it could record that, reports the VPC as already torn down and goes on in the same way. `--dry-run` changes nothing in the cluster state.
+
 **Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the save stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
 
 ### clean

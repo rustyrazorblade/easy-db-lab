@@ -66,6 +66,8 @@ Kits publish client ports through NodePort Services, reachable on any node's pri
 | 30988 | postgres-postgis | metrics (NodePort → 9187) |
 | 30434 | postgres-timescaledb | PostgreSQL (NodePort → 5432) |
 | 30989 | postgres-timescaledb | metrics (NodePort → 9187) |
+| 30306 | singlestore | MySQL wire protocol on every aggregator (NodePort → 3306) |
+| 9104 | singlestore | operator exporter sidecar `/cluster-metrics` (pod port, scraped by pod discovery) |
 
 Every built-in kit's NodePorts, each postgres instance's, and the Hubble UI's 31234 are distinct,
 so any combination of kits can run at once.

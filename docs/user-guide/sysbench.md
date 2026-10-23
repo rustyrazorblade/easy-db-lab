@@ -68,9 +68,12 @@ easy-db-lab sysbench-tidb start --threads 32 --duration 300
 easy-db-lab sysbench-tidb prepare
 ```
 
-Creates the `sbtest` database on the target if it doesn't exist, then loads the test
-tables (`--tables` tables with `--scale` thousand rows each). Run this once before the
-first benchmark run.
+On a MySQL wire target, creates the database the target's `mysql` endpoint names if it doesn't
+exist (`sbtest` for TiDB, the `--database` install arg for SingleStore, `test` by default), then
+loads the test tables (`--tables` tables with `--scale` thousand rows each) into it. A PostgreSQL
+target's database must already exist. Run this once before the first benchmark run.
+
+`prepare` fails, with the pod's log, when a pod exits non-zero or sysbench prints a `FATAL` error.
 
 ### start
 
@@ -91,7 +94,9 @@ scrolls away and the file never shows an older run.
 When the run pod ends, `start` reads its exit code. When sysbench exits non-zero (for example after
 `FATAL: event queue is full`), `start` says the run failed, gives the exit code, names
 `last-run.txt` (which then holds the end of the run's log when sysbench printed no summary) and
-exits non-zero, and does not print `Run summary written to ...`. A run pod that cannot pull its image
+exits non-zero, and does not print `Run summary written to ...`. A run that prints a `FATAL` SQL
+error fails `start` the same way, quoting the `FATAL` lines, even if sysbench exited 0, and
+`last-run.txt` lists them. A run pod that cannot pull its image
 fails `start` at once, with the reason and the pod's events; one that stays Pending fails it after
 10 minutes.
 
@@ -108,6 +113,47 @@ easy-db-lab sysbench-tidb stop
 Kills any running benchmark pod and runs sysbench cleanup, dropping the test tables from
 the target database. If the target database is already stopped, `stop` still finishes and
 removes its pods; it prints why the cleanup did not finish (the cleanup pod's log, or its events if it never started) and says the test tables were left.
+
+## Target passwords
+
+When the target kit declares a password in its `sql` capability (SingleStore does, from its
+`--password` install arg), every phase authenticates with it: the cleanup and the database
+creation in `prepare`, the data load, the `start` run, and the `stop` cleanup. Nothing to pass:
+the password comes from the target's installed `kit.yaml`. A password with spaces or `*`
+works. sysbench never prints it.
+
+The password never appears in a pod spec, so `kubectl get pod -o yaml` and
+`kubectl describe pod` cannot show it. Each phase stores it in the Secret `<kit>-credentials`
+(labelled `easydblab/role=sysbench-credentials`), and every pod reads it from there as an
+environment variable: the sysbench pods as `TARGET_PASSWORD`, which the container hands to
+sysbench as `--mysql-password` or `--pgsql-password` when it starts, and the database-creation
+pod as `MYSQL_PWD`. `stop` deletes the Secret, and so does `kit uninstall`.
+
+sysbench reads a password only from its command line, so while a phase runs, the sysbench
+process's own arguments hold it: `ps` on the app node that runs the pod shows it. The pod spec
+and every `kubectl` call do not.
+
+A target with no password (TiDB, PostgreSQL, ClickHouse) connects exactly as before.
+
+## Ignored errors
+
+sysbench ignores some MySQL errors by default and retries the transaction: deadlock (1213),
+record changed since last read (1020) and lock wait timeout (1205). A target kit's `mysql` endpoint
+can name more codes to ignore. sysbench then runs with `--mysql-ignore-errors` set to its defaults
+plus the target's codes, for example `--mysql-ignore-errors=1213,1020,1205,1062`. SingleStore names
+`1062`: concurrent `oltp_read_write` transactions on the same id hit duplicate-key errors there that
+MySQL's row locks prevent, and without it a run with several threads ends at the first one with
+`FATAL: ... error 1062 ... Duplicate entry`. sysbench counts every ignored error in its summary, as
+`ignored errors: N`, so check that line in `last-run.txt` when you compare a SingleStore run with
+another database. A target that names no codes (TiDB, PostgreSQL) keeps sysbench's defaults, and
+any other SQL error there ends the run.
+
+On SingleStore, `oltp_read_write` at the default 4 threads can also stall. Two transactions can
+deadlock in a way SingleStore does not detect as a deadlock, so there is no error 1213. The run
+then sits at zero throughput until `@@lock_wait_timeout` passes (60 seconds by default). The
+waiting transaction then fails with error 1205, which sysbench ignores and retries, and the run
+continues. See [SingleStore](singlestore.md#benchmarking-with-sysbench) for how to shorten the
+stalls.
 
 ## Rate limiting and overload testing
 

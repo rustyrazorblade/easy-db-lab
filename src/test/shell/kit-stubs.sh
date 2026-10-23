@@ -20,6 +20,7 @@
 #   kubectl.calls     every kubectl call, one per line
 #   overrides.<n>     the --overrides JSON of the n-th `kubectl run`
 #   configmap.<n>     the YAML the n-th `kubectl create -f -` received
+#   applied.<n>       the YAML the n-th `kubectl apply` received on stdin
 #   curl.<n>          the arguments of the n-th curl call, one per line
 #   since-times       the --since-time of each resumed `kubectl logs -f`
 
@@ -57,6 +58,12 @@ case "$1" in
   get)
     case "$2" in
       nodes) cat "${S}/app-nodes" 2>/dev/null; exit 0 ;;
+      events)
+        for a in "$@"; do
+          case "${a}" in *involvedObject.name=*) echo "Events: stub events for ${a##*involvedObject.name=}" ;; esac
+        done
+        exit 0
+        ;;
       pods)
         filter=""
         for a in "$@"; do
@@ -109,6 +116,18 @@ case "$1" in
     ;;
   create)
     case "$2" in
+      secret)
+        # A stub render of the Secret: each --from-file key with the content of its file.
+        echo "kind: Secret"
+        echo "metadata:"
+        echo "  name: $4"
+        for a in "$@"; do
+          case "${a}" in
+            --from-file=*) spec="${a#--from-file=}"; echo "# data ${spec%%=*}=$(cat "${spec#*=}")" ;;
+          esac
+        done
+        exit 0
+        ;;
       configmap)
         echo "kind: ConfigMap"
         echo "metadata:"
@@ -122,6 +141,11 @@ case "$1" in
         exit 0
         ;;
     esac
+    ;;
+  apply)
+    n=$(next applied)
+    cat > "${S}/applied.${n}"
+    exit 0
     ;;
   label)
     cat

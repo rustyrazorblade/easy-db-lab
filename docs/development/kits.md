@@ -53,6 +53,7 @@ endpoints:
     scheme: ""           # optional: used for JDBC URLs (jdbc type only)
     path: ""             # optional: appended to URL (http/https/jdbc only)
     database: ""         # optional: logical database name (postgresql and mysql types)
+    ignore-errors: ""    # optional, mysql type only: MySQL error codes a bench kit ignores, e.g. "1062"
 
 args:
   - flag: --workers
@@ -63,6 +64,7 @@ args:
     endpoints: [native]  # optional: for kit-ref, endpoint types the target must declare
     required: false
     default: "${APP_NODE_COUNT}"
+    pattern: "[0-9]+"    # optional: a regex the whole value must match (see Arg patterns)
 
 hooks:
   post-workload-start:
@@ -77,6 +79,49 @@ stop:     []   # steps to run on `easy-db-lab <name> stop`
 uninstall: []  # steps to run on `easy-db-lab <name> uninstall`
 backup:   []   # steps to run on `easy-db-lab <name> backup <backup-name>`
 restore:  []   # steps to run on `easy-db-lab <name> restore <backup-name>`
+```
+
+### Install-time placeholders in kit.yaml
+
+`kit install` renders `kit.yaml` with the same `__VAR__` substitution as a `.template` file
+before it writes the installed copy: the cluster variables (see Environment Variables) and every
+arg's `variable`, with the value the user passed or the arg's default. Every later reader of the
+installed `kit.yaml` sees the resolved value: `start`, `stop`, `status`, the `sql` command, and
+the `TARGET_*` variables a bench kit gets. Use it for a value that comes from an install arg,
+such as a capability password or an endpoint database:
+
+```yaml
+endpoints:
+  - name: "MySQL wire"
+    node-type: db
+    port: 30306
+    type: mysql
+    database: "__MYDB_DATABASE__"
+capabilities:
+  - type: sql
+    user: root
+    password: "__MYDB_PASSWORD__"
+```
+
+`kit info` renders the packaged `kit.yaml` with the arg defaults, so it shows the default
+database rather than the placeholder. A `kit.yaml` with no placeholder installs unchanged.
+Quote a placeholder that stands for a whole YAML value, and give the arg a `pattern` that refuses
+any character that would break the YAML or the place the value ends up.
+
+### Arg patterns
+
+An arg's optional `pattern` is a regular expression that the whole value must match. `kit install`
+checks every arg that has one, before it renders or writes anything. A value that does not match
+fails the install with a message that names the flag and the pattern, never the value (the arg
+may be a password), and nothing is written to the workspace. An arg without a pattern accepts any
+value. A `pattern` that is not a valid regular expression is rejected when `kit.yaml` loads.
+
+```yaml
+args:
+  - flag: --database
+    variable: MYDB_DATABASE
+    default: "test"
+    pattern: "[A-Za-z0-9_]+"
 ```
 
 ## Lifecycle Phases
@@ -717,9 +762,11 @@ the environment. A function that fails prints why to stderr and exits the script
 | `edl_resource_name <role>` | Prints `${KIT_NAME}-<role>-$(date +%s)`, a unique pod or ConfigMap name |
 | `edl_require_app_node <kit>` | Fails with `<kit> needs an app node (type=app); this cluster has none` when no node is labelled `type=app` |
 | `edl_pod_overrides [<configmap> <mount-path> <container>]` | Prints the JSON for `kubectl run --overrides=<json> --override-type=strategic`: `nodeSelector: {type: app}`, and a mount of the ConfigMap when one is given. `kubectl run` names the container after the pod |
+| `edl_pod_overrides_secret_env <container> <env-var> <secret> <key>` | Prints the same JSON with `nodeSelector: {type: app}` and an env var on the container that reads the key of the Secret through `valueFrom.secretKeyRef`, so the pod spec names the Secret and never holds the value. Pass the pod name as the container |
+| `edl_apply_secret <name> <role> <key> [namespace]` | Creates or updates a labelled Secret holding the key, set to what stdin holds, in `namespace` when given (else the kubeconfig's) (`printf '%s' "${PASSWORD}" \| edl_apply_secret ...`; `printf` is a builtin, so no process gets the value as an argument). The value goes through a temp file only the user can read, removed before it returns, and the apply is server-side, so no last-applied annotation copies it. Fails on an empty value. Delete it by label (`kubectl delete secret -l "$(edl_labels <role>)"`) in `stop` |
 | `edl_create_configmap <name> <role> <key>=<path>...` | Creates a labelled ConfigMap from files in one call; fails on a missing or empty file, or more than 1,000,000 bytes in all |
 | `edl_active_pods <role>` | Prints this instance's pods of that role that have not ended |
-| `edl_wait_for_pod_running <pod>` | Returns once the pod leaves Pending (Running, Succeeded or Failed); fails at once on an image pull error with the reason and the pod's events, and after 10 minutes otherwise, and deletes the pod first so it does not block the next run |
+| `edl_wait_for_pod_running <pod>` | Returns once the pod leaves Pending (Running, Succeeded or Failed); fails at once on an image pull error with the reason and the pod's events, and after 10 minutes otherwise, and deletes the pod first so it does not block the next run. It lists the events with `kubectl get events`, never `kubectl describe pod`, which would print the pod's command line and any password in it |
 | `edl_follow_pod_logs <pod> <handler>` | Streams the pod's log, calling the handler function with each line, and resumes a cut stream while the pod runs |
 | `edl_wait_for_pod_exit <pod>` | Waits, with no limit, for the pod to end and prints its exit code |
 | `edl_push_gauges <service> <name> <value>...` | Pushes OTLP gauges labelled `kit=${KIT_NAME}` to the collector; a non-numeric value is sent as 0; a failed push never fails the script and prints one warning per script |
@@ -796,15 +843,34 @@ The variables injected depend on what endpoints the target kit declares:
 
 | Endpoint type | Variables injected |
 |---------------|-------------------|
-| `jdbc` | `TARGET_JDBC_URL`, `TARGET_JDBC_USER`, `TARGET_JDBC_DRIVER` |
-| `postgresql` | `TARGET_PG_HOST`, `TARGET_PG_PORT`, `TARGET_PG_USER`, `TARGET_PG_DATABASE` |
-| `mysql` | `TARGET_MYSQL_HOST`, `TARGET_MYSQL_PORT`, `TARGET_MYSQL_USER`, `TARGET_MYSQL_DATABASE` |
+| `jdbc` | `TARGET_JDBC_URL`, `TARGET_JDBC_USER`, `TARGET_JDBC_PASSWORD`, `TARGET_JDBC_DRIVER` |
+| `postgresql` | `TARGET_PG_HOST`, `TARGET_PG_PORT`, `TARGET_PG_USER`, `TARGET_PG_PASSWORD`, `TARGET_PG_DATABASE` |
+| `mysql` | `TARGET_MYSQL_HOST`, `TARGET_MYSQL_PORT`, `TARGET_MYSQL_USER`, `TARGET_MYSQL_PASSWORD`, `TARGET_MYSQL_DATABASE`, `TARGET_MYSQL_IGNORE_ERRORS` |
 | `native` | `TARGET_NATIVE_HOST`, `TARGET_NATIVE_PORT`, `TARGET_NATIVE_USER`, `TARGET_NATIVE_DATABASE` |
 | `http` | `TARGET_HTTP_URL` |
 | `kafka` | `TARGET_KAFKA_BOOTSTRAP` |
 
 `https` and `cql` endpoints inject nothing. Every `*_USER` variable comes from the target's `sql`
 capability `user`, and is empty when the target declares no `sql` capability.
+
+The `*_PASSWORD` variables come from the target kit's `sql` capability `password` and are empty
+when it has none. The framework never prints them. A bench kit that passes one to a pod must keep
+it out of the pod spec and off every command line, where `kubectl get pod -o yaml` or
+`kubectl describe pod` would show it. Put it in a labelled Secret with `edl_apply_secret`, and give
+the pod an env var that reads it through `secretKeyRef` with `edl_pod_overrides_secret_env` (see
+[Shared shell library](#shared-shell-library)). A client that reads the variable itself (the
+`mysql` client's `MYSQL_PWD`) needs nothing more; one that takes the password as a flag runs
+through `sh -c`, so the flag is expanded from the variable when the container starts. `stop`
+deletes the Secret by label. The sysbench kit (`kits/sysbench/bin/lib/target-db.sh`) does all of
+this.
+
+`TARGET_MYSQL_IGNORE_ERRORS` is the `mysql` endpoint's `ignore-errors`, a comma-separated list
+of MySQL error codes, and is empty when the endpoint declares none. A target declares it for
+errors that its concurrency model raises where MySQL's row locks would wait instead: SingleStore
+declares `1062`, the duplicate-key error concurrent `oltp_read_write` transactions hit there. The
+sysbench kit passes a non-empty list as `--mysql-ignore-errors`, after sysbench's own defaults
+(`1213,1020,1205`), each code once, because the flag replaces those defaults. `ignore-errors` on any other
+endpoint type, or a value that is not error codes separated by commas, fails the `kit.yaml` load.
 
 If the target kit directory does not exist or its `kit.yaml` is unreadable, no `TARGET_*`
 variables are injected and no error is raised (fail-safe).
@@ -877,11 +943,15 @@ Database kits that expose a SQL interface should declare the `sql` capability:
 capabilities:
   - type: sql
     user: default                            # default username
+    password: ""                             # password (optional; default empty)
     driver-class: com.clickhouse.jdbc.ClickHouseDriver  # JDBC driver (optional)
 ```
 
-The `user` and `driver-class` fields are used when constructing `TARGET_JDBC_USER` and
-`TARGET_JDBC_DRIVER` for bench kits targeting this database.
+The `user`, `password` and `driver-class` fields are used when constructing `TARGET_JDBC_USER`,
+the `TARGET_*_PASSWORD` variables, and `TARGET_JDBC_DRIVER` for bench kits targeting this
+database. The `sql` command sends the password as the JDBC `password` property only when it is
+not blank, and none of its output contains it. A password that comes from an install arg is
+written as a placeholder (`password: "__MYDB_PASSWORD__"`, see Install-time placeholders).
 
 ### Making an external kit targetable by bench kits
 

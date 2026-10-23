@@ -11,6 +11,7 @@ import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRule
 import com.rustyrazorblade.easydblab.providers.aws.VpcNetworkingConfig
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -22,6 +23,8 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
+import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -62,6 +65,40 @@ class AwsInfrastructureServiceTest {
 
             assertThat(result.success).isTrue()
             verify(vpcService, never()).terminateInstances(any())
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        /** A `down` that failed after deleting the VPC is re-run: the VPC is gone, so its teardown is done. */
+        @Test
+        fun `a VPC that no longer exists is already torn down, with nothing to delete`() {
+            val vpcId = "vpc-gone"
+            setupEmptyResourcesFor(vpcId)
+            whenever(vpcService.getVpcName(vpcId)).thenThrow(ec2Exception(Constants.AWS.EC2_VPC_NOT_FOUND, 400))
+            val events = recordEvents()
+
+            val preview = service.teardownVpc(vpcId, dryRun = true)
+            val teardown = service.teardownVpc(vpcId, dryRun = false)
+
+            assertThat(listOf(preview, teardown)).allSatisfy { result ->
+                assertThat(result.success).isTrue()
+                assertThat(result.resourcesDeleted).isEmpty()
+                assertThat(result.errors).isEmpty()
+            }
+            assertThat(events.filterIsInstance<Event.Infra.VpcAlreadyDeleted>())
+                .containsExactly(Event.Infra.VpcAlreadyDeleted(vpcId), Event.Infra.VpcAlreadyDeleted(vpcId))
+            verify(vpcService, never()).terminateInstances(any())
+            verify(vpcService, never()).deleteVpc(any())
+        }
+
+        @Test
+        fun `any other EC2 error while discovering the VPC still fails the teardown`() {
+            val vpcId = "vpc-12345"
+            setupEmptyResourcesFor(vpcId)
+            whenever(vpcService.getVpcName(vpcId)).thenThrow(ec2Exception("UnauthorizedOperation", 403))
+
+            assertThatThrownBy { service.teardownVpc(vpcId, dryRun = true) }
+                .isInstanceOf(Ec2Exception::class.java)
+                .hasMessageContaining("UnauthorizedOperation")
             verify(vpcService, never()).deleteVpc(any())
         }
 
@@ -949,6 +986,22 @@ class AwsInfrastructureServiceTest {
     }
 
     // Helper methods
+
+    private fun ec2Exception(
+        errorCode: String,
+        statusCode: Int,
+    ): Ec2Exception =
+        Ec2Exception
+            .builder()
+            .awsErrorDetails(
+                AwsErrorDetails
+                    .builder()
+                    .errorCode(errorCode)
+                    .errorMessage(errorCode)
+                    .build(),
+            ).statusCode(statusCode)
+            .message(errorCode)
+            .build() as Ec2Exception
 
     private fun recordEvents(): List<Event> {
         val events = CopyOnWriteArrayList<Event>()

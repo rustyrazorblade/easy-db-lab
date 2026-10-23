@@ -33,7 +33,7 @@ The compactor removes a source object only after it wrote a merged copy that hol
 
 - `up` starts the compactor when it is not running: it creates it when it is missing and starts it at 1 task when it is stopped. When it already runs, `up` leaves it as it is. `up` does not wait for the task to run.
 - A new compactor configuration or version takes effect only when the service starts. To apply it to a running compactor, run `observability compactor stop`, then `observability compactor start`.
-- `down`, after its teardown succeeds, stops the compactor when no other cluster uses the account bucket. It counts the VPCs tagged `easy_cass_lab=1`, in every enabled region, whose `bucket` tag names the bucket. The compactor's own VPC has no `bucket` tag, so it is never counted.
+- `down`, after its teardown succeeds, stops the compactor when no other cluster uses the account bucket. It counts the VPCs tagged `easy_cass_lab=1`, in every enabled region, whose `bucket` tag names the bucket. The compactor's own VPC has no `bucket` tag, so it is never counted. If a region cannot be reached, `down` fails and names the region; the teardown itself is already recorded, and running `down` again runs only this step again.
 - `down --all` keeps the compactor's VPC, as it keeps the packer VPC.
 
 Metrics queries keep working while the compactor is stopped. Blocks shipped after it stopped become readable once it runs again.

@@ -55,6 +55,9 @@ object SharedK3s {
     /** The cluster's kubeconfig, pointing at the container's API server port on the host. */
     fun kubeConfigYaml(): String = container.kubeConfigYaml
 
+    /** Everything K3s has logged so far, including its report of each preloaded image it imported. */
+    fun logs(): String = container.logs
+
     /** A new client for the shared cluster. The caller owns it and closes it. */
     fun client(): KubernetesClient = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(kubeConfigYaml())).build()
 

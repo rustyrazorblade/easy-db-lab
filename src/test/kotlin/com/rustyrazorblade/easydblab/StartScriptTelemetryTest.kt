@@ -14,7 +14,8 @@ import java.io.File
  *
  * The agent exports to `localhost:4318` by default. With no collector there, every export fails
  * and the agent prints a stack trace on every run, so the script turns the exporters off unless the
- * user configured an OTLP endpoint or chose exporters. A user who did must get their telemetry.
+ * user configured an OTLP endpoint or chose exporters. A user who did must get their telemetry, but
+ * never the command line as a resource attribute: the process resource provider is always off.
  */
 class StartScriptTelemetryTest {
     @TempDir
@@ -85,7 +86,22 @@ class StartScriptTelemetryTest {
         val args = jvmArgs(mapOf(variable to "http://collector:4318"))
 
         assertThat(args).anyMatch { it.startsWith("-javaagent:") }
-        assertThat(args).noneMatch { it.startsWith("-Dotel.") }
+        assertThat(args).noneMatch { it.startsWith("-Dotel.") && it != PROCESS_PROVIDER_OFF }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["", "OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_TRACES_EXPORTER"])
+    fun `the command line never becomes a resource attribute, whether or not the agent exports`(variable: String) {
+        val args = jvmArgs(if (variable.isEmpty()) emptyMap() else mapOf(variable to "otlp"))
+
+        assertThat(args).contains(PROCESS_PROVIDER_OFF)
+    }
+
+    @Test
+    fun `providers the user disabled stay disabled along with the process provider`() {
+        val args = jvmArgs(mapOf("OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS" to "a.HostProvider,b.OsProvider"))
+
+        assertThat(args).contains("$PROCESS_PROVIDER_OFF,a.HostProvider,b.OsProvider")
     }
 
     @Test
@@ -102,5 +118,11 @@ class StartScriptTelemetryTest {
         val EXPORTERS_OFF =
             listOf("-Dotel.traces.exporter=none", "-Dotel.metrics.exporter=none", "-Dotel.logs.exporter=none")
         const val AGENT_LOGGING_OFF = "-Dotel.javaagent.logging=none"
+
+        // The agent's process resource provider puts the full argv (process.command_args,
+        // process.command_line) on everything it exports, and a kit install's argv can hold a
+        // license key or a password.
+        const val PROCESS_PROVIDER_OFF =
+            "-Dotel.java.disabled.resource.providers=io.opentelemetry.instrumentation.resources.ProcessResourceProvider"
     }
 }

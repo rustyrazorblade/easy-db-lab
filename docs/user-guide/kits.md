@@ -4,7 +4,7 @@ A kit is a self-contained package of configuration and scripts that installs, st
 and optionally backs up a workload on your cluster. Each kit defines its full lifecycle in a
 `kit.yaml` file using typed steps — no Kubernetes YAML wrangling required.
 
-easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, memcached, Neo4j, sysbench, clickhouse-benchmark). You can
+easy-db-lab ships with built-in kits (ClickHouse, Presto, Trino, TiDB, SingleStore, memcached, Neo4j, sysbench, clickhouse-benchmark). You can
 also create your own kits for any workload you want to benchmark or test.
 
 ## Discovering kits
@@ -88,6 +88,7 @@ injects it as environment variables into every phase script:
 | `TARGET_MYSQL_PORT` | Port for MySQL wire protocol connections |
 | `TARGET_MYSQL_USER` | Username for MySQL wire protocol connections |
 | `TARGET_MYSQL_DATABASE` | Database name for MySQL wire protocol connections |
+| `TARGET_MYSQL_IGNORE_ERRORS` | MySQL error codes the target asks a benchmark to ignore (comma separated; empty when it asks none) |
 | `TARGET_HTTP_URL` | Full URL for HTTP endpoint connections |
 
 Which variables are populated depends on what endpoints the target kit declares. A kit that

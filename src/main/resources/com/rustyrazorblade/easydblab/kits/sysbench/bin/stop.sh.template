@@ -3,9 +3,22 @@ set -euo pipefail
 
 . "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/target-db.sh
+source "${SCRIPT_DIR}/lib/target-db.sh"
+
 # The cleanup pod runs on an app node, like every sysbench pod. With none, stop fails and the kit
 # stays marked running.
 edl_require_app_node sysbench
+
+# The credentials Secret goes when stop ends, whichever way: after the cleanup pod has read it, and
+# also when there is no endpoint to clean up or a step fails.
+delete_credentials() {
+  kubectl --kubeconfig="${KUBECONFIG}" delete secret \
+    -l "$(edl_labels "${SYSBENCH_CREDENTIALS_ROLE}")" --ignore-not-found > /dev/null ||
+    echo "Warning: could not delete the sysbench credentials Secret; run stop again to remove it." >&2
+}
+trap delete_credentials EXIT
 
 # stop has no args of its own, so default any prepare/start-only vars safely
 # to keep the script working under `set -u`. Defaults match the kit.yaml
@@ -17,36 +30,25 @@ echo "Stopping sysbench pods for kit ${KIT_NAME}..."
 kubectl --kubeconfig="${KUBECONFIG}" delete pods \
   -l "easydblab/kit=${KIT_NAME}" --ignore-not-found
 
-if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
-  DB_ARGS="--db-driver=mysql \
-    --mysql-host=${TARGET_MYSQL_HOST} \
-    --mysql-port=${TARGET_MYSQL_PORT} \
-    --mysql-user=${TARGET_MYSQL_USER} \
-    --mysql-db=${TARGET_MYSQL_DATABASE}"
-elif [ -n "${TARGET_PG_HOST:-}" ]; then
-  DB_ARGS="--db-driver=pgsql \
-    --pgsql-host=${TARGET_PG_HOST} \
-    --pgsql-port=${TARGET_PG_PORT} \
-    --pgsql-user=${TARGET_PG_USER} \
-    --pgsql-db=${TARGET_PG_DATABASE}"
-else
+if ! target_db_args; then
   echo "Warning: no database endpoint found, skipping cleanup." >&2
   exit 0
 fi
 
+target_apply_credentials
+
 echo "Running sysbench cleanup..."
 CLEANUP_POD="sysbench-cleanup-${KIT_NAME}-$(date +%s)"
 CLEANUP_LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-cleanup"
+sysbench_command --tables="${TABLES}" "${WORKLOAD}" cleanup
+OVERRIDES="$(target_pod_overrides "${CLEANUP_POD}" "${SYSBENCH_PASSWORD_ENV}")"
 kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
   --image="docker.io/severalnines/sysbench" \
   --restart=Never \
   --labels="${CLEANUP_LABELS}" \
-  --overrides="$(edl_pod_overrides)" \
+  --overrides="${OVERRIDES}" \
   --override-type=strategic \
-  --command -- sysbench \
-    ${DB_ARGS} \
-    --tables="${TABLES}" \
-    "${WORKLOAD}" cleanup
+  --command -- "${SYSBENCH_CMD[@]}"
 
 # Wait for the cleanup pod to end either way. When the target database is already gone the pod
 # fails at once; waiting only for Succeeded timed out, failed stop and left the kit marked running.
@@ -62,11 +64,13 @@ done
 
 # A cleanup that did not succeed says why before its pod goes: the pod's log when it ran (a gone
 # target, wrong credentials, a missing database), its events when it never started (an image pull).
+# Only the events: `kubectl describe pod` would print the whole pod spec, which says nothing more.
 if [ "${PHASE}" != "Succeeded" ]; then
   if [ "${PHASE}" = "Failed" ]; then
     kubectl --kubeconfig="${KUBECONFIG}" logs "${CLEANUP_POD}" >&2 || true
   else
-    kubectl --kubeconfig="${KUBECONFIG}" describe pod "${CLEANUP_POD}" >&2 || true
+    kubectl --kubeconfig="${KUBECONFIG}" get events \
+      --field-selector "involvedObject.kind=Pod,involvedObject.name=${CLEANUP_POD}" >&2 || true
   fi
 fi
 

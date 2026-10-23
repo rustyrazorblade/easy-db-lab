@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
@@ -145,17 +146,20 @@ class Down : PicoBaseCommand() {
         // Kill the proxy process and remove its state file after AWS operations complete.
         cleanupSocks5Proxy()
 
-        if (result.success && !dryRun && mode != TeardownMode.PackerInfrastructure) {
-            stopCompactorIfLastCluster(mode, result)
-        }
+        // A dry run removed nothing, and a failed teardown keeps the VPC ID for the retry.
+        val removed = result.success && !dryRun
 
-        // Only clear cluster state on successful teardown to preserve VPC ID for retries
-        if (result.success && (mode == TeardownMode.CurrentCluster || mode is TeardownMode.SpecificVpc)) {
+        // Recorded before the compactor step: the infrastructure is gone, so a failure after this
+        // point leaves the state saying so, and a re-run of `down` goes on to the steps that remain.
+        if (removed && (mode == TeardownMode.CurrentCluster || mode is TeardownMode.SpecificVpc)) {
             result = removeTailscaleDevice(result)
             updateClusterState()
         }
 
-        // Report results
+        if (removed && mode != TeardownMode.PackerInfrastructure) {
+            result = stopCompactorIfLastCluster(mode, result)
+        }
+
         reportResult(result)
     }
 
@@ -302,18 +306,37 @@ class Down : PicoBaseCommand() {
      * Stops the account compactor once the infrastructure teardown succeeded, when no other cluster
      * VPC in any region still names the account bucket. The VPCs this `down` tore down are left
      * out of the count. With no account bucket there is no compactor.
+     *
+     * The infrastructure is already gone and recorded as such, so a failure here (a region the
+     * census cannot reach, for one) fails `down` with the reason listed with the teardown errors,
+     * and a re-run of `down` runs this step again.
+     *
+     * @return [result] unchanged when the step ran; otherwise a failed result carrying the reason.
      */
     private fun stopCompactorIfLastCluster(
         mode: TeardownMode,
         result: TeardownResult,
-    ) {
+    ): TeardownResult {
         val bucket =
             when (mode) {
                 TeardownMode.CurrentCluster -> clusterStateManager.load().s3Bucket
                 else -> user.s3Bucket
             }
-        if (bucket.isNullOrBlank()) return
-        compactorService.stopIfLastCluster(bucket, result.resourcesDeleted.map { it.vpcId }.toSet())
+        if (bucket.isNullOrBlank()) return result
+        return runCatching { compactorService.stopIfLastCluster(bucket, result.resourcesDeleted.map { it.vpcId }.toSet()) }
+            .fold(
+                onSuccess = { result },
+                onFailure = { failure ->
+                    log.error(failure) { "The account compactor step failed after the infrastructure teardown" }
+                    result.copy(
+                        success = false,
+                        errors =
+                            result.errors +
+                                "The infrastructure is torn down, but the account compactor step failed: ${failure.message}. " +
+                                "Run 'easy-db-lab down' again to finish it.",
+                    )
+                },
+            )
     }
 
     /**
@@ -348,9 +371,10 @@ class Down : PicoBaseCommand() {
     /**
      * Tears down the current cluster using VPC ID from cluster state.
      *
-     * A cluster whose VPC is already gone but whose tailnet device is still recorded is a previous
-     * `down` that removed the infrastructure and failed only the device removal. There is no VPC
-     * left to tear down, so this succeeds with nothing deleted and lets the device removal retry.
+     * A cluster with no VPC ID that is recorded as down, or whose tailnet device is still recorded,
+     * is a previous `down` that removed the infrastructure and then failed a later step (the
+     * account compactor step, or the device removal). There is no VPC left to tear down, so this
+     * succeeds with nothing deleted and lets those steps run again.
      */
     private fun teardownCurrentCluster(): TeardownOutcome {
         // Get the VPC ID from cluster state
@@ -362,7 +386,10 @@ class Down : PicoBaseCommand() {
         val clusterState = clusterStateManager.load()
         val currentVpcId = clusterState.vpcId
 
-        if (currentVpcId == null && !clusterState.tailscaleDeviceId.isNullOrBlank()) {
+        val alreadyTornDown =
+            clusterState.infrastructureStatus == InfrastructureStatus.DOWN || !clusterState.tailscaleDeviceId.isNullOrBlank()
+        if (currentVpcId == null && alreadyTornDown) {
+            eventBus.emit(Event.Teardown.AlreadyTornDown(clusterState.name))
             return TeardownOutcome.Finished(TeardownResult.success(emptyList()))
         }
 

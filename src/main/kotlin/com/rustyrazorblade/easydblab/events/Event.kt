@@ -1352,6 +1352,15 @@ sealed interface Event {
             override fun toDisplayString(): String = "Discovering resources in VPC: $vpcId"
         }
 
+        /** EC2 no longer knows [vpcId]: an earlier teardown deleted it, so there is nothing left in it to remove. */
+        @Serializable
+        @SerialName("Infra.VpcAlreadyDeleted")
+        data class VpcAlreadyDeleted(
+            val vpcId: String,
+        ) : Infra {
+            override fun toDisplayString(): String = "VPC $vpcId no longer exists: it was already torn down"
+        }
+
         @Serializable
         @SerialName("Infra.VpcTeardownSearching")
         data class VpcTeardownSearching(
@@ -4094,6 +4103,19 @@ sealed interface Event {
                     "Use --all to find tagged VPCs or specify a VPC ID."
         }
 
+        /**
+         * An earlier `down` of [clusterName] removed its infrastructure and failed at a later step;
+         * this `down` runs the steps that remain.
+         */
+        @Serializable
+        @SerialName("Teardown.AlreadyTornDown")
+        data class AlreadyTornDown(
+            val clusterName: String,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "The infrastructure of '$clusterName' was already torn down; finishing the remaining teardown steps."
+        }
+
         @Serializable
         @SerialName("Teardown.PreparingVpc")
         data class PreparingVpc(
@@ -5583,6 +5605,24 @@ sealed interface Event {
             override fun toDisplayString(): String =
                 "Error: '$kit' is already installed in $outputDir. " +
                     "Run 'easy-db-lab $kit uninstall' first, or pass --force to overwrite the scaffold."
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * `kit install` refused [kit] because the value given for [flag] does not match the arg's
+         * [pattern]. Nothing was written and no install step ran. The value itself is never
+         * carried, since the arg may be a password.
+         */
+        @Serializable
+        @SerialName("Install.ArgRejected")
+        data class ArgRejected(
+            val kit: String,
+            val flag: String,
+            val pattern: String,
+        ) : Install {
+            override fun toDisplayString(): String =
+                "Error: the value of $flag for '$kit' must match the pattern $pattern. Nothing was installed."
 
             override fun isError(): Boolean = true
         }

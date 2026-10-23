@@ -22,6 +22,7 @@
   - [Presto](user-guide/install-presto.md)
   - [Trino](user-guide/install-trino.md)
   - [TiDB](user-guide/tidb.md)
+  - [SingleStore](user-guide/singlestore.md)
   - [Sysbench](user-guide/sysbench.md)
   - [clickhouse-benchmark](user-guide/clickhouse-benchmark.md)
   - [PostgreSQL](user-guide/install-postgres.md)

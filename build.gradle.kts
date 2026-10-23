@@ -35,6 +35,11 @@ val copyOtelAgent =
         rename { "opentelemetry-javaagent.jar" }
     }
 
+// The agent's resource provider that records the process command line, which can hold a secret.
+// Every launcher of the CLI disables it (the start script and the container image below). The
+// class name is the one the agent version above registers.
+val otelProcessResourceProvider = "io.opentelemetry.instrumentation.resources.ProcessResourceProvider"
+
 dependencies {
     otelAgentConfig("io.opentelemetry.javaagent:opentelemetry-javaagent:${libs.versions.opentelemetry.agent.get()}")
 }
@@ -98,6 +103,8 @@ ktor {
 }
 
 tasks.named<CreateStartScripts>("startScripts") {
+    // Read at configuration time, so the task action captures a String, not the build script.
+    val processResourceProvider = otelProcessResourceProvider
     doLast {
         // Update the Unix / Mac / Linux start script.
         //
@@ -106,9 +113,20 @@ tasks.named<CreateStartScripts>("startScripts") {
         // xargs|sed|eval arg-splitting pipeline runs. Args placed in `applicationDefaultJvmArgs`
         // are treated literally by that pipeline, so `$APP_HOME` cannot be referenced there —
         // both the apphome system property and the OTel java agent path are injected here.
+        //
+        // The agent's ProcessResourceProvider puts the full argv (process.command_args and
+        // process.command_line) on every span, metric and log it exports, and a command line can
+        // hold a secret (`kit install singlestore --license ... --password ...`). It is always
+        // off, whatever the export settings. The system property outranks the agent's
+        // OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS variable, so a list the user set there is appended.
         val agentOpts =
-            "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\$APP_HOME " +
-                "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+            listOf(
+                "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\$APP_HOME " +
+                    "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar\"",
+                "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Dotel.java.disabled.resource.providers=" +
+                    "$processResourceProvider\${OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS:+," +
+                    "\$OTEL_JAVA_DISABLED_RESOURCE_PROVIDERS}\"",
+            ).joinToString("\n")
 
         // The agent's exporters default to OTLP on localhost:4318. With no collector there, every
         // export fails and the agent prints a stack trace to stderr on every run — the normal case
@@ -267,6 +285,7 @@ dependencies {
     "integrationTestImplementation"(libs.bundles.testcontainers)
     "integrationTestImplementation"(libs.fabric8.kubernetes.server.mock)
     "integrationTestImplementation"(libs.okhttpMockwebserver)
+    "integrationTestImplementation"(libs.jib.core)
 
     // The production code and the compiled output of the unit `test` source set (shared helpers
     // like BaseKoinTest, MockSSHClient, custom AssertJ assertions, TestPrompter) reach the
@@ -406,6 +425,23 @@ tasks.named<Test>("test") {
     )
 }
 
+// K3sPreloadedImages keeps the image archives it seeds K3s containers with in this directory,
+// shared by every fork under a file lock, so each image is fetched from its registry once per
+// content digest instead of by every fork at the same time.
+tasks.named<Test>("integrationTest") {
+    systemProperty(
+        "easydblab.test.imageArchiveDir",
+        layout.buildDirectory
+            .dir("k3s-image-archives")
+            .get()
+            .asFile.absolutePath,
+    )
+    // Jib, which fetches those images, ends a registry read that gets no bytes for 20 seconds by
+    // default. In a full run, while the other forks start their containers, a blob download from
+    // Docker Hub went quiet for longer than that, so give a read a minute before it is retried.
+    systemProperty("jib.httpTimeout", "60000")
+}
+
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).
 tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))
@@ -434,9 +470,14 @@ tasks.register("testScripts") {
         "testSysbenchStartScript",
         "testSysbenchPrepareScript",
         "testSysbenchStopScript",
+        "testSysbenchTargetDb",
+        "testSingleStoreSizing",
+        "testSingleStoreSql",
+        "testSingleStoreCluster",
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
         "testBaseChronyPoll",
+        "testK3sDataMount",
     )
 }
 
@@ -447,6 +488,16 @@ tasks.register<Exec>("testBaseChronyPoll") {
     description = "Unit-test the base AMI chrony poll script"
     workingDir = file(".")
     commandLine = listOf("bash", "packer/base/install/configure_chrony_poll.test.sh")
+}
+
+// Unit-test the runtime K3s start scripts' move of the K3s data directory and /var/log/pods onto
+// the /mnt/db1 data mount, so database data and pod logs never land on the root volume.
+// mountpoint is stubbed; the relocation runs against temporary directories.
+tasks.register<Exec>("testK3sDataMount") {
+    group = "Verification"
+    description = "Unit-test the K3s start scripts' relocation onto the data mount"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/k3s-data-mount.test.sh")
 }
 
 // Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug
@@ -538,6 +589,45 @@ tasks.register<Exec>("testSysbenchStopScript") {
     description = "Unit-test the sysbench kit stop script"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-stop.test.sh")
+}
+
+// Unit-test the sysbench kit's driver args (bin/lib/target-db.sh) in prepare, start and stop: a
+// target password reaches every phase as one argument through a labelled Secret and secretKeyRef,
+// never a pod spec or a command line, and is never printed; stop deletes the Secret; a passwordless
+// target gets the args it always got and no Secret. kubectl and curl are stubbed.
+tasks.register<Exec>("testSysbenchTargetDb") {
+    group = "Verification"
+    description = "Unit-test the sysbench kit target database args and passwords"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-target-db.test.sh")
+}
+
+// Unit-test the SingleStore kit's sizing (bin/lib/singlestore-sizing.sh): storage, the redundancy
+// rule, the leaf size from the db nodes' allocatable resources and the minimum. kubectl is stubbed.
+tasks.register<Exec>("testSingleStoreSizing") {
+    group = "Verification"
+    description = "Unit-test the SingleStore kit sizing"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/singlestore-sizing.test.sh")
+}
+
+// Unit-test the SingleStore kit's database SQL (bin/lib/singlestore-sql.sh) for both
+// --unlimited-storage settings: escaping, the password off every command line, no local fallback.
+tasks.register<Exec>("testSingleStoreSql") {
+    group = "Verification"
+    description = "Unit-test the SingleStore kit database SQL"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/singlestore-sql.test.sh")
+}
+
+// Unit-test the SingleStore kit's start and wait steps (bin/lib/singlestore-cluster.sh): sizing
+// before any change, leftovers cleared, Secrets before the cluster, license refusal reported with
+// the key masked. kubectl and sleep are stubbed.
+tasks.register<Exec>("testSingleStoreCluster") {
+    group = "Verification"
+    description = "Unit-test the SingleStore kit start and wait steps"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/singlestore-cluster.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,
@@ -935,6 +1025,8 @@ jib {
                 // CDS off: see applicationDefaultJvmArgs. The agent would trigger the same warning.
                 "-Xshare:off",
                 "-javaagent:/agents/opentelemetry-javaagent.jar",
+                // The command line, which can hold a secret, never becomes a resource attribute.
+                "-Dotel.java.disabled.resource.providers=$otelProcessResourceProvider",
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",
                 "-Deasydblab.apphome=/app",

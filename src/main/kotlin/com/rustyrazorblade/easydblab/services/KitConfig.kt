@@ -44,6 +44,14 @@ sealed class KitMetrics {
     data object HelmNative : KitMetrics()
 }
 
+/**
+ * A connection point a kit exposes on one node type, which `kit info` prints and from which a
+ * bench kit that targets this kit gets its `TARGET_*` variables ([toTargetVars]).
+ *
+ * A `mysql` endpoint may declare [ignoreErrors], the MySQL error codes (comma separated) a bench
+ * kit should ignore against this database, for errors its concurrency model raises where MySQL's
+ * row locks would wait instead.
+ */
 @Serializable
 data class KitEndpoint(
     val name: String,
@@ -54,7 +62,18 @@ data class KitEndpoint(
     val scheme: String = "",
     val path: String = "",
     val database: String = "",
+    @SerialName("ignore-errors")
+    val ignoreErrors: String = "",
 ) {
+    init {
+        if (ignoreErrors.isNotEmpty()) {
+            require(type == EndpointType.MYSQL) { "endpoint $name declares ignore-errors, which only a mysql endpoint may" }
+            require(ERROR_CODES.matches(ignoreErrors)) {
+                "endpoint $name has ignore-errors '$ignoreErrors'; it must be MySQL error codes separated by commas, such as 1062,1213"
+            }
+        }
+    }
+
     @Serializable
     enum class EndpointType {
         @SerialName("http")
@@ -108,17 +127,23 @@ data class KitEndpoint(
      * without one. Returns an empty map for endpoint types with no TARGET_* convention (HTTPS,
      * CQL). The `when` names every type, so a new type does not compile until it states its
      * variables.
+     *
+     * Each SQL wire type (`jdbc`, `postgresql`, `mysql`) carries the capability's password, or an
+     * empty string when the kit has none, so a bench kit can authenticate in every phase.
+     * A `mysql` endpoint also carries its [ignoreErrors], empty when it declares none.
      */
     fun toTargetVars(
         ip: String,
         sqlCap: KitCapability?,
     ): Map<String, String> {
         val sqlUser = sqlCap?.user.orEmpty()
+        val sqlPassword = sqlCap?.password.orEmpty()
         return when (type) {
             EndpointType.JDBC ->
                 mapOf(
                     "TARGET_JDBC_URL" to formatUrl(ip),
                     "TARGET_JDBC_USER" to sqlUser,
+                    "TARGET_JDBC_PASSWORD" to sqlPassword,
                     "TARGET_JDBC_DRIVER" to sqlCap?.driverClass.orEmpty(),
                 )
             EndpointType.POSTGRESQL ->
@@ -126,6 +151,7 @@ data class KitEndpoint(
                     "TARGET_PG_HOST" to ip,
                     "TARGET_PG_PORT" to port.toString(),
                     "TARGET_PG_USER" to sqlUser,
+                    "TARGET_PG_PASSWORD" to sqlPassword,
                     "TARGET_PG_DATABASE" to database,
                 )
             EndpointType.MYSQL ->
@@ -133,7 +159,9 @@ data class KitEndpoint(
                     "TARGET_MYSQL_HOST" to ip,
                     "TARGET_MYSQL_PORT" to port.toString(),
                     "TARGET_MYSQL_USER" to sqlUser,
+                    "TARGET_MYSQL_PASSWORD" to sqlPassword,
                     "TARGET_MYSQL_DATABASE" to database,
+                    "TARGET_MYSQL_IGNORE_ERRORS" to ignoreErrors,
                 )
             EndpointType.HTTP -> mapOf("TARGET_HTTP_URL" to formatUrl(ip))
             EndpointType.NATIVE ->
@@ -146,6 +174,10 @@ data class KitEndpoint(
             EndpointType.KAFKA -> mapOf("TARGET_KAFKA_BOOTSTRAP" to formatUrl(ip))
             EndpointType.HTTPS, EndpointType.CQL -> emptyMap()
         }
+    }
+
+    private companion object {
+        val ERROR_CODES = Regex("[0-9]+(,[0-9]+)*")
     }
 }
 
@@ -202,13 +234,22 @@ enum class KitType {
  *     user: easy-db-lab
  *     driver-class: com.facebook.presto.jdbc.PrestoDriver
  * ```
+ *
+ * [password] is the JDBC password, empty when the database needs none. A kit that takes it as an
+ * install arg writes `password: "__VAR__"`, which `kit install` resolves in the installed
+ * `kit.yaml`. [toString] masks it, so a logged capability never carries it.
  */
 @Serializable
 data class KitCapability(
     val type: String = "",
     val user: String = "",
+    val password: String = "",
     @SerialName("driver-class") val driverClass: String = "",
 ) {
+    override fun toString(): String =
+        "KitCapability(type=$type, user=$user, password=${if (password.isEmpty()) "" else Constants.Kit.PASSWORD_MASK}, " +
+            "driverClass=$driverClass)"
+
     /**
      * Returns the (commandName, description) pair for this capability.
      * Both [KitInfo] and [KitRunnerCommandFactory] use this as the single source of truth
@@ -314,6 +355,10 @@ data class KitHooks(
  * A [ArgType.KIT_REF] arg names another installed kit. [capability] and [endpoints] state what
  * that target must declare; `kit install` refuses a target that lacks either
  * ([com.rustyrazorblade.easydblab.commands.install.KitRefTargetValidator]).
+ *
+ * An optional [pattern] is a regular expression the whole value must match. It keeps a value
+ * that would break a YAML or SQL literal out of the installed files: `kit install` refuses a
+ * mismatch, naming the flag but never the value, before it writes anything.
  */
 @Serializable
 data class KitArgSpec(
@@ -326,7 +371,20 @@ data class KitArgSpec(
     val capability: String = "",
     /** Endpoint types a kit-ref target must declare, for example `[native, http]`. */
     val endpoints: List<KitEndpoint.EndpointType> = emptyList(),
+    val pattern: String = "",
 ) {
+    init {
+        if (pattern.isNotEmpty()) {
+            require(runCatching { Regex(pattern) }.isSuccess) { "arg $flag has a pattern that is not a regular expression" }
+        }
+    }
+
+    /**
+     * True when [value] is allowed: the arg declares no [pattern], or the whole value matches it.
+     * `kit install` checks every arg with this before it renders or writes anything.
+     */
+    fun accepts(value: String): Boolean = pattern.isEmpty() || Regex(pattern).matches(value)
+
     /**
      * The value placeholder `--help` and `commands` show for this arg, from its variable name
      * (`NUM_RECORDS` becomes `<num-records>`). A boolean flag shows it as optional,

@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.kit
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.services.KitCapability
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
 import com.rustyrazorblade.easydblab.services.sql.KitJdbcSqlService
@@ -19,12 +21,16 @@ import java.io.File
  * Generic SQL command generated from a kit's `sql` capability declaration in kit.yaml.
  *
  * A single instance is registered under each SQL-capable kit's subcommand group at startup —
- * no per-kit Kotlin class is required. Configuration (JDBC endpoint, user, driver class) is
- * provided at registration time from the kit's [KitConfig][com.rustyrazorblade.easydblab.services.KitConfig].
+ * no per-kit Kotlin class is required. Configuration (JDBC endpoint and the [capability]'s user,
+ * password and driver class) is provided at registration time from the kit's installed
+ * [KitConfig][com.rustyrazorblade.easydblab.services.KitConfig].
  *
- * If [driverClass] is non-blank, the class is force-loaded before the first connection attempt.
- * This is required for JDBC drivers (e.g. the Facebook Presto driver) that do not auto-register
- * via ServiceLoader in fat-JAR environments.
+ * If the capability's driver class is non-blank, the class is force-loaded before the first
+ * connection attempt. This is required for JDBC drivers (e.g. the Facebook Presto driver) that do
+ * not auto-register via ServiceLoader in fat-JAR environments.
+ *
+ * The password is sent only as a connection property. A driver error is reported with any copy of
+ * the password masked, so no output of the command carries it.
  *
  * A failed statement, a missing `--file`, or a missing driver is reported as an event and then makes
  * the command exit non-zero through [CommandFailedException].
@@ -42,10 +48,11 @@ import java.io.File
 class KitSqlCommand(
     private val kitName: String,
     private val endpoint: KitEndpoint,
-    private val user: String,
-    private val driverClass: String = "",
+    internal val capability: KitCapability,
     private val connectionFactory: JdbcConnectionFactory = defaultJdbcConnectionFactory,
 ) : PicoBaseCommand() {
+    private val driverClass: String get() = capability.driverClass
+
     @Parameters(index = "0", description = ["SQL statement to execute"], arity = "0..1")
     var statement: String? = null
 
@@ -91,14 +98,18 @@ class KitSqlCommand(
         KitJdbcSqlService(
             clusterStateManager = clusterStateManager,
             endpoint = endpoint,
-            user = user,
+            user = capability.user,
+            password = capability.password,
             connectionFactory = connectionFactory,
         ).execute(sql.trim().trimEnd(';'))
             .onSuccess { result ->
                 eventBus.emit(Event.Sql.QueryOutput(result.columns, result.rows))
             }.onFailure { e ->
-                eventBus.emit(Event.Sql.QueryError(e.message ?: "Unknown error"))
+                eventBus.emit(Event.Sql.QueryError(maskPassword(e.message ?: "Unknown error")))
                 throw CommandFailedException("SQL statement failed")
             }
     }
+
+    private fun maskPassword(message: String): String =
+        if (capability.password.isBlank()) message else message.replace(capability.password, Constants.Kit.PASSWORD_MASK)
 }

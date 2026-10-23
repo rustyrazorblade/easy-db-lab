@@ -72,3 +72,12 @@ commands:
         type: string
         description: "Key access distribution: uniform | gaussian | special | pareto (default special, sysbench's own default)"
         default: "special"
+
+# A running instance is stopped first by the framework, and stop deletes the credentials Secret.
+# One uninstalled without a stop (or after a stop that could not delete it) would keep the target
+# password in the cluster, so uninstall deletes this instance's credentials Secret by its labels.
+uninstall:
+  - type: delete
+    kinds: [Secret]
+    selector: "easydblab/kit=${KIT_NAME},easydblab/role=sysbench-credentials"
+    namespace: default

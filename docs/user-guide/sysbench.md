@@ -127,7 +127,11 @@ The password never appears in a pod spec, so `kubectl get pod -o yaml` and
 (labelled `easydblab/role=sysbench-credentials`), and every pod reads it from there as an
 environment variable: the sysbench pods as `TARGET_PASSWORD`, which the container hands to
 sysbench as `--mysql-password` or `--pgsql-password` when it starts, and the database-creation
-pod as `MYSQL_PWD`. `stop` deletes the Secret.
+pod as `MYSQL_PWD`. `stop` deletes the Secret, and so does `kit uninstall`.
+
+sysbench reads a password only from its command line, so while a phase runs, the sysbench
+process's own arguments hold it: `ps` on the app node that runs the pod shows it. The pod spec
+and every `kubectl` call do not.
 
 A target with no password (TiDB, PostgreSQL, ClickHouse) connects exactly as before.
 

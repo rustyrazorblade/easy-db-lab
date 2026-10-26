@@ -160,6 +160,7 @@ class CiliumServiceTest : BaseKoinTest() {
         assertThat(command).contains("enableIPv4Masquerade=true")
         assertThat(command).contains("egressMasqueradeInterfaces=ens+")
         assertThat(command).contains("kubeProxyReplacement=false")
+        assertThat(command).contains("socketLB.enabled=true")
         assertThat(command).contains("bpf.hostLegacyRouting=true")
         assertThat(command).contains("ipv4NativeRoutingCIDR=$vpcCidr")
         assertThat(command).contains("operator.replicas=1")

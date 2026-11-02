@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.mcp
+package com.rustyrazorblade.easydblab.server
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
@@ -49,7 +49,8 @@ class StatusCache(
     private val autoShutdown: Boolean = false,
     private val vpcName: String? = null,
     private val onShutdown: () -> Unit = { exitProcess(0) },
-) : KoinComponent {
+) : KoinComponent,
+    CachedStatus {
     companion object {
         private val log = KotlinLogging.logger {}
         private const val INITIALIZATION_TIMEOUT_SECONDS = 60L
@@ -115,7 +116,7 @@ class StatusCache(
      * Force an immediate refresh, resetting the timer.
      * Blocks until the refresh completes.
      */
-    fun forceRefresh() {
+    override fun forceRefresh() {
         timer.purge()
         refresh()
         scheduleNextRefresh()
@@ -129,7 +130,7 @@ class StatusCache(
      * @return JSON string, or null if the cache could not be populated within the timeout
      * @throws IllegalArgumentException if the section name is invalid
      */
-    fun getStatus(section: String? = null): String? {
+    override fun getStatus(section: String?): String? {
         initializedLatch.await(INITIALIZATION_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         val response = cachedResponse ?: return null
         if (section == null) {

@@ -15,7 +15,7 @@ import java.io.InputStream
  * packaged distribution (JAR) — so features built on it work identically from a Homebrew install
  * with no source checkout.
  *
- * Both the MCP prompt loader and the help-topic service consume this loader; neither owns a copy
+ * The help-topic service consumes this loader rather than owning a copy
  * of the parsing logic.
  *
  * Expected file format:

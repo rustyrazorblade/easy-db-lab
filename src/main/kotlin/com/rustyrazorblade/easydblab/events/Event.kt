@@ -3981,14 +3981,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Command.McpConfigSaved")
-        data class McpConfigSaved(
-            val path: String,
-        ) : Command {
-            override fun toDisplayString(): String = "MCP configuration saved to: $path\n"
-        }
-
-        @Serializable
         @SerialName("Command.ProfileNotConfigured")
         data object ProfileNotConfigured : Command {
             override fun toDisplayString(): String =
@@ -4052,7 +4044,7 @@ sealed interface Event {
          * A status section could not be read. Used when `status` degrades because the SOCKS
          * proxy could not be established — see the class-level KDoc on `Status` and design
          * decision D9 in `openspec/changes/up-fail-fast/design.md`. This is the one place a
-         * missing section is reported as data rather than skipped, because an MCP client or
+         * missing section is reported as data rather than skipped, because a Redis subscriber or
          * script reading status needs to know a section was never attempted, not just that it
          * is absent.
          */
@@ -4664,82 +4656,6 @@ sealed interface Event {
     }
 
     // =========================================================================
-    // Event.Mcp — Server MCP operations
-    // =========================================================================
-
-    @Serializable
-    sealed interface Mcp : Event {
-        @Serializable
-        @SerialName("Mcp.ToolExecutionStarting")
-        data class ToolExecutionStarting(
-            val toolName: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Starting execution of tool: $toolName"
-        }
-
-        @Serializable
-        @SerialName("Mcp.ToolExecutionComplete")
-        data class ToolExecutionComplete(
-            val toolName: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Tool '$toolName' completed successfully"
-        }
-
-        @Serializable
-        @SerialName("Mcp.ToolExecutionFailed")
-        data class ToolExecutionFailed(
-            val toolName: String,
-            val error: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Tool '$toolName' failed: $error"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Mcp.ServerStarting")
-        data class ServerStarting(
-            val port: Int,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Starting server on port $port..."
-        }
-
-        @Serializable
-        @SerialName("Mcp.BackgroundToolComplete")
-        data class BackgroundToolComplete(
-            val toolName: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Background execution of tool '$toolName' complete."
-        }
-
-        @Serializable
-        @SerialName("Mcp.BackgroundToolFailed")
-        data class BackgroundToolFailed(
-            val toolName: String,
-            val error: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Background execution of tool '$toolName' failed: $error"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Mcp.ServerReady")
-        data class ServerReady(
-            val port: Int,
-            val bind: String,
-        ) : Mcp {
-            override fun toDisplayString(): String =
-                """
-                Starting server on port $port...
-
-                Server is now available at: http://$bind:$port/sse
-                Swagger UI available at:    http://$bind:$port/swagger
-                """.trimIndent()
-        }
-    }
-
-    // =========================================================================
     // Event.Logs — Log query and backup operations
     // =========================================================================
 
@@ -4789,43 +4705,11 @@ sealed interface Event {
     }
 
     // =========================================================================
-    // Event.Metrics — Metrics backup and import operations
+    // Event.Metrics — the `metrics stream` samples and its lifecycle
     // =========================================================================
 
     @Serializable
     sealed interface Metrics : Event {
-        @Serializable
-        @SerialName("Metrics.Node")
-        data class Node(
-            val cpuUsagePct: Double,
-            val memoryUsedBytes: Long,
-            val diskReadBytesPerSec: Double,
-            val diskWriteBytesPerSec: Double,
-            val filesystemUsedPct: Double,
-        )
-
-        @Serializable
-        @SerialName("Metrics.System")
-        data class System(
-            val nodes: Map<String, Node>,
-        ) : Metrics {
-            override fun toDisplayString(): String = "System metrics: ${nodes.size} nodes"
-        }
-
-        @Serializable
-        @SerialName("Metrics.Cassandra")
-        data class Cassandra(
-            val readP99Ms: Double,
-            val writeP99Ms: Double,
-            val readOpsPerSec: Double,
-            val writeOpsPerSec: Double,
-            val compactionPending: Long,
-            val compactionCompletedPerSec: Double,
-            val compactionBytesWrittenPerSec: Double,
-        ) : Metrics {
-            override fun toDisplayString(): String = "Cassandra metrics: read_p99=${readP99Ms}ms, write_p99=${writeP99Ms}ms"
-        }
-
         /**
          * One value of one streamed metric, published by `metrics stream` straight to Redis and
          * never through the bus.  [entity] is a host alias, `cluster`, `cluster.min` or
@@ -5764,7 +5648,7 @@ sealed interface Event {
         ) : Kit {
             // The step's output was streamed to the console as it ran; repeating [outputTail] here
             // printed every failure message twice. The tail stays on the event for structured
-            // consumers (MCP, Redis).
+            // consumers (Redis subscribers).
             override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1} (shell) failed with exit code $exitCode."
 
             override fun isError(): Boolean = true

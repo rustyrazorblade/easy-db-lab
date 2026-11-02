@@ -8,9 +8,8 @@ import java.io.File
 
 data class Context(
     val easyDbLabUserDirectory: File,
-    val isMcp: Boolean = false,
     /**
-     * Indicates if running in an interactive mode (REPL or server) where
+     * Indicates if running in an interactive mode (the REPL) where
      * resources like CQL sessions should be kept open across commands.
      * Mutable so REPL can set this after context creation.
      */
@@ -26,17 +25,12 @@ data class Context(
         /**
          * Create a Context for regular CLI execution
          */
-        fun forCli(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = false, isInteractive = false)
-
-        /**
-         * Create a Context for server execution
-         */
-        fun forMcp(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = true, isInteractive = true)
+        fun forCli(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isInteractive = false)
 
         /**
          * Create a Context for REPL execution
          */
-        fun forRepl(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = false, isInteractive = true)
+        fun forRepl(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isInteractive = true)
     }
 
     val log = KotlinLogging.logger {}

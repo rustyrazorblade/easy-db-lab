@@ -56,7 +56,7 @@ If explicit flags were provided, use those. Otherwise:
 
 **`--cassandra` (default for core changes)** — if changes touch:
 - `**/configuration/**`, `**/kubernetes/**`, `**/providers/**`
-- `**/commands/Init*`, `packer/base/**`, `**/mcp/**`
+- `**/commands/Init*`, `packer/base/**`, `**/server/**`
 - `**/services/ClusterBackupService*`, `**/ClusterS3Path*`
 - Observability: `**/mimir/**`, `**/loki/**`, `**/grafana/**`, `**/services/TeardownFlush*`, `**/services/LokiTailFlush*`
 
@@ -491,7 +491,7 @@ Result: PASS | FAIL
 Steps Run:
   ✅ Infrastructure setup
   ✅ K3s cluster verified
-  ✅ MCP server /status
+  ✅ server /status
   ✅ S3 backup verified
   ✅ Restore from VPC verified
   ✅ Exec command

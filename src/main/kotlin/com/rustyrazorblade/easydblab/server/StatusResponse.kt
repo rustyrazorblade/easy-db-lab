@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.mcp
+package com.rustyrazorblade.easydblab.server
 
 import kotlinx.serialization.Serializable
 

@@ -3,8 +3,6 @@
 kotlin = "2.4.10"
 
 # MCP SDK
-mcp-sdk = "0.14.0"
-kotlinx-io = "0.9.0"
 
 
 # Logging
@@ -178,8 +176,6 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 
 # MCP SDK
-mcp-sdk = { module = "io.modelcontextprotocol:kotlin-sdk", version.ref = "mcp-sdk" }
-kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 
 # Redis
 jedis = { module = "redis.clients:jedis", version.ref = "jedis" }

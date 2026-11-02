@@ -1066,8 +1066,8 @@ class ProfilingCommandsTest : BaseKoinTest() {
     @Test
     fun `fetch refuses a chunk count that would pull the whole profile directory`() {
         // --last reaches the node as `head -n <count>`, where a negative count selects everything
-        // but the newest chunks rather than nothing. Not typeable by accident, but settable over
-        // MCP, and the failure is a silent bulk download rather than an error.
+        // but the newest chunks rather than nothing, and the failure is a silent bulk download
+        // rather than an error.
         val command = ProfilingFetch()
         command.last = -1
 

@@ -62,20 +62,20 @@
 
 ## 8. MCP removal
 
-- [ ] 8.1 Delete `annotations/McpCommand.kt` and remove every `@McpCommand` use and import under `commands/` (`grep -rn "@McpCommand" src/main/kotlin` returns nothing), as one mechanical step.
-- [ ] 8.2 Rename the `mcp/` package to `server/` (main and test), and `McpServer` to `StatusServer`, keeping the Ktor/Netty server, `/swagger`, `/status`, `/stress/status`, `StatusCache` and `StatusResponse`.
-- [ ] 8.3 Write a `StatusServer` test: the server answers `/status` and `/swagger`, does not serve `/sse`, and emits `Event.Server.Ready` naming only the status and swagger URLs.
-- [ ] 8.4 Remove from `StatusServer` the SDK imports, `initializeStreaming`, the tool and status handlers, tool and prompt registration, `configureSseRoutes`, the `MetricsCollector` start and `ServerStatusResponse`; emit `Event.Server.Ready` after bind.
-- [ ] 8.5 Delete `McpToolRegistry.kt`, `ChannelMessageBuffer.kt`, `PromptLoader.kt`, `PromptResource.kt`, `MetricsCollector.kt`, `events/McpEventListener.kt`, and the resources `src/main/resources/com/rustyrazorblade/mcp/activate.md` and `provision.md`.
-- [ ] 8.6 In `Server.kt`, delete `McpServerConfig` / `McpConfiguration`, the `.mcp.json` write, the `McpConfigSaved` emit and `context.isInteractive = true`; set the `@Command` description to "Start the REST status server (cluster status at /status, API docs at /swagger)"; update the `@RequiresProxy` KDoc to name only the status cache refresh.  Write a test that `server` writes no `.mcp.json`.
-- [ ] 8.7 Remove the `Event.Mcp` domain, `Command.McpConfigSaved`, `Metrics.Node`, `Metrics.System` and `Metrics.Cassandra` from `Event.kt`.
-- [ ] 8.8 Remove `OutputEvent`, `ChannelOutputHandler` and `FilteringChannelOutputHandler` from `output/OutputHandler.kt`; remove `Context.isMcp` and `Context.forMcp`, and the `isMcp` argument of `forCli` / `forRepl`.
-- [ ] 8.9 Remove the `DefaultMimirQueryService` Koin binding from `ServicesModule.kt` (the class and its test stay).
-- [ ] 8.10 Remove `libs.mcp.sdk` and `libs.kotlinx.io` from `build.gradle.kts` and `gradle/libs.versions.toml`; confirm the Ktor SSE plugin is gone from the dependency tree and ClassGraph stays.
-- [ ] 8.11 Delete the tests `ChannelMessageBufferTest`, `CleanMessageTest`, `McpAnnotationTest`, `McpDebugTest`, `McpEnumTest`, `McpMessageFlowTest`, `McpSchemaValidationTest`, `McpServerBackgroundTest`, `McpServerSimpleTest`, `McpServerStreamingTest`, `McpToolNamespacingTest`, `MetricsCollectorTest`, `PromptLoaderTest`, `ChannelOutputHandlerTest`, `FilteringChannelOutputHandlerTest`, `FilteringChannelOutputHandlerFrameResetTest` and `McpEventListenerTest`; keep `StatusCacheTest`.
-- [ ] 8.12 Remove the three `McpSchemaValidationTest` entries from `config/detekt/baseline-test.xml` (entries for a deleted file only; no rule is loosened).
-- [ ] 8.13 Update stale KDocs and comments: `Constants.kt`, `ssh/Redaction.kt`, `profiling/ProfilingBounds.kt` (validation stays; reason becomes CLI input only), `commands/cassandra/CassandraInstall.kt`, `events/EventListener.kt`, `services/MarkdownDocument.kt`, `services/FrontmatterMarkdownLoader.kt`, `services/HelpTopicService.kt`, and the test comments in `SSHClientTest`, `ProfilingBoundsTest`, `ProfileCommandGroupTest`, `ProfilingCommandsTest`.
-- [ ] 8.14 Update `.claude/skills/agent-test/SKILL.md` (the `**/mcp/**` pattern becomes `**/server/**`; "MCP server /status" becomes "server /status") and delete `.claude/commands/test-workflow.md`.
+- [x] 8.1 Delete `annotations/McpCommand.kt` and remove every `@McpCommand` use and import under `commands/` (`grep -rn "@McpCommand" src/main/kotlin` returns nothing), as one mechanical step.
+- [x] 8.2 Rename the `mcp/` package to `server/` (main and test), and `McpServer` to `StatusServer`, keeping the Ktor/Netty server, `/swagger`, `/status`, `/stress/status`, `StatusCache` and `StatusResponse`.
+- [x] 8.3 Write a `StatusServer` test: the server answers `/status` and `/swagger`, does not serve `/sse`, and emits `Event.Server.Ready` naming only the status and swagger URLs.
+- [x] 8.4 Remove from `StatusServer` the SDK imports, `initializeStreaming`, the tool and status handlers, tool and prompt registration, `configureSseRoutes`, the `MetricsCollector` start and `ServerStatusResponse`; emit `Event.Server.Ready` after bind.
+- [x] 8.5 Delete `McpToolRegistry.kt`, `ChannelMessageBuffer.kt`, `PromptLoader.kt`, `PromptResource.kt`, `MetricsCollector.kt`, `events/McpEventListener.kt`, and the resources `src/main/resources/com/rustyrazorblade/mcp/activate.md` and `provision.md`.
+- [x] 8.6 In `Server.kt`, delete `McpServerConfig` / `McpConfiguration`, the `.mcp.json` write, the `McpConfigSaved` emit and `context.isInteractive = true`; set the `@Command` description to "Start the REST status server (cluster status at /status, API docs at /swagger)"; update the `@RequiresProxy` KDoc to name only the status cache refresh.  Write a test that `server` writes no `.mcp.json`.
+- [x] 8.7 Remove the `Event.Mcp` domain, `Command.McpConfigSaved`, `Metrics.Node`, `Metrics.System` and `Metrics.Cassandra` from `Event.kt`.
+- [x] 8.8 Remove `OutputEvent`, `ChannelOutputHandler` and `FilteringChannelOutputHandler` from `output/OutputHandler.kt`; remove `Context.isMcp` and `Context.forMcp`, and the `isMcp` argument of `forCli` / `forRepl`.
+- [x] 8.9 Remove the `DefaultMimirQueryService` Koin binding from `ServicesModule.kt` (the class and its test stay).
+- [x] 8.10 Remove `libs.mcp.sdk` and `libs.kotlinx.io` from `build.gradle.kts` and `gradle/libs.versions.toml`; confirm the Ktor SSE plugin is gone from the dependency tree and ClassGraph stays.
+- [x] 8.11 Delete the tests `ChannelMessageBufferTest`, `CleanMessageTest`, `McpAnnotationTest`, `McpDebugTest`, `McpEnumTest`, `McpMessageFlowTest`, `McpSchemaValidationTest`, `McpServerBackgroundTest`, `McpServerSimpleTest`, `McpServerStreamingTest`, `McpToolNamespacingTest`, `MetricsCollectorTest`, `PromptLoaderTest`, `ChannelOutputHandlerTest`, `FilteringChannelOutputHandlerTest`, `FilteringChannelOutputHandlerFrameResetTest` and `McpEventListenerTest`; keep `StatusCacheTest`.
+- [x] 8.12 Remove the three `McpSchemaValidationTest` entries from `config/detekt/baseline-test.xml` (entries for a deleted file only; no rule is loosened).
+- [x] 8.13 Update stale KDocs and comments: `Constants.kt`, `ssh/Redaction.kt`, `profiling/ProfilingBounds.kt` (validation stays; reason becomes CLI input only), `commands/cassandra/CassandraInstall.kt`, `events/EventListener.kt`, `services/MarkdownDocument.kt`, `services/FrontmatterMarkdownLoader.kt`, `services/HelpTopicService.kt`, and the test comments in `SSHClientTest`, `ProfilingBoundsTest`, `ProfileCommandGroupTest`, `ProfilingCommandsTest`.
+- [x] 8.14 Update `.claude/skills/agent-test/SKILL.md` (the `**/mcp/**` pattern becomes `**/server/**`; "MCP server /status" becomes "server /status") and delete `.claude/commands/test-workflow.md`.
 
 ## 9. Docs
 

@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.mcp
+package com.rustyrazorblade.easydblab.server
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants

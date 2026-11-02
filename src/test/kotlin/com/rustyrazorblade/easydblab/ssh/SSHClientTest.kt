@@ -148,7 +148,7 @@ class SSHClientTest :
     @Test
     fun `a successful command's output is redacted before it reaches the event bus`() {
         // install-cassandra-version echoes the clone URL it was given; that output is emitted as a
-        // @Serializable event reaching every MCP and Redis subscriber.
+        // @Serializable event reaching every Redis subscriber.
         stubRemoteCommand(
             stdout = "Cloning repo for version fork from https://ghp_secrettoken@github.com/acme/cassandra.git",
         )

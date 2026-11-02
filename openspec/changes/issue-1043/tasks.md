@@ -92,8 +92,8 @@
 
 ## 10. Build checks
 
-- [ ] 10.1 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21), `./gradlew test` and `./gradlew integrationTest` in a subagent, and fix every failure.
-- [ ] 10.2 Run `./gradlew installDist`.
+- [x] 10.1 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21), `./gradlew test` and `./gradlew integrationTest` in a subagent, and fix every failure.
+- [x] 10.2 Run `./gradlew installDist`.
 
 ## 11. Real cluster check
 

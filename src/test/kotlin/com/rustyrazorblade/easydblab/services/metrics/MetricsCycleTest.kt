@@ -47,14 +47,14 @@ class MetricsCycleTest : BaseKoinTest() {
         queries: CycleQueries,
         vararg metrics: StreamMetric,
     ) = MetricsCycle(
-            metrics = metrics.toList(),
-            queries = queries,
-            publisher = publisher,
-            health = health,
-            eventBus = recording.bus,
-            isStopped = { stopped },
-            reconnect = fastReconnect(),
-        )
+        metrics = metrics.toList(),
+        queries = queries,
+        publisher = publisher,
+        health = health,
+        eventBus = recording.bus,
+        isStopped = { stopped },
+        reconnect = fastReconnect(),
+    )
 
     private fun hosts(vararg pairs: Pair<String, String>) =
         FakeMimirHttp.success(*pairs.map { (host, value) -> mapOf("host_name" to host) to value }.toTypedArray())

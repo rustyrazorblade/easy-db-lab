@@ -98,6 +98,7 @@ Practice **reasonable TDD**:
 - Tests that assert default field values (e.g., `assertThat(command.field).isNull()`) — the compiler already guarantees defaults
 - Tests that verify a method was called but don't assert anything about the outcome or transformation
 - Tests where removing the code under test wouldn't cause the test to fail because the mock does all the work
+- Tests that assert static help or usage text (picocli `usageMessage`, command descriptions, `--help` output). This is a standing rule; a review finding asking for such a test is dropped, not fixed.
 
 A good test exercises a code path where the system under test makes a decision, transforms data, or could fail in a meaningful way.
 

@@ -656,8 +656,18 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
         )
     }
 
-    private fun pod(phase: String) =
-        KubernetesPod(namespace = "stress", name = "stress-wait-abc", status = phase, ready = "0/1", restarts = 0, age = Duration.ZERO)
+    private fun pod(
+        phase: String,
+        nodeName: String = "app0",
+    ) = KubernetesPod(
+        namespace = "stress",
+        name = "stress-wait-abc",
+        status = phase,
+        ready = "0/1",
+        restarts = 0,
+        age = Duration.ZERO,
+        nodeName = nodeName,
+    )
 
     @BeforeEach
     fun stubJobCreation() {
@@ -674,17 +684,24 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
             Result.success(listOf(pod("Running"))),
         )
 
-        assertThat(service().startJob(controlHost, config).getOrThrow()).isEqualTo("stress-wait")
+        assertThat(service().startJob(controlHost, config).getOrThrow().jobName).isEqualTo("stress-wait")
         assertThat(events.filterIsInstance<Event.Stress.PodStatus>())
             .containsExactly(Event.Stress.PodStatus("stress-wait-abc", "Running"))
         verify(k8sService, times(4)).getPodsForJob(any(), any(), any())
     }
 
     @Test
+    fun `returns the node the running pod was scheduled on as the host`() {
+        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Running", nodeName = "app3"))))
+
+        assertThat(service().startJob(controlHost, config).getOrThrow()).isEqualTo(StartedStressJob("stress-wait", "app3"))
+    }
+
+    @Test
     fun `a Succeeded pod also ends the wait`() {
         whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Succeeded"))))
 
-        assertThat(service().startJob(controlHost, config).getOrThrow()).isEqualTo("stress-wait")
+        assertThat(service().startJob(controlHost, config).getOrThrow().jobName).isEqualTo("stress-wait")
     }
 
     @Test

@@ -75,5 +75,58 @@ class MetricsStreamEventTest {
         assertThat(text).doesNotContain("/sse")
     }
 
+    @Test
+    fun `a completed stress job goes on the wire with a lowercase outcome`() {
+        val envelope =
+            EventEnvelope(
+                event = Event.Stress.JobCompleted("stress-1730542530", "app0", StressJobOutcome.SUCCEEDED, 605),
+                timestamp = "2026-11-02T10:25:41.007Z",
+                commandName = "stream",
+            )
+
+        val event =
+            Json
+                .parseToJsonElement(EventEnvelope.toJson(envelope))
+                .jsonObject
+                .getValue("event")
+                .jsonObject
+
+        assertThat(event.keys).containsExactlyInAnyOrder("type", "jobName", "host", "outcome", "durationSeconds")
+        assertThat(event.string("type")).isEqualTo("Stress.JobCompleted")
+        assertThat(event.string("host")).isEqualTo("app0")
+        assertThat(event.string("outcome")).isEqualTo("succeeded")
+        assertThat(event.getValue("durationSeconds").jsonPrimitive.content).isEqualTo("605")
+        assertThat(
+            Json
+                .parseToJsonElement(
+                    EventEnvelope.toJson(envelope.copy(event = Event.Stress.JobCompleted("j", "app0", StressJobOutcome.FAILED, 1))),
+                ).jsonObject
+                .getValue("event")
+                .jsonObject
+                .string("outcome"),
+        ).isEqualTo("failed")
+        assertThat(EventEnvelope.fromJson(EventEnvelope.toJson(envelope))).isEqualTo(envelope)
+    }
+
+    @Test
+    fun `a started stress job carries its host on the wire`() {
+        val event =
+            Json
+                .parseToJsonElement(
+                    EventEnvelope.toJson(
+                        EventEnvelope(
+                            event = Event.Stress.JobStarted("stress-1", "app0", "img", "db0", 9500, listOf("run", "KeyValue")),
+                            timestamp = "t",
+                            commandName = "start",
+                        ),
+                    ),
+                ).jsonObject
+                .getValue("event")
+                .jsonObject
+
+        assertThat(event.keys).containsExactlyInAnyOrder("type", "jobName", "host", "image", "contactPoint", "promPort", "args")
+        assertThat(event.string("host")).isEqualTo("app0")
+    }
+
     private fun JsonObject.string(key: String): String = getValue(key).jsonPrimitive.content
 }

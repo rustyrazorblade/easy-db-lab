@@ -3371,6 +3371,7 @@ sealed interface Event {
         @SerialName("Stress.JobStarted")
         data class JobStarted(
             val jobName: String,
+            val host: String,
             val image: String,
             val contactPoint: String,
             val promPort: Int,
@@ -3382,6 +3383,7 @@ sealed interface Event {
                 |Stress job started successfully!
                 |
                 |Job name: $jobName
+                |Host: $host
                 |Image: $image
                 |Contact point: $contactPoint
                 |Prometheus port: $promPort
@@ -3391,6 +3393,21 @@ sealed interface Event {
                 |View logs: easy-db-lab cassandra stress logs $jobName
                 |Stop job: easy-db-lab cassandra stress stop $jobName
                 """.trimMargin()
+        }
+
+        /**
+         * A stress job that `metrics stream` saw running has finished: on [host], with [outcome],
+         * after [durationSeconds] from the job's start time to its completion time.
+         */
+        @Serializable
+        @SerialName("Stress.JobCompleted")
+        data class JobCompleted(
+            val jobName: String,
+            val host: String,
+            val outcome: StressJobOutcome,
+            val durationSeconds: Long,
+        ) : Stress {
+            override fun toDisplayString(): String = "Stress job $jobName on $host ${outcome.wireName} after ${durationSeconds}s"
         }
 
         @Serializable

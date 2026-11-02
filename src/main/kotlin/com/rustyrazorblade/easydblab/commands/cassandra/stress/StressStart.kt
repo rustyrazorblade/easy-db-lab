@@ -93,25 +93,27 @@ class StressStart : PicoBaseCommand() {
 
         val parsedTags = parseTags(tags)
 
-        stressJobService
-            .startJob(
-                controlHost = controlNode,
-                config =
-                    StressJobConfig(
-                        jobName = fullJobName,
-                        image = image,
-                        args = args,
-                        contactPoints = contactPoints,
-                        tags = parsedTags,
-                        promPort = promPort,
-                    ),
-            ).getOrElse { e ->
-                error("Failed to create job: ${e.message}")
-            }
+        val started =
+            stressJobService
+                .startJob(
+                    controlHost = controlNode,
+                    config =
+                        StressJobConfig(
+                            jobName = fullJobName,
+                            image = image,
+                            args = args,
+                            contactPoints = contactPoints,
+                            tags = parsedTags,
+                            promPort = promPort,
+                        ),
+                ).getOrElse { e ->
+                    error("Failed to create job: ${e.message}")
+                }
 
         eventBus.emit(
             Event.Stress.JobStarted(
                 jobName = fullJobName,
+                host = started.host,
                 image = image,
                 contactPoint = contactPoints,
                 promPort = promPort,

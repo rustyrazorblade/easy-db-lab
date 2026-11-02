@@ -9,7 +9,8 @@ import java.net.URISyntaxException
  * Where events go on Redis: the host, the port and the pub/sub channel that one
  * `EASY_DB_LAB_REDIS_URL` value names.
  *
- * The URL has the form `redis://host:port/channel` (or `rediss://`).  A URL with no port uses
+ * The URL has the form `redis://host:port/channel`; the connection uses no TLS and no credentials,
+ * so `rediss://` and a URL that names a user are refused.  A URL with no port uses
  * [Constants.EventBus.DEFAULT_REDIS_PORT], and a URL with no path uses
  * [Constants.EventBus.DEFAULT_CHANNEL].  The event bus listener and the metrics stream both
  * publish through one endpoint, so the parsing lives here once.
@@ -24,13 +25,14 @@ data class RedisEndpoint(
     val channel: String,
 ) {
     companion object {
-        private val SCHEMES = setOf("redis", "rediss")
+        private const val SCHEME = "redis"
+        private const val TLS_SCHEME = "rediss"
 
         /**
          * Parses [url], filling in the default port and channel.
          *
-         * @throws RedisConfigurationException when [url] does not parse, is not a `redis://` URL, or
-         *   names no host.
+         * @throws RedisConfigurationException when [url] does not parse, is not a `redis://` URL (TLS
+         *   `rediss://` is not supported), names a user or password (not supported), or names no host.
          */
         fun parse(url: String): RedisEndpoint {
             val uri =
@@ -39,8 +41,15 @@ data class RedisEndpoint(
                 } catch (e: URISyntaxException) {
                     throw RedisConfigurationException(url, "it is not a valid URL (${e.reason})")
                 }
-            if (uri.scheme?.lowercase() !in SCHEMES) {
-                throw RedisConfigurationException(url, "it does not start with redis://")
+            when (uri.scheme?.lowercase()) {
+                SCHEME -> Unit
+                TLS_SCHEME -> throw RedisConfigurationException(url, "TLS (rediss://) is not supported; use redis://")
+                else -> throw RedisConfigurationException(url, "it does not start with redis://")
+            }
+            // The connection carries no credentials, so a URL that names a user would fail later with
+            // a misleading authentication error.
+            if (uri.rawUserInfo != null || uri.rawAuthority?.contains('@') == true) {
+                throw RedisConfigurationException(url, "a user name or password is not supported")
             }
             val host = uri.host ?: throw RedisConfigurationException(url, "it names no host")
             val channel =

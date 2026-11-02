@@ -25,7 +25,7 @@ The console and, when `EASY_DB_LAB_REDIS_URL` is set, Redis are the only destina
 | `EventListener.kt` | Interface: `onEvent(envelope)`, `close()` |
 | `ConsoleEventListener.kt` | Writes `event.toDisplayString()` to stdout (or stderr for errors) |
 | `RedisEventListener.kt` | Publishes JSON envelopes to Redis pub/sub (conditional on env var); best effort after startup |
-| `RedisEndpoint.kt` | Parses `EASY_DB_LAB_REDIS_URL` (`redis://host:port/channel`) into host, port and channel, with the default channel; its `url` has credentials redacted. An unusable value throws `RedisConfigurationException`, which `Main` reports like `RedisUnavailableException` (both are `RedisStartupException`) |
+| `RedisEndpoint.kt` | Parses `EASY_DB_LAB_REDIS_URL` (`redis://host:port/channel`) into host, port and channel, with the default channel. Only `redis://` with no user name or password is accepted (the connection uses no TLS and no auth); `url` is redacted anyway. An unusable value throws `RedisConfigurationException`, which `Main` reports like `RedisUnavailableException` (both are `RedisStartupException`) |
 | `RedisPublisher.kt` | The one Redis connection of the process; its constructor pings and throws `RedisUnavailableException`, whose message names `EASY_DB_LAB_REDIS_URL` and the URL |
 | `RedisConfiguration.kt` | `NotConfigured` or `Configured(endpoint)`, read once from the environment (Koin singleton) |
 | `InvalidMetricName.kt` | One bad `--metrics` entry (position, value, reason), carried by `Metrics.InvalidNames` |

@@ -39,11 +39,29 @@ class RedisEndpointTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the URL it reports never carries a password`() {
-        val endpoint = RedisEndpoint.parse("redis://camera:s3cret@redis.example:6390/events")
+    fun `a URL with a user name and password is refused as not supported, without printing the password`() {
+        assertThatThrownBy { RedisEndpoint.parse("redis://camera:s3cret@redis.example:6390/events") }
+            .isInstanceOf(RedisConfigurationException::class.java)
+            .hasMessageContaining(Constants.EventBus.REDIS_URL_ENV_VAR)
+            .hasMessageContaining("not supported")
+            .hasMessageContaining("redis://***@redis.example:6390/events")
+            .hasMessageNotContaining("s3cret")
+    }
 
-        assertThat(endpoint.url).doesNotContain("s3cret").isEqualTo("redis://***@redis.example:6390/events")
-        assertThat(endpoint.host).isEqualTo("redis.example")
+    @Test
+    fun `a URL with only a user name is refused too`() {
+        assertThatThrownBy { RedisEndpoint.parse("redis://camera@redis.example:6390/events") }
+            .isInstanceOf(RedisConfigurationException::class.java)
+            .hasMessageContaining("not supported")
+    }
+
+    @Test
+    fun `a TLS rediss URL is refused as not supported`() {
+        assertThatThrownBy { RedisEndpoint.parse("rediss://redis.example:6380/events") }
+            .isInstanceOf(RedisConfigurationException::class.java)
+            .hasMessageContaining(Constants.EventBus.REDIS_URL_ENV_VAR)
+            .hasMessageContaining("rediss://redis.example:6380/events")
+            .hasMessageContaining("not supported")
     }
 
     @Test

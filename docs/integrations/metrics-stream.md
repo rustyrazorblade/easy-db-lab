@@ -19,7 +19,7 @@ easy-db-lab metrics stream --metrics node.cpu,cassandra.read_p99
 
 `easy-db-lab metrics list` prints every accepted name, one per line.  A name that is not in the list, or an empty entry such as the one in `node.cpu,,x`, stops the command before the first cycle; the message names each bad entry and its position.  A repeated name is used once.
 
-The URL has the form `redis://host:port/channel`.  When it has no channel, the stream uses `easydblab-events`.
+The URL has the form `redis://host:port/channel`.  When it has no channel, the stream uses `easydblab-events`.  TLS (`rediss://`) and a user name or password in the URL are not supported; the tool refuses such a URL at startup with a message that names `EASY_DB_LAB_REDIS_URL`.
 
 ## Metrics
 
@@ -105,7 +105,7 @@ When the cluster is torn down while the stream runs, each metric fails once with
 - The stream pings Redis at the start of every cycle, so a lost Redis is found within one cycle even when nothing is published.
 - When a ping or a publish fails, the stream drops the rest of that cycle's samples and tries to reconnect: 3 attempts, 1 second and then 2 seconds apart.  Samples that could not be published are not queued or replayed.
 - When a reconnect succeeds, the stream emits `Metrics.RedisReconnected` (the URL, the reason, and the number of samples dropped), the cycle's summary line adds `N samples dropped (Redis reconnected)`, and the stream goes on from the next cycle.
-- Every URL the stream prints has its user name and password replaced by `***`.  When all 3 attempts fail, it emits `Metrics.RedisLost` and exits non-zero with a message that names the Redis URL.
+- When all 3 attempts fail, it emits `Metrics.RedisLost` and exits non-zero with a message that names the Redis URL.
 
 ## Tunnel and Tailscale
 

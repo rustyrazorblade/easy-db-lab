@@ -4,6 +4,9 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 class StopSignalsTest : BaseKoinTest() {
     /** Records the handler installed for each signal and which signals got their old handler back. */
@@ -79,6 +82,73 @@ class StopSignalsTest : BaseKoinTest() {
         signals.close()
 
         assertThat(Thread.currentThread().isInterrupted).isFalse()
+    }
+
+    @Test
+    fun `a signal during install still restores both earlier handlers`() {
+        val restored = mutableListOf<String>()
+        var firing: Thread? = null
+        val registry =
+            SignalRegistry { name, onSignal ->
+                if (name == "INT") {
+                    // INT arrives as soon as its handler is in, before TERM's is.
+                    firing = Thread(onSignal).apply { start() }
+                } else {
+                    awaitBlockedOrDone(firing)
+                }
+                { synchronized(restored) { restored += name } }
+            }
+
+        // The signal interrupts the command thread; a stand-in keeps the interrupt off the test thread.
+        JvmStopSignals(registry).install(Thread {})
+        firing?.join(JOIN_MS)
+
+        assertThat(restored).containsExactlyInAnyOrder("INT", "TERM")
+    }
+
+    @Test
+    fun `close waits for a signal in progress, so the command thread is not interrupted after it`() {
+        val inRestore = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val handlers = mutableMapOf<String, () -> Unit>()
+        val registry =
+            SignalRegistry { name, onSignal ->
+                handlers[name] = onSignal
+                {
+                    if (name == "INT") {
+                        inRestore.countDown()
+                        release.await(JOIN_MS, TimeUnit.MILLISECONDS)
+                    }
+                }
+            }
+        val signals = JvmStopSignals(registry)
+        val commandThread = Thread.currentThread()
+        signals.install(commandThread)
+        val signal = Thread { handlers.getValue("TERM").invoke() }.apply { start() }
+        inRestore.await(JOIN_MS, TimeUnit.MILLISECONDS)
+        val closeReturned = AtomicBoolean(false)
+        // Releases the signal once close() is blocked on it, or once close() has returned without waiting.
+        val releaser =
+            Thread {
+                while (commandThread.state != Thread.State.BLOCKED && !closeReturned.get()) Thread.onSpinWait()
+                release.countDown()
+            }.apply { start() }
+
+        signals.close()
+        closeReturned.set(true)
+        releaser.join(JOIN_MS)
+        signal.join(JOIN_MS)
+
+        assertThat(Thread.currentThread().isInterrupted).isFalse()
+        assertThat(signals.isStopped).isTrue()
+    }
+
+    private fun awaitBlockedOrDone(thread: Thread?) {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(JOIN_MS)
+        while (thread != null && thread.state != Thread.State.BLOCKED && thread.state != Thread.State.TERMINATED) {
+            check(System.nanoTime() < deadline) { "the signal thread never reached the handler" }
+            Thread.onSpinWait()
+        }
     }
 
     private companion object {

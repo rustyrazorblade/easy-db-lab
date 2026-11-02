@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.services.metrics
 
 import sun.misc.Signal
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The stop flag of a `metrics stream` run, set by the first Ctrl-C or SIGTERM.
@@ -48,37 +47,56 @@ object JvmSignalRegistry : SignalRegistry {
 /**
  * [StopSignals] for INT and TERM.
  *
+ * One lock covers installing the handlers, a signal's stop (flag, restore, interrupt) and [close].
+ * A signal that arrives while the handlers are being installed waits for both, so it restores both.
+ * [close] waits for a signal already being handled, and a signal after [close] does nothing, so
+ * the command thread is never interrupted once the loop has ended.
+ *
  * @param registry installs the handlers; tests replace it to fire a signal by hand
  */
 class JvmStopSignals(
     private val registry: SignalRegistry = JvmSignalRegistry,
 ) : StopSignals {
-    private val stopped = AtomicBoolean(false)
-    private val restored = AtomicBoolean(false)
+    private val lock = Any()
 
     @Volatile
-    private var restorers: List<() -> Unit> = emptyList()
+    private var stopped = false
 
-    override val isStopped: Boolean get() = stopped.get()
+    // Guarded by [lock].
+    private var restorers: List<() -> Unit> = emptyList()
+    private var restored = false
+    private var closed = false
+
+    override val isStopped: Boolean get() = stopped
 
     override fun install(commandThread: Thread) {
-        restorers = SIGNALS.map { name -> registry.install(name) { onSignal(commandThread) } }
+        synchronized(lock) {
+            restorers = SIGNALS.map { name -> registry.install(name) { onSignal(commandThread) } }
+        }
     }
 
     private fun onSignal(commandThread: Thread) {
-        if (stopped.compareAndSet(false, true)) {
+        synchronized(lock) {
+            if (stopped || closed) return
+            stopped = true
             restore()
             commandThread.interrupt()
         }
     }
 
     override fun close() {
-        restore()
+        synchronized(lock) {
+            closed = true
+            restore()
+        }
         Thread.interrupted()
     }
 
+    // Called with [lock] held.
     private fun restore() {
-        if (restored.compareAndSet(false, true)) restorers.forEach { it() }
+        if (restored) return
+        restored = true
+        restorers.forEach { it() }
     }
 
     private companion object {

@@ -25,7 +25,7 @@ import java.time.Duration
  */
 class RoutedObservabilityHttp(
     private val state: ClusterState,
-    private val route: ObservabilityRoute,
+    val route: ObservabilityRoute,
     private val httpClientFactory: HttpClientFactory,
 ) : ObservabilityHttp {
     override fun get(

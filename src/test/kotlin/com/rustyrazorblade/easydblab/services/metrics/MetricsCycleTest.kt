@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import com.rustyrazorblade.easydblab.proxy.RouteLookup
 import com.rustyrazorblade.easydblab.services.DefaultMimirQueryService
+import com.rustyrazorblade.easydblab.services.RoutedObservabilityHttp
 import okhttp3.OkHttpClient
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -133,44 +134,58 @@ class MetricsCycleTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a state file that cannot be read fails every metric and the stream keeps going`() {
-        var unreadable = true
-        val queries =
-            CycleQueries(
-                loadState = { if (unreadable) throw IllegalStateException("state.json is not valid JSON") else runningCluster() },
-                routes = { route },
-                httpClientFactory = clientFactory,
-                mimirFor = { DefaultMimirQueryService(http) },
-            )
+    fun `one cycle instance reads the cluster state again every cycle`() {
         http.on("system_memory_usage_bytes") { hosts("db0" to "1") }
-        val cycle = cycle(queries, memory)
+        val cycle = cycle(memory)
 
-        val first = cycle.run()
-        unreadable = false
-        val second = cycle.run()
+        val running = cycle.run()
+        state = runningCluster().apply { infrastructureStatus = InfrastructureStatus.DOWN }
+        val queriesBeforeDown = http.queries.size
+        val down = cycle.run()
+        val queriesWhileDown = http.queries.size - queriesBeforeDown
+        state = runningCluster()
+        val back = cycle.run()
 
-        assertThat(first).isEqualTo(CycleOutcome.Completed(CycleReport(published = 0, failed = 1)))
-        assertThat((recording.events[0] as Event.Metrics.MetricFailing).reason).contains("state.json is not valid JSON")
-        assertThat(second).isEqualTo(CycleOutcome.Completed(CycleReport(published = 1, failed = 0)))
-        assertThat(recording.events[1]).isEqualTo(Event.Metrics.MetricRecovered("node.memory"))
+        assertThat(running).isEqualTo(CycleOutcome.Completed(CycleReport(published = 1, failed = 0)))
+        assertThat(down).isEqualTo(CycleOutcome.Completed(CycleReport(published = 0, failed = 1)))
+        assertThat(queriesWhileDown).isZero()
+        assertThat(back).isEqualTo(CycleOutcome.Completed(CycleReport(published = 1, failed = 0)))
+        assertThat(recording.events).containsExactly(
+            Event.Metrics.MetricFailing("node.memory", "the cluster is not running"),
+            Event.Metrics.MetricRecovered("node.memory"),
+        )
     }
 
     @Test
-    fun `a route lookup that throws fails every metric with no query`() {
+    fun `one cycle instance follows the route recorded for each cycle`() {
+        val routes = mutableListOf<ObservabilityRoute>()
         val queries =
             CycleQueries(
                 loadState = { state },
-                routes = { throw IllegalStateException("proxy env file vanished") },
+                routes = { route },
                 httpClientFactory = clientFactory,
-                mimirFor = { DefaultMimirQueryService(http) },
+                mimirFor = { routed ->
+                    routes += (routed as RoutedObservabilityHttp).route
+                    DefaultMimirQueryService(http)
+                },
             )
+        val cycle = cycle(queries, memory)
 
-        val outcome = cycle(queries, cpu, memory).run()
+        cycle.run()
+        route = RouteLookup.Usable(ObservabilityRoute.Socks(PORT + 1))
+        cycle.run()
 
-        assertThat(outcome).isEqualTo(CycleOutcome.Completed(CycleReport(published = 0, failed = 2)))
-        assertThat(http.queries).isEmpty()
-        assertThat(recording.events.filterIsInstance<Event.Metrics.MetricFailing>().map { it.reason })
-            .allSatisfy { assertThat(it).contains("proxy env file vanished") }
+        assertThat(routes).containsExactly(ObservabilityRoute.Socks(PORT), ObservabilityRoute.Socks(PORT + 1))
+    }
+
+    @Test
+    fun `every query is scoped to the label of the cluster in the state`() {
+        val running = runningCluster().also { state = it }
+        val expected = "cluster=\"${running.clusterLabelName()}\""
+
+        cycle(cpu, memory, pending).run()
+
+        assertThat(http.queries).hasSize(3).allSatisfy { assertThat(it).contains(expected) }
     }
 
     @Test

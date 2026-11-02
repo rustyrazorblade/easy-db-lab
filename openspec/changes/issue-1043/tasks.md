@@ -58,7 +58,7 @@
 - [x] 7.2 Write `commands/metrics/Metrics.kt` (group), `MetricsStream.kt` (`@RequireProfileSetup`, `@RequiresProxy`, help says "see 'metrics list'") and register the group in `CommandLineParser.kt`.
 - [x] 7.3 Write `MetricsListTest`: prints the 14 names, one per line, and emits no events.
 - [x] 7.4 Write `commands/metrics/MetricsList.kt` with `println`.
-- [ ] 7.5 Write a process-level test that the first SIGTERM to a running `metrics stream` exits 0 and a second one while stopping exits 143.
+- [x] 7.5 Write a process-level test that the first SIGTERM to a running `metrics stream` exits 0 and a second one while stopping exits 143.
 
 ## 8. MCP removal
 

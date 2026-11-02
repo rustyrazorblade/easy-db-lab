@@ -65,14 +65,14 @@ class MetricsStreamSignalIntegrationTest {
         redis.stop()
     }
 
-    private fun startStream(): Process =
+    private fun startStream(redisUrl: String = RedisTestSupport.url(redis, "camera")): Process =
         CliProcess
             .start(
                 workingDirectory = workspace,
                 output = output,
                 environment =
                     mapOf(
-                        Constants.EventBus.REDIS_URL_ENV_VAR to RedisTestSupport.url(redis, "camera"),
+                        Constants.EventBus.REDIS_URL_ENV_VAR to redisUrl,
                         Constants.Environment.USER_DIR to File(root, "user").absolutePath,
                     ),
                 "metrics",
@@ -126,10 +126,35 @@ class MetricsStreamSignalIntegrationTest {
         }
     }
 
+    @Test
+    fun `a second SIGTERM while the stream is stopping exits at once with 143`() {
+        // Redis replies pass through a relay the test controls.  Once a cycle has completed, the relay
+        // holds requests, so the next cycle's ping waits on Redis; the first signal arrives during
+        // that wait, and the stream is still stopping when the second one arrives.
+        HoldingTcpRelay(redis.host, redis.getMappedPort(RedisTestSupport.PORT)).use { relay ->
+            val stream = startStream("redis://127.0.0.1:${relay.port}/camera")
+            awaitUntil("a completed cycle", { it.contains("metrics stream: published") }) { output.readText() }
+            relay.hold = true
+            relay.heldRequest.get(HELD_WAIT_SECONDS, TimeUnit.SECONDS)
+
+            stream.destroy()
+            assertThat(stream.waitFor(STILL_STOPPING_MS, TimeUnit.MILLISECONDS))
+                .withFailMessage { "the first SIGTERM did not leave the stream stopping; exit ${stream.exitValue()}" }
+                .isFalse()
+            stream.destroy()
+
+            assertThat(stream.waitFor(EXIT_WAIT_SECONDS, TimeUnit.SECONDS)).isTrue()
+            assertThat(stream.exitValue()).describedAs(output.readText()).isEqualTo(SIGTERM_EXIT)
+        }
+    }
+
     private companion object {
         const val STARTUP_ATTEMPTS = 60
         const val STARTUP_SECONDS = 60L
         const val EXIT_WAIT_SECONDS = 20L
+        const val HELD_WAIT_SECONDS = 15L
+        const val STILL_STOPPING_MS = 300L
+        const val SIGTERM_EXIT = 143
         val POLL: Duration = Duration.ofSeconds(1)
     }
 }

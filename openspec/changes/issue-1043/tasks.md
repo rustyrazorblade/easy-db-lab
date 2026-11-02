@@ -18,12 +18,12 @@
 
 ## 3. Catalogue and selection
 
-- [ ] 3.1 Write `StreamMetricTest` (BaseKoinTest): 14 names; the 11 defaults and the 3 non-defaults; each query is scoped to `cluster="<name>-<id>"`; scope and entity mapping for `PerHost` (missing `host_name` skipped), `Cluster` and `ClusterRange`; NaN, Inf and empty results give no sample; p99 values divided by 1000.
-- [ ] 3.2 Write `services/metrics/StreamMetric` with the PromQL from the design table until the test passes.
-- [ ] 3.3 Write `MetricSelectionTest`: `node.cpu,,x` rejects the empty entry and `x` with their positions; duplicates are removed in order; a blank `--metrics` value is rejected; no `--metrics` gives the defaults.
-- [ ] 3.4 Write `services/metrics/MetricSelection` (parses the raw string, not picocli `split`).
-- [ ] 3.5 Write `MetricHealthTest`: start healthy; first failure gives `Failed(reason)`; later failures give `None`; next success gives `Recovered`.
-- [ ] 3.6 Write `services/metrics/MetricHealth`.
+- [x] 3.1 Write `StreamMetricTest` (BaseKoinTest): 14 names; the 11 defaults and the 3 non-defaults; each query is scoped to `cluster="<name>-<id>"`; scope and entity mapping for `PerHost` (missing `host_name` skipped), `Cluster` and `ClusterRange`; NaN, Inf and empty results give no sample; p99 values divided by 1000.
+- [x] 3.2 Write `services/metrics/StreamMetric` with the PromQL from the design table until the test passes.
+- [x] 3.3 Write `MetricSelectionTest`: `node.cpu,,x` rejects the empty entry and `x` with their positions; duplicates are removed in order; a blank `--metrics` value is rejected; no `--metrics` gives the defaults.
+- [x] 3.4 Write `services/metrics/MetricSelection` (parses the raw string, not picocli `split`).
+- [x] 3.5 Write `MetricHealthTest`: start healthy; first failure gives `Failed(reason)`; later failures give `None`; next success gives `Recovered`.
+- [x] 3.6 Write `services/metrics/MetricHealth`.
 
 ## 4. Catalogue values on real Mimir
 

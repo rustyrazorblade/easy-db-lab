@@ -4883,8 +4883,7 @@ sealed interface Event {
         data class RedisNotConfigured(
             val envVar: String,
         ) : Metrics {
-            override fun toDisplayString(): String =
-                "metrics stream publishes to Redis: set $envVar to redis://host:port/channel"
+            override fun toDisplayString(): String = "metrics stream publishes to Redis: set $envVar to redis://host:port/channel"
 
             override fun isError(): Boolean = true
         }
@@ -4907,8 +4906,7 @@ sealed interface Event {
         data class NoRunningCluster(
             val workspace: String,
         ) : Metrics {
-            override fun toDisplayString(): String =
-                "No running cluster in $workspace: metrics stream needs one (run 'easy-db-lab up')"
+            override fun toDisplayString(): String = "No running cluster in $workspace: metrics stream needs one (run 'easy-db-lab up')"
 
             override fun isError(): Boolean = true
         }

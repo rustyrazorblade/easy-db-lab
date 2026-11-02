@@ -43,7 +43,11 @@ class MetricsStreamEventTest {
         val envelope = EventEnvelope(event = event, timestamp = "t", commandName = "stream")
 
         assertThat(EventEnvelope.fromJson(EventEnvelope.toJson(envelope))).isEqualTo(envelope)
-        assertThat(event.toDisplayString()).contains("2").contains("3").contains("'x'").contains("metrics list")
+        assertThat(event.toDisplayString())
+            .contains("2")
+            .contains("3")
+            .contains("'x'")
+            .contains("metrics list")
         assertThat(event.isError()).isTrue()
     }
 

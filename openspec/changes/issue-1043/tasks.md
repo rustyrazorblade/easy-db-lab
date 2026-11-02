@@ -32,12 +32,12 @@
 
 ## 5. Tunnel route
 
-- [ ] 5.1 Write `TunnelProcessControl` tests for the new `status(pid, port, sshConfig)` overload with a fake `lookup`; the existing `status(recorded)` cases stay green.
-- [ ] 5.2 Add the overload and make `status(recorded)` delegate to it.
-- [ ] 5.3 Write `RecordedTunnelRoutesTest` with a temporary env file and a fake `lookup`: Tailscale gives `Direct`; a live tunnel gives `Socks(port)`; no record, a dead PID and a PID held by another program give `Unavailable` whose reason says to run `socks start`; a new port in the file is returned on the next call.
-- [ ] 5.4 Write `proxy/ObservabilityRoutes` and `RecordedTunnelRoutes`.
-- [ ] 5.5 Write `RoutedObservabilityHttp` tests (integration tier, MockWebServer): the tenant header is sent; `Direct` uses no proxy; `Socks(port)` sets an explicit `java.net.Proxy(SOCKS, 127.0.0.1:port)`; `ensureRunning` is never called; `socksProxyHost` / `socksProxyPort` are never set.
-- [ ] 5.6 Move the request building in `DefaultObservabilityHttp.send` into `controlNodeCall(...)`, write `services/RoutedObservabilityHttp` on it, and update the readers list in the `ObservabilityHttp` KDoc (`metrics stream` replaces "MCP metrics").
+- [x] 5.1 Write `TunnelProcessControl` tests for the new `status(pid, port, sshConfig)` overload with a fake `lookup`; the existing `status(recorded)` cases stay green.
+- [x] 5.2 Add the overload and make `status(recorded)` delegate to it.
+- [x] 5.3 Write `RecordedTunnelRoutesTest` with a temporary env file and a fake `lookup`: Tailscale gives `Direct`; a live tunnel gives `Socks(port)`; no record, a dead PID and a PID held by another program give `Unavailable` whose reason says to run `socks start`; a new port in the file is returned on the next call.
+- [x] 5.4 Write `proxy/ObservabilityRoutes` and `RecordedTunnelRoutes`.
+- [x] 5.5 Write `RoutedObservabilityHttp` tests (integration tier, MockWebServer): the tenant header is sent; `Direct` uses no proxy; `Socks(port)` sets an explicit `java.net.Proxy(SOCKS, 127.0.0.1:port)`; `ensureRunning` is never called; `socksProxyHost` / `socksProxyPort` are never set.
+- [x] 5.6 Move the request building in `DefaultObservabilityHttp.send` into `controlNodeCall(...)`, write `services/RoutedObservabilityHttp` on it, and update the readers list in the `ObservabilityHttp` KDoc (`metrics stream` replaces "MCP metrics").
 
 ## 6. Publisher, cycle, loop and signals
 

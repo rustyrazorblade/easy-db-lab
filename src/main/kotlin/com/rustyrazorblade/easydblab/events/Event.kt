@@ -4784,6 +4784,20 @@ sealed interface Event {
             override fun isError(): Boolean = true
         }
 
+        /**
+         * Redis at [url] failed ([reason]) and the stream reconnected; the cycle's [samplesDropped]
+         * unpublished samples were dropped, not queued.
+         */
+        @Serializable
+        @SerialName("Metrics.RedisReconnected")
+        data class RedisReconnected(
+            val url: String,
+            val reason: String,
+            val samplesDropped: Int,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Reconnected to Redis at $url after: $reason ($samplesDropped samples dropped)"
+        }
+
         /** `metrics stream` started in [workspace], which has no running cluster. */
         @Serializable
         @SerialName("Metrics.NoRunningCluster")

@@ -218,7 +218,7 @@ class MetricsCycleTest : BaseKoinTest() {
         val pingsAfterFirst = publisher.pings
         val second = cycle.run()
 
-        assertThat(first).isEqualTo(CycleOutcome.Completed(CycleReport(published = 0, failed = 0)))
+        assertThat(first).isEqualTo(CycleOutcome.Completed(CycleReport(published = 0, failed = 0, dropped = 3)))
         // The cycle's own ping, then the reconnect's first ping.
         assertThat(pingsAfterFirst).isEqualTo(2)
         assertThat(second).isEqualTo(CycleOutcome.Completed(CycleReport(published = 3, failed = 0)))
@@ -315,7 +315,34 @@ class MetricsCycleTest : BaseKoinTest() {
 
     @Test
     fun `the summary line gives the samples published and the metrics failed`() {
-        assertThat(CycleReport(published = 7, failed = 2).summaryLine()).contains("7").contains("2")
+        assertThat(CycleReport(published = 7, failed = 2).summaryLine()).contains("7").contains("2").doesNotContain("dropped")
+    }
+
+    @Test
+    fun `a reconnect after a publish failure reports the dropped samples in an event and on the summary line`() {
+        http.on("system_memory_usage_bytes") { hosts("db0" to "1", "db1" to "2", "db2" to "3") }
+        publisher.onPublish = { if (publisher.published.size == 1) publisher.failPublishes = 1 }
+
+        val outcome = cycle(memory).run()
+
+        assertThat(outcome).isEqualTo(CycleOutcome.Completed(CycleReport(published = 1, failed = 0, dropped = 2)))
+        assertThat((outcome as CycleOutcome.Completed).report.summaryLine()).contains("2 samples dropped")
+        val reconnected = recording.events.filterIsInstance<Event.Metrics.RedisReconnected>().single()
+        assertThat(reconnected.url).isEqualTo(publisher.url)
+        assertThat(reconnected.samplesDropped).isEqualTo(2)
+        assertThat(reconnected.reason).contains("publish refused")
+    }
+
+    @Test
+    fun `a reconnect after a ping failure reports the reason and drops nothing it queried`() {
+        publisher.failPings = 1
+
+        val outcome = cycle(memory).run()
+
+        assertThat(outcome).isEqualTo(CycleOutcome.Completed(CycleReport(published = 0, failed = 0, dropped = 0)))
+        val reconnected = recording.events.filterIsInstance<Event.Metrics.RedisReconnected>().single()
+        assertThat(reconnected.reason).contains("ping refused")
+        assertThat(reconnected.samplesDropped).isZero()
     }
 
     private companion object {

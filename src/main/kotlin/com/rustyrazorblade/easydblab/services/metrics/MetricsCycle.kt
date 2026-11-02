@@ -3,16 +3,25 @@ package com.rustyrazorblade.easydblab.services.metrics
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 
-/** What one cycle did, for the terminal summary line. */
+/**
+ * What one cycle did, for the terminal summary line.
+ *
+ * @property dropped samples the cycle had but did not publish, because Redis failed and the stream
+ *   reconnected; they are never queued or replayed
+ */
 data class CycleReport(
     val published: Int,
     val failed: Int,
+    val dropped: Int = 0,
 ) {
     /** The one line printed after the cycle. */
-    fun summaryLine(): String = "metrics stream: published $published samples, $failed metrics failed"
+    fun summaryLine(): String =
+        "metrics stream: published $published samples, $failed metrics failed" +
+            if (dropped > 0) ", $dropped samples dropped (Redis reconnected)" else ""
 }
 
 /** How one cycle ended. */
@@ -112,7 +121,7 @@ class MetricsCycle(
                 publisher.publish(sample)
                 published++
             } catch (e: RedisPublishException) {
-                return reconnectAfter(e, report.copy(published = published))
+                return reconnectAfter(e, report.copy(published = published, dropped = samples.size - published))
             }
         }
         return CycleOutcome.Completed(report.copy(published = published))
@@ -120,13 +129,15 @@ class MetricsCycle(
 
     /**
      * Reconnects after [failure]: the cycle ends with [report] when Redis comes back, and as lost
-     * when every attempt fails.  A stop during the reconnect ends it as stopped.
+     * when every attempt fails.  A stop during the reconnect ends it as stopped.  A reconnect that
+     * succeeds is reported as `Metrics.RedisReconnected`, with the samples the cycle dropped.
      */
     private fun reconnectAfter(
         failure: RedisPublishException,
         report: CycleReport,
     ): CycleOutcome {
         if (isStopped()) return CycleOutcome.Stopped
+        log.warn(failure) { "Redis at ${publisher.url} failed (${failure.message}); reconnecting, dropping ${report.dropped} samples" }
         val reconnected =
             runCatching {
                 Retry.of(RECONNECT, reconnect).executeRunnable {
@@ -136,12 +147,16 @@ class MetricsCycle(
             }
         return when {
             isStopped() -> CycleOutcome.Stopped
-            reconnected.isSuccess -> CycleOutcome.Completed(report)
+            reconnected.isSuccess -> {
+                eventBus.emit(Event.Metrics.RedisReconnected(publisher.url, failure.message.orEmpty(), report.dropped))
+                CycleOutcome.Completed(report)
+            }
             else -> CycleOutcome.RedisLost(publisher.url, reconnected.exceptionOrNull()?.message ?: failure.message.orEmpty())
         }
     }
 
     private companion object {
         const val RECONNECT = "metrics-stream-redis-reconnect"
+        val log = KotlinLogging.logger {}
     }
 }

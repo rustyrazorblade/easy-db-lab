@@ -104,7 +104,8 @@ When the cluster is torn down while the stream runs, each metric fails once with
 - At start, the command needs `EASY_DB_LAB_REDIS_URL`.  When Redis does not answer, the tool exits with status 1 before the first cycle, and the message names `EASY_DB_LAB_REDIS_URL` and the URL.
 - The stream pings Redis at the start of every cycle, so a lost Redis is found within one cycle even when nothing is published.
 - When a ping or a publish fails, the stream drops the rest of that cycle's samples and tries to reconnect: 3 attempts, 1 second and then 2 seconds apart.  Samples that could not be published are not queued or replayed.
-- When a reconnect succeeds, the stream goes on from the next cycle.  When all 3 attempts fail, it emits `Metrics.RedisLost` and exits non-zero with a message that names the Redis URL.
+- When a reconnect succeeds, the stream emits `Metrics.RedisReconnected` (the URL, the reason, and the number of samples dropped), the cycle's summary line adds `N samples dropped (Redis reconnected)`, and the stream goes on from the next cycle.
+- Every URL the stream prints has its user name and password replaced by `***`.  When all 3 attempts fail, it emits `Metrics.RedisLost` and exits non-zero with a message that names the Redis URL.
 
 ## Tunnel and Tailscale
 

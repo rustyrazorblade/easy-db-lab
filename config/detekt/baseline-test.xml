@@ -15,6 +15,5 @@
     <ID>UnnecessaryAbstractClass:BaseKoinTest.kt$BaseKoinTest$BaseKoinTest</ID>
     <ID>UnnecessaryNotNullOperator:EC2SecurityGroupServiceTest.kt$EC2SecurityGroupServiceTest$result!!</ID>
     <ID>UnreachableCode:TestPrompter.kt$TestPrompter$responses[question] // Then try partial match (question contains key) ?: responses.entries.find { question.contains(it.key, ignoreCase = true) }?.value // Fall back to default ?: default</ID>
-    <ID>UseOrEmpty:ChannelMessageBufferTest.kt$ChannelMessageBufferTest$timestampRegex.find(it)?.groupValues?.get(1) ?: ""</ID>
   </CurrentIssues>
 </SmellBaseline>

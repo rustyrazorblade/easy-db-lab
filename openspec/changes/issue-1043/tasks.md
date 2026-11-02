@@ -45,12 +45,12 @@
 - [x] 6.2 Write `services/metrics/SamplePublisher` and `RedisSamplePublisher` on the shared `RedisPublisher`.
 - [x] 6.3 Write `MetricsCycleTest` (BaseKoinTest, fakes for `mimirFor`, `SamplePublisher`, `ObservabilityRoutes` and the stop flag): one failed metric does not block the others; each failure kind (no response, non-200, body status not `success`) counts; one `MetricFailing` per run of failures and one `MetricRecovered`; cluster not running fails every metric with no query; `Unavailable` route fails every metric with the `socks start` reason; publish failure drops the rest of the cycle and reconnects; ping failure goes through the same reconnect; reconnect success continues; all 3 attempts failed gives `RedisLost(url, reason)`; stop flag checked before each query, health record and publish, and before a failure counts as Redis lost; samples never reach the `EventBus`; the `CycleReport` counts.
 - [x] 6.4 Write `services/metrics/MetricsCycle` with the reconnect `RetryConfig` defaulting to `createNetworkRetryConfig<Unit>()`.
-- [ ] 6.5 Write `TickLoopTest` with a fake clock and sleeper: ticks at `t0 + k·5s`; a slow cycle skips the missed tick; cycles never overlap; the loop ends on stop.
-- [ ] 6.6 Write `services/metrics/TickLoop`.
-- [ ] 6.7 Write `StopSignals` tests: the first signal sets the flag, restores the earlier handlers and interrupts the command thread; the interrupt flag is cleared when the loop ends.
-- [ ] 6.8 Write `services/metrics/StopSignals` and `JvmStopSignals` (`sun.misc.Signal` for INT and TERM).
-- [ ] 6.9 Write `MetricsStreamServiceTest`: `run` returns `Stopped` on stop and `RedisLost` after failed reconnects, and calls `onCycle` once per completed cycle.
-- [ ] 6.10 Write `services/metrics/MetricsStreamService` and register the new services in Koin.
+- [x] 6.5 Write `TickLoopTest` with a fake clock and sleeper: ticks at `t0 + k·5s`; a slow cycle skips the missed tick; cycles never overlap; the loop ends on stop.
+- [x] 6.6 Write `services/metrics/TickLoop`.
+- [x] 6.7 Write `StopSignals` tests: the first signal sets the flag, restores the earlier handlers and interrupts the command thread; the interrupt flag is cleared when the loop ends.
+- [x] 6.8 Write `services/metrics/StopSignals` and `JvmStopSignals` (`sun.misc.Signal` for INT and TERM).
+- [x] 6.9 Write `MetricsStreamServiceTest`: `run` returns `Stopped` on stop and `RedisLost` after failed reconnects, and calls `onCycle` once per completed cycle.
+- [x] 6.10 Write `services/metrics/MetricsStreamService` and register the new services in Koin.
 
 ## 7. Commands
 

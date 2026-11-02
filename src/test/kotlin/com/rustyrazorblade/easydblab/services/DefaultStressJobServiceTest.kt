@@ -272,6 +272,22 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a stress run and a command job carry different role labels on the job and its pods`() {
+        val run =
+            service.buildJob(
+                StressJobConfig(jobName = "stress-1", image = "img", contactPoints = "10.0.1.6", args = listOf("run", "KeyValue")),
+            )
+        val command = service.buildCommandJob(jobName = "cmd-1", image = "img", args = listOf("list"))
+
+        listOf(run.metadata.labels, run.spec.template.metadata.labels).forEach {
+            assertThat(it[Constants.Stress.ROLE_LABEL_KEY]).isEqualTo(Constants.Stress.ROLE_RUN)
+        }
+        listOf(command.metadata.labels, command.spec.template.metadata.labels).forEach {
+            assertThat(it[Constants.Stress.ROLE_LABEL_KEY]).isEqualTo(Constants.Stress.ROLE_COMMAND)
+        }
+    }
+
+    @Test
     fun `buildJob should include custom tags in OTEL_RESOURCE_ATTRIBUTES`() {
         val job =
             service.buildJob(
@@ -656,8 +672,18 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
         )
     }
 
-    private fun pod(phase: String) =
-        KubernetesPod(namespace = "stress", name = "stress-wait-abc", status = phase, ready = "0/1", restarts = 0, age = Duration.ZERO)
+    private fun pod(
+        phase: String,
+        nodeName: String = "app0",
+    ) = KubernetesPod(
+        namespace = "stress",
+        name = "stress-wait-abc",
+        status = phase,
+        ready = "0/1",
+        restarts = 0,
+        age = Duration.ZERO,
+        nodeName = nodeName,
+    )
 
     @BeforeEach
     fun stubJobCreation() {
@@ -674,17 +700,24 @@ class DefaultStressJobServicePodWaitTest : BaseKoinTest() {
             Result.success(listOf(pod("Running"))),
         )
 
-        assertThat(service().startJob(controlHost, config).getOrThrow()).isEqualTo("stress-wait")
+        assertThat(service().startJob(controlHost, config).getOrThrow().jobName).isEqualTo("stress-wait")
         assertThat(events.filterIsInstance<Event.Stress.PodStatus>())
             .containsExactly(Event.Stress.PodStatus("stress-wait-abc", "Running"))
         verify(k8sService, times(4)).getPodsForJob(any(), any(), any())
     }
 
     @Test
+    fun `returns the node the running pod was scheduled on as the host`() {
+        whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Running", nodeName = "app3"))))
+
+        assertThat(service().startJob(controlHost, config).getOrThrow()).isEqualTo(StartedStressJob("stress-wait", "app3"))
+    }
+
+    @Test
     fun `a Succeeded pod also ends the wait`() {
         whenever(k8sService.getPodsForJob(any(), any(), any())).thenReturn(Result.success(listOf(pod("Succeeded"))))
 
-        assertThat(service().startJob(controlHost, config).getOrThrow()).isEqualTo("stress-wait")
+        assertThat(service().startJob(controlHost, config).getOrThrow().jobName).isEqualTo("stress-wait")
     }
 
     @Test

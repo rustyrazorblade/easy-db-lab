@@ -156,7 +156,6 @@ val servicesModule =
         }
         factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
         singleOf(::DefaultObservabilityHttp) bind ObservabilityHttp::class
-        singleOf(::DefaultMimirQueryService) bind MimirQueryService::class
         singleOf(::DefaultLokiQueryService) bind LokiQueryService::class
         factoryOf(::SidecarManifestBuilder)
         factoryOf(::DefaultSidecarService) bind SidecarService::class

@@ -1,54 +1,32 @@
 package com.rustyrazorblade.easydblab.events
 
-import com.rustyrazorblade.easydblab.Constants
 import io.github.oshai.kotlinlogging.KotlinLogging
-import redis.clients.jedis.RedisClient
-import java.net.URI
+import redis.clients.jedis.exceptions.JedisException
 
 /**
- * EventListener that publishes EventEnvelopes to a Redis pub/sub channel.
+ * EventListener that publishes every event envelope, as JSON, to the Redis channel of [publisher].
  *
- * Serializes events to JSON via kotlinx.serialization and publishes using Jedis.
- * Fails fast on connection errors — if Redis is configured, it must be reachable.
- *
- * URL format: redis://host:port/channel-name
- * If no path is specified, uses the default channel from Constants.
- *
- * @param redisUrl The Redis URL (redis://host:port/channel)
+ * The startup check is the publisher's: it pings when it is built, so a Redis that does not answer
+ * stops the process before any command runs.  After that, publishing is best effort.  A failed
+ * publish is logged and the event dropped, so a short Redis outage never stops a command.
  */
 class RedisEventListener(
-    redisUrl: String,
+    private val publisher: RedisPublisher,
 ) : EventListener {
-    companion object {
-        private val log = KotlinLogging.logger {}
-        private const val DEFAULT_REDIS_PORT = 6379
-    }
-
-    private val channel: String
-    private val jedis: RedisClient
-
-    init {
-        val uri = URI(redisUrl)
-        val pathChannel = uri.path?.removePrefix("/")?.takeIf { it.isNotBlank() }
-        channel = pathChannel ?: Constants.EventBus.DEFAULT_CHANNEL
-
-        val host = uri.host
-        val port = if (uri.port > 0) uri.port else DEFAULT_REDIS_PORT
-
-        jedis = RedisClient.create(host, port)
-
-        // Fail fast: verify connectivity by pinging Redis
-        jedis.ping()
-        log.info { "Redis EventListener connected to redis://$host:$port, publishing to channel: $channel" }
-    }
-
     override fun onEvent(envelope: EventEnvelope) {
-        val json = EventEnvelope.toJson(envelope)
-        jedis.publish(channel, json)
+        try {
+            publisher.publish(EventEnvelope.toJson(envelope))
+        } catch (e: JedisException) {
+            log.warn(e) { "Dropped an event: Redis at ${publisher.endpoint.url} did not take it" }
+        }
     }
 
     override fun close() {
-        jedis.close()
+        publisher.close()
         log.info { "Redis EventListener closed" }
+    }
+
+    private companion object {
+        private val log = KotlinLogging.logger {}
     }
 }

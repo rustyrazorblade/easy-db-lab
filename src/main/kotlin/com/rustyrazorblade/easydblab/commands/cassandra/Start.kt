@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
@@ -22,7 +21,6 @@ import java.io.File
 /**
  * Start cassandra on all nodes via service command.
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @RequiresProxy

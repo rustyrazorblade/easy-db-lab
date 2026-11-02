@@ -57,7 +57,7 @@ class RedisPublisher(
 class RedisUnavailableException(
     endpoint: RedisEndpoint,
     cause: Throwable,
-) : RuntimeException(
+) : RedisStartupException(
         "Redis at ${endpoint.url} (from ${Constants.EventBus.REDIS_URL_ENV_VAR}) did not answer: ${cause.message}",
         cause,
     )

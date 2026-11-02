@@ -1,7 +1,7 @@
 package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.events.EventBus
-import com.rustyrazorblade.easydblab.events.RedisUnavailableException
+import com.rustyrazorblade.easydblab.events.RedisStartupException
 import org.koin.core.Koin
 import org.koin.core.error.InstanceCreationException
 
@@ -10,7 +10,7 @@ import org.koin.core.error.InstanceCreationException
  * Redis when `EASY_DB_LAB_REDIS_URL` is set.
  *
  * Koin wraps a failure in its own creation exception, whose message names neither the variable
- * nor the URL.  This check finds the [RedisUnavailableException] in the cause chain, so `Main`
+ * nor the URL.  This check finds the [RedisStartupException] in the cause chain, so `Main`
  * can print its message and exit before any command runs.  It is the one failure with no typed
  * event, because the bus itself could not be built.
  */
@@ -22,7 +22,7 @@ object StartupRedisCheck {
             val eventBus: EventBus,
         ) : Result
 
-        /** Redis did not answer; [message] names the variable and the URL. */
+        /** Redis did not answer or its URL cannot be used; [message] names the variable and the URL. */
         data class RedisUnavailable(
             val message: String,
         ) : Result
@@ -41,9 +41,9 @@ object StartupRedisCheck {
             Result.RedisUnavailable(redis.message.orEmpty())
         }
 
-    /** The [RedisUnavailableException] in [failure]'s cause chain, if there is one. */
-    fun redisFailure(failure: Throwable): RedisUnavailableException? =
+    /** The [RedisStartupException] (Redis not answering, or an unusable URL) in [failure]'s cause chain, if there is one. */
+    fun redisFailure(failure: Throwable): RedisStartupException? =
         generateSequence(failure) { it.cause }
-            .filterIsInstance<RedisUnavailableException>()
+            .filterIsInstance<RedisStartupException>()
             .firstOrNull()
 }

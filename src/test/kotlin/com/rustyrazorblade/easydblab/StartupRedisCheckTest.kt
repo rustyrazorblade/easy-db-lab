@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.RedisConfigurationException
 import com.rustyrazorblade.easydblab.events.RedisEndpoint
 import com.rustyrazorblade.easydblab.events.RedisUnavailableException
 import org.assertj.core.api.Assertions.assertThat
@@ -32,6 +33,15 @@ class StartupRedisCheckTest : BaseKoinTest() {
         val wrapped = RuntimeException("koin", RuntimeException("inner", RedisUnavailableException(endpoint, IllegalStateException("x"))))
 
         assertThat(StartupRedisCheck.redisFailure(wrapped)).isInstanceOf(RedisUnavailableException::class.java)
+    }
+
+    @Test
+    fun `a Redis URL that cannot be used is reported like a Redis that does not answer`() {
+        val wrapped = RuntimeException("koin", RedisConfigurationException("localhost:6379", "it names no host"))
+
+        assertThat(StartupRedisCheck.redisFailure(wrapped))
+            .isInstanceOf(RedisConfigurationException::class.java)
+            .hasMessageContaining(Constants.EventBus.REDIS_URL_ENV_VAR)
     }
 
     @Test

@@ -27,8 +27,8 @@
 
 ## 4. Catalogue values on real Mimir
 
-- [ ] 4.1 Rewrite `PromQlCompatibilityIntegrationTest`: drop the `MetricsQueries` import; `toolQueries()` becomes `StreamMetric.entries.map { it.promql("lab-x") }` plus the trace-to-metrics queries.
-- [ ] 4.2 Write `StreamMetricValuesIntegrationTest` in `src/integrationTest` (Mimir TestContainer, `PrometheusRemoteWrite`): per-host sums across several disks (partitions and loop excluded) and interfaces (`lo` and Cilium excluded); `/mnt/db1` only, and a host without it gives no sample; multi-core CPU ratio between 0 and 100; p99 `cluster.min` leaves out zeros and is absent when every node is 0 while `cluster.max` is 0; a gauge sample older than 30 s next to a fresh one counts only the fresh one.
+- [x] 4.1 Rewrite `PromQlCompatibilityIntegrationTest`: drop the `MetricsQueries` import; `toolQueries()` becomes `StreamMetric.entries.map { it.promql("lab-x") }` plus the trace-to-metrics queries.
+- [x] 4.2 Write `StreamMetricValuesIntegrationTest` in `src/integrationTest` (Mimir TestContainer, `PrometheusRemoteWrite`): per-host sums across several disks (partitions and loop excluded) and interfaces (`lo` and Cilium excluded); `/mnt/db1` only, and a host without it gives no sample; multi-core CPU ratio between 0 and 100; p99 `cluster.min` leaves out zeros and is absent when every node is 0 while `cluster.max` is 0; a gauge sample older than 30 s next to a fresh one counts only the fresh one.
 
 ## 5. Tunnel route
 

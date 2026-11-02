@@ -33,14 +33,17 @@ class CycleQueries(
         data class Ready(
             private val mimir: MimirQueryService,
             private val cluster: String,
-            private val stressJobs: () -> List<Event.Stress.JobCompleted> = { emptyList() },
+            private val stressJobs: (isStopping: () -> Boolean) -> List<Event.Stress.JobCompleted> = { emptyList() },
         ) : Target {
             /** The samples of [metric] now, or why its query failed. */
             fun query(metric: StreamMetric): Result<List<Event.Metrics.Sample>> =
                 mimir.query(metric.promql(cluster)).map { metric.samples(it) }
 
-            /** The stress jobs that finished since the last cycle; empty when the list failed. */
-            fun completedStressJobs(): List<Event.Stress.JobCompleted> = stressJobs()
+            /**
+             * The stress jobs that finished since the last cycle; empty when the list failed.
+             * [isStopping] tells the list whether a failure comes from the stream stopping.
+             */
+            fun completedStressJobs(isStopping: () -> Boolean): List<Event.Stress.JobCompleted> = stressJobs(isStopping)
         }
 
         /** No query can be sent this cycle; every metric fails for [reason]. */
@@ -60,7 +63,7 @@ class CycleQueries(
                         Target.Ready(
                             mimir = mimirFor(RoutedObservabilityHttp(state, lookup.route, httpClientFactory)),
                             cluster = state.clusterLabelName(),
-                            stressJobs = { stressJobs.completed(state, lookup.route) },
+                            stressJobs = { isStopping -> stressJobs.completed(state, lookup.route, isStopping) },
                         )
                     is RouteLookup.Unavailable -> Target.Unavailable(lookup.reason)
                 }

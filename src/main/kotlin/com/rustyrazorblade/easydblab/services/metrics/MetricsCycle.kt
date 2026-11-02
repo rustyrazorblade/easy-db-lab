@@ -89,7 +89,7 @@ class MetricsCycle(
      */
     private fun reportStressJobs(target: CycleQueries.Target): Boolean {
         if (target !is CycleQueries.Target.Ready) return true
-        for (completed in target.completedStressJobs()) {
+        for (completed in target.completedStressJobs(isStopped)) {
             if (isStopped()) return false
             eventBus.emit(completed)
         }

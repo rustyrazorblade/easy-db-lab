@@ -272,6 +272,22 @@ class DefaultStressJobServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a stress run and a command job carry different role labels on the job and its pods`() {
+        val run =
+            service.buildJob(
+                StressJobConfig(jobName = "stress-1", image = "img", contactPoints = "10.0.1.6", args = listOf("run", "KeyValue")),
+            )
+        val command = service.buildCommandJob(jobName = "cmd-1", image = "img", args = listOf("list"))
+
+        listOf(run.metadata.labels, run.spec.template.metadata.labels).forEach {
+            assertThat(it[Constants.Stress.ROLE_LABEL_KEY]).isEqualTo(Constants.Stress.ROLE_RUN)
+        }
+        listOf(command.metadata.labels, command.spec.template.metadata.labels).forEach {
+            assertThat(it[Constants.Stress.ROLE_LABEL_KEY]).isEqualTo(Constants.Stress.ROLE_COMMAND)
+        }
+    }
+
+    @Test
     fun `buildJob should include custom tags in OTEL_RESOURCE_ATTRIBUTES`() {
         val job =
             service.buildJob(

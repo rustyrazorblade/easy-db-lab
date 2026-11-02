@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services.metrics
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
+import com.rustyrazorblade.easydblab.kubernetes.applyClusterClientTimeouts
+import com.rustyrazorblade.easydblab.kubernetes.socksProxyUrl
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.client.Config
@@ -12,7 +14,8 @@ import java.time.Instant
 
 /**
  * [StressJobLister] over the Kubernetes API, with a Fabric8 client built for each list from
- * [baseConfig] and the cycle's route.
+ * [baseConfig] and the cycle's route.  It lists only stress runs (`easydblab/role=stress-run`), not
+ * the short-lived command jobs.
  *
  * The route decides the proxy, per client: [ObservabilityRoute.Socks] sets
  * `httpsProxy = socks5://127.0.0.1:<port>`, and [ObservabilityRoute.Direct] sets none.  It does not
@@ -28,13 +31,13 @@ class Fabric8StressJobLister(
         state: ClusterState,
         route: ObservabilityRoute,
     ): List<ListedStressJob> {
-        val config = baseConfig().also { applyRoute(it, route) }
+        val config = listerConfig(baseConfig(), route)
         return KubernetesClientBuilder().withConfig(config).build().use { client ->
             val nodeByJob =
                 client
                     .pods()
                     .inNamespace(Constants.Stress.NAMESPACE)
-                    .withLabel(Constants.Stress.LABEL_KEY, Constants.Stress.LABEL_VALUE)
+                    .withLabels(STRESS_RUN_LABELS)
                     .list()
                     .items
                     .mapNotNull { pod ->
@@ -47,7 +50,7 @@ class Fabric8StressJobLister(
                 .v1()
                 .jobs()
                 .inNamespace(Constants.Stress.NAMESPACE)
-                .withLabel(Constants.Stress.LABEL_KEY, Constants.Stress.LABEL_VALUE)
+                .withLabels(STRESS_RUN_LABELS)
                 .list()
                 .items
                 .map { job -> listedStressJob(job, nodeByJob[job.metadata?.name].orEmpty()) }
@@ -56,20 +59,34 @@ class Fabric8StressJobLister(
 
     private companion object {
         const val JOB_NAME_LABEL = "job-name"
+
+        // Stress runs only: the short-lived command jobs share the app label but not the role.
+        val STRESS_RUN_LABELS =
+            mapOf(
+                Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+                Constants.Stress.ROLE_LABEL_KEY to Constants.Stress.ROLE_RUN,
+            )
     }
 }
 
-/** Points [config] at [route]: an explicit per-client SOCKS proxy, or no proxy at all. */
-internal fun applyRoute(
+/**
+ * [config] made ready for one list: the timeouts every cluster client uses, no request retries (a
+ * list that fails waits for the next cycle rather than holding this one), and the proxy from
+ * [route]: an explicit per-client SOCKS proxy, or none.
+ */
+internal fun listerConfig(
     config: Config,
     route: ObservabilityRoute,
-) {
-    config.httpsProxy =
-        when (route) {
-            is ObservabilityRoute.Socks -> "socks5://${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:${route.port}"
-            ObservabilityRoute.Direct -> null
-        }
-}
+): Config =
+    config.apply {
+        applyClusterClientTimeouts()
+        requestRetryBackoffLimit = 0
+        httpsProxy =
+            when (route) {
+                is ObservabilityRoute.Socks -> socksProxyUrl(route.port)
+                ObservabilityRoute.Direct -> null
+            }
+    }
 
 /**
  * [job] as a cycle sees it, on [host].  It finished when its `Complete` or `Failed` condition is

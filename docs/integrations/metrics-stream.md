@@ -117,7 +117,8 @@ Two events on the same channel mark the start and end of a stress job.
 - `JobCompleted` arrives within about 5 seconds of the job finishing, and only while `metrics stream` runs.
 - A job that had already finished when the stream started is not reported.
 - A job deleted while it runs (`cassandra stress stop`) is not reported.
-- When the job list fails, the stream logs it and checks again next cycle; the samples and metric failures do not change.  A job that finished meanwhile is reported at the next list that succeeds.
+- Only stress runs are reported; the short-lived helper jobs that `cassandra stress` commands such as `list` start are not.
+- When the job list fails, the stream logs a warning once, with the cause, and an info line when a list succeeds again; it checks again each cycle meanwhile; the samples and metric failures do not change.  A job that finished meanwhile is reported at the next list that succeeds.
 - `JobStarted` comes only from `cassandra stress start`, never from the stream, so each start is reported once.
 
 ## Failures

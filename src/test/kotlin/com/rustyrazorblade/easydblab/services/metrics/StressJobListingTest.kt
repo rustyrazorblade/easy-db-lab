@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.metrics
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
+import com.rustyrazorblade.easydblab.kubernetes.applyClusterClientTimeouts
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
@@ -83,11 +84,21 @@ class StressJobListingTest : BaseKoinTest() {
 
     @Test
     fun `a socks route sets an explicit per-client proxy and a direct route sets none`() {
-        val socks = Config.empty().also { applyRoute(it, ObservabilityRoute.Socks(21000)) }
-        val direct = Config.empty().also { it.httpsProxy = "socks5://stale:1" }.also { applyRoute(it, ObservabilityRoute.Direct) }
+        val socks = listerConfig(Config.empty(), ObservabilityRoute.Socks(21000))
+        val direct = listerConfig(Config.empty().also { it.httpsProxy = "socks5://stale:1" }, ObservabilityRoute.Direct)
 
         assertThat(socks.httpsProxy).isEqualTo("socks5://${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:21000")
         assertThat(direct.httpsProxy).isNull()
         assertThat(System.getProperty("socksProxyHost")).isNull()
+    }
+
+    @Test
+    fun `the list client uses the cluster client timeouts and does not retry within a cycle`() {
+        val config = listerConfig(Config.empty(), ObservabilityRoute.Socks(21000))
+        val reference = Config.empty().also { it.applyClusterClientTimeouts() }
+
+        assertThat(config.connectionTimeout).isEqualTo(reference.connectionTimeout)
+        assertThat(config.requestTimeout).isEqualTo(reference.requestTimeout)
+        assertThat(config.requestRetryBackoffLimit).isZero()
     }
 }

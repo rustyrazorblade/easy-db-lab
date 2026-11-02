@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.StressJobOutcome
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
+import io.github.oshai.kotlinlogging.Level
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 
@@ -103,6 +104,44 @@ class StressJobWatcherTest : BaseKoinTest() {
 
         assertThat(reports[1]).isEmpty()
         assertThat(reports[2]).containsExactly(Event.Stress.JobCompleted("j1", "app0", StressJobOutcome.SUCCEEDED, 605))
+    }
+
+    @Test
+    fun `a host seen while running is kept when later lists name none`() {
+        val watcher =
+            StressJobWatcher(
+                ScriptedLister(
+                    listOf(
+                        ok(ListedStressJob.Running("j1", "app2")),
+                        ok(ListedStressJob.Running("j1", "")),
+                        ok(ListedStressJob.Finished("j1", "", StressJobOutcome.SUCCEEDED, 5)),
+                    ),
+                ),
+            )
+
+        val reports = watcher.cycles(3)
+
+        assertThat(reports[2]).containsExactly(Event.Stress.JobCompleted("j1", "app2", StressJobOutcome.SUCCEEDED, 5))
+    }
+
+    @Test
+    fun `a run of list failures is logged at warn once, at debug after, and at info when it ends`() {
+        val log = ListFailureLog()
+
+        assertThat(log.failed(stopping = false)).isEqualTo(Level.WARN)
+        assertThat(log.failed(stopping = false)).isEqualTo(Level.DEBUG)
+        assertThat(log.failed(stopping = false)).isEqualTo(Level.DEBUG)
+        assertThat(log.succeeded()).isEqualTo(Level.INFO)
+        assertThat(log.succeeded()).isNull()
+        assertThat(log.failed(stopping = false)).isEqualTo(Level.WARN)
+    }
+
+    @Test
+    fun `a list failure while the stream is stopping is not logged at warn`() {
+        val log = ListFailureLog()
+
+        assertThat(log.failed(stopping = true)).isEqualTo(Level.DEBUG)
+        assertThat(log.succeeded()).isNull()
     }
 
     @Test

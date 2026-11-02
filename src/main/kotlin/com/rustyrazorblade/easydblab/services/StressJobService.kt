@@ -376,6 +376,7 @@ class DefaultStressJobService(
         val labels =
             mapOf(
                 Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+                Constants.Stress.ROLE_LABEL_KEY to Constants.Stress.ROLE_RUN,
                 "job-name" to config.jobName,
             )
 
@@ -638,6 +639,7 @@ class DefaultStressJobService(
         val labels =
             mapOf(
                 Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+                Constants.Stress.ROLE_LABEL_KEY to Constants.Stress.ROLE_COMMAND,
                 "job-name" to jobName,
             )
 

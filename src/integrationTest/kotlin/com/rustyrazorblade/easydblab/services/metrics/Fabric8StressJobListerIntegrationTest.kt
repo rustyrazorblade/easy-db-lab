@@ -19,7 +19,16 @@ class Fabric8StressJobListerIntegrationTest {
     lateinit var server: KubernetesMockServer
 
     private val stressLabels =
-        mapOf(Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE)
+        mapOf(
+            Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+            Constants.Stress.ROLE_LABEL_KEY to Constants.Stress.ROLE_RUN,
+        )
+
+    private val commandLabels =
+        mapOf(
+            Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+            Constants.Stress.ROLE_LABEL_KEY to Constants.Stress.ROLE_COMMAND,
+        )
 
     private fun createJob(
         name: String,
@@ -92,12 +101,37 @@ class Fabric8StressJobListerIntegrationTest {
         createJob("stress-done", stressLabels, finished = "Complete")
         createPod("stress-done", "app1")
         createJob("other-job", mapOf("app" to "something-else"), finished = "Complete")
+        createJob("cmd-1", commandLabels, finished = null)
 
-        val jobs = Fabric8StressJobLister { server.createClient().configuration }.list(runningCluster(), ObservabilityRoute.Direct)
+        val jobs = lister().list(runningCluster(), ObservabilityRoute.Direct)
 
         assertThat(jobs).containsExactlyInAnyOrder(
             ListedStressJob.Running("stress-running", "app0"),
             ListedStressJob.Finished("stress-done", "app1", StressJobOutcome.SUCCEEDED, 605),
         )
     }
+
+    @Test
+    fun `a stress command job that runs and then finishes is never reported as completed`() {
+        val watcher = StressJobWatcher(lister())
+        createJob("cmd-1", commandLabels, finished = null)
+
+        val whileRunning = watcher.completed(runningCluster(), ObservabilityRoute.Direct)
+        server.createClient().use { client ->
+            client
+                .batch()
+                .v1()
+                .jobs()
+                .inNamespace(Constants.Stress.NAMESPACE)
+                .withName("cmd-1")
+                .delete()
+        }
+        createJob("cmd-1", commandLabels, finished = "Complete")
+        val afterFinish = watcher.completed(runningCluster(), ObservabilityRoute.Direct)
+
+        assertThat(whileRunning).isEmpty()
+        assertThat(afterFinish).isEmpty()
+    }
+
+    private fun lister() = Fabric8StressJobLister { server.createClient().configuration }
 }

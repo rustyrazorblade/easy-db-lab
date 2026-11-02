@@ -771,6 +771,15 @@ object Constants {
         const val IMAGE = "ghcr.io/apache/cassandra-easy-stress:latest"
         const val LABEL_KEY = "app.kubernetes.io/name"
         const val LABEL_VALUE = "cassandra-easy-stress"
+
+        /** The label that tells a stress run (`cassandra stress start`) from a short-lived command job. */
+        const val ROLE_LABEL_KEY = "easydblab/role"
+
+        /** [ROLE_LABEL_KEY] on the jobs and pods of a stress run; `metrics stream` watches only these. */
+        const val ROLE_RUN = "stress-run"
+
+        /** [ROLE_LABEL_KEY] on the short-lived command jobs (`stress list`, `fields`, `info`). */
+        const val ROLE_COMMAND = "stress-command"
         const val DEFAULT_CASSANDRA_PORT = 9042
         const val PROMETHEUS_PORT = 9500
 

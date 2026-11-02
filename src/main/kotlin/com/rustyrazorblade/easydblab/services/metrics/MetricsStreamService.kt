@@ -27,7 +27,7 @@ class MetricsStreamService(
     private val eventBus: EventBus,
     private val stopSignals: StopSignals,
     private val tickLoop: TickLoop = TickLoop(),
-    private val reconnect: RetryConfig = RetryUtil.createNetworkRetryConfig<Unit>(),
+    val reconnect: RetryConfig = RetryUtil.createNetworkRetryConfig<Unit>(),
 ) {
     /** Streams [metrics] and calls [onCycle] with each completed cycle's report. */
     fun run(

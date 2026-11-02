@@ -54,10 +54,10 @@
 
 ## 7. Commands
 
-- [ ] 7.1 Write `MetricsStreamTest` (BaseKoinTest): bad names emit `Metrics.InvalidNames` and exit non-zero before any cycle; `EASY_DB_LAB_REDIS_URL` unset emits `Metrics.RedisNotConfigured` and exits non-zero; no running cluster emits `Metrics.NoRunningCluster` and exits non-zero; a redirected cluster is refused; one summary line per cycle with samples published and metrics failed, and no sample printed; `Stopped` returns exit 0; `RedisLost` exits non-zero naming the URL.
-- [ ] 7.2 Write `commands/metrics/Metrics.kt` (group), `MetricsStream.kt` (`@RequireProfileSetup`, `@RequiresProxy`, help says "see 'metrics list'") and register the group in `CommandLineParser.kt`.
-- [ ] 7.3 Write `MetricsListTest`: prints the 14 names, one per line, and emits no events.
-- [ ] 7.4 Write `commands/metrics/MetricsList.kt` with `println`.
+- [x] 7.1 Write `MetricsStreamTest` (BaseKoinTest): bad names emit `Metrics.InvalidNames` and exit non-zero before any cycle; `EASY_DB_LAB_REDIS_URL` unset emits `Metrics.RedisNotConfigured` and exits non-zero; no running cluster emits `Metrics.NoRunningCluster` and exits non-zero; a redirected cluster is refused; one summary line per cycle with samples published and metrics failed, and no sample printed; `Stopped` returns exit 0; `RedisLost` exits non-zero naming the URL.
+- [x] 7.2 Write `commands/metrics/Metrics.kt` (group), `MetricsStream.kt` (`@RequireProfileSetup`, `@RequiresProxy`, help says "see 'metrics list'") and register the group in `CommandLineParser.kt`.
+- [x] 7.3 Write `MetricsListTest`: prints the 14 names, one per line, and emits no events.
+- [x] 7.4 Write `commands/metrics/MetricsList.kt` with `println`.
 - [ ] 7.5 Write a process-level test that the first SIGTERM to a running `metrics stream` exits 0 and a second one while stopping exits 143.
 
 ## 8. MCP removal

@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.StressJobOutcome
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ObservabilityRoute
 import com.rustyrazorblade.easydblab.proxy.RouteLookup
@@ -186,6 +187,85 @@ class MetricsCycleTest : BaseKoinTest() {
         cycle(cpu, memory, pending).run()
 
         assertThat(http.queries).hasSize(3).allSatisfy { assertThat(it).contains(expected) }
+    }
+
+    private fun withStressJobs(vararg answers: () -> List<ListedStressJob>): CycleQueries {
+        val remaining = ArrayDeque(answers.toList())
+        return CycleQueries(
+            loadState = { state },
+            routes = { route },
+            httpClientFactory = clientFactory,
+            mimirFor = { DefaultMimirQueryService(http) },
+            stressJobs = StressJobWatcher { _, _ -> remaining.removeFirst().invoke() },
+        )
+    }
+
+    @Test
+    fun `a stress job seen running that finishes is reported on the bus once`() {
+        val queries =
+            withStressJobs(
+                { listOf(ListedStressJob.Running("stress-1", "app0")) },
+                { listOf(ListedStressJob.Finished("stress-1", "app0", StressJobOutcome.SUCCEEDED, 605)) },
+            )
+        val cycle = cycle(queries, memory)
+
+        cycle.run()
+        cycle.run()
+
+        assertThat(recording.events.filterIsInstance<Event.Stress.JobCompleted>())
+            .containsExactly(Event.Stress.JobCompleted("stress-1", "app0", StressJobOutcome.SUCCEEDED, 605))
+    }
+
+    @Test
+    fun `a stress job list that fails changes neither the samples nor metric health`() {
+        http.on("system_memory_usage_bytes") { hosts("db0" to "1") }
+        val queries = withStressJobs({ throw IllegalStateException("k8s api unreachable") })
+
+        val outcome = cycle(queries, memory).run()
+
+        assertThat(outcome).isEqualTo(CycleOutcome.Completed(CycleReport(published = 1, failed = 0)))
+        assertThat(recording.events).isEmpty()
+    }
+
+    @Test
+    fun `no stress job is reported after a stop`() {
+        val queries =
+            withStressJobs(
+                { listOf(ListedStressJob.Running("stress-1", "app0")) },
+                {
+                    stopped = true
+                    listOf(ListedStressJob.Finished("stress-1", "app0", StressJobOutcome.FAILED, 3))
+                },
+            )
+        val cycle = cycle(queries, memory)
+
+        cycle.run()
+        val outcome = cycle.run()
+
+        assertThat(outcome).isEqualTo(CycleOutcome.Stopped)
+        assertThat(recording.events.filterIsInstance<Event.Stress.JobCompleted>()).isEmpty()
+    }
+
+    @Test
+    fun `stress jobs are not listed while the cluster is not running`() {
+        var listed = 0
+        val queries =
+            CycleQueries(
+                loadState = { state },
+                routes = { route },
+                httpClientFactory = clientFactory,
+                mimirFor = { DefaultMimirQueryService(http) },
+                stressJobs =
+                    StressJobWatcher { _, _ ->
+                        listed++
+                        emptyList()
+                    },
+            )
+        state = runningCluster().apply { infrastructureStatus = InfrastructureStatus.DOWN }
+
+        cycle(queries, memory).run()
+
+        assertThat(listed).isZero()
     }
 
     @Test

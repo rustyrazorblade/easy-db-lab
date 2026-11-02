@@ -91,6 +91,35 @@ Samples go to Redis only.  The terminal shows one line per cycle with the number
 metrics stream: published 18 samples, 0 metrics failed
 ```
 
+## Stress Job Events
+
+Two events on the same channel mark the start and end of a stress job.
+
+`Stress.JobStarted` comes from `cassandra stress start`, once the stress pod is running.  Its `host` field is the alias of the node the pod runs on:
+
+```json
+{"timestamp":"2026-11-02T10:15:30.123Z","commandName":"start","event":{"type":"Stress.JobStarted","jobName":"stress-1730542530","host":"app0","image":"…","contactPoint":"db0","promPort":9500,"args":["run","KeyValue","-d","10m"]}}
+```
+
+`Stress.JobCompleted` comes from `metrics stream`.  Each cycle, the stream lists the stress jobs over the same route as its queries; it never starts or replaces a tunnel to do so.  It emits the event once for each job it saw running that has now finished:
+
+```json
+{"timestamp":"2026-11-02T10:25:41.007Z","commandName":"stream","event":{"type":"Stress.JobCompleted","jobName":"stress-1730542530","host":"app0","outcome":"succeeded","durationSeconds":605}}
+```
+
+| Field | Meaning |
+|-------|---------|
+| `jobName` | the Kubernetes job name, the same as in `JobStarted` |
+| `host` | the alias of the node the stress pod ran on |
+| `outcome` | `succeeded` or `failed`, from the Kubernetes job status |
+| `durationSeconds` | the job's start time to its completion time |
+
+- `JobCompleted` arrives within about 5 seconds of the job finishing, and only while `metrics stream` runs.
+- A job that had already finished when the stream started is not reported.
+- A job deleted while it runs (`cassandra stress stop`) is not reported.
+- When the job list fails, the stream logs it and checks again next cycle; the samples and metric failures do not change.  A job that finished meanwhile is reported at the next list that succeeds.
+- `JobStarted` comes only from `cassandra stress start`, never from the stream, so each start is reported once.
+
 ## Failures
 
 A query fails when Mimir does not answer, answers with a status other than 200, or answers 200 with a body status other than `success`.  The other metrics are still published in that cycle, and the failed one is queried again in the next cycle.

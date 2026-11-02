@@ -75,15 +75,29 @@ class MetricsCycle(
         } catch (e: RedisPublishException) {
             return reconnectAfter(e, CycleReport(published = 0, failed = 0))
         }
-        val outcomes = queryAll() ?: return CycleOutcome.Stopped
+        val target = queries.prepare()
+        val outcomes = queryAll(target) ?: return CycleOutcome.Stopped
         if (!recordHealth(outcomes)) return CycleOutcome.Stopped
+        if (!reportStressJobs(target)) return CycleOutcome.Stopped
         val report = CycleReport(published = 0, failed = outcomes.values.count { it.isFailure })
         return publishAll(outcomes.values.flatMap { it.getOrDefault(emptyList()) }, report)
     }
 
+    /**
+     * Emits a `Stress.JobCompleted` for each stress job that finished since the last cycle; false
+     * when the stream was stopped first.  With no route this cycle, the jobs are not listed.
+     */
+    private fun reportStressJobs(target: CycleQueries.Target): Boolean {
+        if (target !is CycleQueries.Target.Ready) return true
+        for (completed in target.completedStressJobs()) {
+            if (isStopped()) return false
+            eventBus.emit(completed)
+        }
+        return !isStopped()
+    }
+
     /** Each metric's outcome, or null when the stream was stopped. */
-    private fun queryAll(): Map<StreamMetric, Result<List<Event.Metrics.Sample>>>? {
-        val target = queries.prepare()
+    private fun queryAll(target: CycleQueries.Target): Map<StreamMetric, Result<List<Event.Metrics.Sample>>>? {
         val outcomes = linkedMapOf<StreamMetric, Result<List<Event.Metrics.Sample>>>()
         for (metric in metrics) {
             if (isStopped()) return null

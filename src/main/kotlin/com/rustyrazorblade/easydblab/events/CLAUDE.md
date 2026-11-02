@@ -49,7 +49,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Registry.*` — Container registry operations
 - `Event.Tailscale.*` — Tailscale VPN operations
 - `Event.AwsSetup.*` — AWS resource setup (IAM roles, etc.)
-- `Event.Stress.*` — Stress testing operations
+- `Event.Stress.*` — Stress testing operations. `JobStarted` (from `cassandra stress start`, once the pod runs) carries `host`, the alias of the node the stress pod runs on. `JobCompleted(jobName, host, outcome, durationSeconds)` comes only from `metrics stream`: once for each job it saw running that has finished; `outcome` is `StressJobOutcome`, `succeeded` or `failed` on the wire
 - `Event.Service.*` — SystemD service management
 - `Event.Provision.*` — Cluster provisioning orchestration
 - `Event.Command.*` — Command execution and general command output

@@ -18,12 +18,14 @@ import com.rustyrazorblade.easydblab.services.RoutedObservabilityHttp
  * @param routes the reuse-only route lookup; it never starts or replaces a tunnel
  * @param httpClientFactory the base HTTP client each cycle's route is applied to
  * @param mimirFor builds the query service on a cycle's [ObservabilityHttp]; tests replace it
+ * @param stressJobs finds the stress jobs that finished since the last cycle, over the same route
  */
 class CycleQueries(
     private val loadState: () -> ClusterState?,
     private val routes: ObservabilityRoutes,
     private val httpClientFactory: HttpClientFactory,
     private val mimirFor: (ObservabilityHttp) -> MimirQueryService = ::DefaultMimirQueryService,
+    private val stressJobs: StressJobWatcher = StressJobWatcher { _, _ -> emptyList() },
 ) {
     /** How this cycle's metrics can be queried. */
     sealed interface Target {
@@ -31,10 +33,14 @@ class CycleQueries(
         data class Ready(
             private val mimir: MimirQueryService,
             private val cluster: String,
+            private val stressJobs: () -> List<Event.Stress.JobCompleted> = { emptyList() },
         ) : Target {
             /** The samples of [metric] now, or why its query failed. */
             fun query(metric: StreamMetric): Result<List<Event.Metrics.Sample>> =
                 mimir.query(metric.promql(cluster)).map { metric.samples(it) }
+
+            /** The stress jobs that finished since the last cycle; empty when the list failed. */
+            fun completedStressJobs(): List<Event.Stress.JobCompleted> = stressJobs()
         }
 
         /** No query can be sent this cycle; every metric fails for [reason]. */
@@ -51,7 +57,11 @@ class CycleQueries(
             else ->
                 when (val lookup = routes.current(state)) {
                     is RouteLookup.Usable ->
-                        Target.Ready(mimirFor(RoutedObservabilityHttp(state, lookup.route, httpClientFactory)), state.clusterLabelName())
+                        Target.Ready(
+                            mimir = mimirFor(RoutedObservabilityHttp(state, lookup.route, httpClientFactory)),
+                            cluster = state.clusterLabelName(),
+                            stressJobs = { stressJobs.completed(state, lookup.route) },
+                        )
                     is RouteLookup.Unavailable -> Target.Unavailable(lookup.reason)
                 }
         }

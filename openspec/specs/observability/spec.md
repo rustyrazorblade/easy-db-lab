@@ -18,18 +18,19 @@ The OTel Collector ConfigMap SHALL be generated dynamically by `OtelManifestBuil
 
 ### Requirement: Grafana Dashboards
 
-The system MUST provide pre-configured Grafana dashboards for all supported databases and infrastructure. Dashboard titles MUST use simple descriptive names without cluster name prefixes. The Grafana pod SHALL include an image renderer sidecar for server-side panel rendering. Dashboard JSON SHALL be loaded directly from classpath resources without template substitution, preserving Grafana built-in variables like `$__rate_interval`.
+The system MUST provide pre-configured Grafana dashboards for all supported databases and infrastructure. Dashboard titles MUST use simple descriptive names without cluster name prefixes. The Grafana pod SHALL include an image renderer sidecar for server-side panel rendering, and the `aws-sigv4-proxy` and documents web server sidecars that the `test-documents` capability specifies. Dashboard JSON SHALL be loaded directly from classpath resources without template substitution, preserving Grafana built-in variables like `$__rate_interval`. The only change made to a dashboard on its way to Grafana SHALL be the install-time pass that the `multi-cluster-dashboards` capability specifies ("Installed dashboards default to the current cluster"), plus the `__PYROSCOPE_URL__` substitution.
 
 Core dashboards SHALL be delivered as a file tree, not as Kubernetes objects: `grafana update-config` SHALL copy every `dashboards/<folder>/<file>.json` on the classpath onto the control node's Grafana data hostPath (`/mnt/db1/grafana/dashboards`, `/var/lib/grafana/dashboards` inside the pod), and Grafana SHALL be provisioned with exactly one file provider whose `foldersFromFilesStructure` is true and which names no folder, so each directory becomes a Grafana folder of the same title. No code SHALL enumerate dashboards by hand; the set is discovered from the classpath.
 
-All dashboards SHALL include a `cluster` multi-select variable and an ad hoc filters variable. All metric panel queries SHALL be scoped by `{cluster=~"$cluster"}`. No native ClickHouse datasource SHALL be provisioned.
+Every dashboard that has a `cluster` variable SHALL make it multi-select with an "All" option, except the Tests dashboard, whose `cluster` variable is single-select. All metric dashboards SHALL include an ad hoc filters variable. All metric panel queries SHALL be scoped by `{cluster=~"$cluster"}`. No native ClickHouse datasource SHALL be provisioned.
 
 #### Scenario: Dashboard JSON is not processed by TemplateService
 
 - **WHEN** the dashboard tree is written for upload
 - **THEN** each dashboard JSON SHALL be loaded directly from the classpath without passing through `TemplateService.substitute()`
 - **AND** all Grafana built-in variables (e.g., `$__rate_interval`, `$__interval`) SHALL be preserved verbatim in the deployed JSON
-- **AND** every occurrence of `__PYROSCOPE_URL__` in any dashboard SHALL be replaced with the cluster's Pyroscope URL; no other substitution SHALL be made
+- **AND** every occurrence of `__PYROSCOPE_URL__` in any dashboard SHALL be replaced with the cluster's Pyroscope URL
+- **AND** the install-time pass SHALL be applied; no other change SHALL be made
 
 #### Scenario: Dashboard titles use descriptive names
 
@@ -48,11 +49,17 @@ All dashboards SHALL include a `cluster` multi-select variable and an ad hoc fil
 - **THEN** the `GF_RENDERING_SERVER_URL` env var SHALL point to `http://localhost:8081/render`
 - **AND** the `GF_RENDERING_CALLBACK_URL` env var SHALL point to `http://localhost:3000/`
 
-#### Scenario: All dashboards have a cluster variable
+#### Scenario: Documents sidecars run alongside Grafana
 
-- **WHEN** any dashboard is deployed via `grafana update-config`
-- **THEN** the dashboard JSON SHALL contain a `cluster` template variable with `multi: true` and `includeAll: true`
-- **AND** the variable SHALL query `label_values(up, cluster)` against the Mimir datasource (uid `mimir`)
+- **WHEN** the Grafana deployment is applied to the cluster
+- **THEN** the pod SHALL contain the `aws-sigv4-proxy` container and the documents web server container
+- **AND** Grafana SHALL run with `disable_sanitize_html` set to true
+
+#### Scenario: Cluster variables read the metrics picker
+
+- **WHEN** any dashboard that has a `cluster` variable is deployed via `grafana update-config`
+- **THEN** the variable SHALL query `label_values(up, cluster)` against `${metrics_datasource}`, never a fixed datasource uid, except on the Tests dashboard, whose variable lists the clusters with `up` samples within `lookback` against `${metrics_datasource}`
+- **AND** the variable SHALL have `multi: true` and `includeAll: true`, except on the Tests dashboard
 
 #### Scenario: All metric panels are cluster-scoped
 

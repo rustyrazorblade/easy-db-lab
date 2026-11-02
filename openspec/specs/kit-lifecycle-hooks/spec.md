@@ -3,9 +3,7 @@
 ## Purpose
 
 Let a kit declare hook scripts in its `config.yaml` that run after any other kit starts or stops, so observer kits can react to peer kit lifecycle events with retry-on-failure semantics.
-
 ## Requirements
-
 ### Requirement: config.yaml declares post-kit hooks
 A kit's `config.yaml` MAY declare hook scripts that execute after any other kit starts or stops. Hooks SHALL be declared under a `hooks` key with `post-workload-start` and/or `post-workload-stop` sub-keys, each specifying a `script` path relative to the kit directory. An optional `kits` list scopes the hook to specific triggering kit names; when absent the hook fires for all kits.
 
@@ -48,3 +46,20 @@ The hook system SHALL apply to `cassandra start`, `cassandra stop`, and equivale
 - **WHEN** `easy-db-lab cassandra start` completes successfully
 - **AND** presto is installed with a `post-workload-start` hook
 - **THEN** presto's hook script is executed
+
+### Requirement: Hook scripts run with the workspace tool wrappers and an absolute kubeconfig
+
+Every kit hook script MUST run with `<workspace>/bin` first on `PATH`, with the tool wrappers written before it starts, and with `KUBECONFIG` set to the absolute path of the workspace kubeconfig. The hook MUST fail before it starts if the workspace kubeconfig does not exist.
+
+#### Scenario: Hook gets the wrappers and an absolute kubeconfig
+
+- **WHEN** a kit hook script runs after another kit starts or stops
+- **THEN** the first entry of its `PATH` is `<workspace>/bin`
+- **AND** its `KUBECONFIG` is an absolute path to a file that exists
+
+#### Scenario: Hook on a SOCKS cluster
+
+- **GIVEN** a SOCKS cluster with a recorded port
+- **WHEN** a hook script runs `kubectl`
+- **THEN** the call goes through the wrapper and through the tunnel
+

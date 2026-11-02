@@ -96,7 +96,7 @@
 - [x] 11.3 `docs/user-guide/kubernetes.md`: `kubectl` and `k9s` after `source env.sh`.
 - [x] 11.4 Root `CLAUDE.md`: in the SOCKS absolute rule, replace "local kubectl/helm in kit shell steps via `SocksTcpBridge` (see `KubeconfigProxyResolver`)" with the tool wrappers; add the env-file standing rule; note that a workspace must not already have a `bin/`.
 - [x] 11.5 `providers/CLAUDE.md`: update the reason the `Hostname` line must follow `Host` (the `env.sh` `start-socks5` `grep -A 1` reader is gone; keep or drop the rule per what still reads it).
-- [ ] 11.6 Before archiving this change, archive `ssm-ssh-transport`, then add a MODIFIED copy of "SSH transport over SSM Session Manager" to this change's `networking` delta whose "Shell helpers work unchanged over SSM" scenario names `easy-db-lab socks start` instead of starting the proxy from `env.sh` (see `overrides.md`).
+- [x] 11.6 Before archiving this change, archive `ssm-ssh-transport`, then add a MODIFIED copy of "SSH transport over SSM Session Manager" to this change's `networking` delta whose "Shell helpers work unchanged over SSM" scenario names `easy-db-lab socks start` instead of starting the proxy from `env.sh` (see `overrides.md`).
 - [x] 11.7 Update any other `CLAUDE.md` that names `KubeconfigProxyResolver`, `start-socks5`, or the e2e scripts.
 
 ## 12. Build checks

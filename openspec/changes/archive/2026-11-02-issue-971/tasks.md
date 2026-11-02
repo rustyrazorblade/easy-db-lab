@@ -94,7 +94,7 @@
 - [x] 12.4 `docs/development/kits.md`: kit dashboards declare the pickers, name no fixed uid, and follow the link rule; the install-time `cluster` default.
 - [x] 12.5 `docs/user-guide/monitoring.md`: the pickers, the current-cluster default, the Tests dashboard, the comparison views, `report upload`, and the note that two concurrent uploads can drop a document from `index.html` until the next upload.
 - [x] 12.6 `docs/reference/commands.md`: `report upload`.  `docs/reference/ports.md`: the proxy and web server ports.  `docs/user-guide/mimir.md` and `docs/user-guide/loki.md`: the pickers where they mention datasources.
-- [ ] 12.7 On archive, update the `multi-cluster-dashboards` Purpose, which still names VictoriaMetrics (D7).
+- [x] 12.7 On archive, update the `multi-cluster-dashboards` Purpose, which still names VictoriaMetrics (D7).
 
 ## 13. Build and live verification
 

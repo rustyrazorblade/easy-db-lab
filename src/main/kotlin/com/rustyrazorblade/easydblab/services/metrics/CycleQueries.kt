@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.services.DefaultMimirQueryService
 import com.rustyrazorblade.easydblab.services.MimirQueryService
 import com.rustyrazorblade.easydblab.services.ObservabilityHttp
 import com.rustyrazorblade.easydblab.services.RoutedObservabilityHttp
+import io.github.oshai.kotlinlogging.KotlinLogging
 
 /**
  * Prepares one `metrics stream` cycle's queries: it reads the cluster state and the route again,
@@ -43,8 +44,18 @@ class CycleQueries(
         ) : Target
     }
 
-    /** Reads the state and the route and returns this cycle's target. */
-    fun prepare(): Target {
+    /**
+     * Reads the state and the route and returns this cycle's target.  A state or route that cannot
+     * be read (a file removed or rewritten while the stream runs) fails this cycle's metrics with the
+     * reason, so the stream keeps running and recovers when it can read them again.
+     */
+    fun prepare(): Target =
+        runCatching { lookUp() }.getOrElse { e ->
+            log.warn(e) { "Could not prepare a metrics stream cycle" }
+            Target.Unavailable(e.message ?: e::class.java.simpleName)
+        }
+
+    private fun lookUp(): Target {
         val state = loadState()?.takeIf { it.isInfrastructureUp() && it.getControlHost() != null }
         return when {
             state == null -> Target.Unavailable(NOT_RUNNING)
@@ -59,5 +70,6 @@ class CycleQueries(
 
     private companion object {
         const val NOT_RUNNING = "the cluster is not running"
+        val log = KotlinLogging.logger {}
     }
 }

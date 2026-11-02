@@ -25,21 +25,27 @@ class MetricsCycleTest : BaseKoinTest() {
     private val memory = StreamMetric.NODE_MEMORY
     private val pending = StreamMetric.CASSANDRA_COMPACTION_PENDING
 
+    private val clientFactory =
+        object : HttpClientFactory {
+            override fun createClient(): OkHttpClient = OkHttpClient()
+
+            override fun close() = Unit
+        }
+
     private val queries =
         CycleQueries(
             loadState = { state },
             routes = { route },
-            httpClientFactory =
-                object : HttpClientFactory {
-                    override fun createClient(): OkHttpClient = OkHttpClient()
-
-                    override fun close() = Unit
-                },
+            httpClientFactory = clientFactory,
             mimirFor = { DefaultMimirQueryService(http) },
         )
 
-    private fun cycle(vararg metrics: StreamMetric) =
-        MetricsCycle(
+    private fun cycle(vararg metrics: StreamMetric) = cycle(queries, *metrics)
+
+    private fun cycle(
+        queries: CycleQueries,
+        vararg metrics: StreamMetric,
+    ) = MetricsCycle(
             metrics = metrics.toList(),
             queries = queries,
             publisher = publisher,
@@ -124,6 +130,47 @@ class MetricsCycleTest : BaseKoinTest() {
         assertThat(http.queries).isEmpty()
         assertThat(recording.events.filterIsInstance<Event.Metrics.MetricFailing>().map { it.reason })
             .allSatisfy { assertThat(it).contains("not running") }
+    }
+
+    @Test
+    fun `a state file that cannot be read fails every metric and the stream keeps going`() {
+        var unreadable = true
+        val queries =
+            CycleQueries(
+                loadState = { if (unreadable) throw IllegalStateException("state.json is not valid JSON") else runningCluster() },
+                routes = { route },
+                httpClientFactory = clientFactory,
+                mimirFor = { DefaultMimirQueryService(http) },
+            )
+        http.on("system_memory_usage_bytes") { hosts("db0" to "1") }
+        val cycle = cycle(queries, memory)
+
+        val first = cycle.run()
+        unreadable = false
+        val second = cycle.run()
+
+        assertThat(first).isEqualTo(CycleOutcome.Completed(CycleReport(published = 0, failed = 1)))
+        assertThat((recording.events[0] as Event.Metrics.MetricFailing).reason).contains("state.json is not valid JSON")
+        assertThat(second).isEqualTo(CycleOutcome.Completed(CycleReport(published = 1, failed = 0)))
+        assertThat(recording.events[1]).isEqualTo(Event.Metrics.MetricRecovered("node.memory"))
+    }
+
+    @Test
+    fun `a route lookup that throws fails every metric with no query`() {
+        val queries =
+            CycleQueries(
+                loadState = { state },
+                routes = { throw IllegalStateException("proxy env file vanished") },
+                httpClientFactory = clientFactory,
+                mimirFor = { DefaultMimirQueryService(http) },
+            )
+
+        val outcome = cycle(queries, cpu, memory).run()
+
+        assertThat(outcome).isEqualTo(CycleOutcome.Completed(CycleReport(published = 0, failed = 2)))
+        assertThat(http.queries).isEmpty()
+        assertThat(recording.events.filterIsInstance<Event.Metrics.MetricFailing>().map { it.reason })
+            .allSatisfy { assertThat(it).contains("proxy env file vanished") }
     }
 
     @Test

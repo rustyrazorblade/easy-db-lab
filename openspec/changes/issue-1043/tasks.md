@@ -11,10 +11,10 @@
 
 ## 2. Events and constants
 
-- [ ] 2.1 Add `Event.Metrics.Sample`, `MetricFailing`, `MetricRecovered`, `InvalidNames` (with `InvalidMetricName(position, value, reason)`), `RedisNotConfigured`, `RedisLost`, `NoRunningCluster`, and `Event.Server.Ready(statusUrl, swaggerUrl)`, each with data fields only and `toDisplayString()`.
-- [ ] 2.2 Write serialization round-trip tests for the new events in the existing event serialization test, including `Metrics.Sample` inside an `EventEnvelope`.
-- [ ] 2.3 Add `Constants.LiveMetrics.CLUSTER_ENTITY`, `CLUSTER_MIN_ENTITY`, `CLUSTER_MAX_ENTITY`, `RATE_WINDOW`, `MICROS_PER_MILLI`, `GAUGE_MAX_AGE_SECONDS = 30`, and change its KDoc to "the `metrics stream` cycle".
-- [ ] 2.4 Update the `EventEnvelope` KDoc: `RedisSamplePublisher` also builds envelopes.
+- [x] 2.1 Add `Event.Metrics.Sample`, `MetricFailing`, `MetricRecovered`, `InvalidNames` (with `InvalidMetricName(position, value, reason)`), `RedisNotConfigured`, `RedisLost`, `NoRunningCluster`, and `Event.Server.Ready(statusUrl, swaggerUrl)`, each with data fields only and `toDisplayString()`.
+- [x] 2.2 Write serialization round-trip tests for the new events in the existing event serialization test, including `Metrics.Sample` inside an `EventEnvelope`.
+- [x] 2.3 Add `Constants.LiveMetrics.CLUSTER_ENTITY`, `CLUSTER_MIN_ENTITY`, `CLUSTER_MAX_ENTITY`, `RATE_WINDOW`, `MICROS_PER_MILLI`, `GAUGE_MAX_AGE_SECONDS = 30`, and change its KDoc to "the `metrics stream` cycle".
+- [x] 2.4 Update the `EventEnvelope` KDoc: `RedisSamplePublisher` also builds envelopes.
 
 ## 3. Catalogue and selection
 

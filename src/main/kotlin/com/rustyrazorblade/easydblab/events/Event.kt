@@ -4825,6 +4825,93 @@ sealed interface Event {
         ) : Metrics {
             override fun toDisplayString(): String = "Cassandra metrics: read_p99=${readP99Ms}ms, write_p99=${writeP99Ms}ms"
         }
+
+        /**
+         * One value of one streamed metric, published by `metrics stream` straight to Redis and
+         * never through the bus.  [entity] is a host alias, `cluster`, `cluster.min` or
+         * `cluster.max`; [value] is in the dashboards' unit for [name].
+         */
+        @Serializable
+        @SerialName("Metrics.Sample")
+        data class Sample(
+            val name: String,
+            val entity: String,
+            val value: Double,
+        ) : Metrics {
+            override fun toDisplayString(): String = "$name $entity $value"
+        }
+
+        /** A streamed metric failed after it last succeeded (or after the stream started). */
+        @Serializable
+        @SerialName("Metrics.MetricFailing")
+        data class MetricFailing(
+            val name: String,
+            val reason: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Metric $name is failing: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** A streamed metric that was failing succeeded again. */
+        @Serializable
+        @SerialName("Metrics.MetricRecovered")
+        data class MetricRecovered(
+            val name: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Metric $name recovered"
+        }
+
+        /** `--metrics` held entries the stream cannot use; every one is listed. */
+        @Serializable
+        @SerialName("Metrics.InvalidNames")
+        data class InvalidNames(
+            val entries: List<InvalidMetricName>,
+        ) : Metrics {
+            override fun toDisplayString(): String =
+                entries.joinToString(
+                    separator = "\n",
+                    prefix = "Invalid --metrics entries (run 'easy-db-lab metrics list' for the accepted names):\n",
+                ) { "  position ${it.position}: '${it.value}' (${it.reason})" }
+
+            override fun isError(): Boolean = true
+        }
+
+        /** `metrics stream` needs Redis, and [envVar] is not set. */
+        @Serializable
+        @SerialName("Metrics.RedisNotConfigured")
+        data class RedisNotConfigured(
+            val envVar: String,
+        ) : Metrics {
+            override fun toDisplayString(): String =
+                "metrics stream publishes to Redis: set $envVar to redis://host:port/channel"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** Redis at [url] did not come back after every reconnect attempt; the stream stops. */
+        @Serializable
+        @SerialName("Metrics.RedisLost")
+        data class RedisLost(
+            val url: String,
+            val reason: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Lost Redis at $url and could not reconnect: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** `metrics stream` started in [workspace], which has no running cluster. */
+        @Serializable
+        @SerialName("Metrics.NoRunningCluster")
+        data class NoRunningCluster(
+            val workspace: String,
+        ) : Metrics {
+            override fun toDisplayString(): String =
+                "No running cluster in $workspace: metrics stream needs one (run 'easy-db-lab up')"
+
+            override fun isError(): Boolean = true
+        }
     }
 
     // =========================================================================
@@ -5848,6 +5935,21 @@ sealed interface Event {
             val vpcName: String,
         ) : Server {
             override fun toDisplayString(): String = "Infrastructure gone: VPC '$vpcName' no longer exists. Shutting down server."
+        }
+
+        /** The REST status server is listening. */
+        @Serializable
+        @SerialName("Server.Ready")
+        data class Ready(
+            val statusUrl: String,
+            val swaggerUrl: String,
+        ) : Server {
+            override fun toDisplayString(): String =
+                """
+                Status server ready.
+                Cluster status: $statusUrl
+                API docs:       $swaggerUrl
+                """.trimIndent()
         }
     }
 

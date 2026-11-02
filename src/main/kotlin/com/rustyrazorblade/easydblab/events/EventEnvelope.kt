@@ -6,9 +6,10 @@ import kotlinx.serialization.json.Json
 /**
  * Envelope wrapping a domain event with metadata.
  *
- * Created by [EventBus] at dispatch time. Callers never construct envelopes directly —
- * they emit events via `eventBus.emit(event)` and the bus reads [EventContext] for
- * the command name and adds the timestamp.
+ * Created by [EventBus] at dispatch time: callers emit events via `eventBus.emit(event)` and the
+ * bus reads [EventContext] for the command name and adds the timestamp.  The one other builder is
+ * `RedisSamplePublisher`, which publishes `Metrics.Sample` to Redis without the bus and builds the
+ * same envelope the same way.
  *
  * @property event The domain event
  * @property timestamp ISO-8601 timestamp of when the event was emitted

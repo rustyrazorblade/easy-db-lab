@@ -203,6 +203,7 @@ Events (data fields only, each with `toDisplayString()`):
 | `Metrics.MetricRecovered(name)` | no | the next success after a failure |
 | `Metrics.InvalidNames(entries: List<InvalidMetricName(position, value, reason)>)` | yes | names every bad entry |
 | `Metrics.RedisNotConfigured(envVar)` | yes | the variable is not set |
+| `Metrics.RedisReconnected(url, reason, samplesDropped)` | no | a mid-stream Redis failure was recovered by a reconnect; names how many samples were dropped (owner-approved amendment after review round 2) |
 | `Metrics.RedisLost(url, reason)` | yes | all reconnect attempts failed |
 | `Metrics.NoRunningCluster(workspace)` | yes | no running cluster at start |
 | `Server.Ready(statusUrl, swaggerUrl)` | no | replaces `Mcp.ServerReady`, in the existing `Event.Server` domain |

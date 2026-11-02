@@ -239,7 +239,7 @@ The stream SHALL need `EASY_DB_LAB_REDIS_URL`.  It SHALL check Redis before the 
 
 ### Requirement: Redis loss during the stream
 
-The stream SHALL ping Redis at the start of every cycle.  When a ping or a publish fails, the stream SHALL try to reconnect with the network retry settings: 3 attempts, 1 second then 2 seconds apart.  It SHALL drop the rest of that cycle's samples.  Samples that could not be published SHALL NOT be queued or replayed.  When a reconnect succeeds, streaming SHALL go on from the next tick.  When all 3 attempts fail, the command SHALL emit `Metrics.RedisLost` and exit non-zero with a message that names the Redis URL.
+The stream SHALL ping Redis at the start of every cycle.  When a ping or a publish fails, the stream SHALL try to reconnect with the network retry settings: 3 attempts, 1 second then 2 seconds apart.  It SHALL drop the rest of that cycle's samples.  Samples that could not be published SHALL NOT be queued or replayed.  When a reconnect succeeds, streaming SHALL go on from the next tick, the command SHALL emit `Metrics.RedisReconnected` with the redacted Redis URL, the failure reason and the number of samples dropped, and that cycle's summary line SHALL show the dropped count.  When all 3 attempts fail, the command SHALL emit `Metrics.RedisLost` and exit non-zero with a message that names the Redis URL.
 
 The stream SHALL check its stop flag before a ping or publish failure counts as Redis lost.
 
@@ -251,6 +251,11 @@ The stream SHALL check its stop flag before a ping or publish failure counts as 
 - **WHEN** Redis is lost and comes back before the third attempt
 - **THEN** the stream reconnects and goes on streaming
 - **AND** the samples it could not publish are dropped
+
+#### Scenario: Reconnect is reported
+- **WHEN** a publish fails mid-cycle and the reconnect succeeds
+- **THEN** one `Metrics.RedisReconnected` event is emitted with the redacted Redis URL, the failure reason and the number of samples dropped
+- **AND** that cycle's summary line shows the number of samples dropped
 
 #### Scenario: Reconnect fails
 - **WHEN** Redis is lost and all 3 reconnect attempts fail

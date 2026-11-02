@@ -137,6 +137,13 @@ When the cluster is torn down while the stream runs, each metric fails once with
 - When a reconnect succeeds, the stream emits `Metrics.RedisReconnected` (the URL, the reason, and the number of samples dropped), the cycle's summary line adds `N samples dropped (Redis reconnected)`, and the stream goes on from the next cycle.
 - When all 3 attempts fail, it emits `Metrics.RedisLost` and exits non-zero with a message that names the Redis URL.
 
+### Events From Other Commands
+
+When `EASY_DB_LAB_REDIS_URL` is set, every command publishes its events to the same channel, for example `Stress.JobStarted` from `cassandra stress start`.
+
+- At startup, every command pings Redis.  When Redis does not answer, the tool exits with status 1 before the command runs, and the message names `EASY_DB_LAB_REDIS_URL` and the URL.
+- After startup, publishing is best effort.  When a publish fails, the tool logs the failure and drops the event, and the command keeps running.
+
 ## Tunnel and Tailscale
 
 Before the first cycle, the stream starts or reuses the SOCKS tunnel, as every command that needs the proxy does.  After that, it never starts, stops or replaces a tunnel.  Each cycle reads the recorded tunnel from the workspace and queries Mimir through it.

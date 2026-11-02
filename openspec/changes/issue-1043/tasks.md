@@ -95,6 +95,13 @@
 - [x] 10.1 Run `./gradlew ktlintFormat`, `./gradlew detekt` (JDK 21), `./gradlew test` and `./gradlew integrationTest` in a subagent, and fix every failure.
 - [x] 10.2 Run `./gradlew installDist`.
 
+## 12. Stress job events (owner-approved addition)
+
+- [ ] 12.1 Add `host` to `Stress.JobStarted`: the node name of the running stress pod (the host alias), taken where `StressJobService.startJob` waits for the pod; `cassandra stress start` emits it.  Test it.
+- [ ] 12.2 Add `Stress.JobCompleted(jobName, host, outcome, durationSeconds)` to `Event.kt`, with `toDisplayString()`; `outcome` is `succeeded` or `failed`.
+- [ ] 12.3 Add a stress-job completion watcher to the `metrics stream` cycle: list the stress jobs through the reuse-only route each cycle, remember the running ones, and emit `JobCompleted` once when a remembered job finishes.  A job already finished at the stream's start, or deleted while running, emits nothing.  A list failure is logged and skipped, and does not touch the samples or metric health.  Test every scenario of "Stress job completion" test-first.
+- [ ] 12.4 Update `docs/integrations/metrics-stream.md` and `events/CLAUDE.md` for both events.
+
 ## 11. Real cluster check
 
 - [ ] 11.1 Provision a cluster with db and app nodes, start Cassandra, set `EASY_DB_LAB_REDIS_URL` to a local Redis, and run `metrics stream --metrics node.cpu,cassandra.read_p99` with a subscriber: one `node.cpu` sample per host (`db0`, ...) and `cluster.min` / `cluster.max` for `cassandra.read_p99` each cycle.

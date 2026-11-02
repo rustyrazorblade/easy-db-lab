@@ -39,3 +39,5 @@ Notes:
 | Risk | Interrupts: an interrupted query must not be reported after a stop | live-stream-metrics: Stopped in the middle of a cycle | ✅ Covered |
 | Risk | Issue 935 also plans a `metrics` group | None | ⚠️ Excluded — coordination between issues, not a behaviour; whichever lands second adds to the group |
 | Risk | `timestamp()` value semantics on the pinned Mimir | live-stream-metrics: Stale sample next to a fresh one; live-stream-metrics: Every catalogue query parses on the pinned Mimir | ✅ Covered |
+| Owner addition | `cassandra stress start` publishes `Stress.JobStarted` with the host | `stress-testing: Start reports the host` | ✅ Covered |
+| Owner addition | `metrics stream` publishes `Stress.JobCompleted` when a stress job finishes | `live-stream-metrics: Job succeeds`, `Job fails`, `Job already finished at start`, `Job deleted while running`, `Job list fails` | ✅ Covered |

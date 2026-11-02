@@ -206,6 +206,8 @@ Events (data fields only, each with `toDisplayString()`):
 | `Metrics.RedisReconnected(url, reason, samplesDropped)` | no | a mid-stream Redis failure was recovered by a reconnect; names how many samples were dropped (owner-approved amendment after review round 2) |
 | `Metrics.RedisLost(url, reason)` | yes | all reconnect attempts failed |
 | `Metrics.NoRunningCluster(workspace)` | yes | no running cluster at start |
+| `Stress.JobStarted(..., host)` | no | existing event, emitted by `cassandra stress start`; gains `host`, the alias of the node the pod runs on (owner-approved addition after review round 3) |
+| `Stress.JobCompleted(jobName, host, outcome, durationSeconds)` | no | emitted by `metrics stream` once per job it saw running that has finished; `outcome` is `succeeded` or `failed` (owner-approved addition after review round 3) |
 | `Server.Ready(statusUrl, swaggerUrl)` | no | replaces `Mcp.ServerReady`, in the existing `Event.Server` domain |
 
 Removed events: `Metrics.Node`, `Metrics.System`, `Metrics.Cassandra`, the whole `Event.Mcp` domain, and `Command.McpConfigSaved`.

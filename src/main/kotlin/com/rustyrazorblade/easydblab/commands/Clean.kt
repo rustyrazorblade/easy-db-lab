@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
@@ -18,7 +17,6 @@ import java.io.File
  * It removes only what easy-db-lab wrote. In `bin/` that is the tool wrappers and their marker, by
  * name; any other file there stays, and so does `bin/` itself while it holds one.
  */
-@McpCommand
 @Command(
     name = "clean",
     description = ["Clean up generated files from the current directory"],

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -25,7 +24,6 @@ import picocli.CommandLine.Parameters
  * All arguments after the options are passed directly to cassandra-easy-stress.
  * Example: easy-db-lab stress start KeyValue -d 1h --threads 100
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

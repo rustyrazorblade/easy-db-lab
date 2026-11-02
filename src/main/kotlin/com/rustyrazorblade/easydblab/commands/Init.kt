@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
 import com.rustyrazorblade.easydblab.commands.converters.PicoCniModeConverter
@@ -54,7 +53,6 @@ import kotlin.system.exitProcess
  * @see Up for infrastructure provisioning
  * @see Down for tearing down infrastructure
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "init",

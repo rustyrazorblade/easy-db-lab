@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.CassandraVersion
@@ -14,7 +13,6 @@ import picocli.CommandLine.Command
  * Lists the Cassandra versions installed on the cluster, plus anything installable that is not on
  * it yet: lazily-declared versions, and builds published to the profile's S3 bucket.
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "list",

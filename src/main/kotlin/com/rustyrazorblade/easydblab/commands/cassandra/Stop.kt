@@ -15,7 +15,6 @@ import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 
-// @McpCommand - disabled for now like the original
 
 /**
  * Stops the database on the selected db nodes (all of them by default) via its service command.

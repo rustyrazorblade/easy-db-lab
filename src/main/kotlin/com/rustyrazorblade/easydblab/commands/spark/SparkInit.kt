@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.User
@@ -29,7 +28,6 @@ import picocli.CommandLine.Option
  * - `spark init --master.instance.type m5.2xlarge` - Custom master instance type
  * - `spark init --worker.instance.count 5` - Custom worker count
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "init",

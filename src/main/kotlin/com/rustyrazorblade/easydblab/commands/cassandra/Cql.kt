@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -24,7 +23,6 @@ import java.io.File
  *   easy-db-lab cassandra cql --file schema.cql
  *   easy-db-lab cassandra cql "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}"
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

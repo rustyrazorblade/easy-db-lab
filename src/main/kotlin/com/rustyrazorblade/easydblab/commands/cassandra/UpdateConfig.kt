@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.databind.node.ObjectNode
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -22,7 +21,6 @@ import kotlin.io.path.inputStream
 /**
  * Upload the cassandra.yaml fragment to all nodes and apply to cassandra.yaml.
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

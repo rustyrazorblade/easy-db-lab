@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.opensearch
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
@@ -24,7 +23,6 @@ import picocli.CommandLine.Option
  * OpenSearch domains typically take 10-30 minutes to create. The command will
  * wait for the domain to become active unless --skip-wait is specified.
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "start",

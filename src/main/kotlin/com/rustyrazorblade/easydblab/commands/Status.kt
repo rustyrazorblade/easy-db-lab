@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -67,7 +66,6 @@ import java.time.format.DateTimeFormatter
  * `openspec/changes/up-fail-fast/design.md`. **No command that mutates state may take this
  * exception.**
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy(tolerateFailure = true)
 @Command(

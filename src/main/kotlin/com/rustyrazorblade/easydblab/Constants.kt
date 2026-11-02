@@ -185,6 +185,9 @@ object Constants {
     object EventBus {
         const val REDIS_URL_ENV_VAR = "EASY_DB_LAB_REDIS_URL"
         const val DEFAULT_CHANNEL = "easydblab-events"
+
+        /** The Redis port used when `EASY_DB_LAB_REDIS_URL` names none. */
+        const val DEFAULT_REDIS_PORT = 6379
     }
 
     // Environment variables

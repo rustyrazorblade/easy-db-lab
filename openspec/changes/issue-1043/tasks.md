@@ -1,13 +1,13 @@
 ## 1. Redis endpoint, shared publisher and best-effort listener
 
-- [ ] 1.1 Write `RedisEndpointTest` (BaseKoinTest): host, port and channel from `redis://host:port/channel`; the default channel from `Constants.EventBus.DEFAULT_CHANNEL` when the URL has no path.
-- [ ] 1.2 Extract `events/RedisEndpoint.parse(url)` from `RedisEventListener` until the test passes.
-- [ ] 1.3 Write `RedisPublisherIntegrationTest` in `src/integrationTest` (Redis TestContainer): the constructor pings; a stopped Redis gives `RedisUnavailableException` whose message names `EASY_DB_LAB_REDIS_URL` and the URL; `publish` reaches a subscriber; `ping` fails after the container stops.
-- [ ] 1.4 Add `events/RedisPublisher` and sealed `RedisConfiguration` (`NotConfigured`, `Configured(endpoint)`); wire them in `di/EventBusModule.kt` so `RedisPublisher` is resolved only when `Configured`.
-- [ ] 1.5 Write a Redis TestContainer test for `RedisEventListener`: after the container stops, `onEvent` logs and drops the event and does not throw; a command's other events still reach the console.
-- [ ] 1.6 Make `RedisEventListener` best effort on the shared `RedisPublisher`.
-- [ ] 1.7 Write a test that `Main` exits 1 with the `RedisUnavailableException` message (unwrapped from Koin's creation exception) when Redis does not answer at start.
-- [ ] 1.8 In `Main`, resolve the `EventBus` right after `startKoin` and handle `RedisUnavailableException` in the cause chain.
+- [x] 1.1 Write `RedisEndpointTest` (BaseKoinTest): host, port and channel from `redis://host:port/channel`; the default channel from `Constants.EventBus.DEFAULT_CHANNEL` when the URL has no path.
+- [x] 1.2 Extract `events/RedisEndpoint.parse(url)` from `RedisEventListener` until the test passes.
+- [x] 1.3 Write `RedisPublisherIntegrationTest` in `src/integrationTest` (Redis TestContainer): the constructor pings; a stopped Redis gives `RedisUnavailableException` whose message names `EASY_DB_LAB_REDIS_URL` and the URL; `publish` reaches a subscriber; `ping` fails after the container stops.
+- [x] 1.4 Add `events/RedisPublisher` and sealed `RedisConfiguration` (`NotConfigured`, `Configured(endpoint)`); wire them in `di/EventBusModule.kt` so `RedisPublisher` is resolved only when `Configured`.
+- [x] 1.5 Write a Redis TestContainer test for `RedisEventListener`: after the container stops, `onEvent` logs and drops the event and does not throw; a command's other events still reach the console.
+- [x] 1.6 Make `RedisEventListener` best effort on the shared `RedisPublisher`.
+- [x] 1.7 Write a test that `Main` exits 1 with the `RedisUnavailableException` message (unwrapped from Koin's creation exception) when Redis does not answer at start.
+- [x] 1.8 In `Main`, resolve the `EventBus` right after `startKoin` and handle `RedisUnavailableException` in the cause chain.
 
 ## 2. Events and constants
 

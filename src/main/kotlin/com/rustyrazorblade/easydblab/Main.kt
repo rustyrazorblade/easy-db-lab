@@ -21,8 +21,19 @@ fun main(arguments: Array<String>) {
     KotlinLoggingConfiguration.logStartupMessage = false
 
     // Initialize Koin dependency injection
-    startKoin {
-        modules(KoinModules.getAllModules())
+    val koin =
+        startKoin {
+            modules(KoinModules.getAllModules())
+        }.koin
+
+    // Build the event bus first: with EASY_DB_LAB_REDIS_URL set it pings Redis, and a Redis that
+    // does not answer must stop the tool before any command runs, naming the variable and URL.
+    when (val startup = StartupRedisCheck.resolveEventBus(koin)) {
+        is StartupRedisCheck.Result.Ready -> Unit
+        is StartupRedisCheck.Result.RedisUnavailable -> {
+            with(TermColors()) { System.err.println(red(startup.message)) }
+            exitProcess(Constants.ExitCodes.ERROR)
+        }
     }
 
     val parser = CommandLineParser()

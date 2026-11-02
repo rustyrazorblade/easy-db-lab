@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.services.metrics
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.events.InvalidMetricName
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.tuple
 import org.junit.jupiter.api.Test
 
 class MetricSelectionTest : BaseKoinTest() {
@@ -24,12 +25,7 @@ class MetricSelectionTest : BaseKoinTest() {
         assertThat(result).isInstanceOf(MetricSelection.Rejected::class.java)
         assertThat((result as MetricSelection.Rejected).entries)
             .extracting(InvalidMetricName::position, InvalidMetricName::value)
-            .containsExactly(
-                org.assertj.core.groups.Tuple
-                    .tuple(2, ""),
-                org.assertj.core.groups.Tuple
-                    .tuple(3, "x"),
-            )
+            .containsExactly(tuple(2, ""), tuple(3, "x"))
     }
 
     @Test

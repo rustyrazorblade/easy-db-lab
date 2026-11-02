@@ -79,16 +79,16 @@
 
 ## 9. Docs
 
-- [ ] 9.1 Add a "Metrics Commands" section to `docs/reference/commands.md` (`metrics stream`, `metrics list`) next to "Logs Commands", and change the `server` entry to REST only.
-- [ ] 9.2 Write `docs/integrations/metrics-stream.md`: the catalogue with units and defaults; p99 `cluster.min` and `cluster.max` and the zero rule; the 30 s gauge age and the build-switch overlap; input bytes for `compaction_bytes_written`; the `Metrics.Sample` JSON and entities (`db0`); the failure and recovery events; the summary line; Redis behaviour (startup, per-cycle ping, reconnect timing, drop); tunnel reuse ("run `socks start`") and Tailscale; stopping and exit codes.  Add it to `docs/SUMMARY.md`.
-- [ ] 9.3 Rewrite `docs/integrations/server.md` as REST and swagger only (delete "Adding to Claude Code", "Available Tools", "Tool Naming Convention", "Benefits", "Example Workflow" and "Live Metrics Streaming", which held the `db-0` error), and link to the metrics stream page.
-- [ ] 9.4 Update `README.md` Server Integration to REST only.
-- [ ] 9.5 Update `events/CLAUDE.md` (listeners, the `Metrics` domain, `Metrics.Sample` goes to Redis only, best-effort Redis after startup, no `Mcp` domain).
-- [ ] 9.6 Update `commands/CLAUDE.md` (the `metrics` group, no `@McpCommand` in the annotation list, `Server` without `isInteractive`).
-- [ ] 9.7 Replace `mcp/CLAUDE.md` with `server/CLAUDE.md` describing the REST status server and status cache.
-- [ ] 9.8 Update the root `CLAUDE.md`: the events rule ("MCP client or Redis subscriber" becomes "Redis subscriber"), the listener list (no `McpEventListener`), the Server & REPL section, the subdirectory index (`server/CLAUDE.md`), and the Observability "CLI commands" line (`metrics stream`, `metrics list`).
-- [ ] 9.9 Update `src/test/.../CLAUDE.md` to drop the MCP test references.
-- [ ] 9.10 Check the delta specs in `openspec/changes/issue-1043/specs/` against the built behaviour (messages, names, constants) and correct any that differ.  At archive, also update the `live-stream-metrics` and `server` Purpose lines and the `event-system` Data Contract text "(and in MCP structured output)".
+- [x] 9.1 Add a "Metrics Commands" section to `docs/reference/commands.md` (`metrics stream`, `metrics list`) next to "Logs Commands", and change the `server` entry to REST only.
+- [x] 9.2 Write `docs/integrations/metrics-stream.md`: the catalogue with units and defaults; p99 `cluster.min` and `cluster.max` and the zero rule; the 30 s gauge age and the build-switch overlap; input bytes for `compaction_bytes_written`; the `Metrics.Sample` JSON and entities (`db0`); the failure and recovery events; the summary line; Redis behaviour (startup, per-cycle ping, reconnect timing, drop); tunnel reuse ("run `socks start`") and Tailscale; stopping and exit codes.  Add it to `docs/SUMMARY.md`.
+- [x] 9.3 Rewrite `docs/integrations/server.md` as REST and swagger only (delete "Adding to Claude Code", "Available Tools", "Tool Naming Convention", "Benefits", "Example Workflow" and "Live Metrics Streaming", which held the `db-0` error), and link to the metrics stream page.
+- [x] 9.4 Update `README.md` Server Integration to REST only.
+- [x] 9.5 Update `events/CLAUDE.md` (listeners, the `Metrics` domain, `Metrics.Sample` goes to Redis only, best-effort Redis after startup, no `Mcp` domain).
+- [x] 9.6 Update `commands/CLAUDE.md` (the `metrics` group, no `@McpCommand` in the annotation list, `Server` without `isInteractive`).
+- [x] 9.7 Replace `mcp/CLAUDE.md` with `server/CLAUDE.md` describing the REST status server and status cache.
+- [x] 9.8 Update the root `CLAUDE.md`: the events rule ("MCP client or Redis subscriber" becomes "Redis subscriber"), the listener list (no `McpEventListener`), the Server & REPL section, the subdirectory index (`server/CLAUDE.md`), and the Observability "CLI commands" line (`metrics stream`, `metrics list`).
+- [x] 9.9 Update `src/test/.../CLAUDE.md` to drop the MCP test references.
+- [x] 9.10 Check the delta specs in `openspec/changes/issue-1043/specs/` against the built behaviour (messages, names, constants) and correct any that differ.  At archive, also update the `live-stream-metrics` and `server` Purpose lines and the `event-system` Data Contract text "(and in MCP structured output)".
 
 ## 10. Build checks
 

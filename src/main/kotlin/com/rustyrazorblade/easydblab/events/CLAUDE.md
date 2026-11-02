@@ -7,9 +7,12 @@ This package implements the structured event bus system for all user-facing outp
 ```
 Command/Service → eventBus.emit(Event.Domain.Type(...)) → EventBus → EventListeners
                                                                     ├── ConsoleEventListener (stdout/stderr)
-                                                                    ├── McpEventListener (MCP status buffer)
-                                                                    └── RedisEventListener (pub/sub, optional)
+                                                                    └── RedisEventListener (pub/sub, optional, best effort)
+
+metrics stream → RedisSamplePublisher → RedisPublisher (Metrics.Sample only; never through the bus)
 ```
+
+The console and, when `EASY_DB_LAB_REDIS_URL` is set, Redis are the only destinations.
 
 ## Files
 
@@ -21,8 +24,11 @@ Command/Service → eventBus.emit(Event.Domain.Type(...)) → EventBus → Event
 | `EventEnvelope.kt` | Wraps `Event` + timestamp + commandName; serializable to JSON |
 | `EventListener.kt` | Interface: `onEvent(envelope)`, `close()` |
 | `ConsoleEventListener.kt` | Writes `event.toDisplayString()` to stdout (or stderr for errors) |
-| `McpEventListener.kt` | Buffers envelopes for MCP `get_server_status` tool |
-| `RedisEventListener.kt` | Publishes JSON envelopes to Redis pub/sub (conditional on env var) |
+| `RedisEventListener.kt` | Publishes JSON envelopes to Redis pub/sub (conditional on env var); best effort after startup |
+| `RedisEndpoint.kt` | Parses `EASY_DB_LAB_REDIS_URL` (`redis://host:port/channel`) into host, port and channel, with the default channel |
+| `RedisPublisher.kt` | The one Redis connection of the process; its constructor pings and throws `RedisUnavailableException`, whose message names `EASY_DB_LAB_REDIS_URL` and the URL |
+| `RedisConfiguration.kt` | `NotConfigured` or `Configured(endpoint)`, read once from the environment (Koin singleton) |
+| `InvalidMetricName.kt` | One bad `--metrics` entry (position, value, reason), carried by `Metrics.InvalidNames` |
 
 ## Event Hierarchy
 
@@ -51,16 +57,15 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Teardown.*` — Cluster teardown lifecycle
 - `Event.Ami.*` — AMI pruning, listing, validation
 - `Event.Docker.*` — Container lifecycle operations
-- `Event.Mcp.*` — MCP tool execution
 - `Event.Logs.*` — Log queries (`logs query`)
-- `Event.Metrics.*` — The MCP live metrics stream (`Node`, `System`, `Cassandra`)
+- `Event.Metrics.*` — `metrics stream`: `Sample` (name, entity, value; published straight to Redis by `RedisSamplePublisher`, never through the bus or to the console), `MetricFailing` (an error: a metric started failing, once per run of failures), `MetricRecovered`, and the errors that stop the command: `InvalidNames`, `RedisNotConfigured`, `RedisLost`, `NoRunningCluster`
 - `Event.Setup.*` — Profile setup and initialization
 - `Event.Ssh.*` — SSH remote command execution
 - `Event.Platform.*` — Platform substrate operations (StorageClass, PVs, info)
 - `Event.Install.*` — Kit scaffold generation
 - `Event.Kit.*` — Kit phase execution (script and step start/finish/failure, `Kit.ShellStepFailed` for a shell step that exited non-zero with its exit code and last output lines (carried as data only: the output was already streamed, so the console line does not repeat it), metrics registration, hooks, requirements, `Kit.HelmReleaseKept` when a `helm-uninstall` step keeps an operator another kit instance still uses, `Kit.CollisionDetected` when a collision-checked kit is started while already running, `Kit.StopIncomplete` when its pods outlive the wait after `stop` or `uninstall` (its `phase` field names which), and `Kit.StopUnverified` when the cluster cannot be queried during that wait) and `Kit.EndpointsAvailable`, the declared endpoints resolved to node private IPs after a successful start
 - `Event.Cleanup.*` — Per-node kit cleanup progress and completion
-- `Event.Server.*` — Server lifecycle (shutdown when the cluster's VPC no longer exists)
+- `Event.Server.*` — The REST status server: `Ready` (the `/status` and `/swagger` URLs, once it is bound) and `InfrastructureGone` (shutdown when the cluster's VPC no longer exists). There is no MCP domain.
 - `Event.Sql.*` — Shared SQL query results, used by every SQL kit command
 - `Event.Compactor.*` — The account compactor service: `Started` (created, or scaled from 0 to 1 task), `AlreadyRunning` (left as it is), `Starting` (no task runs yet, but one is pending or none has stopped; left as it is), `NoTaskRunning` (an error: a task is asked for, none runs or is pending, and the latest stopped; left as it is), `Stopped` (desired count set to 0; emitted only after the update), `AccessDenied` (an error: ECS refused a call because the operator lacks the `EasyDBLabCompactor` policy; the call then fails), `NotCreated` (a stop found no service and changed nothing), `KeptRunning` (`down` found other clusters that use the account bucket)
 - `Event.Proxy.*` — The SOCKS5 tunnel as `socks start` and `socks stop` manage it: `TunnelReady` (the port, and whether a running tunnel was reused; `up` emits it too for the tunnel it starts or reuses), `TunnelNotNeeded` (a Tailscale cluster), `NoRunningCluster` (an error: nothing to tunnel to), `TunnelStopped` (the PID), `TunnelStopFailed` (an error: the verified tunnel process did not end; it stays recorded), `NoTunnelRunning` (nothing recorded, or the recorded PID is gone or now another process's, and no orphaned ssh of it runs). `down` reports the same stop as `Teardown.Socks5ProxyStopped` or `Teardown.Socks5ProxyStopFailed`. `ProcessSocksProxyService` itself emits `TunnelReplaced` (a recorded tunnel failed the reuse check and a new one started: the old port, the new port, and a `ReplaceReason` of `gateway-changed`, `unreachable`, `process-gone`, `pid-reused` (a live process holds the recorded PID but is not the tunnel script) or `ssh-config-changed`; its text tells the user to change the browser's SOCKS port) and `SupersededTunnelStopFailed` (an error: the tunnel being replaced did not stop; its PID and port), for every caller of `ensureRunning`
@@ -105,7 +110,11 @@ Uses kotlinx.serialization with `classDiscriminator = "type"`. All events serial
 
 ## Redis Integration
 
-Set `EASY_DB_LAB_REDIS_URL=redis://host:port/channel` to enable Redis pub/sub. Events are published as JSON envelopes. If Redis is unavailable at startup, the tool fails fast with a connection error.
+Set `EASY_DB_LAB_REDIS_URL=redis://host:port/channel` to enable Redis pub/sub. Events are published as JSON envelopes.
+
+- **At startup** `Main` builds the `EventBus` right after Koin starts. `RedisPublisher` pings Redis then; when Redis does not answer, `Main` prints the `RedisUnavailableException` message (it names `EASY_DB_LAB_REDIS_URL` and the URL) and exits 1 before any command runs (`StartupRedisCheck`).
+- **After startup** `RedisEventListener` is best effort for every command: a failed publish is logged and the event dropped, and the command keeps running.
+- **`Metrics.Sample`** never goes through the bus. `metrics stream` publishes it through `RedisSamplePublisher` on the same shared `RedisPublisher`, so samples never reach the console and the stream sees a Redis failure directly.
 
 ## Migration Status
 

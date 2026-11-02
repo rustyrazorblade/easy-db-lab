@@ -6,7 +6,7 @@
 - **Never assume the source checkout is available.** Most people install this tool with Homebrew. They have no repo, no working tree, and no `build/` directory. Any feature that scaffolds, generates, or reads files must work entirely from resources packaged in the distribution. Never bind-mount a repo directory, read a path inside the repo at runtime, or design a workflow that only works for someone with a clone.
 - **Never encode a personal or machine-specific path.** Any directory outside this repo — where a user keeps a database checkout, a scaffolded workspace, or test output — is a parameter, never a constant. A path named in conversation is an example of usage, not a requirement to hardcode. Take it as an argument and default it to the current directory.
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
-- **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt`, one sealed sub-interface per domain (listed in `events/CLAUDE.md`). See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If an MCP client or Redis subscriber would have no reason to care, it is not an event.
+- **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt`, one sealed sub-interface per domain (listed in `events/CLAUDE.md`). See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If a Redis subscriber would have no reason to care, it is not an event.
 - **For pure informational output** with no associated event type (e.g. help text, plain status lines), use Kotlin's `println()`. **Never use `System.out` directly** — `println()` is the idiomatic Kotlin equivalent and writes to stdout.
 - **Read-only display commands** (`info`, `list`, `show`, `describe`, and equivalents) produce pure output — no state changes, no domain facts occurred. Use `println()` directly in `execute()`; do **not** model the output as an event. A useful heuristic: if the command's name is a noun or `show`/`info`/`list`/`describe`, it almost certainly belongs in this category. Examples: `kit info`, `kit list`.
 - **Do NOT use `Event.Message` or `Event.Error`** — these generic types exist only for test convenience. When emitting events, always use domain-specific typed events with structured data fields.
@@ -30,7 +30,7 @@ The project follows a layered architecture:
 
 - **Commands (PicoCLI)** delegate to **Services**, which interact with **External Systems** (K8s, AWS, Filesystem)
 - Commands and Services emit events via the **EventBus**
-- **Listeners** consume events: `ConsoleEventListener` (stdout/stderr), `McpEventListener` (server MCP status), `RedisEventListener` (pub/sub, optional)
+- **Listeners** consume events: `ConsoleEventListener` (stdout/stderr), `RedisEventListener` (pub/sub, optional, best effort after startup). `metrics stream` publishes `Metrics.Sample` straight to Redis, not through the bus.
 
 ### Project Modules
 
@@ -65,8 +65,8 @@ See [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/provid
 
 ### Server & REPL
 
-Two commands run as long-lived processes instead of the typical run-and-exit pattern:
-- **`Server`** — starts a hybrid HTTP server with MCP protocol support (Ktor + SSE), REST status endpoints, and background services. See [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md).
+Three commands run as long-lived processes instead of the typical run-and-exit pattern (`metrics stream` is the third: it publishes chosen metrics to Redis every 5 seconds until the first Ctrl-C or SIGTERM, which exits 0; see `services/metrics/`):
+- **`Server`** — starts the REST status server (Ktor): `/status`, `/stress/status`, `/swagger`, with the background status cache. See [`server/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/server/CLAUDE.md).
 - **`Repl`** — starts an interactive REPL to reduce typing for repeated commands.
 
 ### Dependency Injection
@@ -410,7 +410,7 @@ See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md) for datasource UIDs, label co
 
 **CLI Tool Instrumentation**: The CLI tool uses the OpenTelemetry Java Agent for automatic instrumentation of AWS SDK calls, HTTP clients, JDBC operations, and JVM metrics. No manual instrumentation exists in the Kotlin code. See `docs/reference/opentelemetry.md`.
 
-**CLI commands**: `grafana update-config`, `grafana annotate`, `grafana backup`, `logs query`
+**CLI commands**: `grafana update-config`, `grafana annotate`, `grafana backup`, `logs query`, `metrics stream`, `metrics list`
 
 All builder paths are relative to `src/main/kotlin/com/rustyrazorblade/easydblab/`. Config resources are at corresponding paths under `src/main/resources/com/rustyrazorblade/easydblab/`.
 
@@ -423,6 +423,6 @@ Detailed patterns live in package-level CLAUDE.md files:
 - [`services/aws/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/services/aws/CLAUDE.md) — AWS service classes (AMI, EC2, EMR, OpenSearch, S3)
 - [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) — AWS SDK wrappers, SSH/Docker patterns, retry logic
 - [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) — cluster state, templates, K8s manifest builders, observability stack details
-- [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md) — Server architecture (MCP, REST, background services)
+- [`server/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/server/CLAUDE.md) — The REST status server and status cache
 - [`kubernetes/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/kubernetes/CLAUDE.md) — K8s client patterns
 - [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) — test infrastructure

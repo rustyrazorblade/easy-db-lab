@@ -1,120 +1,41 @@
-# Server Package (`mcp/`)
+# Server Package (`server/`)
 
-This package implements the server — a hybrid HTTP server that exposes CLI commands as MCP tools for AI agents, REST endpoints for programmatic status access, and background services for caching and metrics.
+This package implements `easy-db-lab server`: a REST status server for programmatic access to the cluster status. It has no MCP endpoint and registers no tools.
 
 ## Architecture
 
 ```
-AI Agent → SSE transport → McpServer → McpToolRegistry → PicoCLI Command → Service Layer
-HTTP Client → REST endpoints (/status, /stress/status, /swagger)                ↓
-                                ↓                                         eventBus.emit()
-                          StatusCache (background refresh every 30s)            ↓
-                          MetricsCollector (optional, Redis pub/sub)      EventBus dispatches
-                          ChannelMessageBuffer (legacy output)
-                          McpEventListener (structured events)
+HTTP Client → Ktor/Netty (StatusServer) → /status, /stress/status, /swagger
+                                              ↓
+                                        CachedStatus (StatusCache: background refresh every 30s)
 ```
 
-**MCP Transport:** SSE (Server-Sent Events) via Ktor embedded Netty server
-**MCP SDK:** `io.modelcontextprotocol:kotlin-sdk` (official MCP Kotlin SDK)
-**MCP Endpoint:** `http://{bind}:{port}/sse` (default: `127.0.0.1:0`)
-**REST Endpoints:** `/status`, `/stress/status`, `/swagger`
+`commands/Server` builds the `StatusCache`, starts it, starts the `StatusServer`, and blocks until it is stopped. Once it is bound, `StatusServer` emits `Event.Server.Ready(statusUrl, swaggerUrl)`.
 
 ## Files
 
 | File | Purpose |
 |------|---------|
-| `McpServer.kt` | Main server — Ktor setup, tool/prompt registration, background execution |
-| `McpToolRegistry.kt` | Command discovery, JSON schema generation, argument mapping |
-| `StatusCache.kt` | Background cluster status refresh (EC2, K3s, EMR, etc.) |
-| `ChannelMessageBuffer.kt` | Thread-safe output buffering for status polling |
-| `PromptLoader.kt` | Loads prompts from markdown with YAML frontmatter |
-| `PromptResource.kt` | Prompt data class |
+| `StatusServer.kt` | The Ktor/Netty server: the `/status` and `/stress/status` routes with their OpenAPI `describe {}` blocks, `swaggerUI("/swagger")`, and `CachedStatus`, the interface the routes read. `start(port, bind)` returns a `RunningStatusServer` (bound port, `close()`) |
+| `StatusCache.kt` | Background cluster status refresh (EC2, K3s, EMR, OpenSearch, security groups, Cassandra version over SSH); the `--auto-shutdown` VPC watchdog, which emits `Server.InfrastructureGone` |
 | `StatusResponse.kt` | Status API data classes (serializable) |
 
-## How Commands Are Exposed
+## Endpoints
 
-### 1. Mark with `@McpCommand`
-
-```kotlin
-@McpCommand
-@Command(name = "start", description = ["Start Cassandra"])
-class Start : PicoBaseCommand() { ... }
-```
-
-### 2. Register in `McpToolRegistry`
-
-Commands are listed statically in `mcpCommandClasses` inside `McpToolRegistry.kt`. Adding a new `@McpCommand` class requires adding it to this list.
-
-### 3. Tool Naming Convention
-
-Names are derived from the package path relative to `commands/`:
-
-| Command Class | Package | Tool Name |
-|--------------|---------|-----------|
-| `Status` | `commands` | `status` |
-| `Start` | `commands.cassandra` | `cassandra_start` |
-| `StressStart` | `commands.cassandra.stress` | `cassandra_stress_start` |
-| `ProfilingStart` | `commands.cassandra.profiler` | `cassandra_profiler_start` |
-| `UpdateConfig` | `commands.cassandra` | `cassandra_update_config` |
-
-Hyphens in `@Command(name=...)` are converted to underscores.
-
-### 4. Schema Generation
-
-`McpToolRegistry` generates JSON schemas from PicoCLI annotations:
-- `@Option` fields → JSON properties with types, defaults, descriptions
-- `@Mixin` fields → recursively scanned
-- `@Parameters` fields of a list type → JSON string arrays. These are the trailing passthrough
-  arguments a command forwards to another tool (`cassandra profile start -- -e wall`), and without
-  this such a tool's entire purpose would be unreachable over MCP. Scalar positionals are not
-  exposed — they have no name to key the schema on.
-- Kotlin types mapped to JSON types (String, Int, Boolean, Enum)
-
-## Background Execution Pattern
-
-Tools execute asynchronously to avoid SSE timeouts:
-
-1. Client calls tool (e.g., `cassandra_start`)
-2. `createToolHandler()` returns immediately: `"Tool started in background"`
-3. Command runs in separate thread (semaphore enforces single execution)
-4. Output captured via two parallel paths:
-   - **`ChannelMessageBuffer`** — legacy string-based output from `OutputHandler`
-   - **`McpEventListener`** — structured `EventEnvelope` objects from `EventBus`
-5. Client polls `get_server_status` for progress
-6. Status returns messages from both sources (merged)
-
-Status values: `"idle"`, `"running"`, `"completed"`
-
-## McpEventListener
-
-`McpEventListener` (in `events/McpEventListener.kt`) implements `EventListener` to buffer structured events for MCP status polling:
-
-- Registered with `EventBus` during `initializeStreaming()`
-- `getAndClearEnvelopes()` atomically returns and clears buffered events
-- Thread-safe via `Collections.synchronizedList`
-- Events include full type information, timestamps, and command context via `EventEnvelope`
+- `GET /status` — the whole cached status; `?section=<name>` returns one section (400 for an unknown one); `?live=true` refreshes first. 503 until the first refresh completes.
+- `GET /stress/status` — the `stressJobs` section.
+- `GET /swagger` — the API docs, generated from the routes.
 
 ## StatusCache
 
-Periodically fetches live cluster status for the `/status` HTTP endpoint:
-- Default refresh: 30 seconds (configurable via `--refresh`)
-- Sources: EC2 instance states, K3s pods, SSH (Cassandra version), EMR, OpenSearch, security groups
-- Sections: `cluster`, `nodes`, `networking`, `securityGroup`, `spark`, `opensearch`, `s3`, `kubernetes`, `cassandraVersion`, `accessInfo`
-- Query params: `?section=nodes` (single section), `?live=true` (force refresh)
+- Default refresh: 30 seconds (`--refresh`).
+- Sections: `cluster`, `nodes`, `networking`, `securityGroup`, `spark`, `opensearch`, `s3`, `kubernetes`, `stressJobs`, `cassandraVersion`, `accessInfo`.
+- The refresh calls K3s and Kubernetes through Fabric8, so `server` carries `@RequiresProxy`.
 
-## Prompts
+## Live metrics
 
-Loaded from markdown files with YAML frontmatter in `src/main/resources/com/rustyrazorblade/mcp/`:
-- `activate.md` — activates easy-db-lab context for AI agent
-- `provision.md` — guided cluster provisioning workflow
+The server does not stream metrics. `metrics stream` (`commands/metrics/`, `services/metrics/`) publishes chosen metrics to Redis.
 
-Uses ClassGraph for classpath scanning (works inside JARs).
+## Tests
 
-## Adding a New MCP Tool
-
-1. Add `@McpCommand` annotation to your command class
-2. Add the class to `mcpCommandClasses` list in `McpToolRegistry.kt` — the annotation alone does
-   nothing, and a class carrying it that is missing from the list is invisible to every MCP client
-3. Register the class in `CommandsModule.kt`; `getTools()` instantiates through Koin
-4. Ensure `@Option` fields have descriptions (used in JSON schema)
-5. Add a case to `McpToolNamespacingTest` asserting the tool name appears in `getTools()`
+`StatusServerIntegrationTest` runs the real server on a free port with a fake `CachedStatus`. `ServerProcessIntegrationTest` runs `easy-db-lab server` as a process and checks the ready output, that `/sse` is not served and that no `.mcp.json` is written. `StatusCacheTest` covers the cache.

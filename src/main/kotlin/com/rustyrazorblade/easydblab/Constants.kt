@@ -989,7 +989,8 @@ object Constants {
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
          * tool wrappers in `bin/`, the tunnel script and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE],
-         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses JSON.
+         * [ENV_SOCKS_PORT], [ENV_SOCKS_PID] and [ENV_NETWORK_MODE], one `KEY=value` line each, so no
+         * shell code ever parses JSON.
          */
         const val ENV_FILE = ".socks5-proxy.env"
 
@@ -1010,6 +1011,17 @@ object Constants {
          * written and removed with [ENV_SOCKS_PORT]. Shell-side tools use the port only while it is live.
          */
         const val ENV_SOCKS_PID = "EDL_SOCKS_PID"
+
+        /**
+         * The env file key that says the cluster API is reachable from this machine with no tunnel.
+         * It is present, with the value [ENV_NETWORK_MODE_DIRECT], only while direct mode is active, and
+         * the tool wrappers then run the real tool with no proxy variables. It is separate from
+         * [ENV_TAILSCALE_ACTIVE], which means Tailscale and nothing else.
+         */
+        const val ENV_NETWORK_MODE = "EDL_NETWORK_MODE"
+
+        /** The value of [ENV_NETWORK_MODE] that selects direct mode. */
+        const val ENV_NETWORK_MODE_DIRECT = "direct"
 
         /**
          * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script

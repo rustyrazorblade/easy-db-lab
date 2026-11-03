@@ -135,6 +135,14 @@ class DefaultCiliumService(
                     // Explicitly off: keep K3s kube-proxy and avoid Cilium's BPF host
                     // routing, which blackholes node SSH:22 / apiserver:6443 (cilium#46010).
                     set("kubeProxyReplacement=false")
+                    // Socket LB on its own, with kube-proxy kept: a pod's connect() to a
+                    // ClusterIP is rewritten to the backend at the socket, so the kernel
+                    // keeps every 4-tuple unique. With per-packet DNAT instead, a pod with
+                    // one socket to the Service and one straight to the backend pod can
+                    // get the same local port for both; after DNAT they are one 5-tuple,
+                    // and the second SYN resets the first connection's server side,
+                    // which then hangs retransmitting.
+                    set("socketLB.enabled=true")
                     // Host networking stays on the kernel stack so node SSH/API stay reachable.
                     set("bpf.hostLegacyRouting=true")
                     // hostPort: with kube-proxy replacement off, Cilium does not implement

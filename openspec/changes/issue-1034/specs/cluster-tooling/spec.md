@@ -11,7 +11,7 @@ The CLI SHALL run every helm and kubectl command that `KubectlService` and `Helm
 #### Scenario: AWS keeps running the tools on the control node
 - **WHEN** the same steps run with the SSH form bound
 - **THEN** each command runs on the control node over SSH prefixed with `KUBECONFIG=/etc/rancher/k3s/k3s.yaml`
-- **AND** the command strings are the same as before this change
+- **AND** the command strings are the same as before this change, except the temporary input file name and the two-call `createNamespace`
 
 #### Scenario: The SSH form is the default binding
 - **WHEN** the CLI starts with no override
@@ -34,7 +34,7 @@ A command with input (a manifest or helm values) SHALL leave no temporary input 
 
 #### Scenario: Local apply writes no temporary file
 - **WHEN** a manifest is applied through the local form
-- **THEN** no `easydblab-*` file exists in the temporary directory afterwards
+- **THEN** the local form pipes stdin and writes no file
 
 #### Scenario: SSH input file removed after a failure
 - **WHEN** the SSH form runs a command with input and the command fails

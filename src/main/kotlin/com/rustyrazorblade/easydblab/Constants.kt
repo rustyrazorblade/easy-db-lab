@@ -370,6 +370,27 @@ object Constants {
         const val DEFAULT_SERVER_URL = "https://127.0.0.1:6443"
     }
 
+    // The helm and kubectl seam (services/ClusterTooling.kt)
+    object ClusterTooling {
+        /** Lines of a failed tool's stderr kept in `ClusterToolFailedException`. */
+        const val FAILURE_TAIL_LINES = 50
+
+        /** The exit status reported when a remote failure carries none; no process exits with it. */
+        const val UNKNOWN_EXIT_STATUS = -1
+
+        /** The file argument that means "read stdin" (`apply -f -`, `--values -`). */
+        const val STDIN_ARGUMENT = "-"
+
+        /** Directory on the control node that holds an uploaded stdin copy until the command ends. */
+        const val REMOTE_INPUT_DIRECTORY = "/tmp"
+
+        /** Name prefix of the temporary file that holds stdin, locally before upload and on the control node. */
+        const val INPUT_FILE_PREFIX = "easydblab-input"
+
+        /** Name suffix of the temporary stdin file. */
+        const val INPUT_FILE_SUFFIX = ".yaml"
+    }
+
     // K8s observability configuration
     object K8s {
         const val NAMESPACE = "default"

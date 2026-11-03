@@ -6,7 +6,7 @@
 ## 2. The seam and the SSH form
 
 - [ ] 2.1 Add `services/ClusterTooling.kt`: `ClusterTool`, `ClusterTooling`, `ClusterToolFailedException`, with KDoc.  Add `Constants.ClusterTooling.FAILURE_TAIL_LINES`.
-- [ ] 2.2 Write `SshClusterToolingTest`: the `KUBECONFIG=/etc/rancher/k3s/k3s.yaml` prefix, argument quoting, `< path` with stdin, `rm -f path` run even when the command fails, and exit-status mapping (mock `RemoteOperationsService`, verify with `argumentCaptor`).
+- [ ] 2.2 Write `SshClusterToolingTest`: the `KUBECONFIG=/etc/rancher/k3s/k3s.yaml` prefix, argument quoting for the marked arguments only, the `-` argument replaced by the uploaded path with stdin, `rm -f path` run even when the command fails, the injected temporary directory empty after a successful and a failed run, and exit-status mapping (mock `RemoteOperationsService`, verify with `argumentCaptor`).
 - [ ] 2.3 Implement `SshClusterTooling`, moving `withKubeconfig` and shell quoting out of the services.  It resolves the control host from cluster state.
 
 ## 3. The services
@@ -14,11 +14,11 @@
 - [ ] 3.1 Write service tests with a recording `ClusterTooling` fake that assert the argument lists each method builds today, including `createNamespace` without a shell pipe.
 - [ ] 3.2 Change `KubectlService` and `HelmService` to run through `ClusterTooling` and drop the `host` parameter.
 - [ ] 3.3 Update `WorkloadStepExecutor`, `KitWorkloadProbe` and `KitStatusCommand`.  Keep existing tests green.
-- [ ] 3.4 Bind `single<ClusterTooling> { SshClusterTooling(get(), get()) }` in `ServicesModule`.
+- [ ] 3.4 Bind `single<ClusterTooling> { SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir"))) }` in `ServicesModule`.
 
 ## 4. The local form
 
-- [ ] 4.1 Write `LocalClusterToolingIntegrationTest` (own K3s container, `@TempDir` workspace with its kubeconfig and the `direct` env-file key written by the test, a `RemoteOperationsService` fake that fails any call).  Run a fixture kit through `WorkloadStepExecutor` covering helm-repo, helm with values, helm-uninstall with keep-while, namespace, manifest, manifest-url, kustomize, wait, delete and delete-by-selector.  Assert: a bad kind fails with exit status 1 and stderr naming the resource type; no `easydblab-*` files in `java.io.tmpdir`; helm's repository config is under the workspace; `socksProxyHost` and `socksProxyPort` stay unset.  Missing helm or kubectl fails clearly, never skips.
+- [ ] 4.1 Write `LocalClusterToolingIntegrationTest` (own K3s container, `@TempDir` workspace with its kubeconfig and the `direct` env-file key written by the test, a `RemoteOperationsService` fake that fails any call).  Run a fixture kit through `WorkloadStepExecutor` covering helm-repo, helm with values, helm-uninstall with keep-while, namespace, manifest, manifest-url, kustomize, wait, delete and delete-by-selector.  Assert: a bad kind fails with exit status 1 and stderr naming the resource type; the local form pipes stdin and writes no file (structural, see `ac-coverage.md`); helm's repository config is under the workspace; `socksProxyHost` and `socksProxyPort` stay unset.  Missing helm or kubectl fails clearly, never skips.
 - [ ] 4.2 Implement `LocalClusterTooling` with `ProcessBuilder` and `KitProcessEnvironment`, stdin piped, stdout echoed with `println`, helm homes under the workspace.
 
 ## 5. Docs and rules

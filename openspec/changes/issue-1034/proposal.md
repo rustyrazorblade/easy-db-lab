@@ -4,8 +4,8 @@ Every typed kit step (helm-repo, helm, helm-uninstall, namespace, manifest, mani
 
 ## What Changes
 
-- New `ClusterTooling` interface (`services/ClusterTooling.kt`): `run(tool, args, stdin, echo)` returns stdout and throws `ClusterToolFailedException(tool, args, exitStatus, stderr)` on a non-zero exit.
-  - `SshClusterTooling`: today's behaviour.  It prefixes `KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}`, uploads stdin to a temporary file on the control node, appends `< path`, and removes the file in `finally`.  It resolves the control host from cluster state.
+- New `ClusterTooling` interface (`services/ClusterTooling.kt`): `run(tool, args, stdin, echo, shellQuoted)` returns stdout and throws `ClusterToolFailedException(tool, args, exitStatus, stderr, location)` on a non-zero exit.
+  - `SshClusterTooling`: today's behaviour.  It prefixes `KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}`, uploads stdin to a temporary file on the control node, replaces the `-` argument with the uploaded path, and removes the file in `finally`.  It resolves the control host from cluster state.
   - `LocalClusterTooling`: runs the tool as a local process in the kit process environment (`KitProcessEnvironment`: `<workspace>/bin` first on `PATH`, `KUBECONFIG=<workspace>/kubeconfig`).  stdin is piped, so no temporary file is written.  Manifests use `apply -f -`; helm values use `--values -`.
 - `KubectlService` and `HelmService` keep their public methods, lose the `host` parameter, and run every command through `ClusterTooling`.  `withKubeconfig` and shell quoting move into `SshClusterTooling`.  `createNamespace` drops its shell pipe (dry-run output is applied through stdin).
 - Callers updated: `WorkloadStepExecutor`, `KitWorkloadProbe`, `KitStatusCommand`.

@@ -28,7 +28,7 @@ All decisions below were approved by the owner on 2026-10-31.
 
 ### D3. The local form is selected by a Koin override until #1040
 
-`servicesModule` binds `single<ClusterTooling> { SshClusterTooling(get(), get()) }`.  Tests and harnesses rebind it.
+`servicesModule` binds `single<ClusterTooling> { SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir"))) }`.  Tests and harnesses rebind it.  The third argument is the directory for the SSH form's local staging copy of stdin; only the SSH form takes it.
 
 - Why: no user-facing switch that #1040 would have to remove.
 - Alternative: a hidden `EDL_CLUSTER_TOOLING=local` variable (rejected: a throwaway switch).
@@ -49,8 +49,17 @@ Until #1040 adds `direct` network mode, a workspace wrapper with no recorded tun
 enum class ClusterTool { KUBECTL, HELM }
 
 interface ClusterTooling {
-    /** Runs [tool] with [args], feeding [stdin] when given; returns stdout. */
-    fun run(tool: ClusterTool, args: List<String>, stdin: String? = null, echo: Boolean = true): String
+    /**
+     * Runs [tool] with [args], feeding [stdin] when given; returns stdout.  [shellQuoted] holds the
+     * indexes into [args] that the SSH form single-quotes; the local form ignores it.
+     */
+    fun run(
+        tool: ClusterTool,
+        args: List<String>,
+        stdin: String? = null,
+        echo: Boolean = true,
+        shellQuoted: Set<Int> = emptySet(),
+    ): String
 }
 
 class ClusterToolFailedException(
@@ -58,7 +67,7 @@ class ClusterToolFailedException(
 ) : EasyDBLabException(...)
 ```
 
-- SSH form: builds `KUBECONFIG=${REMOTE_KUBECONFIG} <tool> <quoted args>`.  With stdin, uploads it to `/tmp/easydblab-input-<uuid>.yaml`, appends `< path`, and runs `rm -f path` in `finally`.  Maps `RemoteCommandFailedException` (which gains `exitStatus`) to `ClusterToolFailedException`.
+- SSH form: builds `KUBECONFIG=${REMOTE_KUBECONFIG} <tool> <args>`, single-quoting only the arguments the service marked in `shellQuoted` and joining the rest raw, as today.  With stdin, uploads it to `/tmp/easydblab-input-<uuid>.yaml`, replaces the `-` argument with that path, and runs `rm -f path` in `finally`.  Exactly one `-` argument must be present when stdin is given.  Maps `RemoteCommandFailedException` (which gains `exitStatus`) to `ClusterToolFailedException`.
 - Local form: `ProcessBuilder` with the kit process environment applied; stdin piped; stdout and stderr captured separately; stdout echoed with `println` when `echo` is set.  A non-zero exit throws with the last `Constants.ClusterTooling.FAILURE_TAIL_LINES` lines of stderr.  Arguments are passed as a list, never through a shell.
 - Services: `applyContent` becomes `run(KUBECTL, ["apply", "-f", "-"], yaml)`; `createNamespace` runs the dry-run, then applies its output through stdin.
 
@@ -73,5 +82,5 @@ class ClusterToolFailedException(
 
 ## Testing
 
-- Unit: `SshClusterTooling` command strings, `< path`, `rm` running even when the command fails, exit-status mapping (mocks `RemoteOperationsService` with `argumentCaptor`, as CLAUDE.md allows).  Service argument building through a recording `ClusterTooling` fake that asserts on the arguments the service built.
-- Integration (`LocalClusterToolingIntegrationTest`): its own K3s container, a `@TempDir` workspace holding its kubeconfig, `RemoteOperationsService` bound to a fake that fails any call.  Runs a fixture kit through `WorkloadStepExecutor` covering helm-repo, helm with values, helm-uninstall with keep-while, namespace, manifest, manifest-url, kustomize, wait, delete, delete-by-selector.  Asserts a bad kind fails with exit status 1 and stderr naming the resource type, no `easydblab-*` files in `java.io.tmpdir`, and the SOCKS properties still null.
+- Unit: `SshClusterTooling` command strings, the `-` argument replaced by the uploaded path, `rm` running even when the command fails, the injected temporary directory empty after a successful and a failed run, exit-status mapping (mocks `RemoteOperationsService` with `argumentCaptor`, as CLAUDE.md allows).  Service argument building through a recording `ClusterTooling` fake that asserts on the arguments the service built.
+- Integration (`LocalClusterToolingIntegrationTest`): its own K3s container, a `@TempDir` workspace holding its kubeconfig, `RemoteOperationsService` bound to a fake that fails any call.  Runs a fixture kit through `WorkloadStepExecutor` covering helm-repo, helm with values, helm-uninstall with keep-while, namespace, manifest, manifest-url, kustomize, wait, delete, delete-by-selector.  Asserts a bad kind fails with exit status 1 and stderr naming the resource type, and the SOCKS properties still null.  The local form's "no temporary file" is structural (`LocalClusterTooling` pipes stdin and creates no file), not a runtime assertion; see `ac-coverage.md`.

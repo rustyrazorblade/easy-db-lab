@@ -3371,6 +3371,7 @@ sealed interface Event {
         @SerialName("Stress.JobStarted")
         data class JobStarted(
             val jobName: String,
+            val host: String,
             val image: String,
             val contactPoint: String,
             val promPort: Int,
@@ -3382,6 +3383,7 @@ sealed interface Event {
                 |Stress job started successfully!
                 |
                 |Job name: $jobName
+                |Host: $host
                 |Image: $image
                 |Contact point: $contactPoint
                 |Prometheus port: $promPort
@@ -3391,6 +3393,21 @@ sealed interface Event {
                 |View logs: easy-db-lab cassandra stress logs $jobName
                 |Stop job: easy-db-lab cassandra stress stop $jobName
                 """.trimMargin()
+        }
+
+        /**
+         * A stress job that `metrics stream` saw running has finished: on [host], with [outcome],
+         * after [durationSeconds] from the job's start time to its completion time.
+         */
+        @Serializable
+        @SerialName("Stress.JobCompleted")
+        data class JobCompleted(
+            val jobName: String,
+            val host: String,
+            val outcome: StressJobOutcome,
+            val durationSeconds: Long,
+        ) : Stress {
+            override fun toDisplayString(): String = "Stress job $jobName on $host ${outcome.wireName} after ${durationSeconds}s"
         }
 
         @Serializable
@@ -3981,14 +3998,6 @@ sealed interface Event {
         }
 
         @Serializable
-        @SerialName("Command.McpConfigSaved")
-        data class McpConfigSaved(
-            val path: String,
-        ) : Command {
-            override fun toDisplayString(): String = "MCP configuration saved to: $path\n"
-        }
-
-        @Serializable
         @SerialName("Command.ProfileNotConfigured")
         data object ProfileNotConfigured : Command {
             override fun toDisplayString(): String =
@@ -4052,7 +4061,7 @@ sealed interface Event {
          * A status section could not be read. Used when `status` degrades because the SOCKS
          * proxy could not be established — see the class-level KDoc on `Status` and design
          * decision D9 in `openspec/changes/up-fail-fast/design.md`. This is the one place a
-         * missing section is reported as data rather than skipped, because an MCP client or
+         * missing section is reported as data rather than skipped, because a Redis subscriber or
          * script reading status needs to know a section was never attempted, not just that it
          * is absent.
          */
@@ -4664,82 +4673,6 @@ sealed interface Event {
     }
 
     // =========================================================================
-    // Event.Mcp — Server MCP operations
-    // =========================================================================
-
-    @Serializable
-    sealed interface Mcp : Event {
-        @Serializable
-        @SerialName("Mcp.ToolExecutionStarting")
-        data class ToolExecutionStarting(
-            val toolName: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Starting execution of tool: $toolName"
-        }
-
-        @Serializable
-        @SerialName("Mcp.ToolExecutionComplete")
-        data class ToolExecutionComplete(
-            val toolName: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Tool '$toolName' completed successfully"
-        }
-
-        @Serializable
-        @SerialName("Mcp.ToolExecutionFailed")
-        data class ToolExecutionFailed(
-            val toolName: String,
-            val error: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Tool '$toolName' failed: $error"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Mcp.ServerStarting")
-        data class ServerStarting(
-            val port: Int,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Starting server on port $port..."
-        }
-
-        @Serializable
-        @SerialName("Mcp.BackgroundToolComplete")
-        data class BackgroundToolComplete(
-            val toolName: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Background execution of tool '$toolName' complete."
-        }
-
-        @Serializable
-        @SerialName("Mcp.BackgroundToolFailed")
-        data class BackgroundToolFailed(
-            val toolName: String,
-            val error: String,
-        ) : Mcp {
-            override fun toDisplayString(): String = "Background execution of tool '$toolName' failed: $error"
-
-            override fun isError(): Boolean = true
-        }
-
-        @Serializable
-        @SerialName("Mcp.ServerReady")
-        data class ServerReady(
-            val port: Int,
-            val bind: String,
-        ) : Mcp {
-            override fun toDisplayString(): String =
-                """
-                Starting server on port $port...
-
-                Server is now available at: http://$bind:$port/sse
-                Swagger UI available at:    http://$bind:$port/swagger
-                """.trimIndent()
-        }
-    }
-
-    // =========================================================================
     // Event.Logs — Log query and backup operations
     // =========================================================================
 
@@ -4789,41 +4722,108 @@ sealed interface Event {
     }
 
     // =========================================================================
-    // Event.Metrics — Metrics backup and import operations
+    // Event.Metrics — the `metrics stream` samples and its lifecycle
     // =========================================================================
 
     @Serializable
     sealed interface Metrics : Event {
+        /**
+         * One value of one streamed metric, published by `metrics stream` straight to Redis and
+         * never through the bus.  [entity] is a host alias, `cluster`, `cluster.min` or
+         * `cluster.max`; [value] is in the dashboards' unit for [name].
+         */
         @Serializable
-        @SerialName("Metrics.Node")
-        data class Node(
-            val cpuUsagePct: Double,
-            val memoryUsedBytes: Long,
-            val diskReadBytesPerSec: Double,
-            val diskWriteBytesPerSec: Double,
-            val filesystemUsedPct: Double,
-        )
-
-        @Serializable
-        @SerialName("Metrics.System")
-        data class System(
-            val nodes: Map<String, Node>,
+        @SerialName("Metrics.Sample")
+        data class Sample(
+            val name: String,
+            val entity: String,
+            val value: Double,
         ) : Metrics {
-            override fun toDisplayString(): String = "System metrics: ${nodes.size} nodes"
+            override fun toDisplayString(): String = "$name $entity $value"
         }
 
+        /** A streamed metric failed after it last succeeded (or after the stream started). */
         @Serializable
-        @SerialName("Metrics.Cassandra")
-        data class Cassandra(
-            val readP99Ms: Double,
-            val writeP99Ms: Double,
-            val readOpsPerSec: Double,
-            val writeOpsPerSec: Double,
-            val compactionPending: Long,
-            val compactionCompletedPerSec: Double,
-            val compactionBytesWrittenPerSec: Double,
+        @SerialName("Metrics.MetricFailing")
+        data class MetricFailing(
+            val name: String,
+            val reason: String,
         ) : Metrics {
-            override fun toDisplayString(): String = "Cassandra metrics: read_p99=${readP99Ms}ms, write_p99=${writeP99Ms}ms"
+            override fun toDisplayString(): String = "Metric $name is failing: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** A streamed metric that was failing succeeded again. */
+        @Serializable
+        @SerialName("Metrics.MetricRecovered")
+        data class MetricRecovered(
+            val name: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Metric $name recovered"
+        }
+
+        /** `--metrics` held entries the stream cannot use; every one is listed. */
+        @Serializable
+        @SerialName("Metrics.InvalidNames")
+        data class InvalidNames(
+            val entries: List<InvalidMetricName>,
+        ) : Metrics {
+            override fun toDisplayString(): String =
+                entries.joinToString(
+                    separator = "\n",
+                    prefix = "Invalid --metrics entries (run 'easy-db-lab metrics list' for the accepted names):\n",
+                ) { "  position ${it.position}: '${it.value}' (${it.reason})" }
+
+            override fun isError(): Boolean = true
+        }
+
+        /** `metrics stream` needs Redis, and [envVar] is not set. */
+        @Serializable
+        @SerialName("Metrics.RedisNotConfigured")
+        data class RedisNotConfigured(
+            val envVar: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "metrics stream publishes to Redis: set $envVar to redis://host:port/channel"
+
+            override fun isError(): Boolean = true
+        }
+
+        /** Redis at [url] did not come back after every reconnect attempt; the stream stops. */
+        @Serializable
+        @SerialName("Metrics.RedisLost")
+        data class RedisLost(
+            val url: String,
+            val reason: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Lost Redis at $url and could not reconnect: $reason"
+
+            override fun isError(): Boolean = true
+        }
+
+        /**
+         * Redis at [url] failed ([reason]) and the stream reconnected; the cycle's [samplesDropped]
+         * unpublished samples were dropped, not queued.
+         */
+        @Serializable
+        @SerialName("Metrics.RedisReconnected")
+        data class RedisReconnected(
+            val url: String,
+            val reason: String,
+            val samplesDropped: Int,
+        ) : Metrics {
+            override fun toDisplayString(): String = "Reconnected to Redis at $url after: $reason ($samplesDropped samples dropped)"
+        }
+
+        /** `metrics stream` started in [workspace], which has no running cluster. */
+        @Serializable
+        @SerialName("Metrics.NoRunningCluster")
+        data class NoRunningCluster(
+            val workspace: String,
+        ) : Metrics {
+            override fun toDisplayString(): String = "No running cluster in $workspace: metrics stream needs one (run 'easy-db-lab up')"
+
+            override fun isError(): Boolean = true
         }
     }
 
@@ -5679,7 +5679,7 @@ sealed interface Event {
         ) : Kit {
             // The step's output was streamed to the console as it ran; repeating [outputTail] here
             // printed every failure message twice. The tail stays on the event for structured
-            // consumers (MCP, Redis).
+            // consumers (Redis subscribers).
             override fun toDisplayString(): String = "[$kit] $phase step ${stepIndex + 1} (shell) failed with exit code $exitCode."
 
             override fun isError(): Boolean = true
@@ -5848,6 +5848,21 @@ sealed interface Event {
             val vpcName: String,
         ) : Server {
             override fun toDisplayString(): String = "Infrastructure gone: VPC '$vpcName' no longer exists. Shutting down server."
+        }
+
+        /** The REST status server is listening. */
+        @Serializable
+        @SerialName("Server.Ready")
+        data class Ready(
+            val statusUrl: String,
+            val swaggerUrl: String,
+        ) : Server {
+            override fun toDisplayString(): String =
+                """
+                Status server ready.
+                Cluster status: $statusUrl
+                API docs:       $swaggerUrl
+                """.trimIndent()
         }
     }
 

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.aws
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
@@ -17,7 +16,6 @@ import picocli.CommandLine.Command
  * Examples:
  *   easy-db-lab aws region  # Returns region (e.g., us-west-2)
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "region",

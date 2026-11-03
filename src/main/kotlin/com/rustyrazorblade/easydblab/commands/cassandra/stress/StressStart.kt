@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -25,7 +24,6 @@ import picocli.CommandLine.Parameters
  * All arguments after the options are passed directly to cassandra-easy-stress.
  * Example: easy-db-lab stress start KeyValue -d 1h --threads 100
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(
@@ -95,25 +93,27 @@ class StressStart : PicoBaseCommand() {
 
         val parsedTags = parseTags(tags)
 
-        stressJobService
-            .startJob(
-                controlHost = controlNode,
-                config =
-                    StressJobConfig(
-                        jobName = fullJobName,
-                        image = image,
-                        args = args,
-                        contactPoints = contactPoints,
-                        tags = parsedTags,
-                        promPort = promPort,
-                    ),
-            ).getOrElse { e ->
-                error("Failed to create job: ${e.message}")
-            }
+        val started =
+            stressJobService
+                .startJob(
+                    controlHost = controlNode,
+                    config =
+                        StressJobConfig(
+                            jobName = fullJobName,
+                            image = image,
+                            args = args,
+                            contactPoints = contactPoints,
+                            tags = parsedTags,
+                            promPort = promPort,
+                        ),
+                ).getOrElse { e ->
+                    error("Failed to create job: ${e.message}")
+                }
 
         eventBus.emit(
             Event.Stress.JobStarted(
                 jobName = fullJobName,
+                host = started.host,
                 image = image,
                 contactPoint = contactPoints,
                 promPort = promPort,

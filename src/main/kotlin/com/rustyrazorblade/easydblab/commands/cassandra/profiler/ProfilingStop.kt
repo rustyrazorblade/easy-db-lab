@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.profiler
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.configuration.Host
@@ -21,7 +20,6 @@ import java.time.Instant
  * shipping keep running for what is already on disk, under the bounds the operator chose rather
  * than under defaults.
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

@@ -71,6 +71,7 @@ commands/
 │   ├── KitSqlCommand.kt   # <kit> sql — runs SQL over the kit's JDBC endpoint; SOCKS-bridged when tunnel-only (#740)
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
 ├── logs/                  # logs query — reads the cluster's logs from Loki
+├── metrics/               # metrics stream — publishes chosen metrics from Mimir to Redis every 5s until stopped (@RequireProfileSetup, @RequiresProxy; the work is services/metrics/MetricsStreamService); metrics list — prints the 14 accepted names with println
 ├── observability/         # observability compactor start|stop|status — the account compactor; no cluster workspace needed (bucket from the profile), status is read-only println
 ├── opensearch/            # OpenSearch commands
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
@@ -118,7 +119,6 @@ class MyCommand(context: Context) : PicoBaseCommand(context) {
 
 ### 3. Use Annotations
 
-- `@McpCommand` - Expose command as an MCP tool in the server
 - `@RequireProfileSetup` - Require AWS profile configuration
 - `@RequireSSHKey` - Require SSH key to be available
 
@@ -172,7 +172,6 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
 
 ## Annotations
 
-- `@McpCommand` — expose command as an MCP tool in the server (must also add to `McpToolRegistry`)
 - `@RequireProfileSetup` — require AWS profile configuration before execution
 - `@RequireSSHKey` — require SSH key to be available
 - `@RequireDocker` — require a Docker daemon to be reachable before execution
@@ -211,10 +210,9 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
 
 ## Special Long-Running Commands
 
-- **`Server`** — starts the server (MCP + REST + background services via Ktor). Does not exit until stopped.
-- **`Repl`** — starts interactive REPL. Does not exit until user quits.
-
-Both set `context.isInteractive = true` to keep resources (like CQL sessions) alive across invocations.
+- **`Server`** — starts the REST status server (`server/StatusServer`: `/status`, `/stress/status`, `/swagger`, with the background `StatusCache`). Does not exit until stopped.
+- **`Repl`** — starts interactive REPL. Does not exit until user quits. It sets `context.isInteractive = true` to keep resources (like CQL sessions) alive across invocations.
+- **`metrics stream`** — runs cycles on the command thread until the first Ctrl-C or SIGTERM, then returns normally (exit 0).
 
 ## Available Services
 

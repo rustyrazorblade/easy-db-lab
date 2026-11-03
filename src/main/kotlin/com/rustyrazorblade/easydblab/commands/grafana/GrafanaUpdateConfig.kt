@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.grafana
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -22,7 +21,6 @@ import picocli.CommandLine.Command
  * nothing. Bring-up reaches [ObservabilityStackService] directly and still deploys the collectors
  * in redirect mode; this command is the operator-facing local-stack reconfigure path only.
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

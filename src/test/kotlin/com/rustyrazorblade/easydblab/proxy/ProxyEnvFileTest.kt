@@ -45,6 +45,62 @@ internal class ProxyEnvFileTest {
     }
 
     @Test
+    fun `direct mode is one fixed key that recording a tunnel, removing it and recording Tailscale all keep`() {
+        envFile.recordDirect(active = true)
+        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=direct")
+
+        envFile.recordTunnel(41234, PID)
+        assertThat(file.readLines()).contains("EDL_NETWORK_MODE=direct")
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = null, tunnel = RecordedTunnel(41234, PID), direct = true))
+
+        envFile.removeTunnel()
+        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=direct")
+
+        envFile.recordTailscale(active = false)
+        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=false", "EDL_NETWORK_MODE=direct")
+        assertThat(envFile.read().direct).isTrue()
+    }
+
+    @Test
+    fun `recording direct mode keeps the Tailscale flag and the tunnel`() {
+        envFile.recordTailscale(active = false)
+        envFile.recordTunnel(41234, PID)
+
+        envFile.recordDirect(active = true)
+
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, PID), direct = true))
+    }
+
+    @Test
+    fun `recording direct mode off removes the key and keeps the rest`() {
+        envFile.recordTailscale(active = false)
+        envFile.recordDirect(active = true)
+
+        envFile.recordDirect(active = false)
+
+        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=false")
+        assertThat(envFile.read().direct).isFalse()
+    }
+
+    @Test
+    fun `only the value direct turns direct mode on`() {
+        file.writeText("EDL_NETWORK_MODE=tailscale\n")
+        assertThat(envFile.read().direct).isFalse()
+
+        file.writeText("EDL_NETWORK_MODE=\n")
+        assertThat(envFile.read().direct).isFalse()
+    }
+
+    @Test
+    fun `direct mode sources cleanly in sh`() {
+        envFile.recordDirect(active = true)
+
+        val output = sh(". '${file.absolutePath}'; echo \"${'$'}EDL_NETWORK_MODE\"")
+
+        assertThat(output).isEqualTo("direct")
+    }
+
+    @Test
     fun `removing the tunnel removes its port and PID together and keeps the Tailscale flag`() {
         envFile.recordTailscale(active = false)
         envFile.recordTunnel(41234, PID)

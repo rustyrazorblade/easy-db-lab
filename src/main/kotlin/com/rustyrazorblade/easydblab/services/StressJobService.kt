@@ -42,6 +42,14 @@ data class StressJobConfig(
 )
 
 /**
+ * A stress job whose pod is running: its name, and the alias of the node the pod runs on.
+ */
+data class StartedStressJob(
+    val jobName: String,
+    val host: String,
+)
+
+/**
  * Service for managing cassandra-easy-stress K8s Jobs.
  *
  * This service encapsulates all K8s operations for stress jobs, providing
@@ -54,12 +62,12 @@ interface StressJobService {
      *
      * @param controlHost The control node running K3s
      * @param config The stress job configuration
-     * @return Result containing the created job name or failure
+     * @return Result containing the job name and the node its pod runs on, or failure
      */
     fun startJob(
         controlHost: ClusterHost,
         config: StressJobConfig,
-    ): Result<String>
+    ): Result<StartedStressJob>
 
     /**
      * Stops and deletes a stress job.
@@ -172,7 +180,7 @@ class DefaultStressJobService(
     override fun startJob(
         controlHost: ClusterHost,
         config: StressJobConfig,
-    ): Result<String> =
+    ): Result<StartedStressJob> =
         runCatching {
             log.info { "Starting stress job: ${config.jobName}" }
 
@@ -189,14 +197,14 @@ class DefaultStressJobService(
         }
 
     /**
-     * Polls until the job's first pod is Running or Succeeded. No pod yet, another phase, a Failed
-     * pod and a failed query are all polled again; if the pod is not running within
-     * [POD_READY_MAX_ATTEMPTS] looks, fails with the last look's outcome.
+     * Polls until the job's first pod is Running or Succeeded, and returns the job with the node the
+     * pod runs on. No pod yet, another phase, a Failed pod and a failed query are all polled again; if
+     * the pod is not running within [POD_READY_MAX_ATTEMPTS] looks, fails with the last look's outcome.
      */
     private fun waitForPodRunning(
         controlHost: ClusterHost,
         jobName: String,
-    ): String {
+    ): StartedStressJob {
         val pods =
             pollUntil(
                 operationName = "wait-for-stress-pod-$jobName",
@@ -211,7 +219,7 @@ class DefaultStressJobService(
         val pod = pods.firstOrNull() ?: error("No pods created yet for job $jobName")
         check(pod.status in POD_RUNNING_PHASES) { "Pod ${pod.name} is ${pod.status}, waiting for Running" }
         eventBus.emit(Event.Stress.PodStatus(pod.name, pod.status))
-        return jobName
+        return StartedStressJob(jobName = jobName, host = pod.nodeName)
     }
 
     /**
@@ -368,6 +376,7 @@ class DefaultStressJobService(
         val labels =
             mapOf(
                 Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+                Constants.Stress.ROLE_LABEL_KEY to Constants.Stress.ROLE_RUN,
                 "job-name" to config.jobName,
             )
 
@@ -630,6 +639,7 @@ class DefaultStressJobService(
         val labels =
             mapOf(
                 Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+                Constants.Stress.ROLE_LABEL_KEY to Constants.Stress.ROLE_COMMAND,
                 "job-name" to jobName,
             )
 

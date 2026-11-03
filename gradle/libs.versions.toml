@@ -2,11 +2,6 @@
 # Kotlin
 kotlin = "2.4.10"
 
-# MCP SDK
-mcp-sdk = "0.14.0"
-kotlinx-io = "0.9.0"
-
-
 # Logging
 logback = "1.5.32"
 kotlin-logging = "8.0.01"
@@ -177,10 +172,6 @@ kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
 
-# MCP SDK
-mcp-sdk = { module = "io.modelcontextprotocol:kotlin-sdk", version.ref = "mcp-sdk" }
-kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
-
 # Redis
 jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
 
@@ -200,7 +191,6 @@ clickhouse-jdbc = { module = "com.clickhouse:clickhouse-jdbc", version.ref = "cl
 mysql-connector-j = { module = "com.mysql:mysql-connector-j", version.ref = "mysql-connector-j" }
 postgresql-jdbc = { module = "org.postgresql:postgresql", version.ref = "postgresql-jdbc" }
 ignite3-jdbc = { module = "org.apache.ignite:ignite-jdbc", version.ref = "ignite3" }
-
 
 [bundles]
 # Logging bundle
@@ -233,7 +223,6 @@ sshd = ["sshd-core", "sshd-scp"]
 
 # Resilience4j bundle
 resilience4j = ["resilience4j-retry", "resilience4j-kotlin"]
-
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

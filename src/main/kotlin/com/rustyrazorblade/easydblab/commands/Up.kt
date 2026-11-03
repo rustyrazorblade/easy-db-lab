@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
@@ -84,7 +83,6 @@ import kotlin.random.Random
  * @param sshRetryInterval How long to wait between SSH readiness attempts. Defaults to
  *   [Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS]; tests inject a short interval.
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @TriggerBackup

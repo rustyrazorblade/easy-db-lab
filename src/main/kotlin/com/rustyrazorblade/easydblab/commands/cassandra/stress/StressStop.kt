@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -19,7 +18,6 @@ import picocli.CommandLine.Parameters
  *
  * Deletes the specified job and its associated ConfigMap (if any).
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

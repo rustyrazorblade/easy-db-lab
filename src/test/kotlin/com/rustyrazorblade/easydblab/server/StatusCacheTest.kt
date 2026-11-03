@@ -1,0 +1,613 @@
+package com.rustyrazorblade.easydblab.server
+
+import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InfrastructureState
+import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
+import com.rustyrazorblade.easydblab.configuration.NodeState
+import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
+import com.rustyrazorblade.easydblab.providers.aws.VpcService
+import com.rustyrazorblade.easydblab.services.K3sService
+import com.rustyrazorblade.easydblab.services.StressJobService
+import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
+import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
+import com.rustyrazorblade.easydblab.services.aws.EMRService
+import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.koin.core.module.Module
+import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
+import java.io.File
+import java.time.Instant
+import java.util.concurrent.atomic.AtomicBoolean
+
+class StatusCacheTest : BaseKoinTest() {
+    private lateinit var mockClusterStateManager: ClusterStateManager
+    private lateinit var mockEc2InstanceService: EC2InstanceService
+    private lateinit var mockVpcService: VpcService
+    private lateinit var mockK3sService: K3sService
+    private lateinit var mockEmrService: EMRService
+    private lateinit var mockOpenSearchService: OpenSearchService
+    private lateinit var mockStressJobService: StressJobService
+    private lateinit var statusCache: StatusCache
+
+    private val testClusterState =
+        ClusterState(
+            name = "test-cluster",
+            clusterId = "test-cluster-id",
+            createdAt = Instant.parse("2025-01-15T10:30:00Z"),
+            infrastructureStatus = InfrastructureStatus.UP,
+            default = NodeState(version = "5.0"),
+            versions = null,
+            hosts =
+                mapOf(
+                    ServerType.Cassandra to
+                        listOf(
+                            ClusterHost(
+                                publicIp = "54.1.2.3",
+                                privateIp = "10.0.1.100",
+                                alias = "db0",
+                                availabilityZone = "us-west-2a",
+                                instanceId = "i-db0",
+                            ),
+                        ),
+                    ServerType.Stress to emptyList(),
+                    ServerType.Control to
+                        listOf(
+                            ClusterHost(
+                                publicIp = "54.1.2.4",
+                                privateIp = "10.0.1.200",
+                                alias = "control0",
+                                availabilityZone = "us-west-2a",
+                                instanceId = "i-control0",
+                            ),
+                        ),
+                ),
+            s3Bucket = "test-bucket-abc",
+            infrastructure =
+                InfrastructureState(
+                    vpcId = "vpc-abc123",
+                    region = "us-west-2",
+                    subnetIds = listOf("subnet-111", "subnet-222"),
+                    securityGroupId = "sg-abc123",
+                    internetGatewayId = "igw-def456",
+                    routeTableId = "rtb-789",
+                ),
+        )
+
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                single { mockClusterStateManager }
+                single { mockEc2InstanceService }
+                single<VpcService> { mockVpcService }
+                factory<K3sService> { mockK3sService }
+                single { mockEmrService }
+                single { mockOpenSearchService }
+                single<StressJobService> { mockStressJobService }
+                single { WorkspaceKitScanner(get()) }
+            },
+        )
+
+    @BeforeEach
+    fun setupMocks() {
+        mockClusterStateManager = mock()
+        mockEc2InstanceService = mock()
+        mockVpcService = mock()
+        mockK3sService = mock()
+        mockEmrService = mock()
+        mockOpenSearchService = mock()
+        mockStressJobService = mock()
+
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
+        whenever(mockEc2InstanceService.describeInstances(any())).thenReturn(
+            listOf(
+                InstanceDetails(
+                    instanceId = "i-db0",
+                    state = "running",
+                    publicIp = "54.1.2.3",
+                    privateIp = "10.0.1.100",
+                    availabilityZone = "us-west-2a",
+                    instanceType = "r3.2xlarge",
+                ),
+                InstanceDetails(
+                    instanceId = "i-control0",
+                    state = "running",
+                    publicIp = "54.1.2.4",
+                    privateIp = "10.0.1.200",
+                    availabilityZone = "us-west-2a",
+                    instanceType = "m5.xlarge",
+                ),
+            ),
+        )
+        whenever(mockVpcService.describeSecurityGroup(any())).thenReturn(
+            SecurityGroupDetails(
+                securityGroupId = "sg-abc123",
+                name = "test-sg",
+                description = "Test security group",
+                vpcId = "vpc-abc123",
+                inboundRules =
+                    listOf(
+                        SecurityGroupRuleInfo(
+                            protocol = "tcp",
+                            fromPort = 9042,
+                            toPort = 9042,
+                            cidrBlocks = listOf("10.0.0.0/16"),
+                            description = "CQL",
+                        ),
+                    ),
+                outboundRules = emptyList(),
+            ),
+        )
+    }
+
+    @AfterEach
+    fun teardown() {
+        if (::statusCache.isInitialized) {
+            statusCache.stop()
+        }
+    }
+
+    @Test
+    fun `getStatus blocks until first refresh completes`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        // forceRefresh populates the cache, releasing the latch
+        statusCache.forceRefresh()
+        val result = statusCache.getStatus()
+        assertThat(result).isNotNull()
+    }
+
+    @Test
+    fun `getStatus returns full JSON after refresh`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus()
+        assertThat(result).isNotNull()
+
+        val json = Json.parseToJsonElement(result!!).jsonObject
+        assertThat(json.containsKey("cluster")).isTrue()
+        assertThat(json.containsKey("nodes")).isTrue()
+        assertThat(json.containsKey("networking")).isTrue()
+        assertThat(json.containsKey("securityGroup")).isTrue()
+    }
+
+    @Test
+    fun `cluster section contains correct data`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("cluster")
+        assertThat(result).isNotNull()
+
+        val cluster = Json.parseToJsonElement(result!!).jsonObject
+        assertThat(cluster["clusterId"]?.jsonPrimitive?.content).isEqualTo("test-cluster-id")
+        assertThat(cluster["name"]?.jsonPrimitive?.content).isEqualTo("test-cluster")
+        assertThat(cluster["infrastructureStatus"]?.jsonPrimitive?.content).isEqualTo("UP")
+    }
+
+    @Test
+    fun `nodes section maps server types correctly`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("nodes")
+        assertThat(result).isNotNull()
+
+        val nodes = Json.parseToJsonElement(result!!).jsonObject
+        assertThat(nodes.containsKey("database")).isTrue()
+        assertThat(nodes.containsKey("app")).isTrue()
+        assertThat(nodes.containsKey("control")).isTrue()
+    }
+
+    @Test
+    fun `node state is populated from EC2`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("nodes")
+        val nodes = Json.parseToJsonElement(result!!).jsonObject
+        val dbNodes = nodes["database"]!!.toString()
+
+        assertThat(dbNodes).contains("RUNNING")
+        assertThat(dbNodes).contains("db0")
+        assertThat(dbNodes).contains("i-db0")
+    }
+
+    @Test
+    fun `node instanceType is populated from EC2`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("nodes")
+        val nodes = Json.parseToJsonElement(result!!).jsonObject
+        val dbNodes = nodes["database"]!!.toString()
+        val controlNodes = nodes["control"]!!.toString()
+
+        assertThat(dbNodes).contains("r3.2xlarge")
+        assertThat(controlNodes).contains("m5.xlarge")
+    }
+
+    @Test
+    fun `networking section contains infrastructure data`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("networking")
+        assertThat(result).isNotNull()
+
+        val networking = Json.parseToJsonElement(result!!).jsonObject
+        assertThat(networking["vpcId"]?.jsonPrimitive?.content).isEqualTo("vpc-abc123")
+        assertThat(networking["internetGatewayId"]?.jsonPrimitive?.content).isEqualTo("igw-def456")
+    }
+
+    @Test
+    fun `security group includes rules from AWS`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("securityGroup")
+        assertThat(result).isNotNull()
+
+        val sg = Json.parseToJsonElement(result!!).jsonObject
+        assertThat(sg["securityGroupId"]?.jsonPrimitive?.content).isEqualTo("sg-abc123")
+        assertThat(sg["name"]?.jsonPrimitive?.content).isEqualTo("test-sg")
+        assertThat(sg.containsKey("inboundRules")).isTrue()
+    }
+
+    @Test
+    fun `invalid section throws IllegalArgumentException`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        assertThatThrownBy { statusCache.getStatus("nonexistent") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Invalid section: 'nonexistent'")
+    }
+
+    @Test
+    fun `nullable sections return null string when not configured`() {
+        val stateWithoutOptionals =
+            testClusterState.copy(
+                emrCluster = null,
+                openSearchDomain = null,
+                s3Bucket = null,
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithoutOptionals)
+
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        assertThat(statusCache.getStatus("spark")).isEqualTo("null")
+        assertThat(statusCache.getStatus("opensearch")).isEqualTo("null")
+        assertThat(statusCache.getStatus("s3")).isEqualTo("null")
+    }
+
+    @Test
+    fun `null fields are omitted from full response`() {
+        val stateWithoutOptionals =
+            testClusterState.copy(
+                emrCluster = null,
+                openSearchDomain = null,
+                s3Bucket = null,
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithoutOptionals)
+
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus()
+        assertThat(result).isNotNull()
+
+        val json = Json.parseToJsonElement(result!!).jsonObject
+        assertThat(json.containsKey("spark")).isFalse()
+        assertThat(json.containsKey("opensearch")).isFalse()
+        assertThat(json.containsKey("s3")).isFalse()
+    }
+
+    @Test
+    fun `cassandraVersion source is cached when no running nodes`() {
+        whenever(mockEc2InstanceService.describeInstances(any())).thenReturn(
+            listOf(
+                InstanceDetails(
+                    instanceId = "i-db0",
+                    state = "stopped",
+                    publicIp = null,
+                    privateIp = "10.0.1.100",
+                    availabilityZone = "us-west-2a",
+                    instanceType = "r3.2xlarge",
+                ),
+                InstanceDetails(
+                    instanceId = "i-control0",
+                    state = "stopped",
+                    publicIp = null,
+                    privateIp = "10.0.1.200",
+                    availabilityZone = "us-west-2a",
+                    instanceType = "m5.xlarge",
+                ),
+            ),
+        )
+
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("cassandraVersion")
+        assertThat(result).isNotNull()
+
+        val cv = Json.parseToJsonElement(result!!).jsonObject
+        assertThat(cv["version"]?.jsonPrimitive?.content).isEqualTo("5.0")
+        assertThat(cv["source"]?.jsonPrimitive?.content).isEqualTo("cached")
+    }
+
+    @Test
+    fun `getStatus returns null when no cluster state exists`() {
+        whenever(mockClusterStateManager.exists()).thenReturn(false)
+
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        assertThat(statusCache.getStatus()).isNull()
+    }
+
+    @Test
+    fun `forceRefresh updates cached data`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val firstResult = statusCache.getStatus("cluster")
+        assertThat(firstResult).contains("test-cluster")
+
+        // Update the state
+        val updatedState = testClusterState.copy(name = "updated-cluster")
+        whenever(mockClusterStateManager.load()).thenReturn(updatedState)
+        statusCache.forceRefresh()
+
+        val secondResult = statusCache.getStatus("cluster")
+        assertThat(secondResult).contains("updated-cluster")
+    }
+
+    @Test
+    fun `full response is valid JSON with all expected sections`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus()
+        assertThat(result).isNotNull()
+
+        // Parse and verify it's valid JSON
+        val parsed = Json.parseToJsonElement(result!!)
+        assertThat(parsed).isInstanceOf(JsonObject::class.java)
+
+        val json = parsed.jsonObject
+        // Required sections always present
+        assertThat(json.containsKey("cluster")).isTrue()
+        assertThat(json.containsKey("nodes")).isTrue()
+    }
+
+    @Test
+    fun `s3 section contains fullpath with bucket and cluster prefix`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val result = statusCache.getStatus("s3")
+        assertThat(result).isNotNull()
+
+        val s3 = Json.parseToJsonElement(result!!).jsonObject
+        assertThat(s3["bucket"]?.jsonPrimitive?.content).isEqualTo("test-bucket-abc")
+        assertThat(s3["fullpath"]?.jsonPrimitive?.content)
+            .isEqualTo("test-bucket-abc/clusters/test-cluster-test-cluster-id")
+    }
+
+    @Test
+    fun `s3 section shows the observability store of the cluster's tenant`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val paths =
+            Json
+                .parseToJsonElement(statusCache.getStatus("s3")!!)
+                .jsonObject["paths"]!!
+                .jsonObject
+
+        assertThat(paths["traces"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/tempo")
+        assertThat(paths["profiles"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/pyroscope")
+        assertThat(paths["metrics"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/mimir/default")
+        assertThat(paths["logs"]?.jsonPrimitive?.content).isEqualTo("s3://test-bucket-abc/loki")
+        assertThat(paths["annotations"]?.jsonPrimitive?.content)
+            .isEqualTo("s3://test-bucket-abc/grafana/annotations/default")
+    }
+
+    @Test
+    fun `accessInfo observability names every backend on the control node`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val observability =
+            Json
+                .parseToJsonElement(statusCache.getStatus("accessInfo")!!)
+                .jsonObject["observability"]!!
+                .jsonObject
+
+        assertThat(observability["grafana"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3000")
+        assertThat(observability["mimir"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:9009")
+        assertThat(observability["loki"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3100")
+        assertThat(observability["tempo"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:3200")
+        assertThat(observability["pyroscope"]?.jsonPrimitive?.content).isEqualTo("http://10.0.1.200:4040")
+    }
+
+    @Test
+    fun `accessInfo lists a running kit's declared NodePort endpoints`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("clickhouse")))
+        installPackagedKit("clickhouse")
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val accessInfo = statusCache.getStatus("accessInfo")!!
+
+        assertThat(accessInfo).contains("\"clickhouse\"", "http://10.0.1.100:30123", "10.0.1.100:30900")
+        assertThat(accessInfo).doesNotContain(":8123", ":9000")
+    }
+
+    @Test
+    fun `a stopped kit prints no endpoints`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        installPackagedKit("clickhouse")
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val accessInfo = statusCache.getStatus("accessInfo")!!
+
+        assertThat(accessInfo).doesNotContain("30123", "8123", "playUi")
+    }
+
+    @Test
+    fun `accessInfo says why a running kit with an unreadable kit descriptor has no endpoints`() {
+        File(context.workingDirectory, Constants.K3s.LOCAL_KUBECONFIG).writeText("")
+        whenever(mockK3sService.listPods(any(), any())).thenReturn(Result.success(emptyList()))
+        whenever(mockClusterStateManager.load()).thenReturn(testClusterState.copy(runningKits = setOf("broken", "clickhouse")))
+        installPackagedKit("clickhouse")
+        File(context.workingDirectory, "broken").mkdirs()
+        File(File(context.workingDirectory, "broken"), Constants.Kit.CONFIG_FILE).writeText("name: [broken\nendpoints: {")
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+
+        val kits =
+            Json
+                .parseToJsonElement(statusCache.getStatus("accessInfo")!!)
+                .jsonObject["kits"]!!
+                .jsonArray
+                .associateBy { it.jsonObject["name"]!!.jsonPrimitive.content }
+
+        assertThat(kits["broken"]!!.jsonObject["endpointsUnavailable"]?.jsonPrimitive?.content)
+            .isEqualTo("cannot read ${Constants.Kit.CONFIG_FILE}")
+        assertThat(kits["clickhouse"]!!.jsonObject["endpointsUnavailable"]).isNull()
+        assertThat(kits["clickhouse"]!!.jsonObject["endpoints"]!!.jsonArray).isNotEmpty()
+    }
+
+    private fun installPackagedKit(name: String) {
+        val kitYaml =
+            checkNotNull(javaClass.getResource("/com/rustyrazorblade/easydblab/kits/$name/${Constants.Kit.CONFIG_FILE}")) {
+                "packaged kit $name not found"
+            }.readText()
+        File(context.workingDirectory, name).mkdirs()
+        File(File(context.workingDirectory, name), Constants.Kit.CONFIG_FILE).writeText(kitYaml)
+    }
+
+    @Test
+    fun `stop prevents further refreshes`() {
+        statusCache = StatusCache(refreshIntervalSeconds = 3600)
+        statusCache.forceRefresh()
+        statusCache.stop()
+
+        // Should still have cached data
+        assertThat(statusCache.getStatus()).isNotNull()
+    }
+
+    @Test
+    fun `auto-shutdown triggers when VPC is not found`() {
+        whenever(mockVpcService.findVpcByName(any())).thenReturn(null)
+
+        val shutdownCalled = AtomicBoolean(false)
+        val capturedEvents = mutableListOf<Event>()
+        val eventBus = getKoin().get<EventBus>()
+        val listener =
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    capturedEvents.add(envelope.event)
+                }
+
+                override fun close() {}
+            }
+        eventBus.addListener(listener)
+
+        try {
+            statusCache =
+                StatusCache(
+                    refreshIntervalSeconds = 3600,
+                    autoShutdown = true,
+                    vpcName = "easy-db-lab-test-cluster",
+                    onShutdown = { shutdownCalled.set(true) },
+                )
+            statusCache.forceRefresh()
+        } finally {
+            eventBus.removeListener(listener)
+        }
+
+        assertThat(shutdownCalled.get()).isTrue()
+        assertThat(capturedEvents).anyMatch { it is Event.Server.InfrastructureGone }
+    }
+
+    @Test
+    fun `auto-shutdown does not trigger when AWS throws an exception`() {
+        whenever(mockVpcService.findVpcByName(any())).thenThrow(RuntimeException("AWS unavailable"))
+
+        val shutdownCalled = AtomicBoolean(false)
+        statusCache =
+            StatusCache(
+                refreshIntervalSeconds = 3600,
+                autoShutdown = true,
+                vpcName = "easy-db-lab-test-cluster",
+                onShutdown = { shutdownCalled.set(true) },
+            )
+        statusCache.forceRefresh()
+
+        assertThat(shutdownCalled.get()).isFalse()
+    }
+
+    @Test
+    fun `auto-shutdown skips check when vpcName is null`() {
+        val shutdownCalled = AtomicBoolean(false)
+        statusCache =
+            StatusCache(
+                refreshIntervalSeconds = 3600,
+                autoShutdown = true,
+                vpcName = null,
+                onShutdown = { shutdownCalled.set(true) },
+            )
+        statusCache.forceRefresh()
+
+        assertThat(shutdownCalled.get()).isFalse()
+    }
+
+    @Test
+    fun `auto-shutdown skips check when vpcName is blank`() {
+        val shutdownCalled = AtomicBoolean(false)
+        statusCache =
+            StatusCache(
+                refreshIntervalSeconds = 3600,
+                autoShutdown = true,
+                vpcName = "  ",
+                onShutdown = { shutdownCalled.set(true) },
+            )
+        statusCache.forceRefresh()
+
+        assertThat(shutdownCalled.get()).isFalse()
+    }
+}

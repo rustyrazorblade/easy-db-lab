@@ -2,7 +2,7 @@
 name: run-test
 description: Run an integration test against a real AWS cluster. Use when the user says anything like "test it in AWS", "fire up a cluster and test", "run the presto test", "test on a real cluster", or names a specific test. Handles provisioning, surfaces the tail command, monitors progress, and reports results. Does NOT tear down on failure — leaves the cluster running for debugging.
 allowed-tools: Bash, Read, AskUserQuestion
-argument-hint: [test-name] [--provision]
+argument-hint: "[test-name] [--provision]"
 user-invocable: true
 ---
 

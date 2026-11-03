@@ -10,8 +10,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.grafana.BackendUrls
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDatasourceSet
 import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
-import com.rustyrazorblade.easydblab.mcp.MetricsQueries
 import com.rustyrazorblade.easydblab.services.TemplateService
+import com.rustyrazorblade.easydblab.services.metrics.StreamMetric
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -27,7 +27,7 @@ import java.util.UUID
 
 /**
  * Runs every PromQL query the tool sends — each metrics panel, variable, annotation query and link
- * in the dashboard tree, the trace-to-metrics queries, and the live metrics stream's queries — with
+ * in the dashboard tree, the trace-to-metrics queries, and the `metrics stream` catalogue's queries — with
  * variables substituted, against the pinned Mimir, and fails on any query Mimir refuses. The
  * dashboards were written for VictoriaMetrics; Mimir answers a query it cannot parse with 400.
  */
@@ -66,12 +66,10 @@ class PromQlCompatibilityIntegrationTest : BaseKoinTest() {
             .flatMap { it.queries }
             .map { it.query.replace("$$", "$").replace("\$__tags", "service_name=\"x\"") }
 
-    private fun toolQueries(): List<DashboardQueries.Query> {
-        val stream = MetricsQueries.forCluster("lab-x")
-        return (stream.system() + stream.cassandra() + traceToMetrics()).map {
+    private fun toolQueries(): List<DashboardQueries.Query> =
+        (StreamMetric.entries.map { it.promql("lab-x") } + traceToMetrics()).map {
             DashboardQueries.Query("tool", DashboardQueries.Language.PROMQL, it)
         }
-    }
 
     @Test
     fun `every dashboard and tool PromQL query parses on the pinned Mimir`() {

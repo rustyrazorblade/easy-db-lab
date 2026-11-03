@@ -6,7 +6,7 @@
 - **Never assume the source checkout is available.** Most people install this tool with Homebrew. They have no repo, no working tree, and no `build/` directory. Any feature that scaffolds, generates, or reads files must work entirely from resources packaged in the distribution. Never bind-mount a repo directory, read a path inside the repo at runtime, or design a workflow that only works for someone with a clone.
 - **Never encode a personal or machine-specific path.** Any directory outside this repo — where a user keeps a database checkout, a scaffolded workspace, or test output — is a parameter, never a constant. A path named in conversation is an example of usage, not a requirement to hardcode. Take it as an argument and default it to the current directory.
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
-- **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt`, one sealed sub-interface per domain (listed in `events/CLAUDE.md`). See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If an MCP client or Redis subscriber would have no reason to care, it is not an event.
+- **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt`, one sealed sub-interface per domain (listed in `events/CLAUDE.md`). See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If a Redis subscriber would have no reason to care, it is not an event.
 - **For pure informational output** with no associated event type (e.g. help text, plain status lines), use Kotlin's `println()`. **Never use `System.out` directly** — `println()` is the idiomatic Kotlin equivalent and writes to stdout.
 - **Read-only display commands** (`info`, `list`, `show`, `describe`, and equivalents) produce pure output — no state changes, no domain facts occurred. Use `println()` directly in `execute()`; do **not** model the output as an event. A useful heuristic: if the command's name is a noun or `show`/`info`/`list`/`describe`, it almost certainly belongs in this category. Examples: `kit info`, `kit list`.
 - **Do NOT use `Event.Message` or `Event.Error`** — these generic types exist only for test convenience. When emitting events, always use domain-specific typed events with structured data fields.
@@ -14,23 +14,13 @@
 - When logging is needed, use: `import io.github.oshai.kotlinlogging.KotlinLogging` and create a logger with `private val log = KotlinLogging.logger {}`
 - **Never use Python for JSON parsing in shell scripts.** Use `jq` instead.
 - **ABSOLUTE RULE: NEVER set, clear, or otherwise touch the `socksProxyHost` / `socksProxyPort` JVM system properties.** Not even temporarily with save/restore. These are JVM-global and capture **every** socket in the process — including the AWS SDK — routing it through the SOCKS tunnel. This caused a major incident and was deliberately removed in #725 (see the commit message and the `Socks5ProxySelector` KDoc). The proxy publishes **only** its port under `Constants.Proxy.PORT_PROPERTY`; cluster clients opt into the tunnel **explicitly and per-client** — Fabric8 via `config.httpsProxy = "socks5://127.0.0.1:{port}"` (`KubernetesClientFactory`), cluster HTTP via `Socks5ProxySelector` installed on that client only (`ProxiedHttpClientFactory`), the CQL driver via `SocksProxyNettyOptions`, and the JDBC `sql` command via `SocksTcpBridge` (a per-connection localhost→SOCKS TCP forwarder). Local shell tools — kit shell steps, phase scripts, hooks and `env.sh` shells — go through the workspace tool wrappers: `<workspace>/bin/{kubectl,helm,cilium,curl,skopeo,k9s,ssh,scp,sftp,rsync}`, one packaged POSIX script (`configuration/tool-wrapper.sh`, written by `ToolWrapperInstaller`) that sets that tool's proxy variables for its own call only, read from the proxy env file; the `ssh`, `scp`, `sftp` and `rsync` copies instead add `-F <workspace>/sshConfig` (rsync: `-ave "ssh -F <workspace>/sshConfig"`), leave proxy variables and `KUBECONFIG` alone, and exit 1 when the workspace has no `sshConfig`. Every kit process is launched through `KitProcessEnvironment`, which puts `<workspace>/bin` first on `PATH` and sets the absolute workspace `KUBECONFIG`. To route a **new** client type through the tunnel, give **that connection** an explicit `java.net.Proxy(SOCKS, ...)` / driver-native SOCKS option (or route it through `SocksTcpBridge`) — never a global property. This invariant is also encoded in the `SOCKS Proxy` requirement in `openspec/specs/networking/spec.md`.
-- **Standing rule: shell-side state comes from the sourceable env file, never from JSON.** Any value a shell-side tool (the tool wrappers, `env.sh`, a kit script) needs is written by Kotlin to `<workspace>/.socks5-proxy.env` (`proxy/ProxyEnvFile`, the file's only writer: fixed `KEY=value` lines, merge-updated under an exclusive lock on `.socks5-proxy.env.lock` and replaced by an atomic rename). Today it holds `EDL_TAILSCALE_ACTIVE`, `EDL_SOCKS_PORT` and `EDL_SOCKS_PID` (the tunnel script's PID; the last two are written after verification and removed together, as one `RecordedTunnel`). A wrapper, `with-proxy` and `socks5-status` use the port only while `kill -0 "$EDL_SOCKS_PID"` succeeds, and otherwise fail with the `socks start` message. Shell code sources it; it never parses `.socks5-proxy-state` or any other JSON, and never needs `jq` for it. The CLI is the only proxy manager: `socks start` / `socks stop` (and every `@RequiresProxy` command, `up` and `down`) start, reuse, or stop the tunnel; `env.sh` and the wrappers never do.
-- **A workspace's `bin/` belongs to easy-db-lab.** The tool wrappers live there, with the tunnel script `edl-socks-tunnel`, the shared kit shell library `edl-kit-lib.sh` and the marker `.easy-db-lab-tool-wrappers`. The library is written only when it is absent and never rewritten, whatever its content; every kit process gets its absolute path in `EDL_KIT_LIB` (`Constants.Kit.LIBRARY_ENV`). `init` refuses a directory that already has a `bin/` (so the source checkout can never be a workspace), and `clean` removes only the wrappers, the tunnel script, the library and the marker.
-- **The SOCKS tunnel reconnects on its own.** `ProcessSocksProxyService` launches `<workspace>/bin/edl-socks-tunnel` (the packaged `configuration/edl-socks-tunnel.sh`, POSIX sh) under `nohup`, not `ssh` itself, as `/bin/sh edl-socks-tunnel <port> <sshConfig> <backoff> <log> <host>` (`Constants.ToolWrappers.TUNNEL_SHELL`). It is run by `/bin/sh`, never exec'd: macOS scans the first exec of a new or rewritten executable (Gatekeeper and XProtect, about 4s after an upgrade rewrote the script), which outlasted the direct verify window; the script stays executable for hand runs. The script runs `ssh -v -o ExitOnForwardFailure=yes -N -D 127.0.0.1:<port>` (IPv4 loopback only, `Constants.Proxy.TUNNEL_LISTEN_ADDRESS`; every client of the tunnel, shell or Kotlin, uses `127.0.0.1`, never `localhost`), and restarts it on the same port after `Constants.Proxy.TUNNEL_RESTART_BACKOFF_SECONDS` only when the workspace env file records its own port as `EDL_SOCKS_PORT` (the CLI writes it only after end-to-end verification); otherwise the tunnel never came up and the script exits with ssh's status, so a failed start still fails fast. No timer decides this. A restarted ssh that cannot bind its port ends the script after that one attempt: the script appends all output to `<log>`, notes its size before each run, and greps that run's part for "cannot listen to port" (never "Address already in use", which ssh -v prints for one address while it binds another). The script traps TERM only and ignores INT (Ctrl-C at a later command must not end the shared tunnel); its wait loop ends on a trap-set flag or a reaped child (a 127 counts as reaped only on a pass after a trap; on the first pass it is ssh's own status), never on `kill -0`; it logs a line when TERM stops it. Every line it writes starts with a UTC timestamp. The CLI appends to `logs/socks5-proxy.log` with a timestamped header per launch, never truncates it, and reads only the launch's own part on failure. The local port is random from `Constants.Proxy.LOCAL_PORT_RANGE`, 20000-29999 (`LoopbackPortSelector`), with no preferred port. The range is below every OS ephemeral range, because an outgoing loopback connection could take an ephemeral tunnel port during the restart backoff; when `LOCAL_PORT_ATTEMPTS` random ports are all taken the selection fails, never falling back to an OS-assigned (ephemeral) port. The real-tunnel integration tests pick their ports from 10000-19999, so a test run cannot collide with a live tunnel on the same machine. The recorded PID is the script's. `TunnelProcessControl` signals a PID only when the OS reports it as `edl-socks-tunnel` with the recorded port and `sshConfig`, and a stop (TERM, then KILL) also ends every descendant, so no tunnel `ssh` is left running; when the recorded script is gone it stops any orphaned `ssh` (OS-reported `-N`, `-D 127.0.0.1:<port>`, `-F <sshConfig>`, no live tunnel-script parent) and reports that ssh's PID. The in-memory and the state-file reuse checks both use the same identity check (`TunnelProcessControl.status`): a recorded PID no process holds is `PROCESS_GONE`, and one another program now holds is `PID_REUSED`. A record the in-memory check has just replaced is not judged again from the state file. After the record, a start probes the tunnel once more and fails, stopping the script, if it no longer carries traffic. A start whose script exited before its port was recorded fails and leaves nothing recorded. A replaced tunnel emits `Proxy.TunnelReplaced` and a superseded one that will not stop `Proxy.SupersededTunnelStopFailed`, from the service itself through its `EventBus`. The generated `sshConfig` carries `ConnectTimeout` (`Constants.Ssh.CONNECT_TIMEOUT_SECONDS`) for every transport. It scopes every cluster-wide option to one `Host db* app* control* !*.*` block (wildcards derived from `ServerType`; `!*.*` keeps dotted names and IPs out, as OpenSSH patterns have no character classes) and ends with two disjoint `Match originalhost` blocks that include `~/.ssh/config` and then `/etc/ssh/ssh_config` only for names that are not cluster hosts: cluster hosts and the tunnel never read the personal or system config, and the `bin/` SSH wrappers leave any other host (`github.com`, `db.boo.com`, an IP) as it would be without `-F`. One tunnel probe attempt (connect, SOCKS handshake and banner read together) is bounded by `Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS`.
+- **Standing rule: shell-side state comes from the sourceable env file, never from JSON.** Any value a shell-side tool (the tool wrappers, `env.sh`, a kit script) needs is written by Kotlin to `<workspace>/.socks5-proxy.env` (`proxy/ProxyEnvFile`, the file's only writer: fixed `KEY=value` lines, merge-updated under an exclusive lock on `.socks5-proxy.env.lock` and replaced by an atomic rename). Today it holds `EDL_TAILSCALE_ACTIVE`, `EDL_SOCKS_PORT` and `EDL_SOCKS_PID` (the tunnel script's PID; the last two are written after verification and removed together, as one `RecordedTunnel`), and `EDL_NETWORK_MODE=direct` (`ProxyEnvFile.recordDirect`; present only while active, kept across `recordTunnel`, `removeTunnel` and `recordTailscale`) for a cluster API reachable from this machine with no tunnel: the wrappers then run the real tool with no proxy variables and need no tunnel. The wrappers read it from the env file only and unset an inherited value, and it never reuses `EDL_TAILSCALE_ACTIVE`. Nothing in production writes it until #1040. A wrapper, `with-proxy` and `socks5-status` use the port only while `kill -0 "$EDL_SOCKS_PID"` succeeds, and otherwise fail with the `socks start` message. Shell code sources it; it never parses `.socks5-proxy-state` or any other JSON, and never needs `jq` for it. The CLI is the only proxy manager: `socks start` / `socks stop` (and every `@RequiresProxy` command, `up` and `down`) start, reuse, or stop the tunnel; `env.sh` and the wrappers never do.
 - **ABSOLUTE RULE: NEVER delete the owner's data automatically.** Test results, observability data (metrics, logs, traces, profiles, annotations), backups, and exports are the owner's work product. No code, default, lifecycle rule, retention setting, compactor setting, TTL, or cleanup step may delete them unless the owner runs an explicit delete. This covers S3 lifecycle and expiry rules, `--retention-days`-style options, backend retention such as Tempo `block_retention` or Mimir and Loki compactor retention, and teardown cleanup. Ephemeral clusters are disposable; the data they produce is not. Never add automatic deletion as a feature, a default, or a "cost" optimization, and flag any existing automatic deletion as a critical bug. Compaction is not deletion. A compactor that writes a merged object holding all of its sources' data, and then removes those sources, loses nothing and is allowed. Retention, expiry, and any removal that is not replaced by a merged copy stay forbidden. Every compactor runs with retention off.
 - When we are working on a PR, and you find a bug, it should generally be fixed in that patch, NOT deferred. I am not interested in separate patches for bug fixes. If you find a bug, tell me about it, the default behavior should be to fix it.
 - During the grilling session, ask one question at a time.
 - During reviews, flag any loosening of detekt rules as MAJOR issues.
 
 ## Project Organization
-
-### Architecture Overview
-
-The project follows a layered architecture:
-
-- **Commands (PicoCLI)** delegate to **Services**, which interact with **External Systems** (K8s, AWS, Filesystem)
-- Commands and Services emit events via the **EventBus**
-- **Listeners** consume events: `ConsoleEventListener` (stdout/stderr), `McpEventListener` (server MCP status), `RedisEventListener` (pub/sub, optional)
 
 ### Project Modules
 
@@ -44,6 +34,8 @@ locally-built Cassandra Analytics SNAPSHOTs and don't belong in the CLI build. T
 `spark` CLI commands (EMR provisioning + job submission) remain in this repo.
 
 ### Layer Responsibilities
+
+- **Listeners** consume events: `ConsoleEventListener` (stdout/stderr), `RedisEventListener` (pub/sub, optional, best effort after startup). `metrics stream` publishes `Metrics.Sample` straight to Redis, not through the bus.
 
 **Commands (`commands/`)**: Lightweight PicoCLI execution units. Commands are thin wrappers that:
 - Parse CLI arguments and options
@@ -65,8 +57,8 @@ See [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/provid
 
 ### Server & REPL
 
-Two commands run as long-lived processes instead of the typical run-and-exit pattern:
-- **`Server`** — starts a hybrid HTTP server with MCP protocol support (Ktor + SSE), REST status endpoints, and background services. See [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md).
+Three commands run as long-lived processes instead of the typical run-and-exit pattern (`metrics stream` is the third: it publishes chosen metrics to Redis every 5 seconds until the first Ctrl-C or SIGTERM, which exits 0; see `services/metrics/`):
+- **`Server`** — starts the REST status server (Ktor): `/status`, `/stress/status`, `/swagger`, with the background status cache. See [`server/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/server/CLAUDE.md).
 - **`Repl`** — starts an interactive REPL to reduce typing for repeated commands.
 
 ### Dependency Injection
@@ -78,12 +70,7 @@ Use **Koin** for dependency injection throughout the codebase:
 
 ### Design Principles
 
-Follow **SOLID principles**:
-- **S**ingle Responsibility: Each class has one reason to change
-- **O**pen/Closed: Open for extension, closed for modification
-- **L**iskov Substitution: Subtypes must be substitutable for base types
-- **I**nterface Segregation: Prefer small, focused interfaces
-- **D**ependency Inversion: Depend on abstractions, not concretions
+Follow **SOLID principles**.
 
 ### Testing Approach
 
@@ -98,25 +85,13 @@ Practice **reasonable TDD**:
 - Tests that assert default field values (e.g., `assertThat(command.field).isNull()`) — the compiler already guarantees defaults
 - Tests that verify a method was called but don't assert anything about the outcome or transformation
 - Tests where removing the code under test wouldn't cause the test to fail because the mock does all the work
+- Tests that assert static help or usage text (picocli `usageMessage`, command descriptions, `--help` output). This is a standing rule; a review finding asking for such a test is dropped, not fixed.
 
 A good test exercises a code path where the system under test makes a decision, transforms data, or could fail in a meaningful way.
 
 See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) for test patterns, BaseKoinTest usage, and custom assertions. See also [docs/development/testing.md](docs/development/testing.md) for comprehensive testing guidelines.
 
 **Never mock `TemplateService`** — always use the real instance in tests. It only reads classpath resources and does string substitution with no external side effects.
-
-**Quality tools workflow**:
-```bash
-# Find test coverage gaps
-./gradlew koverHtmlReport
-# Report at build/reports/kover/html/index.html
-
-# Format code before committing
-./gradlew ktlintFormat
-
-# Find potential code issues
-./gradlew detekt
-```
 
 ## Development Rules
 
@@ -178,8 +153,17 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - If this document needs to be updated in order to provide more context for future work, do it.
 - When describing directory structure, use normal lists. Don't draw them, I don't find them useful.
 - Do not use remote docker-compose commands, use docker compose, the subcommand version.
-- Activate kotlin and java for context7.
-- Activate the serena MCP server.
+
+### Issue Labels
+
+GitHub issues use the spec-flow label vocabulary.
+
+- **`status:ready`** means the issue is groomed and ready to work on. Pick the next work from the highest-priority `status:ready` issue.
+- The other lifecycle labels, in order: `status:spec-review` (spec waits for owner approval), `status:in-progress` (implementation in progress), `status:in-review` (PR open, waits for owner review), `status:addressing` (fixes for owner review comments). An issue carries one lifecycle label at a time.
+- Priority: `P0` (drop everything), `P1` (high), `P2` (normal), `P3` (low / someday).
+- Do not start an issue that carries `agent:active` (an agent already works on it) or `blocked` (a hard dependency stops it).
+- `requires-aws` and `requires-ami-bake` are repo-specific gates. Their rules are in [`spec-flow/WORKFLOWS.md`](spec-flow/WORKFLOWS.md).
+- The test tiers, local gates, CI, and merge gate are in [`spec-flow/TESTING.md`](spec-flow/TESTING.md).
 
 ### Lab Test Plans
 
@@ -211,16 +195,6 @@ For multi-DC plans `run` creates one wrapper per DC and sets `$EDB_DC1`, `$EDB_D
 Plans are executed exclusively through the plugin skills (see **Lab Test Plans** above), so there is
 no supported path where a plan scaffolds its own workspace.
 
-### Kit Development
-
-When developing a new kit, the following is essential:
-
-- Full integration with the observability stack.
-- Use the open telemetry agant for JVM workloads
-- Dashboards
-- **Kits expose client ports through a NodePort Service** (range 30000-32767) on a fixed port no other kit uses — never `hostPort` or `hostNetwork`. `hostPort` depends on the CNI chaining the `portmap` plugin, and `hostNetwork` pins the pod to a host and turns a port clash into a CrashLoop. Follow postgres (30432) and clickhouse (30123). See `docs/development/kits.md`.
-- **Kit scripts that run pods source the shared kit shell library** (`configuration/edl-kit-lib.sh`, found through `EDL_KIT_LIB`) instead of writing their own app-node check, pod placement, Pending wait, log follow, exit-code wait or gauge push. It runs under bash 3.2; see "Shared shell library" in `docs/development/kits.md` for the functions and the rules. `sysbench` and `clickhouse-benchmark` are the reference adopters.
-
 ## Development Setup
 
 ### Java Version Management (SDKMAN)
@@ -235,14 +209,6 @@ run under a JDK 25 runtime, so `./gradlew detekt` and the full `./gradlew check`
 on JDK 21. Compiling, running, and testing the app all work on JDK 25. CI runs `check` on
 JDK 21. Upgrading detekt to the JDK-25-capable 2.0.x line is a separate migration (new
 `dev.detekt` coordinate, K2 engine, baseline regeneration).
-
-```bash
-# Check current Java version
-java -version
-
-# List installed versions
-sdk list java
-```
 
 ### Example Spark Jobs
 
@@ -293,71 +259,7 @@ rm -rf .gradle/configuration-cache
 
 ### Local Validation
 
-Before pushing code, verify it passes all checks:
-
-```bash
-# Run all checks (matches CI)
-./gradlew check
-
-# Run only ktlint check (verify style compliance)
-./gradlew ktlintCheck
-
-# Auto-fix ktlint violations (when possible)
-./gradlew ktlintFormat
-```
-
 **Note**: `ktlintFormat` auto-fixes many violations but can't fix all issues (e.g., line length). Always run `ktlintCheck` after formatting to catch remaining issues.
-
-### Building AMIs
-
-**`build-image` / `build-base` / `build-cassandra` bake from `build/install/easy-db-lab/packer/`, not from the working tree.** `Context.appHome` points at the Gradle `installDist` output, so a change under `packer/` does not reach an AMI until `./gradlew installDist` has run — committing it is not enough, and nothing in the build output says which copy it used. Always run `./gradlew installDist` before baking, exactly as you would after changing Kotlin source.
-
-The images are stacked: `cassandra = base + Cassandra tarballs`, and `cassandra.pkr.hcl` selects the most recent `available` base AMI, so a base AMI that a parallel bake is still registering is skipped. A change under `packer/base/` therefore needs **both** images rebuilt (`build-image`), not just the Cassandra one.
-
-Under the `ssm` SSH transport, Packer reaches the builder with `ssh_interface = "session_manager"` and runs in a derived image (`containers/PackerImage.kt`), built locally from the packaged `containers/packer-ssm.Dockerfile` resource and tagged by its content hash. Editing that Dockerfile is enough to get a rebuild on the next `ssm` AMI build. The Dockerfile pins the Packer base image by digest and the Session Manager plugin by version and per-architecture SHA-256; upgrading either means changing the pin and its checksum together.
-
-### Packer Script Testing
-
-Test packer provisioning scripts locally using Docker (no AWS required):
-
-```bash
-# Test base provisioning scripts
-./gradlew testPackerBase
-
-# Test Cassandra provisioning scripts
-./gradlew testPackerCassandra
-
-# Run all packer tests
-./gradlew testPacker
-
-# Test a specific script
-./gradlew testPackerScript -Pscript=cassandra/install/install_cassandra_easy_stress.sh
-```
-
-Shell scripts whose logic (argument handling, already-installed short-circuits, JDK selection)
-matters more than their side effects also have plain shell unit tests that stub `sudo`/`curl`/`git`
-and need no Docker:
-
-```bash
-./gradlew testCassandraScripts
-./gradlew testBaseJdkInstall   # base AMI JDK install (install_jdks.sh)
-./gradlew testBaseChronyPoll   # base AMI chrony poll (configure_chrony_poll.sh)
-```
-
-Scripts in `packer/cassandra/bin/` are **not bake-time-only** — the AMI puts them on the node's
-`PATH` and the CLI invokes them over SSH against a running cluster (`cassandra install`,
-`cassandra use`). Their flags and output are a contract with Kotlin callers; see
-[`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/commands/CLAUDE.md).
-
-`packer/cassandra/lib/edl-cassandra-agents.sh` (installed to `/usr/local/lib/`) picks the AxonOps
-agent from the release's own jar name. Metrics come from the OpenTelemetry Java agent, which is one
-jar for every release and needs no such selection. The library is sourced by `cassandra.in.sh`, which
-Cassandra's `bin/cassandra` runs under **`/bin/sh` (dash), not bash** — so it must stay POSIX sh.
-A bashism there does not degrade to "no metrics"; dash fails to parse the file and Cassandra will
-not start. `edl-cassandra-agents.test.sh` exercises the functions through a real `/bin/sh` for
-exactly this reason.
-
-For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.md](packer/TESTING.md).
 
 ## Documentation & Specifications
 
@@ -373,46 +275,9 @@ If I refer to Kubernetes configs or k8 configs, I am referring to these: `src/ma
 
 The cluster runs a full observability stack on the control node. When modifying any part of this stack, keep the related K8s manifests, Kotlin services, and user docs in sync.
 
-All observability K8s resources are built programmatically using Fabric8 manifest builders in `configuration/` subpackages. No raw YAML files remain in the core observability stack. See [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) for detailed builder documentation.
-
-**CNI**: Cilium ENI native routing (no encapsulation; pods get VPC-routable ENI secondary IPs) is the default. `--cni=flannel` at init selects K3s's built-in Flannel overlay instead. A saved state with no recorded CNI predates Cilium and is read as Flannel (`ClusterStateManager.load`). When Cilium is selected, Hubble is enabled for L7 network visibility, Hubble UI is a NodePort on `Constants.Cilium.HUBBLE_UI_NODE_PORT` (31234), and the collector scrapes the Cilium agent (`localhost:9962`), Hubble (`localhost:9965`), and the operator (port 9963, node-local pod discovery in `kube-system`). `OtelManifestBuilder.buildCniScrapeJobs(cni)` renders those three jobs only for `CniMode.Cilium`; `ObservabilityStackService` and `OtelSyncService` read the CNI from cluster state. `platform cni` reads the datapath back (`CiliumInspectionService`). `up` marks the install window with Grafana annotations tagged `cilium`, recorded by `CiliumInstallAnnotator` at install time and posted after the stack is up. Before starting K3s on a Cilium cluster, `up` checks every node over SSH for the base AMI's Cilium node fixes (`Constants.Cilium.NODE_FIX_FILES`, via `CiliumNodeImageCheck`) and fails with `Cilium.NodeImageMissingFixes` if any node lacks them.
-
-**Collectors** (run on cluster nodes): OTel Collector, Fluent Bit (journald), Grafana Alloy (eBPF profiling), Beyla (L7 RED metrics), ebpf_exporter (TCP/block I/O/VFS), YACE (CloudWatch), kube-state-metrics (K8s object state, control node, scraped by node-local pod discovery), OpenTelemetry Java agent (Cassandra metrics and application logs, over OTLP; the collector tails only the JVM GC log from disk, as `source="cassandra-gc"`), Cilium agent/operator/Hubble scrapes (Cilium clusters only)
-
-**Dynamic OTel config**: `OtelManifestBuilder.buildConfigMap()` accepts `List<WorkloadScrapeConfig>` (plus the telemetry redirect and the `CniMode`) and injects one Prometheus scrape job per running kit. Kits register by writing `easydblab-metrics-<kit>` ConfigMaps (label: `easydblab.com/workload-metrics=true`). `MetricsRegistryService` creates/deletes these ConfigMaps; `OtelSyncService` reads them all and regenerates the OTel collector ConfigMap. Both are called automatically by `KitRunnerCommand` on successful `start`/`stop`.
-
-**Storage backends** (control node): Mimir 3.2.1 (metrics, port 9009, Prometheus API under `/prometheus`), Loki 3.7.8 (logs, port 3100), Tempo 3.0.3 (traces, port 3200), Pyroscope 2.3.1 (profiles, port 4040). Mimir runs no compactor but runs the store-gateway, so every cluster reads the whole shared store for every tenant (`query_store_after: 0`, bucket store synced every minute, a bucket index up to 87600h stale accepted, local blocks kept 15m, blocks the compactor merged away no longer read 10m after their deletion mark, 5m while querying); query sharding is off (`query_sharding_total_shards: 0`), which on one process made dashboard loads several times faster (issue 988); a memcached sidecar in the Mimir pod (`Constants.K8s.MIMIR_MEMCACHED_IMAGE`, 2 GB, `127.0.0.1:11211`) holds the store-gateway's index, chunks and metadata caches and the query-frontend's results cache, and S3 connections stay open for reuse (issue 988); Loki runs `target: all` with its compactor idle. All four write to S3 within minutes as they run: Mimir cuts 1-minute blocks (15s compaction and ship checks, 2m idle compaction), Tempo cuts a block every minute, Loki flushes a chunk at 1 hour (so its per-stream out-of-order window is 30 minutes, and a slow Loki restart does not drop logs) and re-lists its index every minute. `down` saves the tail in two phases (`TeardownFlushService`). Phase A, in order: the annotation mirror (only while logs are pending), then the collector stop (`TelemetrySenders`: delete the `otel-collector` DaemonSet and wait for its pods; succeeds when it is gone). Phase B, at once on a platform-thread pool: the Loki flush (synchronous ingester shutdown answering 204, then scale to 0 and wait for the pod to go), the Mimir flush (ingester shutdown answering 2xx, then scale to 0), the Tempo drain (`TempoTailFlush`: wait for no live traces and a stable created-traces count, then for every local block's `flushed` marker; Tempo is never stopped or restarted), the "profiles need no flush" report, and the annotations backup. Every step runs to completion; a failed mirror fails only logs. `down` only flushes, waits for the flush, and refuses teardown if it did not finish: there is no running check and no WAL, head-compaction or objects-in-S3 check. Any failure stops `down` with nothing torn down and nothing started again — `down` never scales Loki or Mimir up, replaces their pods, or restores the collector (owner decision, 2026-09-26); the failure (`TailFlushFailed`, one `FlushStepFailed` per signal) names each failed signal, its step, and each workload's state. Logs and metrics are recorded in `ClusterState.tailFlush` (per `TailSignal`, completion time only) the moment each flush succeeds, through one writer thread, and `state.json` is written atomically; a re-run skips them and runs the rest again; `up` clears the record. `down --force` lists the unsaved signals before the confirmation prompt. Readers go through `ObservabilityHttp` (per-client SOCKS unless Tailscale, plus the tenant header); `MimirQueryService`, `LokiQueryService` and `LogQl` build on it. Every Grafana annotation is mirrored to Loki (`AnnotationMirror`). After a successful teardown, `down` stops the account compactor when no other cluster uses the bucket.
-
-**Account compactor**: one ECS Fargate service per AWS account (`easy-db-lab-compactor` in ECS cluster `easy-db-lab`), in the account bucket's region and its own VPC `easy-db-lab-compactor` (tagged `easy_cass_lab=1`, no `bucket` tag; `down --all` keeps it). One task (`CompactorTaskDefinition`) runs Mimir's compactor (rewrites every tenant's bucket index every minute; merges the 1-minute blocks into 10m, 2h, 12h and 24h ranges, every 5 minutes, 2 minutes after they land), Loki's compactor, and Tempo's backend-scheduler and backend-worker, from the cluster's `mimir.yaml` and `loki.yaml` plus `compactor/tempo-backend.yaml`; compaction on, retention and every other deletion path off. `CompactorService` (`services/aws/`) ensures it on `up` (create when missing, start when at 0, leave a running one alone, never wait) and `stopIfLastCluster` stops it after `down` (`ClusterCensus` + `CompactorShutdownPolicy`). `observability compactor start|stop|status` work outside a workspace. Its task role `EasyDBLabCompactorTaskRole` is the only role that may delete under `mimir/`, `loki/` and `tempo/`; the account bucket policy denies those deletes to the EC2 instance, EMR service and EMR EC2 roles. Logs go to `/easy-db-lab/compactor` with no retention.
-
-**Tenant datasources**: `up` and `grafana update-config` list the tenant directories under `mimir/` (`TenantDirectory`) and build Grafana's datasources with `GrafanaDatasourceSet.build(TenantSet, BackendUrls)`: the stable `mimir`/`loki`/`tempo`/`pyroscope` UIDs on the cluster's own tenant, plus `<signal>-<tenant>` and `<signal>--all` (tenants joined with `|`) for metrics, logs and traces; cross links stay within one tenant view; profiles keep one datasource.
-
-**Tenant pickers**: every core and kit dashboard names `mimir`, `loki` and `tempo` only through its pickers, `metrics_datasource`, `logs_datasource` and `traces_datasource`, and every `/d/` link carries the pickers and selected clusters its dashboard declares (`DashboardDatasourceVariablesTest`). The files store no defaults; one install-time pass, `DashboardDefaults`, sets the pickers to the stable uids, `cluster`, `baseline_cluster` and `candidate_cluster` to the current cluster, and the `doc_tenant` options, on every install path (core tree, kit `start`, `grafana install`). The Tests dashboard (`infrastructure/tests.json`) lists every test of a tenant; the three comparison dashboards compare two runs of any lengths in overlay, side-by-side and summary rows. See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md).
-
-**Observability store and tenant**: every cluster has a tenant (`init --tenant`, default `default`, `InitConfig.tenant`, read with `ClusterState.tenant()`). All observability data lands in the account bucket, laid out by `ObservabilityStore` (`configuration/`): each backend's root sits at the top level, named for the tool — Mimir's blocks at `mimir/`, Loki's at `loki/` (index under `loki/index/`), Tempo's at `tempo/` and Pyroscope's at `pyroscope/` (all native multi-tenancy — they make the tenant directories), and annotation backups at `grafana/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json` (`SnapshotName`). Each test's documents live at `reports/<tenant>/<name>-<id>/` (`ObservabilityStore.documentsRoot`): `report upload FILE...` stores markdown files there with an HTML copy each and rebuilds `index.html` (`services/documents/TestDocumentService`), with the operator's credentials, so it works after `down`; `up` rebuilds the index, which says "No documents yet" for a new test. The tenant is published in the `cluster-config` ConfigMap (`TENANT`); every writer and reader sends it in `X-Scope-OrgID`, and every stable Grafana datasource sends it on every query. Nothing deletes observability data: `down` sets no S3 lifecycle rule, the cluster IAM role is denied `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/`, `loki/`, `tempo/`, `grafana/` and `reports/` (`pyroscope/` is left out: its v2 compaction removes the segments it merged, and compaction is not deletion), Mimir on a cluster runs no compactor, Loki's compactor is idle with retention and deletion off, the account compactor merges with retention off and removes only sources it merged, Tempo runs with compaction (and so retention) off, Pyroscope v2 with retention cleanup off, and the JFR shipper never deletes an unshipped or rejected chunk (it stops recording at its byte bound instead). The observability stack writes nothing to the per-cluster data bucket.
-
-**Restarts by config hash**: `ObservabilityStackService.deploy()` never force-restarts workloads. `ConfigHashAnnotator` stamps each workload's pod template with a hash of the rendered pod template (minus the hash annotation, keys sorted) and of the ConfigMaps it reads (including `cluster-config`), so Kubernetes rolls exactly the workloads whose template or configuration changed, and `ConfigChangeReport` reports "unchanged" only when Kubernetes will not roll the workload.
-
-**Grafana services**: `services/GrafanaDeployService` creates the datasources, uploads the dashboard tree and applies the Grafana K8s resources; `services/GrafanaClient` talks to the running Grafana (dashboard install, folders, annotations) and is the `GrafanaAnnotationSource` of the `down` annotation mirror. The Grafana pod also runs the documents sidecars (`GrafanaDocumentsSidecars`): an `aws-sigv4-proxy` on `127.0.0.1:3081` that signs for the account bucket's region (`services/aws/BucketRegion`) and a read-only nginx on host port 3080 that serves only `GET` under `/reports/`; Grafana runs with `disable_sanitize_html` so a Text panel can hold the documents iframe.
-
-**Grafana** (port 3000): Two dashboard sources:
-- **Kit dashboards**: JSON files in `src/main/resources/.../kits/<name>/dashboards/`. `KitRunnerCommand` auto-installs them into a Grafana folder named after the kit after a successful `start`. Adding a JSON file is all that's required, unless the kit declares a `dashboards:` list in `kit.yaml` (postgres does, to install each extension's dashboard only in that extension's instance) — then the file must be listed there too.
-- **Core dashboards**: JSON files in the top-level `dashboards/<folder>/` tree, one subdirectory per Grafana folder; adding a dashboard is dropping a JSON file into a folder directory, and the mechanism that gets the tree to Grafana is described once, in [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md). **Do NOT add kit dashboards here** — they belong with their kit.
+The full reference (CNI scrapes, collectors, backends, the `down` tail flush, the account compactor, tenants, Grafana services, dashboard deploy commands) is the `observability-stack` skill in `.claude/skills/observability-stack/`. Load it before changing or debugging the stack.
 
 **Always use the `dashboard-editor` agent for any dashboard change** — editing a panel query, fixing a wrong-looking graph, changing units, adding a panel or a dashboard. The agent enforces the full edit → deploy → read-back-from-Grafana sequence, and knows the metric traps (notably that CPU queries on `system_cpu_time_seconds_total` must not depend on its opt-in per-core label, whose absence made four dashboards render CPU at -190%). See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md).
-
-Two commands deploy a dashboard, and they read from different places:
-
-- `grafana install <path> --folder=<name>` deploys **one** dashboard from the path handed to it (`GrafanaInstall` reads `File(dashboardPath)`), after the same install-time pass `up` applies (`DashboardDefaults`, from the workspace cluster state). It needs no `installDist`. It updates the existing dashboard in place **only** if the JSON carries a top-level `uid`; without one, Grafana creates a duplicate on every run.
-- `grafana update-config` recopies the whole tree from `build/resources/main/`, so an edit that skips `./gradlew installDist` silently redeploys the previous build's copy and still reports success.
-
-See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md) for datasource UIDs, label conventions, spanmetrics metric names, and the correct pattern for cross-dashboard dataLinks (panes= URL format, TraceQL query strings).
-
-**CLI Tool Instrumentation**: The CLI tool uses the OpenTelemetry Java Agent for automatic instrumentation of AWS SDK calls, HTTP clients, JDBC operations, and JVM metrics. No manual instrumentation exists in the Kotlin code. See `docs/reference/opentelemetry.md`.
-
-**CLI commands**: `grafana update-config`, `grafana annotate`, `grafana backup`, `logs query`
-
-All builder paths are relative to `src/main/kotlin/com/rustyrazorblade/easydblab/`. Config resources are at corresponding paths under `src/main/resources/com/rustyrazorblade/easydblab/`.
 
 ## Subdirectory Documentation
 
@@ -423,6 +288,6 @@ Detailed patterns live in package-level CLAUDE.md files:
 - [`services/aws/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/services/aws/CLAUDE.md) — AWS service classes (AMI, EC2, EMR, OpenSearch, S3)
 - [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) — AWS SDK wrappers, SSH/Docker patterns, retry logic
 - [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) — cluster state, templates, K8s manifest builders, observability stack details
-- [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md) — Server architecture (MCP, REST, background services)
+- [`server/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/server/CLAUDE.md) — The REST status server and status cache
 - [`kubernetes/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/kubernetes/CLAUDE.md) — K8s client patterns
 - [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) — test infrastructure

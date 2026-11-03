@@ -158,7 +158,7 @@ class ProfileCommandGroupTest : BaseKoinTest() {
     fun `profile show emits no event for the report it prints`() {
         // The test EventBus forwards every emitted event to the BufferedOutputHandler, so an empty
         // buffer alongside a printed report is direct proof the report went to stdout only. An
-        // event here would put profile settings on the MCP and Redis subscriber streams.
+        // event here would put profile settings on the Redis subscriber stream.
         ProfileShow().execute()
 
         val outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler

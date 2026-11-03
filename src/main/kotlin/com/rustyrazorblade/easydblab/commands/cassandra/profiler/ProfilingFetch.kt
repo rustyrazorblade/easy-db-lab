@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.profiler
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.events.Event
@@ -16,7 +15,6 @@ import java.io.File
  * Only completed chunks are offered — the one currently being written is excluded, because an
  * unfinalized chunk has no constant pool and no tool will read it.
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

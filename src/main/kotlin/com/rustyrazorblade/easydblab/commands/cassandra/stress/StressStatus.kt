@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -19,7 +18,6 @@ import java.time.Duration
  *
  * Lists all stress jobs with their current status, completion state, and age.
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

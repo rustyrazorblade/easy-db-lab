@@ -185,6 +185,9 @@ object Constants {
     object EventBus {
         const val REDIS_URL_ENV_VAR = "EASY_DB_LAB_REDIS_URL"
         const val DEFAULT_CHANNEL = "easydblab-events"
+
+        /** The Redis port used when `EASY_DB_LAB_REDIS_URL` names none. */
+        const val DEFAULT_REDIS_PORT = 6379
     }
 
     // Environment variables
@@ -768,6 +771,15 @@ object Constants {
         const val IMAGE = "ghcr.io/apache/cassandra-easy-stress:latest"
         const val LABEL_KEY = "app.kubernetes.io/name"
         const val LABEL_VALUE = "cassandra-easy-stress"
+
+        /** The label that tells a stress run (`cassandra stress start`) from a short-lived command job. */
+        const val ROLE_LABEL_KEY = "easydblab/role"
+
+        /** [ROLE_LABEL_KEY] on the jobs and pods of a stress run; `metrics stream` watches only these. */
+        const val ROLE_RUN = "stress-run"
+
+        /** [ROLE_LABEL_KEY] on the short-lived command jobs (`stress list`, `fields`, `info`). */
+        const val ROLE_COMMAND = "stress-command"
         const val DEFAULT_CASSANDRA_PORT = 9042
         const val PROMETHEUS_PORT = 9500
 
@@ -839,10 +851,32 @@ object Constants {
         const val QUERYABLE_INTERVAL_SECONDS = 1L
     }
 
-    /** The MCP server's live metrics stream. */
+    /** The `metrics stream` cycle. */
     object LiveMetrics {
-        /** Seconds between two collections of the live metrics stream. */
+        /** Seconds between two cycle ticks of `metrics stream`; fixed, not configurable. */
         const val COLLECTION_INTERVAL_SECONDS = 5L
+
+        /** The entity of a value summed across the cluster. */
+        const val CLUSTER_ENTITY = "cluster"
+
+        /** The entity of the lowest per-node p99 above 0. */
+        const val CLUSTER_MIN_ENTITY = "cluster.min"
+
+        /** The entity of the highest per-node p99. */
+        const val CLUSTER_MAX_ENTITY = "cluster.max"
+
+        /** The PromQL range of every rate the stream computes. */
+        const val RATE_WINDOW = "1m"
+
+        /** Divides the JMX rules' microsecond latencies into the dashboards' milliseconds. */
+        const val MICROS_PER_MILLI = 1000
+
+        /**
+         * A gauge series whose newest sample is this old or older drops out of the stream.  A live
+         * series is at most about 15 s old (5 s agent export plus up to 10 s collector batch), so 30 s
+         * never drops a live node, and a stopped JVM drops out well before Mimir's 5-minute lookback.
+         */
+        const val GAUGE_MAX_AGE_SECONDS = 30
     }
 
     // Grafana configuration
@@ -955,7 +989,8 @@ object Constants {
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
          * tool wrappers in `bin/`, the tunnel script and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE],
-         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses JSON.
+         * [ENV_SOCKS_PORT], [ENV_SOCKS_PID] and [ENV_NETWORK_MODE], one `KEY=value` line each, so no
+         * shell code ever parses JSON.
          */
         const val ENV_FILE = ".socks5-proxy.env"
 
@@ -976,6 +1011,17 @@ object Constants {
          * written and removed with [ENV_SOCKS_PORT]. Shell-side tools use the port only while it is live.
          */
         const val ENV_SOCKS_PID = "EDL_SOCKS_PID"
+
+        /**
+         * The env file key that says the cluster API is reachable from this machine with no tunnel.
+         * It is present, with the value [ENV_NETWORK_MODE_DIRECT], only while direct mode is active, and
+         * the tool wrappers then run the real tool with no proxy variables. It is separate from
+         * [ENV_TAILSCALE_ACTIVE], which means Tailscale and nothing else.
+         */
+        const val ENV_NETWORK_MODE = "EDL_NETWORK_MODE"
+
+        /** The value of [ENV_NETWORK_MODE] that selects direct mode. */
+        const val ENV_NETWORK_MODE_DIRECT = "direct"
 
         /**
          * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script

@@ -13,6 +13,8 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * [LocalClusterTooling] against real processes. The workspace wrappers are a stand-in script that
@@ -25,12 +27,13 @@ internal class LocalClusterToolingTest {
     lateinit var workspace: File
 
     private lateinit var tooling: LocalClusterTooling
+    private lateinit var kitEnvironment: KitProcessEnvironment
 
     @BeforeEach
     fun setup() {
         File(workspace, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
-        val installer = ToolWrapperInstaller(wrapper = PackagedExecutable(STAND_IN_WRAPPER))
-        tooling = LocalClusterTooling(workspace, KitProcessEnvironment(installer))
+        kitEnvironment = KitProcessEnvironment(ToolWrapperInstaller(wrapper = PackagedExecutable(STAND_IN_WRAPPER)))
+        tooling = LocalClusterTooling(workspace, kitEnvironment)
     }
 
     @Test
@@ -56,6 +59,77 @@ internal class LocalClusterToolingTest {
         clearInheritedToolEnvironment(environment)
 
         assertThat(environment).containsOnlyKeys("HOME", "MY_HELM_NOTE")
+    }
+
+    @Test
+    fun `a call starts without the operator's HELM_ variables and KUBECONFIG, and keeps the rest`() {
+        val operator =
+            mapOf(
+                "PATH" to System.getenv("PATH").orEmpty(),
+                "HELM_REPOSITORY_CONFIG" to "/home/operator/.config/helm/repositories.yaml",
+                "HELM_KUBECONTEXT" to "operator-context",
+                "KUBECONFIG" to "/home/operator/.kube/config",
+                "OPERATOR_NOTE" to "kept",
+            )
+
+        val seen =
+            LocalClusterTooling(workspace, kitEnvironment, inheritedEnvironment = operator)
+                .run(ClusterTool.HELM, listOf("dump"), echo = false)
+                .lines()
+                .associate { it.substringBefore('=') to it.substringAfter('=') }
+
+        assertThat(seen)
+            .doesNotContainKeys("HELM_REPOSITORY_CONFIG", "HELM_KUBECONTEXT")
+            .containsEntry("OPERATOR_NOTE", "kept")
+            .containsEntry("KUBECONFIG", File(workspace, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+    }
+
+    @Test
+    @Timeout(DEADLOCK_SECONDS)
+    fun `a tool that exits at once without reading a large stdin still reports its own failure`() {
+        val failure =
+            catchThrowableOfType(ClusterToolFailedException::class.java) {
+                tooling.run(ClusterTool.KUBECTL, listOf("quit", "-"), stdin = "x".repeat(STDIN_BYTES), echo = false)
+            }
+
+        assertThat(failure.exitStatus).isEqualTo(FAILING_EXIT_STATUS)
+    }
+
+    @Test
+    fun `interrupting the caller kills the running tool and frees the caller`() {
+        val outcome = AtomicReference<Throwable>()
+        val caller =
+            Thread {
+                try {
+                    tooling.run(ClusterTool.KUBECTL, listOf("hang"), echo = false)
+                } catch (e: InterruptedException) {
+                    outcome.set(e)
+                }
+            }
+        var pid: Long? = null
+        try {
+            caller.start()
+            pid = awaitPid(File(workspace, "hang.pid"))
+            caller.interrupt()
+            caller.join(FREED_MILLIS)
+
+            assertThat(caller.isAlive).describedAs("the caller is still waiting on the tool").isFalse()
+            assertThat(outcome.get()).isInstanceOf(InterruptedException::class.java)
+            assertThat(awaitExit(pid)).describedAs("the tool is still running").isTrue()
+        } finally {
+            // A tool left running by a failed assertion must not outlive the test.
+            pid?.let { ProcessHandle.of(it).ifPresent { handle -> handle.destroyForcibly() } }
+        }
+    }
+
+    @Test
+    fun `a failure carries the stdout too, with URL credentials redacted`() {
+        val failure = catchThrowableOfType(ClusterToolFailedException::class.java) { tooling.run(ClusterTool.HELM, listOf("failout")) }
+
+        assertThat(failure.stdout).isEqualTo("stdout: pulled https://***@host/chart.tgz")
+        assertThat(
+            failure.message,
+        ).contains("stderr:\nstderr: boom", "stdout:\nstdout: pulled https://***@host/chart.tgz").doesNotContain("s3cret")
     }
 
     @Test
@@ -114,6 +188,31 @@ internal class LocalClusterToolingTest {
         assertThat(hidden).isEmpty()
     }
 
+    /** The pid the `hang` stand-in wrote before it became `sleep`, once it has written it. */
+    private fun awaitPid(file: File): Long {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(FREED_MILLIS)
+        while (System.nanoTime() < deadline) {
+            file
+                .takeIf { it.isFile }
+                ?.readText()
+                ?.trim()
+                ?.toLongOrNull()
+                ?.let { return it }
+            Thread.sleep(POLL_MILLIS)
+        }
+        error("The stand-in never wrote ${file.name}")
+    }
+
+    /** Whether the process [pid] is gone within [FREED_MILLIS]. */
+    private fun awaitExit(pid: Long): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(FREED_MILLIS)
+        while (System.nanoTime() < deadline) {
+            if (ProcessHandle.of(pid).map { it.isAlive }.orElse(false) != true) return true
+            Thread.sleep(POLL_MILLIS)
+        }
+        return false
+    }
+
     private fun capturingStdout(block: () -> Unit): String {
         val original = System.out
         val captured = ByteArrayOutputStream()
@@ -131,6 +230,9 @@ internal class LocalClusterToolingTest {
         const val FLOOD_LINES = 20_000
         const val STDIN_BYTES = 1_000_000
         const val DEADLOCK_SECONDS = 60L
+        const val HANG_SECONDS = 120
+        const val FREED_MILLIS = 10_000L
+        const val POLL_MILLIS = 20L
 
         /** Does what its first argument says, whichever tool name it is installed under. */
         val STAND_IN_WRAPPER =
@@ -138,6 +240,17 @@ internal class LocalClusterToolingTest {
             #!/bin/sh
             case "${'$'}1" in
                 fail) echo "error: unable to read https://user:s3cret@host/m.yaml" >&2; exit $FAILING_EXIT_STATUS ;;
+                failout)
+                    echo "stdout: pulled https://user:s3cret@host/chart.tgz"
+                    echo "stderr: boom" >&2
+                    exit $FAILING_EXIT_STATUS
+                    ;;
+                quit) exit $FAILING_EXIT_STATUS ;;
+                hang)
+                    echo ${'$'}${'$'} > hang.pid
+                    exec sleep $HANG_SECONDS
+                    ;;
+                dump) env ;;
                 leak) echo "pulled https://user:s3cret@host/chart.tgz" ;;
                 cat) cat ;;
                 flood)

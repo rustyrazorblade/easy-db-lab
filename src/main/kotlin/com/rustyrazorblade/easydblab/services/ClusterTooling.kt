@@ -65,9 +65,11 @@ internal fun requireShellQuotedWithin(
 /**
  * Thrown when a helm or kubectl command exits non-zero, in either [ClusterTooling] form.
  *
- * Carries what the tool actually said, because its stderr is the only thing that explains the failure.
- * [stderr] keeps the last [Constants.ClusterTooling.FAILURE_TAIL_LINES] lines with URL credentials
- * redacted, so a failed `apply -f https://user:token@host/...` cannot print its token. [exitStatus] is
+ * Carries what the tool actually said, because its stderr is the main thing that explains the failure.
+ * [stderr] and [stdout] each keep the last [Constants.ClusterTooling.FAILURE_TAIL_LINES] lines with URL
+ * credentials redacted, so a failed `apply -f https://user:token@host/...` cannot print its token. The
+ * message shows stdout after stderr, when there is any, as `RemoteCommandFailedException`'s message did
+ * before the SSH form replaced it. [exitStatus] is
  * [Constants.ClusterTooling.UNKNOWN_EXIT_STATUS] when the transport did not report one. [location] names
  * where the tool ran when that is not this machine, such as the SSH form's control node. [args] is
  * kept exactly as the caller passed it, unredacted, for code that inspects the failure; only the
@@ -82,9 +84,15 @@ class ClusterToolFailedException(
     val exitStatus: Int,
     stderr: String,
     val location: String? = null,
-) : EasyDBLabException(describe(tool, args, exitStatus, redactedTail(stderr), location)) {
+    stdout: String = "",
+) : EasyDBLabException(
+        describe(tool, args, exitStatus, location, listOf("stderr" to redactedTail(stderr), "stdout" to redactedTail(stdout))),
+    ) {
     /** The tool's stderr, tailed and with URL credentials redacted. */
     val stderr: String = redactedTail(stderr)
+
+    /** The tool's stdout, tailed and with URL credentials redacted. */
+    val stdout: String = redactedTail(stdout)
 
     private companion object {
         fun redactedTail(text: String): String =
@@ -100,15 +108,15 @@ class ClusterToolFailedException(
             tool: ClusterTool,
             args: List<String>,
             exitStatus: Int,
-            stderr: String,
             location: String?,
+            streams: List<Pair<String, String>>,
         ): String =
             buildString {
                 append(redactUrlCredentials((listOf(tool.executable) + args).joinToString(" ")))
                 append(" failed with exit status ").append(exitStatus)
                 location?.let { append(" on ").append(it) }
-                if (stderr.isNotBlank()) {
-                    append("\nstderr:\n").append(stderr)
+                streams.filter { (_, text) -> text.isNotBlank() }.forEach { (name, text) ->
+                    append("\n").append(name).append(":\n").append(text)
                 }
             }
     }

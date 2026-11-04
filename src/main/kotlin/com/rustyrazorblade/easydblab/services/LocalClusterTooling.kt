@@ -43,10 +43,13 @@ internal fun clearInheritedToolEnvironment(environment: MutableMap<String, Strin
  *
  * @param workspace the cluster workspace, which holds `kubeconfig` and `bin/`
  * @param environment prepares the process environment and writes the wrappers into `bin/`
+ * @param inheritedEnvironment the environment each process starts from, before `HELM_*` and
+ *   `KUBECONFIG` are cleared; this JVM's own environment unless a test passes another
  */
 class LocalClusterTooling(
     private val workspace: File,
     private val environment: KitProcessEnvironment,
+    private val inheritedEnvironment: Map<String, String> = System.getenv(),
 ) : ClusterTooling {
     private val log = KotlinLogging.logger {}
 
@@ -61,7 +64,13 @@ class LocalClusterTooling(
         val process = start(tool, args)
         val result = exchange(process, stdin)
         if (result.exitStatus != 0) {
-            throw ClusterToolFailedException(tool = tool, args = args, exitStatus = result.exitStatus, stderr = result.stderr)
+            throw ClusterToolFailedException(
+                tool = tool,
+                args = args,
+                exitStatus = result.exitStatus,
+                stderr = result.stderr,
+                stdout = result.stdout,
+            )
         }
         val stdout = redactUrlCredentials(result.stdout)
         if (echo && stdout.isNotBlank()) println(stdout.trimEnd())
@@ -81,7 +90,11 @@ class LocalClusterTooling(
     ): Process {
         val wrapper = File(File(workspace, Constants.ToolWrappers.DIRECTORY), tool.executable).absolutePath
         val builder = ProcessBuilder(listOf(wrapper) + args).directory(workspace)
-        clearInheritedToolEnvironment(builder.environment())
+        builder.environment().run {
+            clear()
+            putAll(inheritedEnvironment)
+            clearInheritedToolEnvironment(this)
+        }
         return environment.applyTo(builder, workspace, helmHomes()).start()
     }
 

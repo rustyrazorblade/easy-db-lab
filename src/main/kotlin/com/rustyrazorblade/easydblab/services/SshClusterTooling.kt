@@ -57,10 +57,23 @@ class SshClusterTooling(
                 args = args,
                 exitStatus = e.exitStatus ?: Constants.ClusterTooling.UNKNOWN_EXIT_STATUS,
                 stderr = e.stderr,
-                location = "${call.host.alias} (${call.host.public})",
+                location = describe(call.host),
+                stdout = e.stdout,
             )
         }
     }
+
+    /**
+     * The control node as a failure names it: `alias (public address)`, or `alias (private address)`
+     * when the public one is blank (`EC2InstanceService` records a blank `publicIp` for a node with
+     * none), or just the alias when both are blank.
+     */
+    private fun describe(host: Host): String =
+        when {
+            host.public.isNotBlank() -> "${host.alias} (${host.public})"
+            host.private.isNotBlank() -> "${host.alias} (${host.private})"
+            else -> host.alias
+        }
 
     private fun controlHost(): Host =
         clusterStateManager.load().getControlHost()?.toHost()

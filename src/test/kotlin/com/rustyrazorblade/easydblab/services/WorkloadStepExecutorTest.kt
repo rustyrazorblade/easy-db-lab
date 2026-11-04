@@ -5,11 +5,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -22,6 +24,7 @@ import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -121,6 +124,65 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         assertThat(result.isSuccess).isTrue()
         verify(helmService).repoAdd("pg-charts", "https://example.com/charts")
+    }
+
+    @Test
+    fun `a platform-pvs-delete step interpolates its node-type`() {
+        val remoteOps = mock<RemoteOperationsService>()
+        whenever(k8sService.deleteLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+        val recordingExecutor =
+            WorkloadStepExecutor(
+                k8sService = k8sService,
+                helmService = helmService,
+                kubectlService = kubectlService,
+                remoteOps = remoteOps,
+                eventBus = get<EventBus>(),
+            )
+
+        val result =
+            recordingExecutor.execute(
+                steps = listOf(InstallStep.PlatformPvsDelete(nodeType = "\${POOL}")),
+                phase = "uninstall",
+                context =
+                    StepExecutionContext(
+                        kitName = "testdb",
+                        controlHost = controlHost,
+                        clusterState = clusterState,
+                        variables = mapOf("POOL" to "app"),
+                        kitDir = tempDir,
+                        workspaceDir = workspace,
+                    ),
+            )
+
+        assertThat(result.isSuccess).isTrue()
+        val hosts = argumentCaptor<Host>()
+        verify(remoteOps).executeRemotely(hosts.capture(), eq("sudo rm -rf /mnt/db1/testdb"), any(), any())
+        assertThat(hosts.allValues.map { it.alias }).containsExactly("app0")
+    }
+
+    @Test
+    fun `a label step interpolates its node-type`() {
+        whenever(k8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
+
+        val result =
+            execute(listOf(InstallStep.Label(nodeType = "\${POOL}", labels = mapOf("kit" to "x"))), mapOf("POOL" to "app"))
+
+        assertThat(result.isSuccess).isTrue()
+        verify(k8sService).labelNode(controlHost, "app0", mapOf("kit" to "x"))
+    }
+
+    @Test
+    fun `a label step interpolates the keys of its labels`() {
+        whenever(k8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
+
+        val result =
+            execute(
+                listOf(InstallStep.Label(labels = mapOf("\${LABEL_KEY}" to "bench"))),
+                mapOf("LABEL_KEY" to "workload"),
+            )
+
+        assertThat(result.isSuccess).isTrue()
+        verify(k8sService).labelNode(controlHost, "db0", mapOf("workload" to "bench"))
     }
 
     /**
@@ -357,6 +419,42 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             val config = argumentCaptor<PersistentVolumeConfig>()
             verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
             assertThat(config.firstValue.nodeType).isEqualTo("app")
+        }
+
+        @Test
+        fun `node-type accepts a variable`() {
+            val config = createdConfig(InstallStep.PlatformPvs(nodeType = "\${POOL}"), "POOL" to "app")
+
+            assertThat(config.nodeType).isEqualTo("app")
+        }
+
+        @Test
+        fun `storage-class accepts a variable`() {
+            val config = createdConfig(InstallStep.PlatformPvs(storageClass = "\${CLASS}"), "CLASS" to "fast-local")
+
+            assertThat(config.storageClass).isEqualTo("fast-local")
+        }
+
+        @Test
+        fun `volume-claim-template-name accepts a variable`() {
+            val config = createdConfig(InstallStep.PlatformPvs(volumeClaimTemplateName = "\${CLAIM}"), "CLAIM" to "scratch")
+
+            assertThat(config.volumeClaimTemplateName).isEqualTo("scratch")
+        }
+
+        /** Runs [step] with [variable] and a storage size, and returns the PV config the step created. */
+        private fun createdConfig(
+            step: InstallStep.PlatformPvs,
+            variable: Pair<String, String>,
+        ): PersistentVolumeConfig {
+            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+
+            val result = execute(listOf(step), mapOf(variable, "STORAGE_SIZE" to "1Gi"))
+
+            assertThat(result.isSuccess).isTrue()
+            val config = argumentCaptor<PersistentVolumeConfig>()
+            verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
+            return config.firstValue
         }
 
         @Test

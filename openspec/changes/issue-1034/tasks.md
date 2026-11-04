@@ -25,4 +25,4 @@
 
 - [x] 5.1 Replace the `RemoteOperationsService` rule in `CLAUDE.md` with: "`RemoteOperationsService` runs node commands on AWS hosts (filesystem, systemd, node configuration) and AWS-only cluster tooling (cilium).  helm and kubectl for kits and the services go through `ClusterTooling`: its SSH form runs them on the control node with `KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}`; its local form runs them as a local process in the kit process environment.  Never call `ProcessBuilder` for helm or kubectl outside `LocalClusterTooling`."  Point the mocking rule for remote CLI tools at `SshClusterTooling`.
 - [x] 5.2 Update `commands/CLAUDE.md`, `services/CLAUDE.md` and `docs/development/kits.md` (local runs need helm and kubectl on the host, as shell steps already do).
-- [ ] 5.3 Run `./gradlew ktlintFormat detekt test integrationTest` (JDK 21) in a subagent.
+- [x] 5.3 Run `./gradlew ktlintFormat detekt test integrationTest` (JDK 21) in a subagent.

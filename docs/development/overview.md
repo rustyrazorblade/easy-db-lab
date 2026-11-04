@@ -14,6 +14,11 @@ Install these locally before building:
   testing the application all work on JDK 25; CI runs `check` on JDK 21.
 - **Kotlin** and **Gradle** (the Gradle wrapper `./gradlew` is committed)
 - **Docker** — for TestContainers-backed integration tests
+- **helm** and **kubectl** — on your `PATH`, for `./gradlew integrationTest` and therefore `check`:
+  `LocalClusterToolingIntegrationTest` runs the host's own tools, as the local form of
+  `ClusterTooling` does, and fails with a message naming whichever is missing (it never skips).
+  CI installs helm v3.17.x (the version the node AMI pins in `packer/base/install/install_helm.sh`)
+  and kubectl v1.35.x (the K3s the tests run), in `.github/workflows/pr-checks.yml`.
 - **mdbook** + **mdbook-admonish** — for previewing documentation
 
 The example Spark jobs and their Cassandra Analytics build live in the separate

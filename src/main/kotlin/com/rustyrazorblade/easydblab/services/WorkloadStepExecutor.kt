@@ -207,7 +207,13 @@ class WorkloadStepExecutor(
                     if (step.ifSet.isNotBlank() && ctx.variables[step.ifSet].isNullOrBlank()) {
                         log.info { "Skipping platform-pvs for ${ctx.kitName}: ${step.ifSet} is not set" }
                     } else {
-                        createPlatformPvs(step, ctx, interp(step.storageSize))
+                        val interpolated =
+                            step.copy(
+                                nodeType = interp(step.nodeType),
+                                volumeClaimTemplateName = interp(step.volumeClaimTemplateName),
+                                storageClass = interp(step.storageClass),
+                            )
+                        createPlatformPvs(interpolated, ctx, interp(step.storageSize))
                     }
                 }
 
@@ -217,7 +223,7 @@ class WorkloadStepExecutor(
                             controlHost = ctx.controlHost,
                             dbName = ctx.kitName,
                         ).getOrThrow()
-                    val dbHosts = ctx.clusterState.hosts[ServerType.from(step.nodeType)] ?: emptyList()
+                    val dbHosts = ctx.clusterState.hosts[ServerType.from(interp(step.nodeType))] ?: emptyList()
                     val dataPath = "${Constants.K8s.DB_MOUNT_PATH}/${ctx.kitName}"
                     for (clusterHost in dbHosts) {
                         remoteOps.executeRemotely(host = clusterHost.toHost(), command = "sudo rm -rf $dataPath")
@@ -236,16 +242,16 @@ class WorkloadStepExecutor(
                 }
 
                 is InstallStep.Label -> {
-                    val serverType = ServerType.from(step.nodeType)
+                    val nodeType = interp(step.nodeType)
                     val targetHosts =
-                        ctx.clusterState.hosts[serverType]
-                            ?: error("No ${step.nodeType} nodes found for label step")
+                        ctx.clusterState.hosts[ServerType.from(nodeType)]
+                            ?: error("No $nodeType nodes found for label step")
                     for (host in targetHosts) {
                         k8sService
                             .labelNode(
                                 controlHost = ctx.controlHost,
                                 nodeName = host.alias,
-                                labels = step.labels.mapValues { (_, v) -> interp(v) },
+                                labels = step.labels.mapKeys { (k, _) -> interp(k) }.mapValues { (_, v) -> interp(v) },
                             ).getOrThrow()
                     }
                 }

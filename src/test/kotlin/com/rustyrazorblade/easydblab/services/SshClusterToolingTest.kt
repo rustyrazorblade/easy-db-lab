@@ -350,6 +350,45 @@ internal class SshClusterToolingTest {
     }
 
     @Test
+    fun `a remote failure keeps the remote stdout, with URL credentials redacted, in the message`() {
+        whenever(remoteOps.executeRemotely(any(), any(), any(), any()))
+            .doThrow(
+                RemoteCommandFailedException(
+                    "c",
+                    "pulled https://user:s3cret@host/chart.tgz",
+                    "Error: no such chart",
+                    "summary",
+                    exitStatus = 1,
+                ),
+            )
+
+        val failure =
+            catchThrowableOfType(ClusterToolFailedException::class.java) { tooling.run(ClusterTool.HELM, listOf("pull", "chart")) }
+
+        assertThat(failure.stdout).isEqualTo("pulled https://***@host/chart.tgz")
+        assertThat(failure.message)
+            .contains("stderr:\nError: no such chart", "stdout:\npulled https://***@host/chart.tgz")
+            .doesNotContain("s3cret")
+    }
+
+    @Test
+    fun `the failure location shows the public address, else the private one, else just the alias`() {
+        whenever(remoteOps.executeRemotely(any(), any(), any(), any()))
+            .doThrow(RemoteCommandFailedException("c", "", "boom", "summary", exitStatus = 1))
+        val locations =
+            listOf(
+                clusterHost("control0", "54.1.2.3", "10.0.0.1"),
+                clusterHost("control0", "", "10.0.0.1"),
+                clusterHost("control0", "  ", ""),
+            ).map { host ->
+                saveState(host)
+                catchThrowableOfType(ClusterToolFailedException::class.java) { tooling.run(ClusterTool.HELM, listOf("list")) }.location
+            }
+
+        assertThat(locations).containsExactly("control0 (54.1.2.3)", "control0 (10.0.0.1)", "control0")
+    }
+
+    @Test
     fun `a remote failure with no reported status carries the unknown status`() {
         whenever(remoteOps.executeRemotely(any(), any(), any(), anyOrNull()))
             .doThrow(RemoteCommandFailedException("c", "", "", "summary"))

@@ -64,8 +64,9 @@ interface ClusterTooling {
 }
 
 class ClusterToolFailedException(
-    val tool: ClusterTool, val args: List<String>, val exitStatus: Int, val stderr: String,
-) : EasyDBLabException(...)
+    val tool: ClusterTool, val args: List<String>, val exitStatus: Int, stderr: String,
+    val location: String? = null, stdout: String = "",
+) : EasyDBLabException(...)  // stderr and stdout are tailed and redacted; location names the SSH control node
 ```
 
 - SSH form: builds `KUBECONFIG=${REMOTE_KUBECONFIG} <tool> <args>`, single-quoting only the arguments the service marked in `shellQuoted` and joining the rest raw, as today.  With stdin, uploads it to `/tmp/easydblab-input-<uuid>.yaml`, replaces the `-` argument with that path, and runs `rm -f path` in `finally`.  Exactly one `-` argument must be present when stdin is given.  Maps `RemoteCommandFailedException` (which gains `exitStatus`) to `ClusterToolFailedException`.

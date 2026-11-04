@@ -10,6 +10,7 @@ Every typed kit step (helm-repo, helm, helm-uninstall, namespace, manifest, mani
 - `KubectlService` and `HelmService` keep their public methods, lose the `host` parameter, and run every command through `ClusterTooling`.  `withKubeconfig` and shell quoting move into `SshClusterTooling`.  `createNamespace` drops its shell pipe (dry-run output is applied through stdin).
 - Callers updated: `WorkloadStepExecutor`, `KitWorkloadProbe`, `KitStatusCommand`.
 - `RemoteCommandFailedException` gains `exitStatus`, which `SSHClient.remoteCommandFailure` fills (today it drops it).
+- Behaviour fixes made in the same change: `${VAR}` is interpolated in the `helm-repo` step's `name` and `url` (on AWS too, where it was not), and in the `node-type` of `platform-pvs`, `platform-pvs-delete` and `label`, the `storage-class` and `volume-claim-template-name` of `platform-pvs`, and the keys of `label.labels`, as every other step string field already is.
 - Koin binds `ClusterTooling` to `SshClusterTooling`.  Until #1040 records the environment in state, the local form is selected only by a Koin override in tests.  There is no user-facing switch.
 - Docs: the `RemoteOperationsService` rule in `CLAUDE.md`, `commands/CLAUDE.md`, `services/CLAUDE.md`, and `docs/development/kits.md` (local runs need helm and kubectl on the host, as shell steps already do).
 
@@ -28,6 +29,6 @@ Every typed kit step (helm-repo, helm, helm-uninstall, namespace, manifest, mani
 
 ## Impact
 
-- `services/KubectlService.kt`, `services/HelmService.kt`, `services/WorkloadStepExecutor.kt`, `services/KitWorkloadProbe.kt`, `commands/install/KitStatusCommand.kt`, `services/ServicesModule.kt`, `exceptions/EasyCassLabExceptions.kt`, `providers/ssh/SSHClient.kt`, `Constants.kt`.
+- `services/KubectlService.kt`, `services/HelmService.kt`, `services/WorkloadStepExecutor.kt`, `services/KitWorkloadProbe.kt`, `commands/install/KitStatusCommand.kt`, `services/ServicesModule.kt`, `exceptions/EasyCassLabExceptions.kt`, `ssh/SSHClient.kt`, `Constants.kt`.
 - New: `services/ClusterTooling.kt`, `services/SshClusterTooling.kt`, `services/LocalClusterTooling.kt`.
 - Part of epic #1032.  Related: #747 (cloud-agnostic kit engine).

@@ -22,6 +22,19 @@ internal class ClusterToolFailedExceptionTest {
     }
 
     @Test
+    fun `stdout follows stderr in the message only when there is any, and keeps only the tail`() {
+        val limit = Constants.ClusterTooling.FAILURE_TAIL_LINES
+        val stdout = (1..limit + 5).joinToString("\n") { "out $it" }
+
+        val quiet = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "boom")
+        val loud = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "boom", stdout = stdout)
+
+        assertThat(quiet.message).doesNotContain("stdout")
+        assertThat(loud.message).contains("stderr:\nboom\nstdout:\nout 6\n").endsWith("out ${limit + 5}")
+        assertThat(loud.stdout.lines()).hasSize(limit)
+    }
+
+    @Test
     fun `where the tool ran appears in the message only when given`() {
         val local = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "boom")
         val remote = ClusterToolFailedException(ClusterTool.HELM, listOf("list"), 1, "boom", location = "control0 (54.1.2.3)")

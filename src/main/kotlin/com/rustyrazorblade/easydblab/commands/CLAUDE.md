@@ -14,6 +14,7 @@ Commands should:
 
 Commands should NOT:
 - Execute SSH commands directly (use `RemoteOperationsService` or domain services)
+- Run helm or kubectl directly (use `HelmService` / `KubectlService`, which go through `ClusterTooling`)
 - Make K8s API calls directly (use `K8sService` or `StressJobService`)
 - Call AWS/cloud provider APIs directly (use `AWS`, `EC2Service`, etc.)
 - Contain business logic (belongs in services)
@@ -183,10 +184,14 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
   `annotations/RequiresProxy.kt` and design decision D7/D9 in
   `openspec/changes/up-fail-fast/design.md`.
 
-  Commands driving remote tooling through `RemoteOperationsService` — helm, kubectl, cilium run
-  *on the control node* over SSH — do **not** need this annotation. There is no local client
-  making the call, and SSH never traverses the SOCKS tunnel (the tunnel exists only to reach the
-  private Kubernetes API from the developer's machine). `Down` is a concrete example: its first
+  Commands driving remote tooling over SSH — helm and kubectl through `ClusterTooling` (its SSH
+  form, `SshClusterTooling`), cilium through `RemoteOperationsService` — run *on the control node*
+  and do **not** need this annotation. There is no local client making the call, and SSH never
+  traverses the SOCKS tunnel (the tunnel exists only to reach the private Kubernetes API from the
+  developer's machine). The local form of `ClusterTooling` (`LocalClusterTooling`) is different: it
+  runs helm and kubectl as local processes through the `<workspace>/bin` wrappers, which use the
+  tunnel the CLI recorded, so a command that reaches it (the kit commands do) keeps
+  `@RequiresProxy`. `Down` is a concrete example: its first
   actions unpublish the proxy port and stop the `edl-socks-tunnel` process and its ssh, so it must not carry `@RequiresProxy`
   or it would start a tunnel it exists to tear down.
 
@@ -251,6 +256,7 @@ Commands should delegate to these services:
 | `InstallTemplateResolver` | Resolves install templates from profile dir, classpath, or `--from` path |
 | `ObjectStore` | S3 file operations |
 | `RemoteOperationsService` | SSH execution (use sparingly, prefer domain services) |
+| `HelmService`, `KubectlService` | helm and kubectl for kits and commands. They build argument lists and run them through `ClusterTooling` (`services/ClusterTooling.kt`): `SshClusterTooling` on the control node, `LocalClusterTooling` as local processes. No `host` parameter |
 
 ## Running Something On Every Host
 

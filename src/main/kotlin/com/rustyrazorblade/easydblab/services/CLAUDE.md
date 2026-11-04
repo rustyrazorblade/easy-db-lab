@@ -158,6 +158,17 @@ class DefaultMyService(...) : AbstractSystemDServiceManager(...), MyService {
 ### Service with Custom Behavior
 See `CassandraService` - overrides `restart()` to use a custom script and adds `waitForUpNormal()` method.
 
+## helm and kubectl: `ClusterTooling`
+
+`HelmService` and `KubectlService` are not SystemD services. They build helm and kubectl argument lists and run them through `ClusterTooling` (`ClusterTooling.kt`), which decides where the tool runs. They take no `host`.
+
+- `SshClusterTooling` (the default Koin binding in `ServicesModule`) runs the tool on the control node with `KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}`, through `RemoteOperationsService`. It single-quotes only the arguments a service marks in `shellQuoted`, uploads stdin to a temporary file for a `-` argument and removes it afterwards, and maps a failure to `ClusterToolFailedException` with the exit status and stderr.
+- `LocalClusterTooling` runs the tool as a local process through the `<workspace>/bin` wrapper in the kit process environment (`KitProcessEnvironment`), with stdin piped and no temporary file. helm's config, cache and data directories sit under `<workspace>/.helm/`. It needs helm and kubectl on the host. It is bound by a Koin override until #1040 selects the form per environment.
+- A new helm or kubectl call for kits or commands goes into one of those two services as an argument list. Never call `ProcessBuilder` for helm or kubectl outside `LocalClusterTooling`, and never run them through `RemoteOperationsService` from a kit or command path.
+- The AWS-only Cilium services (`CiliumService`, which runs `helm status cilium` and `cilium`, and `CiliumInspectionService`, which runs `kubectl get` on Cilium objects) are the exception: Cilium is installed on the AWS control node only, so they stay on `RemoteOperationsService` with the `KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG}` prefix.
+
+Test the services with `RecordingClusterTooling` (test sources), which records each call and asserts on the argument lists built; do not mock `RemoteOperationsService` for them. `SshClusterToolingTest` pins the SSH command strings with a mocked `RemoteOperationsService`, and `LocalClusterToolingIntegrationTest` runs the typed steps against a real K3s container through the local form.
+
 ## Error Handling
 
 All methods return `Result<T>` types for explicit error handling:

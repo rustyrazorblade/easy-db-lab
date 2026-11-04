@@ -389,6 +389,23 @@ object Constants {
 
         /** Name suffix of the temporary stdin file. */
         const val INPUT_FILE_SUFFIX = ".yaml"
+
+        /** Directory under the workspace that holds helm's config, cache and data for the local form. */
+        const val HELM_HOME_DIRECTORY = ".helm"
+
+        /** Prefix of helm's environment variables; the local form clears inherited ones before setting its own. */
+        const val HELM_ENV_PREFIX = "HELM_"
+
+        /** The kubeconfig variable; the local form clears the inherited one so only the workspace kubeconfig applies. */
+        const val KUBECONFIG_ENV = "KUBECONFIG"
+
+        /** The environment variable the local form sets for each of helm's homes, with its directory under [HELM_HOME_DIRECTORY]. */
+        val HELM_HOMES =
+            mapOf(
+                "HELM_CONFIG_HOME" to "config",
+                "HELM_CACHE_HOME" to "cache",
+                "HELM_DATA_HOME" to "data",
+            )
     }
 
     // K8s observability configuration

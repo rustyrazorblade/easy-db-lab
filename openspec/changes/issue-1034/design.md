@@ -51,7 +51,8 @@ enum class ClusterTool { KUBECTL, HELM }
 interface ClusterTooling {
     /**
      * Runs [tool] with [args], feeding [stdin] when given; returns stdout.  [shellQuoted] holds the
-     * indexes into [args] that the SSH form single-quotes; the local form ignores it.
+     * indexes into [args] that the SSH form single-quotes; the local form quotes nothing.  Both forms
+     * fail fast on an index outside [args].
      */
     fun run(
         tool: ClusterTool,

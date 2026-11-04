@@ -47,9 +47,7 @@ class SshClusterTooling(
                 "to stand for the uploaded file, got " +
                 redactUrlCredentials((listOf(tool.executable) + args).joinToString(" "))
         }
-        require(shellQuoted.all { it in args.indices }) {
-            "shellQuoted $shellQuoted names an index outside the ${args.size} arguments of ${tool.executable}"
-        }
+        requireShellQuotedWithin(tool, args, shellQuoted)
         val call = Call(controlHost(), tool, args, echo, shellQuoted)
         try {
             return if (stdin == null) execute(call) else executeWithInput(call, stdin)

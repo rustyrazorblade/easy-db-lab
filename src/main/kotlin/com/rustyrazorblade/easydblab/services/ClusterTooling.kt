@@ -33,8 +33,9 @@ interface ClusterTooling {
      *
      * [shellQuoted] holds the indexes into [args] that the SSH form single-quotes because the remote
      * shell would otherwise split or expand them (a label selector, an object name). The local form
-     * passes arguments as a list, never through a shell, and ignores it. A caller therefore passes raw
-     * values and marks them, and never quotes a value itself.
+     * passes arguments as a list, never through a shell, so it quotes nothing; both forms fail fast on
+     * an index outside [args]. A caller therefore passes raw values and marks them, and never quotes a
+     * value itself.
      *
      * [echo] shows stdout to the user; callers that parse stdout pass false.
      *
@@ -47,6 +48,18 @@ interface ClusterTooling {
         echo: Boolean = true,
         shellQuoted: Set<Int> = emptySet(),
     ): String
+}
+
+/**
+ * Fails fast when [shellQuoted] names an argument [args] does not have. Both [ClusterTooling] forms
+ * call it first, so a wrong index fails the same way wherever the tool would have run.
+ */
+internal fun requireShellQuotedWithin(
+    tool: ClusterTool,
+    args: List<String>,
+    shellQuoted: Set<Int>,
+) = require(shellQuoted.all { it in args.indices }) {
+    "shellQuoted $shellQuoted names an index outside the ${args.size} arguments of ${tool.executable}"
 }
 
 /**

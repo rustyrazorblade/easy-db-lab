@@ -110,6 +110,19 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 ),
         )
 
+    /** Every string field of a step supports `${VAR}`, the repository's name and url included. */
+    @Test
+    fun `a helm-repo step interpolates its name and url`() {
+        val result =
+            execute(
+                listOf(InstallStep.HelmRepo(name = "\${KIT_NAME}-charts", url = "\${REPO_URL}/charts")),
+                mapOf("KIT_NAME" to "pg", "REPO_URL" to "https://example.com"),
+            )
+
+        assertThat(result.isSuccess).isTrue()
+        verify(helmService).repoAdd("pg-charts", "https://example.com/charts")
+    }
+
     /**
      * One operator can serve several kit instances: plain `postgres` and every `postgres-<extension>`
      * share the CNPG operator release. `keep-while-any` keeps the release while any object of that
@@ -123,7 +136,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         @Test
         fun `keeps the release, and says what still uses it, while an object of the type is left`() {
-            whenever(kubectlService.listInAllNamespaces(any(), any())).thenReturn(listOf("cluster.postgresql.cnpg.io/postgres-duckdb"))
+            whenever(kubectlService.listInAllNamespaces(any())).thenReturn(listOf("cluster.postgresql.cnpg.io/postgres-duckdb"))
             val events = mutableListOf<Event>()
             get<EventBus>().addListener(
                 object : EventListener {
@@ -137,8 +150,8 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             assertThat(execute(listOf(operatorUninstall)).isSuccess).isTrue()
 
-            verify(helmService, never()).uninstall(any(), any(), any())
-            verify(kubectlService).listInAllNamespaces(any(), org.mockito.kotlin.eq("clusters.postgresql.cnpg.io"))
+            verify(helmService, never()).uninstall(any(), any())
+            verify(kubectlService).listInAllNamespaces(org.mockito.kotlin.eq("clusters.postgresql.cnpg.io"))
             val kept = events.filterIsInstance<Event.Kit.HelmReleaseKept>().single()
             assertThat(kept.release).isEqualTo("cnpg-operator")
             assertThat(kept.usedBy).containsExactly("cluster.postgresql.cnpg.io/postgres-duckdb")
@@ -147,19 +160,19 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         @Test
         fun `uninstalls the release when no object of the type is left`() {
-            whenever(kubectlService.listInAllNamespaces(any(), any())).thenReturn(emptyList())
+            whenever(kubectlService.listInAllNamespaces(any())).thenReturn(emptyList())
 
             assertThat(execute(listOf(operatorUninstall)).isSuccess).isTrue()
 
-            verify(helmService).uninstall(any(), org.mockito.kotlin.eq("cnpg-operator"), org.mockito.kotlin.eq("cnpg-system"))
+            verify(helmService).uninstall(org.mockito.kotlin.eq("cnpg-operator"), org.mockito.kotlin.eq("cnpg-system"))
         }
 
         @Test
         fun `a release with no keep-while-any is uninstalled without looking in the cluster`() {
             execute(listOf(InstallStep.HelmUninstall(release = "strimzi-operator", namespace = "strimzi")))
 
-            verify(kubectlService, never()).listInAllNamespaces(any(), any())
-            verify(helmService).uninstall(any(), org.mockito.kotlin.eq("strimzi-operator"), org.mockito.kotlin.eq("strimzi"))
+            verify(kubectlService, never()).listInAllNamespaces(any())
+            verify(helmService).uninstall(org.mockito.kotlin.eq("strimzi-operator"), org.mockito.kotlin.eq("strimzi"))
         }
     }
 
@@ -379,12 +392,11 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             assertThat(result.isSuccess).isTrue()
             verify(kubectlService).deleteBySelector(
-                host = controlHost.toHost(),
                 kinds = listOf("deployment", "pod"),
                 selector = "easydblab/kit=memcached",
                 namespace = "cache",
             )
-            verify(kubectlService, never()).delete(any(), any(), any(), any(), any())
+            verify(kubectlService, never()).delete(any(), any(), any(), any())
         }
 
         @Test
@@ -392,18 +404,17 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             execute(listOf(InstallStep.Delete(kind = "Service", name = "\${KIT_NAME}-nodeport")), mapOf("KIT_NAME" to "pg"))
 
             verify(kubectlService).delete(
-                host = controlHost.toHost(),
                 kind = "Service",
                 name = "pg-nodeport",
                 namespace = "default",
                 ignoreNotFound = true,
             )
-            verify(kubectlService, never()).deleteBySelector(any(), any(), any(), any())
+            verify(kubectlService, never()).deleteBySelector(any(), any(), any())
         }
 
         @Test
         fun `a failed selector delete fails the step`() {
-            whenever(kubectlService.deleteBySelector(any(), any(), any(), any())).thenThrow(IllegalStateException("api down"))
+            whenever(kubectlService.deleteBySelector(any(), any(), any())).thenThrow(IllegalStateException("api down"))
 
             val result = execute(listOf(InstallStep.Delete(kinds = listOf("pod"), selector = "a=b")))
 
@@ -434,9 +445,9 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             val manifestFile = File(tempDir, "cluster.yaml").also { it.writeText("imageName: \${IMAGE}") }
             org.mockito.kotlin
                 .doAnswer { inv ->
-                    capturedContent = inv.getArgument(1)
+                    capturedContent = inv.getArgument(0)
                 }.whenever(kubectlService)
-                .applyContent(any(), any())
+                .applyContent(any())
 
             execute(
                 steps = listOf(InstallStep.Manifest(manifestFile.name, interpolate = true)),
@@ -453,9 +464,9 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             val manifestFile = File(tempDir, "cluster.yaml").also { it.writeText("imageName: \${IMAGE}") }
             org.mockito.kotlin
                 .doAnswer { inv ->
-                    capturedContent = inv.getArgument(1)
+                    capturedContent = inv.getArgument(0)
                 }.whenever(kubectlService)
-                .applyContent(any(), any())
+                .applyContent(any())
 
             execute(
                 steps = listOf(InstallStep.Manifest(manifestFile.name, interpolate = false)),

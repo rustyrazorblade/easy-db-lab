@@ -4,6 +4,13 @@ import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import io.fabric8.kubernetes.api.model.ConfigMap
@@ -24,6 +31,11 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
+import org.koin.dsl.koinApplication
+import org.koin.dsl.module
+import org.mockito.Mockito.mockingDetails
+import org.mockito.kotlin.mock
+import org.mockito.stubbing.Answer
 import org.slf4j.LoggerFactory
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.containers.output.Slf4jLogConsumer
@@ -36,10 +48,12 @@ import java.net.InetAddress
  * Runs [LocalClusterTooling] with the host's real helm and kubectl against a real K3s cluster, to
  * prove what the unit tests cannot: that stdin reaches the tool (`apply -f -`, `--values -`), that a
  * failure carries the tool's exit status and stderr, and that helm keeps its repository under the
- * workspace.
+ * workspace. A fixture kit (`typed-steps-kit`) then runs the ten typed steps that drive helm or
+ * kubectl through [WorkloadStepExecutor] and the production services, with `ClusterTooling` rebound
+ * to the local form and every [RemoteOperationsService] call failing the test: no step may use SSH.
  *
- * The test starts its own K3s container and does not share [SharedK3s]'s, because later stages apply
- * cluster-scoped kinds. Its workspace is a `@TempDir` that holds the container's kubeconfig and the
+ * The test starts its own K3s container and does not share [SharedK3s]'s, because the kit applies
+ * cluster-scoped kinds (a namespace, a CRD). Its workspace is a `@TempDir` that holds the container's kubeconfig and the
  * `direct` key in `.socks5-proxy.env` (`ProxyEnvFile.recordDirect`), so the workspace wrappers reach
  * the cluster without a tunnel. Everything the fixtures need is local: the helm repository is an okhttp
  * `MockWebServer` serving an `index.yaml` and a chart archive that the test builds with `helm package`
@@ -59,6 +73,14 @@ class LocalClusterToolingIntegrationTest {
         private const val HTTP_OK = 200
         private const val HTTP_NOT_FOUND = 404
         private const val KUBECTL_FAILURE_STATUS = 1
+
+        private const val KIT_RESOURCE_DIRECTORY = "/com/rustyrazorblade/easydblab/services/typed-steps-kit"
+        private val KIT_FILES =
+            listOf("kit.yaml", "values.yaml", "manifest.yaml", "kustomize/kustomization.yaml", "kustomize/configmaps.yaml")
+        private const val SERVED_RESOURCE_DIRECTORY = "/com/rustyrazorblade/easydblab/services/typed-steps-served"
+        private const val EXTRA_NAMESPACE = "typed-steps-extra"
+        private const val CRD_NAME = "widgets.typedsteps.example.com"
+        private const val GREETING = "from the step variable"
 
         private lateinit var k3s: K3sContainer
 
@@ -211,22 +233,173 @@ class LocalClusterToolingIntegrationTest {
         assertThat(repositories.readText()).contains(REPO_NAME)
     }
 
+    /**
+     * Runs the fixture kit's install, stop and uninstall steps through [WorkloadStepExecutor] with the production
+     * services, rebinding only [ClusterTooling] to the local form. [RemoteOperationsService] is a mock that
+     * throws on any call, so a step that reached for SSH fails its phase, and the recorded calls are checked
+     * to be none at the end. Kit files, the chart repository and the url-served manifest all come from the
+     * test, through one [MockWebServer] and the workspace.
+     */
+    @Test
+    fun `the ten typed steps run through the local form with no SSH`() {
+        val served = File(workspace, "served").apply { mkdirs() }
+        MockWebServer().use { server ->
+            server.start(InetAddress.getLoopbackAddress(), 0)
+            server.dispatcher = FilesDispatcher(served)
+            val url = "http://${InetAddress.getLoopbackAddress().hostAddress}:${server.port}"
+            buildRepository(served, url)
+            copyResources(SERVED_RESOURCE_DIRECTORY, listOf("manifest-url.yaml"), served)
+            val kitDir = File(workspace, "typed-steps")
+            copyResources(KIT_RESOURCE_DIRECTORY, KIT_FILES, kitDir)
+            val kit = installConfigYaml.decodeFromString(KitConfig.serializer(), File(kitDir, "kit.yaml").readText())
+            val variables =
+                mapOf(
+                    "REPO_URL" to url,
+                    "MANIFEST_URL" to "$url/manifest-url.yaml",
+                    "KUSTOMIZE_DIR" to File(kitDir, "kustomize").absolutePath,
+                    "GREETING" to GREETING,
+                )
+            val remoteOps =
+                mock<RemoteOperationsService>(defaultAnswer = Answer<Any> { throw AssertionError("SSH used: ${it.method.name}") })
+            val app = koinApplication { modules(servicesModule, localToolingModule(remoteOps)) }
+            try {
+                val events = recordEvents(app.koin.get())
+                val phase = { name: String, steps: List<InstallStep> -> runPhase(app.koin.get(), name, steps, kitDir, variables) }
+
+                phase("install", kit.install)
+                assertInstalled()
+                assertReleasesFound(app.koin.get())
+                phase("stop", kit.stop)
+                assertStopped()
+                phase("uninstall", kit.uninstall)
+                assertUninstalled(events)
+                assertThat(app.koin.get<HelmService>().releaseExists("typed-removed", NAMESPACE)).isFalse()
+                assertThat(mockingDetails(remoteOps).invocations).describedAs("SSH calls").isEmpty()
+            } finally {
+                app.close()
+            }
+        }
+    }
+
+    /** Production wiring with the seam rebound to the local form, which is how a harness selects it until #1040. */
+    private fun localToolingModule(remoteOps: RemoteOperationsService) =
+        module {
+            single<ClusterTooling> { tooling }
+            single<RemoteOperationsService> { remoteOps }
+            single<K8sService> { mock() }
+            single { EventBus() }
+            single { ToolWrapperInstaller() }
+        }
+
+    /** Runs [steps] as phase [name] of the fixture kit; a failed step throws its own exception, with the tool's stderr. */
+    private fun runPhase(
+        executor: WorkloadStepExecutor,
+        name: String,
+        steps: List<InstallStep>,
+        kitDir: File,
+        variables: Map<String, String>,
+    ) {
+        val context =
+            StepExecutionContext(
+                kitName = "typed-steps",
+                controlHost = ClusterHost("203.0.113.1", "10.0.0.1", "control0", "us-west-2a"),
+                clusterState = ClusterState(name = "typed-steps", versions = mutableMapOf()),
+                variables = variables,
+                kitDir = kitDir,
+                workspaceDir = workspace,
+            )
+        executor.execute(steps, name, context).getOrThrow()
+    }
+
+    private fun recordEvents(bus: EventBus): List<Event> {
+        val events = mutableListOf<Event>()
+        bus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return events
+    }
+
+    private fun configMapData(name: String): Map<String, String>? =
+        client
+            .configMaps()
+            .inNamespace(NAMESPACE)
+            .withName(name)
+            .get()
+            ?.data
+
+    /** What the install steps made: helm values from a map and from a file, a namespace, a manifest, a url, a kustomization. */
+    private fun assertInstalled() {
+        assertThat(configMapData("typed-kept-config")).containsEntry("greeting", "set by map")
+        assertThat(configMapData("typed-removed-config")).containsEntry("greeting", "values from the file")
+        assertThat(client.namespaces().withName(EXTRA_NAMESPACE).get()).isNotNull
+        assertThat(configMapData("typed-manifest")).containsEntry("greeting", GREETING)
+        assertThat(
+            client
+                .apiextensions()
+                .v1()
+                .customResourceDefinitions()
+                .withName(CRD_NAME)
+                .get(),
+        ).isNotNull
+        assertThat(configMapData("typed-manifest-url")).containsEntry("from", "manifest-url")
+        assertThat(configMapData("typed-kustomize-selected")).containsEntry("from", "kustomize")
+    }
+
+    /**
+     * `releaseExists` filters with `^<release>$`. The local form hands that to helm as it is, with no shell
+     * to read the `$`, and the anchors make a name that is only a prefix of a release not match it.
+     */
+    private fun assertReleasesFound(helm: HelmService) {
+        assertThat(helm.releaseExists("typed-kept", NAMESPACE)).isTrue()
+        assertThat(helm.releaseExists("typed", NAMESPACE)).isFalse()
+    }
+
+    /** The delete by name removed its object, and the selector (spaces and parentheses included) removed exactly its matches. */
+    private fun assertStopped() {
+        assertThat(configMapData("typed-manifest-url")).isNull()
+        assertThat(configMapData("typed-kustomize-selected")).isNull()
+        assertThat(configMapData("typed-kustomize-other")).isNull()
+        assertThat(configMapData("typed-kustomize-kept")).containsEntry("from", "kustomize")
+    }
+
+    /** The release something still uses is kept and reported; the one nothing uses is uninstalled. */
+    private fun assertUninstalled(events: List<Event>) {
+        assertThat(events.filterIsInstance<Event.Kit.HelmReleaseKept>().map { it.release }).containsExactly("typed-kept")
+        assertThat(configMapData("typed-kept-config")).isNotNull
+        assertThat(configMapData("typed-removed-config")).isNull()
+    }
+
     /** Packages the fixture chart into [directory] and writes the `index.yaml` that points at [url]. */
     private fun buildRepository(
         directory: File,
         url: String,
     ) {
         val chart = File(workspace, "chart-source").apply { mkdirs() }
-        for (path in CHART_FILES) {
-            val target = File(chart, path).apply { parentFile.mkdirs() }
-            target.writeBytes(
-                checkNotNull(LocalClusterToolingIntegrationTest::class.java.getResourceAsStream("$CHART_RESOURCE_DIRECTORY/$path")) {
-                    "Missing fixture chart file $path under $CHART_RESOURCE_DIRECTORY"
+        copyResources(CHART_RESOURCE_DIRECTORY, CHART_FILES, chart)
+        tooling.run(ClusterTool.HELM, listOf("package", chart.absolutePath, "--destination", directory.absolutePath), echo = false)
+        tooling.run(ClusterTool.HELM, listOf("repo", "index", directory.absolutePath, "--url", url), echo = false)
+    }
+
+    /** Copies the classpath resources [files] under [resourceDirectory] into [target], keeping their relative paths. */
+    private fun copyResources(
+        resourceDirectory: String,
+        files: List<String>,
+        target: File,
+    ) {
+        for (path in files) {
+            val destination = File(target, path).apply { parentFile.mkdirs() }
+            destination.writeBytes(
+                checkNotNull(LocalClusterToolingIntegrationTest::class.java.getResourceAsStream("$resourceDirectory/$path")) {
+                    "Missing fixture file $path under $resourceDirectory"
                 }.use { it.readBytes() },
             )
         }
-        tooling.run(ClusterTool.HELM, listOf("package", chart.absolutePath, "--destination", directory.absolutePath), echo = false)
-        tooling.run(ClusterTool.HELM, listOf("repo", "index", directory.absolutePath, "--url", url), echo = false)
     }
 
     private fun configMap(

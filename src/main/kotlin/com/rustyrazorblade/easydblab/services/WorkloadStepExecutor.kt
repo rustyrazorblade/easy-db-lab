@@ -55,7 +55,7 @@ data class StepExecutionContext(
 /**
  * Runs a kit's typed steps, in `install:` and in its lifecycle phases.
  *
- * Most steps act on the cluster through the control node or fabric8. A `shell` step runs on the
+ * Most steps act on the cluster through [ClusterTooling] or fabric8. A `shell` step runs on the
  * operator's machine through [KitProcessEnvironment], so it gets the workspace tool wrappers and
  * the absolute workspace kubeconfig.
  */
@@ -116,11 +116,9 @@ class WorkloadStepExecutor(
         runCatching {
             fun interp(s: String) = interpolateStepVars(s, ctx.variables)
 
-            val host = ctx.controlHost.toHost()
-
             when (step) {
                 is InstallStep.HelmRepo -> {
-                    helmService.repoAdd(host = host, name = step.name, url = step.url)
+                    helmService.repoAdd(name = interp(step.name), url = interp(step.url))
                 }
 
                 is InstallStep.Helm -> {
@@ -131,7 +129,6 @@ class WorkloadStepExecutor(
                             null
                         }
                     helmService.upgradeInstall(
-                        host = host,
                         release = interp(step.release),
                         chart = interp(step.chart),
                         namespace = interp(step.namespace),
@@ -148,17 +145,17 @@ class WorkloadStepExecutor(
                         if (step.keepWhileAny.isBlank()) {
                             emptyList()
                         } else {
-                            kubectlService.listInAllNamespaces(host = host, resource = interp(step.keepWhileAny))
+                            kubectlService.listInAllNamespaces(resource = interp(step.keepWhileAny))
                         }
                     if (usedBy.isEmpty()) {
-                        helmService.uninstall(host = host, release = release, namespace = interp(step.namespace))
+                        helmService.uninstall(release = release, namespace = interp(step.namespace))
                     } else {
                         eventBus.emit(Event.Kit.HelmReleaseKept(kit = ctx.kitName, release = release, usedBy = usedBy))
                     }
                 }
 
                 is InstallStep.Namespace -> {
-                    kubectlService.createNamespace(host = host, name = interp(step.name))
+                    kubectlService.createNamespace(name = interp(step.name))
                 }
 
                 is InstallStep.Manifest -> {
@@ -167,20 +164,19 @@ class WorkloadStepExecutor(
                         "Manifest file not found: ${manifestFile.absolutePath}. Run 'install ${ctx.kitName}' first."
                     }
                     val content = if (step.interpolate) interp(manifestFile.readText()) else manifestFile.readText()
-                    kubectlService.applyContent(host = host, yamlContent = content)
+                    kubectlService.applyContent(yamlContent = content)
                 }
 
                 is InstallStep.ManifestUrl -> {
-                    kubectlService.applyUrl(host = host, url = interp(step.url))
+                    kubectlService.applyUrl(url = interp(step.url))
                 }
 
                 is InstallStep.Kustomize -> {
-                    kubectlService.applyKustomize(host = host, url = interp(step.url))
+                    kubectlService.applyKustomize(url = interp(step.url))
                 }
 
                 is InstallStep.Wait -> {
                     kubectlService.wait(
-                        host = host,
                         kind = interp(step.kind),
                         name = interp(step.name),
                         condition = interp(step.condition),
@@ -193,14 +189,12 @@ class WorkloadStepExecutor(
                     val namespace = step.namespace?.let { interp(it) } ?: "default"
                     if (step.bySelector) {
                         kubectlService.deleteBySelector(
-                            host = host,
                             kinds = step.kinds.map { interp(it) },
                             selector = interp(step.selector),
                             namespace = namespace,
                         )
                     } else {
                         kubectlService.delete(
-                            host = host,
                             kind = interp(step.kind),
                             name = interp(step.name),
                             namespace = namespace,

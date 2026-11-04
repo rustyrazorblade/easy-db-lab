@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services
 
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesService
 import org.assertj.core.api.Assertions.assertThat
@@ -24,24 +23,23 @@ class KitWorkloadProbeTest {
     private val helmService: HelmService = mock()
     private val kubeService: KubernetesService = mock()
     private val probe = KitWorkloadProbe(kubeService, helmService)
-    private val controlHost = ClusterHost(publicIp = "", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a")
 
     @Test
     fun `a helm runtime is present when its release exists in the runtime namespace`() {
-        whenever(helmService.releaseExists(any(), eq("trino"), eq("analytics"))).thenReturn(true)
+        whenever(helmService.releaseExists(eq("trino"), eq("analytics"))).thenReturn(true)
         val runtime = KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "trino", namespace = "analytics")
 
-        assertThat(probe.find("trino", runtime, controlHost).getOrThrow())
+        assertThat(probe.find("trino", runtime).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "analytics", resources = listOf("helm-release/trino")))
         verifyNoInteractions(kubeService)
     }
 
     @Test
     fun `a helm runtime without a release name is looked up by the kit name`() {
-        whenever(helmService.releaseExists(any(), eq("presto"), eq("default"))).thenReturn(true)
+        whenever(helmService.releaseExists(eq("presto"), eq("default"))).thenReturn(true)
         val runtime = KitRuntime(type = KitRuntime.RuntimeType.HELM)
 
-        assertThat(probe.find("presto", runtime, controlHost).getOrThrow())
+        assertThat(probe.find("presto", runtime).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("helm-release/presto")))
     }
 
@@ -60,11 +58,11 @@ class KitWorkloadProbeTest {
      */
     @Test
     fun `the stop wait for a helm runtime holds while pods of the uninstalled release are still terminating`() {
-        whenever(helmService.releaseExists(any(), any(), any())).thenReturn(false)
+        whenever(helmService.releaseExists(any(), any())).thenReturn(false)
         releasePods(pod("trino-coordinator-0", "Running").copy(namespace = "analytics", terminating = true))
         val impatient = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 2)
 
-        assertThat(impatient.awaitGone("trino", helmRuntime, controlHost).getOrThrow())
+        assertThat(impatient.awaitGone("trino", helmRuntime).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "analytics", resources = listOf("pod/trino-coordinator-0")))
     }
 
@@ -74,13 +72,13 @@ class KitWorkloadProbeTest {
      */
     @Test
     fun `the stop wait for a helm runtime ends once the release's pods are gone, though the release remains`() {
-        whenever(helmService.releaseExists(any(), any(), any())).thenReturn(true)
+        whenever(helmService.releaseExists(any(), any())).thenReturn(true)
         whenever(kubeService.listPodsByLabel(eq("app.kubernetes.io/instance=trino"), eq("analytics")))
             .thenReturn(Result.success(listOf(pod("trino-worker-0", "Running").copy(terminating = true))))
             .thenReturn(Result.success(emptyList()))
         val waiting = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 5)
 
-        assertThat(waiting.awaitGone("trino", helmRuntime, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
+        assertThat(waiting.awaitGone("trino", helmRuntime).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
         verify(kubeService, times(2)).listPodsByLabel(eq("app.kubernetes.io/instance=trino"), eq("analytics"))
     }
 
@@ -101,7 +99,7 @@ class KitWorkloadProbeTest {
         whenever(kubeService.listPodsByLabel(eq("easydblab/kit=sysbench-tidb"), eq("default")))
             .thenReturn(Result.success(listOf(pod("run-1", "Succeeded"), pod("run-2", "Failed"), pod("run-3", "Running"))))
 
-        assertThat(probe.find("sysbench-tidb", runPods, controlHost).getOrThrow())
+        assertThat(probe.find("sysbench-tidb", runPods).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/run-3")))
     }
 
@@ -111,8 +109,8 @@ class KitWorkloadProbeTest {
             .thenReturn(Result.success(listOf(pod("run-1", "Succeeded"), pod("run-2", "Failed"))))
         val impatient = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 1)
 
-        assertThat(probe.find("sysbench-tidb", runPods, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
-        assertThat(impatient.awaitGone("sysbench-tidb", runPods, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
+        assertThat(probe.find("sysbench-tidb", runPods).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
+        assertThat(impatient.awaitGone("sysbench-tidb", runPods).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
     }
 
     /**
@@ -124,7 +122,7 @@ class KitWorkloadProbeTest {
         whenever(kubeService.listPodsByLabel(any(), any()))
             .thenReturn(Result.success(listOf(pod("run-1", "Running").copy(terminating = true))))
 
-        assertThat(probe.find("sysbench-tidb", runPods, controlHost).getOrThrow())
+        assertThat(probe.find("sysbench-tidb", runPods).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/run-1")))
     }
 
@@ -132,7 +130,7 @@ class KitWorkloadProbeTest {
     fun `a pending pod is part of the running workload`() {
         whenever(kubeService.listPodsByLabel(any(), any())).thenReturn(Result.success(listOf(pod("run-1", "Pending"))))
 
-        assertThat(probe.find("sysbench-tidb", runPods, controlHost).getOrThrow())
+        assertThat(probe.find("sysbench-tidb", runPods).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/run-1")))
     }
 
@@ -148,7 +146,7 @@ class KitWorkloadProbeTest {
             .thenReturn(Result.success(emptyList()))
         val waiting = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 3)
 
-        assertThat(waiting.awaitGone("sysbench-tidb", runPods, controlHost).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
+        assertThat(waiting.awaitGone("sysbench-tidb", runPods).getOrThrow()).isEqualTo(WorkloadPresence.Absent)
     }
 
     @Test
@@ -158,7 +156,7 @@ class KitWorkloadProbeTest {
             .thenReturn(Result.failure(IllegalStateException("connection reset")))
         val waiting = KitWorkloadProbe(kubeService, helmService, pollInterval = Duration.ZERO, maxPolls = 2)
 
-        val result = waiting.awaitGone("sysbench-tidb", runPods, controlHost)
+        val result = waiting.awaitGone("sysbench-tidb", runPods)
 
         assertThat(result.exceptionOrNull()).isInstanceOf(IllegalStateException::class.java).hasMessage("connection reset")
         verify(kubeService, times(2)).listPodsByLabel(any(), any())
@@ -166,9 +164,9 @@ class KitWorkloadProbeTest {
 
     @Test
     fun `a failed helm lookup fails the result instead of reporting the kit absent`() {
-        whenever(helmService.releaseExists(any(), any(), any())).thenThrow(IllegalStateException("ssh down"))
+        whenever(helmService.releaseExists(any(), any())).thenThrow(IllegalStateException("ssh down"))
         val runtime = KitRuntime(type = KitRuntime.RuntimeType.HELM, release = "trino")
 
-        assertThat(probe.find("trino", runtime, controlHost).isFailure).isTrue()
+        assertThat(probe.find("trino", runtime).isFailure).isTrue()
     }
 }

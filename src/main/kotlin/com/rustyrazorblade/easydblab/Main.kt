@@ -36,7 +36,14 @@ fun main(arguments: Array<String>) {
         }
     }
 
-    val parser = CommandLineParser()
+    // A `kit install <kit> --source <dir>` whose <dir> lacks the kit fails while the parser is built.
+    val parser =
+        try {
+            CommandLineParser(arguments)
+        } catch (e: IllegalArgumentException) {
+            handleIllegalArgumentError(e)
+            return
+        }
     try {
         parser.eval(arguments)
     } catch (e: DockerException) {

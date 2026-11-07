@@ -15,6 +15,9 @@ import java.nio.file.Path
  * 3. Built-in classpath: `kits/<name>/` in resources
  * 4. Ad-hoc: any local path supplied via `--from` (not listed, install-time only)
  *
+ * A `kit install <name> --source <dir>` call bypasses this order for that one kit and that one
+ * call: [resolveIn] reads `<dir>/<name>/` and nothing else.
+ *
  * Profile templates override all others of the same name. Additional-source templates
  * override built-ins. Missing additional-source directories are silently skipped.
  */
@@ -123,6 +126,25 @@ class InstallTemplateResolver(
             return TemplateSource.Builtin(name)
         }
         throw IllegalArgumentException("No install template found for '$name'. Use --list to see available templates.")
+    }
+
+    /**
+     * Resolves the kit [name] inside the kit source directory [dir], for one
+     * `kit install <name> --source <dir>` call. Neither the profile kits nor the sources
+     * registered with `kit source add` are read or changed.
+     *
+     * @throws IllegalArgumentException if [dir] holds no `<name>/` subdirectory with a `kit.yaml`
+     */
+    fun resolveIn(
+        dir: File,
+        name: String,
+    ): TemplateSource {
+        val kitDir = File(dir, name)
+        require(File(kitDir, Constants.Kit.CONFIG_FILE).isFile) {
+            val expected = File(kitDir.canonicalFile, Constants.Kit.CONFIG_FILE)
+            "Kit source directory ${dir.canonicalPath} has no kit '$name' (expected $expected)"
+        }
+        return TemplateSource.Directory(kitDir)
     }
 
     /**

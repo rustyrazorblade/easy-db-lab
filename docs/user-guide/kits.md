@@ -279,6 +279,24 @@ easy-db-lab kit source add myapp ~/new-location/myapp/kits
 # Updated kit source 'myapp': /new-location/myapp/kits
 ```
 
+### Installing from a directory for one call (`--source`)
+
+`kit source add` sets one path per name, shared by every run of your user. To install a kit from
+a different copy — a bisect checkout, a branch build — without changing that setting, pass
+`--source` to `kit install`:
+
+```bash
+easy-db-lab kit install myapp-workload --source ~/bisect/myapp/kits
+```
+
+`--source <dir>` takes a kit source directory, the same kind of path `kit source add` takes: the
+kit is read from `<dir>/<kit>/`. It applies to that call only. The registered sources are not
+read and `kit-sources.yaml` is not changed, so other runs keep installing from the registered
+path. Without `--source`, `kit install` resolves the kit as described below.
+
+If `<dir>/<kit>/kit.yaml` does not exist, the install fails before it writes anything, with an
+error that names the directory and the kit.
+
 ### Resolution priority
 
 When multiple sources provide a kit with the same name, the first match wins:
@@ -286,5 +304,7 @@ When multiple sources provide a kit with the same name, the first match wins:
 1. Profile kits directory (`~/.easy-db-lab/profiles/<profile>/kits/`)
 2. Registered additional sources (in registration order)
 3. Built-in kits
+
+A `kit install <kit> --source <dir>` call skips this order and reads only `<dir>/<kit>/`.
 
 For a full walkthrough of building and publishing your own kit, see the [Kit Development](../development/kits.md) guide.

@@ -29,6 +29,7 @@ import com.rustyrazorblade.easydblab.commands.exec.Exec
 import com.rustyrazorblade.easydblab.commands.grafana.Grafana
 import com.rustyrazorblade.easydblab.commands.ingress.Ingress
 import com.rustyrazorblade.easydblab.commands.install.KitInstallCommandFactory
+import com.rustyrazorblade.easydblab.commands.install.KitInstallSourceOverride
 import com.rustyrazorblade.easydblab.commands.install.KitRunnerCommandFactory
 import com.rustyrazorblade.easydblab.commands.kit.Kit
 import com.rustyrazorblade.easydblab.commands.logs.Logs
@@ -131,8 +132,15 @@ class EasyDBLabCommand : Runnable {
  *
  * All commands are registered declaratively via @Command annotations.
  * KoinCommandFactory provides command instances with injected dependencies.
+ *
+ * [arguments] are the arguments [eval] will run. The parser reads them once, before it registers
+ * the dynamic kit install subcommands, for one reason: a `kit install <name> --source <dir>` call
+ * must register `<name>` from `<dir>`, whose `kit.yaml` declares the install options. Pass the
+ * same arguments to [eval].
  */
-class CommandLineParser : KoinComponent {
+class CommandLineParser(
+    private val arguments: Array<String> = emptyArray(),
+) : KoinComponent {
     private val eventBus: EventBus by inject()
 
     /**
@@ -276,6 +284,17 @@ class CommandLineParser : KoinComponent {
         val factory = KitInstallCommandFactory(templateVars)
         val kitCL = commandLine.getSubcommands()["kit"] ?: return
         val installCL = kitCL.getSubcommands()["install"] ?: return
+
+        // `kit install <name> --source <dir>` reads that one kit from <dir> for this call only.
+        // It is registered first, so the same name from the shared sources never replaces it.
+        KitInstallSourceOverride.from(arguments)?.let { override ->
+            val source = resolver.resolveIn(override.dir, override.kitName)
+            val config =
+                requireNotNull(resolver.loadInstallConfig(source)) {
+                    "No ${Constants.Kit.CONFIG_FILE} for kit '${override.kitName}' in ${override.dir.canonicalPath}"
+                }
+            installCL.addSubcommand(override.kitName, factory.build(config, source))
+        }
 
         for (name in resolver.listAvailableTemplates()) {
             val source =

@@ -6,6 +6,8 @@ import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
+import io.fabric8.kubernetes.api.model.Quantity
+import io.fabric8.kubernetes.api.model.ResourceRequirementsBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
@@ -37,6 +39,40 @@ class TempoManifestBuilder(
         /** The user the Tempo image runs as; [DATA_HOST_PATH] must be owned by it. */
         const val TEMPO_UID = 10001L
 
+        /**
+         * Tempo's memory request and limit: 8 GiB of the control node's 16 GiB (m5d.xlarge). The
+         * live-trace brake and the Go runtime's soft memory limit are both derived from it.
+         *
+         * Tempo is the one builder that sets a request and limit. Its live store grows with
+         * ingest, and with no bound it grew to about 10 GB until the kernel killed it; the owner
+         * chose a hard limit with a brake under it.
+         */
+        val MEMORY: Quantity = Quantity("8Gi")
+
+        /** [MEMORY] in bytes, the base the brake and `GOMEMLIMIT` are computed from. */
+        val MEMORY_BYTES: Long = Quantity.getAmountInBytes(MEMORY).toLong()
+
+        /**
+         * `live_store.max_live_traces_bytes`: past this many bytes of live traces, Tempo stalls
+         * each push a second at a time until the live store cuts traces to the WAL.
+         *
+         * Why an eighth, not half: the brake counts only proto bytes in the live map, and Tempo
+         * 3.0.3 subtracts a cut batch from that count before it writes the batch. So the live map
+         * and the batch being written can each hold this much at once (2x). Both are decoded Go
+         * objects, larger than their proto bytes (about 2x). The Go collector lets the heap grow
+         * past the live heap before it runs (up to 2x, bounded by [GO_MEM_LIMIT_BYTES]). That is
+         * 8x, before the head block and queries, so an eighth of [MEMORY_BYTES] keeps the worst
+         * case at the limit rather than past it.
+         */
+        val MAX_LIVE_TRACES_BYTES: Long = MEMORY_BYTES / 8
+
+        /**
+         * `GOMEMLIMIT`: the Go runtime collects garbage harder as the heap nears this, instead of
+         * letting it grow to twice the live heap. A tenth of [MEMORY_BYTES] is left for memory
+         * the Go runtime does not count.
+         */
+        val GO_MEM_LIMIT_BYTES: Long = MEMORY_BYTES * 9 / 10
+
         private const val LIVENESS_INITIAL_DELAY = 30
         private const val LIVENESS_PERIOD = 15
         private const val READINESS_INITIAL_DELAY = 5
@@ -50,6 +86,13 @@ class TempoManifestBuilder(
         private const val STARTUP_TIMEOUT = 5
         private const val STARTUP_FAILURE_THRESHOLD = 60
     }
+
+    /** A memory request and limit of [MEMORY]; no CPU request or limit. */
+    private fun memoryRequirements() =
+        ResourceRequirementsBuilder()
+            .addToRequests("memory", MEMORY)
+            .addToLimits("memory", MEMORY)
+            .build()
 
     /**
      * Builds all Tempo K8s resources in apply order.
@@ -79,7 +122,7 @@ class TempoManifestBuilder(
                     .fromResource(
                         TempoManifestBuilder::class.java,
                         "tempo.yaml",
-                    ).substitute(),
+                    ).substitute(mapOf("TEMPO_MAX_LIVE_TRACES_BYTES" to "$MAX_LIVE_TRACES_BYTES")),
             ).build()
 
     /**
@@ -159,7 +202,12 @@ class TempoManifestBuilder(
             .withArgs(
                 "-config.file=/etc/tempo/tempo.yaml",
                 "-config.expand-env=true",
-            ).addNewEnv()
+            ).withResources(memoryRequirements())
+            .addNewEnv()
+            .withName("GOMEMLIMIT")
+            .withValue("$GO_MEM_LIMIT_BYTES")
+            .endEnv()
+            .addNewEnv()
             .withName("AWS_REGION")
             .withNewValueFrom()
             .withNewConfigMapKeyRef()

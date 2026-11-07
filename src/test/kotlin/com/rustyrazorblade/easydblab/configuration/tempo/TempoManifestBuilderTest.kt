@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.Quantity
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -111,14 +112,14 @@ class TempoManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a received trace reaches the WAL within about two seconds`() {
-        // Tempo 3.0.3 defaults (5s idle, checked every 5s, 30s live) left a pushed trace in memory
-        // for up to 10s, and a kill in that window lost it.
+    fun `live traces are cut on Tempo's default idle and live times`() {
+        // At 1s idle a trace whose spans arrive over a few seconds is cut, and written to the head
+        // block, several times. Under jondb's trace load that write loop fell behind arrivals.
         val yaml = config()
 
-        assertThat(scalarAt(yaml, "live_store", "flush_check_period")).isEqualTo("1s")
-        assertThat(scalarAt(yaml, "live_store", "max_trace_idle")).isEqualTo("1s")
-        assertThat(scalarAt(yaml, "live_store", "max_trace_live")).isEqualTo("10s")
+        assertThat(scalarAt(yaml, "live_store", "flush_check_period")).isEqualTo("5s")
+        assertThat(scalarAt(yaml, "live_store", "max_trace_idle")).isEqualTo("5s")
+        assertThat(scalarAt(yaml, "live_store", "max_trace_live")).isEqualTo("30s")
     }
 
     @Test
@@ -127,9 +128,60 @@ class TempoManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config(), "overrides", "defaults", "ingestion", "max_traces_per_user")).isEqualTo("0")
     }
 
+    /** The Tempo container as the Deployment renders it. */
+    private fun tempoContainer() =
+        builder
+            .buildDeployment()
+            .spec.template.spec.containers
+            .single()
+
+    /** The memory limit the Deployment renders, in bytes. */
+    private fun renderedMemoryLimitBytes(): Long = Quantity.getAmountInBytes(tempoContainer().resources.limits.getValue("memory")).toLong()
+
     @Test
-    fun `no live-trace byte limit stalls pushes`() {
-        assertThat(scalarAt(config(), "live_store", "max_live_traces_bytes")).isEqualTo("0")
+    fun `Tempo's memory request and limit are both 8Gi and it sets no CPU`() {
+        val resources = tempoContainer().resources
+
+        assertThat(resources.requests).containsOnlyKeys("memory")
+        assertThat(resources.limits).containsOnlyKeys("memory")
+        assertThat(resources.requests.getValue("memory").toString()).isEqualTo("8Gi")
+        assertThat(resources.limits.getValue("memory").toString()).isEqualTo("8Gi")
+    }
+
+    @Test
+    fun `the rendered live-trace brake is an eighth of the rendered memory limit`() {
+        // Tempo 3.0.3 takes a cut batch out of the brake's count before writing it, so the live
+        // map and the batch being written can each reach the brake at once. An eighth leaves room
+        // for both, decoded into Go objects, plus the head block and queries.
+        val brake = scalarAt(config(), "live_store", "max_live_traces_bytes")?.toLongOrNull()
+
+        assertThat(brake).isEqualTo(renderedMemoryLimitBytes() / 8)
+    }
+
+    @Test
+    fun `the rendered GOMEMLIMIT is nine tenths of the rendered memory limit`() {
+        val goMemLimit =
+            tempoContainer()
+                .env
+                .single { it.name == "GOMEMLIMIT" }
+                .value
+                .toLong()
+
+        assertThat(goMemLimit).isEqualTo(renderedMemoryLimitBytes() * 9 / 10)
+    }
+
+    @Test
+    fun `the brake engages before the Go soft limit, which is below the hard memory limit`() {
+        val brake = checkNotNull(scalarAt(config(), "live_store", "max_live_traces_bytes")).toLong()
+        val goMemLimit =
+            tempoContainer()
+                .env
+                .single { it.name == "GOMEMLIMIT" }
+                .value
+                .toLong()
+
+        assertThat(brake).isPositive().isLessThan(goMemLimit)
+        assertThat(goMemLimit).isLessThan(renderedMemoryLimitBytes())
     }
 
     @Test

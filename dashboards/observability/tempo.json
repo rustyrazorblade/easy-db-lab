@@ -742,6 +742,162 @@
       ]
     },
     {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Push Stall Time (live store back pressure)",
+      "description": "Seconds per second that Tempo's live store held pushes. The all-reasons line is the tempo_live_store_back_pressure_duration_seconds histogram, which Tempo always exposes, so it reads 0 when nothing stalls. The per-reason lines come from tempo_live_store_back_pressure_seconds_total, which Tempo creates only at the first stall. Past live_store.max_live_traces_bytes (waiting_for_live_traces), or while the WAL is behind (waiting_for_wal), Tempo stalls each push a second at a time. If the sender's deadline passes during a stall, Tempo drops the push and counts it nowhere in Tempo. Only spans the collector gives up on are counted, in the collector panel beside this one.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 35
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s/s",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 5
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "expr": "label_replace(sum by (cluster) (rate(tempo_live_store_back_pressure_duration_seconds_sum{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} stalled, all reasons"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "expr": "label_replace(sum by (cluster, reason) (rate(tempo_live_store_back_pressure_seconds_total{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{reason}}"
+        }
+      ],
+      "links": [
+        {
+          "title": "System Overview",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Live Trace Bytes",
+      "description": "Bytes of live traces in Tempo's live store, summed over tenants. When this passes live_store.max_live_traces_bytes, Tempo stalls pushes until it cuts traces to the WAL. A push Tempo drops during a stall is not counted anywhere in Tempo; only spans the collector gives up on are counted.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 35
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 5
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "expr": "label_replace(sum by (cluster) (tempo_live_store_live_trace_bytes{cluster=~\"$cluster\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} live trace bytes"
+        }
+      ],
+      "links": [
+        {
+          "title": "System Overview",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Spans Lost Sending to Tempo (collector)",
+      "description": "Spans each node's OTel collector failed to send to Tempo after its retries ran out, plus spans it could not put in a full sending queue (exporter otlp_grpc/tempo). This is the only count of trace loss from Tempo's stalls: a push Tempo drops during a stall is not counted anywhere in Tempo, and the collector retries it first.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 35
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${metrics_datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "min": 0,
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 5
+          }
+        }
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "expr": "label_replace((sum by (cluster, host_name) (rate(otelcol_exporter_send_failed_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval])) or 0 * sum by (cluster, host_name) (rate(otelcol_exporter_sent_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval]))) + (sum by (cluster, host_name) (rate(otelcol_exporter_enqueue_failed_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval])) or 0 * sum by (cluster, host_name) (rate(otelcol_exporter_sent_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} send/enqueue failed"
+        }
+      ],
+      "links": [
+        {
+          "title": "System Overview",
+          "url": "/d/system-overview/system-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${traces_datasource:queryparam}&${cluster:queryparam}",
+          "targetBlank": false
+        }
+      ]
+    },
+    {
       "id": 400,
       "type": "row",
       "title": "By Operation",
@@ -749,7 +905,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 43
       },
       "collapsed": false,
       "fieldConfig": {
@@ -764,7 +920,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 36
+        "y": 44
       },
       "datasource": {
         "type": "prometheus",
@@ -828,7 +984,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 36
+        "y": 44
       },
       "datasource": {
         "type": "prometheus",
@@ -888,7 +1044,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 52
       },
       "collapsed": false,
       "fieldConfig": {
@@ -903,7 +1059,7 @@
         "h": 14,
         "w": 24,
         "x": 0,
-        "y": 45
+        "y": 53
       },
       "datasource": null,
       "options": {

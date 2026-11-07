@@ -745,7 +745,7 @@
       "id": 14,
       "type": "timeseries",
       "title": "Push Stall Time (live store back pressure)",
-      "description": "Seconds per second that Tempo's live store held pushes, by reason. Past live_store.max_live_traces_bytes (waiting_for_live_traces), or while the WAL is behind (waiting_for_wal), Tempo stalls each push a second at a time. If the sender's deadline passes during a stall, Tempo drops the push and counts it nowhere in Tempo. Only spans the collector gives up on are counted, in the collector panel beside this one.",
+      "description": "Seconds per second that Tempo's live store held pushes. The all-reasons line is the tempo_live_store_back_pressure_duration_seconds histogram, which Tempo always exposes, so it reads 0 when nothing stalls. The per-reason lines come from tempo_live_store_back_pressure_seconds_total, which Tempo creates only at the first stall. Past live_store.max_live_traces_bytes (waiting_for_live_traces), or while the WAL is behind (waiting_for_wal), Tempo stalls each push a second at a time. If the sender's deadline passes during a stall, Tempo drops the push and counts it nowhere in Tempo. Only spans the collector gives up on are counted, in the collector panel beside this one.",
       "gridPos": {
         "h": 8,
         "w": 8,
@@ -774,6 +774,15 @@
       "targets": [
         {
           "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "expr": "label_replace(sum by (cluster) (rate(tempo_live_store_back_pressure_duration_seconds_sum{cluster=~\"$cluster\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} stalled, all reasons"
+        },
+        {
+          "refId": "B",
           "datasource": {
             "type": "prometheus",
             "uid": "${metrics_datasource}"

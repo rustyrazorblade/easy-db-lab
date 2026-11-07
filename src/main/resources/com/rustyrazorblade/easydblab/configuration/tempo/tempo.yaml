@@ -44,8 +44,9 @@ live_store:
   # tempo_receiver_accepted_spans still counts those spans as accepted. The OTel collector sees its
   # call time out and retries it, so spans are lost only when its retries run out or its queue is
   # full. Only that loss is counted, in otelcol_exporter_send_failed_spans_total and
-  # otelcol_exporter_enqueue_failed_spans_total. Time spent stalled is counted in
-  # tempo_live_store_back_pressure_seconds_total.
+  # otelcol_exporter_enqueue_failed_spans_total. Time spent stalled is in the histogram
+  # tempo_live_store_back_pressure_duration_seconds (always exposed), and by reason in the counter
+  # tempo_live_store_back_pressure_seconds_total{reason}, which Tempo creates at the first stall.
   #
   # With no brake (0), nothing slowed a push: on jondb's E1 cluster the live store's write loop fell
   # behind arriving traces, and Tempo grew to about 10 GB until the kernel killed it, twice.

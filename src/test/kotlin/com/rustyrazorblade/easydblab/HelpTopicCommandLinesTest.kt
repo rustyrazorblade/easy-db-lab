@@ -42,7 +42,7 @@ class HelpTopicCommandLinesTest : BaseKoinTest() {
 
     @Test
     fun `every command line in a help topic uses only options and arguments the command takes`() {
-        val root = CommandLineParser().commandLine
+        val root = CommandLineParser(emptyArray()).commandLine
         val lines = DefaultHelpTopicService().findAll().flatMap { topic -> commandLines(topic.body).map { topic.name to it } }
 
         assertThat(lines).describedAs("command lines found in the help topics").isNotEmpty()

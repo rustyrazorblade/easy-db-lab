@@ -294,8 +294,15 @@ kit is read from `<dir>/<kit>/`. It applies to that call only. The registered so
 read and `kit-sources.yaml` is not changed, so other runs keep installing from the registered
 path. Without `--source`, `kit install` resolves the kit as described below.
 
-If `<dir>/<kit>/kit.yaml` does not exist, the install fails before it writes anything, with an
-error that names the directory and the kit.
+A relative `<dir>` is resolved against the directory easy-db-lab runs in, which is the cluster
+workspace, not the directory of a wrapper script that `cd`s into it. Pass an absolute path when
+you call easy-db-lab through such a wrapper.
+
+The install fails before it writes anything, with an error that names the problem, when:
+
+- `<dir>/<kit>/kit.yaml` does not exist (the error names the directory and the kit);
+- `<dir>/<kit>/kit.yaml` is not a valid kit descriptor (the error names the file);
+- `<kit>` is not a plain directory name inside `<dir>`, such as `../other/<kit>`.
 
 ### Resolution priority
 

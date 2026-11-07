@@ -75,6 +75,15 @@ because the kit's `kit.yaml` declares the install options the command accepts.
 - **THEN** the command fails with an error that names `<dir>` and `my-kit`
 - **THEN** nothing is written to the workspace
 
+#### Scenario: --source kit has an invalid kit.yaml
+- **WHEN** the user runs `kit install my-kit --source <dir>` and `<dir>/my-kit/kit.yaml` is not a valid kit descriptor
+- **THEN** the command fails with an invalid-argument error that names that file, with no stack trace
+- **THEN** nothing is written to the workspace
+
+#### Scenario: --source kit name leaves the directory
+- **WHEN** the user runs `kit install <name> --source <dir>` and `<name>` is not a single directory name inside `<dir>` (for example `../other/my-kit`)
+- **THEN** the command fails with an error that names `<name>` and `<dir>`
+
 ### Requirement: Kit descriptor filename
 The kit descriptor file SHALL be named `kit.yaml`.
 The CLI loader SHALL look for `kit.yaml` when resolving a kit's configuration from any template source (classpath, profile directory, or ad-hoc `--from` path).

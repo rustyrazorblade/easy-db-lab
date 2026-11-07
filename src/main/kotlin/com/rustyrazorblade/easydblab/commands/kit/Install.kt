@@ -16,18 +16,10 @@ import java.nio.file.Path
  * Ad-hoc kits can be installed via [from], [kit], and [size] without a named subcommand.
  *
  * When invoked with no flags or subcommand, help is printed listing all available kits.
- *
- * `kit install <kit> --source <dir>` is an option of each dynamic subcommand, not of this
- * command; [com.rustyrazorblade.easydblab.commands.install.KitInstallSourceOverride] reads it.
  */
 @Command(
     name = "install",
-    description = [
-        "Scaffold kit installation files from built-in or custom templates",
-        "",
-        "kit install <kit> --source <dir> installs <kit> from <dir>/<kit>/ for that call only;",
-        "the kit sources registered with 'kit source add' are neither read nor changed.",
-    ],
+    description = ["Scaffold kit installation files from built-in or custom templates"],
     mixinStandardHelpOptions = true,
 )
 class Install : BaseInstallCommand() {

@@ -110,11 +110,37 @@ class KitInstallSourceTest : BaseKoinTest() {
         val emptyDir = File(tempDir, "no-kits").also { it.mkdirs() }
         val args = arrayOf("kit", "install", KIT, "--source", emptyDir.path)
 
-        assertThatThrownBy { CommandLineParser(args) }
+        assertThatThrownBy { CommandLineParser(args).eval(args) }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining(emptyDir.canonicalPath)
             .hasMessageContaining("'$KIT'")
         assertThat(File(context.workingDirectory, KIT)).doesNotExist()
+    }
+
+    @Test
+    fun `install with --source fails naming the file when the kit's kit yaml is not a valid descriptor`() {
+        val brokenDir = File(tempDir, "broken-kits")
+        val kitYaml = File(File(brokenDir, KIT).also { it.mkdirs() }, Constants.Kit.CONFIG_FILE)
+        kitYaml.writeText("name: $KIT\nargs:\n  - flag: [not, a, string]\n")
+        val args = arrayOf("kit", "install", KIT, "--source", brokenDir.path)
+
+        assertThatThrownBy { CommandLineParser(args).eval(args) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining(kitYaml.canonicalPath)
+            .hasMessageContaining("not a valid kit descriptor")
+        assertThat(File(context.workingDirectory, KIT)).doesNotExist()
+    }
+
+    @Test
+    fun `install with --source rejects a kit name that leaves the directory`() {
+        // perCallDir/../shared-kits/sourcekit has a valid kit.yaml, so only the name check stops it.
+        val escaping = "../shared-kits/$KIT"
+        val args = arrayOf("kit", "install", escaping, "--source", perCallDir.path)
+
+        assertThatThrownBy { CommandLineParser(args).eval(args) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("'$escaping'")
+            .hasMessageContaining(perCallDir.canonicalPath)
     }
 
     /**
@@ -122,9 +148,15 @@ class KitInstallSourceTest : BaseKoinTest() {
      * `CommandLineParser.eval` would route through `DefaultCommandExecutor`, whose AWS and SSH
      * lifecycle is not what these tests are about.
      */
-    private fun install(args: Array<String>): Int {
+    private fun install(args: Array<String>): Int = matchedInstall(CommandLineParser(args), args).call()
+
+    /** The install command [parser] matches for [args]. */
+    private fun matchedInstall(
+        parser: CommandLineParser,
+        args: Array<String>,
+    ): KitInstallCommand {
         val install =
-            CommandLineParser(args)
+            parser
                 .commandLine
                 .parseArgs(*args)
                 .subcommand()
@@ -133,7 +165,7 @@ class KitInstallSourceTest : BaseKoinTest() {
                 .commandSpec()
                 .userObject()
         assertThat(install).isInstanceOf(KitInstallCommand::class.java)
-        return (install as KitInstallCommand).call()
+        return install as KitInstallCommand
     }
 
     private fun installedVariant(): String = File(context.workingDirectory, "$KIT/variant.txt").readText().trim()

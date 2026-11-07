@@ -136,10 +136,11 @@ class EasyDBLabCommand : Runnable {
  * [arguments] are the arguments [eval] will run. The parser reads them once, before it registers
  * the dynamic kit install subcommands, for one reason: a `kit install <name> --source <dir>` call
  * must register `<name>` from `<dir>`, whose `kit.yaml` declares the install options. Pass the
- * same arguments to [eval].
+ * same arguments to [eval]. There is no default, so no caller can drop `--source` by accident; a
+ * caller that only inspects [commandLine] passes `emptyArray()`.
  */
 class CommandLineParser(
-    private val arguments: Array<String> = emptyArray(),
+    private val arguments: Array<String>,
 ) : KoinComponent {
     private val eventBus: EventBus by inject()
 
@@ -201,8 +202,23 @@ class CommandLineParser(
         get<KitCommandScanner>().findAll()
     }
 
+    /**
+     * Why the `kit install <name> --source <dir>` in [arguments] cannot be honoured, or null. It is
+     * kept rather than thrown while the parser is built, so [eval] reports it through the same
+     * error path as every other bad argument.
+     */
+    private var sourceOverrideError: IllegalArgumentException? = null
+
+    /**
+     * Runs [input] through picocli.
+     *
+     * @throws IllegalArgumentException if [arguments] ask for `--source <dir>` and `<dir>` has no
+     *   readable kit of that name.
+     */
     @Suppress("SpreadOperator")
     fun eval(input: Array<String>) {
+        sourceOverrideError?.let { throw it }
+
         // Use PicoCLI for all command execution
         val exitCode = commandLine.execute(*input)
 
@@ -288,12 +304,12 @@ class CommandLineParser(
         // `kit install <name> --source <dir>` reads that one kit from <dir> for this call only.
         // It is registered first, so the same name from the shared sources never replaces it.
         KitInstallSourceOverride.from(arguments)?.let { override ->
-            val source = resolver.resolveIn(override.dir, override.kitName)
-            val config =
-                requireNotNull(resolver.loadInstallConfig(source)) {
-                    "No ${Constants.Kit.CONFIG_FILE} for kit '${override.kitName}' in ${override.dir.canonicalPath}"
-                }
-            installCL.addSubcommand(override.kitName, factory.build(config, source))
+            try {
+                val source = resolver.resolveIn(override.dir, override.kitName)
+                installCL.addSubcommand(override.kitName, factory.build(resolver.loadKitConfigIn(source), source))
+            } catch (e: IllegalArgumentException) {
+                sourceOverrideError = e
+            }
         }
 
         for (name in resolver.listAvailableTemplates()) {

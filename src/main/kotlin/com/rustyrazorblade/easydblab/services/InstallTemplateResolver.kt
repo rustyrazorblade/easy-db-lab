@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.events.Event
 import io.github.classgraph.ClassGraph
+import kotlinx.serialization.SerializationException
 import java.io.File
 import java.nio.file.Path
 
@@ -133,18 +134,36 @@ class InstallTemplateResolver(
      * `kit install <name> --source <dir>` call. Neither the profile kits nor the sources
      * registered with `kit source add` are read or changed.
      *
-     * @throws IllegalArgumentException if [dir] holds no `<name>/` subdirectory with a `kit.yaml`
+     * @throws IllegalArgumentException if [name] is not a single directory name inside [dir], or
+     *   [dir] holds no `<name>/` subdirectory with a `kit.yaml`
      */
     fun resolveIn(
         dir: File,
         name: String,
-    ): TemplateSource {
+    ): TemplateSource.Directory {
         val kitDir = File(dir, name)
+        require(kitDir.canonicalFile.parentFile == dir.canonicalFile) {
+            "Kit name '$name' must be a directory name inside ${dir.canonicalPath}"
+        }
         require(File(kitDir, Constants.Kit.CONFIG_FILE).isFile) {
             val expected = File(kitDir.canonicalFile, Constants.Kit.CONFIG_FILE)
             "Kit source directory ${dir.canonicalPath} has no kit '$name' (expected $expected)"
         }
         return TemplateSource.Directory(kitDir)
+    }
+
+    /**
+     * Reads the `kit.yaml` of a [source] that [resolveIn] returned, which therefore has one.
+     *
+     * @throws IllegalArgumentException naming the file if it is not a valid kit descriptor
+     */
+    fun loadKitConfigIn(source: TemplateSource.Directory): KitConfig {
+        val file = File(source.dir, Constants.Kit.CONFIG_FILE)
+        return try {
+            installConfigYaml.decodeFromString(KitConfig.serializer(), file.readText())
+        } catch (e: SerializationException) {
+            throw IllegalArgumentException("${file.canonicalPath} is not a valid kit descriptor: ${e.message}", e)
+        }
     }
 
     /**

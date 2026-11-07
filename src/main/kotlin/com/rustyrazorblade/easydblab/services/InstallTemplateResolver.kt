@@ -4,7 +4,6 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.events.Event
 import io.github.classgraph.ClassGraph
-import kotlinx.serialization.SerializationException
 import java.io.File
 import java.nio.file.Path
 
@@ -157,14 +156,29 @@ class InstallTemplateResolver(
      *
      * @throws IllegalArgumentException naming the file if it is not a valid kit descriptor
      */
-    fun loadKitConfigIn(source: TemplateSource.Directory): KitConfig {
-        val file = File(source.dir, Constants.Kit.CONFIG_FILE)
-        return try {
-            installConfigYaml.decodeFromString(KitConfig.serializer(), file.readText())
-        } catch (e: SerializationException) {
-            throw IllegalArgumentException("${file.canonicalPath} is not a valid kit descriptor: ${e.message}", e)
+    fun loadKitConfigIn(source: TemplateSource.Directory): KitConfig =
+        decode(source, File(source.dir, Constants.Kit.CONFIG_FILE).readText())
+
+    /**
+     * Decodes [content], the `kit.yaml` of [source]. A descriptor that is not valid YAML for
+     * [KitConfig], or that [KitConfig] refuses (such as an arg named like a reserved install
+     * option), is an [IllegalArgumentException] naming where it came from.
+     */
+    private fun decode(
+        source: TemplateSource,
+        content: String,
+    ): KitConfig =
+        try {
+            installConfigYaml.decodeFromString(KitConfig.serializer(), content)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("${describe(source)} is not a valid kit descriptor: ${e.message}", e)
         }
-    }
+
+    private fun describe(source: TemplateSource): String =
+        when (source) {
+            is TemplateSource.Directory -> File(source.dir, Constants.Kit.CONFIG_FILE).canonicalPath
+            is TemplateSource.Builtin -> "The built-in kit ${source.name}'s ${Constants.Kit.CONFIG_FILE}"
+        }
 
     /**
      * Wraps an ad-hoc path (from --from flag) as a [TemplateSource].
@@ -205,9 +219,12 @@ class InstallTemplateResolver(
             }
         }
 
-    fun loadInstallConfig(source: TemplateSource): KitConfig? =
-        readInstallYamlContent(source)
-            ?.let { installConfigYaml.decodeFromString(KitConfig.serializer(), it) }
+    /**
+     * Reads and parses the `kit.yaml` of [source], or returns null when it has none.
+     *
+     * @throws IllegalArgumentException naming the file if it is not a valid kit descriptor
+     */
+    fun loadInstallConfig(source: TemplateSource): KitConfig? = readInstallYamlContent(source)?.let { decode(source, it) }
 
     /**
      * Lists all `.template` files in a template source as [TemplateEntry] objects.

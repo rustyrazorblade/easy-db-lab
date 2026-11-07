@@ -203,21 +203,21 @@ class CommandLineParser(
     }
 
     /**
-     * Why the `kit install <name> --source <dir>` in [arguments] cannot be honoured, or null. It is
-     * kept rather than thrown while the parser is built, so [eval] reports it through the same
-     * error path as every other bad argument.
+     * Why a kit's install subcommand could not be built, by kit name: its `kit.yaml` is not a valid
+     * descriptor, or (with `--source`) the directory has no such kit. One broken kit must not stop
+     * every other command, so the error is kept and reported only by `kit install` of that kit.
      */
-    private var sourceOverrideError: IllegalArgumentException? = null
+    private val kitLoadErrors = mutableMapOf<String, IllegalArgumentException>()
 
     /**
      * Runs [input] through picocli.
      *
-     * @throws IllegalArgumentException if [arguments] ask for `--source <dir>` and `<dir>` has no
-     *   readable kit of that name.
+     * @throws IllegalArgumentException if [arguments] are `kit install <name>` and that kit could
+     *   not be loaded: its `kit.yaml` is invalid, or `--source <dir>` has no readable kit `<name>`.
      */
     @Suppress("SpreadOperator")
     fun eval(input: Array<String>) {
-        sourceOverrideError?.let { throw it }
+        KitInstallSourceOverride.kitName(arguments)?.let { kitLoadErrors[it] }?.let { throw it }
 
         // Use PicoCLI for all command execution
         val exitCode = commandLine.execute(*input)
@@ -308,7 +308,7 @@ class CommandLineParser(
                 val source = resolver.resolveIn(override.dir, override.kitName)
                 installCL.addSubcommand(override.kitName, factory.build(resolver.loadKitConfigIn(source), source))
             } catch (e: IllegalArgumentException) {
-                sourceOverrideError = e
+                kitLoadErrors[override.kitName] = e
             }
         }
 
@@ -319,10 +319,15 @@ class CommandLineParser(
                 } catch (e: Exception) {
                     continue
                 }
-            val config = resolver.loadInstallConfig(source) ?: continue
-            if (name !in installCL.subcommands.keys) {
-                installCL.addSubcommand(name, factory.build(config, source))
-            }
+            if (name in installCL.subcommands.keys || name in kitLoadErrors) continue
+            val config =
+                try {
+                    resolver.loadInstallConfig(source)
+                } catch (e: IllegalArgumentException) {
+                    kitLoadErrors[name] = e
+                    null
+                } ?: continue
+            installCL.addSubcommand(name, factory.build(config, source))
         }
     }
 

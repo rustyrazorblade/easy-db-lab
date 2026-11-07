@@ -34,8 +34,8 @@ commands:
         type: string
         description: "Dataset to load (clickbench)"
         default: "clickbench"
-      - flag: --source
-        variable: SOURCE
+      - flag: --data
+        variable: DATA
         type: string
         description: "S3 URL of the parquet files to load, read with the cluster's IAM role (default: the public ClickBench dataset, https://clickhouse-public-datasets.s3.amazonaws.com/hits_compatible/athena_partitioned/hits_{0..99}.parquet, read anonymously)"
       - flag: --storage-policy

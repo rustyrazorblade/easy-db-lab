@@ -79,6 +79,8 @@ backup:   []   # steps to run on `easy-db-lab <name> backup <backup-name>`
 restore:  []   # steps to run on `easy-db-lab <name> restore <backup-name>`
 ```
 
+`kit install` owns the flags `--source`, `--force`, `--help` and `-h`, so an install arg (under the top-level `args:`) must not use one of them. A `kit.yaml` that does fails to load, and `kit install` of that kit names the kit and the arg. A kit may declare `--version`, and a command arg (under `commands:`) may use any flag.
+
 ## Lifecycle Phases
 
 | Phase | Trigger | What happens after success |

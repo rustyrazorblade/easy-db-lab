@@ -45,9 +45,8 @@ class KitInstallCommandFactory(
             spec.add(forceOptionSpec(command))
         }
 
-        if (config.args.none { it.flag == KitInstallSourceOverride.OPTION }) {
-            spec.add(sourceOptionSpec())
-        }
+        // KitConfig refuses an install arg named like this option, so the two never clash.
+        spec.add(sourceOptionSpec())
 
         for (arg in config.args) {
             spec.add(argOptionSpec(arg, command))

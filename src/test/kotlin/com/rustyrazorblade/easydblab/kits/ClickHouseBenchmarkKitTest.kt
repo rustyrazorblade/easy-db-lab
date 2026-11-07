@@ -44,10 +44,10 @@ class ClickHouseBenchmarkKitTest : BaseKoinTest() {
     fun `prepare and start args and their defaults`() {
         val prepare = requireNotNull(kit.config.commands["prepare"]).args
         assertThat(defaults(prepare)).containsExactlyInAnyOrderEntriesOf(
-            mapOf("--workload" to "clickbench", "--source" to "", "--storage-policy" to "default", "--recreate" to "false"),
+            mapOf("--workload" to "clickbench", "--data" to "", "--storage-policy" to "default", "--recreate" to "false"),
         )
         assertThat(prepare.single { it.flag == "--recreate" }.type).isEqualTo(KitArgSpec.ArgType.BOOLEAN)
-        assertThat(prepare.single { it.flag == "--source" }.description)
+        assertThat(prepare.single { it.flag == "--data" }.description)
             .contains("https://clickhouse-public-datasets.s3.amazonaws.com/hits_compatible/athena_partitioned/hits_{0..99}.parquet")
 
         val start = requireNotNull(kit.config.commands["start"]).args

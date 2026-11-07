@@ -258,6 +258,15 @@ data class KitConfig(
     val capabilities: List<KitCapability> = emptyList(),
     val commands: Map<String, KitCommandSpec> = emptyMap(),
 ) {
+    init {
+        val clashing = args.map { it.flag }.filter { it in Constants.Kit.RESERVED_INSTALL_FLAGS }
+        require(clashing.isEmpty()) {
+            "Kit '$name' declares install arg(s) ${clashing.joinToString()}, which `kit install` reserves " +
+                "for itself (${Constants.Kit.RESERVED_INSTALL_FLAGS.joinToString()}); rename the arg in its " +
+                Constants.Kit.CONFIG_FILE
+        }
+    }
+
     val kitRefArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.KIT_REF }
     val extensionArg: KitArgSpec? get() = args.firstOrNull { it.type == KitArgSpec.ArgType.EXTENSION }
 

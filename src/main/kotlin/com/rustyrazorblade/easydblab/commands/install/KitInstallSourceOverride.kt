@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.install
 
+import com.rustyrazorblade.easydblab.Constants
 import java.io.File
 
 /**
@@ -18,7 +19,7 @@ data class KitInstallSourceOverride(
     val dir: File,
 ) {
     companion object {
-        const val OPTION = "--source"
+        const val OPTION = Constants.Kit.INSTALL_SOURCE_OPTION
 
         /** Tokens of `kit install <name>`: the kit name follows `kit install`, the options follow it. */
         private val COMMAND_PATH = listOf("kit", "install")
@@ -29,13 +30,8 @@ data class KitInstallSourceOverride(
          * picocli, which reports the missing parameter.
          */
         fun from(arguments: Array<String>): KitInstallSourceOverride? {
-            val nameIndex =
-                arguments
-                    .indices
-                    .firstOrNull { arguments.drop(it).take(COMMAND_PATH.size) == COMMAND_PATH }
-                    ?.plus(COMMAND_PATH.size)
-                    ?: return null
-            val kitName = arguments.getOrNull(nameIndex)?.takeUnless { it.startsWith("-") } ?: return null
+            val nameIndex = kitNameIndex(arguments) ?: return null
+            val kitName = arguments[nameIndex]
             val rest = arguments.drop(nameIndex + 1)
             val value =
                 rest.indexOf(OPTION).takeIf { it >= 0 }?.let { rest.getOrNull(it + 1) }
@@ -43,5 +39,15 @@ data class KitInstallSourceOverride(
                     ?: return null
             return KitInstallSourceOverride(kitName, File(value))
         }
+
+        /** The kit name of a `kit install <name>` call in [arguments], or null when they are not one. */
+        fun kitName(arguments: Array<String>): String? = kitNameIndex(arguments)?.let { arguments[it] }
+
+        private fun kitNameIndex(arguments: Array<String>): Int? =
+            arguments
+                .indices
+                .firstOrNull { arguments.drop(it).take(COMMAND_PATH.size) == COMMAND_PATH }
+                ?.plus(COMMAND_PATH.size)
+                ?.takeIf { arguments.getOrNull(it)?.startsWith("-") == false }
     }
 }

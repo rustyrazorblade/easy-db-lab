@@ -143,6 +143,34 @@ class KitInstallSourceTest : BaseKoinTest() {
             .hasMessageContaining(perCallDir.canonicalPath)
     }
 
+    @Test
+    fun `a kit that declares an install arg named like a built-in install option fails naming the kit and the arg`() {
+        val clashDir = writeKit(File(tempDir, "clash-kits"), variant = "clash", extraArg = Constants.Kit.INSTALL_SOURCE_OPTION)
+        val args = arrayOf("kit", "install", KIT, "--source", clashDir.path)
+
+        assertThatThrownBy { CommandLineParser(args).eval(args) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Kit '$KIT'")
+            .hasMessageContaining(Constants.Kit.INSTALL_SOURCE_OPTION)
+            .hasMessageContaining(File(clashDir, "$KIT/${Constants.Kit.CONFIG_FILE}").canonicalPath)
+        assertThat(File(context.workingDirectory, KIT)).doesNotExist()
+    }
+
+    @Test
+    fun `a registered kit with a clashing arg fails its own install and leaves other kits installable`() {
+        val clashDir = writeKit(File(tempDir, "clash-kits"), variant = "clash", extraArg = "--force", kitName = "clashkit")
+        get<KitSourcesProvider>().add("clash", clashDir.path)
+
+        val clashArgs = arrayOf("kit", "install", "clashkit")
+        assertThatThrownBy { CommandLineParser(clashArgs).eval(clashArgs) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("Kit 'clashkit'")
+            .hasMessageContaining("--force")
+
+        assertThat(install(arrayOf("kit", "install", KIT))).isZero()
+        assertThat(installedVariant()).isEqualTo("shared")
+    }
+
     /**
      * Builds the real parser for [args], parses them, and runs the matched install command.
      * `CommandLineParser.eval` would route through `DefaultCommandExecutor`, whose AWS and SSH
@@ -170,13 +198,14 @@ class KitInstallSourceTest : BaseKoinTest() {
 
     private fun installedVariant(): String = File(context.workingDirectory, "$KIT/variant.txt").readText().trim()
 
-    /** Writes a kit named [KIT] under [parent] whose `variant.txt` names [variant]. */
+    /** Writes a kit named [kitName] under [parent] whose `variant.txt` names [variant]. */
     private fun writeKit(
         parent: File,
         variant: String,
         extraArg: String? = null,
+        kitName: String = KIT,
     ): File {
-        val kitDir = File(parent, KIT).also { it.mkdirs() }
+        val kitDir = File(parent, kitName).also { it.mkdirs() }
         val argsYaml =
             extraArg?.let {
                 """
@@ -187,7 +216,7 @@ class KitInstallSourceTest : BaseKoinTest() {
                 |    description: Only the bisect copy declares this
                 """.trimMargin()
             } ?: "args: []"
-        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: $KIT\ndescription: $variant copy\n$argsYaml\n")
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: $kitName\ndescription: $variant copy\n$argsYaml\n")
         File(kitDir, "variant.txt").writeText("$variant\n")
         return parent
     }

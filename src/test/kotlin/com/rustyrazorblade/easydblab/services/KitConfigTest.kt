@@ -19,6 +19,37 @@ class KitConfigTest {
     }
 
     @Test
+    fun `an install arg named like a reserved install option is refused, naming the kit and the arg`() {
+        Constants.Kit.RESERVED_INSTALL_FLAGS.forEach { flag ->
+            assertThatThrownBy { parse("name: mydb\nargs:\n  - flag: $flag\n    variable: X\n") }
+                .describedAs(flag)
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("Kit 'mydb'")
+                .hasMessageContaining(flag)
+        }
+    }
+
+    @Test
+    fun `a kit may own --version and may use a reserved flag for a command arg`() {
+        val config =
+            parse(
+                """
+                name: mydb
+                args:
+                  - flag: --version
+                    variable: VERSION
+                commands:
+                  prepare:
+                    args:
+                      - flag: --source
+                        variable: SRC
+                """.trimIndent(),
+            )
+
+        assertThat(config.args.single().flag).isEqualTo("--version")
+    }
+
+    @Test
     fun `parses full config with all top-level fields`() {
         val yaml =
             """

@@ -75,16 +75,16 @@ ch_settings_flags() {
   done
 }
 
-# Fails, naming the value, when --source ($1) holds a quote or a backslash: it goes into SQL.
-ch_check_source() {
+# Fails, naming the value, when --data ($1) holds a quote or a backslash: it goes into SQL.
+ch_check_data() {
   case "$1" in
-    *"'"* | *'\'*) edl_fail "--source '$1' holds a quote or a backslash" ;;
+    *"'"* | *'\'*) edl_fail "--data '$1' holds a quote or a backslash" ;;
   esac
 }
 
 # Prints the table function prepare reads hits from: the pinned ClickBench URL read anonymously
-# when --source ($1) is empty, or the given URL read with the cluster's IAM role.
-ch_source_expression() {
+# when --data ($1) is empty, or the given URL read with the cluster's IAM role.
+ch_data_expression() {
   if [ -z "$1" ]; then
     printf "s3('%s', NOSIGN, 'Parquet')\n" "${CH_CLICKBENCH_SOURCE_URL}"
   else

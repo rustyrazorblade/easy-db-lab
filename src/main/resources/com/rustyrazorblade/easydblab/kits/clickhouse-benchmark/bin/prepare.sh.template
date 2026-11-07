@@ -20,7 +20,7 @@ IMAGE="clickhouse/clickhouse-server:${VERSION}"
 [ -n "${TARGET_HTTP_URL:-}" ] || edl_fail "TARGET_HTTP_URL is empty: the target kit declares no http endpoint, which prepare needs for its checks"
 
 ch_check_workload "${WORKLOAD}"
-ch_check_source "${SOURCE}"
+ch_check_data "${DATA}"
 ch_check_storage_policy "${STORAGE_POLICY}"
 
 ACTIVE_RUNS="$(edl_active_pods benchmark-run)"
@@ -49,7 +49,7 @@ kubectl run "${POD}" \
   --override-type=strategic \
   --command -- sh /edl/prepare-load.sh \
   "${TARGET_NATIVE_HOST}" "${TARGET_NATIVE_PORT}" "${TARGET_NATIVE_USER:-}" "${TARGET_NATIVE_DATABASE:-default}" \
-  "${STORAGE_POLICY}" "${RECREATE}" "$(ch_source_expression "${SOURCE}")"
+  "${STORAGE_POLICY}" "${RECREATE}" "$(ch_data_expression "${DATA}")"
 
 print_line() { printf '%s\n' "$1"; }
 edl_wait_for_pod_running "${POD}"

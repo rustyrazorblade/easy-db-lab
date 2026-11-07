@@ -84,6 +84,19 @@ because the kit's `kit.yaml` declares the install options the command accepts.
 - **WHEN** the user runs `kit install <name> --source <dir>` and `<name>` is not a single directory name inside `<dir>` (for example `../other/my-kit`)
 - **THEN** the command fails with an error that names `<name>` and `<dir>`
 
+### Requirement: Reserved install option names
+`kit install <name>` itself owns `--source`, `--force`, `--help` and `-h` (`Constants.Kit.RESERVED_INSTALL_FLAGS`). A kit SHALL NOT declare a top-level (install) arg with one of these flags. Loading such a `kit.yaml` SHALL fail with an error that names the kit, the arg and the file. The failure SHALL stop only `kit install` of that kit; every other command and kit SHALL still work. A kit MAY declare `--version`, and a command arg (under `commands:`) MAY use any flag, because neither reaches the install subcommand.
+
+#### Scenario: A kit declares a reserved install flag
+- **WHEN** a kit's `kit.yaml` declares the install arg `--source`
+- **AND** the user runs `kit install <that kit>`
+- **THEN** the command fails with an error that names the kit, `--source` and the `kit.yaml`
+- **THEN** nothing is written to the workspace
+
+#### Scenario: Other kits are not affected
+- **WHEN** one registered kit declares a reserved install flag
+- **THEN** `kit install` of any other kit works as before
+
 ### Requirement: Kit descriptor filename
 The kit descriptor file SHALL be named `kit.yaml`.
 The CLI loader SHALL look for `kit.yaml` when resolving a kit's configuration from any template source (classpath, profile directory, or ad-hoc `--from` path).

@@ -304,6 +304,8 @@ The install fails before it writes anything, with an error that names the proble
 - `<dir>/<kit>/kit.yaml` is not a valid kit descriptor (the error names the file);
 - `<kit>` is not a plain directory name inside `<dir>`, such as `../other/<kit>`.
 
+`kit install` owns `--source`, `--force`, `--help` and `-h`, so a kit's `kit.yaml` cannot declare an install arg with one of those flags. Such a kit fails `kit install` with an error that names the kit and the arg; other kits are not affected.
+
 ### Resolution priority
 
 When multiple sources provide a kit with the same name, the first match wins:

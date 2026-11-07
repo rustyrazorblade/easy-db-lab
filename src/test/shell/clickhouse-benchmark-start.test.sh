@@ -291,13 +291,13 @@ test_storage_policy_and_source_checks() {
   check "ch_check_storage_policy s3_main" || fail "rejected s3_main"
   check "ch_check_storage_policy 'p-1'" && fail "accepted p-1"
   grep -q "'p-1'" "${WORK}/out" || fail "did not name p-1: $(cat "${WORK}/out")"
-  check "ch_check_source \"s3://b/x'y\"" && fail "accepted a quote"
-  check 'ch_check_source "https://b/x\\y"' && fail "accepted a backslash"
-  check "ch_check_source https://easy-db-lab-x.s3.amazonaws.com/h.parquet" || fail "rejected a plain URL"
-  check 'ch_source_expression ""'
+  check "ch_check_data \"s3://b/x'y\"" && fail "accepted a quote"
+  check 'ch_check_data "https://b/x\\y"' && fail "accepted a backslash"
+  check "ch_check_data https://easy-db-lab-x.s3.amazonaws.com/h.parquet" || fail "rejected a plain URL"
+  check 'ch_data_expression ""'
   grep -Fqx "s3('https://clickhouse-public-datasets.s3.amazonaws.com/hits_compatible/athena_partitioned/hits_{0..99}.parquet', NOSIGN, 'Parquet')" "${WORK}/out" ||
     fail "default source: $(cat "${WORK}/out")"
-  check 'ch_source_expression https://easy-db-lab-x.s3.amazonaws.com/h.parquet'
+  check 'ch_data_expression https://easy-db-lab-x.s3.amazonaws.com/h.parquet'
   grep -Fqx "s3('https://easy-db-lab-x.s3.amazonaws.com/h.parquet', 'Parquet')" "${WORK}/out" || fail "given source: $(cat "${WORK}/out")"
 }
 

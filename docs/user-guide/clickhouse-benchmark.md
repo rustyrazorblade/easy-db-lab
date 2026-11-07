@@ -42,7 +42,7 @@ The kit installs as `clickhouse-benchmark-<target>`. The target must declare a `
 | `--target` | install | (required) | Name of the running ClickHouse kit to benchmark |
 | `--version` | install | `latest` | `clickhouse/clickhouse-server` image version for the benchmark and prepare pods |
 | `--workload` | prepare | `clickbench` | Dataset to load; `clickbench` is the only one |
-| `--source` | prepare | the public ClickBench files | S3 URL of the parquet files to load; see [Loading from your own S3 files](#loading-from-your-own-s3-files) |
+| `--data` | prepare | the public ClickBench files | S3 URL of the parquet files to load; see [Loading from your own S3 files](#loading-from-your-own-s3-files) |
 | `--storage-policy` | prepare | `default` | Storage policy of the `hits` table (`default`, `s3_main`, `s3_tier`) |
 | `--recreate` | prepare | `false` | Drop an existing `hits` table and load it again |
 | `--workload` | start | `clickbench` | Packaged query set to run; give this or `--queries`, not both |
@@ -90,14 +90,14 @@ to reload it`.
 
 #### Loading from your own S3 files
 
-With no `--source`, the server reads the public ClickBench files,
+With no `--data`, the server reads the public ClickBench files,
 `https://clickhouse-public-datasets.s3.amazonaws.com/hits_compatible/athena_partitioned/hits_{0..99}.parquet`,
-anonymously. A `--source` you give is read with the cluster's IAM role
+anonymously. A `--data` you give is read with the cluster's IAM role
 (`use_environment_credentials`), so it must be in a bucket that role can read; the role can read
 the `easy-db-lab-*` buckets. Recent ClickHouse servers refuse to use the server's own credentials
 in a query unless the setting `s3_allow_server_credentials_in_user_queries` is on, so for a
-`--source` load `prepare` turns that setting on for the `INSERT` on servers that have it. The
-anonymous default load never uses it. The files must have the ClickBench `hits` columns. A `--source` that
+`--data` load `prepare` turns that setting on for the `INSERT` on servers that have it. The
+anonymous default load never uses it. The files must have the ClickBench `hits` columns. A `--data` that
 holds a `'` or a `\` is refused before any pod is created.
 
 ### start

@@ -463,6 +463,16 @@ object Constants {
     object Kit {
         const val CONFIG_FILE = "kit.yaml"
 
+        /** `kit install <kit> --source <dir>`: install the kit from `<dir>/<kit>/` for one call. */
+        const val INSTALL_SOURCE_OPTION = "--source"
+
+        /**
+         * Options every `kit install <kit>` subcommand may carry itself, so no kit may declare an
+         * install arg with one of these flags. `--version` is not here: a kit may own it, and its
+         * install subcommand then offers `--help` alone.
+         */
+        val RESERVED_INSTALL_FLAGS: Set<String> = setOf(INSTALL_SOURCE_OPTION, "--force", "--help", "-h")
+
         // Lifecycle phase names
         const val PHASE_INSTALL = "install"
         const val PHASE_START = "start"

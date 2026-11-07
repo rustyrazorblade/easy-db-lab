@@ -44,8 +44,10 @@ class TempoManifestBuilder(
 
         // Tempo is not ready until its first blocklist poll ends, and a shared bucket with many
         // blocks takes minutes (86 s for 1,394 blocks and 130,692 compacted metas).  The startup
-        // probe holds the liveness probe off for up to 10 minutes.
+        // probe holds the liveness probe off for up to 10 minutes.  `/ready` can answer slowly
+        // while the poll runs, so each check waits 5 s instead of the 1 s default.
         private const val STARTUP_PERIOD = 10
+        private const val STARTUP_TIMEOUT = 5
         private const val STARTUP_FAILURE_THRESHOLD = 60
     }
 
@@ -223,6 +225,7 @@ class TempoManifestBuilder(
             .withNewPort(Constants.K8s.TEMPO_PORT)
             .endHttpGet()
             .withPeriodSeconds(STARTUP_PERIOD)
+            .withTimeoutSeconds(STARTUP_TIMEOUT)
             .withFailureThreshold(STARTUP_FAILURE_THRESHOLD)
             .endStartupProbe()
             .withNewLivenessProbe()

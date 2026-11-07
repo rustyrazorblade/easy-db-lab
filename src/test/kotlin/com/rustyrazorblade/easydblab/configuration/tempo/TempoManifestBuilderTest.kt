@@ -170,12 +170,17 @@ class TempoManifestBuilderTest : BaseKoinTest() {
     /** A slow first blocklist poll must not get the container killed by the liveness probe. */
     @Test
     fun `a startup probe gives the first blocklist poll ten minutes before the liveness probe starts`() {
-        val container = builder.buildDeployment().spec.template.spec.containers[0]
+        val container =
+            builder
+                .buildDeployment()
+                .spec.template.spec.containers
+                .single()
         val startup = container.startupProbe
+        val tenMinutes = 600
 
         assertThat(startup.httpGet.path).isEqualTo("/ready")
-        assertThat(startup.periodSeconds).isEqualTo(10)
-        assertThat(startup.failureThreshold).isEqualTo(60)
+        assertThat(startup.periodSeconds * startup.failureThreshold).isGreaterThanOrEqualTo(tenMinutes)
+        assertThat(startup.timeoutSeconds).isBetween(3, 5).isLessThan(startup.periodSeconds)
         assertThat(container.livenessProbe.periodSeconds).isEqualTo(15)
         assertThat(container.livenessProbe.initialDelaySeconds).isEqualTo(30)
     }

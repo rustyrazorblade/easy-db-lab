@@ -41,6 +41,12 @@ class TempoManifestBuilder(
         private const val LIVENESS_PERIOD = 15
         private const val READINESS_INITIAL_DELAY = 5
         private const val READINESS_PERIOD = 10
+
+        // Tempo is not ready until its first blocklist poll ends, and a shared bucket with many
+        // blocks takes minutes (86 s for 1,394 blocks and 130,692 compacted metas).  The startup
+        // probe holds the liveness probe off for up to 10 minutes.
+        private const val STARTUP_PERIOD = 10
+        private const val STARTUP_FAILURE_THRESHOLD = 60
     }
 
     /**
@@ -211,7 +217,15 @@ class TempoManifestBuilder(
                     .withName("wal")
                     .withMountPath("/var/tempo")
                     .build(),
-            ).withNewLivenessProbe()
+            ).withNewStartupProbe()
+            .withNewHttpGet()
+            .withPath("/ready")
+            .withNewPort(Constants.K8s.TEMPO_PORT)
+            .endHttpGet()
+            .withPeriodSeconds(STARTUP_PERIOD)
+            .withFailureThreshold(STARTUP_FAILURE_THRESHOLD)
+            .endStartupProbe()
+            .withNewLivenessProbe()
             .withNewHttpGet()
             .withPath("/ready")
             .withNewPort(Constants.K8s.TEMPO_PORT)

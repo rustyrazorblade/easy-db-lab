@@ -682,6 +682,22 @@ class K8sServiceIntegrationTest {
     // Phase 3: Resource limits and structural checks
     // -----------------------------------------------------------------------
 
+    /**
+     * The one exception to the no-limits rule: Tempo's memory. Its live store grows with ingest, and
+     * with no bound it grew until the kernel killed it, so the owner chose a hard memory limit with a
+     * brake (`live_store.max_live_traces_bytes`) under it. CPU stays unset, and no other container may
+     * set either.
+     */
+    private fun isTempoMemoryException(
+        resource: HasMetadata,
+        container: io.fabric8.kubernetes.api.model.Container,
+        key: String,
+    ): Boolean =
+        resource.kind == "Deployment" &&
+            resource.metadata?.name == Constants.K8s.TEMPO_APP_LABEL &&
+            container.name == Constants.K8s.TEMPO_APP_LABEL &&
+            key == "memory"
+
     @Test
     @Order(41)
     fun `no builder should set resource limits or requests`() {
@@ -691,11 +707,13 @@ class K8sServiceIntegrationTest {
         for (resource in allResources) {
             val containers = extractContainers(resource)
             for (container in containers) {
-                val res = container.resources
-                if (res != null && (res.limits?.isNotEmpty() == true || res.requests?.isNotEmpty() == true)) {
+                val res = container.resources ?: continue
+                val keys = res.limits.orEmpty().keys + res.requests.orEmpty().keys
+                val forbidden = keys.filterNot { isTempoMemoryException(resource, container, it) }
+                if (forbidden.isNotEmpty()) {
                     violations.add(
                         "${resource.kind}/${resource.metadata?.name} container '${container.name}' " +
-                            "has resource limits/requests",
+                            "has resource limits/requests: $forbidden",
                     )
                 }
             }
@@ -705,6 +723,16 @@ class K8sServiceIntegrationTest {
             .withFailMessage(
                 "Resource limits/requests must never be set on K8s manifests:\n${violations.joinToString("\n")}",
             ).isEmpty()
+
+        val tempo =
+            allResources
+                .filterIsInstance<Deployment>()
+                .single { it.metadata.name == Constants.K8s.TEMPO_APP_LABEL }
+                .spec.template.spec.containers
+                .single { it.name == Constants.K8s.TEMPO_APP_LABEL }
+                .resources
+        assertThat(tempo.limits.keys).describedAs("Tempo's limits, the named exception").containsExactly("memory")
+        assertThat(tempo.requests.keys).describedAs("Tempo's requests, the named exception").containsExactly("memory")
     }
 
     @Test

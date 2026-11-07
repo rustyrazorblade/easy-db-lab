@@ -45,7 +45,7 @@ import java.util.UUID
  *
  * - blocks reach S3 while Tempo runs, under `tempo/<tenant>/`, and a span is in a block there
  *   within about two minutes of its push, with no shutdown;
- * - a trace pushed 3s before Tempo is killed outright (no shutdown, no flush) reaches S3 after a
+ * - a trace pushed 12s before Tempo is killed outright (no shutdown, no flush) reaches S3 after a
  *   restart on the same WAL volume: the live store has appended it to the WAL by then;
  * - a trace received just before a graceful stop — how Kubernetes restarts a pod — reaches S3 after
  *   the restart, because Tempo writes its live traces to the WAL on shutdown.
@@ -67,11 +67,11 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
 
         /**
          * How long the test waits after a push before killing Tempo. The configured live store appends
-         * an idle trace to the WAL within `max_trace_idle` (1s) plus `flush_check_period` (1s); 3s
-         * leaves a second of margin. Tempo's defaults (5s + 5s) would still hold the trace only in
-         * memory at 3s, and the kill would lose it.
+         * an idle trace to the WAL within `max_trace_idle` (5s) plus `flush_check_period` (5s); 12s
+         * leaves two seconds of margin. A kill sooner than that can lose the trace: that is the
+         * trade-off the configuration accepts. The next block cut is still most of a minute away.
          */
-        val WAL_APPEND_WAIT: Duration = Duration.ofSeconds(3)
+        val WAL_APPEND_WAIT: Duration = Duration.ofSeconds(12)
     }
 
     private val s3 = SharedLocalStack.s3Client()

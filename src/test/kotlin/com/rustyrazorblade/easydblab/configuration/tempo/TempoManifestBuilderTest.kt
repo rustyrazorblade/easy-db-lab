@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.TemplateService
+import io.fabric8.kubernetes.api.model.Quantity
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -111,14 +112,14 @@ class TempoManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `a received trace reaches the WAL within about two seconds`() {
-        // Tempo 3.0.3 defaults (5s idle, checked every 5s, 30s live) left a pushed trace in memory
-        // for up to 10s, and a kill in that window lost it.
+    fun `live traces are cut on Tempo's default idle and live times`() {
+        // At 1s idle a trace whose spans arrive over a few seconds is cut, and written to the head
+        // block, several times. Under jondb's trace load that write loop fell behind arrivals.
         val yaml = config()
 
-        assertThat(scalarAt(yaml, "live_store", "flush_check_period")).isEqualTo("1s")
-        assertThat(scalarAt(yaml, "live_store", "max_trace_idle")).isEqualTo("1s")
-        assertThat(scalarAt(yaml, "live_store", "max_trace_live")).isEqualTo("10s")
+        assertThat(scalarAt(yaml, "live_store", "flush_check_period")).isEqualTo("5s")
+        assertThat(scalarAt(yaml, "live_store", "max_trace_idle")).isEqualTo("5s")
+        assertThat(scalarAt(yaml, "live_store", "max_trace_live")).isEqualTo("30s")
     }
 
     @Test
@@ -128,8 +129,42 @@ class TempoManifestBuilderTest : BaseKoinTest() {
     }
 
     @Test
-    fun `no live-trace byte limit stalls pushes`() {
-        assertThat(scalarAt(config(), "live_store", "max_live_traces_bytes")).isEqualTo("0")
+    fun `the live-trace byte brake is an eighth of Tempo's memory`() {
+        // Tempo 3.0.3 takes a cut batch out of the brake's count before writing it, so the live
+        // map and the batch being written can each reach the brake at once. An eighth leaves room
+        // for both, decoded into Go objects, plus the head block and queries.
+        val brake = scalarAt(config(), "live_store", "max_live_traces_bytes")?.toLongOrNull()
+
+        assertThat(brake).isEqualTo(TempoManifestBuilder.MEMORY_BYTES / 8)
+        assertThat(brake).isGreaterThan(0L)
+    }
+
+    @Test
+    fun `Tempo's memory request and limit are the memory the brake is sized from`() {
+        val resources =
+            builder
+                .buildDeployment()
+                .spec.template.spec.containers[0]
+                .resources
+
+        assertThat(resources.requests.keys).containsExactly("memory")
+        assertThat(resources.limits.keys).containsExactly("memory")
+        assertThat(Quantity.getAmountInBytes(resources.requests.getValue("memory")).toLong())
+            .isEqualTo(TempoManifestBuilder.MEMORY_BYTES)
+        assertThat(Quantity.getAmountInBytes(resources.limits.getValue("memory")).toLong())
+            .isEqualTo(TempoManifestBuilder.MEMORY_BYTES)
+    }
+
+    @Test
+    fun `the Go runtime collects garbage before Tempo outgrows its memory`() {
+        val env =
+            builder
+                .buildDeployment()
+                .spec.template.spec.containers[0]
+                .env
+        val goMemLimit = env.single { it.name == "GOMEMLIMIT" }.value
+
+        assertThat(goMemLimit).isEqualTo("${TempoManifestBuilder.MEMORY_BYTES * 9 / 10}")
     }
 
     @Test

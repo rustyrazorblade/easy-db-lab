@@ -1888,7 +1888,7 @@
       "type": "timeseries",
       "id": 24,
       "title": "Spans Discarded, Refused and Truncated (per second)",
-      "description": "Loss inside Tempo, plus spans each node's OTel collector refused or failed before its span_metrics and service_graph connectors saw them. Anything non-zero here means the RED numbers above are computed from a sample, not from every request.",
+      "description": "Loss inside Tempo, plus spans each node's OTel collector refused or failed before its span_metrics and service_graph connectors saw them. Anything non-zero here means the RED numbers above are computed from a sample, not from every request. A push Tempo drops during a live store stall is not counted anywhere in Tempo; only the spans the collector gives up on are counted, in the collector send/enqueue line.",
       "datasource": {
         "type": "prometheus",
         "uid": "${metrics_datasource}"
@@ -2009,6 +2009,18 @@
           "range": true,
           "instant": false,
           "refId": "D"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${metrics_datasource}"
+          },
+          "editorMode": "code",
+          "expr": "label_replace((sum by (cluster, host_name) (rate(otelcol_exporter_send_failed_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval])) or 0 * sum by (cluster, host_name) (rate(otelcol_exporter_sent_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval]))) + (sum by (cluster, host_name) (rate(otelcol_exporter_enqueue_failed_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval])) or 0 * sum by (cluster, host_name) (rate(otelcol_exporter_sent_spans_total{cluster=~\"$cluster\", exporter=\"otlp_grpc/tempo\"}[$__rate_interval]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{host_name}} collector send/enqueue to Tempo failed",
+          "range": true,
+          "instant": false,
+          "refId": "E"
         }
       ],
       "gridPos": {

@@ -128,43 +128,60 @@ class TempoManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config(), "overrides", "defaults", "ingestion", "max_traces_per_user")).isEqualTo("0")
     }
 
+    /** The Tempo container as the Deployment renders it. */
+    private fun tempoContainer() =
+        builder
+            .buildDeployment()
+            .spec.template.spec.containers
+            .single()
+
+    /** The memory limit the Deployment renders, in bytes. */
+    private fun renderedMemoryLimitBytes(): Long = Quantity.getAmountInBytes(tempoContainer().resources.limits.getValue("memory")).toLong()
+
     @Test
-    fun `the live-trace byte brake is an eighth of Tempo's memory`() {
+    fun `Tempo's memory request and limit are both 8Gi and it sets no CPU`() {
+        val resources = tempoContainer().resources
+
+        assertThat(resources.requests).containsOnlyKeys("memory")
+        assertThat(resources.limits).containsOnlyKeys("memory")
+        assertThat(resources.requests.getValue("memory").toString()).isEqualTo("8Gi")
+        assertThat(resources.limits.getValue("memory").toString()).isEqualTo("8Gi")
+    }
+
+    @Test
+    fun `the rendered live-trace brake is an eighth of the rendered memory limit`() {
         // Tempo 3.0.3 takes a cut batch out of the brake's count before writing it, so the live
         // map and the batch being written can each reach the brake at once. An eighth leaves room
         // for both, decoded into Go objects, plus the head block and queries.
         val brake = scalarAt(config(), "live_store", "max_live_traces_bytes")?.toLongOrNull()
 
-        assertThat(brake).isEqualTo(TempoManifestBuilder.MEMORY_BYTES / 8)
-        assertThat(brake).isGreaterThan(0L)
+        assertThat(brake).isEqualTo(renderedMemoryLimitBytes() / 8)
     }
 
     @Test
-    fun `Tempo's memory request and limit are the memory the brake is sized from`() {
-        val resources =
-            builder
-                .buildDeployment()
-                .spec.template.spec.containers[0]
-                .resources
-
-        assertThat(resources.requests.keys).containsExactly("memory")
-        assertThat(resources.limits.keys).containsExactly("memory")
-        assertThat(Quantity.getAmountInBytes(resources.requests.getValue("memory")).toLong())
-            .isEqualTo(TempoManifestBuilder.MEMORY_BYTES)
-        assertThat(Quantity.getAmountInBytes(resources.limits.getValue("memory")).toLong())
-            .isEqualTo(TempoManifestBuilder.MEMORY_BYTES)
-    }
-
-    @Test
-    fun `the Go runtime collects garbage before Tempo outgrows its memory`() {
-        val env =
-            builder
-                .buildDeployment()
-                .spec.template.spec.containers[0]
+    fun `the rendered GOMEMLIMIT is nine tenths of the rendered memory limit`() {
+        val goMemLimit =
+            tempoContainer()
                 .env
-        val goMemLimit = env.single { it.name == "GOMEMLIMIT" }.value
+                .single { it.name == "GOMEMLIMIT" }
+                .value
+                .toLong()
 
-        assertThat(goMemLimit).isEqualTo("${TempoManifestBuilder.MEMORY_BYTES * 9 / 10}")
+        assertThat(goMemLimit).isEqualTo(renderedMemoryLimitBytes() * 9 / 10)
+    }
+
+    @Test
+    fun `the brake engages before the Go soft limit, which is below the hard memory limit`() {
+        val brake = checkNotNull(scalarAt(config(), "live_store", "max_live_traces_bytes")).toLong()
+        val goMemLimit =
+            tempoContainer()
+                .env
+                .single { it.name == "GOMEMLIMIT" }
+                .value
+                .toLong()
+
+        assertThat(brake).isPositive().isLessThan(goMemLimit)
+        assertThat(goMemLimit).isLessThan(renderedMemoryLimitBytes())
     }
 
     @Test

@@ -5,6 +5,7 @@ import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -35,6 +36,8 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 import java.util.UUID
+import kotlin.time.toJavaDuration
+import kotlin.time.Duration as KotlinDuration
 
 /**
  * Runs Tempo at the image the cluster deploys ([TempoManifestBuilder.IMAGE]), with the configuration
@@ -45,7 +48,7 @@ import java.util.UUID
  *
  * - blocks reach S3 while Tempo runs, under `tempo/<tenant>/`, and a span is in a block there
  *   within about two minutes of its push, with no shutdown;
- * - a trace pushed 12s before Tempo is killed outright (no shutdown, no flush) reaches S3 after a
+ * - a trace pushed [walAppendWait] before Tempo is killed outright (no shutdown, no flush) reaches S3 after a
  *   restart on the same WAL volume: the live store has appended it to the WAL by then;
  * - a trace received just before a graceful stop — how Kubernetes restarts a pod — reaches S3 after
  *   the restart, because Tempo writes its live traces to the WAL on shutdown.
@@ -65,13 +68,8 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
         val UPLOAD_WITHIN: Duration = Duration.ofMinutes(2).plusSeconds(30)
         val POLL: Duration = Duration.ofSeconds(2)
 
-        /**
-         * How long the test waits after a push before killing Tempo. The configured live store appends
-         * an idle trace to the WAL within `max_trace_idle` (5s) plus `flush_check_period` (5s); 12s
-         * leaves two seconds of margin. A kill sooner than that can lose the trace: that is the
-         * trade-off the configuration accepts. The next block cut is still most of a minute away.
-         */
-        val WAL_APPEND_WAIT: Duration = Duration.ofSeconds(12)
+        /** The margin [walAppendWait] adds to the configured idle time and flush check period. */
+        val WAL_APPEND_MARGIN: Duration = Duration.ofSeconds(2)
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -125,6 +123,19 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
                 """.trimMargin(),
             )
     }
+
+    /**
+     * How long the test waits after a push before killing Tempo, read from the rendered [config]. The
+     * live store appends an idle trace to the WAL within `max_trace_idle` plus `flush_check_period`;
+     * [WAL_APPEND_MARGIN] is added to that. A kill sooner can lose the trace: that is the trade-off
+     * the configuration accepts. The next block cut is still most of a minute away.
+     */
+    private fun walAppendWait(config: String): Duration =
+        listOf("max_trace_idle", "flush_check_period")
+            .map { key ->
+                val value = checkNotNull(scalarAt(config, "live_store", key)) { "live_store.$key is not set" }
+                KotlinDuration.parse(value).toJavaDuration()
+            }.fold(WAL_APPEND_MARGIN, Duration::plus)
 
     /** Starts Tempo with [config] on the WAL [volume]. */
     private fun startTempo(
@@ -231,7 +242,7 @@ class TempoBlockDurabilityIntegrationTest : BaseKoinTest() {
 
         // A trace in the WAL but not in a block survives a kill with no shutdown at all.
         pushTrace(first)
-        Thread.sleep(WAL_APPEND_WAIT.toMillis())
+        Thread.sleep(walAppendWait(config).toMillis())
         assertThat(tracesInS3()).describedAs("the second trace must not be uploaded before the kill").isEqualTo(1)
         docker.killContainerCmd(first.containerId).exec()
         val second = startTempo(config)

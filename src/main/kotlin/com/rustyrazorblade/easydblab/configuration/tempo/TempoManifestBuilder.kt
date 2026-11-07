@@ -47,7 +47,10 @@ class TempoManifestBuilder(
          * ingest, and with no bound it grew to about 10 GB until the kernel killed it; the owner
          * chose a hard limit with a brake under it.
          */
-        const val MEMORY_BYTES = 8L * 1024 * 1024 * 1024
+        val MEMORY: Quantity = Quantity("8Gi")
+
+        /** [MEMORY] in bytes, the base the brake and `GOMEMLIMIT` are computed from. */
+        val MEMORY_BYTES: Long = Quantity.getAmountInBytes(MEMORY).toLong()
 
         /**
          * `live_store.max_live_traces_bytes`: past this many bytes of live traces, Tempo stalls
@@ -61,14 +64,14 @@ class TempoManifestBuilder(
          * 8x, before the head block and queries, so an eighth of [MEMORY_BYTES] keeps the worst
          * case at the limit rather than past it.
          */
-        const val MAX_LIVE_TRACES_BYTES = MEMORY_BYTES / 8
+        val MAX_LIVE_TRACES_BYTES: Long = MEMORY_BYTES / 8
 
         /**
          * `GOMEMLIMIT`: the Go runtime collects garbage harder as the heap nears this, instead of
          * letting it grow to twice the live heap. A tenth of [MEMORY_BYTES] is left for memory
          * the Go runtime does not count.
          */
-        const val GO_MEM_LIMIT_BYTES = MEMORY_BYTES * 9 / 10
+        val GO_MEM_LIMIT_BYTES: Long = MEMORY_BYTES * 9 / 10
 
         private const val LIVENESS_INITIAL_DELAY = 30
         private const val LIVENESS_PERIOD = 15
@@ -76,11 +79,11 @@ class TempoManifestBuilder(
         private const val READINESS_PERIOD = 10
     }
 
-    /** A memory request and limit of [MEMORY_BYTES]; no CPU request or limit. */
+    /** A memory request and limit of [MEMORY]; no CPU request or limit. */
     private fun memoryRequirements() =
         ResourceRequirementsBuilder()
-            .addToRequests("memory", Quantity("$MEMORY_BYTES"))
-            .addToLimits("memory", Quantity("$MEMORY_BYTES"))
+            .addToRequests("memory", MEMORY)
+            .addToLimits("memory", MEMORY)
             .build()
 
     /**

@@ -1,0 +1,62 @@
+## 1. Conditional writes on the object store
+
+- [ ] 1.1 Create the `:compactor-lease` Gradle subproject (no dependency on the root module), with a shadow jar and test fixtures; add it to the distribution as `agents/compactor-lease.jar` and to the Jib image under `/agents`
+- [ ] 1.2 Write the conditional-write contract tests (create race, stale replace, matching replace, missing object on replace) in the subproject's test fixtures
+- [ ] 1.3 Implement `ConditionalObjects`, `ObjectVersion`, `CreateResult`, `ReplaceResult` and `InMemoryConditionalObjects`; make the contract pass in memory
+- [ ] 1.4 Implement `S3ConditionalObjects` with `If-None-Match: *` and `If-Match`, mapping 412 and 409 to the lost results and 404 on replace to `VersionMismatch`, with no retries
+- [ ] 1.5 Bump the LocalStack image in `SharedLocalStack` to a version with conditional writes and run the contract against it; if no version works without an auth token, add a `requires-aws` real-S3 contract test instead
+- [ ] 1.6 Add `readVersioned`, `createIfAbsent` and `replaceIfVersionMatches` to `services/ObjectStore.kt`; delegate from `S3ObjectStore`; add an in-memory `ObjectStore` adapter for the whole interface; run the shared contract against both
+
+## 2. The lease
+
+- [ ] 2.1 Add `Constants.Compactor.Lease` (TTL, renew interval, renew deadline, standby poll, gate poll, gate grace, termination grace) and `Constants.Observability.LEASES_ROOT`
+- [ ] 2.2 Test and implement `LeaseTiming`, refusing a timing where renew deadline plus gate poll plus gate grace is not less than the TTL
+- [ ] 2.3 Test and implement `LeaseRecord` (kotlinx.serialization) with holder, sequence, TTL and renewal time
+- [ ] 2.4 Test `LeaseLoop` with the in-memory store and a fake monotonic clock: create when absent, renew with a rising sequence, stand by while the version changes, take over only after the TTL on the standby's own clock, revoke on `VersionMismatch` or a missing lease, never take back its own lease after a restart
+- [ ] 2.5 Implement `LeaseLoop`, `GateFile` (write and rename, revoke) and the scratch wipe on acquire
+- [ ] 2.6 Implement `LeaseAgentMain` (environment, default credentials chain, bucket region, stdout logging of every transition, a readiness file after the first lease read)
+
+## 3. The gate script
+
+- [ ] 3.1 Write a POSIX test for `compactor-gate.sh` in the `*.test.sh` pattern: no start while invalid, start when valid, SIGTERM then SIGKILL after the grace when the time passes or the file goes, restart of a child that exits while valid, SIGTERM forwarded to the child
+- [ ] 3.2 Write `compactor-gate.sh` as a packaged resource, calling every busybox applet explicitly
+
+## 4. The compactor Deployment
+
+- [ ] 4.1 Port `CompactorTaskDefinitionTest`'s retention and deletion locks to `CompactorManifestBuilderTest`, and add tests for the pod shape: init container with `busybox:1.37.0-musl`, lease container, four gated containers, pod network, `Recreate`, termination grace, no limits, no readiness probe on gated containers, scratch host paths, SHA-256 jar path, bucket-region environment
+- [ ] 4.2 Implement `configuration/compactor/CompactorManifestBuilder` with fabric8, moving the Mimir and Loki compactor args and the config-file loading from `CompactorTaskDefinition` (through `TemplateService`)
+- [ ] 4.3 Implement `CompactorAgentInstaller`: create `/mnt/db1/compactor/{mimir,loki,tempo,agent}`, give Loki's and Tempo's directories to user 10001, upload the jar to its SHA-256 path unless it exists
+- [ ] 4.4 Add the compactor as a stage in `ObservabilityStackService.buildStages()` for every cluster, redirect clusters included, with the jar upload inside `deploy()`; add its ConfigMap to `ConfigHashAnnotator`'s known ConfigMaps
+- [ ] 4.5 Add the builder to `K8sServiceIntegrationTest.collectAllResources()`, with an apply test and the image pull test for the JRE, busybox-musl and Grafana images
+- [ ] 4.6 Rework `CompactorTaskIntegrationTest` to run the new pod spec's containers and keep the "Mimir blocks compacted by the account compactor keep every sample" check; add a two-agent lease failover scenario against LocalStack
+
+## 5. IAM and backend guards
+
+- [ ] 5.1 Update `AWSPolicy`'s instance-role delete deny to `grafana/` and `reports/` only, and the bucket policy's deny to the EMR roles only; update `AWSpolicyTest`
+- [ ] 5.2 Add `block_retention: 876000h` to the cluster `tempo.yaml`, with a test that locks it; update the `loki.yaml` comment that names the IAM deny
+
+## 6. CLI
+
+- [ ] 6.1 Remove `observability compactor start` and `stop`; rewrite `status` as a read-only lease print with the bucket's region; rewrite `CompactorCommandsTest`
+
+## 7. Remove the Fargate path
+
+- [ ] 7.1 Remove the compactor call from `AccountBucketSetup` and the compactor test from `UpTest`
+- [ ] 7.2 Remove `stopCompactorIfLastCluster` and its wiring from `Down.kt`, and the `AccountCompactor` tests from `DownCommandTest`
+- [ ] 7.3 Delete `CompactorService`, `CompactorStatusReader`, `CompactorTaskRegistrar`, `CompactorIam`, `CompactorNetwork`, `ClusterCensus`, `CompactorTaskDefinition`, `RegionalClients`, the ECS retry helpers and imports in `RetryUtil` and `RetryWrappers`, and their tests
+- [ ] 7.4 Delete the compactor IAM trust, managed and inline policies, `iam-policy-compactor.json`, its `UserIAM` entry and the `ShowIamPolicies` filter
+- [ ] 7.5 Delete `InfrastructureConfig.forCompactor`, `TeardownTypes.isCompactorVpc`, the compactor VPC skip in `AwsInfrastructureService`, `Constants.Vpc.COMPACTOR_VPC_NAME` and the ECS members of `Constants.Compactor`; trim their tests
+- [ ] 7.6 Delete every `Event.Compactor.*` event and `Event.Infra.CompactorVpcSkipping`, and the Koin wiring in `AWSModule` and `TestModules`
+- [ ] 7.7 Remove `awssdk-ecs` and `awssdk-cloudwatchlogs` from `gradle/libs.versions.toml` and the bundle; confirm the repo has no ECS SDK import, `CompactorTaskDefinition` or `CompactorTaskRegistrar`
+
+## 8. Docs and agent docs
+
+- [ ] 8.1 Rewrite `docs/user-guide/compactor.md`; update `docs/SUMMARY.md`, the Mimir, Loki and monitoring pages, `docs/getting-started/setup.md` (policy list), `docs/reference/commands.md` and `docs/reference/pyroscope-configuration.md`
+- [ ] 8.2 Update `bin/set-policies` and `bin/set-policies.test.sh` for four policies
+- [ ] 8.3 Update the `services/aws`, `configuration`, `commands`, `events` and `providers` CLAUDE.md files, and the `observability-stack` skill
+
+## 9. Verification
+
+- [ ] 9.1 Run `./gradlew check` (JDK 21) with detekt and ktlint clean, with no new `@Suppress`, threshold change or baseline entry
+- [ ] 9.2 Before QA, stop the live Fargate compactor service with the previous build's `observability compactor stop`
+- [ ] 9.3 Real-AWS QA with two small clusters on one account, tagged `embark_offhours=off`: start cluster 1 and confirm with `observability compactor status` and the compactor logs that it holds the lease and compacts; start cluster 2 and confirm its compactor pod is Ready and idle (no compactor processes, standby logs); stop cluster 1 and confirm cluster 2 takes the lease after the TTL and starts compacting (Mimir and Tempo first, Loki after about 10 minutes); then `down` both clusters

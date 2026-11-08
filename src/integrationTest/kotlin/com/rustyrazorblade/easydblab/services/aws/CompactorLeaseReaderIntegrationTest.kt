@@ -36,7 +36,11 @@ class CompactorLeaseReaderIntegrationTest {
         SharedLocalStack.createBucketIfMissing(s3, empty)
         SharedLocalStack.createBucketIfMissing(s3, held)
         s3.putObject(
-            PutObjectRequest.builder().bucket(held).key(LeaseRecord.KEY).build(),
+            PutObjectRequest
+                .builder()
+                .bucket(held)
+                .key(LeaseRecord.KEY)
+                .build(),
             RequestBody.fromString(LeaseRecord("lab-a/pod-1", 7, 120, renewedAt).toJson()),
         )
     }

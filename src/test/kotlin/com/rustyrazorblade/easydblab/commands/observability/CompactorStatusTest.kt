@@ -24,7 +24,7 @@ import java.time.ZoneOffset
  * from the profile, reads the lease in the bucket's region, and never reads a cluster's state or
  * writes anything. There is nothing to start or stop.
  */
-class CompactorCommandsTest : BaseKoinTest() {
+class CompactorStatusTest : BaseKoinTest() {
     private val clusterStateManager = mock<ClusterStateManager>()
     private var bucket = "easy-db-lab-acct"
     private var lease: String? = null

@@ -36,7 +36,8 @@ class CompactorStatus : PicoBaseCommand() {
     }
 
     private fun held(lease: CompactorLease.Held): String {
-        val expired = if (lease.age > Duration.ofSeconds(lease.record.ttlSeconds)) " (expired: older than its ${lease.record.ttlSeconds}s TTL)" else ""
+        val ttl = lease.record.ttlSeconds
+        val expired = if (lease.age > Duration.ofSeconds(ttl)) " (expired: older than its ${ttl}s TTL)" else ""
         return """
             |Account compactor lease (bucket region ${lease.region})
             |Holder: ${lease.record.holder}

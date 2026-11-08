@@ -11,9 +11,10 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.mockito.kotlin.mock
 import software.amazon.awssdk.services.ec2.Ec2Client
-import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping
-import software.amazon.awssdk.services.ec2.model.EbsBlockDevice
-import software.amazon.awssdk.services.ec2.model.RegisterImageRequest
+import software.amazon.awssdk.services.ec2.model.CreateImageRequest
+import software.amazon.awssdk.services.ec2.model.DescribeImagesRequest
+import software.amazon.awssdk.services.ec2.model.Filter
+import software.amazon.awssdk.services.ec2.model.RunInstancesRequest
 
 /**
  * Integration tests for AMIService low-level EC2 operations using LocalStack.
@@ -26,18 +27,48 @@ import software.amazon.awssdk.services.ec2.model.RegisterImageRequest
  * every assertion filters by this class's own name patterns, so co-tenant EC2
  * resources (e.g. VPCs from other test classes) cannot affect these results.
  *
- * Note: LocalStack Community Edition does not faithfully implement all AMI fields
- * (e.g., architecture returns null). Architecture normalization is covered in unit tests.
+ * Every test image is made with CreateImage from one x86_64 instance, as a Packer bake makes one,
+ * so it has an architecture, as every real AMI has. LocalStack 4 drops the architecture of an
+ * image made with RegisterImage. The test checks that `x86_64` is listed as `amd64`.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class AMIServiceIntegrationTest {
     private lateinit var ec2Client: Ec2Client
     private lateinit var eventBus: EventBus
     private lateinit var amiService: AMIService
+    private lateinit var instanceId: String
 
     @BeforeAll
     fun setupClients() {
         ec2Client = SharedLocalStack.ec2Client()
+        val stockImage =
+            ec2Client
+                .describeImages(
+                    DescribeImagesRequest
+                        .builder()
+                        .owners("amazon")
+                        .filters(
+                            Filter
+                                .builder()
+                                .name("architecture")
+                                .values("x86_64")
+                                .build(),
+                        ).build(),
+                ).images()
+                .first()
+                .imageId()
+        instanceId =
+            ec2Client
+                .runInstances(
+                    RunInstancesRequest
+                        .builder()
+                        .imageId(stockImage)
+                        .minCount(1)
+                        .maxCount(1)
+                        .build(),
+                ).instances()
+                .single()
+                .instanceId()
     }
 
     @BeforeEach
@@ -47,36 +78,22 @@ class AMIServiceIntegrationTest {
         amiService = AMIService(ec2Client, eventBus, aws)
     }
 
-    /**
-     * Registers a test AMI in LocalStack and returns the AMI ID.
-     */
-    private fun registerTestAMI(name: String): String {
-        val request =
-            RegisterImageRequest
-                .builder()
-                .name(name)
-                .rootDeviceName("/dev/sda1")
-                .blockDeviceMappings(
-                    BlockDeviceMapping
-                        .builder()
-                        .deviceName("/dev/sda1")
-                        .ebs(
-                            EbsBlockDevice
-                                .builder()
-                                .snapshotId("snap-test123")
-                                .volumeSize(8)
-                                .build(),
-                        ).build(),
-                ).build()
-
-        return ec2Client.registerImage(request).imageId()
-    }
+    /** Creates a test AMI named [name] from the test's x86_64 instance and returns its ID. */
+    private fun createTestAMI(name: String): String =
+        ec2Client
+            .createImage(
+                CreateImageRequest
+                    .builder()
+                    .instanceId(instanceId)
+                    .name(name)
+                    .build(),
+            ).imageId()
 
     @Nested
     inner class ListPrivateAMIs {
         @Test
         fun `should list AMIs matching name pattern`() {
-            val amiId = registerTestAMI("rustyrazorblade/images/easy-db-lab-cassandra-amd64-20240101")
+            val amiId = createTestAMI("rustyrazorblade/images/easy-db-lab-cassandra-amd64-20240101")
 
             val result = amiService.listPrivateAMIs("rustyrazorblade/images/easy-db-lab-cassandra-amd64-*")
 
@@ -95,8 +112,8 @@ class AMIServiceIntegrationTest {
 
         @Test
         fun `should filter by name pattern and not return unmatched AMIs`() {
-            registerTestAMI("rustyrazorblade/images/easy-db-lab-cassandra-amd64-20240201")
-            registerTestAMI("rustyrazorblade/images/easy-db-lab-base-amd64-20240201")
+            createTestAMI("rustyrazorblade/images/easy-db-lab-cassandra-amd64-20240201")
+            createTestAMI("rustyrazorblade/images/easy-db-lab-base-amd64-20240201")
 
             val cassandraResult =
                 amiService.listPrivateAMIs("rustyrazorblade/images/easy-db-lab-cassandra-*")
@@ -108,7 +125,7 @@ class AMIServiceIntegrationTest {
 
         @Test
         fun `should return AMI with correct fields populated`() {
-            val amiId = registerTestAMI("test-fields-populated")
+            val amiId = createTestAMI("test-fields-populated")
 
             val result = amiService.listPrivateAMIs("test-fields-populated")
 
@@ -116,14 +133,15 @@ class AMIServiceIntegrationTest {
             val ami = result.first()
             assertThat(ami.id).isEqualTo(amiId)
             assertThat(ami.name).isEqualTo("test-fields-populated")
+            assertThat(ami.architecture).isEqualTo("amd64")
             assertThat(ami.creationDate).isNotNull()
             assertThat(ami.ownerId).isNotBlank()
         }
 
         @Test
         fun `should return multiple AMIs matching wildcard pattern`() {
-            registerTestAMI("multi-match-test-amd64-20240101")
-            registerTestAMI("multi-match-test-amd64-20240202")
+            createTestAMI("multi-match-test-amd64-20240101")
+            createTestAMI("multi-match-test-amd64-20240202")
 
             val result = amiService.listPrivateAMIs("multi-match-test-*")
 
@@ -139,7 +157,7 @@ class AMIServiceIntegrationTest {
     inner class DeregisterAMI {
         @Test
         fun `should deregister an AMI without error`() {
-            val amiId = registerTestAMI("test-deregister-ami")
+            val amiId = createTestAMI("test-deregister-ami")
 
             // Should not throw
             amiService.deregisterAMI(amiId)

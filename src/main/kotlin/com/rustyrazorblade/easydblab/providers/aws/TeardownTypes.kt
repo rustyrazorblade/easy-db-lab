@@ -1,7 +1,5 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
-import com.rustyrazorblade.easydblab.Constants
-
 /**
  * Represents all AWS resources discovered within a VPC that may need to be deleted.
  *

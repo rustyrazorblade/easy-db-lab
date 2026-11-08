@@ -57,9 +57,10 @@ class TempoManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config(), "overrides", "defaults", "compaction", "compaction_disabled")).isEqualTo("true")
     }
 
+    /** The second guard: if the compaction override is lost, the backend worker still deletes nothing by age. */
     @Test
-    fun `no block retention is configured anywhere`() {
-        assertThat(config()).doesNotContain("block_retention")
+    fun `the backend worker keeps every block for a century`() {
+        assertThat(scalarAt(config(), "backend_worker", "compaction", "block_retention")).isEqualTo("876000h")
     }
 
     @Test

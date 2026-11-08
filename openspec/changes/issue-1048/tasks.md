@@ -23,17 +23,17 @@
 
 ## 4. The compactor Deployment
 
-- [ ] 4.1 Port `CompactorTaskDefinitionTest`'s retention and deletion locks to `CompactorManifestBuilderTest`, and add tests for the pod shape: init container with `busybox:1.37.0-musl`, lease container, four gated containers, pod network, `Recreate`, termination grace, no limits, no readiness probe on gated containers, scratch host paths, SHA-256 jar path, bucket-region environment
-- [ ] 4.2 Implement `configuration/compactor/CompactorManifestBuilder` with fabric8, moving the Mimir and Loki compactor args and the config-file loading from `CompactorTaskDefinition` (through `TemplateService`)
-- [ ] 4.3 Implement `CompactorAgentInstaller`: create `/mnt/db1/compactor/{mimir,loki,tempo,agent}`, give Loki's and Tempo's directories to user 10001, upload the jar to its SHA-256 path unless it exists
-- [ ] 4.4 Add the compactor as a stage in `ObservabilityStackService.buildStages()` for every cluster, redirect clusters included, with the jar upload inside `deploy()`; add its ConfigMap to `ConfigHashAnnotator`'s known ConfigMaps
-- [ ] 4.5 Add the builder to `K8sServiceIntegrationTest.collectAllResources()`, with an apply test and the image pull test for the JRE, busybox-musl and Grafana images
-- [ ] 4.6 Rework `CompactorTaskIntegrationTest` to run the new pod spec's containers and keep the "Mimir blocks compacted by the account compactor keep every sample" check; add a two-agent lease failover scenario against LocalStack
+- [x] 4.1 Port `CompactorTaskDefinitionTest`'s retention and deletion locks to `CompactorManifestBuilderTest`, and add tests for the pod shape: init container with `busybox:1.37.0-musl`, lease container, four gated containers, pod network, `Recreate`, termination grace, no limits, no readiness probe on gated containers, scratch host paths, SHA-256 jar path, bucket-region environment
+- [x] 4.2 Implement `configuration/compactor/CompactorManifestBuilder` with fabric8, moving the Mimir and Loki compactor args and the config-file loading from `CompactorTaskDefinition` (through `TemplateService`)
+- [x] 4.3 Implement `CompactorAgentInstaller`: create `/mnt/db1/compactor/{mimir,loki,tempo,agent}`, give Loki's and Tempo's directories to user 10001, upload the jar to its SHA-256 path unless it exists
+- [x] 4.4 Add the compactor as a stage in `ObservabilityStackService.buildStages()` for every cluster, redirect clusters included, with the jar upload inside `deploy()`; add its ConfigMap to `ConfigHashAnnotator`'s known ConfigMaps
+- [x] 4.5 Add the builder to `K8sServiceIntegrationTest.collectAllResources()`, with an apply test and the image pull test for the JRE, busybox-musl and Grafana images
+- [x] 4.6 Rework `CompactorTaskIntegrationTest` to run the new pod spec's containers and keep the "Mimir blocks compacted by the account compactor keep every sample" check; add a two-agent lease failover scenario against LocalStack
 
 ## 5. IAM and backend guards
 
-- [ ] 5.1 Update `AWSPolicy`'s instance-role delete deny to `grafana/` and `reports/` only, and the bucket policy's deny to the EMR roles only; update `AWSpolicyTest`
-- [ ] 5.2 Add `block_retention: 876000h` to the cluster `tempo.yaml`, with a test that locks it; update the `loki.yaml` comment that names the IAM deny
+- [x] 5.1 Update `AWSPolicy`'s instance-role delete deny to `grafana/` and `reports/` only, and the bucket policy's deny to the EMR roles only; update `AWSpolicyTest`
+- [x] 5.2 Add `block_retention: 876000h` to the cluster `tempo.yaml`, with a test that locks it; update the `loki.yaml` comment that names the IAM deny
 
 ## 6. CLI
 

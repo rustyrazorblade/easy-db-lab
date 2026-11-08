@@ -64,12 +64,13 @@ class AWSpolicyTest {
         }
 
         /**
-         * The cluster must not be able to delete observability data: the instance role is denied
-         * deletes under mimir/, loki/, tempo/ and grafana/. pyroscope/ is left out because
-         * Pyroscope v2 compaction deletes the segments it merged.
+         * The cluster must not be able to delete dashboards or test documents: the instance role is
+         * denied deletes under grafana/ and reports/. The compacted roots are left out because the
+         * lease-holding account compactor runs with this role and removes the sources it merged;
+         * pyroscope/ is left out because Pyroscope v2 compaction does the same.
          */
         @Test
-        fun `S3AccessWildcard denies deletes on every observability prefix but profiles`() {
+        fun `S3AccessWildcard denies deletes only under grafana and reports`() {
             val statements =
                 Json
                     .parseToJsonElement(AWSPolicy.Inline.S3AccessWildcard("123456789012").toJson())
@@ -87,13 +88,9 @@ class AWSpolicyTest {
 
             assertThat(values("Action")).containsExactlyInAnyOrder("s3:DeleteObject", "s3:DeleteObjectVersion")
             assertThat(values("Resource")).containsExactlyInAnyOrder(
-                "arn:aws:s3:::easy-db-lab-*/mimir/*",
-                "arn:aws:s3:::easy-db-lab-*/loki/*",
-                "arn:aws:s3:::easy-db-lab-*/tempo/*",
                 "arn:aws:s3:::easy-db-lab-*/grafana/*",
                 "arn:aws:s3:::easy-db-lab-*/reports/*",
             )
-            assertThat(values("Resource")).noneMatch { it.contains("pyroscope") }
             // Only deletes are denied: the cluster still reads the documents and the owner uploads them.
             assertThat(statements.toString()).doesNotContain("s3:PutObject")
         }
@@ -115,9 +112,9 @@ class AWSpolicyTest {
             assertThat(json).contains(""""arn:aws:s3:::test-bucket/*"""")
         }
 
-        /** Every cluster-side principal the bucket policy grants is denied deletes under the compacted roots. */
+        /** The EMR roles are denied deletes under the compacted roots; the instance role, which runs the compactor, is not. */
         @Test
-        fun `S3BucketPolicy denies the cluster roles every delete under the compacted roots`() {
+        fun `S3BucketPolicy denies only the EMR roles deletes under the compacted roots`() {
             val deny = statements(AWSPolicy.Inline.S3BucketPolicy("123456789012", "test-bucket").toJson()).single { it.effect() == "Deny" }
 
             assertThat(deny.values("Action")).containsExactlyInAnyOrder("s3:DeleteObject", "s3:DeleteObjectVersion")
@@ -127,7 +124,6 @@ class AWSpolicyTest {
                 "arn:aws:s3:::test-bucket/tempo/*",
             )
             assertThat(deny.getValue("Principal").jsonObject.values("AWS")).containsExactlyInAnyOrder(
-                "arn:aws:iam::123456789012:role/EasyDBLabEC2Role",
                 "arn:aws:iam::123456789012:role/EasyDBLabEMRServiceRole",
                 "arn:aws:iam::123456789012:role/EasyDBLabEMREC2Role",
             )

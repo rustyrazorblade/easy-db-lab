@@ -54,6 +54,13 @@ live_store:
   wal:
     path: /var/tempo/live-store/wal
 
+# NEVER delete a block by age: the second guard behind compaction_disabled below. Retention runs in
+# the backend worker and skips only compaction-disabled tenants, so if that override were lost this
+# still keeps every block for a century. Do NOT use 0: in Tempo 3 a zero retention deletes at once.
+backend_worker:
+  compaction:
+    block_retention: 876000h
+
 # Configured but INERT: `overrides.defaults.metrics_generator.processors` is empty, so
 # nothing is generated and nothing is remote-written. Kept so re-enabling is one edit —
 # read the comment on that setting first, it explains why it is off.

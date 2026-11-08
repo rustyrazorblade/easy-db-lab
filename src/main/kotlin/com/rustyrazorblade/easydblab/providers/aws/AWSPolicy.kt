@@ -215,11 +215,12 @@ sealed class AWSPolicy {
                 ).toJson()
 
             /**
-             * No code path on a cluster may delete observability data or test documents. An
-             * explicit deny beats the s3:* above; the owner's own deletes from a workstation are
-             * not affected, so `report upload` still replaces a document. pyroscope/ is left out:
-             * Pyroscope v2 compaction writes a merged block and then removes the segments it
-             * merged. Compaction is not deletion.
+             * No code path on a cluster may delete dashboards or test documents. An explicit deny
+             * beats the s3:* above; the owner's own deletes from a workstation are not affected, so
+             * `report upload` still replaces a document. The compacted roots and pyroscope/ are
+             * left out: the lease-holding account compactor runs on the cluster with this role, and
+             * it and Pyroscope v2 compaction write a merged copy and then remove the sources they
+             * merged. Compaction is not deletion. The cluster's own backends have no deletion path.
              */
             private fun denyDataDeletes() =
                 IamPolicyStatement(
@@ -228,9 +229,6 @@ sealed class AWSPolicy {
                     resource =
                         IamPolicyResource.multiple(
                             listOf(
-                                "${Constants.Observability.METRICS_ROOT}/*",
-                                "${Constants.Observability.LOGS_ROOT}/*",
-                                "${Constants.Observability.TRACES_ROOT}/*",
                                 "${Constants.Observability.GRAFANA_ROOT}/*",
                                 "${Constants.Observability.REPORTS_ROOT}/*",
                             ).map { "arn:aws:s3:::easy-db-lab-*/$it" },
@@ -299,9 +297,10 @@ sealed class AWSPolicy {
         /**
          * S3 bucket policy granting access to all three easy-db-lab IAM roles.
          * Applied to the S3 bucket to allow all roles (EC2, EMR Service, EMR EC2) to access it.
-         * It denies those roles every delete under the roots the account compactor compacts, so only
-         * the compactor's task role deletes there. It names the cluster principals rather than
-         * "everyone but the compactor", so the owner's own deletes from a workstation still work.
+         * It denies the EMR roles every delete under the roots the account compactor compacts. The
+         * instance role is not denied: the account compactor runs with it. The deny names the
+         * principals rather than "everyone but the compactor", so the owner's own deletes from a
+         * workstation still work.
          *
          * @param accountId The AWS account ID for constructing role ARNs
          * @param bucketName The S3 bucket name to apply the policy to
@@ -328,19 +327,18 @@ sealed class AWSPolicy {
                             ),
                             IamPolicyStatement(
                                 effect = "Deny",
-                                principal = IamPolicyPrincipal.aws(clusterRoles()),
+                                principal = IamPolicyPrincipal.aws(emrRoles()),
                                 action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
                                 resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::$bucketName/$it/*" }),
                             ),
                         ),
                 ).toJson()
 
-            private fun clusterRoles() =
-                listOf(
-                    Constants.AWS.Roles.EC2_INSTANCE_ROLE,
-                    Constants.AWS.Roles.EMR_SERVICE_ROLE,
-                    Constants.AWS.Roles.EMR_EC2_ROLE,
-                ).map { "arn:aws:iam::$accountId:role/$it" }
+            private fun clusterRoles() = listOf(roleArn(Constants.AWS.Roles.EC2_INSTANCE_ROLE)) + emrRoles()
+
+            private fun emrRoles() = listOf(Constants.AWS.Roles.EMR_SERVICE_ROLE, Constants.AWS.Roles.EMR_EC2_ROLE).map(::roleArn)
+
+            private fun roleArn(role: String) = "arn:aws:iam::$accountId:role/$role"
         }
 
         companion object {

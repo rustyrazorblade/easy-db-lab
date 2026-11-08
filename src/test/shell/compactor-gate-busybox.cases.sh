@@ -34,9 +34,9 @@ setup() {
   WORK="$($BB mktemp -d)"
   $BB cat > "${WORK}/compactor" <<EOF
 #!/bin/busybox sh
+if [ "\${FAKE_IGNORE_TERM:-0}" = 1 ]; then trap '' TERM; else trap 'echo term >> "${WORK}/events"; exit 0' TERM; fi
 echo "\$\$" > "${WORK}/pid"
 echo "start \$*" >> "${WORK}/events"
-if [ "\${FAKE_IGNORE_TERM:-0}" = 1 ]; then trap '' TERM; else trap 'echo term >> "${WORK}/events"; exit 0' TERM; fi
 if [ -n "\${FAKE_EXIT_AFTER:-}" ]; then $BB sleep "\${FAKE_EXIT_AFTER}"; echo exit >> "${WORK}/events"; exit 3; fi
 while :; do $BB sleep 1 & wait \$!; done
 EOF
@@ -72,11 +72,13 @@ case_no_start_while_not_valid() {
 }
 
 case_start_stop_start() {
-  run=$((run + 1)); setup; grant 3; start_gate 1
-  eventually '[ "$(starts)" = 1 ]' 3 || fail "did not start once the lease was valid"
+  # The lease runs out only after the start is recorded, so a slow start cannot race the expiry.
+  run=$((run + 1)); setup; grant 100; start_gate 1
+  eventually '[ "$(starts)" = 1 ]' 15 || fail "did not start once the lease was valid"
+  grant 1
   eventually '$BB grep -q "^term$" "${WORK}/events"' 6 || fail "no SIGTERM after the time passed"
   grant 100
-  eventually '[ "$(starts)" = 2 ]' 4 || fail "did not start again when the lease was valid again"
+  eventually '[ "$(starts)" = 2 ]' 15 || fail "did not start again when the lease was valid again"
   $BB grep -qi 'not found' "${WORK}/gate.log" && fail "called an applet that is not on PATH"
 }
 

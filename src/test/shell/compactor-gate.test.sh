@@ -69,13 +69,14 @@ EOF
   # ignore SIGTERM; FAKE_EXIT_AFTER makes it exit on its own after that many seconds.
   cat > "${WORK}/stubs/compactor" <<EOF
 #!/bin/sh
-echo "\$\$" > "${WORK}/pid"
-echo "start \$*" >> "${WORK}/events"
+# The trap comes first, so a SIGTERM that follows the recorded start is always recorded too.
 if [ "\${FAKE_IGNORE_TERM:-0}" = 1 ]; then
   trap '' TERM
 else
   trap 'echo term >> "${WORK}/events"; exit 0' TERM
 fi
+echo "\$\$" > "${WORK}/pid"
+echo "start \$*" >> "${WORK}/events"
 if [ -n "\${FAKE_EXIT_AFTER:-}" ]; then
   "${SLEEP}" "\${FAKE_EXIT_AFTER}"
   echo exit >> "${WORK}/events"
@@ -143,9 +144,13 @@ test_start_when_valid() {
 test_stop_when_time_passes_then_start_again() {
   tests_run=$((tests_run + 1))
   setup
-  grant 3
+  # The lease runs out only after the compactor has recorded its start: under a loaded build the
+  # fake compactor can take longer than a short first grant to start, and the gate then rightly
+  # stops it before it records anything.
+  grant 100
   start_gate 1
   eventually '[ "$(starts)" = 1 ]' "${START_BUDGET}" || fail "the compactor did not start"
+  grant 1
   eventually 'grep -q "^term$" "${WORK}/events"' 6 || fail "the compactor got no SIGTERM after the time passed"
   eventually '! compactor_alive' 2 || fail "the compactor still runs after the time passed"
   kill -0 "${GATE_PID}" 2>/dev/null || fail "the gate exited instead of waiting for the lease again"

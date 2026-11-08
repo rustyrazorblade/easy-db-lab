@@ -128,31 +128,15 @@ class AWSpolicyTest {
                 "arn:aws:iam::123456789012:role/EasyDBLabEMREC2Role",
             )
         }
-
-        /** Only the compacted roots: the compactor's task role has no access to grafana/ or pyroscope/. */
-        @Test
-        fun `the compactor task role deletes only under mimir, loki and tempo`() {
-            val statements = statements(AWSPolicy.Inline.CompactorTaskAccess.toJson())
-            val objects = statements.single { "s3:DeleteObject" in it.values("Action") }
-
-            assertThat(objects.values("Resource")).containsExactlyInAnyOrder(
-                "arn:aws:s3:::easy-db-lab-*/mimir/*",
-                "arn:aws:s3:::easy-db-lab-*/loki/*",
-                "arn:aws:s3:::easy-db-lab-*/tempo/*",
-            )
-            assertThat(statements.flatMap { it.values("Resource") }).noneMatch { it.contains("grafana") || it.contains("pyroscope") }
-            assertThat(statements).allMatch { it.effect() == "Allow" }
-        }
     }
 
+    /** The compactor runs in the cluster with the instance role, so there is no compactor user policy. */
     @Test
-    fun `the user policies include the compactor policy`() {
-        val compactor = AWSPolicy.UserIAM.loadAll("123456789012").single { it.name == "EasyDBLabCompactor" }
+    fun `the user policies are the four easy-db-lab policies, with the account substituted`() {
+        val policies = AWSPolicy.UserIAM.loadAll("123456789012")
 
-        assertThat(compactor.body)
-            .contains("arn:aws:iam::123456789012:role/EasyDBLabCompactorTaskRole")
-            .contains("arn:aws:iam::123456789012:role/EasyDBLabCompactorExecutionRole")
-            .doesNotContain("ACCOUNT_ID")
+        assertThat(policies.map { it.name }).containsExactly("EasyDBLabEC2", "EasyDBLabIAM", "EasyDBLabEMR", "EasyDBLabOpenSearch")
+        assertThat(policies).allSatisfy { assertThat(it.body).doesNotContain("ACCOUNT_ID") }
     }
 
     private fun statements(json: String): List<JsonObject> =

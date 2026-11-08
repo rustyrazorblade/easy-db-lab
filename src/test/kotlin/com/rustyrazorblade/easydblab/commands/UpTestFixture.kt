@@ -191,7 +191,7 @@ abstract class UpTestFixture : BaseKoinTest() {
             single { CiliumNodeImageCheck(get()) }
             single { AWSResourceSetupService(get(), get(), get()) }
             single { ProvisioningPreflight(get(), get(), get(), get()) }
-            single { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }
+            single { AccountBucketSetup(get(), get(), get(), get(), get()) }
         }
 
     /** The cluster side of `up`: K8s, the nested commands, the stack, Tailscale and SSH. */

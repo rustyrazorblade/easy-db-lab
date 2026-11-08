@@ -78,34 +78,17 @@ sealed class AWSPolicy {
                         ),
                 ).toJson()
         }
-
-        /**
-         * Trust policy allowing ECS tasks to assume the role.
-         * Used by: EasyDBLabCompactorTaskRole, EasyDBLabCompactorExecutionRole
-         */
-        data object ECSTasks : Trust() {
-            override fun toJson() =
-                IamPolicyDocument(
-                    statement =
-                        listOf(
-                            IamPolicyStatement(
-                                effect = "Allow",
-                                principal = IamPolicyPrincipal.service("ecs-tasks.amazonaws.com"),
-                                action = IamPolicyAction.single("sts:AssumeRole"),
-                            ),
-                        ),
-                ).toJson()
-        }
     }
 
     /**
      * User IAM policies that users must attach to their AWS account to use easy-db-lab.
      * These policies are loaded from JSON resource files with account ID substitution.
      *
-     * Three policies are required:
+     * Four policies are required:
      * 1. EasyDBLabEC2 - EC2 operations and PassRole
      * 2. EasyDBLabIAM - IAM and S3 management
      * 3. EasyDBLabEMR - EMR cluster operations
+     * 4. EasyDBLabOpenSearch - OpenSearch domain operations
      */
     sealed class UserIAM : AWSPolicy() {
         override fun toJson(): String =
@@ -113,7 +96,7 @@ sealed class AWSPolicy {
 
         companion object {
             /**
-             * Loads all three required user IAM policies from JSON resource files.
+             * Loads all four required user IAM policies from JSON resource files.
              * Performs account ID substitution in policy templates.
              *
              * @param accountId The AWS account ID to substitute for ACCOUNT_ID placeholder
@@ -127,7 +110,6 @@ sealed class AWSPolicy {
                         "iam-policy-iam-s3.json" to "EasyDBLabIAM",
                         "iam-policy-emr.json" to "EasyDBLabEMR",
                         "iam-policy-opensearch.json" to "EasyDBLabOpenSearch",
-                        "iam-policy-compactor.json" to "EasyDBLabCompactor",
                     )
 
                 return policyData.map { (fileName, policyName) ->
@@ -271,30 +253,6 @@ sealed class AWSPolicy {
         }
 
         /**
-         * The account compactor's task role policy: list the easy-db-lab buckets, and get, put and
-         * delete objects under the roots it compacts. It has no access to `grafana/` or
-         * `pyroscope/`. The compactor removes a source object only after it wrote a merged copy.
-         */
-        data object CompactorTaskAccess : Inline() {
-            override fun toJson() =
-                IamPolicyDocument(
-                    statement =
-                        listOf(
-                            IamPolicyStatement(
-                                effect = "Allow",
-                                action = IamPolicyAction.multiple(listOf("s3:ListBucket", "s3:GetBucketLocation")),
-                                resource = IamPolicyResource.single("arn:aws:s3:::easy-db-lab-*"),
-                            ),
-                            IamPolicyStatement(
-                                effect = "Allow",
-                                action = IamPolicyAction.multiple(listOf("s3:GetObject", "s3:PutObject", "s3:DeleteObject")),
-                                resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::easy-db-lab-*/$it/*" }),
-                            ),
-                        ),
-                ).toJson()
-        }
-
-        /**
          * S3 bucket policy granting access to all three easy-db-lab IAM roles.
          * Applied to the S3 bucket to allow all roles (EC2, EMR Service, EMR EC2) to access it.
          * It denies the EMR roles every delete under the roots the account compactor compacts. The
@@ -342,7 +300,7 @@ sealed class AWSPolicy {
         }
 
         companion object {
-            /** The observability roots the account compactor compacts, and only it may delete under. */
+            /** The observability roots the account compactor compacts; the EMR roles may not delete under them. */
             val COMPACTED_ROOTS =
                 listOf(
                     Constants.Observability.METRICS_ROOT,
@@ -372,10 +330,6 @@ sealed class AWSPolicy {
          */
         data object EMRForEC2 :
             Managed("arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceforEC2Role")
-
-        /** AWS managed policy the account compactor's execution role uses to pull images and ship logs. */
-        data object ECSTaskExecution :
-            Managed("arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy")
 
         override fun toJson(): String =
             throw UnsupportedOperationException(

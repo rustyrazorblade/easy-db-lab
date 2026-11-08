@@ -24,6 +24,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 GATE="${ROOT}/src/main/resources/com/rustyrazorblade/easydblab/configuration/compactor/compactor-gate.sh"
 SLEEP="$(command -v sleep)"
+# How long a wait for the fake compactor's start may take. It checks that a start happens, not how
+# fast, and returns as soon as it does; under a loaded build an 8 s budget missed a start the gate
+# had already made.
+START_BUDGET=15
 DATE="$(command -v date)"
 
 tests_run=0
@@ -131,7 +135,7 @@ test_start_when_valid() {
   start_gate 1
   "${SLEEP}" 1
   grant 100
-  eventually '[ "$(starts)" = 1 ]' 4 || fail "the compactor did not start once the lease was valid"
+  eventually '[ "$(starts)" = 1 ]' "${START_BUDGET}" || fail "the compactor did not start once the lease was valid"
   grep -q '^start -target=compactor$' "${WORK}/events" || fail "the compactor did not get its arguments"
   no_applet_missing || fail "the gate called an applet that is not on PATH"
 }
@@ -141,12 +145,12 @@ test_stop_when_time_passes_then_start_again() {
   setup
   grant 3
   start_gate 1
-  eventually '[ "$(starts)" = 1 ]' 3 || fail "the compactor did not start"
+  eventually '[ "$(starts)" = 1 ]' "${START_BUDGET}" || fail "the compactor did not start"
   eventually 'grep -q "^term$" "${WORK}/events"' 6 || fail "the compactor got no SIGTERM after the time passed"
   eventually '! compactor_alive' 2 || fail "the compactor still runs after the time passed"
   kill -0 "${GATE_PID}" 2>/dev/null || fail "the gate exited instead of waiting for the lease again"
   grant 100
-  eventually '[ "$(starts)" = 2 ]' 4 || fail "the compactor did not start again when the lease was valid again"
+  eventually '[ "$(starts)" = 2 ]' "${START_BUDGET}" || fail "the compactor did not start again when the lease was valid again"
 }
 
 test_stop_when_file_goes() {
@@ -154,7 +158,7 @@ test_stop_when_file_goes() {
   setup
   grant 100
   start_gate 1
-  eventually '[ "$(starts)" = 1 ]' 3 || fail "the compactor did not start"
+  eventually '[ "$(starts)" = 1 ]' "${START_BUDGET}" || fail "the compactor did not start"
   rm -f "${WORK}/valid-until"
   eventually 'grep -q "^term$" "${WORK}/events"' 3 || fail "the compactor got no SIGTERM after the file went"
 }
@@ -164,7 +168,7 @@ test_kill_after_grace() {
   setup
   grant 100
   FAKE_IGNORE_TERM=1 start_gate 2
-  eventually '[ "$(starts)" = 1 ]' 3 || fail "the compactor did not start"
+  eventually '[ "$(starts)" = 1 ]' "${START_BUDGET}" || fail "the compactor did not start"
   rm -f "${WORK}/valid-until"
   "${SLEEP}" 2
   compactor_alive || fail "the compactor was killed before the grace passed"
@@ -177,7 +181,7 @@ test_restart_after_exit_while_valid() {
   setup
   grant 100
   FAKE_EXIT_AFTER=1 start_gate 1
-  eventually '[ "$(starts)" -ge 2 ]' 8 || fail "the compactor was not started again after it exited"
+  eventually '[ "$(starts)" -ge 2 ]' "${START_BUDGET}" || fail "the compactor was not started again after it exited"
   grep -q 'the compactor exited' "${WORK}/gate.log" || fail "the gate did not report the exit"
 }
 
@@ -186,7 +190,7 @@ test_sigterm_is_passed_on() {
   setup
   grant 100
   start_gate 1
-  eventually '[ "$(starts)" = 1 ]' 3 || fail "the compactor did not start"
+  eventually '[ "$(starts)" = 1 ]' "${START_BUDGET}" || fail "the compactor did not start"
   kill -TERM "${GATE_PID}"
   eventually 'grep -q "^term$" "${WORK}/events"' 3 || fail "the compactor did not get the gate's SIGTERM"
   eventually '! kill -0 "${GATE_PID}" 2>/dev/null' 3 || fail "the gate did not exit after its compactor stopped"

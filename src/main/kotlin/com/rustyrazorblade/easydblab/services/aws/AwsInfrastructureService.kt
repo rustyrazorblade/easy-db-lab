@@ -408,8 +408,6 @@ class AwsInfrastructureService(
             when {
                 // Skip packer VPC unless explicitly included
                 resources.isPackerVpc() && !includePackerVpc -> eventBus.emit(Event.Infra.PackerVpcSkipping(vpcId))
-                // The account compactor's VPC outlives every cluster
-                resources.isCompactorVpc() -> eventBus.emit(Event.Infra.CompactorVpcSkipping(vpcId))
                 else -> allResources.add(resources)
             }
         }

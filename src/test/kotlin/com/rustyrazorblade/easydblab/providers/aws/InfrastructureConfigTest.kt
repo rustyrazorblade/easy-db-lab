@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.providers.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.entry
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 
@@ -10,35 +9,6 @@ import org.junit.jupiter.api.Test
  * Tests for InfrastructureConfig factory methods and related configuration classes.
  */
 class InfrastructureConfigTest {
-    /**
-     * `down` counts a VPC as a cluster by its `bucket` tag and never tears down the compactor's
-     * VPC, so the compactor's configuration must carry no `bucket` tag and a name teardown knows.
-     */
-    @Nested
-    inner class ForCompactor {
-        private val config = InfrastructureConfig.forCompactor("us-east-1a")
-
-        @Test
-        fun `is tagged like every easy-db-lab VPC, with no bucket tag`() {
-            assertThat(config.tags).containsExactly(entry(Constants.Vpc.TAG_KEY, Constants.Vpc.TAG_VALUE))
-        }
-
-        @Test
-        fun `allows no ingress`() {
-            assertThat(config.securityGroupRules).isEmpty()
-        }
-
-        @Test
-        fun `places its one subnet in the zone it is given`() {
-            assertThat(config.subnets.single().availabilityZone).isEqualTo("us-east-1a")
-        }
-
-        @Test
-        fun `is the VPC teardown skips`() {
-            assertThat(DiscoveredResources(vpcId = "vpc-c", vpcName = config.vpcName).isCompactorVpc()).isTrue()
-        }
-    }
-
     @Nested
     inner class ForCluster {
         @Test

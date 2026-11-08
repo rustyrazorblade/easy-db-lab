@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.services.aws
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
@@ -723,22 +722,6 @@ class AwsInfrastructureServiceTest {
             assertThat(result.success).isTrue()
             verify(vpcService).deleteVpc("vpc-packer")
         }
-
-        /** The account compactor outlives every cluster, so even `down --all --packer` keeps its VPC. */
-        @Test
-        fun `should always keep the account compactor's VPC`() {
-            whenever(vpcService.findVpcsByTag(any(), any())).thenReturn(listOf("vpc-compactor", "vpc-cluster"))
-            whenever(vpcService.getVpcName("vpc-compactor")).thenReturn(Constants.Vpc.COMPACTOR_VPC_NAME)
-            setupEmptyResourcesFor("vpc-compactor")
-            whenever(vpcService.getVpcName("vpc-cluster")).thenReturn("test-cluster")
-            setupEmptyResourcesFor("vpc-cluster")
-
-            val result = service.teardownAllTagged(dryRun = false, includePackerVpc = true)
-
-            assertThat(result.resourcesDeleted.map { it.vpcId }).containsExactly("vpc-cluster")
-            verify(vpcService, never()).deleteVpc("vpc-compactor")
-            verify(vpcService).deleteVpc("vpc-cluster")
-        }
     }
 
     @Nested
@@ -807,14 +790,17 @@ class AwsInfrastructureServiceTest {
     @Nested
     inner class EnsureReusableInfrastructure {
         @Test
-        fun `an existing compactor VPC gets its subnet in the requested availability zone`() {
-            val vpcId = "vpc-compactor"
-            whenever(vpcService.findVpcByName(Constants.Vpc.COMPACTOR_VPC_NAME)).thenReturn(vpcId)
+        fun `an existing VPC gets its subnet in the requested availability zone`() {
+            val vpcId = "vpc-packer"
+            val packer = InfrastructureConfig.forPacker(sshPort = 22, sshCidr = "203.0.113.10/32")
+            val config = packer.copy(subnets = packer.subnets.map { it.copy(availabilityZone = "us-east-1b") })
+            whenever(vpcService.findVpcByName(InfrastructureConfig.PACKER_VPC_NAME)).thenReturn(vpcId)
             whenever(vpcService.findOrCreateInternetGateway(any(), any(), any())).thenReturn("igw-1")
             whenever(vpcService.findOrCreateSubnet(any(), any(), any(), any(), any())).thenReturn("subnet-1")
             whenever(vpcService.findOrCreateSecurityGroup(any(), any(), any(), any())).thenReturn("sg-1")
+            whenever(vpcService.authorizeSecurityGroupIngress(any(), any(), any(), any(), any())).thenReturn(IngressAuthorization.ADDED)
 
-            val infrastructure = service.ensureReusableInfrastructure(InfrastructureConfig.forCompactor("us-east-1b"))
+            val infrastructure = service.ensureReusableInfrastructure(config)
 
             verify(vpcService).findOrCreateSubnet(eq(vpcId), any(), any(), any(), eq("us-east-1b"))
             assertThat(infrastructure.subnetIds).containsExactly("subnet-1")

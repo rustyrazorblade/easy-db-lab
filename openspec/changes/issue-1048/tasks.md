@@ -37,17 +37,17 @@
 
 ## 6. CLI
 
-- [ ] 6.1 Remove `observability compactor start` and `stop`; rewrite `status` as a read-only lease print with the bucket's region; rewrite `CompactorCommandsTest`
+- [x] 6.1 Remove `observability compactor start` and `stop`; rewrite `status` as a read-only lease print with the bucket's region; rewrite `CompactorCommandsTest`
 
 ## 7. Remove the Fargate path
 
-- [ ] 7.1 Remove the compactor call from `AccountBucketSetup` and the compactor test from `UpTest`
-- [ ] 7.2 Remove `stopCompactorIfLastCluster` and its wiring from `Down.kt`, and the `AccountCompactor` tests from `DownCommandTest`
-- [ ] 7.3 Delete `CompactorService`, `CompactorStatusReader`, `CompactorTaskRegistrar`, `CompactorIam`, `CompactorNetwork`, `ClusterCensus`, `CompactorTaskDefinition`, `RegionalClients`, the ECS retry helpers and imports in `RetryUtil` and `RetryWrappers`, and their tests
-- [ ] 7.4 Delete the compactor IAM trust, managed and inline policies, `iam-policy-compactor.json`, its `UserIAM` entry and the `ShowIamPolicies` filter
-- [ ] 7.5 Delete `InfrastructureConfig.forCompactor`, `TeardownTypes.isCompactorVpc`, the compactor VPC skip in `AwsInfrastructureService`, `Constants.Vpc.COMPACTOR_VPC_NAME` and the ECS members of `Constants.Compactor`; trim their tests
-- [ ] 7.6 Delete every `Event.Compactor.*` event and `Event.Infra.CompactorVpcSkipping`, and the Koin wiring in `AWSModule` and `TestModules`
-- [ ] 7.7 Remove `awssdk-ecs` and `awssdk-cloudwatchlogs` from `gradle/libs.versions.toml` and the bundle; confirm the repo has no ECS SDK import, `CompactorTaskDefinition` or `CompactorTaskRegistrar`
+- [x] 7.1 Remove the compactor call from `AccountBucketSetup` and the compactor test from `UpTest`
+- [x] 7.2 Remove `stopCompactorIfLastCluster` and its wiring from `Down.kt`, and the `AccountCompactor` tests from `DownCommandTest`
+- [x] 7.3 Delete `CompactorService`, `CompactorStatusReader`, `CompactorTaskRegistrar`, `CompactorIam`, `CompactorNetwork`, `ClusterCensus`, `CompactorTaskDefinition`, `RegionalClients`, the ECS retry helpers and imports in `RetryUtil` and `RetryWrappers`, and their tests
+- [x] 7.4 Delete the compactor IAM trust, managed and inline policies, `iam-policy-compactor.json`, its `UserIAM` entry and the `ShowIamPolicies` filter
+- [x] 7.5 Delete `InfrastructureConfig.forCompactor`, `TeardownTypes.isCompactorVpc`, the compactor VPC skip in `AwsInfrastructureService`, `Constants.Vpc.COMPACTOR_VPC_NAME` and the ECS members of `Constants.Compactor`; trim their tests
+- [x] 7.6 Delete every `Event.Compactor.*` event and `Event.Infra.CompactorVpcSkipping`, and the Koin wiring in `AWSModule` and `TestModules`
+- [x] 7.7 Remove `awssdk-ecs` and `awssdk-cloudwatchlogs` from `gradle/libs.versions.toml` and the bundle; confirm the repo has no ECS SDK import, `CompactorTaskDefinition` or `CompactorTaskRegistrar`
 
 ## 8. Docs and agent docs
 

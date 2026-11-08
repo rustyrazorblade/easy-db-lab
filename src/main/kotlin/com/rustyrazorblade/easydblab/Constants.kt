@@ -237,48 +237,10 @@ object Constants {
     }
 
     /**
-     * The account compactor: one ECS Fargate service per AWS account, in the account bucket's
-     * region, that compacts the shared observability store.
+     * The account compactor: an `account-compactor` pod on every cluster's control node that
+     * compacts the shared observability store only while it holds the store lease.
      */
     object Compactor {
-        const val ECS_CLUSTER = "easy-db-lab"
-        const val SERVICE = "easy-db-lab-compactor"
-        const val TASK_FAMILY = "easy-db-lab-compactor"
-        const val LOG_GROUP = "/easy-db-lab/compactor"
-        const val TASK_ROLE = "EasyDBLabCompactorTaskRole"
-        const val EXECUTION_ROLE = "EasyDBLabCompactorExecutionRole"
-
-        /** The ECS task-definition tag holding the hash of the configuration it was built from. */
-        const val CONFIG_HASH_TAG = "easydblab.com/config-hash"
-
-        /** Fargate task size: 2 vCPU, 8 GiB, 100 GiB of ephemeral storage. */
-        const val CPU_UNITS = "2048"
-        const val MEMORY_MIB = "8192"
-        const val EPHEMERAL_STORAGE_GIB = 100
-        const val STOP_TIMEOUT_SECONDS = 120
-
-        /** How many of the newest log lines `observability compactor status` prints. */
-        const val STATUS_LOG_LINES = 20
-
-        /** How many of the service's newest events `observability compactor status` prints. */
-        const val STATUS_SERVICE_EVENTS = 5
-
-        /** Availability zone IDs where Fargate does not run; the compactor's subnet is never placed in one. */
-        val NON_FARGATE_ZONE_IDS = setOf("use1-az3")
-
-        /** The busybox image of the init container that writes the configuration files. */
-        const val CONFIG_IMAGE = "busybox:1.37.0"
-
-        /** The operator's IAM policy that grants the compactor's ECS, IAM and Logs actions. */
-        const val OPERATOR_POLICY = "EasyDBLabCompactor"
-
-        /** The error code ECS answers with when the caller's IAM does not allow the action. */
-        const val ECS_ACCESS_DENIED = "AccessDeniedException"
-
-        /** What the idle Tempo backend worker logs on every poll that finds no job: its normal state. */
-        const val TEMPO_WORKER_IDLE_LOG =
-            "msg=\"error calling scheduler\" err=\"rpc error: code = NotFound desc = no jobs found\""
-
         /**
          * The static busybox the init container copies into the pod, to run the gate in the
          * distroless compactor images. It must be statically linked: musl, not the glibc build.
@@ -1334,9 +1296,6 @@ object Constants {
 
         /** VPC name for packer infrastructure */
         const val PACKER_VPC_NAME = "easy-db-lab-packer"
-
-        /** VPC name of the account compactor; tagged [TAG_KEY] but never [BUCKET_TAG_KEY]. */
-        const val COMPACTOR_VPC_NAME = "easy-db-lab-compactor"
 
         /** VPC tag key for the S3 bucket name */
         const val BUCKET_TAG_KEY = "bucket"

@@ -1386,15 +1386,6 @@ sealed interface Event {
             override fun toDisplayString(): String = "Skipping packer VPC: $vpcId (use --packer to include)"
         }
 
-        /** `down --all` keeps the account compactor's VPC: the compactor outlives every cluster. */
-        @Serializable
-        @SerialName("Infra.CompactorVpcSkipping")
-        data class CompactorVpcSkipping(
-            val vpcId: String,
-        ) : Infra {
-            override fun toDisplayString(): String = "Skipping the account compactor's VPC: $vpcId"
-        }
-
         @Serializable
         @SerialName("Infra.PackerVpcSearching")
         data object PackerVpcSearching : Infra {
@@ -5932,114 +5923,6 @@ sealed interface Event {
             override fun toDisplayString(): String = "File not found: $path"
 
             override fun isError(): Boolean = true
-        }
-    }
-
-    // =========================================================================
-    // Event.Compactor — the account compactor service (ECS Fargate)
-    // =========================================================================
-
-    /**
-     * The account compactor: one ECS Fargate service per account that compacts the shared
-     * observability store. `up`, `down` and `observability compactor` start and stop it.
-     */
-    @Serializable
-    sealed interface Compactor : Event {
-        /** The compactor service was created or scaled from 0 to 1 task in [region]. */
-        @Serializable
-        @SerialName("Compactor.Started")
-        data class Started(
-            val region: String,
-            val taskDefinition: String,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor started in $region ($taskDefinition)"
-        }
-
-        /** The compactor service already runs [runningCount] task(s) in [region]; it is left as it is. */
-        @Serializable
-        @SerialName("Compactor.AlreadyRunning")
-        data class AlreadyRunning(
-            val region: String,
-            val runningCount: Int,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor already running in $region ($runningCount task(s))"
-        }
-
-        /**
-         * The compactor service in [region] runs no task yet: [pendingCount] task(s) are pending, or ECS
-         * has not placed the first one, as happens for a minute or two after a start. It is left as it is.
-         */
-        @Serializable
-        @SerialName("Compactor.Starting")
-        data class Starting(
-            val region: String,
-            val pendingCount: Int,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor starting in $region ($pendingCount task(s) pending)"
-        }
-
-        /**
-         * The compactor service in [region] asks for [desiredCount] task(s) but runs none, has none
-         * pending, and its latest task stopped, for example because the task fails and restarts. It is
-         * left as it is.
-         */
-        @Serializable
-        @SerialName("Compactor.NoTaskRunning")
-        data class NoTaskRunning(
-            val region: String,
-            val desiredCount: Int,
-        ) : Compactor {
-            override fun toDisplayString(): String =
-                "Account compactor in $region asks for $desiredCount task(s) but runs none; " +
-                    "run `observability compactor status` to see why"
-
-            override fun isError(): Boolean = true
-        }
-
-        /**
-         * ECS in [region] refused a compactor call because the operator's IAM lacks the
-         * `EasyDBLabCompactor` policy. [detail] is ECS's message, naming the refused action.
-         */
-        @Serializable
-        @SerialName("Compactor.AccessDenied")
-        data class AccessDenied(
-            val region: String,
-            val detail: String,
-        ) : Compactor {
-            override fun toDisplayString(): String =
-                "ECS in $region refused the account compactor's call: $detail\n" +
-                    "Your IAM user or group needs the ${Constants.Compactor.OPERATOR_POLICY} policy. " +
-                    "Run `easy-db-lab show-iam-policies compactor` to print it, attach it, then run the command again."
-
-            override fun isError(): Boolean = true
-        }
-
-        /** The compactor service's desired count was set to 0 in [region]. */
-        @Serializable
-        @SerialName("Compactor.Stopped")
-        data class Stopped(
-            val region: String,
-        ) : Compactor {
-            override fun toDisplayString(): String = "Account compactor stopped in $region"
-        }
-
-        /** A stop found no compactor service in [region], so there was nothing to stop. */
-        @Serializable
-        @SerialName("Compactor.NotCreated")
-        data class NotCreated(
-            val region: String,
-        ) : Compactor {
-            override fun toDisplayString(): String = "No account compactor to stop in $region"
-        }
-
-        /** `down` left the compactor running: [clusterVpcs] other cluster VPCs still name the account bucket. */
-        @Serializable
-        @SerialName("Compactor.KeptRunning")
-        data class KeptRunning(
-            val clusterVpcs: List<String>,
-        ) : Compactor {
-            override fun toDisplayString(): String =
-                "Account compactor kept running: ${clusterVpcs.size} other cluster(s) use the account bucket"
         }
     }
 

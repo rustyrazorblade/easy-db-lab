@@ -26,11 +26,6 @@ data class DiscoveredResources(
     fun isPackerVpc(): Boolean = vpcName == InfrastructureConfig.PACKER_VPC_NAME
 
     /**
-     * Returns true if this is the account compactor's VPC, which outlives every cluster.
-     */
-    fun isCompactorVpc(): Boolean = vpcName == Constants.Vpc.COMPACTOR_VPC_NAME
-
-    /**
      * Returns true if there are any resources to delete.
      */
     fun hasResources(): Boolean =

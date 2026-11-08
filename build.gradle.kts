@@ -445,7 +445,28 @@ tasks.register("testScripts") {
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
         "testBaseChronyPoll",
+        "testCompactorGate",
     )
+}
+
+// Unit-test the account compactor's gate: no start while the lease is not valid, SIGTERM then
+// SIGKILL when it lapses, a new start after an exit, SIGTERM passed on. A fake compactor and the
+// real clock; every applet the gate needs is stubbed and PATH points nowhere, as in the distroless
+// images. Runs under every POSIX shell found.
+tasks.register<Exec>("testCompactorGate") {
+    group = "Verification"
+    description = "Unit-test the account compactor's gate script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/compactor-gate.test.sh")
+}
+
+// The same gate cases under the static busybox:1.37.0-musl sh the pod runs the gate with. Needs
+// Docker, so, like the other Docker-backed script tests, it is not part of testScripts.
+tasks.register<Exec>("testCompactorGateBusybox") {
+    group = "Verification"
+    description = "Run the account compactor's gate cases under busybox sh in Docker"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/compactor-gate-busybox.test.sh")
 }
 
 // Unit-test the base AMI's chrony change: every Amazon Time Sync source polls every 8 s, other

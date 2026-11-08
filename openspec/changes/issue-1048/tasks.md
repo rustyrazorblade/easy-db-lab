@@ -18,8 +18,8 @@
 
 ## 3. The gate script
 
-- [ ] 3.1 Write a POSIX test for `compactor-gate.sh` in the `*.test.sh` pattern: no start while invalid, start when valid, SIGTERM then SIGKILL after the grace when the time passes or the file goes, restart of a child that exits while valid, SIGTERM forwarded to the child
-- [ ] 3.2 Write `compactor-gate.sh` as a packaged resource, calling every busybox applet explicitly
+- [x] 3.1 Write a POSIX test for `compactor-gate.sh` in the `*.test.sh` pattern: no start while invalid, start when valid, SIGTERM then SIGKILL after the grace when the time passes or the file goes, restart of a child that exits while valid, SIGTERM forwarded to the child
+- [x] 3.2 Write `compactor-gate.sh` as a packaged resource, calling every busybox applet explicitly
 
 ## 4. The compactor Deployment
 

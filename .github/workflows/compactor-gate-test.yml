@@ -1,0 +1,31 @@
+name: Compactor Gate Testing
+
+# The account compactor's gate under the static busybox sh the pod runs it with
+# (`./gradlew testCompactorGateBusybox`). It runs in Docker, so it is not in pr-checks' Docker-free
+# `testScripts`, which runs the same gate cases under sh, dash and bash; this workflow is its CI gate.
+on:
+  pull_request:
+    paths:
+      - 'src/main/resources/com/rustyrazorblade/easydblab/configuration/compactor/compactor-gate.sh'
+      - 'src/test/shell/compactor-gate*'
+      - '.github/workflows/compactor-gate-test.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/main/resources/com/rustyrazorblade/easydblab/configuration/compactor/compactor-gate.sh'
+      - 'src/test/shell/compactor-gate*'
+      - '.github/workflows/compactor-gate-test.yml'
+  workflow_dispatch:
+
+jobs:
+  test-compactor-gate-busybox:
+    name: Test the compactor gate under busybox sh
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # The same command as `./gradlew testCompactorGateBusybox`.
+      - name: Run the gate cases in busybox:1.37.0-musl
+        run: bash src/test/shell/compactor-gate-busybox.test.sh

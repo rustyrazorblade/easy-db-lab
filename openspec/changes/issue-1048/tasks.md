@@ -1,11 +1,11 @@
 ## 1. Conditional writes on the object store
 
-- [ ] 1.1 Create the `:compactor-lease` Gradle subproject (no dependency on the root module), with a shadow jar and test fixtures; add it to the distribution as `agents/compactor-lease.jar` and to the Jib image under `/agents`
-- [ ] 1.2 Write the conditional-write contract tests (create race, stale replace, matching replace, missing object on replace) in the subproject's test fixtures
-- [ ] 1.3 Implement `ConditionalObjects`, `ObjectVersion`, `CreateResult`, `ReplaceResult` and `InMemoryConditionalObjects`; make the contract pass in memory
-- [ ] 1.4 Implement `S3ConditionalObjects` with `If-None-Match: *` and `If-Match`, mapping 412 and 409 to the lost results and 404 on replace to `VersionMismatch`, with no retries
-- [ ] 1.5 Bump the LocalStack image in `SharedLocalStack` to a version with conditional writes and run the contract against it; if no version works without an auth token, add a `requires-aws` real-S3 contract test instead
-- [ ] 1.6 Add `readVersioned`, `createIfAbsent` and `replaceIfVersionMatches` to `services/ObjectStore.kt`; delegate from `S3ObjectStore`; add an in-memory `ObjectStore` adapter for the whole interface; run the shared contract against both
+- [x] 1.1 Create the `:compactor-lease` Gradle subproject (no dependency on the root module), with a shadow jar and test fixtures; add it to the distribution as `agents/compactor-lease.jar` and to the Jib image under `/agents`
+- [x] 1.2 Write the conditional-write contract tests (create race, stale replace, matching replace, missing object on replace) in the subproject's test fixtures
+- [x] 1.3 Implement `ConditionalObjects`, `ObjectVersion`, `CreateResult`, `ReplaceResult` and `InMemoryConditionalObjects`; make the contract pass in memory
+- [x] 1.4 Implement `S3ConditionalObjects` with `If-None-Match: *` and `If-Match`, mapping 412 and 409 to the lost results and 404 on replace to `VersionMismatch`, with no retries
+- [x] 1.5 Bump the LocalStack image in `SharedLocalStack` to a version with conditional writes and run the contract against it; if no version works without an auth token, add a `requires-aws` real-S3 contract test instead
+- [x] 1.6 Add `readVersioned`, `createIfAbsent` and `replaceIfVersionMatches` to `services/ObjectStore.kt`; delegate from `S3ObjectStore`; add an in-memory `ObjectStore` adapter for the whole interface; run the shared contract against both
 
 ## 2. The lease
 

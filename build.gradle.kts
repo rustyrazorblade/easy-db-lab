@@ -39,6 +39,15 @@ dependencies {
     otelAgentConfig("io.opentelemetry.javaagent:opentelemetry-javaagent:${libs.versions.opentelemetry.agent.get()}")
 }
 
+// The account compactor's lease agent, a shadow jar built by `:compactor-lease`. It ships next to
+// the OTel agent: `agents/` in the distribution and `/agents` in the Jib image, and
+// `CompactorAgentInstaller` uploads it to each cluster's control node.
+val copyCompactorLeaseAgent =
+    tasks.register<Copy>("copyCompactorLeaseAgent") {
+        from(project(":compactor-lease").tasks.named("shadowJar"))
+        into(layout.buildDirectory.dir("compactor-lease-agent"))
+    }
+
 group = "com.rustyrazorblade"
 
 tasks.withType<ShadowJar> {
@@ -209,6 +218,7 @@ dependencies {
 
     // Project dependencies
     implementation(project(":core"))
+    implementation(project(":compactor-lease"))
 
     // Jackson
     implementation(libs.bundles.jackson)
@@ -254,6 +264,8 @@ dependencies {
     testImplementation(libs.bundles.testing)
     testImplementation(libs.bundles.koin.test)
     testImplementation(libs.kotlinx.coroutines.test)
+    // The conditional-write contract and its in-memory adapter, shared by both tiers.
+    testImplementation(testFixtures(project(":compactor-lease")))
 
     // Integration-tier-only dependencies. Deliberately scoped to `integrationTest` and NOT
     // to `testImplementation` so that a container / mock-server test can no longer COMPILE
@@ -801,6 +813,10 @@ distributions {
             from(copyOtelAgent) {
                 into("agents")
             }
+            // The account compactor's lease agent, which `up` uploads to the control node.
+            from(copyCompactorLeaseAgent) {
+                into("agents")
+            }
         }
     }
 }
@@ -813,7 +829,7 @@ tasks.distTar {
 // The OTel agent reaches install/easy-db-lab/agents through the `main` distribution's contents
 // above (`from(copyOtelAgent) { into("agents") }`), which installDist syncs.
 tasks.named("installDist") {
-    dependsOn(tasks.named("shadowJar"), copyOtelAgent)
+    dependsOn(tasks.named("shadowJar"), copyOtelAgent, copyCompactorLeaseAgent)
 }
 
 tasks.assemble {
@@ -934,6 +950,8 @@ jib {
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",
                 "-Deasydblab.apphome=/app",
+                // The agents are under /agents in the image, not under the app home.
+                "-Deasydblab.agentsdir=/agents",
                 "-Xmx2048M",
             )
         environment =
@@ -948,6 +966,10 @@ jib {
                 }
                 path {
                     setFrom("${project.layout.buildDirectory.get()}/otel-agent")
+                    into = "/agents"
+                }
+                path {
+                    setFrom("${project.layout.buildDirectory.get()}/compactor-lease-agent")
                     into = "/agents"
                 }
             }
@@ -969,11 +991,11 @@ jib {
 
 // Jib doesn't fully support configuration cache yet
 tasks.named("jib") {
-    dependsOn(copyOtelAgent)
+    dependsOn(copyOtelAgent, copyCompactorLeaseAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }
 
 tasks.named("jibDockerBuild") {
-    dependsOn(copyOtelAgent)
+    dependsOn(copyOtelAgent, copyCompactorLeaseAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
 }

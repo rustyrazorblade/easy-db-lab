@@ -25,7 +25,7 @@ import software.amazon.awssdk.services.sts.StsClient
  * Single, JVM-wide LocalStack container shared by every AWS integration test.
  *
  * Historically each AWS integration test class started its own
- * `localstack/localstack:3.0` container in a `@Container` companion field, which
+ * LocalStack container in a `@Container` companion field, which
  * meant up to six LocalStack startups per integration-test run — slow and wasteful.
  * This object applies the Testcontainers "singleton container" pattern: the
  * container is constructed and started exactly once (lazily, on first access) and
@@ -44,8 +44,14 @@ import software.amazon.awssdk.services.sts.StsClient
  * the resources they create rather than asserting on global container state.
  */
 object SharedLocalStack {
+    /**
+     * 4.12 serves S3 conditional writes (`If-None-Match: *` and `If-Match`) without an auth token;
+     * 3.0 ignored both headers, so the account compactor's lease contract could not run against it.
+     */
+    private const val IMAGE = "localstack/localstack:4.12"
+
     private val container: LocalStackContainer by lazy {
-        LocalStackContainer(DockerImageName.parse("localstack/localstack:3.0"))
+        LocalStackContainer(DockerImageName.parse(IMAGE))
             .withServices("s3", "sts", "ec2")
             .waitingFor(Wait.forHttp("/_localstack/health").forStatusCode(200))
             .apply { start() }

@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.compactorlease.ConditionalObjects
+import com.rustyrazorblade.easydblab.compactorlease.ConditionalObjectsContract
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
-import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
+import com.rustyrazorblade.easydblab.services.ObjectStoreConditionalObjects
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeAll
@@ -49,6 +51,15 @@ class S3ObjectStoreIntegrationTest {
                 com.rustyrazorblade.easydblab.events
                     .EventBus(),
             )
+    }
+
+    /**
+     * The conditional-write contract every adapter shares, against LocalStack's S3: the real
+     * `If-None-Match: *` and `If-Match` requests, and S3's 412 and 404 answers.
+     */
+    @Nested
+    inner class ConditionalWrites : ConditionalObjectsContract() {
+        override fun store(): ConditionalObjects = ObjectStoreConditionalObjects(objectStore, TEST_BUCKET)
     }
 
     @Nested

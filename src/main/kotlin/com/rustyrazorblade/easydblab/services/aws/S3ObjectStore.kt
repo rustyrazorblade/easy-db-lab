@@ -1,5 +1,10 @@
 package com.rustyrazorblade.easydblab.services.aws
 
+import com.rustyrazorblade.easydblab.compactorlease.CreateResult
+import com.rustyrazorblade.easydblab.compactorlease.ObjectVersion
+import com.rustyrazorblade.easydblab.compactorlease.ReplaceResult
+import com.rustyrazorblade.easydblab.compactorlease.S3ConditionalObjects
+import com.rustyrazorblade.easydblab.compactorlease.VersionedObject
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
@@ -358,6 +363,23 @@ class S3ObjectStore(
                 .build()
         return s3Client.getObjectAsBytes(getRequest).asUtf8String()
     }
+
+    // The conditional writes have one S3 implementation, in `:compactor-lease`, which the lease agent
+    // runs on the control node too. It never retries, so these are not wrapped in RetryUtil.
+    private fun conditional(remotePath: ClusterS3Path) = S3ConditionalObjects(s3Client, remotePath.bucket)
+
+    override fun readVersioned(remotePath: ClusterS3Path): VersionedObject? = conditional(remotePath).read(remotePath.getKey())
+
+    override fun createIfAbsent(
+        remotePath: ClusterS3Path,
+        content: String,
+    ): CreateResult = conditional(remotePath).createIfAbsent(remotePath.getKey(), content)
+
+    override fun replaceIfVersionMatches(
+        remotePath: ClusterS3Path,
+        content: String,
+        expected: ObjectVersion,
+    ): ReplaceResult = conditional(remotePath).replaceIfVersionMatches(remotePath.getKey(), content, expected)
 
     override fun directoryExists(remotePath: ClusterS3Path): Boolean {
         // Use recursive=true to find any files under the prefix

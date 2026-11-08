@@ -22,7 +22,10 @@ import org.mockito.kotlin.whenever
  */
 class PyroscopeManifestBuilderTest : BaseKoinTest() {
     private companion object {
-        /** The largest node easy-db-lab runs: c8gd.48xlarge, 192 vCPUs. */
+        /**
+         * The largest node in use: c8gd.48xlarge, 192 vCPUs. easy-db-lab keeps no instance-type table;
+         * `--db.instance-type` takes any EC2 type, so raise this and the limit together for a larger one.
+         */
         const val LARGEST_NODE_VCPUS = 192L
 
         /** The sample count Pyroscope rejected on edbl-ab1172 on 2026-11-07, over the old 16,000 limit. */

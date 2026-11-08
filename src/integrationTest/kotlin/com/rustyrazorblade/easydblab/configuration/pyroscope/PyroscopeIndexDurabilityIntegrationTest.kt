@@ -293,5 +293,7 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         val over = sendFolded(pyroscope, "it-over", distinctStacks(renderedLimit + 1))
         assertThat(over.statusCode()).isEqualTo(400)
         assertThat(over.body()).contains("max_profile_stacktrace_samples", "limit: $renderedLimit")
+        // The refusal must show in the same counter, or the zero above proves nothing.
+        assertThat(discardedProfiles(pyroscope)).describedAs("profiles the server discarded").isEqualTo(1.0)
     }
 }

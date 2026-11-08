@@ -61,10 +61,11 @@ data class LeaseTiming(
 
     companion object {
         /**
-         * How many attempts of a read fit in [storeCallTimeout]. The call timeout is the bound that
-         * matters: it ends a call whatever its retry strategy does.
+         * How many attempts of a read fit in [storeCallTimeout]: the S3 client's default retry
+         * strategy makes four. The call timeout is the bound that matters; it ends a call whatever
+         * the retry strategy does.
          */
-        const val STORE_ATTEMPTS = 3
+        const val STORE_ATTEMPTS = 4
 
         const val TTL_ENV = "LEASE_TTL_SECONDS"
         const val RENEW_INTERVAL_ENV = "LEASE_RENEW_INTERVAL_SECONDS"

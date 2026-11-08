@@ -36,7 +36,7 @@ class LeaseTimingTest {
         val timing = timing()
 
         assertThat(timing.storeCallTimeout).isEqualTo(19.5.seconds)
-        assertThat(timing.storeAttemptTimeout).isEqualTo(6.5.seconds)
+        assertThat(timing.storeAttemptTimeout).isEqualTo(4.875.seconds)
         assertThat(timing.storeCallTimeout).isLessThan(timing.ttl - timing.worstCaseStop)
     }
 

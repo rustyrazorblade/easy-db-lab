@@ -14,10 +14,14 @@ import kotlin.time.Duration
  * - A renewal that fails any other way keeps the version; once the renew deadline has passed since
  *   the last successful send it revokes the gate, and the next successful renewal grants it again.
  * - A standby takes over only once it has seen the same version for the TTL on its own monotonic
- *   clock. It never compares clocks with the holder and never reads the renewal time. A pod that
- *   restarts waits like any standby, even for a lease it wrote itself.
+ *   clock, counted from when the first read that returned that version came back. It never
+ *   compares clocks with the holder and never reads the renewal time. A pod that restarts waits
+ *   like any standby, even for a lease it wrote itself.
  * - On acquiring the lease the node wipes its scratch directories before it opens its gate, so a
- *   compactor never starts on another holding's leftovers.
+ *   compactor never starts on another holding's leftovers. If the wipe or the gate write fails, the
+ *   gate stays closed and the node stands by on the version it wrote; it takes that lease again
+ *   after the TTL and wipes again. It never opens the gate after a failed wipe.
+ * - A lease body that does not parse is never taken over; the node logs it and stands by.
  *
  * The lease is written only with [ConditionalObjects.createIfAbsent] and
  * [ConditionalObjects.replaceIfVersionMatches]. The loop has no thread of its own: [step] does one
@@ -45,10 +49,14 @@ class LeaseLoop(
         /** The lease has not been read yet; the agent is not ready. */
         data object Starting : State
 
-        /** Another pod may hold the lease. [seenSince] is when [version] was first read, on this clock. */
+        /**
+         * Another pod may hold the lease. [seenSince] is when the first read that returned [version]
+         * came back, on this clock. [seenHolder] is the holder that version names, for the log only.
+         */
         data class Standby(
             val version: ObjectVersion?,
             val seenSince: Duration,
+            val seenHolder: String? = null,
         ) : State
 
         /** This node holds the lease at [version]; [sentAt] is the send time of its last successful write. */
@@ -67,60 +75,80 @@ class LeaseLoop(
 
     /**
      * Runs one round: a renewal while holding, otherwise a read of the lease and, when it is
-     * missing or has expired on this clock, an attempt to acquire it. A store failure is logged and
-     * the round ends; it never ends the loop.
+     * missing or has expired on this clock, an attempt to acquire it. A store, gate or scratch
+     * failure is logged with its cause and ends the round; it never ends the loop. A failure that
+     * could leave a compactor running without a valid lease also closes the gate.
      *
      * @return how long to wait before the next round.
      */
     fun step(): Duration =
-        when (val current = state) {
-            is State.Holding -> renew(current)
-            State.Starting, is State.Standby -> watch(current)
+        runCatching {
+            when (val current = state) {
+                is State.Holding -> renew(current)
+                State.Starting, is State.Standby -> watch(current)
+            }
+        }.getOrElse { e ->
+            log.error(e) { "Lease agent $holder failed a round; stopping compactors and standing by" }
+            closeGate()
+            if (state is State.Holding) state = State.Standby(null, clock.monotonic())
+            timing.standbyPoll
         }
 
     private fun renew(holding: State.Holding): Duration {
         val sentAt = clock.monotonic()
         val sentWall = clock.wall()
         val record = holding.record.next(holder, sentWall)
-        val result = runCatching { objects.replaceIfVersionMatches(LeaseRecord.KEY, record.toJson(), holding.version) }
-        result
+        runCatching { objects.replaceIfVersionMatches(LeaseRecord.KEY, record.toJson(), holding.version) }
             .onSuccess { replaced ->
                 when (replaced) {
-                    is ReplaceResult.Replaced -> {
-                        if (!holding.granted) {
-                            log.info {
-                                "Lease renewed again by $holder at sequence ${record.sequence}; compactors may run"
-                            }
-                        }
-                        gate.grant(sentWall.plusMillis(timing.renewDeadline.inWholeMilliseconds))
-                        state = State.Holding(replaced.version, record, sentAt, granted = true)
-                    }
+                    is ReplaceResult.Replaced -> renewed(holding, replaced.version, record, sentAt)
                     ReplaceResult.VersionMismatch -> {
                         log.warn { "Lease lost by $holder: another pod wrote it, or it is gone; stopping compactors and standing by" }
-                        gate.revoke()
+                        closeGate()
                         state = State.Standby(null, sentAt)
                     }
                 }
             }.onFailure { e ->
                 val overdue = sentAt - holding.sentAt >= timing.renewDeadline
-                log.warn { "Lease renewal by $holder failed, ${sentAt - holding.sentAt} since the last renewal: ${e.message}" }
+                log.warn(e) { "Lease renewal by $holder failed, ${sentAt - holding.sentAt} since the last renewal" }
                 if (overdue && holding.granted) {
                     log.warn { "Lease renewal by $holder is past the renew deadline; stopping compactors until a renewal succeeds" }
-                    gate.revoke()
+                    closeGate()
                     state = holding.copy(granted = false)
                 }
             }
         return timing.renewInterval
     }
 
+    /** Moves the gate to a renewal that landed. If the gate write fails, the lease is kept with the gate closed. */
+    private fun renewed(
+        holding: State.Holding,
+        version: ObjectVersion,
+        record: LeaseRecord,
+        sentAt: Duration,
+    ) {
+        val granted =
+            runCatching { gate.grant(record.renewedAt.plusMillis(timing.renewDeadline.inWholeMilliseconds)) }
+                .onFailure { e ->
+                    log.error(e) { "Lease renewed by $holder, but its gate could not be written; stopping compactors until it can" }
+                    closeGate()
+                }.isSuccess
+        if (granted && !holding.granted) {
+            log.info { "Lease renewed again by $holder at sequence ${record.sequence}; compactors may run" }
+        }
+        state = State.Holding(version, record, sentAt, granted)
+    }
+
     private fun watch(current: State): Duration {
-        val now = clock.monotonic()
         val lease =
             runCatching { objects.read(LeaseRecord.KEY) }
                 .getOrElse { e ->
-                    log.warn { "Lease read by $holder failed: ${e.message}" }
+                    log.warn(e) { "Lease read by $holder failed" }
                     return timing.standbyPoll
                 }
+        // Taken after the read returns: the version it saw may have been written while the read was
+        // in flight, and the TTL must not count from before that write.
+        val now = clock.monotonic()
         val standby =
             when (current) {
                 is State.Standby -> current
@@ -132,20 +160,31 @@ class LeaseLoop(
             }
         when {
             lease == null -> create(now)
-            standby.version == lease.version && now - standby.seenSince >= timing.ttl -> takeOver(lease)
+            standby.version == lease.version && now - standby.seenSince >= timing.ttl -> takeOver(lease, now)
             standby.version == lease.version -> Unit
-            else -> {
-                log.info { "Lease agent $holder standing by; lease is ${lease.content}" }
-                state = State.Standby(lease.version, now)
-            }
+            else -> standBy(standby, lease, now)
         }
         return if (isHolder()) timing.renewInterval else timing.standbyPoll
     }
 
+    /** Starts the TTL on a version this node has not seen. Only a new holder is worth an INFO line. */
+    private fun standBy(
+        previous: State.Standby,
+        lease: VersionedObject,
+        now: Duration,
+    ) {
+        val seenHolder = runCatching { LeaseRecord.fromJson(lease.content).holder }.getOrNull()
+        when {
+            previous.version == null || seenHolder != previous.seenHolder ->
+                log.info { "Lease agent $holder standing by; lease is ${lease.content}" }
+            else -> log.debug { "Lease agent $holder saw a renewal; lease is ${lease.content}" }
+        }
+        state = State.Standby(lease.version, now, seenHolder)
+    }
+
     private fun create(now: Duration) {
         val record = LeaseRecord(holder, 0, timing.ttl.inWholeSeconds, clock.wall())
-        val created = runCatching { objects.createIfAbsent(LeaseRecord.KEY, record.toJson()) }
-        created
+        runCatching { objects.createIfAbsent(LeaseRecord.KEY, record.toJson()) }
             .onSuccess { result ->
                 when (result) {
                     is CreateResult.Created -> acquire(result.version, record, now, "created")
@@ -154,27 +193,40 @@ class LeaseLoop(
                         state = State.Standby(null, now)
                     }
                 }
-            }.onFailure { e -> log.warn { "Lease create by $holder failed: ${e.message}" } }
+            }.onFailure { e -> log.warn(e) { "Lease create by $holder failed" } }
     }
 
-    private fun takeOver(expired: VersionedObject) {
+    private fun takeOver(
+        expired: VersionedObject,
+        now: Duration,
+    ) {
+        val previous =
+            runCatching { LeaseRecord.fromJson(expired.content) }
+                .getOrElse { e ->
+                    log.error(e) { "Lease agent $holder cannot parse the lease body, so it will not take it over: ${expired.content}" }
+                    closeGate()
+                    return
+                }
         val sentAt = clock.monotonic()
-        val previous = LeaseRecord.fromJson(expired.content)
         val record = previous.next(holder, clock.wall())
-        val replaced = runCatching { objects.replaceIfVersionMatches(LeaseRecord.KEY, record.toJson(), expired.version) }
-        replaced
+        runCatching { objects.replaceIfVersionMatches(LeaseRecord.KEY, record.toJson(), expired.version) }
             .onSuccess { result ->
                 when (result) {
                     is ReplaceResult.Replaced ->
                         acquire(result.version, record, sentAt, "taken over from ${previous.holder} after ${timing.ttl} unchanged")
                     ReplaceResult.VersionMismatch -> {
                         log.info { "Lease agent $holder lost the takeover race; standing by" }
-                        state = State.Standby(null, sentAt)
+                        state = State.Standby(null, now)
                     }
                 }
-            }.onFailure { e -> log.warn { "Lease takeover by $holder failed: ${e.message}" } }
+            }.onFailure { e -> log.warn(e) { "Lease takeover by $holder failed" } }
     }
 
+    /**
+     * Wipes the scratch, then opens the gate. If either fails, the gate stays closed and the node
+     * stands by on [version], the lease it wrote. No one renews that version, so the node takes it
+     * again after the TTL and wipes again.
+     */
     private fun acquire(
         version: ObjectVersion,
         record: LeaseRecord,
@@ -182,8 +234,22 @@ class LeaseLoop(
         how: String,
     ) {
         log.info { "Lease acquired by $holder at sequence ${record.sequence} ($how); wiping scratch, then starting compactors" }
-        wipeScratch()
-        gate.grant(record.renewedAt.plusMillis(timing.renewDeadline.inWholeMilliseconds))
-        state = State.Holding(version, record, sentAt, granted = true)
+        runCatching {
+            wipeScratch()
+            gate.grant(record.renewedAt.plusMillis(timing.renewDeadline.inWholeMilliseconds))
+        }.onSuccess {
+            state = State.Holding(version, record, sentAt, granted = true)
+        }.onFailure { e ->
+            log.error(
+                e,
+            ) { "Lease agent $holder could not wipe its scratch or open its gate; compactors stay stopped until it acquires again" }
+            closeGate()
+            state = State.Standby(version, clock.monotonic(), holder)
+        }
+    }
+
+    /** Revokes the gate. A revoke that fails is logged; the gate's own expiry still stops the compactors. */
+    private fun closeGate() {
+        runCatching { gate.revoke() }.onFailure { e -> log.error(e) { "Lease agent $holder could not revoke its gate" } }
     }
 }

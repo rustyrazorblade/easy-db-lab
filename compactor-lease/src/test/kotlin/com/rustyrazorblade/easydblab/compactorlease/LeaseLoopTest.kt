@@ -252,6 +252,140 @@ class LeaseLoopTest {
         assertThat(b.clock.elapsed - stoppedAt).isGreaterThanOrEqualTo(timing.ttl)
     }
 
+    @Test
+    fun `a standby counts the TTL from when a slow read returned, not from when it was sent`() {
+        otherHolderWrites(0)
+        val slow = InterleavingObjects(store)
+        val standby = Node("lab-b/pod-1", slow)
+        standby.step()
+        // The next read takes 60 s, and the holder renews while it is in flight.
+        slow.onRead = {
+            slow.onRead = null
+            standby.clock.elapsed += 60.seconds
+            otherHolderWrites(1)
+        }
+        standby.step()
+        val readReturned = standby.clock.elapsed
+
+        standby.runFor(timing.ttl - 1.seconds)
+        assertThat(standby.holds()).describedAs("before a TTL since the read returned").isFalse()
+        assertThat(lease()?.holder).isEqualTo("other/pod")
+
+        standby.runFor(timing.standbyPoll)
+        assertThat(standby.holds()).isTrue()
+        assertThat(standby.clock.elapsed - readReturned).isGreaterThanOrEqualTo(timing.ttl)
+    }
+
+    @Test
+    fun `a node that finds no lease but loses the create to another pod neither wipes nor opens its gate`() {
+        val racing = InterleavingObjects(store)
+        racing.beforeWrite = { otherHolderWrites(0) }
+        val node = Node("lab-a/pod-1", racing)
+
+        node.step()
+
+        assertThat(node.holds()).isFalse()
+        assertThat(node.gate.events).doesNotContain("wipe").noneMatch { it.startsWith("grant") }
+        assertThat(lease()?.holder).isEqualTo("other/pod")
+    }
+
+    @Test
+    fun `a standby whose takeover loses to another pod neither wipes nor opens its gate`() {
+        otherHolderWrites(0)
+        val racing = InterleavingObjects(store)
+        val standby = Node("lab-b/pod-1", racing)
+        standby.step()
+        racing.beforeWrite = {
+            racing.beforeWrite = null
+            otherHolderWrites(1)
+        }
+
+        standby.runFor(timing.ttl + timing.standbyPoll)
+
+        assertThat(racing.writes).describedAs("the takeover was attempted").isEqualTo(1)
+        assertThat(standby.holds()).isFalse()
+        assertThat(standby.gate.events).doesNotContain("wipe").noneMatch { it.startsWith("grant") }
+        assertThat(lease()?.holder).isEqualTo("other/pod")
+        assertThat(lease()?.sequence).isEqualTo(1)
+    }
+
+    @Test
+    fun `a lease body that does not parse keeps the node standing by with its gate closed`() {
+        store.createIfAbsent(LeaseRecord.KEY, "not a lease")
+        val node = Node("lab-b/pod-1")
+
+        node.runFor(timing.ttl * 3)
+
+        assertThat(node.holds()).isFalse()
+        assertThat(node.gate.events).doesNotContain("wipe").noneMatch { it.startsWith("grant") }
+        assertThat(node.gate.events.last()).isEqualTo("revoke")
+        assertThat(store.read(LeaseRecord.KEY)?.content).isEqualTo("not a lease")
+    }
+
+    @Test
+    fun `a node whose scratch wipe fails never opens its gate, and acquires again once the wipe works`() {
+        var wipeFails = true
+        val gate = RecordingGate()
+        val clock = FakeClock(start)
+        val loop =
+            LeaseLoop(store, "lab-a/pod-1", timing, clock, gate) {
+                gate.events += "wipe"
+                if (wipeFails) error("disk full")
+            }
+
+        loop.step()
+
+        assertThat(gate.events).containsExactly("ready", "wipe", "revoke")
+        assertThat(loop.isHolder()).isFalse()
+
+        wipeFails = false
+        var wait = timing.standbyPoll
+        while (!loop.isHolder() && clock.elapsed < timing.ttl * 3) {
+            clock.elapsed += wait
+            wait = loop.step()
+        }
+        assertThat(loop.isHolder()).isTrue()
+        assertThat(gate.events.takeLast(2)).containsExactly("wipe", "grant ${clock.wall().plusSeconds(60)}")
+        assertThat(clock.elapsed).describedAs("it waits a TTL on the version it wrote").isGreaterThanOrEqualTo(timing.ttl)
+    }
+
+    /**
+     * Runs [onRead] inside a read, before it answers, and [beforeWrite] before each conditional
+     * write reaches the store, so a test can put another pod's write between the loop's read and its
+     * write, or inside a slow read.
+     */
+    private class InterleavingObjects(
+        private val delegate: ConditionalObjects,
+    ) : ConditionalObjects {
+        var onRead: (() -> Unit)? = null
+        var beforeWrite: (() -> Unit)? = null
+        var writes = 0
+
+        override fun read(key: String): VersionedObject? {
+            onRead?.invoke()
+            return delegate.read(key)
+        }
+
+        override fun createIfAbsent(
+            key: String,
+            content: String,
+        ): CreateResult {
+            beforeWrite?.invoke()
+            writes++
+            return delegate.createIfAbsent(key, content)
+        }
+
+        override fun replaceIfVersionMatches(
+            key: String,
+            content: String,
+            expected: ObjectVersion,
+        ): ReplaceResult {
+            beforeWrite?.invoke()
+            writes++
+            return delegate.replaceIfVersionMatches(key, content, expected)
+        }
+    }
+
     /** A store that throws while [failing], as S3 does when it cannot be reached. */
     private class FlakyObjects(
         private val delegate: ConditionalObjects,

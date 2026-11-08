@@ -1,12 +1,34 @@
 package com.rustyrazorblade.easydblab.compactorlease
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
 import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3Client
+import kotlin.time.toJavaDuration
 
 /** The logback configuration the agent jar logs with; the CLI never loads it. */
 private const val LOGBACK_CONFIG = "compactor-lease-logback.xml"
+
+/**
+ * The agent's S3 client for [config]'s bucket. Every call, retries included, ends within
+ * [LeaseTiming.storeCallTimeout], so a slow read cannot return a version old enough to let a
+ * standby take over while the holder may still compact.
+ */
+internal fun leaseS3Client(
+    config: LeaseAgentConfig,
+    credentials: AwsCredentialsProvider,
+): S3Client =
+    S3Client
+        .builder()
+        .region(Region.of(config.region))
+        .credentialsProvider(credentials)
+        .overrideConfiguration {
+            it
+                .apiCallTimeout(config.timing.storeCallTimeout.toJavaDuration())
+                .apiCallAttemptTimeout(config.timing.storeAttemptTimeout.toJavaDuration())
+        }.apply { config.endpoint?.let { endpointOverride(it).forcePathStyle(true) } }
+        .build()
 
 /**
  * Runs the lease agent in the `lease` container of the `account-compactor` pod until the pod stops.
@@ -25,12 +47,7 @@ fun main() {
         "Lease agent ${config.holder} starting on s3://${config.bucket}/${LeaseRecord.KEY} in ${config.region}; " +
             "TTL ${config.timing.ttl}, worst-case stop ${config.timing.worstCaseStop}"
     }
-    S3Client
-        .builder()
-        .region(Region.of(config.region))
-        .credentialsProvider(DefaultCredentialsProvider.builder().build())
-        .apply { config.endpoint?.let { endpointOverride(it).forcePathStyle(true) } }
-        .build()
+    leaseS3Client(config, DefaultCredentialsProvider.builder().build())
         .use { s3 ->
             val gate = GateFile(config.leaseDir)
             // A restarted container must not run on a grant, or report a readiness, from before it stopped.

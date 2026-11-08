@@ -34,6 +34,17 @@ data class LeaseTiming(
     /** The latest a holder's compactors stop after the send of its last successful renewal. */
     val worstCaseStop: Duration get() = renewDeadline + gatePoll + gateGrace
 
+    /**
+     * The longest one store call may take, retries included: half the margin between [worstCaseStop]
+     * and [ttl]. A standby counts the TTL from when a read returns, so a read that answers with a
+     * version written while the read was in flight is safe only while the read takes less than that
+     * margin. The other half covers the pause between the read returning and the clock being read.
+     */
+    val storeCallTimeout: Duration get() = (ttl - worstCaseStop) / 2
+
+    /** The longest one attempt of a store call may take, so all [STORE_ATTEMPTS] fit [storeCallTimeout]. */
+    val storeAttemptTimeout: Duration get() = storeCallTimeout / STORE_ATTEMPTS
+
     init {
         listOf(ttl, renewInterval, renewDeadline, standbyPoll, gatePoll, gateGrace).forEach {
             require(it.isPositive()) { "Every lease timing must be positive: $this" }
@@ -49,6 +60,12 @@ data class LeaseTiming(
     }
 
     companion object {
+        /**
+         * How many attempts of a read fit in [storeCallTimeout]. The call timeout is the bound that
+         * matters: it ends a call whatever its retry strategy does.
+         */
+        const val STORE_ATTEMPTS = 3
+
         const val TTL_ENV = "LEASE_TTL_SECONDS"
         const val RENEW_INTERVAL_ENV = "LEASE_RENEW_INTERVAL_SECONDS"
         const val RENEW_DEADLINE_ENV = "LEASE_RENEW_DEADLINE_SECONDS"

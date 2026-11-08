@@ -32,6 +32,22 @@ class LeaseTimingTest {
     }
 
     @Test
+    fun `a store call, retries and all, ends well inside the margin between the worst-case stop and the TTL`() {
+        val timing = timing()
+
+        assertThat(timing.storeCallTimeout).isEqualTo(19.5.seconds)
+        assertThat(timing.storeAttemptTimeout).isEqualTo(6.5.seconds)
+        assertThat(timing.storeCallTimeout).isLessThan(timing.ttl - timing.worstCaseStop)
+    }
+
+    @Test
+    fun `a short timing gets a store call timeout inside its own margin`() {
+        val timing = timing(ttl = 15, renewDeadline = 4, gatePoll = 1, gateGrace = 3, renewInterval = 2, standbyPoll = 2)
+
+        assertThat(timing.storeCallTimeout).isEqualTo(3.5.seconds)
+    }
+
+    @Test
     fun `a timing whose worst-case stop equals the TTL is refused`() {
         assertThatThrownBy { timing(ttl = 81) }
             .isInstanceOf(IllegalArgumentException::class.java)

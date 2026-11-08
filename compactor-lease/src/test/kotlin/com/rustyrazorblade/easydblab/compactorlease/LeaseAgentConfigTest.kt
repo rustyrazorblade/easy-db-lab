@@ -3,8 +3,11 @@ package com.rustyrazorblade.easydblab.compactorlease
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
+import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider
 import java.net.URI
 import java.nio.file.Path
+import kotlin.time.toJavaDuration
 
 /** The agent's configuration, as the pod's environment gives it. */
 class LeaseAgentConfigTest {
@@ -23,6 +26,17 @@ class LeaseAgentConfigTest {
             "LEASE_GATE_POLL_SECONDS" to "1",
             "LEASE_GATE_GRACE_SECONDS" to "20",
         )
+
+    @Test
+    fun `the agent's S3 client gives up on a call before a stale read could let a standby take over early`() {
+        val config = LeaseAgentConfig.fromEnvironment(env)
+
+        leaseS3Client(config, StaticCredentialsProvider.create(AwsBasicCredentials.create("id", "secret"))).use { s3 ->
+            val override = s3.serviceClientConfiguration().overrideConfiguration()
+            assertThat(override.apiCallTimeout()).contains(config.timing.storeCallTimeout.toJavaDuration())
+            assertThat(override.apiCallAttemptTimeout()).contains(config.timing.storeAttemptTimeout.toJavaDuration())
+        }
+    }
 
     @Test
     fun `the holder is the cluster label and the pod name`() {

@@ -64,7 +64,8 @@ interface ObservabilityStackService {
 
 /**
  * Default implementation that applies the stack over the K8s API and configures on-node
- * directories over SSH.
+ * directories over SSH. Every deploy also deploys the account compactor ([CompactorStage]), in
+ * both modes.
  */
 @Suppress("LongParameterList")
 class DefaultObservabilityStackService(
@@ -89,6 +90,7 @@ class DefaultObservabilityStackService(
     private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
     private val configChangeReport: ConfigChangeReport,
     private val installContextFactory: DashboardInstallContextFactory,
+    private val compactorStage: CompactorStage,
 ) : ObservabilityStackService {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
@@ -121,8 +123,12 @@ class DefaultObservabilityStackService(
                 )
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
-            // dashboard upload hang off those, so they are guarded the same way.
-            val stages = buildStages(telemetryRedirect)
+            // dashboard upload hang off those, so they are guarded the same way. The account
+            // compactor runs on every cluster: its control-node preparation (scratch directories, the
+            // lease agent jar at its SHA-256 path) comes first, because its Deployment names that path.
+            val compactor =
+                Stage("Account compactor", compactorStage.prepare(controlNode, ObservabilityStore.from(clusterState).bucket))
+            val stages = buildStages(telemetryRedirect) + compactor
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
             // not, so prepare them only in local mode.

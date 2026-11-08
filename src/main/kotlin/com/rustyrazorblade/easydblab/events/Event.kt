@@ -2561,6 +2561,24 @@ sealed interface Event {
             override fun toDisplayString(): String = "Preparing Loki data directory..."
         }
 
+        /**
+         * The account compactor's scratch directories and lease agent jar were prepared on the
+         * control node. [uploaded] is false when the jar at [agentPath] was already there.
+         */
+        @Serializable
+        @SerialName("Grafana.CompactorAgentPrepared")
+        data class CompactorAgentPrepared(
+            val agentPath: String,
+            val uploaded: Boolean,
+        ) : Grafana {
+            override fun toDisplayString(): String =
+                if (uploaded) {
+                    "Prepared the account compactor: uploaded its lease agent to $agentPath"
+                } else {
+                    "Prepared the account compactor: lease agent $agentPath already present"
+                }
+        }
+
         @Serializable
         @SerialName("Grafana.GrafanaDirectoryPreparing")
         data object GrafanaDirectoryPreparing : Grafana {

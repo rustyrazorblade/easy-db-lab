@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermission
 import java.time.Instant
 
 /** The files the gate script and the lease container's readiness probe read. */
@@ -20,6 +21,25 @@ class GateFileTest {
 
         assertThat(Files.readString(dir.resolve(GateFile.VALID_UNTIL))).isEqualTo("1794074460\n")
         assertThat(Files.list(dir).use { files -> files.map { it.fileName.toString() }.toList() }).containsExactly(GateFile.VALID_UNTIL)
+    }
+
+    @Test
+    fun `the valid-until file is readable by every user, since the Loki and Tempo gates run as 10001`() {
+        gate.grant(Instant.ofEpochSecond(100))
+
+        assertThat(Files.getPosixFilePermissions(dir.resolve(GateFile.VALID_UNTIL)))
+            .contains(PosixFilePermission.GROUP_READ, PosixFilePermission.OTHERS_READ)
+    }
+
+    @Test
+    fun `a reset removes the grant and the readiness a restarted container left behind`() {
+        gate.grant(Instant.ofEpochSecond(100))
+        gate.ready()
+
+        gate.reset()
+
+        assertThat(dir.resolve(GateFile.VALID_UNTIL)).doesNotExist()
+        assertThat(dir.resolve(GateFile.READY)).doesNotExist()
     }
 
     @Test

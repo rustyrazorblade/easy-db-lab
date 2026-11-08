@@ -280,6 +280,21 @@ object Constants {
             "msg=\"error calling scheduler\" err=\"rpc error: code = NotFound desc = no jobs found\""
 
         /**
+         * The static busybox the init container copies into the pod, to run the gate in the
+         * distroless compactor images. It must be statically linked: musl, not the glibc build.
+         */
+        const val GATE_IMAGE = "busybox:1.37.0-musl"
+
+        /** The stock multi-arch JRE image the lease container runs the agent jar with. */
+        const val AGENT_IMAGE = "eclipse-temurin:21-jre"
+
+        /** The compactor's directory on the control node's data mount: its scratch and the agent jar. */
+        const val HOST_ROOT = "/mnt/db1/compactor"
+
+        /** The agent jar in the distribution's `agents` directory, and in the image's `/agents`. */
+        const val AGENT_JAR = "compactor-lease.jar"
+
+        /**
          * The store lease's timing. A holder stops its compactors at most
          * `RENEW_DEADLINE + GATE_POLL + GATE_GRACE` (81 s) after the send of its last successful
          * renewal, and a standby takes over only after seeing one version for `TTL` (120 s) on its

@@ -3,6 +3,7 @@ package com.rustyrazorblade.easydblab.compactorlease
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.PosixFilePermissions
 import java.time.Instant
 
 /**
@@ -23,16 +24,29 @@ class GateFile(
 
         /** The file the lease container's readiness probe checks. */
         const val READY = "ready"
+
+        private val WORLD_READABLE = PosixFilePermissions.fromString("rw-r--r--")
     }
 
     override fun grant(validUntil: Instant) {
+        // A temporary file is created owner-only; the Loki and Tempo gates run as another user.
         val temporary = Files.createTempFile(dir, ".$VALID_UNTIL", ".tmp")
         Files.writeString(temporary, "${validUntil.epochSecond}\n")
+        Files.setPosixFilePermissions(temporary, WORLD_READABLE)
         Files.move(temporary, dir.resolve(VALID_UNTIL), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
     }
 
     override fun revoke() {
         Files.deleteIfExists(dir.resolve(VALID_UNTIL))
+    }
+
+    /**
+     * Removes what a previous run of the container left: a grant it no longer renews, and a
+     * readiness this run has not earned yet.
+     */
+    fun reset() {
+        revoke()
+        Files.deleteIfExists(dir.resolve(READY))
     }
 
     override fun ready() {

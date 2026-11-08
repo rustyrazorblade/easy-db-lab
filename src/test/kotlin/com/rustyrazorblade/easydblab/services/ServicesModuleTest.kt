@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.services
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.junit.jupiter.api.Test
@@ -10,6 +12,7 @@ import org.koin.dsl.koinApplication
 import org.koin.dsl.module
 import org.mockito.kotlin.mock
 import software.amazon.awssdk.services.ecr.EcrClient
+import software.amazon.awssdk.services.s3.S3Client
 
 /**
  * Verifies the Koin wiring declared in [servicesModule] can actually construct services whose
@@ -37,6 +40,31 @@ class ServicesModuleTest {
             single<User> { mock() }
             single<EcrClient> { mock() }
         }
+
+    /**
+     * [CompactorStage] takes two functions, which Koin cannot resolve by type, so its registration
+     * must be an explicit lambda. Resolving it builds no AWS call and reads no jar: both functions
+     * are called only by a deploy.
+     */
+    @Test
+    fun `servicesModule resolves the account compactor stage`() {
+        val app =
+            koinApplication {
+                modules(
+                    servicesModule,
+                    leafDependenciesModule,
+                    module {
+                        single<RemoteOperationsService> { mock() }
+                        single { BucketRegion(mock<S3Client>()) }
+                    },
+                )
+            }
+        try {
+            assertThatCode { app.koin.get<CompactorStage>() }.doesNotThrowAnyException()
+        } finally {
+            app.close()
+        }
+    }
 
     @Test
     fun `servicesModule resolves StressJobService without NoDefinitionFoundException`() {

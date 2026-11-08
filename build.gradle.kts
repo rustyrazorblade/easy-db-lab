@@ -414,6 +414,14 @@ tasks.named<Test>("test") {
     )
 }
 
+// The account compactor's integration test runs the real lease agent jar in containers.
+tasks.named<Test>("integrationTest") {
+    dependsOn(copyCompactorLeaseAgent)
+    val leaseJar = layout.buildDirectory.file("compactor-lease-agent/compactor-lease.jar")
+    inputs.file(leaseJar).withPropertyName("compactorLeaseJar").withPathSensitivity(PathSensitivity.NONE)
+    systemProperty("easydblab.test.compactorLeaseJar", leaseJar.get().asFile.absolutePath)
+}
+
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).
 tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))

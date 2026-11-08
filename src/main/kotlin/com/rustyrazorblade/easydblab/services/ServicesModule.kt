@@ -6,6 +6,9 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentInstaller
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorAgentJarFile
+import com.rustyrazorblade.easydblab.configuration.compactor.CompactorManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
@@ -34,6 +37,7 @@ import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.BucketRegion
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
@@ -110,6 +114,14 @@ val servicesModule =
         factoryOf(::LokiManifestBuilder)
         factoryOf(::YaceManifestBuilder)
         factoryOf(::KubeStateMetricsManifestBuilder)
+        factoryOf(::CompactorManifestBuilder)
+        factoryOf(::CompactorAgentInstaller)
+        // The account compactor stage of every observability deploy: the jar this CLI shipped with, and
+        // the account bucket's region, which the compactors sign for.
+        factory {
+            val bucketRegion = get<BucketRegion>()
+            CompactorStage(get(), get(), bucketRegion::of, CompactorAgentJarFile::installed)
+        }
         factoryOf(::DefaultGrafanaDeployService) bind GrafanaDeployService::class
         factoryOf(::DefaultGrafanaClient) bind GrafanaClient::class
         factory { DashboardInstallContextFactory(get()) }

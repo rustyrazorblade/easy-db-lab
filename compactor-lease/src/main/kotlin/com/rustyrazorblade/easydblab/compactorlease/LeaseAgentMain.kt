@@ -33,8 +33,8 @@ fun main() {
         .build()
         .use { s3 ->
             val gate = GateFile(config.leaseDir)
-            // A restarted container must not run on a grant written before it stopped.
-            gate.revoke()
+            // A restarted container must not run on a grant, or report a readiness, from before it stopped.
+            gate.reset()
             val loop =
                 LeaseLoop(
                     objects = S3ConditionalObjects(s3, config.bucket),

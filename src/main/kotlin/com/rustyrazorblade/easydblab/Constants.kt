@@ -278,6 +278,25 @@ object Constants {
         /** What the idle Tempo backend worker logs on every poll that finds no job: its normal state. */
         const val TEMPO_WORKER_IDLE_LOG =
             "msg=\"error calling scheduler\" err=\"rpc error: code = NotFound desc = no jobs found\""
+
+        /**
+         * The store lease's timing. A holder stops its compactors at most
+         * `RENEW_DEADLINE + GATE_POLL + GATE_GRACE` (81 s) after the send of its last successful
+         * renewal, and a standby takes over only after seeing one version for `TTL` (120 s) on its
+         * own clock, so the two never compact at once. `LeaseTiming` refuses values that break this.
+         * They reach the agent and the gate as environment variables.
+         */
+        object Lease {
+            const val TTL_SECONDS = 120L
+            const val RENEW_INTERVAL_SECONDS = 15L
+            const val RENEW_DEADLINE_SECONDS = 60L
+            const val STANDBY_POLL_SECONDS = 15L
+            const val GATE_POLL_SECONDS = 1L
+            const val GATE_GRACE_SECONDS = 20L
+
+            /** The pod's termination grace: longer than the gate poll plus the gate grace. */
+            const val TERMINATION_GRACE_SECONDS = 60L
+        }
     }
 
     // S3 configuration
@@ -325,6 +344,12 @@ object Constants {
 
         /** Root of the test documents: `reports/<tenant>/<name>-<id>/`, one folder per test. */
         const val REPORTS_ROOT = "reports"
+
+        /**
+         * Root of the store leases, outside every backend's root: under `mimir/`, Mimir would read a
+         * lease as a tenant. The account compactor's lease is `leases/compactor.json`.
+         */
+        const val LEASES_ROOT = "leases"
 
         /** The tenant of a cluster that was initialized without `--tenant`. */
         const val DEFAULT_TENANT = "default"

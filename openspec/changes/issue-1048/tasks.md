@@ -9,12 +9,12 @@
 
 ## 2. The lease
 
-- [ ] 2.1 Add `Constants.Compactor.Lease` (TTL, renew interval, renew deadline, standby poll, gate poll, gate grace, termination grace) and `Constants.Observability.LEASES_ROOT`
-- [ ] 2.2 Test and implement `LeaseTiming`, refusing a timing where renew deadline plus gate poll plus gate grace is not less than the TTL
-- [ ] 2.3 Test and implement `LeaseRecord` (kotlinx.serialization) with holder, sequence, TTL and renewal time
-- [ ] 2.4 Test `LeaseLoop` with the in-memory store and a fake monotonic clock: create when absent, renew with a rising sequence, stand by while the version changes, take over only after the TTL on the standby's own clock, revoke on `VersionMismatch` or a missing lease, never take back its own lease after a restart
-- [ ] 2.5 Implement `LeaseLoop`, `GateFile` (write and rename, revoke) and the scratch wipe on acquire
-- [ ] 2.6 Implement `LeaseAgentMain` (environment, default credentials chain, bucket region, stdout logging of every transition, a readiness file after the first lease read)
+- [x] 2.1 Add `Constants.Compactor.Lease` (TTL, renew interval, renew deadline, standby poll, gate poll, gate grace, termination grace) and `Constants.Observability.LEASES_ROOT`
+- [x] 2.2 Test and implement `LeaseTiming`, refusing a timing where renew deadline plus gate poll plus gate grace is not less than the TTL
+- [x] 2.3 Test and implement `LeaseRecord` (kotlinx.serialization) with holder, sequence, TTL and renewal time
+- [x] 2.4 Test `LeaseLoop` with the in-memory store and a fake monotonic clock: create when absent, renew with a rising sequence, stand by while the version changes, take over only after the TTL on the standby's own clock, revoke on `VersionMismatch` or a missing lease, never take back its own lease after a restart
+- [x] 2.5 Implement `LeaseLoop`, `GateFile` (write and rename, revoke) and the scratch wipe on acquire
+- [x] 2.6 Implement `LeaseAgentMain` (environment, default credentials chain, bucket region, stdout logging of every transition, a readiness file after the first lease read)
 
 ## 3. The gate script
 

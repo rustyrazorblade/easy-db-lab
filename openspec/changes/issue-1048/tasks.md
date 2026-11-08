@@ -51,9 +51,9 @@
 
 ## 8. Docs and agent docs
 
-- [ ] 8.1 Rewrite `docs/user-guide/compactor.md`; update `docs/SUMMARY.md`, the Mimir, Loki and monitoring pages, `docs/getting-started/setup.md` (policy list), `docs/reference/commands.md` and `docs/reference/pyroscope-configuration.md`
-- [ ] 8.2 Update `bin/set-policies` and `bin/set-policies.test.sh` for four policies
-- [ ] 8.3 Update the `services/aws`, `configuration`, `commands`, `events` and `providers` CLAUDE.md files, and the `observability-stack` skill
+- [x] 8.1 Rewrite `docs/user-guide/compactor.md`; update `docs/SUMMARY.md`, the Mimir, Loki and monitoring pages, `docs/getting-started/setup.md` (policy list), `docs/reference/commands.md` and `docs/reference/pyroscope-configuration.md`
+- [x] 8.2 Update `bin/set-policies` and `bin/set-policies.test.sh` for four policies
+- [x] 8.3 Update the `services/aws`, `configuration`, `commands`, `events` and `providers` CLAUDE.md files, and the `observability-stack` skill
 
 ## 9. Verification
 

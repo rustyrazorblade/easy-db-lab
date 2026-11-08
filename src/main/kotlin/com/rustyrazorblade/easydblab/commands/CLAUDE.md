@@ -72,7 +72,7 @@ commands/
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
 ├── logs/                  # logs query — reads the cluster's logs from Loki
 ├── metrics/               # metrics stream — publishes chosen metrics from Mimir to Redis every 5s until stopped (@RequireProfileSetup, @RequiresProxy; the work is services/metrics/MetricsStreamService); metrics list — prints the 14 accepted names with println
-├── observability/         # observability compactor start|stop|status — the account compactor; no cluster workspace needed (bucket from the profile), status is read-only println
+├── observability/         # observability compactor status — prints the account compactor's lease; no cluster workspace needed (bucket from the profile), read-only println
 ├── opensearch/            # OpenSearch commands
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
 ├── profile/               # Profile inspection and setup (profile show, profile setup)
@@ -239,9 +239,9 @@ Commands should delegate to these services:
 | `MimirQueryService` | PromQL instant queries against Mimir |
 | `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
 | `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |
-| `AccountBucketSetup` | The bucket step of `up` (`services.aws`): account and data buckets, the instance role's inline policies (`S3Access` + `SessionManagerInstance`, via `AWSResourceSetupService` and `InstanceRolePolicies`) and the bucket policy, then `CompactorService.ensureRunning` |
+| `AccountBucketSetup` | The bucket step of `up` (`services.aws`): account and data buckets, the instance role's inline policies (`S3Access` + `SessionManagerInstance`, via `AWSResourceSetupService` and `InstanceRolePolicies`) and the bucket policy |
 | `ProvisioningPreflight` | The checks `up` runs before provisioning: a control node, a well-formed telemetry redirect, a connected local Tailscale client on a Tailscale cluster, and the AWS CLI plus Session Manager plugin (`LocalSsmTooling`) when the profile's SSH transport is `ssm` |
-| `CompactorService` | The account compactor (`services.aws`): `ensureRunning` on `up`, `stopIfLastCluster` after a successful `down`, `stop` and `status` for `observability compactor` |
+| `CompactorLeaseReader` | The account compactor's lease (`services.aws`), for `observability compactor status`: holder, sequence, renewal time and age, read in the bucket's region |
 | `TeardownBackupService` | The pre-teardown save `down` runs once, never retried (`TeardownFlushService`: Phase A mirror and collector stop, Phase B flushes, Tempo drain, profiles report and annotations backup in parallel; each flush only flushes and waits, no verify checks); records logs and metrics in `ClusterState.tailFlush` the moment each succeeds, through one writer, and a save of every signal as complete (`saveCompletedAt`), which a re-run of `down` skips whole; `unsavedSignals(state)` is what `down --force` lists before the prompt |
 | `TailscaleService` | Tailscale VPN setup on cluster nodes |
 | `RegistryService` | Container registry management |

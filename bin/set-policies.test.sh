@@ -2,7 +2,7 @@
 #
 # Unit tests for bin/set-policies.
 #
-# The script creates the five easy-db-lab managed policies and attaches them to one IAM user,
+# The script creates the four easy-db-lab managed policies and attaches them to one IAM user,
 # group or role. It must report an attachment only when the policy is attached: a failed attach
 # shows the AWS error and fails the run, and the closing success line is printed only after every
 # policy is confirmed attached to the target.
@@ -21,7 +21,7 @@ SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/set-policies"
 TARGET_ACCOUNT="123456789012"
 OTHER_ACCOUNT="999988887777"
 ACCOUNT_PREFIX="arn:aws:iam::${TARGET_ACCOUNT}:policy"
-ALL_POLICIES="EasyDBLabEC2 EasyDBLabIAM EasyDBLabEMR EasyDBLabOpenSearch EasyDBLabCompactor"
+ALL_POLICIES="EasyDBLabEC2 EasyDBLabIAM EasyDBLabEMR EasyDBLabOpenSearch"
 
 tests_run=0
 tests_failed=0
@@ -154,6 +154,12 @@ test_one_target_creates_and_attaches_every_policy() {
     grep -Fqx "${ACCOUNT_PREFIX}/${name}" "${WORK}/iam/attached" \
       || fail "one target: ${name} was not attached"
   done
+  [ "$(wc -l < "${WORK}/iam/attached" | tr -d ' ')" = 4 ] \
+    || fail "one target: expected exactly the four policies attached, got: $(cat "${WORK}/iam/attached")"
+  # The compactor runs in the cluster with the instance role: there is no compactor policy to apply.
+  if grep -Fq "EasyDBLabCompactor" "${WORK}/out.txt" "${WORK}/aws.log"; then
+    fail "one target: the removed EasyDBLabCompactor policy was named, got: $(out)"
+  fi
   grep -Fq "All managed policies created and attached successfully" "${WORK}/out.txt" \
     || fail "one target: expected the success line, got: $(out)"
 }
@@ -234,7 +240,7 @@ test_several_json_documents_are_not_one_policy() {
 test_a_policy_for_another_account_fails_before_any_change() {
   tests_run=$((tests_run + 1))
   setup
-  policy_naming "${OTHER_ACCOUNT}" > "${WORK}/sip/compactor"
+  policy_naming "${OTHER_ACCOUNT}" > "${WORK}/sip/opensearch"
   if run_script --user-name alice --profile lab; then
     fail "other account: script exited zero: $(out)"
     return
@@ -300,7 +306,7 @@ test_a_policy_missing_after_the_attach_step_fails_the_run() {
     return
   fi
 
-  grep -i "not attached" "${WORK}/out.txt" | grep -Fq "EasyDBLabCompactor" \
+  grep -i "not attached" "${WORK}/out.txt" | grep -Fq "EasyDBLabOpenSearch" \
     || fail "missing after attach: expected the missing policies to be named, got: $(out)"
   if grep -Fq "attached successfully" "${WORK}/out.txt"; then
     fail "missing after attach: must not print the success line, got: $(out)"

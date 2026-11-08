@@ -134,7 +134,7 @@ If you need to request permissions from your AWS administrator, use the `show-ia
 easy-db-lab show-iam-policies
 ```
 
-This displays five policies:
+This displays four policies:
 
 | Policy | Purpose |
 |--------|---------|
@@ -142,7 +142,6 @@ This displays five policies:
 | IAM | Create instance roles and profiles |
 | EMR | Create Spark clusters (optional) |
 | OpenSearch | Create OpenSearch domains (optional) |
-| Compactor | Run the [account compactor](../user-guide/compactor.md) on ECS Fargate: ECS, its log group, and passing its two roles |
 
 ### Filter by Policy Name
 
@@ -153,12 +152,11 @@ easy-db-lab show-iam-policies ec2    # Show EC2 policy only
 easy-db-lab show-iam-policies iam    # Show IAM policy only
 easy-db-lab show-iam-policies emr    # Show EMR policy only
 easy-db-lab show-iam-policies opensearch    # Show the OpenSearch policy only
-easy-db-lab show-iam-policies compactor    # Show the compactor policy only
 ```
 
 ### Applying the Policies
 
-Create each policy as a customer-managed policy, and attach all five to one IAM user, group, or role. The policy names are `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR`, `EasyDBLabOpenSearch` and `EasyDBLabCompactor`. Run these steps with an AWS profile that can manage IAM.
+Create each policy as a customer-managed policy, and attach all four to one IAM user, group, or role. The policy names are `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR` and `EasyDBLabOpenSearch`. Run these steps with an AWS profile that can manage IAM.
 
 ```admonish warning
 Inline policies have a 5,120 byte limit which may not fit all the policies. Use managed policies instead.
@@ -170,7 +168,7 @@ Inline policies have a 5,120 byte limit which may not fit all the policies. Use 
 
 #### With `bin/set-policies`
 
-If you have a source checkout, use `bin/set-policies`. Run `./gradlew installDist` first, because the script calls `bin/easy-db-lab`. The script creates the five managed policies and attaches them to the target you name:
+If you have a source checkout, use `bin/set-policies`. Run `./gradlew installDist` first, because the script calls `bin/easy-db-lab`. The script creates the four managed policies and attaches them to the target you name:
 
 ```bash
 bin/set-policies --user-name easy-db-lab --profile <admin-profile>
@@ -184,7 +182,7 @@ bin/set-policies --user-name easy-db-lab --profile <admin-profile>
 | `--profile <profile>` | `ECL_PROFILE` or `AWS_PROFILE` | AWS CLI profile to run the IAM calls with |
 | `--dry-run` | `ECL_DRY_RUN=true` | Show the AWS CLI calls without making them |
 
-Give exactly one of `--user-name`, `--group-name` and `--role-name`. Before it changes anything, the script fetches all five policies and checks that each one is valid JSON and names only the account of `--profile`. If a check fails, the script stops and changes nothing. The script stops with an error if an attach fails. At the end, it checks that all five policies are attached to the target.
+Give exactly one of `--user-name`, `--group-name` and `--role-name`. Before it changes anything, the script fetches all four policies and checks that each one is valid JSON and names only the account of `--profile`. If a check fails, the script stops and changes nothing. The script stops with an error if an attach fails. At the end, it checks that all four policies are attached to the target.
 
 You can run the script again at any time. If a policy already exists, the script creates a new default version of it from the current output of `show-iam-policies`. This updates the policies after you upgrade easy-db-lab.
 
@@ -200,7 +198,7 @@ aws iam attach-user-policy --user-name easy-db-lab \
   --policy-arn arn:aws:iam::<account-id>:policy/EasyDBLabEC2 --profile <admin-profile>
 ```
 
-Repeat these commands for `iam` (`EasyDBLabIAM`), `emr` (`EasyDBLabEMR`), `opensearch` (`EasyDBLabOpenSearch`) and `compactor` (`EasyDBLabCompactor`). To attach the policies to a group, use `aws iam attach-group-policy --group-name <group>` instead of `attach-user-policy`.
+Repeat these commands for `iam` (`EasyDBLabIAM`), `emr` (`EasyDBLabEMR`) and `opensearch` (`EasyDBLabOpenSearch`). To attach the policies to a group, use `aws iam attach-group-policy --group-name <group>` instead of `attach-user-policy`.
 
 If a policy already exists, `create-policy` fails. To update it, create a new default version:
 
@@ -224,9 +222,9 @@ You can run easy-db-lab as a dedicated IAM user with access keys. Run these step
     aws iam create-user --user-name easy-db-lab --profile <admin-profile>
     ```
 
-2. Create and attach the five policies. Use `bin/set-policies --user-name easy-db-lab --profile <admin-profile>`, or do the [steps without a source checkout](#without-a-source-checkout).
+2. Create and attach the four policies. Use `bin/set-policies --user-name easy-db-lab --profile <admin-profile>`, or do the [steps without a source checkout](#without-a-source-checkout).
 
-3. Make sure that all five policies are attached. The output must list `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR`, `EasyDBLabOpenSearch` and `EasyDBLabCompactor`.
+3. Make sure that all four policies are attached. The output must list `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR` and `EasyDBLabOpenSearch`.
 
     ```bash
     aws iam list-attached-user-policies --user-name easy-db-lab --profile <admin-profile>

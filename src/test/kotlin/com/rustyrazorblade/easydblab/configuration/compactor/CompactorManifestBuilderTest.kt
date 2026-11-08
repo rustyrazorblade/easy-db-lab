@@ -24,7 +24,7 @@ import org.mockito.kotlin.whenever
 /**
  * The `account-compactor` Deployment and its configuration.
  *
- * It locks the compactor's retention and deletion settings, ported from the Fargate task definition:
+ * It locks the compactor's retention and deletion settings:
  * the compactor removes source objects under `mimir/`, `loki/` and `tempo/`, so every flag that would
  * let it delete data it did not merge is asserted on the Deployment that runs it. It also locks the
  * pod shape the lease and the gate depend on.

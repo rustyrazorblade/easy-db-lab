@@ -21,8 +21,7 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
  * compactors, each under the gate (`compactor-gate.sh`), so a compactor runs only while this pod
  * holds the store lease. Pyroscope is not here: its compaction runs in each cluster. The pod uses
  * the pod network, so the compactors' ports, which are the cluster backends' own, never collide with
- * the backends on the host network, and every process shares one private `127.0.0.1` as in the
- * Fargate task.
+ * the backends on the host network, and every process shares one private `127.0.0.1`.
  *
  * Mimir and Loki read the cluster's own `mimir.yaml` and `loki.yaml`, rendered by [TemplateService],
  * so the compactors always read the store as the clusters write it. Compaction is on; retention and

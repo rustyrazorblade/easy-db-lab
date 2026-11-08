@@ -6,7 +6,7 @@ set -e  # Exit on any error
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Script to create managed IAM policies and attach to AWS users, groups, or roles
-# Always applies all five policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch, EasyDBLabCompactor
+# Always applies all four policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch
 # Useful for debugging setup issues with other developers
 
 # Initialize variables from environment or defaults
@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Create managed IAM policies and attach to AWS users, groups, or roles."
-      echo "Always applies all five policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch, EasyDBLabCompactor"
+      echo "Always applies all four policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch"
       echo ""
       echo "Uses managed policies (not inline) to avoid size limits and enable reusability."
       echo ""
@@ -106,8 +106,8 @@ else
   LIST_ATTACHED_COMMAND="list-attached-role-policies --role-name"
 fi
 
-# Always apply all five policies
-POLICY_LIST=("ec2" "iam" "emr" "opensearch" "compactor")
+# Always apply all four policies
+POLICY_LIST=("ec2" "iam" "emr" "opensearch")
 
 # Build AWS CLI profile argument if specified
 PROFILE_ARG=""
@@ -136,7 +136,7 @@ arn_in_list() {
 echo "=== Configuration ==="
 echo "Target type: $TARGET_TYPE"
 echo "Target name: $TARGET_NAME"
-echo "Policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch, EasyDBLabCompactor (all)"
+echo "Policies: EasyDBLabEC2, EasyDBLabIAM, EasyDBLabEMR, EasyDBLabOpenSearch (all)"
 [[ -n "$PROFILE" ]] && echo "AWS profile: $PROFILE"
 echo "Policy type: Managed (reusable, no size limits)"
 echo "Dry run: $DRY_RUN"
@@ -153,7 +153,6 @@ policy_name_for() {
     iam) echo "EasyDBLabIAM" ;;
     emr) echo "EasyDBLabEMR" ;;
     opensearch) echo "EasyDBLabOpenSearch" ;;
-    compactor) echo "EasyDBLabCompactor" ;;
   esac
 }
 
@@ -171,7 +170,7 @@ if [[ "$DRY_RUN" != "true" ]]; then
   fi
 fi
 
-# Fetch and check all five policies before changing anything
+# Fetch and check all four policies before changing anything
 for policy in "${POLICY_LIST[@]}"; do
   POLICY_NAME=$(policy_name_for "$policy")
   POLICY_FILE="$TEMP_DIR/${POLICY_NAME}.json"
@@ -310,7 +309,7 @@ done
 
 if [[ "$DRY_RUN" == "true" ]]; then
   echo "=== Dry run complete ==="
-  echo "Would then verify all five policies are attached to $TARGET_TYPE $TARGET_NAME:"
+  echo "Would then verify all four policies are attached to $TARGET_TYPE $TARGET_NAME:"
   echo "  aws iam $LIST_ATTACHED_COMMAND $TARGET_NAME --query 'AttachedPolicies[].PolicyArn' --output text $PROFILE_ARG"
   echo "No policies were actually created or attached."
 else

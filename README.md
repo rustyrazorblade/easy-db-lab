@@ -62,7 +62,7 @@ This tool provisions and destroys AWS infrastructure! Using a dedicated account 
 
 ### Setting Up Your Profile
 
-You need an IAM identity with the easy-db-lab policies attached. easy-db-lab needs five customer-managed policies: `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR`, `EasyDBLabOpenSearch` and `EasyDBLabCompactor`. Attach all five to one IAM user, group, or role.
+You need an IAM identity with the easy-db-lab policies attached. easy-db-lab needs four customer-managed policies: `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR` and `EasyDBLabOpenSearch`. Attach all four to one IAM user, group, or role.
 
 To see the policies with your account ID populated:
 

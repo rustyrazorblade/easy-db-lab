@@ -5,8 +5,8 @@ import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 
 /**
- * The compactors' scratch directories on the control node's data mount, as the Fargate task's
- * ephemeral storage was. The lease agent wipes them on acquire; `CompactorAgentInstaller` creates
+ * The compactors' scratch directories on the control node's data mount, never the root volume.
+ * The lease agent wipes them on acquire; `CompactorAgentInstaller` creates
  * them and gives each to the user its compactor runs as. Tempo's scheduler and worker share one.
  *
  * @property dir the directory's name under [Constants.Compactor.HOST_ROOT] and the agent's scratch root.

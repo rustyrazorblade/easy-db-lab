@@ -19,7 +19,7 @@ import io.fabric8.kubernetes.api.model.VolumeMountBuilder
  * The containers of the `account-compactor` pod: the busybox init container, the lease container,
  * and the four compactors, each wrapped by the gate.
  *
- * Every compactor runs its image's own binary with the flags the Fargate task used, under
+ * Every compactor runs its image's own binary with its compaction flags, under
  * `/gate/bin/busybox sh /config/compactor-gate.sh -- <binary> <args>`. The distroless images have
  * no shell, so the init container copies the static busybox into an emptyDir first. No container
  * has a limit or a request, and only the lease container has a readiness probe, so a standby pod is

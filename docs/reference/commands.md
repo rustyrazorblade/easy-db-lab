@@ -77,7 +77,7 @@ easy-db-lab show-iam-policies [policy-name]
 
 | Argument | Description |
 |----------|-------------|
-| `policy-name` | Optional filter: `ec2`, `iam`, `emr`, `opensearch` or `compactor` |
+| `policy-name` | Optional filter: `ec2`, `iam`, `emr` or `opensearch` |
 
 To create the policies and attach them to an IAM user, group, or role, see [Applying the Policies](../getting-started/setup.md#applying-the-policies).
 
@@ -161,7 +161,7 @@ easy-db-lab up [options]
 |--------|-------------|
 | `--no-setup`, `-n` | Skip K3s setup and AxonOps configuration |
 
-Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Starts the [account compactor](../user-guide/compactor.md) when it is not running, and leaves it as it is when it runs; `up` does not wait for its task.
+Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Deploys the [account compactor](../user-guide/compactor.md) pod with the observability stack.
 
 `up` fails fast. If any provisioning step fails — EC2 setup, K3s, node labeling, the
 `local-storage`/`local-storage-wfc` StorageClasses, the observability stack, Tailscale, and so
@@ -183,7 +183,7 @@ easy-db-lab down [vpc-id] [options]
 
 | Option | Description |
 |--------|-------------|
-| `--all` | Tear down all VPCs tagged with easy_cass_lab; the account compactor's VPC is kept |
+| `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
 
@@ -213,8 +213,6 @@ Every step has a timeout. `down` only flushes, waits for the flush to finish, an
 **Nothing is deleted.** `down` sets no S3 lifecycle, expiry or retention rule on any bucket and deletes no object that holds your data. With `--all`, a per-cluster data bucket is deleted only when it is already empty. A data bucket that still holds objects is left as it is, and `down` reports it as kept, with S3's reason.
 
 **`--force` skips the save.** Pass `--force` to skip both phases and tear down anyway. With the teardown preview, before the confirmation prompt, `down --force` lists the signals it will not save: logs and metrics unless an earlier `down` saved them, then traces and annotations. After a save of every signal, it lists none. Profiles are never listed. Use it only when the backends are already stopped or gone, or when you do not need the data.
-
-**The account compactor.** After the infrastructure teardown succeeds, `down` counts the VPCs tagged `easy_cass_lab=1`, in every enabled region, whose `bucket` tag names the account bucket, leaving out the ones it just removed. When none is left, it stops the [account compactor](../user-guide/compactor.md); otherwise the compactor keeps running.
 
 **Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the save stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
 
@@ -898,37 +896,17 @@ On a Cilium cluster, prints the routing mode, IPAM mode, kube-proxy replacement,
 
 ## Observability Commands
 
-These commands manage the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
-
-### observability compactor start
-
-Start the account compactor as `up` does: create it when it is missing, and start it at 1 task when it is stopped. A running compactor is left as it is.
-
-```bash
-easy-db-lab observability compactor start
-```
-
-### observability compactor stop
-
-Stop the account compactor by setting its desired count to 0. When the compactor was never created, it says so and changes nothing.
-
-```bash
-easy-db-lab observability compactor stop
-```
+These commands inspect the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
 
 ### observability compactor status
 
-Print the compactor's state, its desired, running and pending task counts, and its current or last task with its state. It changes nothing.
-
-The state is one of `not created`, `stopped`, `stopping`, `starting`, `running` or `failing`. A compactor that asks for a task but runs none is `starting` while a task is pending or before any task has stopped, and `failing` when none is pending and its latest task stopped, so a task that crashes in a loop never reads as running.
-
-For that task it prints why the task stopped (ECS's stop code and reason) and each container's status, exit code and reason. It also prints the service's 5 newest events and the last 20 log lines of the task's containers. It leaves out the Tempo worker's `no jobs found` line, which an idle worker logs on every poll.
-
-If your IAM user lacks the `EasyDBLabCompactor` policy, `observability compactor start`, `stop` and `status` fail and name the policy. Run `easy-db-lab show-iam-policies compactor` to print it, then attach it.
+Print who holds the compactor's store lease: the holder (the cluster and the pod), the lease's sequence number, when it was last renewed and how long ago. It reads the lease in the account bucket's region and changes nothing. A lease that has not been renewed for longer than its 2-minute TTL is shown as expired. When no compactor has ever taken the lease, it says so.
 
 ```bash
 easy-db-lab observability compactor status
 ```
+
+There is no `start` or `stop`: every cluster runs a compactor pod, and the lease decides which one compacts.
 
 ## Grafana Commands
 

@@ -70,7 +70,6 @@ Always use factory methods instead of creating manual retry configurations.
 | `createS3LogRetrievalRetryConfig<T>()` | 10 | Fixed 3s | S3 log retrieval (eventual consistency) |
 | `createBooleanPollRetryConfig(maxAttempts, interval)` | `maxAttempts` | Fixed `interval` | Retries on result until a boolean check is `true`: the tailnet reachability probe before K3s, and a failed step's `stderr.gz` uploaded after the step ended (28 attempts, 15s apart) |
 | `createVpcTeardownRetryConfig<T>()` | 5 | Exponential 5s→40s | VPC teardown DependencyViolation |
-| `createEcsRoleRetryConfig()` | 5 | Exponential 1s→16s | ECS calls that pass a role IAM just created (`InvalidParameterException`, `ClientException`); wrapper `withEcsRoleRetry` |
 | `createVpcAutoCidrRetryConfig()` | 3 | None | VPC creation on an auto-selected CIDR (`SdkException` only); `up` picks a new random unused block per attempt |
 | `createLocalPortBindRetryConfig()` | 3 | Fixed 100ms | Local listener lost its port between selection and bind (`BindException` only); the SOCKS proxy selects a new port per attempt |
 | `createPollUntilRetryConfig<T>(maxAttempts, interval, done, deadline?)` | caller | Fixed `interval` | Poll until a result condition holds; any exception is retried within the budget, only the last look's exception fails; an unmet condition returns the last result. An optional wall-clock `deadline` ends the poll however many attempts remain (`waitForRollouts` passes `Int.MAX_VALUE` attempts and a deadline) |

@@ -150,7 +150,7 @@ class DownTest : BaseKoinTest() {
 
         Down().cleanupSocks5Proxy()
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = false))
     }
 
     @Test

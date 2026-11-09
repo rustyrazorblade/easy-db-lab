@@ -22,10 +22,12 @@ data class RecordedTunnel(
  *
  * @property tailscaleActive whether the cluster is reached over Tailscale; null before `up` recorded it
  * @property tunnel the verified tunnel; null while no tunnel is recorded
+ * @property direct whether the cluster API is reachable from this machine with no tunnel
  */
 data class ProxyEnv(
     val tailscaleActive: Boolean?,
     val tunnel: RecordedTunnel?,
+    val direct: Boolean,
 )
 
 /**
@@ -34,9 +36,10 @@ data class ProxyEnv(
  * The tool wrappers in `<workspace>/bin/`, the tunnel script and `env.sh` source this file, so shell
  * code never reads `.socks5-proxy-state` or parses JSON. Any value a shell-side tool needs belongs
  * here. This class is the file's only writer. It holds only [Constants.Proxy.ENV_TAILSCALE_ACTIVE],
- * [Constants.Proxy.ENV_SOCKS_PORT] and [Constants.Proxy.ENV_SOCKS_PID]; the last two are written and
- * removed together. Each update keeps the other keys and replaces the file in one rename, so a
- * wrapper that sources it while another CLI process writes always reads a whole file.
+ * [Constants.Proxy.ENV_SOCKS_PORT], [Constants.Proxy.ENV_SOCKS_PID] and [Constants.Proxy.ENV_NETWORK_MODE];
+ * the port and the PID are written and removed together. Each update keeps the other keys and
+ * replaces the file in one rename, so a wrapper that sources it while another CLI process writes
+ * always reads a whole file.
  *
  * Each update reads the file, changes one key and writes it back while it holds an exclusive lock on
  * [Constants.Proxy.ENV_LOCK_FILE], so two CLI processes that update different keys at once keep both.
@@ -51,7 +54,7 @@ class ProxyEnvFile(
     /** The env file itself. */
     val file: File = File(workspace, Constants.Proxy.ENV_FILE)
 
-    /** The recorded state; both fields are null when the file does not exist. */
+    /** The recorded state; with no file, both nullable fields are null and [ProxyEnv.direct] is false. */
     fun read(): ProxyEnv {
         val values = readValues()
         val port = values[Constants.Proxy.ENV_SOCKS_PORT]?.toIntOrNull()
@@ -59,6 +62,7 @@ class ProxyEnvFile(
         return ProxyEnv(
             tailscaleActive = values[Constants.Proxy.ENV_TAILSCALE_ACTIVE]?.toBooleanStrictOrNull(),
             tunnel = if (port != null && pid != null) RecordedTunnel(port, pid) else null,
+            direct = values[Constants.Proxy.ENV_NETWORK_MODE] == Constants.Proxy.ENV_NETWORK_MODE_DIRECT,
         )
     }
 
@@ -66,6 +70,12 @@ class ProxyEnvFile(
 
     /** Records whether the cluster is reached over Tailscale, keeping any recorded tunnel. */
     fun recordTailscale(active: Boolean) = update { it.copy(tailscaleActive = active) }
+
+    /**
+     * Records whether the cluster API is reachable from this machine with no tunnel, keeping the other
+     * keys. `true` writes `EDL_NETWORK_MODE=direct`; `false` removes the key.
+     */
+    fun recordDirect(active: Boolean) = update { it.copy(direct = active) }
 
     /** Records the verified tunnel on [port] whose script is [pid], keeping the Tailscale flag. */
     fun recordTunnel(
@@ -101,6 +111,7 @@ class ProxyEnvFile(
                 env.tailscaleActive?.let { "${Constants.Proxy.ENV_TAILSCALE_ACTIVE}=$it" },
                 env.tunnel?.let { "${Constants.Proxy.ENV_SOCKS_PORT}=${it.port}" },
                 env.tunnel?.let { "${Constants.Proxy.ENV_SOCKS_PID}=${it.pid}" },
+                "${Constants.Proxy.ENV_NETWORK_MODE}=${Constants.Proxy.ENV_NETWORK_MODE_DIRECT}".takeIf { env.direct },
             )
         file.writeTextAtomically(lines.joinToString(separator = "") { "$it\n" })
     }

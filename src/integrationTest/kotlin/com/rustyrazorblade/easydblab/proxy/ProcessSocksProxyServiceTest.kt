@@ -199,7 +199,8 @@ class ProcessSocksProxyServiceTest {
 
             service().ensureRunning(testHost)
 
-            assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(port, livePid.toLong())))
+            val expected = ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(port, livePid.toLong()), direct = false)
+            assertThat(envFile.read()).isEqualTo(expected)
         }
     }
 
@@ -355,7 +356,8 @@ class ProcessSocksProxyServiceTest {
 
                 assertThat(state.reused).isFalse()
                 assertThat(state.localPort).isEqualTo(replacement.port)
-                assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(replacement.port, FAKE_PID)))
+                val expected = ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(replacement.port, FAKE_PID), direct = false)
+                assertThat(envFile.read()).isEqualTo(expected)
                 assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("${replacement.port}")
             }
         }

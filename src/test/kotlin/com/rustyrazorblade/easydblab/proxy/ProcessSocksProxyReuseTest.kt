@@ -119,7 +119,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
 
         assertThat(state.reused).isTrue()
         assertThat(state.localPort).isEqualTo(STOP_PORT)
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(STOP_PORT, livePid)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(STOP_PORT, livePid), direct = false))
     }
 
     @Test
@@ -144,7 +144,7 @@ internal class ProcessSocksProxyReuseTest : ProcessSocksProxyServiceTestBase() {
         assertThat(dynamicForwardPorts(launched)).containsExactly(NEW_PORT)
         assertThat(state.reused).isFalse()
         assertThat(state.localPort).isEqualTo(NEW_PORT)
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(NEW_PORT, livePid)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(NEW_PORT, livePid), direct = false))
         assertThat(json.decodeFromString<Socks5ProxyStateFile>(stateFile().readText()).port).isEqualTo(NEW_PORT)
         assertThat(events).containsExactly(Event.Proxy.TunnelReplaced(STOP_PORT, NEW_PORT, Event.Proxy.ReplaceReason.UNREACHABLE))
     }

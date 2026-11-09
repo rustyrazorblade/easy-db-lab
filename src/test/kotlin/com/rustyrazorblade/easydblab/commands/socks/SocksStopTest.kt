@@ -84,7 +84,7 @@ class SocksStopTest : BaseKoinTest() {
 
         assertThat(tunnel.handle.isAlive).isFalse()
         assertThat(stateFile).doesNotExist()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = false))
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
         assertThat(events).containsExactly(Event.Proxy.TunnelStopped(PID.toInt()))
     }
@@ -110,7 +110,7 @@ class SocksStopTest : BaseKoinTest() {
         SocksStop().call()
 
         assertThat(stateFile).doesNotExist()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = false))
         assertThat(events).containsExactly(Event.Proxy.NoTunnelRunning)
     }
 
@@ -120,7 +120,7 @@ class SocksStopTest : BaseKoinTest() {
 
         SocksStop().call()
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = false))
         assertThat(events).containsExactly(Event.Proxy.NoTunnelRunning)
     }
 

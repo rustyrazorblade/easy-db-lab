@@ -246,7 +246,8 @@ class CompactorPodIntegrationTest {
     /**
      * Waits until every compactor in [pod] answers `/ready` with 200, then watches them for
      * [STABLE]: a gate that reports an exit there is a compactor that crash-loops, which a count of
-     * started gates alone would let pass.
+     * started gates alone would let pass. After the window each must answer `/ready` again, and
+     * still no gate may have reported an exit.
      */
     private fun awaitCompactorsReady(pod: DockerPod) {
         compactorNames.forEach { name ->
@@ -258,7 +259,17 @@ class CompactorPodIntegrationTest {
         Thread.sleep(STABLE.toMillis())
         assertThat(compactorNames).allSatisfy { name ->
             assertThat(pod.logs(name)).describedAs("$name's gate log").doesNotContain("the compactor exited")
-            assertThat(pod.answers200(httpPort(name), READY_PATH)).describedAs("$name still ready\n${pod.logs(name)}").isTrue()
+            assertThat(pod.isRunning(name)).describedAs("$name's gate still runs\n${pod.logs(name)}").isTrue()
+        }
+        // One probe can miss under a loaded Docker host; a compactor that is up answers again.
+        compactorNames.forEach { name ->
+            val port = httpPort(name)
+            awaitUntil(STARTUP, "$name still answers /ready on port $port", { pod.logs(name).takeLast(LOG_DETAIL) }) {
+                pod.answers200(port, READY_PATH)
+            }
+        }
+        assertThat(compactorNames).allSatisfy { name ->
+            assertThat(pod.logs(name)).describedAs("$name's gate log").doesNotContain("the compactor exited")
         }
     }
 

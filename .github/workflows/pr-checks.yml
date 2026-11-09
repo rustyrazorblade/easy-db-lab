@@ -69,6 +69,16 @@ jobs:
         with:
           version: v1.35.1
 
+      # Every K3s container holds about 23 inotify instances (k3s server, kubelet, containerd), and
+      # the integration tier runs several at once across its forks. ubuntu-26.04 images write the
+      # inotify limits to /etc/sysctl.conf, which systemd 259 no longer reads, so the kernel keeps
+      # max_user_instances=128 (actions/runner-images#15108). At that limit a K3s that starts while
+      # others run cannot create its watchers: containerd's CRI plugin fails to load, and K3s loops
+      # on "unknown service runtime.v1.RuntimeService" until Testcontainers times out. These are the
+      # values the image means to set.
+      - name: Restore the runner image's inotify limits
+        run: sudo sysctl -w fs.inotify.max_user_instances=1280 fs.inotify.max_user_watches=655360
+
       # Run BOTH test tiers: the fast unit tier (`test`) and the slow integration tier
       # (`integrationTest`, TestContainers/mock-server/real-I-O). GitHub's ubuntu runners ship
       # a running Docker daemon at /var/run/docker.sock, which the integration tier needs.

@@ -126,6 +126,19 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         verify(helmService).repoAdd("pg-charts", "https://example.com/charts")
     }
 
+    /** An unset variable stays a literal `${NAME}`, as it does in every other step field. */
+    @Test
+    fun `a helm-repo step passes an unset variable on as the literal placeholder`() {
+        val result =
+            execute(
+                listOf(InstallStep.HelmRepo(name = "\${UNSET_NAME}", url = "\${REPO_URL}/\${UNSET_PATH}")),
+                mapOf("REPO_URL" to "https://example.com"),
+            )
+
+        assertThat(result.isSuccess).isTrue()
+        verify(helmService).repoAdd("\${UNSET_NAME}", "https://example.com/\${UNSET_PATH}")
+    }
+
     @Test
     fun `a platform-pvs-delete step interpolates its node-type`() {
         val remoteOps = mock<RemoteOperationsService>()
@@ -433,6 +446,23 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             val config = createdConfig(InstallStep.PlatformPvs(storageClass = "\${CLASS}"), "CLASS" to "fast-local")
 
             assertThat(config.storageClass).isEqualTo("fast-local")
+        }
+
+        /** An unset variable stays a literal `${NAME}`, as it does in every other step field. */
+        @Test
+        fun `an unset variable in storage-class is passed on as the literal placeholder`() {
+            val config = createdConfig(InstallStep.PlatformPvs(storageClass = "\${UNSET}"), "OTHER" to "x")
+
+            assertThat(config.storageClass).isEqualTo("\${UNSET}")
+        }
+
+        /** A literal placeholder is no node pool, so the step fails naming it instead of finding no nodes. */
+        @Test
+        fun `an unset variable in node-type fails the step and names the placeholder`() {
+            val result = execute(listOf(InstallStep.PlatformPvs(nodeType = "\${UNSET}")), mapOf("STORAGE_SIZE" to "1Gi"))
+
+            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java).hasMessageContaining("'\${UNSET}'")
+            verify(k8sService, never()).createLocalPersistentVolumes(any(), any())
         }
 
         @Test

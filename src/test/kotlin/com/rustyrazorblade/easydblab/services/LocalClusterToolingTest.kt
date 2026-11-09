@@ -45,6 +45,17 @@ internal class LocalClusterToolingTest {
         assertThat(File(workspace, Constants.ToolWrappers.DIRECTORY)).doesNotExist()
     }
 
+    /** The SSH form needs the `-` to stand for its uploaded file, so the local form refuses the same call. */
+    @Test
+    fun `stdin without exactly one dash argument fails before a process starts, as in the SSH form`() {
+        listOf(listOf("apply", "-f", "m.yaml"), listOf("apply", "-f", "-", "-f", "-")).forEach { args ->
+            assertThatThrownBy { tooling.run(ClusterTool.KUBECTL, args, stdin = "kind: ConfigMap") }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("exactly one '-'")
+        }
+        assertThat(File(workspace, Constants.ToolWrappers.DIRECTORY)).doesNotExist()
+    }
+
     @Test
     fun `inherited HELM_ variables and KUBECONFIG are cleared and other variables are kept`() {
         val environment =
@@ -158,7 +169,7 @@ internal class LocalClusterToolingTest {
     @Test
     @Timeout(DEADLOCK_SECONDS)
     fun `a tool that fills both pipes before it reads its input does not deadlock`() {
-        val stdout = tooling.run(ClusterTool.KUBECTL, listOf("flood"), stdin = "x".repeat(STDIN_BYTES), echo = false)
+        val stdout = tooling.run(ClusterTool.KUBECTL, listOf("flood", "-"), stdin = "x".repeat(STDIN_BYTES), echo = false)
 
         assertThat(stdout.lines().count { it.startsWith("out ") }).isEqualTo(FLOOD_LINES)
     }

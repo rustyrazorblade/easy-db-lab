@@ -29,7 +29,7 @@ interface ClusterTooling {
      *
      * A file argument of `-` (`apply -f -`, `--values -`) reads [stdin]. The local form pipes it; the
      * SSH form uploads it to a temporary file on the control node and replaces the `-` with that path.
-     * When [stdin] is given, exactly one argument in [args] must be `-` for the SSH form.
+     * When [stdin] is given, exactly one argument in [args] must be `-`; both forms fail fast otherwise.
      *
      * Every argument reaches the tool as exactly the value passed, in both forms. The SSH form joins
      * the command into one remote shell string, so it single-quotes any argument that holds a
@@ -51,6 +51,22 @@ interface ClusterTooling {
         echo: Boolean = true,
         shellQuoted: Set<Int> = emptySet(),
     ): String
+}
+
+/**
+ * Fails fast when [stdin] is given and [args] does not hold exactly one `-`. The SSH form needs that
+ * one argument to stand for the uploaded file; the local form would pipe stdin to a tool that never
+ * reads it. Both [ClusterTooling] forms call it first, so a caller's mistake fails the same way
+ * wherever the tool would have run, and not only on AWS.
+ */
+internal fun requireOneStdinArgument(
+    tool: ClusterTool,
+    args: List<String>,
+    stdin: String?,
+) = require(stdin == null || args.count { it == Constants.ClusterTooling.STDIN_ARGUMENT } == 1) {
+    "A command with stdin needs exactly one '${Constants.ClusterTooling.STDIN_ARGUMENT}' argument " +
+        "to stand for the uploaded file, got " +
+        redactUrlCredentials((listOf(tool.executable) + args).joinToString(" "))
 }
 
 /**

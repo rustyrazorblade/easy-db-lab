@@ -6,7 +6,6 @@ import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.shellQuote
-import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Files
 import java.nio.file.Path
@@ -52,11 +51,7 @@ class SshClusterTooling(
         echo: Boolean,
         shellQuoted: Set<Int>,
     ): String {
-        require(stdin == null || args.count { it == Constants.ClusterTooling.STDIN_ARGUMENT } == 1) {
-            "A command with stdin needs exactly one '${Constants.ClusterTooling.STDIN_ARGUMENT}' argument " +
-                "to stand for the uploaded file, got " +
-                redactUrlCredentials((listOf(tool.executable) + args).joinToString(" "))
-        }
+        requireOneStdinArgument(tool, args, stdin)
         requireShellQuotedWithin(tool, args, shellQuoted)
         val call = Call(controlHost(), tool, args, echo, shellQuoted)
         try {

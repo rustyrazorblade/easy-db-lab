@@ -60,6 +60,7 @@ class LocalClusterTooling(
         echo: Boolean,
         shellQuoted: Set<Int>,
     ): String {
+        requireOneStdinArgument(tool, args, stdin)
         requireShellQuotedWithin(tool, args, shellQuoted)
         val process = start(tool, args)
         val result = exchange(process, stdin)

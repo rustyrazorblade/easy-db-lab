@@ -52,12 +52,15 @@ class LeaseLoop(
 
         /**
          * Another pod may hold the lease. [seenSince] is when the first read that returned [version]
-         * came back, on this clock. [seenHolder] is the holder that version names, for the log only.
+         * came back, on this clock. [seenHolder] is the holder that version names, and
+         * [retryingAcquire] marks this node's own version after a failed acquire; both are for the
+         * log only.
          */
         data class Standby(
             val version: ObjectVersion?,
             val seenSince: Duration,
             val seenHolder: String? = null,
+            val retryingAcquire: Boolean = false,
         ) : State
 
         /** This node holds the lease at [version]; [sentAt] is the send time of its last successful write. */
@@ -164,7 +167,7 @@ class LeaseLoop(
             }
         when {
             lease == null -> create(now)
-            standby.version == lease.version && now - standby.seenSince >= timing.ttl -> takeOver(lease, now)
+            standby.version == lease.version && now - standby.seenSince >= timing.ttl -> takeOver(lease, now, standby.retryingAcquire)
             standby.version == lease.version -> Unit
             else -> standBy(standby, lease, now)
         }
@@ -203,6 +206,7 @@ class LeaseLoop(
     private fun takeOver(
         expired: VersionedObject,
         now: Duration,
+        retryingAcquire: Boolean,
     ) {
         val previous =
             runCatching { LeaseRecord.fromJson(expired.content) }
@@ -221,11 +225,15 @@ class LeaseLoop(
                 }
         val sentAt = clock.monotonic()
         val record = previous.next(holder, clock.wall())
+        val how =
+            when {
+                retryingAcquire -> "retrying after a failed acquire, ${timing.ttl * 2} after it"
+                else -> "taken over from ${previous.holder} after ${timing.ttl} unchanged"
+            }
         runCatching { objects.replaceIfVersionMatches(LeaseRecord.KEY, record.toJson(), expired.version) }
             .onSuccess { result ->
                 when (result) {
-                    is ReplaceResult.Replaced ->
-                        acquire(result.version, record, sentAt, "taken over from ${previous.holder} after ${timing.ttl} unchanged")
+                    is ReplaceResult.Replaced -> acquire(result.version, record, sentAt, how)
                     ReplaceResult.VersionMismatch -> {
                         log.info { "Lease agent $holder lost the takeover race; standing by" }
                         state = State.Standby(null, now)
@@ -253,11 +261,13 @@ class LeaseLoop(
         }.onSuccess {
             state = State.Holding(version, record, sentAt, granted = true)
         }.onFailure { e ->
-            log.error(
-                e,
-            ) { "Lease agent $holder could not wipe its scratch or open its gate; compactors stay stopped until it acquires again" }
+            log.error(e) {
+                "Lease agent $holder could not wipe its scratch or open its gate; compactors stay stopped. " +
+                    "Backing off ${timing.ttl} extra so a healthy standby takes the lease first; " +
+                    "retrying in ${timing.ttl * 2} at the earliest"
+            }
             closeGate()
-            state = State.Standby(version, clock.monotonic() + timing.ttl, holder)
+            state = State.Standby(version, clock.monotonic() + timing.ttl, holder, retryingAcquire = true)
         }
     }
 

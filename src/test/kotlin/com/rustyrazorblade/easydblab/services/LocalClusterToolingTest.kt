@@ -13,6 +13,7 @@ import org.junit.jupiter.api.io.TempDir
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.PrintStream
+import java.time.Duration
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
@@ -134,6 +135,40 @@ internal class LocalClusterToolingTest {
     }
 
     @Test
+    @Timeout(DEADLOCK_SECONDS)
+    fun `a tool that runs past the timeout is killed and the failure names it, its arguments and the timeout`() {
+        val bounded = LocalClusterTooling(workspace, kitEnvironment, timeout = Duration.ofMillis(TIMEOUT_MILLIS))
+        var pid: Long? = null
+        try {
+            val failure =
+                catchThrowableOfType(ClusterToolTimedOutException::class.java) {
+                    bounded.run(ClusterTool.KUBECTL, listOf("hang", "https://user:s3cret@host/m.yaml"), echo = false)
+                }
+            pid = File(workspace, "hang.pid").readText().trim().toLong()
+
+            assertThat(failure.tool).isEqualTo(ClusterTool.KUBECTL)
+            assertThat(failure.message)
+                .contains("kubectl hang https://***@host/m.yaml")
+                .contains("PT0.5S")
+                .doesNotContain("s3cret")
+            assertThat(awaitExit(pid)).describedAs("the tool is still running").isTrue()
+        } finally {
+            pid?.let { ProcessHandle.of(it).ifPresent { handle -> handle.destroyForcibly() } }
+        }
+    }
+
+    /** The bound covers feeding stdin too: a hung tool that never reads a large input still times out. */
+    @Test
+    @Timeout(DEADLOCK_SECONDS)
+    fun `a tool that hangs without reading a large stdin still times out`() {
+        val bounded = LocalClusterTooling(workspace, kitEnvironment, timeout = Duration.ofMillis(TIMEOUT_MILLIS))
+
+        assertThatThrownBy { bounded.run(ClusterTool.KUBECTL, listOf("hang", "-"), stdin = "x".repeat(STDIN_BYTES), echo = false) }
+            .isInstanceOf(ClusterToolTimedOutException::class.java)
+        ProcessHandle.of(File(workspace, "hang.pid").readText().trim().toLong()).ifPresent { it.destroyForcibly() }
+    }
+
+    @Test
     fun `a failure carries the stdout too, with URL credentials redacted`() {
         val failure = catchThrowableOfType(ClusterToolFailedException::class.java) { tooling.run(ClusterTool.HELM, listOf("failout")) }
 
@@ -244,6 +279,7 @@ internal class LocalClusterToolingTest {
         const val HANG_SECONDS = 120
         const val FREED_MILLIS = 10_000L
         const val POLL_MILLIS = 20L
+        const val TIMEOUT_MILLIS = 500L
 
         /** Does what its first argument says, whichever tool name it is installed under. */
         val STAND_IN_WRAPPER =

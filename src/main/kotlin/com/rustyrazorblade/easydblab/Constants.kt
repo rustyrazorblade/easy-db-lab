@@ -378,6 +378,13 @@ object Constants {
         /** The exit status reported when a remote failure carries none; no process exits with it. */
         const val UNKNOWN_EXIT_STATUS = -1
 
+        /**
+         * How long the local form lets one helm or kubectl call run before it kills it. Well above the
+         * longest wait a kit step asks the tool for (`helm --wait`, `kubectl wait`, 600s in the shipped
+         * kits), so it ends only a call that has hung, such as one whose cluster cannot be reached.
+         */
+        val LOCAL_TOOL_TIMEOUT: java.time.Duration = java.time.Duration.ofMinutes(30)
+
         /** The file argument that means "read stdin" (`apply -f -`, `--values -`). */
         const val STDIN_ARGUMENT = "-"
 

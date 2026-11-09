@@ -210,6 +210,25 @@ class DockerPod(
         return docker.inspectExecCmd(exec.id).exec().exitCodeLong == 0L
     }
 
+    /**
+     * Whether `http://127.0.0.1:[port][path]` in the pod answers 200 within [timeoutSeconds]. The
+     * request runs in the sandbox, whose network namespace every container shares, so it reaches a
+     * container's port as the kubelet's probe would, on any Docker host.
+     */
+    fun answers200(
+        port: Int,
+        path: String,
+        timeoutSeconds: Int = 5,
+    ): Boolean {
+        val exec =
+            docker
+                .execCreateCmd(sandbox)
+                .withCmd("/bin/busybox", "wget", "-q", "-T", "$timeoutSeconds", "-O", "/dev/null", "http://127.0.0.1:$port$path")
+                .exec()
+        docker.execStartCmd(exec.id).start().awaitCompletion()
+        return docker.inspectExecCmd(exec.id).exec().exitCodeLong == 0L
+    }
+
     /** Stops the whole pod at once, as a node that goes away does: no SIGTERM grace, no lease release. */
     fun kill() {
         (started.values + sandbox).forEach { runCatching { docker.killContainerCmd(it).exec() } }

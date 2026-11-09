@@ -10,6 +10,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.PodSpec
 import kotlinx.serialization.json.Json
@@ -50,15 +51,20 @@ import java.util.UUID
  *   its compactors; the other's lease agent is ready and its compactors never start.
  * - **A standby takes over after expiry.** When the holder's pod dies without a word, the standby
  *   takes the lease only after it has seen one version for the TTL, and then starts its compactors.
- * - **Compaction keeps every sample.** Mimir A ships one-minute blocks for tenant `acme`; the pod's
- *   gated Mimir compactor merges them; Mimir B, on an empty volume, answers every sample from the
- *   store alone. The samples are four hours old, so retention would show.
+ *   Each holder's four compactors answer `/ready`, and no gate reports an exit for 30 s after.
+ * - **Compaction keeps every sample, log line and trace.** Mimir A ships one-minute blocks for
+ *   tenant `acme`; the pod's gated Mimir compactor merges them; Mimir B, on an empty volume, answers
+ *   every sample from the store alone. The samples are four hours old, so retention would show. Two
+ *   Lokis and two Tempos, as two clusters, each ship their own index file and blocks; the gated Loki
+ *   compactor merges the index files into one and the Tempo worker writes a compacted block; a new
+ *   Loki and a new Tempo, on empty volumes, answer every line and every trace.
  *
  * The harness's edits: the S3 endpoint and credentials point at LocalStack (in the configuration
  * files, and `S3_ENDPOINT` for the agent), the agent's timing is shortened for the failover so it
- * fits a test, and Mimir's compactor gets `-compactor.first-level-compaction-wait-period=0`, as the
- * real one waits 2 minutes after upload before it merges a one-minute block. The timing still holds
- * `LeaseTiming`'s margin.
+ * fits a test, Mimir's compactor gets `-compactor.first-level-compaction-wait-period=0`, as the
+ * real one waits 2 minutes after upload before it merges a one-minute block, and Loki's compactor
+ * gets a 30 s interval, as the real one first runs 10 minutes after it starts. The timing still
+ * holds `LeaseTiming`'s margin.
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class CompactorPodIntegrationTest {
@@ -73,6 +79,22 @@ class CompactorPodIntegrationTest {
         val COMPACTION: Duration = Duration.ofMinutes(8)
         val SHIPPING: Duration = Duration.ofMinutes(8)
         val POLL: Duration = Duration.ofSeconds(2)
+
+        /** How long every compactor must stay up, with no exit reported by its gate, once it is ready. */
+        val STABLE: Duration = Duration.ofSeconds(30)
+        const val READY_PATH = "/ready"
+        const val LOG_DETAIL = 3000
+        val HTTP_PORT_FLAG = Regex("-server\\.http-listen-port=(\\d+)")
+
+        /** Lines each of two Lokis writes, so the store holds two index files for one table. */
+        const val LINES_PER_LOKI = 20
+
+        /** Loki's compactor first runs one interval after it starts; the shipped 10 minutes would not fit a test. */
+        const val LOKI_COMPACTION_INTERVAL = "-compactor.compaction-interval=30s"
+
+        /** How long a graceful stop of Loki or Tempo may take to flush and upload. */
+        const val GRACEFUL_STOP_SECONDS = 120
+        val UPLOAD: Duration = Duration.ofMinutes(4)
 
         /** A short timing for the failover; the margin is 4 + 1 + 3 = 8 s, under the 15 s TTL. */
         val FAST_TIMING =
@@ -202,6 +224,44 @@ class CompactorPodIntegrationTest {
     /** How many of [pod]'s gates have started their binary. */
     private fun startedCompactors(pod: DockerPod): Int = compactorNames.count { pod.logs(it).contains("started pid") }
 
+    /** The HTTP port [container] serves `/ready` on: its `-server.http-listen-port`, or its config file's. */
+    private fun httpPort(container: String): Int =
+        podSpec()
+            .containers
+            .single { it.name == container }
+            .args
+            .firstNotNullOfOrNull {
+                HTTP_PORT_FLAG
+                    .matchEntire(it)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.toInt()
+            }
+            ?: when (container) {
+                CompactorManifestBuilder.MIMIR_CONTAINER -> Constants.K8s.MIMIR_HTTP_PORT
+                CompactorManifestBuilder.LOKI_CONTAINER -> Constants.K8s.LOKI_HTTP_PORT
+                else -> Constants.K8s.TEMPO_PORT
+            }
+
+    /**
+     * Waits until every compactor in [pod] answers `/ready` with 200, then watches them for
+     * [STABLE]: a gate that reports an exit there is a compactor that crash-loops, which a count of
+     * started gates alone would let pass.
+     */
+    private fun awaitCompactorsReady(pod: DockerPod) {
+        compactorNames.forEach { name ->
+            val port = httpPort(name)
+            awaitUntil(STARTUP, "$name answers /ready on port $port", { pod.logs(name).takeLast(LOG_DETAIL) }) {
+                pod.answers200(port, READY_PATH)
+            }
+        }
+        Thread.sleep(STABLE.toMillis())
+        assertThat(compactorNames).allSatisfy { name ->
+            assertThat(pod.logs(name)).describedAs("$name's gate log").doesNotContain("the compactor exited")
+            assertThat(pod.answers200(httpPort(name), READY_PATH)).describedAs("$name still ready\n${pod.logs(name)}").isTrue()
+        }
+    }
+
     private fun ready(pod: DockerPod): Boolean = pod.exists(CompactorManifestBuilder.LEASE_CONTAINER, "/lease/ready")
 
     private fun diagnostics(vararg pods: DockerPod): String =
@@ -219,6 +279,7 @@ class CompactorPodIntegrationTest {
         awaitUntil(STARTUP, "pod A holds the lease and starts all four compactors", { diagnostics(a) }) {
             lease()?.holder?.startsWith("lab-a/") == true && startedCompactors(a) == compactorNames.size
         }
+        awaitCompactorsReady(a)
         val b = pod("lab-b", FAST_TIMING)
         awaitUntil(STARTUP, "pod B's lease agent is ready", { diagnostics(b) }) { ready(b) }
 
@@ -241,6 +302,7 @@ class CompactorPodIntegrationTest {
         assertThat(tookOver).describedAs("B took over before a whole TTL had passed").isGreaterThanOrEqualTo(Duration.ofSeconds(15))
         assertThat(checkNotNull(lease()).sequence).isGreaterThan(sequenceAtStop)
         assertThat(b.logs(CompactorManifestBuilder.LEASE_CONTAINER)).contains("taken over from lab-a/")
+        awaitCompactorsReady(b)
     }
 
     @Test
@@ -284,6 +346,208 @@ class CompactorPodIntegrationTest {
         assertThat(shipped).describedAs("one-minute blocks Mimir A shipped").isGreaterThan(1)
         assertThat(compactorNames).allSatisfy { assertThat(compactor.isRunning(it)).describedAs("$it\n${compactor.logs(it)}").isTrue() }
     }
+
+    @Test
+    fun `log lines and traces compacted by the account compactor are all answered by a new Loki and Tempo from the store`() {
+        val lokiConfig =
+            ObservabilityBackends.lokiConfig(
+                LokiManifestBuilder(templateService).buildConfigMap().data.getValue(LokiManifestBuilder.CONFIG_FILE),
+            )
+        val tempoConfig =
+            ObservabilityBackends.tempoConfig(
+                TempoManifestBuilder(templateService).buildConfigMap().data.getValue("tempo.yaml"),
+            )
+
+        // Two Lokis, as two clusters, each ship an index file for today's table, and two Tempos each
+        // ship blocks: the store holds more than one of each for the compactor to merge.
+        val lines =
+            listOf("lab-x", "lab-y").flatMap { cluster ->
+                val loki = startLoki(lokiConfig, cluster)
+                val written = (1..LINES_PER_LOKI).map { "line $it from $cluster ${UUID.randomUUID()}" }
+                written.forEach { pushLine(loki, cluster, it) }
+                stopGracefully(loki)
+                written
+            }
+        val traceIds = mutableListOf<String>()
+        listOf("lab-x", "lab-y").forEach { cluster ->
+            val tempo = startTempo(tempoConfig, cluster)
+            repeat(2) { traceIds += pushTrace(tempo) }
+            awaitUntil(UPLOAD, "$cluster's traces in Tempo blocks in the store", { "${traceBlocks().size} blocks" }) {
+                traceBlocks().sumOf { totalObjects(it) } >= traceIds.size
+            }
+            stopGracefully(tempo)
+        }
+        val indexFilesBefore = lokiIndexFiles()
+        val traceBlocksBefore = traceBlocks()
+        assertThat(indexFilesBefore)
+            .describedAs("Loki index files before compaction; the store holds ${keys("${Constants.Observability.LOGS_ROOT}/")}")
+            .hasSizeGreaterThan(1)
+        assertThat(traceBlocksBefore)
+            .describedAs("Tempo blocks before compaction; the store holds ${keys("${Constants.Observability.TRACES_ROOT}/")}")
+            .hasSizeGreaterThan(1)
+
+        val compactor = pod("lab-c", extraArgs = mapOf(CompactorManifestBuilder.LOKI_CONTAINER to listOf(LOKI_COMPACTION_INTERVAL)))
+        awaitUntil(COMPACTION, "Loki's index files merged into one and a Tempo block of level 1 or more", {
+            "index ${lokiIndexFiles()}\nblocks ${traceBlocks().map { it to compactionLevelOf(it) }}\n" +
+                "${compactor.logs(CompactorManifestBuilder.LOKI_CONTAINER).takeLast(LOG_DETAIL)}\n" +
+                compactor.logs(CompactorManifestBuilder.TEMPO_WORKER_CONTAINER).takeLast(LOG_DETAIL)
+        }) {
+            val index = lokiIndexFiles()
+            index.size == 1 && index.none { it in indexFilesBefore } && traceBlocks().any { compactionLevelOf(it) > 0 }
+        }
+        assertThat(compactorNames).allSatisfy { assertThat(compactor.isRunning(it)).describedAs("$it\n${compactor.logs(it)}").isTrue() }
+        compactor.close()
+
+        val reader = startLoki(lokiConfig, "lab-z")
+        awaitUntil(STARTUP, "the new Loki answers all ${lines.size} lines from the store", {
+            "answered ${logLines(reader).size}"
+        }) { logLines(reader).toSet() == lines.toSet() }
+        assertThat(logLines(reader)).containsExactlyInAnyOrderElementsOf(lines)
+
+        val tempoReader = startTempo(tempoConfig, "lab-z")
+        assertThat(traceIds).allSatisfy { id ->
+            awaitUntil(STARTUP, "the new Tempo answers trace $id from the store", { "status ${traceStatus(tempoReader, id)}" }) {
+                traceStatus(tempoReader, id) == 200
+            }
+        }
+    }
+
+    private fun startLoki(
+        config: String,
+        cluster: String,
+    ): GenericContainer<*> =
+        ObservabilityBackends
+            .startLoki(config, volume(), bucket, Constants.Observability.LOGS_ROOT, TENANT, cluster)
+            .also { containers += it }
+
+    private fun startTempo(
+        config: String,
+        cluster: String,
+    ): GenericContainer<*> =
+        ObservabilityBackends
+            .startTempo(config, volume(), bucket, Constants.Observability.TRACES_ROOT, cluster)
+            .also { containers += it }
+
+    /** Stops [container] with SIGTERM and time to flush, as a pod stop does; Loki then uploads its index. */
+    private fun stopGracefully(container: GenericContainer<*>) {
+        docker.stopContainerCmd(container.containerId).withTimeout(GRACEFUL_STOP_SECONDS).exec()
+        containers -= container
+        container.stop()
+    }
+
+    private fun pushLine(
+        loki: GenericContainer<*>,
+        cluster: String,
+        line: String,
+    ) {
+        val nanos = System.currentTimeMillis() * 1_000_000
+        val body =
+            """
+            {"resourceLogs":[{"resource":{"attributes":[{"key":"cluster","value":{"stringValue":"$cluster"}},
+              {"key":"host.name","value":{"stringValue":"db0"}}]},
+             "scopeLogs":[{"logRecords":[{"timeUnixNano":"$nanos","body":{"stringValue":"$line"}}]}]}]}
+            """.trimIndent()
+        val response =
+            ObservabilityBackends.send(
+                HttpRequest
+                    .newBuilder(URI("${ObservabilityBackends.baseUrl(loki, Constants.K8s.LOKI_HTTP_PORT)}/otlp/v1/logs"))
+                    .header("Content-Type", "application/json")
+                    .header(Constants.Observability.TENANT_HEADER, TENANT)
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build(),
+            )
+        assertThat(response.statusCode()).describedAs(response.body()).isEqualTo(204)
+    }
+
+    /** Every line [loki] answers for the tenant over the last day; empty while it cannot answer. */
+    private fun logLines(loki: GenericContainer<*>): List<String> {
+        val query = URLEncoder.encode("""{cluster=~"lab-.+"}""", Charsets.UTF_8)
+        val response =
+            runCatching {
+                ObservabilityBackends.get(
+                    "${ObservabilityBackends.baseUrl(loki, Constants.K8s.LOKI_HTTP_PORT)}/loki/api/v1/query_range" +
+                        "?query=$query&since=24h&limit=5000",
+                    TENANT,
+                )
+            }.getOrNull()
+        if (response?.statusCode() != 200) return emptyList()
+        return Json
+            .parseToJsonElement(response.body())
+            .jsonObject
+            .getValue("data")
+            .jsonObject
+            .getValue("result")
+            .jsonArray
+            .flatMap { stream ->
+                stream.jsonObject
+                    .getValue("values")
+                    .jsonArray
+                    .map { it.jsonArray[1].jsonPrimitive.content }
+            }
+    }
+
+    /** Pushes one span of a new trace to [tempo] and returns its trace ID, in hex. */
+    private fun pushTrace(tempo: GenericContainer<*>): String {
+        val traceId = UUID.randomUUID().toString().replace("-", "")
+        val nowNanos = System.currentTimeMillis() * 1_000_000
+        val body =
+            """
+            {"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"compactor-it"}}]},
+            "scopeSpans":[{"spans":[{"traceId":"$traceId","spanId":"${traceId.take(16)}","name":"probe","kind":1,
+            "startTimeUnixNano":"$nowNanos","endTimeUnixNano":"${nowNanos + 1_000_000}"}]}]}]}
+            """.trimIndent()
+        val response =
+            ObservabilityBackends.send(
+                HttpRequest
+                    .newBuilder(URI("${ObservabilityBackends.baseUrl(tempo, ObservabilityBackends.TEMPO_OTLP_HTTP_PORT)}/v1/traces"))
+                    .header("Content-Type", "application/json")
+                    .header(Constants.Observability.TENANT_HEADER, TENANT)
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build(),
+            )
+        assertThat(response.statusCode()).describedAs(response.body()).isEqualTo(200)
+        return traceId
+    }
+
+    /** The HTTP status of a lookup of trace [id] in [tempo]; -1 while it cannot answer. */
+    private fun traceStatus(
+        tempo: GenericContainer<*>,
+        id: String,
+    ): Int =
+        runCatching {
+            ObservabilityBackends
+                .get("${ObservabilityBackends.baseUrl(tempo, Constants.K8s.TEMPO_PORT)}/api/v2/traces/$id", TENANT)
+                .statusCode()
+        }.getOrDefault(-1)
+
+    private fun keys(prefix: String): Set<String> =
+        s3
+            .listObjectsV2Paginator(
+                ListObjectsV2Request
+                    .builder()
+                    .bucket(bucket)
+                    .prefix(prefix)
+                    .build(),
+            ).contents()
+            .map { it.key() }
+            .toSet()
+
+    /**
+     * The tenant's index files in every daily table under `loki/index/`. An ingester uploads
+     * `index_<day>/<ts>-<tenant>.<cluster>-<n>.tsdb.gz`; the compactor writes the merged file under
+     * `index_<day>/<tenant>/`.
+     */
+    private fun lokiIndexFiles(): Set<String> =
+        keys("${Constants.Observability.LOGS_ROOT}/index/")
+            .filter { it.endsWith(".gz") && ("/$TENANT/" in it || "-$TENANT." in it.substringAfterLast('/')) }
+            .toSet()
+
+    /** Every Tempo block's meta.json key for the tenant. */
+    private fun traceBlocks(): List<String> = keys("${Constants.Observability.TRACES_ROOT}/$TENANT/").filter { it.endsWith("/meta.json") }
+
+    private fun totalObjects(metaKey: String): Int = metaJson(metaKey).getValue("totalObjects").jsonPrimitive.int
+
+    private fun compactionLevelOf(metaKey: String): Int = metaJson(metaKey)["compactionLevel"]?.jsonPrimitive?.int ?: 0
 
     private fun volume(): String =
         "compactor-pod-it-${UUID.randomUUID().toString().take(8)}".also {

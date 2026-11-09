@@ -27,7 +27,7 @@ data class RecordedTunnel(
 data class ProxyEnv(
     val tailscaleActive: Boolean?,
     val tunnel: RecordedTunnel?,
-    val direct: Boolean = false,
+    val direct: Boolean,
 )
 
 /**
@@ -54,7 +54,7 @@ class ProxyEnvFile(
     /** The env file itself. */
     val file: File = File(workspace, Constants.Proxy.ENV_FILE)
 
-    /** The recorded state; both fields are null when the file does not exist. */
+    /** The recorded state; with no file, both nullable fields are null and [ProxyEnv.direct] is false. */
     fun read(): ProxyEnv {
         val values = readValues()
         val port = values[Constants.Proxy.ENV_SOCKS_PORT]?.toIntOrNull()

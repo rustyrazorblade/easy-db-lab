@@ -94,7 +94,7 @@ class SocksStartTest : BaseKoinTest() {
         assertThat(launched).hasSize(1)
         assertThat(
             ProxyEnvFile(context.workingDirectory).read(),
-        ).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(PORT, FAKE_PID)))
+        ).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(PORT, FAKE_PID), direct = false))
         assertThat(events).containsExactly(Event.Proxy.TunnelReady(port = PORT, reused = false))
         assertThat(events.single().toDisplayString()).contains("127.0.0.1:$PORT").doesNotContain("localhost")
     }
@@ -106,7 +106,7 @@ class SocksStartTest : BaseKoinTest() {
         SocksStart().call()
 
         assertThat(launched).isEmpty()
-        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
+        assertThat(ProxyEnvFile(context.workingDirectory).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null, direct = false))
         assertThat(events).containsExactly(Event.Proxy.TunnelNotNeeded)
     }
 

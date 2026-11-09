@@ -32,7 +32,7 @@ internal class ProxyEnvFileTest {
 
         envFile.recordTunnel(41234, PID)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(41234, PID)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(41234, PID), direct = false))
     }
 
     @Test
@@ -41,7 +41,7 @@ internal class ProxyEnvFileTest {
 
         envFile.recordTailscale(active = false)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, PID)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, PID), direct = false))
     }
 
     @Test
@@ -223,7 +223,8 @@ internal class ProxyEnvFileTest {
         envFile.recordTailscale(active = true)
 
         assertThat(lost.get()).withFailMessage("a tunnel update was overwritten by a Tailscale update").isZero()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(ROUNDS * WRITERS, PID)))
+        val expected = ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(ROUNDS * WRITERS, PID), direct = false)
+        assertThat(envFile.read()).isEqualTo(expected)
     }
 
     @Test
@@ -248,12 +249,13 @@ internal class ProxyEnvFileTest {
         val output = child.inputStream.bufferedReader().readText()
 
         assertThat(child.exitValue()).withFailMessage("the child's tunnel update was lost: $output").isZero()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(rounds, ProxyEnvFileWriterMain.PID)))
+        val expected = ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(rounds, ProxyEnvFileWriterMain.PID), direct = false)
+        assertThat(envFile.read()).isEqualTo(expected)
     }
 
     @Test
     fun `reads nothing from a workspace with no file`() {
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = null, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = null, tunnel = null, direct = false))
     }
 
     @Test

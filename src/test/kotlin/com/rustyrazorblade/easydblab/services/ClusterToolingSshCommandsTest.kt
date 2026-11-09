@@ -257,7 +257,8 @@ internal class ClusterToolingSshCommandsTest {
     private fun wordsTheRemoteToolSees(command: String): List<String> {
         val printArgs = "for word; do printf '%s\\0' \"\$word\"; done"
         val script = "helm() ( set -- helm \"\$@\"; $printArgs ); kubectl() ( set -- kubectl \"\$@\"; $printArgs ); $command"
-        val process = ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true).start()
+        // In the temp directory, so a regression that runs the injected command cannot write into the checkout.
+        val process = ProcessBuilder("/bin/sh", "-c", script).directory(tempDir).redirectErrorStream(true).start()
         val printed = process.inputStream.readBytes().toString(Charsets.UTF_8)
         process.waitFor()
         return printed.split('\u0000').dropLast(1)

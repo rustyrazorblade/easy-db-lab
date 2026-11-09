@@ -23,6 +23,8 @@ set -u
 
 BB="${GATE_BUSYBOX:-/gate/bin/busybox}"
 VALID_UNTIL="${GATE_VALID_UNTIL:-/lease/valid-until}"
+# The tests replace the kernel's uptime with a clock they move; the pod never sets this.
+UPTIME="${GATE_UPTIME:-/proc/uptime}"
 
 if [ -z "${LEASE_GATE_POLL_SECONDS:-}" ] || [ -z "${LEASE_GATE_GRACE_SECONDS:-}" ]; then
   echo "compactor-gate: LEASE_GATE_POLL_SECONDS and LEASE_GATE_GRACE_SECONDS must be set" >&2
@@ -49,8 +51,18 @@ log() {
   echo "compactor-gate [${NAME}]: $*"
 }
 
+# The wall clock, for the valid-until comparison only: the agent writes that time on this node's
+# wall clock.
 now() {
   "${BB}" date +%s
+}
+
+# Whole seconds since boot, from the kernel's monotonic clock, read with the builtin `read`. A
+# wall-clock step (NTP) never moves it, so the grace measured on it is never stretched.
+uptime_s() {
+  up_s=""
+  read -r up_s _ < "${UPTIME}"
+  echo "${up_s%%.*}"
 }
 
 # True when the file holds a whole number of seconds later than now. Read with the builtin `read`,
@@ -89,14 +101,15 @@ pause() {
   sleeper=""
 }
 
-# Stops the child: SIGTERM, up to the grace for it to exit, then SIGKILL. The grace is measured on
-# the clock, not counted in sleeps: a starved gate's `sleep 1` can take longer, and the lease's
-# margin assumes SIGKILL comes the grace after SIGTERM.
+# Stops the child: SIGTERM, up to the grace for it to exit, then SIGKILL. The lease's margin
+# assumes SIGKILL comes the grace after SIGTERM, so the grace is measured on the uptime: not
+# counted in sleeps (a starved gate's `sleep 1` takes longer), and not on the wall clock (a
+# backward step would stretch it).
 stop_child() {
   [ -n "${child}" ] || return 0
   kill -TERM "${child}" 2>/dev/null
-  term_at="$(now)"
-  while child_running && [ $(($(now) - term_at)) -lt "${GRACE}" ]; do
+  term_at="$(uptime_s)"
+  while child_running && [ $(($(uptime_s) - term_at)) -lt "${GRACE}" ]; do
     pause 1
   done
   if child_running; then

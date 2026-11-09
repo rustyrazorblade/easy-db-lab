@@ -117,6 +117,13 @@ internal class SshClusterToolingTest {
     }
 
     @Test
+    fun `an unmarked argument the shell would split or expand is quoted, and an empty one stays a word`() {
+        tooling.run(ClusterTool.HELM, listOf("repo", "add", "my repo", "https://h/c?a=1&b=\$X", ""))
+
+        assertThat(remoteCommands()).containsExactly("$kubeconfig helm repo add 'my repo' 'https://h/c?a=1&b=\$X' ''")
+    }
+
+    @Test
     fun `a marked argument with a single quote is escaped so it stays one shell word`() {
         tooling.run(ClusterTool.HELM, listOf("list", "-f", "^it's\$"), shellQuoted = setOf(2))
 

@@ -31,11 +31,14 @@ interface ClusterTooling {
      * SSH form uploads it to a temporary file on the control node and replaces the `-` with that path.
      * When [stdin] is given, exactly one argument in [args] must be `-` for the SSH form.
      *
-     * [shellQuoted] holds the indexes into [args] that the SSH form single-quotes because the remote
-     * shell would otherwise split or expand them (a label selector, an object name). The local form
-     * passes arguments as a list, never through a shell, so it quotes nothing; both forms fail fast on
-     * an index outside [args]. A caller therefore passes raw values and marks them, and never quotes a
-     * value itself.
+     * Every argument reaches the tool as exactly the value passed, in both forms. The SSH form joins
+     * the command into one remote shell string, so it single-quotes any argument that holds a
+     * character outside the shell-safe set (a space, `;`, `$`, a quote), whether or not it is marked:
+     * a kit variable interpolated into a step field can hold any of them. [shellQuoted] holds the
+     * indexes the SSH form single-quotes even when they are all safe characters (a label selector, an
+     * object name). The local form passes arguments as a list, never through a shell, so it quotes
+     * nothing; both forms fail fast on an index outside [args]. A caller therefore passes raw values
+     * and never quotes a value itself.
      *
      * [echo] shows stdout to the user; callers that parse stdout pass false.
      *

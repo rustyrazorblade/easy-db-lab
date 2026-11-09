@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.shellQuote
 import com.rustyrazorblade.easydblab.ssh.redactUrlCredentials
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Files
@@ -17,8 +18,17 @@ import java.util.UUID
  *
  * It keeps the command strings the services used to build themselves, so a change of seam does not
  * change what runs on the cluster: `KUBECONFIG=<remote kubeconfig> <tool> <args>`, joined with single
- * spaces. Only the arguments a caller marks in `shellQuoted` are single-quoted; the rest are joined
- * raw, as before. Input (a manifest, helm values) is staged in a local temporary file under [tempDir],
+ * spaces.
+ *
+ * Quoting rule: every argument reaches the remote shell as exactly one word, holding exactly the
+ * value the caller passed, because kit variables are interpolated into step fields and can hold a
+ * space, a `;` or a `$`. An argument made only of shell-safe characters (`String.shellQuote`'s set:
+ * letters, digits and `_./:=@%+,-`) is joined as it is, so fixed flags and plain values render
+ * byte-identical to the strings the services built before the seam. Any other argument, and the
+ * empty string, is single-quoted. An argument the caller marks in `shellQuoted` is single-quoted
+ * even when it is all safe characters, as marked arguments always were.
+ *
+ * Input (a manifest, helm values) is staged in a local temporary file under [tempDir],
  * uploaded to `/tmp/easydblab-input-<uuid>.yaml` on the control node, and the `-` argument is replaced
  * by that remote path. Both files are removed whether the command succeeds or fails.
  *
@@ -89,7 +99,7 @@ class SshClusterTooling(
     )
 
     private fun execute(call: Call): String {
-        val rendered = call.args.mapIndexed { index, arg -> if (index in call.shellQuoted) shellQuote(arg) else arg }
+        val rendered = call.args.mapIndexed { index, arg -> if (index in call.shellQuoted) alwaysQuoted(arg) else arg.shellQuote() }
         val command = "KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} ${(listOf(call.tool.executable) + rendered).joinToString(" ")}"
         return remoteOps.executeRemotely(call.host, command, output = call.echo).text
     }
@@ -135,6 +145,9 @@ class SshClusterTooling(
         }
     }
 
-    /** Single-quotes [value] for the remote shell, so a selector like `tier in (a, b)` stays one word. */
-    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+    /**
+     * Single-quotes [value] for the remote shell even when every character is safe, so a marked
+     * argument renders as it always did (`-l 'easydblab/kit=memcached'`).
+     */
+    private fun alwaysQuoted(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 }

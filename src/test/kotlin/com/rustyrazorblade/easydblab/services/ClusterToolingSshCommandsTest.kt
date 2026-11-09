@@ -217,4 +217,49 @@ internal class ClusterToolingSshCommandsTest {
 
         assertThat(commands).containsExactly("$kubeconfig helm list -n default -f '^myapp\$' -q" to false)
     }
+
+    /**
+     * A kit variable is interpolated into step fields before they reach these services, so any value
+     * can hold a space or a shell metacharacter, and an unset one is left as a literal `${NAME}`. Each call is run as the real remote command through
+     * `/bin/sh`, with helm and kubectl defined as shell functions that print the words they were given:
+     * the remote shell must hand the tool exactly the arguments the local form would pass as a list,
+     * the `;` must never end the command and run the rest, and the literal `${NAME}` must not be expanded.
+     */
+    @Test
+    fun `a kit variable with a space and a semicolon reaches the remote tool as one argument and runs nothing`() {
+        val marker = File(tempDir, "injected")
+        val value = "a value; touch ${marker.absolutePath} \${UNSET_KIT_VARIABLE}"
+        val recorded = RecordingClusterTooling()
+        val calls: List<(KubectlService, HelmService) -> Unit> =
+            listOf(
+                { _, h -> h.repoAdd(value, "https://example.com/charts?$value") },
+                { _, h -> h.upgradeInstall(value, value, value, version = value, values = mapOf("key" to value)) },
+                { _, h -> h.uninstall(value, value) },
+                { _, h -> h.releaseExists(value, value) },
+                { k, _ -> k.applyUrl(value) },
+                { k, _ -> k.applyKustomize(value) },
+                { k, _ -> k.wait(value, value, value, value, value) },
+                { k, _ -> k.delete(value, value, value, ignoreNotFound = true) },
+                { k, _ -> k.listInAllNamespaces(value) },
+            )
+
+        calls.forEach { call ->
+            call(kubectl, helm)
+            call(DefaultKubectlService(recorded), DefaultHelmService(recorded))
+        }
+
+        assertThat(commands.map { (command, _) -> wordsTheRemoteToolSees(command) })
+            .containsExactlyElementsOf(recorded.calls.map { listOf(it.tool.executable) + it.args })
+        assertThat(marker).doesNotExist()
+    }
+
+    /** The tool name and arguments [command] gives helm or kubectl when a POSIX shell runs it. */
+    private fun wordsTheRemoteToolSees(command: String): List<String> {
+        val printArgs = "for word; do printf '%s\\0' \"\$word\"; done"
+        val script = "helm() ( set -- helm \"\$@\"; $printArgs ); kubectl() ( set -- kubectl \"\$@\"; $printArgs ); $command"
+        val process = ProcessBuilder("/bin/sh", "-c", script).redirectErrorStream(true).start()
+        val printed = process.inputStream.readBytes().toString(Charsets.UTF_8)
+        process.waitFor()
+        return printed.split('\u0000').dropLast(1)
+    }
 }

@@ -42,9 +42,15 @@ NAME="$1"
 
 child=""
 stopping=0
+# The last file content that did not parse, so it is logged once, not on every poll.
+unparsed=""
 
 log() {
   echo "compactor-gate [${NAME}]: $*"
+}
+
+now() {
+  "${BB}" date +%s
 }
 
 # True when the file holds a whole number of seconds later than now. Read with the builtin `read`,
@@ -54,10 +60,16 @@ lease_valid() {
   until_s=""
   read -r until_s < "${VALID_UNTIL}" 2>/dev/null || [ -n "${until_s}" ] || return 1
   case "${until_s}" in
-    '' | *[!0-9]*) return 1 ;;
+    '' | *[!0-9]*)
+      if [ "${until_s}" != "${unparsed}" ]; then
+        log "${VALID_UNTIL} does not hold a whole number of seconds; the lease is not valid"
+        unparsed="${until_s}"
+      fi
+      return 1
+      ;;
   esac
-  now_s="$("${BB}" date +%s)"
-  [ "${until_s}" -gt "${now_s}" ]
+  unparsed=""
+  [ "${until_s}" -gt "$(now)" ]
 }
 
 # True while the child runs. `kill -0` alone also answers for a zombie, so ask the shell's job
@@ -77,14 +89,15 @@ pause() {
   sleeper=""
 }
 
-# Stops the child: SIGTERM, up to the grace for it to exit, then SIGKILL.
+# Stops the child: SIGTERM, up to the grace for it to exit, then SIGKILL. The grace is measured on
+# the clock, not counted in sleeps: a starved gate's `sleep 1` can take longer, and the lease's
+# margin assumes SIGKILL comes the grace after SIGTERM.
 stop_child() {
   [ -n "${child}" ] || return 0
   kill -TERM "${child}" 2>/dev/null
-  waited=0
-  while child_running && [ "${waited}" -lt "${GRACE}" ]; do
+  term_at="$(now)"
+  while child_running && [ $(($(now) - term_at)) -lt "${GRACE}" ]; do
     pause 1
-    waited=$((waited + 1))
   done
   if child_running; then
     log "still running ${GRACE}s after SIGTERM; sending SIGKILL"
@@ -103,11 +116,17 @@ on_term() {
 trap on_term TERM INT
 
 sleeper=""
+waiting=0
 while [ "${stopping}" = 0 ]; do
   if ! lease_valid; then
+    if [ "${waiting}" = 0 ]; then
+      log "waiting for the lease: ${VALID_UNTIL} is missing or not later than now"
+      waiting=1
+    fi
     pause "${POLL}"
     continue
   fi
+  waiting=0
   "$@" &
   child=$!
   log "lease valid until ${until_s}; started pid ${child}"

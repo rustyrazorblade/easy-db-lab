@@ -23,23 +23,38 @@ class LeaseLoopTest {
     private val start = Instant.parse("2026-11-07T18:00:00Z")
     private val store = InMemoryConditionalObjects()
 
-    /** A fake node clock: the monotonic and wall clocks move together, as on one node. */
+    /**
+     * A fake node clock: the monotonic and wall clocks move together, as on one node. With
+     * [failNextRead] set, the next monotonic read throws, as an unexpected collaborator failure.
+     */
     private class FakeClock(
         private val start: Instant,
     ) : LeaseClock {
         var elapsed: Duration = Duration.ZERO
+        var failNextRead = false
 
-        override fun monotonic(): Duration = elapsed
+        override fun monotonic(): Duration {
+            if (failNextRead) {
+                failNextRead = false
+                error("clock unavailable")
+            }
+            return elapsed
+        }
 
         override fun wall(): Instant = start.plusMillis(elapsed.inWholeMilliseconds)
     }
 
-    /** Records every gate write and scratch wipe, in order. */
+    /** Records every gate write and scratch wipe, in order. With [failNextGrant] set, the next grant throws. */
     private class RecordingGate : Gate {
         val events = mutableListOf<String>()
         var validUntil: Instant? = null
+        var failNextGrant = false
 
         override fun grant(validUntil: Instant) {
+            if (failNextGrant) {
+                failNextGrant = false
+                error("gate file not writable")
+            }
             this.validUntil = validUntil
             events += "grant $validUntil"
         }
@@ -59,10 +74,15 @@ class LeaseLoopTest {
     private inner class Node(
         val holder: String,
         objects: ConditionalObjects = store,
+        val gate: RecordingGate = RecordingGate(),
+        wipe: () -> Unit = {},
     ) {
         val clock = FakeClock(start)
-        val gate = RecordingGate()
-        val loop = LeaseLoop(objects, holder, timing, clock, gate, gate.wipe)
+        val loop =
+            LeaseLoop(objects, holder, timing, clock, gate) {
+                gate.wipe()
+                wipe()
+            }
         private var wait = Duration.ZERO
 
         /** Waits what the last step asked, then runs the next step. */
@@ -340,13 +360,66 @@ class LeaseLoopTest {
 
         wipeFails = false
         var wait = timing.standbyPoll
-        while (!loop.isHolder() && clock.elapsed < timing.ttl * 3) {
+        while (!loop.isHolder() && clock.elapsed < timing.ttl * 5) {
             clock.elapsed += wait
             wait = loop.step()
         }
         assertThat(loop.isHolder()).isTrue()
         assertThat(gate.events.takeLast(2)).containsExactly("wipe", "grant ${clock.wall().plusSeconds(60)}")
-        assertThat(clock.elapsed).describedAs("it waits a TTL on the version it wrote").isGreaterThanOrEqualTo(timing.ttl)
+        assertThat(clock.elapsed)
+            .describedAs("it backs off a TTL, then waits a TTL on the version it wrote")
+            .isGreaterThanOrEqualTo(timing.ttl * 2)
+    }
+
+    @Test
+    fun `a node whose wipe always fails lets a healthy standby take the lease and open its gate`() {
+        val broken = Node("lab-a/pod-1", wipe = { error("disk full") })
+        val healthy = Node("lab-b/pod-1")
+
+        repeat(80) {
+            broken.step()
+            healthy.step()
+        }
+
+        assertThat(healthy.holds()).isTrue()
+        assertThat(lease()?.holder).isEqualTo("lab-b/pod-1")
+        assertThat(healthy.gate.validUntil).isNotNull()
+        assertThat(broken.gate.events).noneMatch { it.startsWith("grant") }
+    }
+
+    @Test
+    fun `a renewal that lands while the gate write fails closes the gate, keeps the lease, and opens it at the next renewal`() {
+        val node = Node("lab-a/pod-1")
+        val gate = node.gate
+        node.step()
+        gate.failNextGrant = true
+
+        node.step()
+
+        assertThat(gate.events.last()).isEqualTo("revoke")
+        assertThat(node.holds()).isTrue()
+        node.step()
+        assertThat(gate.events.last()).isEqualTo("grant ${node.clock.wall().plusSeconds(60)}")
+        assertThat(node.holds()).isTrue()
+    }
+
+    @Test
+    fun `an unexpected failure in a round closes the gate, stands the holder by, and the next round runs`() {
+        val node = Node("lab-a/pod-1")
+        node.step()
+        assertThat(node.holds()).isTrue()
+
+        node.clock.failNextRead = true
+        node.step()
+
+        assertThat(node.gate.events.last()).isEqualTo("revoke")
+        assertThat(node.holds()).isFalse()
+        node.step()
+        assertThat(node.gate.events.last()).describedAs("the next round reads the lease and stands by").isEqualTo("revoke")
+        assertThat(node.holds()).isFalse()
+        node.runFor(timing.ttl + timing.standbyPoll * 2)
+        assertThat(node.holds()).describedAs("its own lease, unrenewed, expires and it takes it back").isTrue()
+        assertThat(node.gate.validUntil).isNotNull()
     }
 
     /**

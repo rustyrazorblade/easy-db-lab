@@ -28,6 +28,18 @@ The holder renews the lease every 15 seconds with a conditional write: the write
 
 If a holder cannot renew for 60 seconds, its gates stop the compactors: they send SIGTERM, wait 20 seconds, then send SIGKILL.  A holder therefore stops compacting at most 81 seconds after its last renewal, well before a standby may take over at 2 minutes.  Each pod measures these times on its own clock, so clock differences between clusters do not matter.
 
+A pod that takes the lease but cannot empty its working directories keeps its compactors stopped.  It then waits one extra lease period, so a healthy standby takes the lease first.
+
+### A lease that cannot be read
+
+If `leases/compactor.json` does not hold a valid lease, for example after a hand edit, no pod takes it over and nothing compacts.  Nothing replaces the file automatically.  Each lease agent logs this line once, followed by the file's content:
+
+```text
+Lease agent <cluster>/<pod> cannot parse the lease body, so it will not take it over; delete leases/compactor.json by hand to recover
+```
+
+To recover, delete `leases/compactor.json` from the account bucket.  Within 15 seconds a running pod creates a new lease and starts its compactors.  No compactor runs while the file is invalid, so the new holder cannot overlap with an old one.
+
 ## No data is deleted by age
 
 Compaction is on; retention and every other deletion path are off:

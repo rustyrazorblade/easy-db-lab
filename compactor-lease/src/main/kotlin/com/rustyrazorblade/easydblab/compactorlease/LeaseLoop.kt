@@ -19,9 +19,10 @@ import kotlin.time.Duration
  *   like any standby, even for a lease it wrote itself.
  * - On acquiring the lease the node wipes its scratch directories before it opens its gate, so a
  *   compactor never starts on another holding's leftovers. If the wipe or the gate write fails, the
- *   gate stays closed and the node stands by on the version it wrote; it takes that lease again
- *   after the TTL and wipes again. It never opens the gate after a failed wipe.
- * - A lease body that does not parse is never taken over; the node logs it and stands by.
+ *   gate stays closed and the node stands by on the version it wrote, waiting one extra TTL, so a
+ *   healthy standby takes the lease first. It never opens the gate after a failed wipe.
+ * - A lease body that does not parse is never taken over; the node logs it once per version and
+ *   stands by. Deleting the lease object by hand lets a node create a new one.
  *
  * The lease is written only with [ConditionalObjects.createIfAbsent] and
  * [ConditionalObjects.replaceIfVersionMatches]. The loop has no thread of its own: [step] does one
@@ -69,6 +70,9 @@ class LeaseLoop(
     }
 
     private var state: State = State.Starting
+
+    /** The last lease version whose body did not parse, so its ERROR is logged once. */
+    private var unparsedVersion: ObjectVersion? = null
 
     /** Whether this node holds the lease. */
     fun isHolder(): Boolean = state is State.Holding
@@ -203,7 +207,15 @@ class LeaseLoop(
         val previous =
             runCatching { LeaseRecord.fromJson(expired.content) }
                 .getOrElse { e ->
-                    log.error(e) { "Lease agent $holder cannot parse the lease body, so it will not take it over: ${expired.content}" }
+                    when (expired.version) {
+                        unparsedVersion -> log.debug { "Lease agent $holder still cannot parse lease version ${expired.version.token}" }
+                        else ->
+                            log.error(e) {
+                                "Lease agent $holder cannot parse the lease body, so it will not take it over; " +
+                                    "delete ${LeaseRecord.KEY} by hand to recover: ${expired.content}"
+                            }
+                    }
+                    unparsedVersion = expired.version
                     closeGate()
                     return
                 }
@@ -224,8 +236,9 @@ class LeaseLoop(
 
     /**
      * Wipes the scratch, then opens the gate. If either fails, the gate stays closed and the node
-     * stands by on [version], the lease it wrote. No one renews that version, so the node takes it
-     * again after the TTL and wipes again.
+     * stands by on [version], the lease it wrote, with its TTL starting one TTL from now. No one
+     * renews that version, so a healthy standby, which saw it within one standby poll of the write,
+     * takes it over a TTL later, before this node can. A node alone tries again after two TTLs.
      */
     private fun acquire(
         version: ObjectVersion,
@@ -244,7 +257,7 @@ class LeaseLoop(
                 e,
             ) { "Lease agent $holder could not wipe its scratch or open its gate; compactors stay stopped until it acquires again" }
             closeGate()
-            state = State.Standby(version, clock.monotonic(), holder)
+            state = State.Standby(version, clock.monotonic() + timing.ttl, holder)
         }
     }
 

@@ -738,6 +738,7 @@ The CLI MUST write a sourceable file, `.socks5-proxy.env`, in the workspace. It 
 - `EDL_TAILSCALE_ACTIVE=true` or `EDL_TAILSCALE_ACTIVE=false`, from the cluster state.
 - `EDL_SOCKS_PORT=<port>`, only while a verified tunnel is recorded.
 - `EDL_SOCKS_PID=<pid>`, the PID of the recorded `edl-socks-tunnel` script, written and removed together with `EDL_SOCKS_PORT`.
+- `EDL_NETWORK_MODE=direct`, only while direct network mode is active (see "Wrappers use no tunnel in direct network mode").
 
 This file is the only source of proxy state for shell-side tools. Any value that a shell-side tool needs MUST be written by the CLI to this file. No script in the system MAY parse JSON to read proxy state, and `jq` is not required.
 
@@ -1042,7 +1043,7 @@ The `kubectl`, `helm`, `cilium`, and `k9s` wrappers MUST always set `KUBECONFIG`
 
 ### Requirement: Wrappers route through the tunnel on a SOCKS cluster
 
-On every call, each wrapper MUST ignore inherited `EDL_TAILSCALE_ACTIVE` and `EDL_SOCKS_PORT` values and source the workspace's proxy env file. When `EDL_TAILSCALE_ACTIVE` is not `true` and a port is recorded, the wrapper MUST clear every inherited proxy variable (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, upper and lower case) and set its own, in both cases, for its own call only:
+On every call, each wrapper MUST ignore inherited `EDL_TAILSCALE_ACTIVE`, `EDL_SOCKS_PORT`, `EDL_SOCKS_PID` and `EDL_NETWORK_MODE` values and source the workspace's proxy env file. When `EDL_TAILSCALE_ACTIVE` is not `true`, the env file does not hold `EDL_NETWORK_MODE=direct`, and a port is recorded, the wrapper MUST clear every inherited proxy variable (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, upper and lower case) and set its own, in both cases, for its own call only:
 
 - `kubectl`, `helm`, `cilium`, `k9s`: `HTTPS_PROXY=socks5://127.0.0.1:<port>`.
 - `curl`: `ALL_PROXY=socks5h://127.0.0.1:<port>` and `NO_PROXY=localhost,127.0.0.1`.
@@ -1118,6 +1119,52 @@ When the env file holds `EDL_TAILSCALE_ACTIVE=true`, each wrapper MUST run the r
 - **WHEN** the user sources `env.sh` and runs `kubectl get ns`
 - **THEN** `kubectl` connects directly and succeeds
 
+### Requirement: Wrappers use no tunnel in direct network mode
+
+A workspace MAY record that the cluster API is reachable from this machine with no tunnel. The CLI records it as `EDL_NETWORK_MODE=direct` in the proxy env file, through `ProxyEnvFile.recordDirect`, and removes the key when direct mode is turned off. The key MUST be kept by every other update of the env file (recording or removing a tunnel, recording the Tailscale flag), because the file is rewritten whole from its known fields. `EDL_TAILSCALE_ACTIVE` MUST NOT be reused for this mode.
+
+Only the env file decides. Each wrapper MUST unset an inherited `EDL_NETWORK_MODE` before it sources the env file, so a value exported in the caller's environment has no effect. When the env file holds `EDL_NETWORK_MODE=direct`, each wrapper MUST run the real binary with no proxy variable set or cleared, and MUST NOT require a recorded tunnel, exactly as on a Tailscale cluster, including the `KUBECONFIG` rule of the "Wrappers use the workspace kubeconfig" requirement. Proxy variables the caller exported (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, upper and lower case, for example a corporate `http_proxy`) MUST pass through to the real binary untouched, as on a Tailscale cluster. `with-proxy` and `socks5-status` in `env.sh` follow the same mode (see "env.sh puts the workspace tool wrappers on PATH"). When the key is absent, the env file and the wrappers MUST behave as they did before this mode existed.
+
+Nothing in production writes the key until the local execution environment (#1040) records it.
+
+#### Scenario: Direct mode runs the real tool with no proxy variables
+
+- **GIVEN** an env file that holds `EDL_NETWORK_MODE=direct` and no recorded tunnel
+- **WHEN** a wrapped tool runs
+- **THEN** the real binary runs with the environment the wrapper received, apart from `KUBECONFIG` for the four Kubernetes tools
+- **AND** the wrapper does not exit with the `socks start` message
+
+#### Scenario: Direct mode ignores a recorded tunnel
+
+- **GIVEN** an env file that holds `EDL_NETWORK_MODE=direct` and a recorded tunnel
+- **WHEN** a wrapped tool runs
+- **THEN** the real binary sees none of the wrapper's proxy variables
+
+#### Scenario: The key survives tunnel and Tailscale updates
+
+- **GIVEN** an env file that holds `EDL_NETWORK_MODE=direct`
+- **WHEN** the CLI records a tunnel, removes the tunnel, or records the Tailscale flag
+- **THEN** the env file still holds `EDL_NETWORK_MODE=direct`
+
+#### Scenario: Turning direct mode off removes the key
+
+- **GIVEN** an env file that holds `EDL_NETWORK_MODE=direct` and other keys
+- **WHEN** the CLI records direct mode as inactive
+- **THEN** the env file no longer holds `EDL_NETWORK_MODE`
+- **AND** the other keys keep their values
+
+#### Scenario: A value exported in the caller's environment has no effect
+
+- **GIVEN** an env file that does not hold `EDL_NETWORK_MODE=direct`, and a caller that exports `EDL_NETWORK_MODE=direct`
+- **WHEN** a wrapped tool runs
+- **THEN** it exits 1 with a message that names the workspace and `easy-db-lab socks start`
+
+#### Scenario: No key, no change
+
+- **GIVEN** an env file with no `EDL_NETWORK_MODE`
+- **WHEN** a wrapped tool runs
+- **THEN** the wrapper behaves as the "Wrappers route through the tunnel on a SOCKS cluster" and "Wrappers connect directly on a Tailscale cluster" requirements state
+
 ### Requirement: Wrappers work on both SSH transports
 
 The tool wrappers and the proxy env file MUST behave the same under the `direct` and `ssm` SSH transports. Under both, the tunnel is `ssh -N -D` using the generated SSH configuration; under `ssm` that configuration carries the connection over Session Manager.
@@ -1172,6 +1219,8 @@ The CLI MUST provide a `socks` command group with `socks start` and `socks stop`
 
 `with-proxy` and `socks5-status` stay. They read the port from the proxy env file. `with-proxy` fails with the same `easy-db-lab socks start` message as the wrappers when no port is recorded, and runs its command directly on a Tailscale cluster.
 
+Both helpers MUST follow direct network mode exactly as the wrappers do (see "Wrappers use no tunnel in direct network mode"). They MUST read `EDL_NETWORK_MODE` from the proxy env file only and ignore a value inherited from the shell. When the env file holds `EDL_NETWORK_MODE=direct`, `with-proxy` MUST run its command with no proxy variable set or cleared, so inherited proxy variables (for example `http_proxy`) reach the command untouched. It MUST NOT require a recorded tunnel, and it MUST NOT use one that is recorded: direct mode wins. In the same case `socks5-status` MUST report that the workspace uses direct network mode, not that no tunnel is recorded.
+
 #### Scenario: Sourced shell resolves the wrappers
 
 - **WHEN** a user sources `env.sh` in bash
@@ -1206,4 +1255,22 @@ The CLI MUST provide a `socks` command group with `socks start` and `socks stop`
 - **GIVEN** a cluster with `tailscaleActive: true`
 - **WHEN** the user runs `with-proxy <command>`
 - **THEN** the command runs with no proxy variables added
+
+#### Scenario: with-proxy in direct network mode
+
+- **GIVEN** an env file that holds `EDL_NETWORK_MODE=direct`, with or without a recorded tunnel, and a shell that exports `http_proxy`
+- **WHEN** the user runs `with-proxy <command>`
+- **THEN** the command runs with no proxy variables added or removed, and sees the inherited `http_proxy` unchanged
+
+#### Scenario: socks5-status in direct network mode
+
+- **GIVEN** an env file that holds `EDL_NETWORK_MODE=direct`
+- **WHEN** the user runs `socks5-status`
+- **THEN** it reports that the workspace uses direct network mode and exits 0
+
+#### Scenario: The helpers ignore an inherited EDL_NETWORK_MODE
+
+- **GIVEN** an env file with no `EDL_NETWORK_MODE` and no recorded tunnel, and a shell that exports `EDL_NETWORK_MODE=direct`
+- **WHEN** the user runs `with-proxy <command>` or `socks5-status`
+- **THEN** `with-proxy` fails with the `easy-db-lab socks start` message, and `socks5-status` reports that no tunnel is recorded
 

@@ -291,7 +291,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         service(probe = { _, _, _ -> true }, launcher = { _, _ -> aliveProcess() }, portSelector = { 41234 })
             .ensureRunning(testHost)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, FAKE_PID)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, FAKE_PID), direct = false))
     }
 
     @Test
@@ -312,7 +312,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
             }
 
         assertThat(failure).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("exited right after it was verified")
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = false))
         assertThat(stateFile()).doesNotExist()
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
     }
@@ -340,7 +340,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         assertThat(
             failure,
         ).isInstanceOf(IllegalStateException::class.java).hasMessageContaining("stopped carrying traffic right after it was verified")
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = false))
         assertThat(stateFile()).doesNotExist()
         assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isNull()
         verify(scriptStaysUp).destroyForcibly()
@@ -359,7 +359,7 @@ internal class ProcessSocksProxyLaunchTest : ProcessSocksProxyServiceTestBase() 
         assertThatThrownBy { service(launcher = { _, _ -> deadProcess(exitCode = 255) }).ensureRunning(testHost) }
             .isInstanceOf(IllegalStateException::class.java)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = false))
     }
 
     @Test

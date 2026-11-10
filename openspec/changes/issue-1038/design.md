@@ -53,8 +53,9 @@ The name is descriptive and does not collide with the built-in `cassandra` comma
 
 ### D6. The version check is a registry manifest lookup
 - The first `start` step resolves `--image` (or `cassandra:<--version>`) to a registry, repository and tag.
-- It gets an anonymous token, then sends `HEAD /v2/<repo>/manifests/<tag>` through the workspace `curl` wrapper.
-- A 404 or any failure to resolve exits 1 naming the image, before any resource is created.
+- It gets an anonymous token (Docker Hub: `auth.docker.io`, official images under `library/`; other registries: their `/token` endpoint), then sends `HEAD /v2/<repo>/manifests/<tag-or-digest>` through the workspace `curl` wrapper, accepting OCI index, OCI manifest, Docker manifest list v2 and Docker manifest v2.
+- A failed token request (not 401, 403 or 404) exits 1 naming the image. A 401 or 403 on the manifest (a private image) warns and continues.
+- A 404 or any other failure exits 1 naming the image, before any resource is created.
 - *Rejected:* local `skopeo` (Homebrew users may not have it); a per-kit allow-list (blocks branch builds).
 
 ### D7. Claims are kept on `stop`
@@ -83,7 +84,7 @@ GossipingPropertyFileSnitch with `dc=--dc` (default `dc1`) and `rack=rack1`.
   1. Shell step (sources `EDL_KIT_LIB`):
      - resolve the image;
      - run the registry manifest check;
-     - check that the AMI Cassandra is not running (`job="cassandra"` series from a non-kit host, or the systemd unit through the db node list);
+     - check that the AMI Cassandra is not running: `ssh db<N> systemctl is-active cassandra` on every db node, through the workspace `ssh` wrapper (exit 0 fails start; 3 or 4 means inactive; anything else, such as an unreachable node, also fails start, naming the node and the ssh error);
      - fail fast on either.
   2. ConfigMap `cassandra-pods-jmx-rules` from the packaged rules.
   3. Manifests: headless Service, NodePort Service, StatefulSet.

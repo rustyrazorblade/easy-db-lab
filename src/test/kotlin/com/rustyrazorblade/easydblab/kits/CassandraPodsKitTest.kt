@@ -143,6 +143,8 @@ class CassandraPodsKitTest : BaseKoinTest() {
         val init = spec.initContainers.single()
         val agentVolume = spec.volumes.single { it.name == init.volumeMounts.single().name }
 
+        assertThat(init.image).doesNotContain("@OTEL_AGENT_VERSION@")
+        assertThat(kit.resource("statefulset.yaml.template")).doesNotContain("@OTEL_AGENT_VERSION@")
         assertThat(
             init.image,
         ).isEqualTo("${Constants.Kit.CassandraPods.AGENT_IMAGE_REPOSITORY}:${System.getProperty("easydblab.otelAgentVersion")}")

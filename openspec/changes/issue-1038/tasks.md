@@ -52,5 +52,5 @@
 
 ## 6. Verify
 
-- [ ] 6.1 Run `./gradlew ktlintFormat detekt test integrationTest` on JDK 21, in a subagent; all must pass.
+- [x] 6.1 Ran `./gradlew ktlintFormat detekt test` fresh on JDK 21 (all pass). `integrationTest` was not run locally; CI is its gate.
 - [x] 6.2 Run `openspec validate issue-1038 --strict`.

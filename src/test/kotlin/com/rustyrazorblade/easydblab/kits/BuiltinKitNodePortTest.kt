@@ -26,7 +26,14 @@ class BuiltinKitNodePortTest {
                 .groupBy({ it.second }, { it.first })
                 .filterValues { it.size > 1 }
 
-        assertThat(claims.map { it.first }).contains("clickhouse:nodeport-service.yaml.template", "postgres:duckdb:client")
+        assertThat(claims.map { it.first }).contains(
+            "clickhouse:nodeport-service.yaml.template",
+            "postgres:duckdb:client",
+            "cassandra-pods:nodeport-service.yaml.template",
+        )
+        assertThat(claims.filter { it.first.startsWith("cassandra-pods:") }.map { it.second })
+            .contains(Constants.Kit.CassandraPods.CQL_NODE_PORT)
+        assertThat(Constants.Kit.CassandraPods.CQL_NODE_PORT).isEqualTo(30942)
         assertThat(duplicates).isEmpty()
     }
 

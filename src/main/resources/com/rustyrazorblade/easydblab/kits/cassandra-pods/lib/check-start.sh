@@ -101,8 +101,20 @@ else
 fi
 
 curl_err="$(mktemp)"
-trap 'rm -f "${curl_err}"' EXIT
-token="$(curl -fsS "${token_url}" 2> /dev/null | sed -n 's/.*"token" *: *"\([^"]*\)".*/\1/p')" || token=""
+token_body="$(mktemp)"
+trap 'rm -f "${curl_err}" "${token_body}"' EXIT
+# A registry that answers its token endpoint with 401, 403 or 404 is checked anonymously; any other
+# failure (network, 5xx) stops start, naming the image.
+token_code="$(curl -sS -o "${token_body}" -w '%{http_code}' "${token_url}" 2> "${curl_err}")" || token_code=""
+token=""
+case "${token_code}" in
+  200) token="$(sed -n 's/.*"token" *: *"\([^"]*\)".*/\1/p' "${token_body}")" ;;
+  401 | 403 | 404) ;;
+  *)
+    detail="$(cat "${curl_err}")"
+    fail "ERROR: could not check image ${image}: the token request to ${registry} answered '${token_code:-no answer}'${detail:+: ${detail}}. Check the network or SOCKS tunnel."
+    ;;
+esac
 code="$(curl -sS -o /dev/null -w '%{http_code}' -I \
   ${token:+-H "Authorization: Bearer ${token}"} \
   -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \

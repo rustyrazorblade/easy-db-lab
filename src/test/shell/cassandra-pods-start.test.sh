@@ -25,7 +25,12 @@ cat > "${WORK}/stubs/curl" << 'STUB'
 echo "$*" >> "${STUB_DIR}/curl.calls"
 if [ -n "${STUB_CURL_ERROR:-}" ]; then echo "${STUB_CURL_ERROR}" >&2; case "$*" in *"-w"*) printf 000 ;; esac; exit 6; fi
 case "$*" in
-  *"/token?"*) echo '{"token":"abc"}' ;;
+  *"/token?"*)
+    out=""; prev=""
+    for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
+    [ -n "$out" ] && echo '{"token":"abc"}' > "$out"
+    printf '%s' "${STUB_TOKEN_CODE:-200}"
+    ;;
   *"-w"*) printf '%s' "${STUB_MANIFEST_CODE:-200}" ;;
 esac
 STUB
@@ -173,6 +178,32 @@ for pair in "1G:256M" "4G:1024M" "1g:256M" "512M:128M" "16G:4096M" "2M:1M"; do
   got="$(newsize_for "${heap}")"
   [ "${got}" = "${heap} ${want}" ] || fail "--heap ${heap}: expected '${heap} ${want}', got '${got}'"
 done
+
+begin "the manifest HEAD accepts OCI index, OCI manifest, Docker manifest list v2 and Docker manifest v2"
+run_check
+for t in application/vnd.oci.image.index.v1+json application/vnd.oci.image.manifest.v1+json \
+  application/vnd.docker.distribution.manifest.list.v2+json application/vnd.docker.distribution.manifest.v2+json; do
+  grep -q "${t}" "${WORK}/curl.calls" || fail "Accept header lacks ${t}"
+done
+
+begin "Docker Hub official images use the registry-1.docker.io token flow with the library/ prefix"
+run_check
+grep -q 'auth.docker.io/token?service=registry.docker.io&scope=repository:library/cassandra:pull' "${WORK}/curl.calls" || fail "wrong token request: $(cat "${WORK}/curl.calls")"
+grep -q 'https://registry-1.docker.io/v2/library/cassandra/manifests/5.0' "${WORK}/curl.calls" || fail "wrong manifest URL"
+
+begin "ghcr.io uses its own token endpoint and sends the token"
+run_check CASSANDRA_IMAGE=ghcr.io/example/cassandra:sha-abc
+grep -q 'https://ghcr.io/token?service=ghcr.io&scope=repository:example/cassandra:pull' "${WORK}/curl.calls" || fail "wrong token request"
+grep -q 'Authorization: Bearer abc' "${WORK}/curl.calls" || fail "token not sent"
+
+begin "a failed token request exits 1 naming the image"
+run_check STUB_TOKEN_CODE=503
+[ "${rc}" -eq 1 ] || fail "exit ${rc}"
+case "${out}" in *cassandra:5.0*503*) ;; *) fail "message does not name the image and status: ${out}" ;; esac
+
+begin "a registry with no token endpoint (404) is still checked anonymously"
+run_check STUB_TOKEN_CODE=404
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
 
 run_wait() {
   (

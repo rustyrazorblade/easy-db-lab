@@ -298,5 +298,5 @@ A command that fails must exit non-zero: scripts and test plans read the exit co
 When the command has already told the user what went wrong through its own typed event (a query
 error, a per-host failure), throw `kernel/CommandFailedException` after emitting it. The executor
 returns the error exit code and does not print the failure a second time. Any other exception is
-reported as `Command.ExecutionError` with its cause chain.
+reported through `services/CommandFailureReporter`: when a registered provider error handler recognises it anywhere in the cause chain (AWS credentials or permissions), the user sees `Command.ProviderError` with a remedy; otherwise `Command.ExecutionError` with the cause chain. The same reporter serves the lifecycle, the top-level dispatch and Picocli's handler, so `Main` holds no error handling.
 See [`events/CLAUDE.md`](../events/CLAUDE.md) for the event hierarchy and how to add new events.

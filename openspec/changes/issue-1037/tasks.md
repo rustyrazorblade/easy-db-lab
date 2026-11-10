@@ -25,4 +25,4 @@
 ## 6. Docs and verify
 
 - [x] 6.1 Update `configuration/CLAUDE.md` and the root `CLAUDE.md` observability section: list the gated workloads and the capability each needs.
-- [ ] 6.2 Run `./gradlew check` on JDK 21 in a subagent, with no new `@Suppress`, threshold change or baseline entry.
+- [x] 6.2 Run `./gradlew check` on JDK 21 in a subagent, with no new `@Suppress`, threshold change or baseline entry.

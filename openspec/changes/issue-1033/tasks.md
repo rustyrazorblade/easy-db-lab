@@ -25,10 +25,10 @@
 
 ## 6. upload-keys
 
-- [ ] 6.1 Test first: the uploaded content is the joined keys, no `authorized_keys_extra` remains in D or W, and a relative `<dir>` resolves against D.
-- [ ] 6.2 Use `Files.createTempFile`, deleted in `finally`.
+- [x] 6.1 Test first: the uploaded content is the joined keys, no `authorized_keys_extra` remains in D or W, and a relative `<dir>` resolves against D.
+- [x] 6.2 Use `Files.createTempFile`, deleted in `finally`.
 
 ## 7. Docs and verify
 
-- [ ] 7.1 Root `CLAUDE.md`: add the standing rule "never open a workspace file by a bare relative name; resolve it against `Context.workingDirectory`". Update the `configuration/CLAUDE.md` `state.json` note.
-- [ ] 7.2 Run `ktlintFormat`, `detekt` on JDK 21, and `./gradlew test` in a subagent, with no new `@Suppress`, threshold change or baseline entry.
+- [x] 7.1 Root `CLAUDE.md`: add the standing rule "never open a workspace file by a bare relative name; resolve it against `Context.workingDirectory`". Update the `configuration/CLAUDE.md` `state.json` note.
+- [x] 7.2 Run `ktlintFormat`, `detekt` on JDK 21, and `./gradlew test` in a subagent, with no new `@Suppress`, threshold change or baseline entry.

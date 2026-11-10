@@ -13,6 +13,7 @@ import picocli.CommandLine.Parameters
 import java.io.File
 import java.io.FileFilter
 import java.io.FileWriter
+import java.nio.file.Files
 import java.nio.file.Paths
 import kotlin.io.path.exists
 import kotlin.system.exitProcess
@@ -51,19 +52,23 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
         // collect all the keys into a single file then upload
         val keys = files.joinToString("\n") { it.readText().trim() }
 
-        val authorizedKeysExtraFile = File("authorized_keys_extra")
-        FileWriter(authorizedKeysExtraFile).use {
-            it.write(keys)
-            it.write("\n")
+        val authorizedKeysExtraFile = Files.createTempFile("authorized_keys_extra", null).toFile()
+        try {
+            FileWriter(authorizedKeysExtraFile).use {
+                it.write(keys)
+                it.write("\n")
+            }
+
+            println("Uploading the following keys:")
+            println(keys)
+
+            val upload = doUpload(authorizedKeysExtraFile)
+            hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { upload(it.toHost()) }
+            hostOperationsService.withHosts(clusterState.hosts, ServerType.Stress, "") { upload(it.toHost()) }
+            hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") { upload(it.toHost()) }
+        } finally {
+            authorizedKeysExtraFile.delete()
         }
-
-        println("Uploading the following keys:")
-        println(keys)
-
-        val upload = doUpload(authorizedKeysExtraFile)
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { upload(it.toHost()) }
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Stress, "") { upload(it.toHost()) }
-        hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") { upload(it.toHost()) }
     }
 
     private fun doUpload(authorizedKeysFile: File) =

@@ -35,7 +35,6 @@ class HelpTopicCommandLinesTest : BaseKoinTest() {
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
                 single<KitCommandScanner> { DefaultKitCommandScanner() }
-                single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
                 single<HelpTopicService> { DefaultHelpTopicService() }
             },
         )

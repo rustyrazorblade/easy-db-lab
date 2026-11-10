@@ -99,7 +99,7 @@ class ProcessSocksProxyServiceTest {
         portSelector: LocalPortSelector = LoopbackPortSelector(),
         clock: Clock = Clock.systemUTC(),
     ) = ProcessSocksProxyService(
-        Context.forCli(tempDir).copy(workingDirectory = tempDir),
+        Context.forCli(tempDir, tempDir),
         SocksTunnelReachabilityProbe(Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS),
         EventBus(),
         verifyDelay = VERIFY_DELAY,
@@ -269,7 +269,7 @@ class ProcessSocksProxyServiceTest {
         launcher: SshProcessLauncher,
         portSelector: LocalPortSelector,
     ) = ProcessSocksProxyService(
-        Context.forCli(workspace).copy(workingDirectory = workspace),
+        Context.forCli(workspace, workspace),
         TunnelReachabilityProbe { _, _, _ -> true },
         EventBus(),
         verifyDelay = VERIFY_DELAY,

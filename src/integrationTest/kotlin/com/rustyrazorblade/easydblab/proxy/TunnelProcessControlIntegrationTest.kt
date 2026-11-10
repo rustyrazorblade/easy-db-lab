@@ -146,7 +146,7 @@ internal class TunnelProcessControlIntegrationTest {
     private fun launchTunnel(port: Int): Pair<ProcessHandle, ProcessHandle> {
         TunnelTestProcesses.linkScript(installedScript, workspace)
         val command =
-            ProcessSocksProxyService(Context.forCli(workspace).copy(workingDirectory = workspace), { _, _, _ -> false }, EventBus())
+            ProcessSocksProxyService(Context.forCli(workspace, workspace), { _, _, _ -> false }, EventBus())
                 .buildTunnelCommand(port, sshConfig.absolutePath, logFile, "control0")
         val tunnel = DefaultSshProcessLauncher.launch(command, logFile).toHandle()
         started += tunnel

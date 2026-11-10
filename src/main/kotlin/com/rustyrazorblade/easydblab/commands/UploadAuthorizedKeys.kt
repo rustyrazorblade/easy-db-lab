@@ -44,7 +44,9 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
         }
 
         val files =
-            File(localDir).listFiles(FileFilter { it.name.endsWith(".pub") })
+            File(localDir)
+                .listFiles(FileFilter { it.name.endsWith(".pub") })
+                ?.sortedBy { it.name } // listFiles order is filesystem-dependent
                 ?: error("Failed to list files in $localDir")
         println("Files: ${files.map { it.name }}")
 

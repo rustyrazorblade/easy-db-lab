@@ -153,6 +153,27 @@ run_check STUB_SSH_ERROR="ssh: connect to host db0 port 22: Connection timed out
 [ "${rc}" -eq 1 ] || fail "exit ${rc}"
 case "${out}" in *"could not check db node db0"*"Connection timed out"*) ;; *) fail "message: ${out}" ;; esac
 
+# The pod's HEAP_NEWSIZE computation, extracted from the shipped template and run through sh (the
+# container's /bin/sh): from `size=` through the `newsize` floor, then the export.
+TEMPLATE="${KIT}/statefulset.yaml.template"
+sed -n '/^ *size="\${CASSANDRA_HEAP%/,/^ *export MAX_HEAP_SIZE=/p' "${TEMPLATE}" | sed 's/^ *//' > "${WORK}/heap-snippet.sh"
+
+newsize_for() {
+  sh -c 'CASSANDRA_HEAP="$1"; . "$2"; echo "${MAX_HEAP_SIZE} ${HEAP_NEWSIZE}"' sh "$1" "${WORK}/heap-snippet.sh" 2>&1
+}
+
+begin "the heap snippet was extracted from the template"
+[ -s "${WORK}/heap-snippet.sh" ] || fail "no HEAP_NEWSIZE snippet found in the template"
+grep -q 'HEAP_NEWSIZE=' "${WORK}/heap-snippet.sh" || fail "snippet lacks HEAP_NEWSIZE"
+
+begin "HEAP_NEWSIZE is a quarter of the heap in MiB, with a 1M floor"
+for pair in "1G:256M" "4G:1024M" "1g:256M" "512M:128M" "16G:4096M" "2M:1M"; do
+  heap="${pair%%:*}"
+  want="${pair##*:}"
+  got="$(newsize_for "${heap}")"
+  [ "${got}" = "${heap} ${want}" ] || fail "--heap ${heap}: expected '${heap} ${want}', got '${got}'"
+done
+
 run_wait() {
   (
     cd "${WORK}/kit" &&

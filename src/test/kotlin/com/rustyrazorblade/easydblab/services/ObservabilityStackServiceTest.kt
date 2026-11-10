@@ -214,7 +214,11 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
 
         assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
             .containsExactlyInAnyOrder(
-                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.SYSTEMD_JOURNAL, NodeCapability.SYSTEMD_JOURNAL.absentReason),
+                Event.Grafana.StageSkipped(
+                    "Fluent Bit Journald",
+                    NodeCapability.SYSTEMD_JOURNAL,
+                    NodeCapability.SYSTEMD_JOURNAL.absentReason,
+                ),
                 Event.Grafana.StageSkipped("YACE", NodeCapability.CLOUDWATCH, NodeCapability.CLOUDWATCH.absentReason),
                 Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3, NodeCapability.S3.absentReason),
             )

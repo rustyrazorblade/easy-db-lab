@@ -450,7 +450,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
-        assertThat(yaml).contains("job_name: 'yace'")
+        assertThat(yaml).contains("job_name: \"yace\"")
         assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
     }
 
@@ -688,7 +688,7 @@ class OtelManifestBuilderTest : BaseKoinTest() {
 
         assertThat(yaml).contains("job_name: 'beyla'")
         assertThat(yaml).contains("job_name: 'ebpf-exporter'")
-        assertThat(yaml).contains("job_name: 'yace'")
+        assertThat(yaml).contains("job_name: \"yace\"")
         assertThat(yaml).contains("job_name: \"kube-state-metrics\"")
         assertThat(yaml).contains("job_name: \"clickhouse-clickhouse\"")
     }

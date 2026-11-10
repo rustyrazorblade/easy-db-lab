@@ -3,6 +3,8 @@ package com.rustyrazorblade.easydblab.configuration.otel
 import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
@@ -54,6 +56,7 @@ class OtelManifestBuilder(
         private const val READINESS_PERIOD = 10
         private val WORKLOAD_METRICS_LABEL = Constants.K8s.WORKLOAD_METRICS_LABEL
         private const val SCRAPE_INTERVAL = "15s"
+        private const val YACE_SCRAPE_INTERVAL = "5s"
 
         /** Volume carrying the node's root filesystem into the collector container. */
         const val HOST_ROOT_VOLUME = "host-root"
@@ -122,12 +125,13 @@ class OtelManifestBuilder(
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
         cni: CniMode = CniMode.Flannel,
+        capabilities: NodeCapabilities = NodeCapabilities.AWS,
     ): List<HasMetadata> =
         listOf(
             buildServiceAccount(),
             buildClusterRole(),
             buildClusterRoleBinding(),
-            buildConfigMap(scrapeConfigs, telemetryRedirect, cni),
+            buildConfigMap(scrapeConfigs, telemetryRedirect, cni, capabilities),
             buildDaemonSet(),
             buildService(),
         )
@@ -191,11 +195,13 @@ class OtelManifestBuilder(
      * @param telemetryRedirect When non-null, the three export endpoints resolve to this external
      *   stack; when null they resolve to the in-cluster service addresses (local mode, unchanged).
      * @param cni The cluster's pod-network datapath; only Cilium renders the CNI scrape jobs.
+     * @param capabilities What the environment provides; the `yace` job needs CloudWatch.
      */
     fun buildConfigMap(
         scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
         telemetryRedirect: TelemetryRedirect? = null,
         cni: CniMode = CniMode.Flannel,
+        capabilities: NodeCapabilities = NodeCapabilities.AWS,
     ) = ConfigMapBuilder()
         .withNewMetadata()
         .withName(CONFIGMAP_NAME)
@@ -212,7 +218,7 @@ class OtelManifestBuilder(
                     mapOf(
                         "KIT_SCRAPE_JOBS" to renderScrapeJobs(buildDynamicScrapeJobs(scrapeConfigs)),
                         "INFRA_SCRAPE_JOBS" to
-                            renderScrapeJobs(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(cni)),
+                            renderScrapeJobs(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(cni, capabilities)),
                         "METRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_METRICS_ENDPOINT),
                         "LOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_LOGS_ENDPOINT),
                         "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
@@ -230,7 +236,11 @@ class OtelManifestBuilder(
      * so cannot live in the YAML template (a bare `__x__` there is a template placeholder):
      * kube-state-metrics on every cluster, plus the CNI jobs from [buildCniScrapeJobs].
      */
-    fun buildInfraScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> = listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni)
+    fun buildInfraScrapeJobs(
+        cni: CniMode,
+        capabilities: NodeCapabilities = NodeCapabilities.AWS,
+    ): List<PrometheusScrapeJob> =
+        listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni) + buildCloudWatchScrapeJobs(capabilities)
 
     /**
      * The scrape jobs for the local telemetry backends' own metrics: Mimir, Loki, Tempo and the
@@ -302,12 +312,22 @@ class OtelManifestBuilder(
                 )
         }
 
+    /** The scrape jobs for workloads that exist only where the environment has CloudWatch: YACE. */
+    private fun buildCloudWatchScrapeJobs(capabilities: NodeCapabilities): List<PrometheusScrapeJob> =
+        when (NodeCapability.CLOUDWATCH in capabilities) {
+            true -> listOf(buildLocalhostScrapeJob("yace", Constants.Yace.PORT, YACE_SCRAPE_INTERVAL, YACE_SCRAPE_INTERVAL))
+            false -> emptyList()
+        }
+
     private fun buildLocalhostScrapeJob(
         jobName: String,
         port: Int,
+        scrapeInterval: String = SCRAPE_INTERVAL,
+        scrapeTimeout: String? = null,
     ) = PrometheusScrapeJob(
         jobName = jobName,
-        scrapeInterval = SCRAPE_INTERVAL,
+        scrapeInterval = scrapeInterval,
+        scrapeTimeout = scrapeTimeout,
         staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:$port"))),
         metricsPath = "/metrics",
         relabelConfigs =

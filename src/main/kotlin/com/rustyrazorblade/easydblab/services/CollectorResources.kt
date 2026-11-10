@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.WorkloadScrapeConfig
 import io.fabric8.kubernetes.api.model.HasMetadata
@@ -24,6 +25,9 @@ object CollectorResources {
      *
      * The export destinations and the CNI are read from the cluster's recorded init config. A
      * cluster with no recorded CNI predates Cilium and runs Flannel.
+     *
+     * [capabilities] decides which environment-bound scrape jobs exist (`yace` needs CloudWatch);
+     * both callers take the default, so the deploy and the kit sync render the same config.
      */
     fun build(
         otelManifestBuilder: OtelManifestBuilder,
@@ -31,6 +35,7 @@ object CollectorResources {
         clusterState: ClusterState,
         region: String,
         scrapeConfigs: List<WorkloadScrapeConfig>,
+        capabilities: NodeCapabilities = NodeCapabilities.from(clusterState),
     ): List<HasMetadata> {
         val initConfig = clusterState.initConfig
         return ConfigHashAnnotator.annotate(
@@ -38,6 +43,7 @@ object CollectorResources {
                 scrapeConfigs,
                 initConfig?.telemetryRedirect,
                 initConfig?.cni ?: CniMode.Flannel,
+                capabilities,
             ),
             mapOf(ClusterConfigData.NAME to ClusterConfigData.of(controlHost, clusterState, region)),
         )

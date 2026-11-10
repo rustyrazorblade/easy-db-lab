@@ -10,8 +10,8 @@
 
 ## 3. Collector config
 
-- [ ] 3.1 Test first: the rendered collector config has a `yace` job only with `CLOUDWATCH`, and the deploy path and the `OtelSyncService` path render the same config.
-- [ ] 3.2 Move the `yace` job from `otel-collector-config.yaml` into an `OtelManifestBuilder` function, and pass the capabilities through `CollectorResources.build`.
+- [x] 3.1 Test first: the rendered collector config has a `yace` job only with `CLOUDWATCH`, and the deploy path and the `OtelSyncService` path render the same config.
+- [x] 3.2 Move the `yace` job from `otel-collector-config.yaml` into an `OtelManifestBuilder` function, and pass the capabilities through `CollectorResources.build`.
 
 ## 4. Status
 

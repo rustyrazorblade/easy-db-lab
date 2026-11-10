@@ -1,0 +1,4 @@
+apiVersion: v2
+name: cluster-tooling-fixture
+description: A chart with one ConfigMap, for LocalClusterToolingIntegrationTest. It needs no image.
+version: 0.1.0

@@ -4,10 +4,12 @@ import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import org.apache.sshd.client.channel.ClientChannel
 import org.apache.sshd.client.session.ClientSession
 import org.apache.sshd.common.io.IoSession
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.assertj.core.api.Assertions.catchThrowableOfType
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.component.KoinComponent
@@ -143,6 +145,106 @@ class SSHClientTest :
             sshClient.executeRemoteCommand("tailscale up --authkey=tskey-auth-hunter2", output = false, secret = true)
         }.isInstanceOf(RemoteCommandFailedException::class.java)
             .hasMessageNotContaining("hunter2")
+    }
+
+    @Test
+    fun `a command that exits 2 raises an exception carrying exit status 2`() {
+        stubRemoteCommand(
+            stderr = "error: the server doesn't have a resource type \"nosuchkind\"",
+            failWith = RemoteException("Remote command failed (2): kubectl get nosuchkind"),
+        )
+
+        val failure =
+            catchThrowableOfType(RemoteCommandFailedException::class.java) {
+                sshClient.executeRemoteCommand("kubectl get nosuchkind", output = false, secret = false)
+            }
+
+        assertThat(failure.exitStatus).isEqualTo(2)
+    }
+
+    @Test
+    fun `the status is read from the exception MINA really throws, which has a nested cause`() {
+        // ClientChannel.validateCommandExitStatusCode builds RemoteException(message, ServerException(status)),
+        // and RemoteException.getMessage() then appends "; nested exception is: ..." to the message.
+        stubRemoteCommand(
+            failWith = RemoteException("Remote command failed (4): kubectl get nodes", java.rmi.ServerException("4")),
+        )
+
+        val failure =
+            catchThrowableOfType(RemoteCommandFailedException::class.java) {
+                sshClient.executeRemoteCommand("kubectl get nodes", output = false, secret = false)
+            }
+
+        assertThat(failure.exitStatus).isEqualTo(4)
+    }
+
+    @Test
+    fun `the status is read from the exception the installed MINA builds for a non-zero exit`() {
+        // Not a hand-built message: a MINA upgrade that rewords "Remote command failed (N)" fails here.
+        val minaFailure =
+            catchThrowableOfType(RemoteException::class.java) {
+                ClientChannel.validateCommandExitStatusCode("kubectl get nosuchkind", 2)
+            }
+        stubRemoteCommand(failWith = minaFailure)
+
+        val failure =
+            catchThrowableOfType(RemoteCommandFailedException::class.java) {
+                sshClient.executeRemoteCommand("kubectl get nosuchkind", output = false, secret = false)
+            }
+
+        assertThat(failure.exitStatus).isEqualTo(2)
+    }
+
+    @Test
+    fun `a secret command hides its text but still reports its exit status`() {
+        stubRemoteCommand(
+            stderr = "invalid key: tskey-auth-hunter2",
+            failWith = RemoteException("Remote command failed (3): tailscale up --authkey=tskey-auth-hunter2"),
+        )
+
+        val failure =
+            catchThrowableOfType(RemoteCommandFailedException::class.java) {
+                sshClient.executeRemoteCommand("tailscale up --authkey=tskey-auth-hunter2", output = false, secret = true)
+            }
+
+        assertThat(failure.exitStatus).isEqualTo(3)
+        assertThat(failure.message).doesNotContain("hunter2")
+    }
+
+    @Test
+    fun `a failure with no exit status in the transport message leaves the status null`() {
+        stubRemoteCommand(failWith = RemoteException("No exit status returned for command=kubectl get nodes"))
+
+        val failure =
+            catchThrowableOfType(RemoteCommandFailedException::class.java) {
+                sshClient.executeRemoteCommand("kubectl get nodes", output = false, secret = false)
+            }
+
+        assertThat(failure.exitStatus).isNull()
+    }
+
+    @Test
+    fun `a transport failure with no message leaves the status null instead of failing to parse`() {
+        stubRemoteCommand(failWith = RemoteException())
+
+        val failure =
+            catchThrowableOfType(RemoteCommandFailedException::class.java) {
+                sshClient.executeRemoteCommand("kubectl get nodes", output = false, secret = false)
+            }
+
+        assertThat(failure.exitStatus).isNull()
+    }
+
+    @Test
+    fun `a command that quotes the failure phrase cannot forge an exit status`() {
+        stubRemoteCommand(failWith = RemoteException("No exit status returned for command=echo 'Remote command failed (9): x'"))
+
+        val failure =
+            catchThrowableOfType(RemoteCommandFailedException::class.java) {
+                sshClient.executeRemoteCommand("echo 'Remote command failed (9): x'", output = false, secret = false)
+            }
+
+        assertThat(failure.exitStatus).isNull()
     }
 
     @Test

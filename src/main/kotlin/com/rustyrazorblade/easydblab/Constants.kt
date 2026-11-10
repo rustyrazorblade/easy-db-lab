@@ -370,6 +370,51 @@ object Constants {
         const val DEFAULT_SERVER_URL = "https://127.0.0.1:6443"
     }
 
+    // The helm and kubectl seam (services/ClusterTooling.kt)
+    object ClusterTooling {
+        /** Lines of a failed tool's stderr kept in `ClusterToolFailedException`. */
+        const val FAILURE_TAIL_LINES = 50
+
+        /** The exit status reported when a remote failure carries none; no process exits with it. */
+        const val UNKNOWN_EXIT_STATUS = -1
+
+        /**
+         * How long the local form lets one helm or kubectl call run before it kills it. Well above the
+         * longest wait a kit step asks the tool for (`helm --wait`, `kubectl wait`, 600s in the shipped
+         * kits), so it ends only a call that has hung, such as one whose cluster cannot be reached.
+         */
+        val LOCAL_TOOL_TIMEOUT: java.time.Duration = java.time.Duration.ofMinutes(30)
+
+        /** The file argument that means "read stdin" (`apply -f -`, `--values -`). */
+        const val STDIN_ARGUMENT = "-"
+
+        /** Directory on the control node that holds an uploaded stdin copy until the command ends. */
+        const val REMOTE_INPUT_DIRECTORY = "/tmp"
+
+        /** Name prefix of the temporary file that holds stdin, locally before upload and on the control node. */
+        const val INPUT_FILE_PREFIX = "easydblab-input"
+
+        /** Name suffix of the temporary stdin file. */
+        const val INPUT_FILE_SUFFIX = ".yaml"
+
+        /** Directory under the workspace that holds helm's config, cache and data for the local form. */
+        const val HELM_HOME_DIRECTORY = ".helm"
+
+        /** Prefix of helm's environment variables; the local form clears inherited ones before setting its own. */
+        const val HELM_ENV_PREFIX = "HELM_"
+
+        /** The kubeconfig variable; the local form clears the inherited one so only the workspace kubeconfig applies. */
+        const val KUBECONFIG_ENV = "KUBECONFIG"
+
+        /** The environment variable the local form sets for each of helm's homes, with its directory under [HELM_HOME_DIRECTORY]. */
+        val HELM_HOMES =
+            mapOf(
+                "HELM_CONFIG_HOME" to "config",
+                "HELM_CACHE_HOME" to "cache",
+                "HELM_DATA_HOME" to "data",
+            )
+    }
+
     // K8s observability configuration
     object K8s {
         const val NAMESPACE = "default"
@@ -989,7 +1034,8 @@ object Constants {
         /**
          * The sourceable file in the workspace that holds the proxy state shell-side tools read: the
          * tool wrappers in `bin/`, the tunnel script and `env.sh`. It holds only [ENV_TAILSCALE_ACTIVE],
-         * [ENV_SOCKS_PORT] and [ENV_SOCKS_PID], one `KEY=value` line each, so no shell code ever parses JSON.
+         * [ENV_SOCKS_PORT], [ENV_SOCKS_PID] and [ENV_NETWORK_MODE], one `KEY=value` line each, so no
+         * shell code ever parses JSON.
          */
         const val ENV_FILE = ".socks5-proxy.env"
 
@@ -1010,6 +1056,17 @@ object Constants {
          * written and removed with [ENV_SOCKS_PORT]. Shell-side tools use the port only while it is live.
          */
         const val ENV_SOCKS_PID = "EDL_SOCKS_PID"
+
+        /**
+         * The env file key that says the cluster API is reachable from this machine with no tunnel.
+         * It is present, with the value [ENV_NETWORK_MODE_DIRECT], only while direct mode is active, and
+         * the tool wrappers then run the real tool with no proxy variables. It is separate from
+         * [ENV_TAILSCALE_ACTIVE], which means Tailscale and nothing else.
+         */
+        const val ENV_NETWORK_MODE = "EDL_NETWORK_MODE"
+
+        /** The value of [ENV_NETWORK_MODE] that selects direct mode. */
+        const val ENV_NETWORK_MODE_DIRECT = "direct"
 
         /**
          * Filename of the SOCKS5 tunnel log: the `ssh -v` transcript of every ssh the tunnel script

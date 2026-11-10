@@ -124,10 +124,8 @@ class KitRunnerCommand(
      * fails the command.
      */
     private fun isAlreadyRunning(config: KitConfig): Boolean {
-        val controlHost =
-            clusterState.getControlHost()
-                ?: error("No control node found in cluster state")
-        return when (val presence = workloadProbe.find(kitName, config.runtime, controlHost).getOrThrow()) {
+        checkNotNull(clusterState.getControlHost()) { "No control node found in cluster state" }
+        return when (val presence = workloadProbe.find(kitName, config.runtime).getOrThrow()) {
             is WorkloadPresence.Absent -> false
             is WorkloadPresence.Present -> {
                 eventBus.emit(
@@ -239,11 +237,10 @@ class KitRunnerCommand(
             } else {
                 executeScript(requireNotNull(findScriptFile(phase)) { "No script for '$phase' in kit '$kitName'" }, envVars)
             }
-        val controlHost = clusterState.getControlHost()
         val exitCode =
             when {
                 stepsExitCode != 0 -> stepsExitCode
-                controlHost == null || stoppedWorkloadIsGone(phase, config, controlHost) -> 0
+                clusterState.getControlHost() == null || stoppedWorkloadIsGone(phase, config) -> 0
                 else -> Constants.ExitCodes.ERROR
             }
         eventBus.emit(Event.Kit.ScriptFinished(kit = kitName, script = phase, exitCode = exitCode))
@@ -313,11 +310,10 @@ class KitRunnerCommand(
     private fun stoppedWorkloadIsGone(
         phase: String,
         config: KitConfig,
-        controlHost: ClusterHost,
     ): Boolean {
         if (phase !in PHASES_THAT_REMOVE_THE_WORKLOAD || config.runtime == null) return true
         val remaining =
-            workloadProbe.awaitGone(kitName, config.runtime, controlHost).getOrElse { e ->
+            workloadProbe.awaitGone(kitName, config.runtime).getOrElse { e ->
                 log.warn(e) { "Could not confirm $kitName's workload left the cluster after $phase" }
                 eventBus.emit(
                     Event.Kit.StopUnverified(kit = kitName, reason = e.message ?: e.javaClass.simpleName, phase = phase),

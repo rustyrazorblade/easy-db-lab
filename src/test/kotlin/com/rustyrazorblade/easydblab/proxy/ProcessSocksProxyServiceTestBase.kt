@@ -104,7 +104,7 @@ internal abstract class ProcessSocksProxyServiceTestBase {
         clock: Clock = Clock.systemUTC(),
         connectFailureHint: () -> String? = { null },
     ) = ProcessSocksProxyService(
-        Context.forCli(tempDir, tempDir),
+        Context.forCli(easyDbLabUserDirectory = tempDir, workingDirectory = tempDir),
         probe,
         eventBus,
         verifyDelay = VERIFY_DELAY,

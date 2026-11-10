@@ -31,6 +31,10 @@ data class Context(
         ): Context = Context(easyDbLabUserDirectory, isInteractive = false, workingDirectory = workingDirectory)
     }
 
+    init {
+        require(workingDirectory.isAbsolute) { "The workspace directory must be absolute: $workingDirectory" }
+    }
+
     val log = KotlinLogging.logger {}
 
     /**
@@ -48,7 +52,6 @@ data class Context(
     fun workspaceFile(name: String): File = File(workingDirectory, name)
 
     init {
-        require(workingDirectory.isAbsolute) { "The workspace directory must be absolute: $workingDirectory" }
         if (profile.isEmpty()) {
             profile = "default"
         }

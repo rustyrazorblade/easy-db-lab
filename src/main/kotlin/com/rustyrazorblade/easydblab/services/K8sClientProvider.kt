@@ -29,7 +29,7 @@ class K8sClientProvider(
     fun createClient(controlHost: ClusterHost): KubernetesClient {
         log.debug { "Creating K8s client for ${controlHost.alias} (${controlHost.privateIp})" }
 
-        val kubeconfigFile = File(workspace, Constants.K3s.LOCAL_KUBECONFIG).absoluteFile
+        val kubeconfigFile = File(workspace, Constants.K3s.LOCAL_KUBECONFIG)
         check(kubeconfigFile.exists()) {
             "No kubeconfig at ${kubeconfigFile.path}. Run the command from the cluster's workspace."
         }

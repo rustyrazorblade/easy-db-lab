@@ -122,14 +122,12 @@ class DefaultCommandExecutor(
      * @param command The command to execute
      * @return Exit code (0 for success, non-zero for failure)
      */
-    @Suppress("TooGenericExceptionCaught")
     fun executeTopLevel(command: PicoCommand): Int =
-        try {
-            runTopLevel(command)
-        } catch (e: Exception) {
+        runCatching { runTopLevel(command) }.getOrElse { failure ->
             // Failures raised outside executeWithLifecycle (state restore, resource cleanup) would
-            // otherwise reach Picocli as a raw stack trace.
-            failureReporter.report(e)
+            // otherwise reach Picocli as a raw stack trace. An Error (out of memory) is not ours to report.
+            if (failure !is Exception) throw failure
+            failureReporter.report(failure)
             Constants.ExitCodes.ERROR
         }
 

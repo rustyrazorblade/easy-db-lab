@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -49,6 +51,7 @@ class StatusCache(
     private val autoShutdown: Boolean = false,
     private val vpcName: String? = null,
     private val onShutdown: () -> Unit = { exitProcess(0) },
+    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
 ) : KoinComponent,
     CachedStatus {
     companion object {
@@ -481,12 +484,16 @@ class StatusCache(
 
         val kits = buildKitAccess(state)
 
-        val s3Path = state.s3Path()
         val s3Manager =
-            S3ManagerAccess(
-                ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
-            )
-
+            when (NodeCapability.S3 in capabilitiesOf(state)) {
+                true -> {
+                    val s3Path = state.s3Path()
+                    S3ManagerAccess(
+                        ui = "http://$controlIp:${Constants.K8s.S3MANAGER_PORT}/buckets/${s3Path.bucket}/${s3Path.getKey()}/",
+                    )
+                }
+                false -> null
+            }
         val registry =
             RegistryAccess(
                 endpoint = "$controlIp:${Constants.K8s.REGISTRY_PORT}",

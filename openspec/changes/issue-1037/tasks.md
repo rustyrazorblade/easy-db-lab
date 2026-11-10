@@ -15,8 +15,8 @@
 
 ## 4. Status
 
-- [ ] 4.1 Test first: without `S3`, the `status` output and the `StatusCache` result have no S3 Manager section. With it, they are unchanged.
-- [ ] 4.2 Gate `Status.kt:529` and `StatusCache.kt:485`.
+- [x] 4.1 Test first: without `S3`, the `status` output and the `StatusCache` result have no S3 Manager section. With it, they are unchanged.
+- [x] 4.2 Gate `Status.kt:529` and `StatusCache.kt:485`.
 
 ## 5. Pod logs without a journal
 

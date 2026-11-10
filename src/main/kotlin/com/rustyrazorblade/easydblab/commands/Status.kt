@@ -6,7 +6,10 @@ import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterS3Path
+import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
@@ -73,8 +76,9 @@ import java.time.format.DateTimeFormatter
     description = ["Display full environment status"],
 )
 @Suppress("TooManyFunctions")
-class Status :
-    PicoCommand,
+class Status(
+    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
+) : PicoCommand,
     KoinComponent {
     private val context: Context by inject()
     private val proxyAvailability: ProxyAvailability by inject()
@@ -128,7 +132,7 @@ class Status :
         displayKitsSection()
         renderProxyDependentSection("Stress jobs") { displayStressJobsSection() }
         displayObservabilitySection()
-        displayS3ManagerSection()
+        if (NodeCapability.S3 in capabilitiesOf(clusterState)) displayS3ManagerSection()
         displayCassandraVersionSection()
 
         // A degraded report is still an unsuccessful command: fail after rendering so a script

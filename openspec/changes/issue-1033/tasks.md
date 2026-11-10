@@ -1,16 +1,16 @@
 ## 1. State
 
-- [ ] 1.1 Test first, with the production `configurationModule` over the test `Context`. Save, then reload: `W/state.json` holds the state, and `D/state.json` never exists. With no state, `load()` fails naming the absolute path. One `CommandExecutor` run checks that the `ExecutionError` carries it.
-- [ ] 1.2 `ClusterStateManager` takes a required state file, bound from `Context`. Add the missing-state `check()`. Remove the overrides in `HelpTopicCommandLinesTest:38` and `CommandLineParserTest:46`.
+- [x] 1.1 Test first, with the production `configurationModule` over the test `Context`. Save, then reload: `W/state.json` holds the state, and `D/state.json` never exists. With no state, `load()` fails naming the absolute path. One `CommandExecutor` run checks that the `ExecutionError` carries it.
+- [x] 1.2 `ClusterStateManager` takes a required state file, bound from `Context`. Add the missing-state `check()`. Remove the overrides in `HelpTopicCommandLinesTest:38` and `CommandLineParserTest:46`.
 
 ## 2. Kubeconfig
 
-- [ ] 2.1 Test first: with `W/kubeconfig` carrying a distinctive server URL, `createClient(...).configuration.masterUrl` is that URL. With no kubeconfig, the error names `W/kubeconfig`.
-- [ ] 2.2 `K8sClientProvider(clusterStateManager, workspace)`. Update the binding and `K8sServiceTest.kt:40`.
+- [x] 2.1 Test first: with `W/kubeconfig` carrying a distinctive server URL, `createClient(...).configuration.masterUrl` is that URL. With no kubeconfig, the error names `W/kubeconfig`.
+- [x] 2.2 `K8sClientProvider(clusterStateManager, workspace)`. Update the binding and `K8sServiceTest.kt:40`.
 
 ## 3. Context
 
-- [ ] 3.1 Remove the `user.dir` default from `Context`, and add `require(workingDirectory.isAbsolute)`. `user.dir` is read only in the `ContextFactory` default. `forCli(dir)` takes the directory; delete `forRepl`. Update the callers.
+- [x] 3.1 Remove the `user.dir` default from `Context`, and add `require(workingDirectory.isAbsolute)`. `user.dir` is read only in the `ContextFactory` default. `forCli(dir)` takes the directory; delete `forRepl`. Update the callers.
 
 ## 4. Command sites
 

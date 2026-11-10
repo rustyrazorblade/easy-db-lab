@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
+import com.rustyrazorblade.easydblab.services.SparkJobState
 import com.rustyrazorblade.easydblab.services.SparkService
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -14,7 +15,6 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import software.amazon.awssdk.services.emr.model.StepState
 import java.time.Instant
 
 class SparkStopTest : BaseKoinTest() {
@@ -92,7 +92,7 @@ class SparkStopTest : BaseKoinTest() {
                 SparkService.JobInfo(
                     stepId = "s-RECENT123",
                     name = "Most Recent Job",
-                    state = StepState.RUNNING,
+                    state = SparkJobState.RUNNING,
                     startTime = Instant.now(),
                 ),
             )

@@ -7,7 +7,6 @@ import com.rustyrazorblade.easydblab.services.CommandExecutor
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters
-import java.io.File
 
 /**
  * Removes an installed kit and its local files.
@@ -37,7 +36,7 @@ class Uninstall : PicoBaseCommand() {
     }
 
     override fun execute() {
-        val kitDir = File(context.workingDirectory, kit)
+        val kitDir = context.workspaceFile(kit)
         if (!kitDir.isDirectory) {
             error("Kit '$kit' is not installed in ${context.workingDirectory}")
         }

@@ -27,7 +27,6 @@ import software.amazon.awssdk.services.emr.model.StepConfig
 import software.amazon.awssdk.services.emr.model.StepState
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.time.Duration
 import java.time.Instant
 import java.util.zip.GZIPInputStream
@@ -58,8 +57,8 @@ import java.util.zip.GZIPInputStream
  *   ingested. Defaults to [Constants.EMR.LOG_INGESTION_WAIT_MS]; tests inject [Duration.ZERO].
  * @property finalLogPollInterval Delay between checks for the final stderr of a failed step.
  *   Defaults to [Constants.EMR.FINAL_STDERR_POLL_INTERVAL_MS]; tests inject [Duration.ZERO].
- * @property logsDir Local directory that downloaded EMR logs are saved under. Defaults to
- *   [Constants.EMR.LOCAL_LOGS_DIR] in the working directory; tests inject a temporary directory.
+ * @property logsDir Local directory that downloaded EMR logs are saved under. Required: the binding
+ *   passes [Constants.EMR.LOCAL_LOGS_DIR] under the workspace, so the logs never land in the process directory.
  */
 class EMRSparkService(
     private val emrClient: EmrClient,
@@ -70,7 +69,7 @@ class EMRSparkService(
     private val pollInterval: Duration = Duration.ofMillis(Constants.EMR.POLL_INTERVAL_MS),
     private val logIngestionWait: Duration = Duration.ofMillis(Constants.EMR.LOG_INGESTION_WAIT_MS),
     private val finalLogPollInterval: Duration = Duration.ofMillis(Constants.EMR.FINAL_STDERR_POLL_INTERVAL_MS),
-    private val logsDir: Path = Paths.get(Constants.EMR.LOCAL_LOGS_DIR),
+    private val logsDir: Path,
 ) : SparkService {
     private val log = KotlinLogging.logger {}
 

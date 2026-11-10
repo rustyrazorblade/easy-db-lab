@@ -116,13 +116,6 @@ class DefaultRemoteOperationsService(
         }
     }
 
-    override fun uploadDirectory(
-        host: Host,
-        version: Version,
-    ) {
-        uploadDirectory(host, version.file, version.conf)
-    }
-
     override fun replaceDirectory(
         host: Host,
         localDir: File,

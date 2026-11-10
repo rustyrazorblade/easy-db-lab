@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.services.CassandraService
+import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
 import com.rustyrazorblade.easydblab.services.SidecarService
@@ -16,7 +17,6 @@ import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
-import java.io.File
 
 /**
  * Start cassandra on all nodes via service command.
@@ -81,7 +81,7 @@ class Start : PicoBaseCommand() {
         }
 
         // Inform user about AxonOps Workbench configuration if it exists
-        val axonOpsWorkbenchFile = File("axonops-workbench.json")
+        val axonOpsWorkbenchFile = context.workspaceFile(DefaultClusterConfigurationService.AXONOPS_CONFIG_FILE)
         if (axonOpsWorkbenchFile.exists()) {
             eventBus.emit(Event.Cassandra.AxonOpsWorkbenchInfo(userConfig.axonOpsOrg))
         }

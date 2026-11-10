@@ -97,7 +97,7 @@ val servicesModule =
         factoryOf(::EC2RegistryService) bind RegistryService::class
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
-        singleOf(::K8sClientProvider)
+        single { K8sClientProvider(get(), get<Context>().workingDirectory) }
         factoryOf(::DefaultK8sService) bind K8sService::class bind K8sPodOperations::class
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)

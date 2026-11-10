@@ -28,6 +28,7 @@ import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.ImagePullSecretService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
+import com.rustyrazorblade.easydblab.services.aws.AwsKeyPairService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import com.rustyrazorblade.easydblab.services.aws.EcrPullSecretService
@@ -182,23 +183,23 @@ object TestModules {
                     override fun createAWSClient(
                         accessKey: String,
                         secret: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): AWS = aws
 
                     override fun createAWSClientWithProfile(
                         profileName: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): AWS = aws
 
                     override fun createEc2Client(
                         accessKey: String,
                         secret: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): software.amazon.awssdk.services.ec2.Ec2Client = mock()
 
                     override fun createEc2ClientWithProfile(
                         profileName: String,
-                        region: software.amazon.awssdk.regions.Region,
+                        region: String,
                     ): software.amazon.awssdk.services.ec2.Ec2Client = mock()
                 }
             }
@@ -222,6 +223,7 @@ object TestModules {
             // assert on the secret this actually builds, so a mock here would verify nothing.
             single { mock<EcrClient>() }
             single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
+            factory { AwsKeyPairService(get()) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

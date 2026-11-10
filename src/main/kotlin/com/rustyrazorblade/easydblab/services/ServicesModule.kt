@@ -45,6 +45,7 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import java.nio.file.Path
 
 /**
  * Koin module for registering business services.
@@ -68,6 +69,11 @@ val servicesModule =
         factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
+        // helm and kubectl run on the control node over SSH. A local cluster has no SSH host, so a
+        // harness rebinds this to LocalClusterTooling until #1040 selects the form per environment.
+        // The directory holds the SSH form's local staging copy of stdin; it is injected because the
+        // JVM caches java.io.tmpdir at startup.
+        single<ClusterTooling> { SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir"))) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies

@@ -10,6 +10,8 @@ import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSCredentialsManager
 import com.rustyrazorblade.easydblab.providers.aws.AwsErrorHandler
 import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
+import com.rustyrazorblade.easydblab.providers.docker.DockerErrorHandler
+import com.rustyrazorblade.easydblab.providers.docker.dockerModule
 import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
@@ -42,6 +44,7 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
         listOf(
             awsClientsModule,
             awsServicesModule,
+            dockerModule,
             module {
                 single { EventBus() }
                 single {
@@ -85,8 +88,10 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the AWS error handler is the registered provider handler`() {
-        assertThat(getKoin().getAll<ProviderErrorHandler>()).hasAtLeastOneElementOfType(AwsErrorHandler::class.java)
+    fun `the AWS and Docker error handlers are both registered provider handlers`() {
+        assertThat(getKoin().getAll<ProviderErrorHandler>())
+            .hasAtLeastOneElementOfType(AwsErrorHandler::class.java)
+            .hasAtLeastOneElementOfType(DockerErrorHandler::class.java)
     }
 
     @Test
@@ -98,11 +103,13 @@ internal class AwsModulesResolutionTest : BaseKoinTest() {
 
     @Test
     fun `the handlers resolve with no user profile bound`() {
-        val app = koinApplication { modules(awsClientsModule) }
+        val app = koinApplication { modules(awsClientsModule, dockerModule) }
         try {
             val handlers = app.koin.getAll<ProviderErrorHandler>()
 
-            assertThat(handlers).hasAtLeastOneElementOfType(AwsErrorHandler::class.java)
+            assertThat(handlers)
+                .hasAtLeastOneElementOfType(AwsErrorHandler::class.java)
+                .hasAtLeastOneElementOfType(DockerErrorHandler::class.java)
         } finally {
             app.close()
         }

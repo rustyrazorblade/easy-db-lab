@@ -73,10 +73,11 @@ class AwsErrorHandler : ProviderErrorHandler {
 
     private fun permissionRemedy(policy: String?): String =
         if (policy != null) {
-            "Attach the $policy IAM policy to your AWS user. Print it with: easy-db-lab show-iam-policies $policy"
+            "If this is missing permissions on your AWS user, attach the $policy IAM policy " +
+                "(print it with: easy-db-lab show-iam-policies $policy). $OTHER_DENIALS"
         } else {
-            "Attach the lab IAM policies (${ALL_POLICIES.joinToString(", ")}) to your AWS user. " +
-                "Print them with: easy-db-lab show-iam-policies"
+            "If this is missing permissions on your AWS user, attach the lab IAM policies " +
+                "(${ALL_POLICIES.joinToString(", ")}; print them with: easy-db-lab show-iam-policies). $OTHER_DENIALS"
         }
 
     private fun policyFor(error: Throwable): String? =
@@ -91,6 +92,8 @@ class AwsErrorHandler : ProviderErrorHandler {
 
     private companion object {
         const val PROVIDER = "AWS"
+
+        const val OTHER_DENIALS = "A bucket policy, SCP or KMS key policy can also deny the request."
 
         const val CREDENTIALS_REMEDY =
             "For an SSO profile run: aws sso login --profile <profile>. Otherwise run: easy-db-lab profile setup. " +

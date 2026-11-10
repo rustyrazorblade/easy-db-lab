@@ -177,6 +177,17 @@ class AwsErrorHandlerTest {
     }
 
     @Test
+    fun `the permission remedy does not assert the cause, since a 403 can be a bucket policy, an SCP or a KMS denial`() {
+        val remedy = handler.describe(awsError(S3Exception.builder(), "AccessDenied", 403))!!.remedy
+
+        assertThat(remedy)
+            .startsWith("If this is missing permissions on your AWS user")
+            .contains("attach the EasyDBLabIAM IAM policy")
+            .contains("easy-db-lab show-iam-policies EasyDBLabIAM")
+            .contains("bucket policy, SCP or KMS key policy can also deny the request")
+    }
+
+    @Test
     fun `an STS permission error lists every policy`() {
         val description = handler.describe(awsError(StsException.builder(), "AccessDenied", 403))!!
 

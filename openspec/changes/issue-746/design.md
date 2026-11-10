@@ -124,7 +124,7 @@ The error code is checked first: STS, IAM and S3 return 403 for bad credentials.
 
 **Remedies:**
 - **CREDENTIALS:** run `aws sso login --profile <profile>` for SSO, otherwise `easy-db-lab profile setup`; check with `aws sts get-caller-identity`.
-- **PERMISSION_DENIED:** attach `<policy>` and print it with `easy-db-lab show-iam-policies <policy>`.
+- **PERMISSION_DENIED:** "If this is missing permissions on your AWS user, attach `<policy>` (print it with `easy-db-lab show-iam-policies <policy>`). A bucket policy, SCP or KMS key policy can also deny the request." A 403 does not prove the cause, so the remedy does not assert it.
 
 The policy comes from the exception class.  The five policy names become constants on `AWSPolicy.UserIAM`.
 

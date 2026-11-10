@@ -9,7 +9,9 @@ import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -21,6 +23,7 @@ import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.awscore.exception.AwsErrorDetails
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.iam.model.EntityAlreadyExistsException
 import software.amazon.awssdk.services.iam.model.GetInstanceProfileRequest
@@ -35,6 +38,7 @@ import software.amazon.awssdk.services.iam.model.Role
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse
+import software.amazon.awssdk.services.sts.model.StsException
 
 /**
  * Tests for AWSResourceSetupService.
@@ -320,18 +324,43 @@ internal class AWSResourceSetupServiceTest :
         val userConfig = createUserConfig()
         stubInvalidRoleSetup()
 
-        // Mock credential validation failure (STS throws)
-        val exception = IamException.builder().message("Access denied").build()
+        // Mock credential validation failure: a real 403 permission error from STS
+        val exception =
+            StsException
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("AccessDenied").errorMessage("Access denied").build())
+                .message("Access denied")
+                .build()
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
             .thenThrow(exception)
 
-        // When/Then: Should throw exception from credential validation
-        assertThrows<IamException> {
-            service.ensureAWSResources(userConfig)
-        }
+        // When/Then: the detailed message is emitted once and the failure is rethrown as already reported
+        assertThatThrownBy { service.ensureAWSResources(userConfig) }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasCause(exception)
 
-        // Verify permission error event was emitted (IamException is an SdkServiceException)
         assertThat(capturedEvents).anyMatch { it.event is Event.AwsSetup.IamPermissionError }
+    }
+
+    @Test
+    fun `expired credentials emit the authentication error with the policies`() {
+        val userConfig = createUserConfig()
+        stubInvalidRoleSetup()
+        val exception =
+            StsException
+                .builder()
+                .statusCode(403)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("ExpiredToken").errorMessage("expired").build())
+                .message("expired")
+                .build()
+        whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
+            .thenThrow(exception)
+
+        assertThatThrownBy { service.ensureAWSResources(userConfig) }.isInstanceOf(CommandFailedException::class.java)
+
+        assertThat(capturedEvents).anyMatch { it.event is Event.AwsSetup.AuthenticationError }
+        assertThat(capturedEvents).noneMatch { it.event is Event.AwsSetup.IamPermissionError }
     }
 
     @Test

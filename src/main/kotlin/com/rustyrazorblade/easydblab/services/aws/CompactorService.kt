@@ -4,6 +4,7 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.compactor.CompactorTaskDefinition
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.providers.aws.RegionalClients
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.withEcsRoleRetry
@@ -170,7 +171,7 @@ class DefaultCompactorService(
         } catch (e: EcsException) {
             if (e.awsErrorDetails()?.errorCode() != Constants.Compactor.ECS_ACCESS_DENIED) throw e
             eventBus.emit(Event.Compactor.AccessDenied(region, e.awsErrorDetails().errorMessage().orEmpty()))
-            throw IllegalStateException(
+            throw CommandFailedException(
                 "ECS denied the account compactor's call: the ${Constants.Compactor.OPERATOR_POLICY} policy is missing. " +
                     "Run `easy-db-lab show-iam-policies compactor` and attach the policy.",
                 e,

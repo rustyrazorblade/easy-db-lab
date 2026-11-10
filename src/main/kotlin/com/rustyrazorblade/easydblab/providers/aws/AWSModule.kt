@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
@@ -33,6 +34,7 @@ import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
 import com.rustyrazorblade.easydblab.services.aws.SshIngressService
+import org.koin.dsl.bind
 import org.koin.dsl.module
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
@@ -78,6 +80,9 @@ private fun createClientOverrideConfig(): ClientOverrideConfiguration = ClientOv
  */
 val awsModule =
     module {
+        // Recognises AWS credential and permission failures; takes no profile, so it resolves before one exists
+        single { AwsErrorHandler() } bind ProviderErrorHandler::class
+
         // Provide AWS region as singleton
         single { Region.of(get<User>().region) }
 

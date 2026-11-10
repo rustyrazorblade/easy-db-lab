@@ -254,6 +254,9 @@ val servicesModule =
         // Resolves the developer's public IP for scoping security-group SSH ingress to a /32
         single<ExternalIpService> { DefaultExternalIpService() }
 
+        // Reports a failed command as one event; getAll() collects every provider's error handler
+        single { CommandFailureReporter(get(), getAll()) }
+
         // Command executor for scheduling and executing commands with full lifecycle
         // Note: BackupRestoreService is lazily injected in DefaultCommandExecutor to avoid
         // triggering the AWS dependency chain during profile setup (when settings.yaml doesn't exist yet)

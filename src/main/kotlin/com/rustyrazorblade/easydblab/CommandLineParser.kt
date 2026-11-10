@@ -48,6 +48,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
 import com.rustyrazorblade.easydblab.services.HelpTopicService
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
@@ -145,9 +146,9 @@ class CommandLineParser : KoinComponent {
         CommandLine(EasyDBLabCommand::class.java, KoinCommandFactory()).apply {
             // Set exception handler to ensure non-zero exit code on exceptions
             executionExceptionHandler =
-                CommandLine.IExecutionExceptionHandler { ex, cmd, _ ->
-                    cmd.err.println(ex.message)
-                    ex.printStackTrace(cmd.err)
+                CommandLine.IExecutionExceptionHandler { ex, _, _ ->
+                    // Reached only for commands that are not PicoCommands; the rest report in the executor.
+                    get<CommandFailureReporter>().report(ex)
                     Constants.ExitCodes.ERROR
                 }
 

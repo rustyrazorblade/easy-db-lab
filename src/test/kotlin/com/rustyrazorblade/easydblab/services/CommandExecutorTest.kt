@@ -71,6 +71,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 single<ResourceManager> { mockResourceManager }
                 single<SocksProxyService> { mockSocksProxyService }
                 single<User> { mockUserConfig }
+                single { CommandFailureReporter(eventBus, emptyList()) }
             },
         )
 
@@ -155,6 +156,17 @@ class CommandExecutorTest : BaseKoinTest() {
 
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
         assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `a failure in top-level dispatch outside the lifecycle is reported once and not thrown`() {
+        whenever(mockResourceManager.closeAll()).thenThrow(IllegalStateException("close failed"))
+
+        val exitCode = commandExecutor.executeTopLevel(TestCommand())
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("close failed")
     }
 
     @Test

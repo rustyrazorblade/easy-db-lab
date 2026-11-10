@@ -52,7 +52,7 @@ Events are organized by domain as sealed sub-interfaces of `Event`:
 - `Event.Stress.*` — Stress testing operations. `JobStarted` (from `cassandra stress start`, once the pod runs) carries `host`, the alias of the node the stress pod runs on. `JobCompleted(jobName, host, outcome, durationSeconds)` comes only from `metrics stream`: once for each job it saw running that has finished; `outcome` is `StressJobOutcome`, `succeeded` or `failed` on the wire
 - `Event.Service.*` — SystemD service management
 - `Event.Provision.*` — Cluster provisioning orchestration
-- `Event.Command.*` — Command execution and general command output
+- `Event.Command.*` — Command execution and general command output. `Command.ProviderError(provider, kind, detail, remedy)` (an error) is what `CommandFailureReporter` emits when a registered `ProviderErrorHandler` recognises a failure (`kind` is `credentials` or `permission-denied`); any other failure is `Command.ExecutionError`
 - `Event.Status.*` — Cluster status display sections
 - `Event.Teardown.*` — Cluster teardown lifecycle
 - `Event.Ami.*` — AMI pruning, listing, validation

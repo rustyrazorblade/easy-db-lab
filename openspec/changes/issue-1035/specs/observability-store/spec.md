@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
-### Requirement: Observability storage is S3 or a host directory
-The observability stack SHALL store data in exactly one of two storages, chosen once per cluster: `S3`, the account bucket (today's behaviour), or `Filesystem`, a host data directory D mounted into the cluster at `Constants.Observability.LOCAL_DATA_MOUNT`.  Each backend SHALL use its native store for the chosen storage: Mimir `filesystem` or `s3`, Loki `filesystem` or `s3`, Tempo `local` or `s3`, and Pyroscope `filesystem` or `s3`.  Each backend SHALL keep one configuration resource, with one published value selecting its store.  Until the environment is recorded in cluster state, the storage SHALL be `S3`.  In `Filesystem` storage, no observability component SHALL send a request to S3 or to any AWS endpoint.
+### Requirement: Observability storage is a closed set of storages
+The observability stack SHALL store data in exactly one storage, chosen once per cluster, from a closed set: `S3`, the account bucket (today's behaviour); `Filesystem`, a data directory D at `Constants.Observability.LOCAL_DATA_MOUNT` inside the pods; or `Volume`, a PVC on the cluster's StorageClass. `S3` and `Filesystem` are implemented. `Volume` is a named case that fails with a clear "not supported yet" error until it is implemented. How D is backed is the environment's choice and is not part of the storage type.  Each backend SHALL use its native store for the chosen storage: Mimir `filesystem` or `s3`, Loki `filesystem` or `s3`, Tempo `local` or `s3`, and Pyroscope `filesystem` or `s3`.  Each backend SHALL keep one configuration resource, with one published value selecting its store.  Until the environment is recorded in cluster state, the storage SHALL be `S3`.  In `Filesystem` storage, no observability component SHALL send a request to S3 or to any AWS endpoint.
 
 #### Scenario: Filesystem storage writes every signal under D
 - **WHEN** the stack runs with `Filesystem` storage at D and receives metrics, logs, traces and profiles
@@ -15,6 +15,14 @@ The observability stack SHALL store data in exactly one of two storages, chosen 
 #### Scenario: Each backend ignores the store it is not using
 - **WHEN** a backend's configuration is rendered for one storage
 - **THEN** the backend starts and serves reads and writes, with no error caused by the other storage's settings
+
+### Requirement: Backend data placement comes from one function
+The Mimir, Loki, Tempo and Pyroscope manifest builders SHALL take their data volumes and mount paths from one function of the cluster's storage, and SHALL NOT hard-code a data path.
+
+#### Scenario: Backend data placement comes from one function
+- **WHEN** the four builders render for a storage
+- **THEN** each backend's volume source and paths equal that function's answer for the storage and the backend
+- **AND** with `S3` the placement equals today's
 
 ### Requirement: The data directory mirrors the bucket layout
 In `Filesystem` storage, D SHALL use the account bucket's layout: `mimir/`, `loki/` (index under `loki/index/`), `tempo/`, `pyroscope/`, `grafana/annotations/<tenant>/` and `reports/<tenant>/`.  Each backend's local state SHALL live under `state/<backend>/`.  For Mimir, the macOS bind-mount gate (design.md) MAY place the TSDB and sync directories on the node instead, while Mimir's object root stays under D.  D SHALL be a parameter and SHALL NOT be a hard-coded or personal path.

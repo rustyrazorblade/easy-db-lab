@@ -5,9 +5,12 @@ Epic #1032 (local execution environment), decision Q3: local storage is a plain 
 ## Approach
 
 ### Storage selection
-- New `ObservabilityStorage` sealed interface in `configuration/`, with two cases:
+- New `ObservabilityStorage` sealed interface in `configuration/`, with three cases:
   - `S3(bucket, region)`
-  - `Filesystem(mountPath)`
+  - `Filesystem(mountPath)`: a path inside the pod. How it is backed (a host directory for local Docker) is the environment's choice, not part of the type.
+  - `Volume(storageClass)`: a PVC on the cluster's StorageClass, for a bring-your-own Kubernetes cluster. Named now, not implemented now.
+- The sealed hierarchy with an exhaustive `when` is the extension point. Adding `Volume` later makes every consumer fail to compile until it handles the case.
+- Until `Volume` is implemented, consumers handle it with an explicit "not supported yet" failure, never a silent fallback to S3 or Filesystem.
 - `ObservabilityStorage.from(ClusterState)` returns `S3` until #1040 records the environment.
 - `ObservabilityStore` (`ObservabilityStore.kt:20-35`) takes the storage and the tenant. Its prefix functions (`metricsPrefix`, `logsPrefix`, and so on) stay the same.
 
@@ -30,11 +33,12 @@ Epic #1032 (local execution environment), decision Q3: local storage is a plain 
   - `reports/<tenant>/`
   - `state/<backend>/`
 - Local state lives under `state/`, so that a new cluster on the same D can still read earlier data. This matters most for Pyroscope, whose metastore is the only index of its blocks (`pyroscope/config.yaml:17-19`).
-- D's mount point inside the cluster is `Constants.Observability.LOCAL_DATA_MOUNT`. The hostPath volumes that today hard-code `/mnt/db1/<backend>` point under it in filesystem mode:
+- D's mount point inside the cluster is `Constants.Observability.LOCAL_DATA_MOUNT`. The volumes that today hard-code `/mnt/db1/<backend>` point under it in filesystem mode:
   - `MimirManifestBuilder.kt:53`
   - `LokiManifestBuilder.kt:51`
   - `TempoManifestBuilder.kt:35`
   - `PyroscopeManifestBuilder.kt:42`
+- The four builders take their volumes and paths from one function, `DataPlacement.forStorage(storage, backend)`, instead of each hard-coding `/mnt/db1/<backend>`. It returns the volume source and the mount paths. Today it answers for `S3` (the existing `/mnt/db1/<backend>` hostPath) and `Filesystem` (under the data mount). #1035 already edits those four lines, so this costs nothing extra. A later `Volume` answers with a PVC volume source here and nowhere else.
 - Mounting the host directory into the K3s container is #1041's job.
 - Alternative: a free-form layout. Rejected: it breaks #902.
 

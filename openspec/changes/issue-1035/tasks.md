@@ -9,12 +9,13 @@
 - [ ] 2.1 Write tests: `ObservabilityStorage.from` returns `S3` for a state with no environment, and `ObservabilityStore` builds the same prefixes for both storages.
 - [ ] 2.2 Add `ObservabilityStorage` (sealed, with KDoc) and make `ObservabilityStore` take the storage and the tenant.
 - [ ] 2.3 Add `Constants.Observability.LOCAL_DATA_MOUNT` and the `state/<backend>` directory names.
+- [ ] 2.4 Test first: `DataPlacement.forStorage` returns the existing `/mnt/db1/<backend>` placement for `S3` and a placement under the data mount for `Filesystem`, for each of the four backends. Add `DataPlacement` and make the Mimir, Loki, Tempo and Pyroscope builders call it.
 
 ## 3. Backend configs
 
 - [ ] 3.1 Write rendering tests: for each backend and each storage, the rendered config selects the matching store with the D paths, and the S3 rendering is unchanged.
 - [ ] 3.2 Add the filesystem blocks and the selector value to `mimir.yaml`, `loki.yaml`, `tempo.yaml` and `pyroscope/config.yaml`, and publish the selector and paths through `ClusterConfigData`.
-- [ ] 3.3 Point the Mimir, Loki, Tempo and Pyroscope builders' hostPath volumes under the data mount in `Filesystem` storage.
+- [ ] 3.3 Make the filesystem placement in `DataPlacement` point the four backends under the data mount (the builders already call it, task 2.4).
 
 ## 4. Local compaction
 

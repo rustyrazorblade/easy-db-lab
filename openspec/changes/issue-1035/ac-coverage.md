@@ -15,6 +15,7 @@
 | Risk | The account compactor is called locally | local-observability-compaction: The account compactor is not touched | ✅ Covered |
 | Risk | Non-observability callers break on a filesystem binding | observability-store: Non-observability callers keep S3 | ✅ Covered |
 | Risk | The documents server exposes more than reports | observability-store: Only GET under reports is served | ✅ Covered |
+| Risk | Builders each hard-code their data path | observability-store: Backend data placement comes from one function; task 2.4 | ✅ Covered |
 | Risk | Two stacks on one D | — | ⛔ Excluded: owner decision 5 is one stack per D, documented, with no lock (task 7.1) |
 | Risk | Loki filesystem chunk names differ from S3 | — | ⛔ Excluded: that affects #902's export reader (`LokiFilesystemLayout` in PR #1020), not this change's writers |
 | Risk | `down`/`clean` deleting D | — | ⛔ Excluded here: this change does not mount D or change teardown; #1041 (local `up`/`down`) owns it, with its "no file under D is deleted" criterion |

@@ -91,7 +91,10 @@ class UpdateConfig : PicoBaseCommand() {
             eventBus.emit(Event.Cassandra.ConfigFilesUploading(tempDir))
             remoteOps.uploadDirectory(
                 it,
-                context.workspaceFile(resolvedVersion.localDir.toString()),
+                context.workingDirectory
+                    .toPath()
+                    .resolve(resolvedVersion.localDir)
+                    .toFile(),
                 tempDir,
             )
 

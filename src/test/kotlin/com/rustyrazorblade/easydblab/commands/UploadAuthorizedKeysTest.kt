@@ -9,6 +9,7 @@ import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.ssh.Response
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.koin.core.module.Module
@@ -32,11 +33,15 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
 
     private val uploadedContents = mutableListOf<String>()
     private val uploadedTargets = mutableListOf<String>()
+    private val uploadedSources = mutableListOf<Path>()
+    private var failUpload = false
 
     private val remote: RemoteOperationsService =
         mock {
             on { executeRemotely(any(), any(), any(), any()) } doReturn Response("")
             on { upload(any(), any(), any()) } doAnswer {
+                uploadedSources.add(it.getArgument<Path>(1))
+                if (failUpload) throw IllegalStateException("upload failed")
                 uploadedContents += Files.readString(it.getArgument<Path>(1))
                 uploadedTargets += it.getArgument<String>(2)
             }
@@ -80,6 +85,20 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
         UploadAuthorizedKeys().apply { localDir = keys.absolutePath }.execute()
 
         assertThat(uploadedTargets).isNotEmpty.containsOnly("~/.ssh/authorized_keys_extra")
+    }
+
+    @Test
+    fun `a failed upload propagates and still removes the scratch file`() {
+        val keys = File(keysParent, "keys").also { it.mkdirs() }
+        File(keys, "a.pub").writeText("ssh-ed25519 AAA a\n")
+        failUpload = true
+
+        assertThatThrownBy { UploadAuthorizedKeys().apply { localDir = keys.absolutePath }.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("upload failed")
+
+        assertThat(uploadedSources).isNotEmpty
+        assertThat(uploadedSources.first()).doesNotExist()
     }
 
     @Test

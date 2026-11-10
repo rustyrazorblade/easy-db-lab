@@ -31,7 +31,7 @@ class K8sClientProvider(
 
         val kubeconfigFile = File(workspace, Constants.K3s.LOCAL_KUBECONFIG)
         check(kubeconfigFile.exists()) {
-            "No kubeconfig at ${kubeconfigFile.path}. Run the command from the cluster's workspace."
+            "No kubeconfig at ${kubeconfigFile.absolutePath}. Run the command from the cluster's workspace."
         }
         val kubeconfigPath = kubeconfigFile.toPath()
         log.debug { "Using kubeconfig=$kubeconfigPath tailscale=${clusterStateManager.load().isTailscaleEnabled()}" }

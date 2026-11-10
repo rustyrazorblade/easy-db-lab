@@ -42,21 +42,14 @@ data class Context(
      * Long term, should probably make this something they can do via a command.
      * Will be useful once multiple cloud providers are supported.
      */
-    var profile = System.getenv("EASY_DB_LAB_PROFILE") ?: "default"
+    var profile = (System.getenv("EASY_DB_LAB_PROFILE") ?: "default").ifEmpty { "default" }
     var profilesDir = File(easyDbLabUserDirectory, "profiles")
-    var profileDir = File(profilesDir, profile)
+    var profileDir = File(profilesDir, profile).also { it.mkdirs() }
 
     /**
      * Resolves [name] inside the workspace ([workingDirectory]), never against the JVM current directory.
      */
     fun workspaceFile(name: String): File = File(workingDirectory, name)
-
-    init {
-        if (profile.isEmpty()) {
-            profile = "default"
-        }
-        profileDir.mkdirs()
-    }
 
     /**
      * Version is either supplied by the in-repo script,

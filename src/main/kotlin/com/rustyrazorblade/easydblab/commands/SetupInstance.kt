@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
+import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -31,9 +32,11 @@ class SetupInstance : PicoBaseCommand() {
     @Mixin
     var hosts = HostsMixin()
 
+    private fun workspaceFile(name: String): Path = context.workingDirectory.toPath().resolve(name)
+
     override fun execute() {
         fun setup(host: Host) {
-            remoteOps.upload(host, Path.of("environment.sh"), "environment.sh")
+            remoteOps.upload(host, workspaceFile(DefaultClusterConfigurationService.STRESS_ENV_FILE), "environment.sh")
             remoteOps.executeRemotely(host, "sudo mv environment.sh /etc/profile.d/stress.sh").text
         }
 
@@ -42,7 +45,7 @@ class SetupInstance : PicoBaseCommand() {
         // and restart Cassandra - no rebake, no Gradle build.
         fun writeJmxRules(host: Host) {
             remoteOps.executeRemotely(host, "sudo mkdir -p ${Constants.Cassandra.NODE_CONFIG_DIR}").text
-            remoteOps.upload(host, Path.of(Constants.Cassandra.JMX_RULES_FILE), Constants.Cassandra.JMX_RULES_FILE)
+            remoteOps.upload(host, workspaceFile(Constants.Cassandra.JMX_RULES_FILE), Constants.Cassandra.JMX_RULES_FILE)
             remoteOps
                 .executeRemotely(
                     host,
@@ -123,8 +126,8 @@ class SetupInstance : PicoBaseCommand() {
             setup(h)
             setupStressSystemdEnv(h, cassandraHost, datacenter)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
-            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
-            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            remoteOps.upload(h, workspaceFile(Constants.SETUP_INSTANCE_SCRIPT), Constants.SETUP_INSTANCE_SCRIPT)
+            remoteOps.executeRemotely(h, "sudo bash ${Constants.SETUP_INSTANCE_SCRIPT}").text
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "") { host ->
             val h = host.toHost()
@@ -132,15 +135,15 @@ class SetupInstance : PicoBaseCommand() {
             writeJmxRules(h)
             seedProfilingConfig(h, controlNodeIp, clusterName)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
-            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
-            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            remoteOps.upload(h, workspaceFile(Constants.SETUP_INSTANCE_SCRIPT), Constants.SETUP_INSTANCE_SCRIPT)
+            remoteOps.executeRemotely(h, "sudo bash ${Constants.SETUP_INSTANCE_SCRIPT}").text
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") { host ->
             val h = host.toHost()
             setup(h)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
-            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
-            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            remoteOps.upload(h, workspaceFile(Constants.SETUP_INSTANCE_SCRIPT), Constants.SETUP_INSTANCE_SCRIPT)
+            remoteOps.executeRemotely(h, "sudo bash ${Constants.SETUP_INSTANCE_SCRIPT}").text
         }
     }
 }

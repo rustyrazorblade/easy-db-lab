@@ -114,6 +114,9 @@ object Constants {
         const val VPC_TEARDOWN_BACKOFF_BASE_MS = 5000L
     }
 
+    /** The workspace script `init` extracts and `setup-instances` uploads to every node. */
+    const val SETUP_INSTANCE_SCRIPT = "setup_instance.sh"
+
     // Exit codes
     object ExitCodes {
         const val ERROR = 1

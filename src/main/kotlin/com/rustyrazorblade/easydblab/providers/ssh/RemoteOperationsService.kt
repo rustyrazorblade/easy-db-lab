@@ -54,18 +54,6 @@ interface RemoteOperationsService {
     )
 
     /**
-     * Upload a directory using Version information.
-     * Convenience method that uses the file and conf dir of Version to upload.
-     *
-     * @param host The target host
-     * @param version The version containing directory information
-     */
-    fun uploadDirectory(
-        host: Host,
-        version: Version,
-    )
-
-    /**
      * Replaces the directory at [remoteDir] with the contents of [localDir], atomically as seen
      * by anything polling [remoteDir].
      *

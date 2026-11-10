@@ -14,9 +14,9 @@
 
 ## 4. Command sites
 
-- [ ] 4.1 Test first: a recording `RemoteOperationsService` shows that every local path `SetupInstance` and `cassandra update-config` uses is under W. `cassandra start` emits `AxonOpsWorkbenchInfo` only when `W/axonops-workbench.json` exists.
-- [ ] 4.2 Route `SetupInstance` and `Start`. Add a constant for `setup_instance.sh`.
-- [ ] 4.3 Remove `Version.file`. `UpdateConfig` resolves `context.workingDirectory.resolve(localDir)`. Delete the unused `uploadDirectory(host, Version)` overload and its fakes (`TestModules.kt:330`, `UpTestFixture.kt:264`).
+- [x] 4.1 Test first: a recording `RemoteOperationsService` shows that every local path `SetupInstance` and `cassandra update-config` uses is under W. `cassandra start` emits `AxonOpsWorkbenchInfo` only when `W/axonops-workbench.json` exists.
+- [x] 4.2 Route `SetupInstance` and `Start`. Add a constant for `setup_instance.sh`.
+- [x] 4.3 Remove `Version.file`. `UpdateConfig` resolves `context.workingDirectory.resolve(localDir)`. Delete the unused `uploadDirectory(host, Version)` overload and its fakes (`TestModules.kt:330`, `UpTestFixture.kt:264`).
 
 ## 5. Profiling and EMR logs
 

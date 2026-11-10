@@ -2,22 +2,29 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.ssh.Response
+import java.nio.file.Path
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
@@ -31,6 +38,10 @@ import org.mockito.kotlin.whenever
  */
 class SetupInstanceTest : BaseKoinTest() {
     private lateinit var profilingService: CassandraProfilingService
+    private val remoteOperations: RemoteOperationsService =
+        mock {
+            on { executeRemotely(any(), any(), any(), any()) } doReturn Response("")
+        }
 
     private val hosts =
         mapOf(
@@ -80,6 +91,7 @@ class SetupInstanceTest : BaseKoinTest() {
                     }
                 }
                 single { HostOperationsService(get()) }
+                single<RemoteOperationsService> { remoteOperations }
                 single<CassandraProfilingService> { mock<CassandraProfilingService>().also { profilingService = it } }
             },
         )
@@ -104,5 +116,20 @@ class SetupInstanceTest : BaseKoinTest() {
         assertThat(config.pyroscopeUrl).isEqualTo("http://10.0.1.5:${Constants.K8s.PYROSCOPE_PORT}")
         assertThat(config.clusterName).isEqualTo("test-cluster-abc123")
         assertThat(config.tenant).isEqualTo("acme")
+    }
+
+    @Test
+    fun `every local file it uploads is read from the workspace`() {
+        val workspace = getKoin().get<Context>().workingDirectory.toPath()
+
+        SetupInstance().execute()
+
+        val locals = argumentCaptor<Path>()
+        verify(remoteOperations, atLeastOnce()).upload(any(), locals.capture(), any())
+        assertThat(locals.allValues.filterNot { it.fileName.toString().endsWith(".env") })
+            .isNotEmpty
+            .allSatisfy { assertThat(it.isAbsolute && it.startsWith(workspace)).describedAs("$it").isTrue() }
+        assertThat(locals.allValues.map { it.fileName.toString() })
+            .contains("environment.sh", Constants.Cassandra.JMX_RULES_FILE, Constants.SETUP_INSTANCE_SCRIPT)
     }
 }

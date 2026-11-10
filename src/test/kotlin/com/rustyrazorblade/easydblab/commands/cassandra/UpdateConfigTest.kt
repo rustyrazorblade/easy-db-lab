@@ -114,4 +114,16 @@ class UpdateConfigTest : BaseKoinTest() {
         )
         assertThat(output).doesNotContain("Host(", "i-db0", "54.1.2.3")
     }
+
+    @Test
+    fun `uploads the version conf directory from the workspace`() {
+        val confDir = File(context.workingDirectory, "5.0").also { it.mkdirs() }
+
+        UpdateConfig().execute()
+
+        val uploaded = org.mockito.kotlin.argumentCaptor<File>()
+        org.mockito.kotlin.verify(mockRemoteOps).uploadDirectory(any(), uploaded.capture(), any())
+        assertThat(uploaded.firstValue).isEqualTo(confDir)
+        assertThat(uploaded.firstValue).isAbsolute()
+    }
 }

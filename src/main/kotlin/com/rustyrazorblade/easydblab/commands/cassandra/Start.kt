@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService
 import com.rustyrazorblade.easydblab.services.CassandraService
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import com.rustyrazorblade.easydblab.services.KitHookExecutor
@@ -81,7 +82,7 @@ class Start : PicoBaseCommand() {
         }
 
         // Inform user about AxonOps Workbench configuration if it exists
-        val axonOpsWorkbenchFile = File("axonops-workbench.json")
+        val axonOpsWorkbenchFile = File(context.workingDirectory, DefaultClusterConfigurationService.AXONOPS_CONFIG_FILE)
         if (axonOpsWorkbenchFile.exists()) {
             eventBus.emit(Event.Cassandra.AxonOpsWorkbenchInfo(userConfig.axonOpsOrg))
         }

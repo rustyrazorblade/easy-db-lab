@@ -112,6 +112,12 @@ sealed class AWSPolicy {
             throw UnsupportedOperationException("Use loadAll() to get user policies with account ID substitution")
 
         companion object {
+            const val EC2_POLICY = "EasyDBLabEC2"
+            const val IAM_POLICY = "EasyDBLabIAM"
+            const val EMR_POLICY = "EasyDBLabEMR"
+            const val OPENSEARCH_POLICY = "EasyDBLabOpenSearch"
+            const val COMPACTOR_POLICY = "EasyDBLabCompactor"
+
             /**
              * Loads all three required user IAM policies from JSON resource files.
              * Performs account ID substitution in policy templates.
@@ -123,11 +129,11 @@ sealed class AWSPolicy {
             fun loadAll(accountId: String): List<Policy> {
                 val policyData =
                     listOf(
-                        "iam-policy-ec2.json" to "EasyDBLabEC2",
-                        "iam-policy-iam-s3.json" to "EasyDBLabIAM",
-                        "iam-policy-emr.json" to "EasyDBLabEMR",
-                        "iam-policy-opensearch.json" to "EasyDBLabOpenSearch",
-                        "iam-policy-compactor.json" to "EasyDBLabCompactor",
+                        "iam-policy-ec2.json" to EC2_POLICY,
+                        "iam-policy-iam-s3.json" to IAM_POLICY,
+                        "iam-policy-emr.json" to EMR_POLICY,
+                        "iam-policy-opensearch.json" to OPENSEARCH_POLICY,
+                        "iam-policy-compactor.json" to COMPACTOR_POLICY,
                     )
 
                 return policyData.map { (fileName, policyName) ->

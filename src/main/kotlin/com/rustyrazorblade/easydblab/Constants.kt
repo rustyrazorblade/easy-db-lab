@@ -225,6 +225,47 @@ object Constants {
         // eventual consistency, not a missing instance.
         const val EC2_INSTANCE_NOT_FOUND = "InvalidInstanceID.NotFound"
 
+        /**
+         * AWS error codes, grouped by what the user must do. `AwsErrorHandler` checks the code
+         * before the HTTP status, because STS, IAM and S3 answer 403 for bad credentials.
+         */
+        object ErrorCodes {
+            val CREDENTIALS =
+                setOf(
+                    "ExpiredToken",
+                    "ExpiredTokenException",
+                    "RequestExpired",
+                    "AuthFailure",
+                    "InvalidClientTokenId",
+                    "UnrecognizedClientException",
+                    "InvalidAccessKeyId",
+                    "SignatureDoesNotMatch",
+                    "InvalidSignatureException",
+                    "InvalidToken",
+                    "TokenRefreshRequired",
+                    "MissingAuthenticationToken",
+                    "IncompleteSignature",
+                )
+
+            val PERMISSION_DENIED =
+                setOf(
+                    "AccessDenied",
+                    "AccessDeniedException",
+                    "UnauthorizedOperation",
+                )
+
+            /** A 403 from clock skew is neither a credentials nor a permission problem. */
+            const val CLOCK_SKEW = "RequestTimeTooSkewed"
+
+            /** Substrings of the `SdkClientException` messages that mean no usable credentials. */
+            val CREDENTIALS_MESSAGES =
+                listOf(
+                    "Unable to load credentials",
+                    "contained no credentials for profile",
+                    "The SSO session associated with this profile has expired",
+                )
+        }
+
         // IAM Role Names
         object Roles {
             const val EC2_INSTANCE_ROLE = "EasyDBLabEC2Role"

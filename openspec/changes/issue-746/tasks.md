@@ -1,11 +1,11 @@
 ## 0. Baseline
 
-- [ ] 0.1 Run one command against expired credentials on `main` and save the console output (the "before" capture).
+- [x] 0.1 Run one command against expired credentials on `main` and save the console output (the "before" capture).
 
 ## 1. Error path
 
 - [ ] 1.1 `kernel/ProviderErrorHandler.kt`: `ProviderErrorHandler`, `ProviderErrorKind`, `ErrorDescription`. Extend the kernel rule in the root `CLAUDE.md` to cover providers.
-- [ ] 1.2 `Constants.AWS.ErrorCodes` (credential and permission code sets); policy-name constants on `AWSPolicy.UserIAM`.
+- [x] 1.2 `Constants.AWS.ErrorCodes` (credential and permission code sets); policy-name constants on `AWSPolicy.UserIAM`.
 - [ ] 1.3 Test first: write the `AwsErrorHandler` classification tests, built from real SDK exceptions (STS, S3, EC2, IAM, ECS, EMR, OpenSearch), covering the 403-credential codes, the 400 `AccessDeniedException`, `SdkClientException` from a real `ProfileCredentialsProvider` over an empty profile file, a network `SdkClientException` that maps to null, and the exception-class-to-policy table. Then implement `providers/aws/AwsErrorHandler`.
 - [ ] 1.4 `Event.Command.ProviderError` (`@Serializable`, `@SerialName`, `isError()`, display string). Update `events/CLAUDE.md`.
 - [ ] 1.5 Test first: write the `CommandFailureReporter` tests (first match wins, wrapped `CompletionException`/`SetupProfileException`, a cause loop terminates, no match emits `ExecutionError`, `CommandFailedException` is reported quietly). Then implement it, with its Koin binding using `getAll()`.

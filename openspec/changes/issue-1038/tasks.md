@@ -34,23 +34,23 @@
 
 ## 4. Integration
 
-- [ ] 4.1 Write a K3s TestContainers integration test on a node labelled `type=db`:
+- [x] 4.1 Write a K3s TestContainers integration test on a node labelled `type=db`:
   - install and start the kit;
   - reach UN;
   - answer `SELECT release_version FROM system.local` on the NodePort;
   - write a row;
   - stop, and check that no pod, StatefulSet, Service or ConfigMap remains while the claims do;
   - start again and read the row back.
-- [ ] 4.2 Check that the kit resolves from the classpath with no `appHome` (Homebrew install).
+- [x] 4.2 Check that the kit resolves from the classpath with no `appHome` (Homebrew install).
 
 ## 5. Docs
 
-- [ ] 5.1 Add `docs/user-guide/cassandra-pods.md` (args, `--image` with branch builds, CQL access, persistence, the AMI-Cassandra check) and its `docs/SUMMARY.md` entry.
-- [ ] 5.2 Add `cassandra-pods` to the kit list in `docs/user-guide/kits.md`.
-- [ ] 5.3 In `docs/development/kits.md`, describe the init-container agent pattern and reserve port 30942.
-- [ ] 5.4 In the root `CLAUDE.md`, add 30942 to the kit NodePort list, and add the rule that a kit name must not match a built-in command.
+- [x] 5.1 Add `docs/user-guide/cassandra-pods.md` (args, `--image` with branch builds, CQL access, persistence, the AMI-Cassandra check) and its `docs/SUMMARY.md` entry.
+- [x] 5.2 Add `cassandra-pods` to the kit list in `docs/user-guide/kits.md`.
+- [x] 5.3 In `docs/development/kits.md`, describe the init-container agent pattern and reserve port 30942.
+- [x] 5.4 In the root `CLAUDE.md`, add 30942 to the kit NodePort list, and add the rule that a kit name must not match a built-in command.
 
 ## 6. Verify
 
 - [ ] 6.1 Run `./gradlew ktlintFormat detekt test integrationTest` on JDK 21, in a subagent; all must pass.
-- [ ] 6.2 Run `openspec validate issue-1038 --strict`.
+- [x] 6.2 Run `openspec validate issue-1038 --strict`.

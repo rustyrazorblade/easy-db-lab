@@ -987,14 +987,20 @@ tasks.named<ProcessResources>("processResources") {
     from("src/main/resources/com/rustyrazorblade/easydblab/configuration/cassandra/cassandra-jmx-rules.yaml") {
         into(kitResources)
     }
-    val agentVersion = libs.versions.opentelemetry.agent.get()
+    val agentVersion =
+        libs.versions.opentelemetry.agent
+            .get()
     filesMatching("$kitResources/statefulset.yaml.template") {
         filter { it.replace("@OTEL_AGENT_VERSION@", agentVersion) }
     }
 }
 
 tasks.withType<Test>().configureEach {
-    systemProperty("easydblab.otelAgentVersion", libs.versions.opentelemetry.agent.get())
+    systemProperty(
+        "easydblab.otelAgentVersion",
+        libs.versions.opentelemetry.agent
+            .get(),
+    )
 }
 
 // Unit-test the cassandra-pods kit's start check and UN wait. curl, ssh and kubectl are stubbed.

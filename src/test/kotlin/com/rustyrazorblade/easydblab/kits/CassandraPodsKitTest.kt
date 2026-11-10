@@ -51,7 +51,12 @@ class CassandraPodsKitTest : BaseKoinTest() {
         assertThat(cql.type).isEqualTo(KitEndpoint.EndpointType.NATIVE)
         assertThat(cql.nodeType).isEqualTo("db")
         assertThat(cql.port).isEqualTo(Constants.Kit.CassandraPods.CQL_NODE_PORT)
-        assertThat(kit.config.metrics.filterIsInstance<KitMetrics.JavaAgent>().single().serviceName).isEqualTo("cassandra")
+        assertThat(
+            kit.config.metrics
+                .filterIsInstance<KitMetrics.JavaAgent>()
+                .single()
+                .serviceName,
+        ).isEqualTo("cassandra")
     }
 
     @Test
@@ -62,7 +67,9 @@ class CassandraPodsKitTest : BaseKoinTest() {
         assertThat(sts.spec.replicas).isEqualTo(3)
         assertThat(sts.spec.podManagementPolicy).isEqualTo("OrderedReady")
         assertThat(spec.nodeSelector).containsEntry("type", "db")
-        val antiAffinity = spec.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution.single()
+        val antiAffinity =
+            spec.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution
+                .single()
         assertThat(antiAffinity.topologyKey).isEqualTo("kubernetes.io/hostname")
         assertThat(sts.spec.template.metadata.labels).containsAllEntriesOf(antiAffinity.labelSelector.matchLabels)
     }
@@ -73,7 +80,11 @@ class CassandraPodsKitTest : BaseKoinTest() {
         val env = container.env.associateBy { it.name }
         val port = Constants.Kit.CassandraPods.CQL_NODE_PORT
 
-        assertThat(env.getValue("HOST_IP").valueFrom.fieldRef.fieldPath).isEqualTo("status.hostIP")
+        assertThat(
+            env
+                .getValue("HOST_IP")
+                .valueFrom.fieldRef.fieldPath,
+        ).isEqualTo("status.hostIP")
         assertThat(env.getValue("CASSANDRA_BROADCAST_RPC_ADDRESS").value).isEqualTo("$(HOST_IP)")
         assertThat(container.env.map { it.name }).containsSubsequence("HOST_IP", "CASSANDRA_BROADCAST_RPC_ADDRESS")
         assertThat(container.ports.map { it.containerPort }).contains(port)
@@ -93,10 +104,25 @@ class CassandraPodsKitTest : BaseKoinTest() {
 
         assertThat(nodePort.spec.type).isEqualTo("NodePort")
         assertThat(nodePort.spec.externalTrafficPolicy).isEqualTo("Local")
-        assertThat(nodePort.spec.ports.single().port).isEqualTo(port)
-        assertThat(nodePort.spec.ports.single().nodePort).isEqualTo(port)
-        assertThat(nodePort.spec.ports.single().targetPort.intVal).isEqualTo(port)
-        assertThat(statefulSet().spec.template.metadata.labels).containsAllEntriesOf(nodePort.spec.selector)
+        assertThat(
+            nodePort.spec.ports
+                .single()
+                .port,
+        ).isEqualTo(port)
+        assertThat(
+            nodePort.spec.ports
+                .single()
+                .nodePort,
+        ).isEqualTo(port)
+        assertThat(
+            nodePort.spec.ports
+                .single()
+                .targetPort.intVal,
+        ).isEqualTo(port)
+        assertThat(
+            statefulSet()
+                .spec.template.metadata.labels,
+        ).containsAllEntriesOf(nodePort.spec.selector)
     }
 
     @Test
@@ -117,7 +143,9 @@ class CassandraPodsKitTest : BaseKoinTest() {
         val init = spec.initContainers.single()
         val agentVolume = spec.volumes.single { it.name == init.volumeMounts.single().name }
 
-        assertThat(init.image).isEqualTo("${Constants.Kit.CassandraPods.AGENT_IMAGE_REPOSITORY}:${System.getProperty("easydblab.otelAgentVersion")}")
+        assertThat(
+            init.image,
+        ).isEqualTo("${Constants.Kit.CassandraPods.AGENT_IMAGE_REPOSITORY}:${System.getProperty("easydblab.otelAgentVersion")}")
         assertThat(agentVolume.emptyDir).isNotNull()
         assertThat(spec.volumes.mapNotNull { it.hostPath?.path }).noneMatch { it.startsWith("/usr/local/otel") }
         assertThat(cassandra().volumeMounts.map { it.name }).contains(agentVolume.name)
@@ -129,7 +157,11 @@ class CassandraPodsKitTest : BaseKoinTest() {
         val env = cassandra().env.associateBy { it.name }
 
         assertThat(env.getValue("OTEL_SERVICE_NAME").value).isEqualTo("cassandra")
-        assertThat(env.getValue("NODE_NAME").valueFrom.fieldRef.fieldPath).isEqualTo("spec.nodeName")
+        assertThat(
+            env
+                .getValue("NODE_NAME")
+                .valueFrom.fieldRef.fieldPath,
+        ).isEqualTo("spec.nodeName")
         assertThat(cassandra().env.map { it.name }).containsSubsequence("NODE_NAME", "OTEL_RESOURCE_ATTRIBUTES")
         val attributes = env.getValue("OTEL_RESOURCE_ATTRIBUTES").value
         assertThat(attributes).contains("host.name=$(NODE_NAME)", "node_role=db", "cassandra_build=@RESOLVED_BUILD@")
@@ -139,7 +171,10 @@ class CassandraPodsKitTest : BaseKoinTest() {
     @Test
     fun `claims come from the kit's platform volumes`() {
         val sts = statefulSet()
-        val pvs = kit.config.install.filterIsInstance<InstallStep.PlatformPvs>().single()
+        val pvs =
+            kit.config.install
+                .filterIsInstance<InstallStep.PlatformPvs>()
+                .single()
         val claim = sts.spec.volumeClaimTemplates.single()
 
         assertThat(sts.metadata.name).isEqualTo("cassandra-pods")
@@ -150,7 +185,10 @@ class CassandraPodsKitTest : BaseKoinTest() {
 
     @Test
     fun `stop deletes by the kit label and never the claims, uninstall deletes the volumes`() {
-        val stop = kit.config.stop.filterIsInstance<InstallStep.Delete>().single { it.bySelector }
+        val stop =
+            kit.config.stop
+                .filterIsInstance<InstallStep.Delete>()
+                .single { it.bySelector }
 
         assertThat(stop.selector).isEqualTo("easydblab/kit=cassandra-pods")
         assertThat(stop.kinds).contains("statefulset", "service", "configmap").doesNotContain("pvc", "persistentvolumeclaim")

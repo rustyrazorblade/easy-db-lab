@@ -49,6 +49,25 @@ class InstallTemplateResolverTest : BaseKoinTest() {
     }
 
     @Test
+    fun `cassandra-pods resolves from the classpath with every file the kit needs`() {
+        // Homebrew install: no source checkout and no appHome, only packaged resources.
+        val source = resolver.resolve("cassandra-pods")
+        assertThat(source).isInstanceOf(InstallTemplateResolver.TemplateSource.Builtin::class.java)
+
+        val files = resolver.listTemplateFiles(source).map { it.name }
+        assertThat(files).contains(
+            "statefulset.yaml.template",
+            "headless-service.yaml.template",
+            "nodeport-service.yaml.template",
+            "cassandra-jmx-rules.yaml",
+            "lib/check-start.sh",
+            "lib/apply-statefulset.sh",
+            "lib/wait-un.sh",
+        )
+        assertThat(resolver.loadInstallConfig(source)?.name).isEqualTo("cassandra-pods")
+    }
+
+    @Test
     fun `lists profile-directory templates alongside built-ins`() {
         createProfileTemplate("mydb")
 

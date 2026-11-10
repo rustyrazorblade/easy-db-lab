@@ -107,7 +107,11 @@ class CommandLineParserTest : BaseKoinTest() {
 
         assertThat(events.filterIsInstance<Event.Kit.NameCollision>())
             .containsExactly(Event.Kit.NameCollision(kit = "cassandra", command = "cassandra"))
-        assertThat(commandLine.subcommands.getValue("cassandra").subcommands.keys).contains("start")
+        assertThat(
+            commandLine.subcommands
+                .getValue("cassandra")
+                .subcommands.keys,
+        ).contains("start")
     }
 
     @Test

@@ -44,5 +44,5 @@
   - `events/CLAUDE.md`.
   - Root `CLAUDE.md`: the boundary rule, the kernel rule, and the `AwsClientsModule`/`AwsServicesModule` names in the DI section.
   - `configuration/CLAUDE.md`, if it mentions the compactor.
-- [ ] 6.3 Run `./gradlew check` on JDK 21 in a subagent, with no new `@Suppress`, no threshold change and no baseline entry.
-- [ ] 6.4 Smoke check: `bin/easy-db-lab --help`, then one AWS command with expired credentials compared against the 0.1 capture.
+- [x] 6.3 Run `./gradlew check` on JDK 21 in a subagent, with no new `@Suppress`, no threshold change and no baseline entry.
+- [x] 6.4 Smoke check: `bin/easy-db-lab --help`, then one AWS command with expired credentials compared against the 0.1 capture.

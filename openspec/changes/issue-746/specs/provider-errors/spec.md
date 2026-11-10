@@ -32,10 +32,16 @@ When a command fails, the system SHALL ask every registered provider error handl
 
 #### Scenario: Docker is not running
 
-- **GIVEN** a command that fails with a Docker `DockerException`, or the project's wrapper of it
+- **GIVEN** a command that fails because the Docker daemon cannot be reached (a refused or broken socket, or a missing unix socket file), possibly inside the project's `DockerException`
 - **WHEN** the command fails
 - **THEN** `Event.Command.ProviderError` is emitted with kind `unavailable`, provider Docker, and a remedy to check that Docker is running
 - **AND** the exit code is non-zero
+
+#### Scenario: Docker answers with an error
+
+- **GIVEN** a command that fails with a Docker API answer such as `NotFoundException` or `ConflictException`
+- **WHEN** the command fails
+- **THEN** `Event.Command.ExecutionError` is emitted with Docker's own message and no "check that Docker is running" remedy
 
 #### Scenario: Network failure is not misclassified
 

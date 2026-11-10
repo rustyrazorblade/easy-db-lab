@@ -15,6 +15,7 @@ import software.amazon.awssdk.services.iam.model.IamException
 import software.amazon.awssdk.services.opensearch.model.OpenSearchException
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.ssm.model.SsmException
+import software.amazon.awssdk.services.sso.auth.ExpiredTokenException
 
 /**
  * Tells the command layer which AWS failures are a credentials or a permissions problem, and what
@@ -44,15 +45,23 @@ class AwsErrorHandler : ProviderErrorHandler {
                 error.statusCode() == Constants.HttpStatus.FORBIDDEN -> ProviderErrorKind.PERMISSION_DENIED
                 else -> null
             }
-        return kind?.let { describeAs(it, detail, error) }
+        return when (kind) {
+            ProviderErrorKind.CREDENTIALS -> describeAs(kind, detail, CREDENTIALS_REMEDY)
+            ProviderErrorKind.PERMISSION_DENIED -> describeAs(kind, detail, permissionRemedy(policyFor(error)))
+            else -> null
+        }
     }
 
     private fun describeClient(error: SdkClientException): ErrorDescription? {
         val message = error.message.orEmpty()
-        return if (Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES
-                .any { message.contains(it) }
-        ) {
-            describeAs(ProviderErrorKind.CREDENTIALS, message, error)
+        // The SDK has a type for an expired SSO session; a missing credentials chain is a plain
+        // SdkClientException that only its message tells apart.
+        val isCredentialsProblem =
+            error is ExpiredTokenException ||
+                Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES
+                    .any { message.contains(it) }
+        return if (isCredentialsProblem) {
+            describeAs(ProviderErrorKind.CREDENTIALS, message, CREDENTIALS_REMEDY)
         } else {
             null
         }
@@ -61,19 +70,8 @@ class AwsErrorHandler : ProviderErrorHandler {
     private fun describeAs(
         kind: ProviderErrorKind,
         detail: String,
-        error: Throwable,
-    ): ErrorDescription =
-        ErrorDescription(
-            provider = PROVIDER,
-            kind = kind,
-            detail = detail,
-            remedy =
-                when (kind) {
-                    ProviderErrorKind.CREDENTIALS -> CREDENTIALS_REMEDY
-                    ProviderErrorKind.PERMISSION_DENIED -> permissionRemedy(policyFor(error))
-                    ProviderErrorKind.UNAVAILABLE -> UNAVAILABLE_REMEDY
-                },
-        )
+        remedy: String,
+    ): ErrorDescription = ErrorDescription(provider = PROVIDER, kind = kind, detail = detail, remedy = remedy)
 
     private fun permissionRemedy(policy: String?): String =
         if (policy != null) {
@@ -99,8 +97,6 @@ class AwsErrorHandler : ProviderErrorHandler {
         const val CREDENTIALS_REMEDY =
             "For an SSO profile run: aws sso login --profile <profile>. Otherwise run: easy-db-lab profile setup. " +
                 "Check the result with: aws sts get-caller-identity"
-
-        const val UNAVAILABLE_REMEDY = "Check your network connection to AWS, then run the command again."
 
         val ALL_POLICIES =
             listOf(

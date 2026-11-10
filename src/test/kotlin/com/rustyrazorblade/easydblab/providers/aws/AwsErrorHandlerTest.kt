@@ -112,11 +112,12 @@ class AwsErrorHandlerTest {
     }
 
     @Test
-    fun `an expired SSO session message is credentials`() {
+    fun `an expired SSO session is credentials, recognised by the SDK's own exception type`() {
+        // The message is deliberately unrelated to the old substring: the type alone must decide.
         val error =
-            SdkClientException
+            software.amazon.awssdk.services.sso.auth.ExpiredTokenException
                 .builder()
-                .message("The SSO session associated with this profile has expired or is otherwise invalid.")
+                .message("token gone")
                 .build()
 
         assertThat(handler.describe(error)!!.kind).isEqualTo(ProviderErrorKind.CREDENTIALS)
@@ -159,6 +160,20 @@ class AwsErrorHandlerTest {
                 .describedAs(builder.javaClass.name)
                 .contains("show-iam-policies $policy")
         }
+    }
+
+    @Test
+    fun `the policy named for an S3 failure really holds the S3 actions`() {
+        val named = handler.describe(awsError(S3Exception.builder(), "AccessDenied", 403))!!.remedy
+        val policies =
+            com.rustyrazorblade.easydblab.providers.aws.AWSPolicy.UserIAM
+                .loadAll("123456789012")
+                .associate { it.name to it.body }
+
+        val s3Holder = policies.filterValues { "\"s3:PutObject\"" in it || "\"s3:GetObject\"" in it }.keys
+
+        assertThat(s3Holder).hasSize(1)
+        assertThat(named).contains("show-iam-policies ${s3Holder.single()}")
     }
 
     @Test

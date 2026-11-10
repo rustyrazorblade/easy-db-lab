@@ -197,8 +197,10 @@ class CommandExecutorTest : BaseKoinTest() {
         val exitCode =
             commandExecutor.execute {
                 ThrowingCommand(
-                    com.github.dockerjava.api.exception
-                        .DockerException("Cannot connect", 500),
+                    com.rustyrazorblade.easydblab.DockerException(
+                        "Error pulling image x:1",
+                        java.net.ConnectException("Connection refused"),
+                    ),
                 )
             }
 
@@ -207,6 +209,24 @@ class CommandExecutorTest : BaseKoinTest() {
         assertThat(event.kind).isEqualTo(ProviderErrorKind.UNAVAILABLE)
         assertThat(event.toDisplayString()).contains("Docker is running")
         assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `a docker 404 keeps its own message and gets no check-docker remedy`() {
+        commandExecutor.execute {
+            ThrowingCommand(
+                com.rustyrazorblade.easydblab.DockerException(
+                    "Failed to start container abc",
+                    com.github.dockerjava.api.exception
+                        .NotFoundException("No such container: abc"),
+                ),
+            )
+        }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ProviderError>()).isEmpty()
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("No such container: abc")
+            .doesNotContain("Docker is running")
     }
 
     @Test

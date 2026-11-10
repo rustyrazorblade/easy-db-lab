@@ -32,7 +32,7 @@ providers/
 │   ├── DockerModule.kt
 │   ├── DockerClientProvider.kt
 │   ├── DefaultDockerClientProvider.kt
-│   └── DockerErrorHandler.kt  # Docker daemon failures as a ProviderErrorHandler (kind unavailable)
+│   └── DockerErrorHandler.kt  # An unreachable Docker daemon (connection failure only) as a ProviderErrorHandler, kind unavailable
 ├── ssh/                    # SSH connection providers
 │   ├── SSHModule.kt
 │   ├── SSHConnectionProvider.kt

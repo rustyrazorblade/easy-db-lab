@@ -82,7 +82,7 @@ class KitInstallCommand(
         val instanceName = resolveInstanceName()
 
         if (config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) && !force) {
-            val outputDir = File(context.workingDirectory, instanceName)
+            val outputDir = context.workspaceFile(instanceName)
             if (outputDir.isDirectory && outputDir.listFiles().orEmpty().isNotEmpty()) {
                 eventBus.emit(Event.Install.CollisionDetected(kit = instanceName, outputDir = outputDir.path))
                 exitCode = Constants.ExitCodes.ERROR
@@ -100,7 +100,7 @@ class KitInstallCommand(
         )
 
         if (config.install.isNotEmpty()) {
-            val kitDir = File(context.workingDirectory, instanceName)
+            val kitDir = context.workspaceFile(instanceName)
             val variables =
                 TemplateVariables
                     .from(state = clusterState, kitName = instanceName, storageSize = storageSize)
@@ -157,7 +157,7 @@ class KitInstallCommand(
     }
 
     private fun lookUpInstalledKit(targetName: String): KitRefTargetValidator.TargetLookup {
-        val configFile = File(File(context.workingDirectory, targetName), Constants.Kit.CONFIG_FILE)
+        val configFile = File(context.workspaceFile(targetName), Constants.Kit.CONFIG_FILE)
         return when {
             configFile.isFile ->
                 KitRefTargetValidator.TargetLookup.Installed(

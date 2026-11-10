@@ -850,16 +850,6 @@ class CommandExecutorTest : BaseKoinTest() {
         override fun execute(): Unit = throw failure
     }
 
-    /** Test command that loads cluster state from a workspace that has none */
-    @Command(name = "missing-state-command")
-    inner class MissingStateCommand(
-        private val stateFile: File,
-    ) : PicoBaseCommand() {
-        override fun execute() {
-            ClusterStateManager(stateFile).load()
-        }
-    }
-
     /** Test command that reports its own failure, then signals it through the exit code only */
     @Command(name = "reported-failure-command")
     inner class ReportedFailureCommand : PicoBaseCommand() {

@@ -383,11 +383,6 @@ abstract class UpTestFixture : BaseKoinTest() {
                 remoteDir: String,
             ) = Unit
 
-            override fun uploadDirectory(
-                host: Host,
-                version: Version,
-            ) = Unit
-
             override fun replaceDirectory(
                 host: Host,
                 localDir: File,

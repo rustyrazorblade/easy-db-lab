@@ -316,6 +316,8 @@ object Constants {
          */
         const val POD_ADDRESSES_PER_NODE = 16
     }
+    /** The workspace script `init` extracts and `setup-instances` uploads to every node. */
+    const val SETUP_INSTANCE_SCRIPT = "setup_instance.sh"
 
     // Exit codes
     object ExitCodes {

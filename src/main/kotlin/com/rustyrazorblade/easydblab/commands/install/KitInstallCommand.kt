@@ -1,5 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.install
 
+import com.rustyrazorblade.easydblab.BuiltInCommands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.configuration.ServerType
@@ -71,6 +72,12 @@ class KitInstallCommand(
         validateKitRefTarget()
 
         val instanceName = resolveInstanceName()
+
+        if (BuiltInCommands.isBuiltIn(instanceName)) {
+            eventBus.emit(Event.Kit.NameCollision(kit = instanceName, command = instanceName))
+            exitCode = Constants.ExitCodes.ERROR
+            return
+        }
 
         if (config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) && !force) {
             val outputDir = context.workspaceFile(instanceName)

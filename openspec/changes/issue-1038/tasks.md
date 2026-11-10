@@ -1,9 +1,9 @@
 ## 1. Kit-name collision (bug fix)
 
-- [ ] 1.1 Write a `CommandLineParser` test: a workspace kit directory named after a built-in command emits a collision event naming both, the built-in stays, and a non-colliding kit registers with no event.
-- [ ] 1.2 Add `Event.Kit.NameCollision(kit, command)` in `events/Event.kt` with KDoc, and emit it from `registerDynamicKitSubcommands` instead of returning silently.
-- [ ] 1.3 Write a `KitInstallCommand` test: an instance name matching a built-in command exits non-zero, names the command, and writes no directory.
-- [ ] 1.4 Refuse that name in `KitInstallCommand` before any write.
+- [x] 1.1 Write a `CommandLineParser` test: a workspace kit directory named after a built-in command emits a collision event naming both, the built-in stays, and a non-colliding kit registers with no event.
+- [x] 1.2 Add `Event.Kit.NameCollision(kit, command)` in `events/Event.kt` with KDoc, and emit it from `registerDynamicKitSubcommands` instead of returning silently.
+- [x] 1.3 Write a `KitInstallCommand` test: an instance name matching a built-in command exits non-zero, names the command, and writes no directory.
+- [x] 1.4 Refuse that name in `KitInstallCommand` before any write.
 
 ## 2. Constants and build
 

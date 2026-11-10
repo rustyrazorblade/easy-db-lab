@@ -307,7 +307,12 @@ class CommandLineParser : KoinComponent {
             .discover()
             .forEach { kitDir ->
                 val kitName = kitDir.name
-                if (kitName in commandLine.subcommands.keys) return@forEach
+                if (kitName in commandLine.subcommands.keys) {
+                    if (BuiltInCommands.isBuiltIn(kitName)) {
+                        eventBus.emit(Event.Kit.NameCollision(kit = kitName, command = kitName))
+                    }
+                    return@forEach
+                }
 
                 try {
                     val kitGroup = factory.buildKitGroup(kitName, kitDir)

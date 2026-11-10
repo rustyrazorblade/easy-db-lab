@@ -1,6 +1,10 @@
 package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.commands.profile.Profile
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.HelpTopicService
@@ -90,6 +94,47 @@ class CommandLineParserTest : BaseKoinTest() {
 
         assertThat(profileGroup.commandSpec.userObject()).isInstanceOf(Profile::class.java)
         assertThat(profileGroup.subcommands.keys).contains("show", "setup")
+    }
+
+    @Test
+    fun `a workspace kit named after a built-in command is reported and the built-in stays`() {
+        val kitDir = File(context.workingDirectory, "cassandra")
+        kitDir.mkdirs()
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: cassandra\n")
+        val events = recordEvents()
+
+        val commandLine = CommandLineParser().commandLine
+
+        assertThat(events.filterIsInstance<Event.Kit.NameCollision>())
+            .containsExactly(Event.Kit.NameCollision(kit = "cassandra", command = "cassandra"))
+        assertThat(commandLine.subcommands.getValue("cassandra").subcommands.keys).contains("start")
+    }
+
+    @Test
+    fun `a workspace kit that does not collide registers with no collision event`() {
+        val kitDir = File(context.workingDirectory, "cassandra-pods")
+        kitDir.mkdirs()
+        File(kitDir, Constants.Kit.CONFIG_FILE).writeText("name: cassandra-pods\n")
+        val events = recordEvents()
+
+        val commandLine = CommandLineParser().commandLine
+
+        assertThat(commandLine.subcommands).containsKey("cassandra-pods")
+        assertThat(events.filterIsInstance<Event.Kit.NameCollision>()).isEmpty()
+    }
+
+    private fun recordEvents(): List<Event> {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return events
     }
 
     @Test

@@ -37,7 +37,7 @@
 
 ## 6. Rule and docs
 
-- [ ] 6.1 `architecture/PackageBoundaryTest`: R0 sanity, R1a, R1b (the custom catch-clause condition), R2, R3, all with zero violations. Prove R1a and R1b each fail on a deliberate violation, then revert it.
+- [x] 6.1 `architecture/PackageBoundaryTest`: R0 sanity, R1a, R1b (the custom catch-clause condition), R2, R3, all with zero violations. Prove R1a and R1b each fail on a deliberate violation, then revert it.
 - [ ] 6.2 Docs:
   - `providers/CLAUDE.md`: package tree, the boundary rule, the error handler, "translation wraps a retried call, never runs inside it", the `Up.kt:225` hazard, and no SDK-touching `inline` functions.
   - `services/aws/CLAUDE.md`: new classes and `tempo-backend.yaml`.

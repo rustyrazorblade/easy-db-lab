@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.configuration.AwsKeyName
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.Ec2Client
@@ -27,8 +28,32 @@ import java.util.UUID
  */
 class AwsKeyPairService(
     private val eventBus: EventBus,
+    private val clientFactory: AWSClientFactory,
 ) {
     private val log = KotlinLogging.logger {}
+
+    /**
+     * Creates a key pair with the credentials the user just entered: the named AWS [awsProfile]
+     * when it is not empty, otherwise the static [accessKey] and [secret].
+     *
+     * @return the key pair's name
+     * @throws CommandFailedException when EC2 denies the call; the missing policies were already shown
+     */
+    fun generate(
+        profileDir: File,
+        region: String,
+        awsProfile: String,
+        accessKey: String,
+        secret: String,
+    ): AwsKeyName {
+        val ec2Client =
+            if (awsProfile.isNotEmpty()) {
+                clientFactory.createEc2ClientWithProfile(awsProfile, region)
+            } else {
+                clientFactory.createEc2Client(accessKey, secret, region)
+            }
+        return generate(profileDir, ec2Client)
+    }
 
     /**
      * Creates a key pair tagged for the lab and writes the private key to `secret.pem` in

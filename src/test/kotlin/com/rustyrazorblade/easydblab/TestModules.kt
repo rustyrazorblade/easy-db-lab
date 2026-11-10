@@ -223,7 +223,7 @@ object TestModules {
             // assert on the secret this actually builds, so a mock here would verify nothing.
             single { mock<EcrClient>() }
             single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
-            factory { AwsKeyPairService(get()) }
+            factory { AwsKeyPairService(get(), get()) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

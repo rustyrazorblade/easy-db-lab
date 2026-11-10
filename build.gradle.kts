@@ -348,6 +348,10 @@ tasks.withType<Test>().configureEach {
     maxParallelForks = (processors / 2).coerceAtLeast(1)
     forkEvery = 100
 
+    // Gradle's 512 MB default worker heap is too small for PackageBoundaryTest, which holds every
+    // main class in ArchUnit's graph, alongside up to forkEvery other classes in the same JVM.
+    maxHeapSize = "1536m"
+
     doFirst {
         environment("EASY_DB_LAB_PROFILE", "default")
         environment("TESTCONTAINERS_RYUK_DISABLED", "true")

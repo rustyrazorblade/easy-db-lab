@@ -136,7 +136,7 @@ val awsServicesModule =
         single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
 
         // Creates the EC2 key pair profile setup needs; takes the caller-built Ec2Client
-        factory { AwsKeyPairService(get()) }
+        factory { AwsKeyPairService(get(), get()) }
 
         single { CompactorIam(get()) }
         single { CompactorNetwork(get(), get(), get(), get()) }

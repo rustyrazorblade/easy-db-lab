@@ -42,7 +42,7 @@ class AwsKeyPairServiceTest {
             )
         }
     private val ec2: Ec2Client = mock()
-    private val service = AwsKeyPairService(eventBus)
+    private val service = AwsKeyPairService(eventBus, mock())
 
     @Test
     fun `the private key is saved owner-only and the tagged key name returned`(

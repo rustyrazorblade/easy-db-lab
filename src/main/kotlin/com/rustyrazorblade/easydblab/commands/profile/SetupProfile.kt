@@ -437,25 +437,18 @@ class SetupProfile : PicoBaseCommand() {
     ) {
         if (userConfig.keyName.isBlank()) {
             eventBus.emit(Event.Setup.GeneratingKeyPair)
-            val ec2Client = createEc2Client(credentials, regionObj)
             val keyName =
-                keyPairService.generate(context.profileDir, ec2Client)
+                keyPairService.generate(
+                    context.profileDir,
+                    regionObj,
+                    credentials.awsProfile,
+                    credentials.awsAccessKey,
+                    credentials.awsSecret,
+                )
             userConfig.keyName = keyName
             userConfigProvider.saveUserConfig(userConfig)
             eventBus.emit(Event.Setup.KeyPairSaved)
         }
-    }
-
-    /**
-     * Creates an EC2 client using either profile or static credentials.
-     */
-    private fun createEc2Client(
-        credentials: CoreCredentials,
-        regionObj: String,
-    ) = if (credentials.awsProfile.isNotEmpty()) {
-        awsClientFactory.createEc2ClientWithProfile(credentials.awsProfile, regionObj)
-    } else {
-        awsClientFactory.createEc2Client(credentials.awsAccessKey, credentials.awsSecret, regionObj)
     }
 
     /**

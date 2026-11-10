@@ -109,6 +109,17 @@ class StartTest : BaseKoinTest() {
     }
 
     @Test
+    fun `emits the AxonOps Workbench info only when the workspace holds its file`() {
+        Start().execute()
+        assertThat(outputHandler.messages.joinToString("\n")).doesNotContain("axonops-workbench.json")
+
+        java.io.File(context.workingDirectory, "axonops-workbench.json").writeText("{}")
+        val before = outputHandler.messages.size
+        Start().execute()
+        assertThat(outputHandler.messages.drop(before).joinToString("\n")).contains("axonops-workbench.json")
+    }
+
+    @Test
     fun `execute does not start axon-agent when not configured`() {
         // User in core test modules has blank axonOpsOrg and axonOpsKey
         val command = Start()

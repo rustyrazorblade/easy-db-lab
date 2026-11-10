@@ -52,10 +52,7 @@ class UpdateConfig : PicoBaseCommand() {
 
             val yaml =
                 context.yaml.readTree(
-                    context.workingDirectory
-                        .toPath()
-                        .resolve(file)
-                        .inputStream(),
+                    context.workspaceFile(file).inputStream(),
                 )
             (yaml as ObjectNode)
                 .put("listen_address", it.private)
@@ -92,7 +89,14 @@ class UpdateConfig : PicoBaseCommand() {
 
             // Upload files to the temporary directory first
             eventBus.emit(Event.Cassandra.ConfigFilesUploading(tempDir))
-            remoteOps.uploadDirectory(it, resolvedVersion.file, tempDir)
+            remoteOps.uploadDirectory(
+                it,
+                context.workingDirectory
+                    .toPath()
+                    .resolve(resolvedVersion.localDir)
+                    .toFile(),
+                tempDir,
+            )
 
             // Make sure the destination directory exists
             remoteOps.executeRemotely(it, "sudo mkdir -p ${resolvedVersion.conf}").text

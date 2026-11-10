@@ -19,10 +19,10 @@ import java.util.UUID
  * This separates the data (ClusterState) from persistence concerns,
  * making ClusterState a pure data class that's easier to test.
  *
- * @param stateFile The file to read/write cluster state. Defaults to "state.json" in current directory.
+ * @param stateFile The file to read/write cluster state, `state.json` in the workspace.
  */
 class ClusterStateManager(
-    private val stateFile: File = File(CLUSTER_STATE),
+    private val stateFile: File,
 ) {
     private val mapper =
         ObjectMapper()
@@ -42,9 +42,13 @@ class ClusterStateManager(
      * missing field is read as [CniMode.Flannel] rather than filled from the constructor default
      * ([CniMode.Cilium]), which would render Cilium scrape jobs on a Flannel cluster.
      *
-     * @throws Exception if file doesn't exist or can't be parsed
+     * @throws IllegalStateException if the file does not exist; other exceptions if it cannot be parsed
      */
     fun load(): ClusterState {
+        check(stateFile.exists()) {
+            "No cluster state at ${stateFile.absolutePath}. Run the command from the cluster's workspace, " +
+                "or run 'init' there first."
+        }
         val tree = mapper.readTree(stateFile)
         val initConfig = tree.get("initConfig")
         if (initConfig is ObjectNode && !initConfig.has(CNI_FIELD)) {

@@ -166,11 +166,26 @@ _edl_tailscale_active() {
   )
 }
 
+# "true" when the CLI recorded EDL_NETWORK_MODE=direct: the cluster API is reachable from this machine
+# with no tunnel. Only the env file decides; a value inherited from the shell is ignored.
+_edl_network_direct() {
+  (
+    unset EDL_NETWORK_MODE
+    if [ -f "$CLUSTER_DIR/.socks5-proxy.env" ]; then
+      . "$CLUSTER_DIR/.socks5-proxy.env"
+    fi
+    if [ "${EDL_NETWORK_MODE:-}" = direct ]; then
+      printf '%s\n' true
+    fi
+  )
+}
+
 # Runs any command with its traffic routed through the SOCKS5 tunnel, for tools that have no wrapper.
-# On a Tailscale cluster the command runs directly.
+# On a Tailscale cluster, or in direct network mode, the command runs directly with the proxy variables
+# it inherited, and no tunnel is needed; direct mode wins over a recorded tunnel, as in the wrappers.
 # Usage: with-proxy curl http://10.0.1.50:8080/api
 with-proxy() {
-  if [ "$(_edl_tailscale_active)" = true ]; then
+  if [ "$(_edl_tailscale_active)" = true ] || [ "$(_edl_network_direct)" = true ]; then
     "$@"
     return
   fi
@@ -194,6 +209,10 @@ with-proxy() {
 socks5-status() {
   if [ "$(_edl_tailscale_active)" = true ]; then
     echo "This cluster uses Tailscale: no SOCKS5 tunnel is needed."
+    return 0
+  fi
+  if [ "$(_edl_network_direct)" = true ]; then
+    echo "This workspace uses direct network mode: the cluster is reached with no SOCKS5 tunnel."
     return 0
   fi
   local port

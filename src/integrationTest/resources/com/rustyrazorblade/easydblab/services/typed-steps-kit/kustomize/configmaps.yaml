@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: typed-kustomize-selected
+  labels:
+    typed-steps: selected
+data:
+  from: kustomize
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: typed-kustomize-other
+  labels:
+    typed-steps: other
+data:
+  from: kustomize
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: typed-kustomize-kept
+  labels:
+    typed-steps: kept
+data:
+  from: kustomize

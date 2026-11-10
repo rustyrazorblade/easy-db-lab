@@ -4,7 +4,6 @@ import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.K3sDiagnostics.withClusterDiagnostics
 import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
 import com.rustyrazorblade.easydblab.SharedK3s
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.DefaultKubernetesService
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import io.fabric8.kubernetes.api.model.NamespaceBuilder
@@ -71,8 +70,6 @@ class KitWorkloadProbeIntegrationTest {
     private lateinit var probe: KitWorkloadProbe
     private lateinit var kubeService: DefaultKubernetesService
 
-    private val controlHost = ClusterHost(publicIp = "", privateIp = "10.0.0.1", alias = "control0", availabilityZone = "us-west-2a")
-
     @BeforeAll
     fun setup() {
         client = KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
@@ -133,7 +130,7 @@ class KitWorkloadProbeIntegrationTest {
     fun `finds nothing when no pod carries the runtime selector`() {
         createPod("other-kit-0", mapOf("easydblab/kit" to "not-probed"))
 
-        assertThat(probe.find("absent", podsRuntime("absent"), controlHost).getOrThrow())
+        assertThat(probe.find("absent", podsRuntime("absent")).getOrThrow())
             .isEqualTo(WorkloadPresence.Absent)
     }
 
@@ -141,7 +138,7 @@ class KitWorkloadProbeIntegrationTest {
     fun `finds the pods the runtime selector matches`() {
         createPod("running-0", mapOf("easydblab/kit" to "running"))
 
-        assertThat(probe.find("running", podsRuntime("running"), controlHost).getOrThrow())
+        assertThat(probe.find("running", podsRuntime("running")).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/running-0")))
     }
 
@@ -149,7 +146,7 @@ class KitWorkloadProbeIntegrationTest {
     fun `only looks in the runtime's namespace`() {
         createPod("scoped-0", mapOf("easydblab/kit" to "scoped"), namespace = OTHER_NAMESPACE)
 
-        assertThat(probe.find("scoped", podsRuntime("scoped"), controlHost).getOrThrow())
+        assertThat(probe.find("scoped", podsRuntime("scoped")).getOrThrow())
             .isEqualTo(WorkloadPresence.Absent)
     }
 
@@ -168,7 +165,7 @@ class KitWorkloadProbeIntegrationTest {
             .withName("stopping-0")
             .waitUntilCondition({ it?.metadata?.deletionTimestamp != null }, WAIT_SECONDS, TimeUnit.SECONDS)
 
-        assertThat(probe.find("stopping", podsRuntime("stopping"), controlHost).getOrThrow())
+        assertThat(probe.find("stopping", podsRuntime("stopping")).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/stopping-0")))
     }
 
@@ -176,14 +173,14 @@ class KitWorkloadProbeIntegrationTest {
     fun `a kit with no runtime block is found by its app kubernetes io name label`() {
         createPod("bare-0", mapOf("app.kubernetes.io/name" to "bare"))
 
-        assertThat(probe.find("bare", runtime = null, controlHost = controlHost).getOrThrow())
+        assertThat(probe.find("bare", runtime = null).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/bare-0")))
     }
 
     /** Waits until no pod of [kitName] is left; a timeout carries the cluster's pod and event state. */
     private fun awaitGone(kitName: String) {
         withClusterDiagnostics(client, NAMESPACE) {
-            assertThat(probe.awaitGone(kitName, podsRuntime(kitName), controlHost).getOrThrow())
+            assertThat(probe.awaitGone(kitName, podsRuntime(kitName)).getOrThrow())
                 .isEqualTo(WorkloadPresence.Absent)
         }
     }
@@ -207,7 +204,7 @@ class KitWorkloadProbeIntegrationTest {
         deletePod("draining-0")
         val impatient = KitWorkloadProbe(kubeService, mock(), pollInterval = Duration.ZERO, maxPolls = IMPATIENT_POLLS)
 
-        assertThat(impatient.awaitGone("draining", podsRuntime("draining"), controlHost).getOrThrow())
+        assertThat(impatient.awaitGone("draining", podsRuntime("draining")).getOrThrow())
             .isEqualTo(WorkloadPresence.Present(namespace = "default", resources = listOf("pod/draining-0")))
 
         client

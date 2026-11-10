@@ -12,6 +12,15 @@ Complete reference for all easy-db-lab commands.
 
 ---
 
+## Workspace Files
+
+Run every command from the cluster's workspace directory. Cluster files (`state.json`, `kubeconfig`,
+`environment.sh`, `setup_instance.sh`, `profiles/`, `logs/`) are read and written in that directory,
+and nothing is created in any other place. A command run where no `state.json` exists fails with
+"No cluster state at <absolute path>. Run the command from the cluster's workspace, or run 'init' there first."
+A path you type as an argument (for example `upload-keys <dir>`) resolves against the directory you ran
+the command from.
+
 ## Profile Commands
 
 Profile inspection and setup. Not to be confused with `cassandra profile`, which controls runtime

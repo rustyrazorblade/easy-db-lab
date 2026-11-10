@@ -8,7 +8,6 @@ import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.providers.aws.RegionalClients
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
-import com.rustyrazorblade.easydblab.services.aws.CompactorTaskDefinition
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach

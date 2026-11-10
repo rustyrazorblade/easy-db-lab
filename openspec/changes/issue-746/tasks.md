@@ -32,8 +32,8 @@
 
 ## 5. Neutral values
 
-- [ ] 5.1 Test first: an exhaustive mapping test over every `StepState` value, plus `null`. Then add `SparkJobState` and the mapping in `EMRSparkService`; `SparkService` results and `SparkStatus` use it. Update the Spark command tests.
-- [ ] 5.2 `OpenSearchService.describeDomainOrNull`, catching outside `withAwsRetry`. `OpenSearchStatus` uses it; its test keeps today's not-found output.
+- [x] 5.1 Test first: an exhaustive mapping test over every `StepState` value, plus `null`. Then add `SparkJobState` and the mapping in `EMRSparkService`; `SparkService` results and `SparkStatus` use it. Update the Spark command tests.
+- [x] 5.2 `OpenSearchService.describeDomainOrNull`, catching outside `withAwsRetry`. `OpenSearchStatus` uses it; its test keeps today's not-found output.
 
 ## 6. Rule and docs
 

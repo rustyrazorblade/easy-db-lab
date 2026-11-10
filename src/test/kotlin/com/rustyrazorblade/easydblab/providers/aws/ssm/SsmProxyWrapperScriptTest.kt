@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.providers.ssm
+package com.rustyrazorblade.easydblab.providers.aws.ssm
 
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.AfterEach

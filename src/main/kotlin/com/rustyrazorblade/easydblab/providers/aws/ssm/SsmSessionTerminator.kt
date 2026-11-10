@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.providers.ssm
+package com.rustyrazorblade.easydblab.providers.aws.ssm
 
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider

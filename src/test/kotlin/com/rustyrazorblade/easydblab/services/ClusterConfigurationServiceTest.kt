@@ -10,10 +10,10 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmCliCredentials
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSessionCommandBuilder
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSshRoute
 import com.rustyrazorblade.easydblab.providers.ssh.DirectSshRoute
-import com.rustyrazorblade.easydblab.providers.ssm.SsmCliCredentials
-import com.rustyrazorblade.easydblab.providers.ssm.SsmSessionCommandBuilder
-import com.rustyrazorblade.easydblab.providers.ssm.SsmSshRoute
 import com.rustyrazorblade.easydblab.proxy.ProxyEnv
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.RecordedTunnel

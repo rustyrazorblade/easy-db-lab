@@ -4,20 +4,20 @@
 
 ## 1. Error path
 
-- [ ] 1.1 `kernel/ProviderErrorHandler.kt`: `ProviderErrorHandler`, `ProviderErrorKind`, `ErrorDescription`. Extend the kernel rule in the root `CLAUDE.md` to cover providers.
+- [x] 1.1 `kernel/ProviderErrorHandler.kt`: `ProviderErrorHandler`, `ProviderErrorKind`, `ErrorDescription`. Extend the kernel rule in the root `CLAUDE.md` to cover providers.
 - [x] 1.2 `Constants.AWS.ErrorCodes` (credential and permission code sets); policy-name constants on `AWSPolicy.UserIAM`.
-- [ ] 1.3 Test first: write the `AwsErrorHandler` classification tests, built from real SDK exceptions (STS, S3, EC2, IAM, ECS, EMR, OpenSearch), covering the 403-credential codes, the 400 `AccessDeniedException`, `SdkClientException` from a real `ProfileCredentialsProvider` over an empty profile file, a network `SdkClientException` that maps to null, and the exception-class-to-policy table. Then implement `providers/aws/AwsErrorHandler`.
-- [ ] 1.4 `Event.Command.ProviderError` (`@Serializable`, `@SerialName`, `isError()`, display string). Update `events/CLAUDE.md`.
-- [ ] 1.5 Test first: write the `CommandFailureReporter` tests (first match wins, wrapped `CompletionException`/`SetupProfileException`, a cause loop terminates, no match emits `ExecutionError`, `CommandFailedException` is reported quietly). Then implement it, with its Koin binding using `getAll()`.
-- [ ] 1.6 Wire the reporter into `executeWithLifecycle`, a new outer catch in `executeTopLevel`, and the Picocli `executionExceptionHandler`. Add a test where a failure in top-level dispatch produces one event and no stack trace.
-- [ ] 1.7 `CommandFailedException` gains `cause`. `emitCredentialError`, the key-pair permission path and `CompactorService.withEcsAccess` keep their events, then rethrow it (D4). `emitCredentialError` branches on the handler's kind.
-- [ ] 1.8 Delete every catch and handler in `Main.kt`.
+- [x] 1.3 Test first: write the `AwsErrorHandler` classification tests, built from real SDK exceptions (STS, S3, EC2, IAM, ECS, EMR, OpenSearch), covering the 403-credential codes, the 400 `AccessDeniedException`, `SdkClientException` from a real `ProfileCredentialsProvider` over an empty profile file, a network `SdkClientException` that maps to null, and the exception-class-to-policy table. Then implement `providers/aws/AwsErrorHandler`.
+- [x] 1.4 `Event.Command.ProviderError` (`@Serializable`, `@SerialName`, `isError()`, display string). Update `events/CLAUDE.md`.
+- [x] 1.5 Test first: write the `CommandFailureReporter` tests (first match wins, wrapped `CompletionException`/`SetupProfileException`, a cause loop terminates, no match emits `ExecutionError`, `CommandFailedException` is reported quietly). Then implement it, with its Koin binding using `getAll()`.
+- [x] 1.6 Wire the reporter into `executeWithLifecycle`, a new outer catch in `executeTopLevel`, and the Picocli `executionExceptionHandler`. Add a test where a failure in top-level dispatch produces one event and no stack trace.
+- [x] 1.7 `CommandFailedException` gains `cause`. `emitCredentialError`, the key-pair permission path and `CompactorService.withEcsAccess` keep their events, then rethrow it (D4). `emitCredentialError` branches on the handler's kind.
+- [x] 1.8 Delete every catch and handler in `Main.kt`.
 
 ## 2. Koin split and SSM move
 
-- [ ] 2.1 Split `AWSModule` into `providers/aws/AwsClientsModule` and `services/aws/AwsServicesModule`; `di/KoinModules` lists both.
-- [ ] 2.2 Move `providers/ssm` to `providers/aws/ssm`, fold `ssmModule` into `AwsClientsModule`, and update imports in main and tests.
-- [ ] 2.3 Koin resolution test: every client, service and handler resolves, and the reporter resolves with no profile.
+- [x] 2.1 Split `AWSModule` into `providers/aws/AwsClientsModule` and `services/aws/AwsServicesModule`; `di/KoinModules` lists both.
+- [x] 2.2 Move `providers/ssm` to `providers/aws/ssm`, fold `ssmModule` into `AwsClientsModule`, and update imports in main and tests.
+- [x] 2.3 Koin resolution test: every client, service and handler resolves, and the reporter resolves with no profile.
 
 ## 3. Moves
 

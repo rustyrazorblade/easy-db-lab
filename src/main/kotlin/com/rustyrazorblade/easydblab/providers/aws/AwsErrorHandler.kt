@@ -49,7 +49,9 @@ class AwsErrorHandler : ProviderErrorHandler {
 
     private fun describeClient(error: SdkClientException): ErrorDescription? {
         val message = error.message.orEmpty()
-        return if (Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES.any { message.contains(it) }) {
+        return if (Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES
+                .any { message.contains(it) }
+        ) {
             describeAs(ProviderErrorKind.CREDENTIALS, message, error)
         } else {
             null

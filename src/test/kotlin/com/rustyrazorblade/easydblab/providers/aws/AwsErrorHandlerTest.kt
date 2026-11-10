@@ -21,7 +21,6 @@ import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.ssm.model.SsmException
 import software.amazon.awssdk.services.sts.model.StsException
 import java.io.IOException
-import java.io.StringReader
 import java.io.UncheckedIOException
 
 /**
@@ -38,8 +37,13 @@ class AwsErrorHandlerTest {
     ): AwsServiceException =
         builder
             .statusCode(status)
-            .awsErrorDetails(AwsErrorDetails.builder().errorCode(code).errorMessage("$code happened").build())
-            .message("$code happened")
+            .awsErrorDetails(
+                AwsErrorDetails
+                    .builder()
+                    .errorCode(code)
+                    .errorMessage("$code happened")
+                    .build(),
+            ).message("$code happened")
             .build() as AwsServiceException
 
     @ParameterizedTest

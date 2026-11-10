@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.providers.ssm
+package com.rustyrazorblade.easydblab.providers.aws.ssm
 
 /**
  * An SSM port-forwarding session exited, or timed out, before it reported that it was listening.

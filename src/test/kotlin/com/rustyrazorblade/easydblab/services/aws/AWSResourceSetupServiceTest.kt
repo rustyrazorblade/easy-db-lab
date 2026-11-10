@@ -7,9 +7,9 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
-import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -329,8 +329,13 @@ internal class AWSResourceSetupServiceTest :
             StsException
                 .builder()
                 .statusCode(403)
-                .awsErrorDetails(AwsErrorDetails.builder().errorCode("AccessDenied").errorMessage("Access denied").build())
-                .message("Access denied")
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .errorCode("AccessDenied")
+                        .errorMessage("Access denied")
+                        .build(),
+                ).message("Access denied")
                 .build()
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
             .thenThrow(exception)
@@ -351,8 +356,13 @@ internal class AWSResourceSetupServiceTest :
             StsException
                 .builder()
                 .statusCode(403)
-                .awsErrorDetails(AwsErrorDetails.builder().errorCode("ExpiredToken").errorMessage("expired").build())
-                .message("expired")
+                .awsErrorDetails(
+                    AwsErrorDetails
+                        .builder()
+                        .errorCode("ExpiredToken")
+                        .errorMessage("expired")
+                        .build(),
+                ).message("expired")
                 .build()
         whenever(mockStsClient.getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>()))
             .thenThrow(exception)

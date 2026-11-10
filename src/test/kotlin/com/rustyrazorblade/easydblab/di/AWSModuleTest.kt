@@ -2,7 +2,8 @@ package com.rustyrazorblade.easydblab.di
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.providers.aws.awsModule
+import com.rustyrazorblade.easydblab.providers.aws.awsClientsModule
+import com.rustyrazorblade.easydblab.services.aws.awsServicesModule
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
@@ -21,7 +22,8 @@ internal class AWSModuleTest {
 
         override fun additionalTestModules(): List<Module> =
             listOf(
-                awsModule,
+                awsClientsModule,
+                awsServicesModule,
                 module {
                     single {
                         User(
@@ -50,7 +52,8 @@ internal class AWSModuleTest {
 
         override fun additionalTestModules(): List<Module> =
             listOf(
-                awsModule,
+                awsClientsModule,
+                awsServicesModule,
                 module {
                     single {
                         User(

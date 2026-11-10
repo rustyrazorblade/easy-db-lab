@@ -2,7 +2,7 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.configuration.SshTransport
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.providers.ssm.SsmSshRoute
+import com.rustyrazorblade.easydblab.providers.aws.ssm.SsmSshRoute
 import org.koin.dsl.module
 
 /**

@@ -1,6 +1,7 @@
-package com.rustyrazorblade.easydblab.services
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.services.K8sService
 import io.fabric8.kubernetes.api.model.Secret
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject

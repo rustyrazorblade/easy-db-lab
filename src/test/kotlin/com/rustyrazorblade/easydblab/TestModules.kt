@@ -25,11 +25,12 @@ import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
-import com.rustyrazorblade.easydblab.services.EcrPullSecretService
 import com.rustyrazorblade.easydblab.services.ExternalIpService
+import com.rustyrazorblade.easydblab.services.ImagePullSecretService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.CompactorService
+import com.rustyrazorblade.easydblab.services.aws.EcrPullSecretService
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -220,7 +221,7 @@ object TestModules {
             // Real, over a mocked ECR client and K8s service: tests that exercise a custom image
             // assert on the secret this actually builds, so a mock here would verify nothing.
             single { mock<EcrClient>() }
-            single { EcrPullSecretService(get(), get()) }
+            single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {

@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.services.ExternalIpService
+import com.rustyrazorblade.easydblab.services.ImagePullSecretService
 import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
@@ -130,6 +131,9 @@ val awsServicesModule =
 
         // Provide InstanceSpecFactory as singleton
         single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
+
+        // Turns the nodes' ECR IAM permission into registry credentials a pod can use
+        single<ImagePullSecretService> { EcrPullSecretService(get(), get()) }
 
         single { CompactorIam(get()) }
         single { CompactorNetwork(get(), get(), get(), get()) }

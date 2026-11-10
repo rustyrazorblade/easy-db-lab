@@ -1,6 +1,8 @@
-package com.rustyrazorblade.easydblab.services
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.services.ImagePullSecretService
+import com.rustyrazorblade.easydblab.services.K8sService
 import io.fabric8.kubernetes.api.model.SecretBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.serialization.Serializable
@@ -36,7 +38,7 @@ private data class DockerConfig(
 class EcrPullSecretService(
     private val k8sService: K8sService,
     private val ecrClient: EcrClient,
-) {
+) : ImagePullSecretService {
     private val log = KotlinLogging.logger {}
 
     /**
@@ -55,7 +57,7 @@ class EcrPullSecretService(
      *
      * @return the secret name to attach to the pod's `imagePullSecrets`, or "" when not applicable
      */
-    fun ensureFor(
+    override fun ensureFor(
         controlHost: ClusterHost,
         image: String,
         namespace: String,

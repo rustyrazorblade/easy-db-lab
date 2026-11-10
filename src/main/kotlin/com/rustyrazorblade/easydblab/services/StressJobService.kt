@@ -146,7 +146,7 @@ class DefaultStressJobService(
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
     private val templateService: TemplateService,
-    private val ecrPullSecrets: EcrPullSecretService,
+    private val ecrPullSecrets: ImagePullSecretService,
     private val jobPollInterval: Duration = Duration.ofMillis(JOB_POLL_INTERVAL_MS),
     private val podReadyPollInterval: Duration = Duration.ofMillis(POD_READY_POLL_INTERVAL_MS),
 ) : StressJobService {

@@ -166,8 +166,6 @@ val servicesModule =
         factoryOf(::SidecarManifestBuilder)
         factoryOf(::DefaultSidecarService) bind SidecarService::class
 
-        // Turns the nodes' ECR IAM permission into registry credentials a pod can use
-        singleOf(::EcrPullSecretService)
         // Explicit single (not singleOf) so the jobPollInterval constructor default applies
         // instead of Koin trying to resolve a Duration binding.
         single<StressJobService> { DefaultStressJobService(get(), get(), get(), get(), get()) }

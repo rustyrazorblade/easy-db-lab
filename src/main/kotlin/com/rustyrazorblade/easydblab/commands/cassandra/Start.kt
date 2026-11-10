@@ -17,7 +17,6 @@ import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
-import java.io.File
 
 /**
  * Start cassandra on all nodes via service command.
@@ -82,7 +81,7 @@ class Start : PicoBaseCommand() {
         }
 
         // Inform user about AxonOps Workbench configuration if it exists
-        val axonOpsWorkbenchFile = File(context.workingDirectory, DefaultClusterConfigurationService.AXONOPS_CONFIG_FILE)
+        val axonOpsWorkbenchFile = context.workspaceFile(DefaultClusterConfigurationService.AXONOPS_CONFIG_FILE)
         if (axonOpsWorkbenchFile.exists()) {
             eventBus.emit(Event.Cassandra.AxonOpsWorkbenchInfo(userConfig.axonOpsOrg))
         }

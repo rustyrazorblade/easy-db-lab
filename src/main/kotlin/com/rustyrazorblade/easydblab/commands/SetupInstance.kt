@@ -13,6 +13,7 @@ import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
+import java.io.File
 import java.nio.file.Path
 import java.time.Instant
 
@@ -32,7 +33,7 @@ class SetupInstance : PicoBaseCommand() {
     @Mixin
     var hosts = HostsMixin()
 
-    private fun workspaceFile(name: String): Path = context.workingDirectory.toPath().resolve(name)
+    private fun workspaceFile(name: String): Path = context.workspaceFile(name).toPath()
 
     override fun execute() {
         fun setup(host: Host) {
@@ -59,7 +60,7 @@ class SetupInstance : PicoBaseCommand() {
             datacenter: String,
         ) {
             // Create systemd environment file locally
-            val envFile = java.io.File.createTempFile("stress", ".env")
+            val envFile = File.createTempFile("stress", ".env")
             try {
                 envFile.bufferedWriter().use { writer ->
                     writer.write("CASSANDRA_EASY_STRESS_CASSANDRA_HOST=$cassandraHost")

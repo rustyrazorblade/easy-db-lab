@@ -47,7 +47,6 @@ import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.opensearch.OpenSearchClient
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
-import java.io.File
 
 /**
  * Creates a ClientOverrideConfiguration.
@@ -248,7 +247,7 @@ val awsModule =
                 get<ClusterStateManager>(),
                 get<LokiQueryService>(),
                 get<EventBus>(),
-                logsDir = File(get<Context>().workingDirectory, Constants.EMR.LOCAL_LOGS_DIR).toPath(),
+                logsDir = get<Context>().workspaceFile(Constants.EMR.LOCAL_LOGS_DIR).toPath(),
             )
         }
 

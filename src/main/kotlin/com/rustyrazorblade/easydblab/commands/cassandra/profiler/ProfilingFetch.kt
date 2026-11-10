@@ -29,7 +29,7 @@ class ProfilingFetch : ProfilingHostCommand() {
     var last: Int = Constants.Profiling.DEFAULT_LAST_CHUNKS
 
     /** Local destination root in the workspace, one sub-directory per host. */
-    internal val outputDir: File get() = File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR)
+    internal val outputDir: File get() = context.workspaceFile(Constants.Profiling.LOCAL_DOWNLOAD_DIR)
 
     override fun execute() {
         requireChunkCount(last)

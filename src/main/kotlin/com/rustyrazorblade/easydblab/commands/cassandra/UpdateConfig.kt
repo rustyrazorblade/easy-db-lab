@@ -52,10 +52,7 @@ class UpdateConfig : PicoBaseCommand() {
 
             val yaml =
                 context.yaml.readTree(
-                    context.workingDirectory
-                        .toPath()
-                        .resolve(file)
-                        .inputStream(),
+                    context.workspaceFile(file).inputStream(),
                 )
             (yaml as ObjectNode)
                 .put("listen_address", it.private)
@@ -94,10 +91,7 @@ class UpdateConfig : PicoBaseCommand() {
             eventBus.emit(Event.Cassandra.ConfigFilesUploading(tempDir))
             remoteOps.uploadDirectory(
                 it,
-                context.workingDirectory
-                    .toPath()
-                    .resolve(resolvedVersion.localDir)
-                    .toFile(),
+                context.workspaceFile(resolvedVersion.localDir.toString()),
                 tempDir,
             )
 

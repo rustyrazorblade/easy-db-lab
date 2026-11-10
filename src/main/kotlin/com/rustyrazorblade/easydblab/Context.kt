@@ -42,6 +42,11 @@ data class Context(
     var profilesDir = File(easyDbLabUserDirectory, "profiles")
     var profileDir = File(profilesDir, profile)
 
+    /**
+     * Resolves [name] inside the workspace ([workingDirectory]), never against the JVM current directory.
+     */
+    fun workspaceFile(name: String): File = File(workingDirectory, name)
+
     init {
         require(workingDirectory.isAbsolute) { "The workspace directory must be absolute: $workingDirectory" }
         if (profile.isEmpty()) {

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
@@ -17,7 +16,6 @@ import picocli.CommandLine.Command
  * - Connected peers
  * - Advertised routes
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "status",

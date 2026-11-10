@@ -29,6 +29,7 @@ data class KubernetesJob(
  * @property restarts Number of container restarts
  * @property age How long ago the pod was created
  * @property terminating Whether the pod has been deleted and is shutting down
+ * @property nodeName The node the pod is scheduled on (its host alias); empty while unscheduled
  */
 data class KubernetesPod(
     val namespace: String,
@@ -38,6 +39,7 @@ data class KubernetesPod(
     val restarts: Int,
     val age: Duration,
     val terminating: Boolean = false,
+    val nodeName: String = "",
 )
 
 /**

@@ -1,6 +1,7 @@
 package com.rustyrazorblade.easydblab
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import java.io.File
 
@@ -79,5 +80,23 @@ class ContextFactoryTest : BaseKoinTest() {
         val expectedDir = File(tempDir, "test-env")
 
         assertThat(testContext.easyDbLabUserDirectory).isEqualTo(expectedDir)
+    }
+
+    @Test
+    fun `a factory without a working directory defaults to the absolute process current directory`() {
+        val context = ContextFactory(tempDir).getDefault()
+
+        assertThat(context.workingDirectory.isAbsolute).isTrue()
+        assertThat(context.workingDirectory).isEqualTo(File(System.getProperty("user.dir")).absoluteFile)
+    }
+
+    @Test
+    fun `a relative working directory fails fast when the context is created`() {
+        val factory = ContextFactory(tempDir, File("relative/workspace"))
+
+        assertThatThrownBy { factory.getDefault() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("must be absolute")
+            .hasMessageContaining("relative/workspace")
     }
 }

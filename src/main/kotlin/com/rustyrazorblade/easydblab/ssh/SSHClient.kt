@@ -52,6 +52,9 @@ class SSHClient(
 
         /** Stands in for anything belonging to a command marked secret. */
         private const val HIDDEN = "[hidden]"
+
+        /** The status in MINA's `Remote command failed (N): <command>`; anchored so a command that quotes the phrase cannot match. */
+        private val EXIT_STATUS_IN_MESSAGE = Regex("^Remote command failed \\((-?\\d+)\\)")
     }
 
     // Synchronization lock to ensure thread-safe access to the session
@@ -116,14 +119,17 @@ class SSHClient(
         stderrStream: ByteArrayOutputStream,
         failure: RemoteException,
     ): RemoteCommandFailedException {
+        val exitStatus = exitStatusOf(failure)
         if (secret) {
             // A secret command routinely echoes its own argument back on failure — a usage line,
-            // an error naming the key — so none of its output can be repeated.
+            // an error naming the key — so none of its output can be repeated. Its exit status
+            // repeats nothing, so it is kept.
             return RemoteCommandFailedException(
                 command = HIDDEN,
                 stdout = HIDDEN,
                 stderr = HIDDEN,
                 summary = "Remote command failed on $remoteAddress: $HIDDEN",
+                exitStatus = exitStatus,
             )
         }
         return RemoteCommandFailedException(
@@ -131,8 +137,21 @@ class SSHClient(
             stdout = tail(stdoutStream.toString(Charset.defaultCharset())),
             stderr = tail(stderrStream.toString(Charset.defaultCharset())),
             summary = "$remoteAddress: ${redactUrlCredentials(failure.message ?: "Remote command failed: $command")}",
+            exitStatus = exitStatus,
         )
     }
+
+    /**
+     * The exit status inside MINA's "Remote command failed (N): <command>", or null for its "No exit
+     * status returned" failure. MINA 2.18 (`ClientChannel.validateCommandExitStatusCode`) throws a bare
+     * [RemoteException] with the status only in its message, so the message is the one place to read it.
+     */
+    private fun exitStatusOf(failure: RemoteException): Int? =
+        failure.message
+            ?.let { EXIT_STATUS_IN_MESSAGE.find(it) }
+            ?.groupValues
+            ?.get(1)
+            ?.toIntOrNull()
 
     /** Keeps a failure message readable when the command spewed (e.g. a replayed ant build log). */
     private fun tail(text: String): String =

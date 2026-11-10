@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.User
@@ -18,7 +17,6 @@ import picocli.CommandLine.Command
  * This command disconnects from the Tailscale network and stops the daemon.
  * The node will no longer be accessible via Tailscale until `tailscale start` is run again.
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "stop",

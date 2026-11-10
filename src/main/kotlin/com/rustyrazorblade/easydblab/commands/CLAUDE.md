@@ -14,6 +14,7 @@ Commands should:
 
 Commands should NOT:
 - Execute SSH commands directly (use `RemoteOperationsService` or domain services)
+- Run helm or kubectl directly (use `HelmService` / `KubectlService`, which go through `ClusterTooling`)
 - Make K8s API calls directly (use `K8sService` or `StressJobService`)
 - Call AWS/cloud provider APIs directly (use `AWS`, `EC2Service`, etc.)
 - Contain business logic (belongs in services)
@@ -71,6 +72,7 @@ commands/
 │   ├── KitSqlCommand.kt   # <kit> sql — runs SQL over the kit's JDBC endpoint; SOCKS-bridged when tunnel-only (#740)
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
 ├── logs/                  # logs query — reads the cluster's logs from Loki
+├── metrics/               # metrics stream — publishes chosen metrics from Mimir to Redis every 5s until stopped (@RequireProfileSetup, @RequiresProxy; the work is services/metrics/MetricsStreamService); metrics list — prints the 14 accepted names with println
 ├── observability/         # observability compactor start|stop|status — the account compactor; no cluster workspace needed (bucket from the profile), status is read-only println
 ├── opensearch/            # OpenSearch commands
 ├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
@@ -118,7 +120,6 @@ class MyCommand(context: Context) : PicoBaseCommand(context) {
 
 ### 3. Use Annotations
 
-- `@McpCommand` - Expose command as an MCP tool in the server
 - `@RequireProfileSetup` - Require AWS profile configuration
 - `@RequireSSHKey` - Require SSH key to be available
 
@@ -172,7 +173,6 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
 
 ## Annotations
 
-- `@McpCommand` — expose command as an MCP tool in the server (must also add to `McpToolRegistry`)
 - `@RequireProfileSetup` — require AWS profile configuration before execution
 - `@RequireSSHKey` — require SSH key to be available
 - `@RequireDocker` — require a Docker daemon to be reachable before execution
@@ -184,10 +184,14 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
   `annotations/RequiresProxy.kt` and design decision D7/D9 in
   `openspec/changes/up-fail-fast/design.md`.
 
-  Commands driving remote tooling through `RemoteOperationsService` — helm, kubectl, cilium run
-  *on the control node* over SSH — do **not** need this annotation. There is no local client
-  making the call, and SSH never traverses the SOCKS tunnel (the tunnel exists only to reach the
-  private Kubernetes API from the developer's machine). `Down` is a concrete example: its first
+  Commands driving remote tooling over SSH — helm and kubectl through `ClusterTooling` (its SSH
+  form, `SshClusterTooling`), cilium through `RemoteOperationsService` — run *on the control node*
+  and do **not** need this annotation. There is no local client making the call, and SSH never
+  traverses the SOCKS tunnel (the tunnel exists only to reach the private Kubernetes API from the
+  developer's machine). The local form of `ClusterTooling` (`LocalClusterTooling`) is different: it
+  runs helm and kubectl as local processes through the `<workspace>/bin` wrappers, which use the
+  tunnel the CLI recorded, so a command that reaches it (the kit commands do) keeps
+  `@RequiresProxy`. `Down` is a concrete example: its first
   actions unpublish the proxy port and stop the `edl-socks-tunnel` process and its ssh, so it must not carry `@RequiresProxy`
   or it would start a tunnel it exists to tear down.
 
@@ -211,10 +215,9 @@ If the tenant listing or a dashboard file cannot be read, `start` does not fail.
 
 ## Special Long-Running Commands
 
-- **`Server`** — starts the server (MCP + REST + background services via Ktor). Does not exit until stopped.
-- **`Repl`** — starts interactive REPL. Does not exit until user quits.
-
-Both set `context.isInteractive = true` to keep resources (like CQL sessions) alive across invocations.
+- **`Server`** — starts the REST status server (`server/StatusServer`: `/status`, `/stress/status`, `/swagger`, with the background `StatusCache`). Does not exit until stopped.
+- **`Repl`** — starts interactive REPL. Does not exit until user quits. It sets `context.isInteractive = true` to keep resources (like CQL sessions) alive across invocations.
+- **`metrics stream`** — runs cycles on the command thread until the first Ctrl-C or SIGTERM, then returns normally (exit 0).
 
 ## Available Services
 
@@ -253,6 +256,7 @@ Commands should delegate to these services:
 | `InstallTemplateResolver` | Resolves install templates from profile dir, classpath, or `--from` path |
 | `ObjectStore` | S3 file operations |
 | `RemoteOperationsService` | SSH execution (use sparingly, prefer domain services) |
+| `HelmService`, `KubectlService` | helm and kubectl for kits and commands. They build argument lists and run them through `ClusterTooling` (`services/ClusterTooling.kt`): `SshClusterTooling` on the control node, `LocalClusterTooling` as local processes. No `host` parameter |
 
 ## Running Something On Every Host
 

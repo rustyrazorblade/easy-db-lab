@@ -135,8 +135,8 @@ class ProfilingBoundsTest {
     @Test
     fun `refuses a chunk count that would select the whole profile directory`() {
         // `--last` reaches the node as `head -n <count>`, and GNU head reads a negative count as
-        // "all but the last N lines" — so -1 fetches everything rather than nothing. Not reachable
-        // by typo from the CLI, but reachable over MCP where nobody typed it.
+        // "all but the last N lines" — so -1 fetches everything rather than nothing. The CLI refuses
+        // it before anything reaches the node.
         assertThatThrownBy { requireChunkCount(-1) }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("--last")

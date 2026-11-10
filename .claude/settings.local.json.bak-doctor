@@ -1,0 +1,85 @@
+{
+  "env": {
+    "DOCKER_HOST": "unix:///var/run/docker.sock"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew detekt:*)",
+      "Bash(./gradlew test:*)",
+      "Bash(./gradlew ktlintFormat:*)",
+      "Bash(./gradlew shadowJar:*)",
+      "Bash(./gradlew:*)",
+      "Bash(python3:*)",
+      "Bash(grep:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(ls:*)",
+      "WebFetch(domain:docs.localstack.cloud)",
+      "WebFetch(domain:grafana.com)",
+      "Bash(echo:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebSearch",
+      "Bash(/workspace/.specify/scripts/bash/create-new-feature.sh:*)",
+      "Bash(/workspace/.specify/scripts/bash/setup-plan.sh:*)",
+      "Bash(openspec instructions:*)",
+      "Bash(openspec status:*)",
+      "Bash(find:*)",
+      "Bash(git ls-tree:*)",
+      "WebFetch(domain:docs.fluentbit.io)",
+      "Bash(curl:*)",
+      "Bash(ping:*)",
+      "Bash(ssh:*)",
+      "Bash(export AWS_PROFILE=sandbox-admin)",
+      "Bash(easy-db-lab spark:*)",
+      "Bash(mkdir -p /Users/jhaddad/dev/easy-db-lab/openspec/changes/cluster-comparison-dashboard/specs/cluster-comparison-dashboard)",
+      "Bash(mkdir -p /Users/jhaddad/dev/easy-db-lab/openspec/changes/cluster-comparison-dashboard/specs/observability)",
+      "Bash(gh run:*)",
+      "Bash(gh pr:*)",
+      "Bash(openspec new *)",
+      "Bash(bash /Users/jhaddad/dev/easy-db-lab/bin/build-cassandra-analytics --help)",
+      "Bash(git -C /Users/jhaddad/dev/easy-db-lab status)",
+      "Bash(git -C /Users/jhaddad/dev/easy-db-lab diff)",
+      "Bash(git -C /Users/jhaddad/dev/easy-db-lab add spark/cassandra-analytics-source.properties openspec/changes/custom-spark-repo-and-branch/specs/cassandra-analytics-source/spec.md)",
+      "Bash(git -C /Users/jhaddad/dev/easy-db-lab commit -m ' *)",
+      "Bash(git -C /Users/jhaddad/dev/easy-db-lab push)",
+      "Bash(git -C /Users/jhaddad/dev/easy-db-lab add bin/build-cassandra-analytics)",
+      "Bash(git -C /Users/jhaddad/dev/easy-db-lab push --force-with-lease origin 636-custom-spark-repo-and-branch)",
+      "Bash(KUBECONFIG=kubeconfig kubectl get pods -l app.kubernetes.io/name=cassandra-sidecar -o wide)",
+      "Bash(KUBECONFIG=kubeconfig kubectl get daemonset cassandra-sidecar)",
+      "Bash(KUBECONFIG=kubeconfig kubectl rollout restart daemonset/cassandra-sidecar)",
+      "Bash(KUBECONFIG=kubeconfig kubectl get pods -l app.kubernetes.io/name=cassandra-sidecar)",
+      "Bash(KUBECONFIG=kubeconfig kubectl rollout status *)",
+      "Bash(gh issue *)",
+      "Bash(gh label *)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "easy-db-lab"
+  ],
+  "skillOverrides": {
+    "issue": "off",
+    "feedback": "off"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=$(jq -r '.tool_input.file_path // empty'); if echo \"$file\" | grep -qE '\\.kt$'; then jq -Rs '{hookSpecificOutput: {hookEventName: \"PreToolUse\", additionalContext: .}}' /Users/jhaddad/dev/easy-db-lab/.claude/skills/kotlin-best-practices.md; else echo '{}'; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "cassandra-expert@rustyrazorblade-plugins": true,
+    "easy-db-lab@rustyrazorblade-plugins": true,
+    "spec-flow@rustyrazorblade-plugins": true
+  }
+}

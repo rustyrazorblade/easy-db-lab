@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.grafana
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -32,7 +31,6 @@ import picocli.CommandLine.Option
  * exits non-zero, naming the unreachable endpoint; if Loki refuses the mirror, it exits non-zero
  * too. It does NOT emit a failure event and return 0.
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

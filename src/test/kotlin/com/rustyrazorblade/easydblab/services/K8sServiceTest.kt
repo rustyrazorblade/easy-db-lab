@@ -37,7 +37,7 @@ class K8sServiceTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
-                single { K8sClientProvider(get()) }
+                single { K8sClientProvider(get(), tempDir) }
                 factory<K8sService> { DefaultK8sService(get(), get()) }
             },
         )

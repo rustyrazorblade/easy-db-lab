@@ -6,7 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.kubernetes.ProxiedKubernetesClientFactory
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.nio.file.Path
+import java.io.File
 
 private val log = KotlinLogging.logger {}
 
@@ -24,11 +24,16 @@ private val log = KotlinLogging.logger {}
  */
 class K8sClientProvider(
     private val clusterStateManager: ClusterStateManager,
+    private val workspace: File,
 ) {
     fun createClient(controlHost: ClusterHost): KubernetesClient {
         log.debug { "Creating K8s client for ${controlHost.alias} (${controlHost.privateIp})" }
 
-        val kubeconfigPath = Path.of(Constants.K3s.LOCAL_KUBECONFIG)
+        val kubeconfigFile = File(workspace, Constants.K3s.LOCAL_KUBECONFIG)
+        check(kubeconfigFile.exists()) {
+            "No kubeconfig at ${kubeconfigFile.absolutePath}. Run the command from the cluster's workspace."
+        }
+        val kubeconfigPath = kubeconfigFile.toPath()
         log.debug { "Using kubeconfig=$kubeconfigPath tailscale=${clusterStateManager.load().isTailscaleEnabled()}" }
 
         val clientFactory = ProxiedKubernetesClientFactory()

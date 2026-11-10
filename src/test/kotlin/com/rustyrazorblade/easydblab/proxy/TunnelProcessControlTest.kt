@@ -131,6 +131,25 @@ internal class TunnelProcessControlTest {
     }
 
     @Test
+    fun `status by PID, port and sshConfig is RUNNING only for the tunnel script with that port and sshConfig`() {
+        val tunnel = FakeTunnelProcess.tunnelScript(PID, PORT, SSH_CONFIG)
+
+        assertThat(control(tunnel).status(PID, PORT, SSH_CONFIG)).isEqualTo(RecordedTunnelStatus.RUNNING)
+        assertThat(control(tunnel).status(PID, PORT + 1, SSH_CONFIG)).isEqualTo(RecordedTunnelStatus.PID_REUSED)
+        assertThat(control(tunnel).status(PID, PORT, "/elsewhere/sshConfig")).isEqualTo(RecordedTunnelStatus.PID_REUSED)
+        assertThat(tunnel.signals).isZero()
+    }
+
+    @Test
+    fun `status by PID, port and sshConfig is PID_REUSED for another program and GONE for no process`() {
+        val other = FakeTunnelProcess(PID, "/bin/sleep", listOf("60"))
+
+        assertThat(control(other).status(PID, PORT, SSH_CONFIG)).isEqualTo(RecordedTunnelStatus.PID_REUSED)
+        assertThat(control(null).status(PID, PORT, SSH_CONFIG)).isEqualTo(RecordedTunnelStatus.GONE)
+        assertThat(other.signals).isZero()
+    }
+
+    @Test
     fun `a process that only names the port and sshConfig is not taken for the tunnel's ssh`() {
         val notSsh = FakeTunnelProcess(SSH_PID, "/usr/bin/nc", listOf("-D", "127.0.0.1:$PORT", "-F", SSH_CONFIG))
         val unreported = FakeTunnelProcess(SSH_PID + 1, "/usr/bin/ssh", arguments = null)

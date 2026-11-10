@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.profiler
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.events.Event
@@ -16,7 +15,6 @@ import java.io.File
  * Only completed chunks are offered — the one currently being written is excluded, because an
  * unfinalized chunk has no constant pool and no tool will read it.
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(
@@ -30,11 +28,8 @@ class ProfilingFetch : ProfilingHostCommand() {
     )
     var last: Int = Constants.Profiling.DEFAULT_LAST_CHUNKS
 
-    /**
-     * Local destination root, one sub-directory per host. Not a CLI option: the workspace layout is
-     * fixed, and this exists so tests can point it somewhere temporary.
-     */
-    internal var outputDir: File = File(Constants.Profiling.LOCAL_DOWNLOAD_DIR)
+    /** Local destination root in the workspace, one sub-directory per host. */
+    internal val outputDir: File get() = context.workspaceFile(Constants.Profiling.LOCAL_DOWNLOAD_DIR)
 
     override fun execute() {
         requireChunkCount(last)

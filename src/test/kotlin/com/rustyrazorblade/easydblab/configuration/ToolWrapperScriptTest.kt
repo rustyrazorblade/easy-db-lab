@@ -81,6 +81,106 @@ internal class ToolWrapperScriptTest {
         assertThat(wrapped.kubeconfig()).isEqualTo(workspaceKubeconfig())
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `in direct mode every tool runs with no tunnel recorded and no proxy variable added or cleared`(tool: String) {
+        ProxyEnvFile(workspace).recordDirect(active = true)
+        val inherited = mapOf("NO_PROXY" to "*", "http_proxy" to "http://corporate:3128", "OPERATOR_VAR" to "kept")
+
+        val direct = run("${realBin.absolutePath}/$tool probe", env = inherited)
+        val wrapped = run("$tool probe", env = inherited)
+
+        assertThat(wrapped.exitCode).withFailMessage(wrapped.toString()).isZero()
+        assertThat(wrapped.environment().withoutKubeconfig()).isEqualTo(direct.environment())
+        assertThat(wrapped.proxyVariables()).isEqualTo(NONE + mapOf("NO_PROXY" to "*", "http_proxy" to "http://corporate:3128"))
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `in direct mode a recorded tunnel is not used`(tool: String) {
+        socksCluster(port = 41234)
+        ProxyEnvFile(workspace).recordDirect(active = true)
+
+        val result = run("$tool probe")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.proxyVariables()).isEqualTo(NONE)
+        assertThat(result.stdout).doesNotContain("41234")
+    }
+
+    @Test
+    fun `in direct mode the Kubernetes tools get the workspace kubeconfig and curl keeps the inherited one`() {
+        ProxyEnvFile(workspace).recordDirect(active = true)
+        val inherited = mapOf("KUBECONFIG" to INHERITED_KUBECONFIG)
+
+        val kubectl = run("kubectl get ns", env = inherited)
+        val curl = run("curl http://10.0.1.5:3000/", env = inherited)
+
+        assertThat(kubectl.kubeconfig()).isEqualTo(workspaceKubeconfig())
+        assertThat(curl.kubeconfig()).isEqualTo(INHERITED_KUBECONFIG)
+    }
+
+    @Test
+    fun `in direct mode a missing workspace kubeconfig still fails for the Kubernetes tools`() {
+        ProxyEnvFile(workspace).recordDirect(active = true)
+        File(workspace, Constants.K3s.LOCAL_KUBECONFIG).delete()
+
+        val result = run("kubectl get ns")
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stdout).doesNotContain("tool=")
+        assertThat(result.stderr).contains(workspaceKubeconfig())
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("tools")
+    fun `an inherited EDL_NETWORK_MODE does not stand in for the env file and the wrapper asks for socks start`(tool: String) {
+        ProxyEnvFile(workspace).recordTailscale(active = false)
+
+        val result = run("$tool probe", env = mapOf("EDL_NETWORK_MODE" to "direct"))
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stdout).doesNotContain("tool=")
+        assertThat(result.stderr).contains(workspace.canonicalPath).contains("easy-db-lab socks start")
+    }
+
+    @Test
+    fun `an inherited EDL_NETWORK_MODE with no env file at all also asks for socks start`() {
+        val result = run("kubectl get ns", env = mapOf("EDL_NETWORK_MODE" to "direct"))
+
+        assertThat(result.exitCode).isEqualTo(1)
+        assertThat(result.stderr).contains("easy-db-lab socks start")
+    }
+
+    @Test
+    fun `an inherited EDL_NETWORK_MODE does not turn off the env file's direct mode or the tunnel`() {
+        socksCluster(port = 41234)
+
+        val tunnelled = run("kubectl get ns", env = mapOf("EDL_NETWORK_MODE" to "direct"))
+        ProxyEnvFile(workspace).apply {
+            removeTunnel()
+            recordDirect(active = true)
+        }
+        val direct = run("kubectl get ns", env = mapOf("EDL_NETWORK_MODE" to "other"))
+
+        assertThat(tunnelled.stdout).contains("HTTPS_PROXY=socks5://127.0.0.1:41234")
+        assertThat(direct.exitCode).withFailMessage(direct.toString()).isZero()
+        assertThat(direct.proxyVariables()).isEqualTo(NONE)
+    }
+
+    @Test
+    fun `with direct mode switched off again the recorded tunnel is used`() {
+        socksCluster(port = 41234)
+        ProxyEnvFile(workspace).apply {
+            recordDirect(active = true)
+            recordDirect(active = false)
+        }
+
+        val result = run("kubectl get ns")
+
+        assertThat(result.proxyVariables()).isEqualTo(EXPECTED.getValue("kubectl"))
+    }
+
     @ParameterizedTest(name = "{0} under {1}")
     @MethodSource("kubernetesToolsAndShells")
     fun `a bare call with no KUBECONFIG uses the workspace kubeconfig`(

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
@@ -19,7 +18,6 @@ import picocli.CommandLine.Option
  * - `spark stop` - Cancels the most recent job
  * - `spark stop --step-id s-XXXXX` - Cancels a specific job
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "stop",

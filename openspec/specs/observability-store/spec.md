@@ -41,7 +41,7 @@ A cluster name SHALL match `^[a-z][a-z0-9-]{0,39}$`.  `init` SHALL refuse any ot
 
 ### Requirement: Every observability backend runs native multi-tenancy
 
-Mimir, Loki, Tempo and the Pyroscope server SHALL run with multi-tenancy enabled.  The storage tenant is the cluster's tenant.  Every writer SHALL send the tenant in the `X-Scope-OrgID` header: the OTel collector's metrics, logs and trace exporters, Tempo's metrics generator, the Alloy eBPF profiler, the Pyroscope Java agent in stress jobs, the Cassandra sidecar, EMR Spark, the Trino and Presto kits, the Cassandra JFR shipper, and the annotation mirror.  This SHALL hold on redirected clusters too.  Every reader SHALL send the tenant: the Grafana datasources, `logs query`, `spark logs`, the EMR step log lookup, the MCP metrics collector, `status`, and the teardown flush.  Mimir SHALL allow queries across tenants (tenant federation) and Loki SHALL allow queries across tenants (`multi_tenant_queries_enabled`), with the tenants listed as `a|b`.
+Mimir, Loki, Tempo and the Pyroscope server SHALL run with multi-tenancy enabled.  The storage tenant is the cluster's tenant.  Every writer SHALL send the tenant in the `X-Scope-OrgID` header: the OTel collector's metrics, logs and trace exporters, Tempo's metrics generator, the Alloy eBPF profiler, the Pyroscope Java agent in stress jobs, the Cassandra sidecar, EMR Spark, the Trino and Presto kits, the Cassandra JFR shipper, and the annotation mirror.  This SHALL hold on redirected clusters too.  Every reader SHALL send the tenant: the Grafana datasources, `logs query`, `spark logs`, the EMR step log lookup, `metrics stream`, `status`, and the teardown flush.  Mimir SHALL allow queries across tenants (tenant federation) and Loki SHALL allow queries across tenants (`multi_tenant_queries_enabled`), with the tenants listed as `a|b`.
 
 #### Scenario: Every writer carries the tenant
 - **WHEN** a cluster initialized with `--tenant acme` writes metrics, logs, traces and profiles
@@ -80,36 +80,49 @@ The tenant SHALL be published in the `cluster-config` ConfigMap, next to the clu
 
 All observability data of a cluster SHALL land in the account bucket.  Nothing SHALL be written to the per-cluster data bucket by the observability stack.  Cluster configuration SHALL stay under `clusters/<name>-<id>/config/`.  No metrics, logs or annotations snapshot backup SHALL be written: metrics and logs are stored in S3 by their backends.
 
-- Mimir's backend SHALL use the storage prefix `observabilitymetrics` (Mimir accepts only letters and digits in the prefix); Mimir lays out one directory per tenant under it.
-- Loki's backend SHALL use the object prefix `observability/logs`; Loki lays out its chunks per tenant and its index tables under it.
-- Tempo's backend SHALL use the prefix `observability/traces`; Tempo lays out one directory per tenant under it.
-- The Pyroscope server's backend SHALL use the prefix `observability/profiles`; Pyroscope lays out its own directories under it.
+Each backend's root SHALL sit at the top level of the account bucket and SHALL be named for the tool whose file format it holds:
+
+- Mimir's backend SHALL use the storage prefix `mimir`; Mimir lays out one directory per tenant under it.
+- Loki's backend SHALL use the object prefix `loki`; Loki lays out its chunks per tenant and its index tables under `loki/index/`.
+- Tempo's backend SHALL use the prefix `tempo`; Tempo lays out one directory per tenant under it.
+- The Pyroscope server's backend SHALL use the prefix `pyroscope`; Pyroscope lays out its own directories under it.
+- The Grafana annotations backup SHALL use `grafana/annotations/<tenant>/`.
+
+No code, configuration or document SHALL name the former `observability` or `observabilitymetrics` prefixes.
 
 #### Scenario: Metric blocks location
 - **WHEN** Mimir on a cluster in tenant `acme` ships a block
-- **THEN** the block lands under `observabilitymetrics/acme/`
+- **THEN** the block lands under `mimir/acme/`
 
 #### Scenario: Log chunks and index location
 - **WHEN** Loki on a cluster in tenant `acme` flushes chunks and uploads its index
-- **THEN** the chunks land under `observability/logs/acme/`
-- **AND** the index files land under `observability/logs/index/`
+- **THEN** the chunks land under `loki/acme/`
+- **AND** the index files land under `loki/index/`
 
 #### Scenario: Trace blocks location
 - **WHEN** Tempo on a cluster in tenant `acme` writes a block
-- **THEN** the block lands under `observability/traces/acme/`
+- **THEN** the block lands under `tempo/acme/`
 
 #### Scenario: Profiles location
 - **WHEN** the Pyroscope server writes profile data
-- **THEN** the data lands under `observability/profiles/` in the account bucket
+- **THEN** the data lands under `pyroscope/` in the account bucket
 - **AND** nothing is written to the cluster's data bucket
+
+#### Scenario: Annotations backup location
+- **WHEN** `down` or `grafana backup` backs up the annotations of a cluster in tenant `acme`
+- **THEN** the backup lands under `grafana/annotations/acme/`
 
 #### Scenario: Default tenant location
 - **WHEN** a cluster initialized without `--tenant` ships metrics
-- **THEN** the blocks land under `observabilitymetrics/default/`
+- **THEN** the blocks land under `mimir/default/`
 
 #### Scenario: No snapshot backups are written
 - **WHEN** `down` runs on a cluster
 - **THEN** no VictoriaMetrics or VictoriaLogs snapshot is taken or uploaded
+
+#### Scenario: The former prefixes are gone
+- **WHEN** the source tree, the rendered configuration and the docs are searched
+- **THEN** neither `observabilitymetrics` nor an `observability/` S3 prefix appears
 
 ### Requirement: Clusters in one tenant never overwrite each other
 
@@ -123,78 +136,91 @@ Clusters that share a tenant SHALL never overwrite each other's data.  Block, ch
 - **WHEN** Loki on cluster `lab-<id>` in tenant `acme` uploads an index file
 - **THEN** the file name carries `acme.lab-<id>`
 
-### Requirement: Mimir reads only the cluster's own data
-
-Mimir on a cluster SHALL write every block to S3 and SHALL answer queries only from its own ingester: the in-memory head and the local blocks, which it SHALL keep for the cluster's life.  Mimir SHALL run no compactor and no store-gateway, and SHALL NOT query the S3 block store.  Reading metrics across clusters or from past clusters is not part of a running cluster.
-
-#### Scenario: Local blocks stay queryable
-- **WHEN** a cluster has run long enough for Mimir to cut and ship several blocks
-- **THEN** queries return the samples in every block the cluster wrote, from local disk
-
-#### Scenario: No block store is queried
-- **WHEN** Mimir answers a query
-- **THEN** it does not read the S3 block store and needs no bucket index
-
 ### Requirement: No observability backend deletes data automatically
 
-No backend, setting, or default SHALL delete stored observability data.
+No backend, setting, or default SHALL delete stored observability data.  Compaction SHALL be allowed only where it writes a merged copy holding all of its sources' data before it removes them; retention and expiry SHALL stay off everywhere.
 
-- Mimir SHALL run with no compactor module, so no compaction, retention, cleanup or tenant-deletion path exists in the cluster.
-- Loki SHALL run with retention disabled, deletion mode `disabled`, and a compaction interval so long that compaction never runs.
-- Tempo SHALL run with compaction and retention disabled for every tenant.
+- Mimir on a cluster SHALL run with no compactor module, so no compaction, retention, cleanup or tenant-deletion path exists in the cluster.
+- Loki on a cluster SHALL run with retention disabled, deletion mode `disabled`, and a compaction interval so long that compaction never runs.
+- Tempo on a cluster SHALL run with compaction and retention disabled for every tenant.
 - The Pyroscope server SHALL run pure v2 storage with the metastore retention cleanup disabled and no retention period.  Pyroscope v2 compaction MAY merge segments into blocks, because the merged block keeps their data.
+- The account compactor SHALL compact Mimir, Loki and Tempo data with retention and every other deletion path off, as the `account-compactor` capability specifies.
 
-#### Scenario: Mimir has no deletion path
+#### Scenario: Mimir has no deletion path in the cluster
 - **WHEN** Mimir runs on a cluster
-- **THEN** its module list contains no compactor and no store-gateway
-- **AND** no Mimir block, bucket index, or tenant is deleted or marked for deletion
+- **THEN** its module list contains no compactor
+- **AND** no Mimir block, bucket index, or tenant is deleted or marked for deletion by the cluster
 
-#### Scenario: Loki never compacts or deletes
+#### Scenario: Loki in the cluster never compacts or deletes
 - **WHEN** Loki runs on a cluster for longer than any former retention period
-- **THEN** no compaction and no retention run
+- **THEN** no compaction and no retention run in the cluster
 - **AND** a delete request is refused
 
-#### Scenario: Tempo keeps every block
+#### Scenario: Tempo in the cluster keeps every block
 - **WHEN** Tempo runs on a cluster for longer than any former retention period
 - **THEN** its configuration disables compaction and retention for every tenant
-- **AND** no Tempo block is deleted
+- **AND** no Tempo block is deleted by the cluster
 
 #### Scenario: Pyroscope keeps every profile
 - **WHEN** the Pyroscope server runs
 - **THEN** it uses v2 storage with retention cleanup disabled
 - **AND** no profile is deleted by age
 
+#### Scenario: The account compactor runs with retention off
+- **WHEN** the account compactor runs
+- **THEN** no retention setting is on in Mimir, Loki or Tempo
+- **AND** every sample, log line and trace is still queryable after compaction
+
 ### Requirement: The cluster cannot delete observability objects
 
-The EC2 instance role of every cluster SHALL carry an explicit deny of `s3:DeleteObject` and `s3:DeleteObjectVersion` on the metrics, logs, traces and annotations prefixes in the account bucket.  `up` SHALL re-apply it every time.  The profiles prefix SHALL be excluded, because Pyroscope v2 compaction deletes the segments it merged.  Deletes made by the owner from a workstation SHALL NOT be affected.
+The EC2 instance role of every cluster SHALL carry an explicit deny of `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/`, `loki/`, `tempo/`, `grafana/` and `reports/` in the account bucket.  The account bucket policy SHALL carry one Deny of `s3:DeleteObject` and `s3:DeleteObjectVersion` under `mimir/`, `loki/` and `tempo/` for every principal it grants access to: the EC2 instance role, the EMR service role and the EMR EC2 role.  `up` SHALL re-apply both every time.  The `pyroscope/` root SHALL be excluded, because Pyroscope v2 compaction runs in the cluster and removes the segments it merged.  Only the account compactor's task role SHALL delete under `mimir/`, `loki/` and `tempo/`.  Deletes made by the owner from a workstation SHALL NOT be affected, so `report upload` can still replace a document.
 
 #### Scenario: A backend delete is denied
-- **WHEN** any process on a cluster tries to delete an object under `observabilitymetrics/`, `observability/logs/`, `observability/traces/` or `observability/annotations/`
+- **WHEN** any process on a cluster tries to delete an object under `mimir/`, `loki/`, `tempo/` or `grafana/`
 - **THEN** S3 refuses the delete and the object is kept
 
+#### Scenario: A document delete is denied
+- **WHEN** the cluster IAM role tries to delete an object under `reports/`
+- **THEN** S3 denies it and the object is kept
+
+#### Scenario: EMR cannot delete compacted roots
+- **WHEN** an EMR step tries to delete an object under `mimir/`, `loki/` or `tempo/`
+- **THEN** S3 refuses the delete and the object is kept
+
+#### Scenario: Only the compactor deletes while a cluster runs
+- **WHEN** a cluster runs
+- **THEN** only the compactor's task role can delete under `mimir/`, `loki/` and `tempo/`
+
 #### Scenario: Pyroscope compaction still works
-- **WHEN** Pyroscope v2 merges segments under `observability/profiles/`
+- **WHEN** Pyroscope v2 merges segments under `pyroscope/`
 - **THEN** the merged segments can be removed
 
 #### Scenario: The deny is re-applied on up
 - **WHEN** `up` runs
-- **THEN** the instance role holds the deny
+- **THEN** the instance role and the bucket policy hold the deny
 
 ### Requirement: Data reaches S3 while the cluster is up and survives a restart
 
-Mimir SHALL ship each block to S3 within about a minute of cutting it, with 2-hour blocks.  Loki SHALL flush chunks by their age and upload its index while the cluster runs.  Tempo SHALL cut a block at most every 5 minutes and upload it.  The write-ahead data of Mimir, Loki and Tempo, and the Pyroscope metastore state, SHALL live on the control node's disk, so a restart of a backend pod does not lose data it acknowledged.
+Each backend SHALL upload its data to S3 within minutes while the cluster runs, so other clusters can read it:
 
-#### Scenario: Metric blocks exist while the cluster is up
-- **WHEN** a cluster runs for longer than one Mimir block period
-- **THEN** Mimir blocks exist under `observabilitymetrics/<tenant>/` while the cluster is still up
+- Mimir SHALL cut a block every minute and ship it within seconds: 1-minute blocks, a head compaction check every 15 seconds, a ship check every 15 seconds, and an idle head compacted after 2 minutes without writes.
+- Tempo SHALL cut a block at most every minute and upload it.
+- Loki SHALL flush a chunk when it is 1 hour old, upload its index on its own fixed rotation, and re-list the index in S3 every minute.
 
-#### Scenario: Log chunks exist while the cluster is up
-- **WHEN** a cluster runs and Loki flushes a chunk
-- **THEN** Loki chunks and index files for the cluster's tenant exist under `observability/logs/` while the cluster is still up
+The write-ahead data of Mimir, Loki and Tempo, and the Pyroscope metastore state, SHALL live on the control node's disk, so a restart of a backend pod does not lose data it acknowledged.
 
-#### Scenario: Trace blocks exist while the cluster is up
-- **WHEN** a cluster receives traces for longer than 5 minutes
-- **THEN** Tempo blocks exist under `observability/traces/<tenant>/` while the cluster is still up
+#### Scenario: Metric blocks reach S3 within minutes
+- **WHEN** a cluster writes a metric sample
+- **THEN** a Mimir block that holds it exists under `mimir/<tenant>/` within about 3 minutes, while the cluster is still up
+
+#### Scenario: Trace blocks reach S3 within minutes
+- **WHEN** a cluster receives a span
+- **THEN** a Tempo block that holds it exists under `tempo/<tenant>/` within about 2 minutes, while the cluster is still up
+
+#### Scenario: Log chunks reach S3 within minutes
+- **WHEN** a cluster writes a log line to a stream that keeps writing
+- **THEN** a Loki chunk that holds it exists under `loki/<tenant>/` within about 1 hour, while the cluster is still up
+- **AND** its index file reaches `loki/index/` at Loki's next index rotation
 
 #### Scenario: Restart loses no acknowledged data
 - **WHEN** the Mimir, Loki or Tempo pod is restarted while it holds data that is not yet in S3
@@ -204,14 +230,9 @@ Mimir SHALL ship each block to S3 within about a minute of cutting it, with 2-ho
 - **WHEN** the Pyroscope pod is restarted
 - **THEN** profiles written before the restart are still returned by queries
 
-#### Scenario: Cause of the missing Tempo blocks is recorded
-- **WHEN** the cause of the missing Tempo blocks is investigated on a real cluster
-- **THEN** the finding is recorded on issue 967
-- **AND** a test covers the fix
-
 ### Requirement: Every series and every log line carries its cluster
 
-Every metric series and every log line SHALL carry `cluster=<name>-<id>`.  Loki SHALL index `cluster`, `host.name`, `node_role` and `source` as labels.  Readers the tool runs (`logs query`, `spark logs`, the EMR step log lookup and the MCP metrics collector) SHALL scope their queries to the current cluster by default.  `logs query -q` SHALL pass raw LogQL through unchanged.
+Every metric series and every log line SHALL carry `cluster=<name>-<id>`.  Loki SHALL index `cluster`, `host.name`, `node_role` and `source` as labels.  Readers the tool runs (`logs query`, `spark logs`, the EMR step log lookup and `metrics stream`) SHALL scope their queries to the current cluster by default.  `logs query -q` SHALL pass raw LogQL through unchanged.
 
 #### Scenario: Metrics carry the cluster
 - **WHEN** the OTel collector exports metrics
@@ -263,12 +284,16 @@ The OTel collector's own telemetry, and the metrics of Mimir, Loki, Tempo and th
 
 ### Requirement: Observability images are pinned to released versions
 
-Every image the observability stack runs SHALL be pinned to a released version.  No observability image SHALL use `latest`.  The versions SHALL be: Mimir 3.2.1, Loki 3.7.8, Pyroscope 2.3.1, Tempo 3.0.3, Grafana 13.2.2, Grafana image renderer v5.12.4, Alloy v1.20.0, Beyla 3.36.0, Fluent Bit 5.1.2, and OTel collector contrib 0.161.0 (cluster, stress-job sidecar, and EMR).  No VictoriaMetrics, VictoriaLogs, vmbackup or AWS CLI image SHALL be deployed.
+Every image the observability stack runs SHALL be pinned to a released version.  No observability image SHALL use `latest`.  The versions SHALL be: Mimir 3.2.1, Loki 3.7.8, Pyroscope 2.3.1, Tempo 3.0.3, Grafana 13.2.2, Grafana image renderer v5.12.4, Alloy v1.20.0, Beyla 3.36.0, Fluent Bit 5.1.2, and OTel collector contrib 0.161.0 (cluster, stress-job sidecar, and EMR).  The `aws-sigv4-proxy` image and the documents web server image in the Grafana pod SHALL each be pinned to a released version.  No VictoriaMetrics, VictoriaLogs, vmbackup or AWS CLI image SHALL be deployed.
 
 #### Scenario: Stack runs the pinned versions
 - **WHEN** the observability stack starts
 - **THEN** every image runs the version listed in this requirement
 - **AND** no image reference uses `latest`
+
+#### Scenario: Documents sidecars are pinned
+- **WHEN** the Grafana Deployment is built
+- **THEN** the `aws-sigv4-proxy` and documents web server images each name a released version tag
 
 #### Scenario: Collector errors are not hidden
 - **WHEN** a `transform` processor statement fails in the collector
@@ -281,6 +306,10 @@ Every image the observability stack runs SHALL be pinned to a released version. 
 #### Scenario: Metric queries work on the pinned Mimir
 - **WHEN** a dashboard panel or CLI command runs a PromQL query against Mimir 3.2.1
 - **THEN** the query parses without a syntax error
+
+#### Scenario: Comparison queries work on the pinned Mimir
+- **WHEN** a comparison or Tests dashboard query with a negative `offset`, an `@` modifier or a subquery runs against Mimir 3.2.1
+- **THEN** the query parses and returns without an error
 
 #### Scenario: Per-core CPU stays available
 - **WHEN** a dashboard queries host CPU time by core
@@ -321,4 +350,71 @@ The system SHALL NOT deploy VictoriaMetrics or VictoriaLogs on a cluster.  The c
 #### Scenario: No Victoria references remain
 - **WHEN** a search of the source tree runs for VictoriaMetrics or VictoriaLogs
 - **THEN** it finds no reference outside the telemetry redirect endpoints
+
+### Requirement: Mimir reads the whole shared store
+
+Mimir on every cluster SHALL run the store-gateway and SHALL answer queries from S3 as well as from its ingester, for every tenant in the account bucket.  Its readers SHALL use `querier.query_store_after: 0`, `blocks_storage.bucket_store.sync_interval: 1m`, `blocks_storage.bucket_store.ignore_blocks_within: 0`, and `blocks_storage.bucket_store.bucket_index.max_stale_period: 87600h`.  The ingester SHALL keep local blocks for 2 hours (`blocks_storage.tsdb.retention_period: 2h`); older blocks SHALL be read from S3.  Mimir on a cluster SHALL run no compactor.
+
+#### Scenario: Stored blocks are queryable
+- **WHEN** a tenant's blocks are in `mimir/<tenant>/` and listed in its bucket index
+- **THEN** a metrics query on any cluster with that tenant in `X-Scope-OrgID` returns their samples
+
+#### Scenario: Queries succeed while the compactor is stopped
+- **WHEN** the compactor service has been stopped for more than 1 hour
+- **THEN** metrics queries on every cluster still succeed
+
+#### Scenario: Local blocks are kept for 2 hours
+- **WHEN** Mimir's configuration is rendered
+- **THEN** its targets include `store-gateway` and exclude `compactor`
+- **AND** its local block retention is 2 hours and `query_store_after` is 0
+
+### Requirement: Grafana has a datasource per tenant and one for all tenants
+
+`up` and `grafana update-config` SHALL list the tenant directories under `mimir/` in the account bucket (`ListObjectsV2` with `Delimiter=/`), keep the names that match the tenant name rule, and add the cluster's own tenant.  One pure function SHALL build the datasource set from two inputs: that tenant list (with the cluster's own tenant) and the base URL of each backend.  The cluster SHALL call it with its own backend URLs.
+
+- For metrics, logs and traces, the set SHALL hold one datasource per tenant, with UID `<signal>-<tenant>`, sending that tenant in `X-Scope-OrgID`, and one all-tenants datasource, with UID `<signal>--all`, sending every tenant, sorted and joined with `|`.  A UID longer than 40 characters SHALL be shortened to `<signal>-<prefix>-<first 8 hex characters of the tenant's SHA-256>`.
+- The datasources with UIDs `mimir`, `loki` and `tempo` SHALL stay and SHALL send the cluster's own tenant.
+- Profiles SHALL have exactly one datasource, UID `pyroscope`, sending the cluster's own tenant.
+- A datasource's links to another signal SHALL point at the datasource of that signal for the same tenant view.
+
+#### Scenario: One datasource per tenant and one for all tenants
+- **WHEN** `up` runs and `mimir/` holds tenants `default` and `acme`
+- **THEN** Grafana has one metrics, one logs and one traces datasource for `default` and for `acme`
+- **AND** one all-tenants datasource for each of metrics, logs and traces, sending `acme|default`
+
+#### Scenario: Exactly one profiles datasource
+- **WHEN** Grafana starts
+- **THEN** it has exactly one profiles datasource
+
+#### Scenario: A new tenant appears on update-config
+- **WHEN** a new tenant has a block in `mimir/` and `grafana update-config` runs
+- **THEN** Grafana has datasources for that tenant, and the all-tenants datasources include it
+
+#### Scenario: Only the URLs depend on the backend URLs
+- **WHEN** the datasource function is called twice with the same tenant list and different backend URLs
+- **THEN** the two datasource sets differ only in their URLs
+
+#### Scenario: The stable UIDs read the cluster's own tenant
+- **WHEN** a dashboard queries the `mimir`, `loki` or `tempo` datasource on a cluster in tenant `acme`
+- **THEN** the query sends `X-Scope-OrgID: acme`
+
+#### Scenario: Directories that are not tenants are ignored
+- **WHEN** `mimir/` holds a directory whose name breaks the tenant name rule, such as `__mimir_cluster`
+- **THEN** no datasource is made for it
+
+#### Scenario: A long tenant UID is shortened
+- **WHEN** a tenant's `<signal>-<tenant>` UID would be longer than 40 characters
+- **THEN** its UID is `<signal>-<prefix>-<8 hex characters>` and fits in 40 characters
+
+### Requirement: The metrics stream reads with the tenant and the cluster
+
+`metrics stream` SHALL send the cluster's tenant in the `X-Scope-OrgID` header on every query.  It SHALL scope every query to the current cluster.
+
+#### Scenario: Stream queries carry the tenant
+- **WHEN** `metrics stream` runs for a cluster initialized with `--tenant acme`
+- **THEN** every query it sends carries `X-Scope-OrgID: acme`
+
+#### Scenario: Stream ignores other clusters in the tenant
+- **WHEN** the tenant also holds series from another cluster
+- **THEN** the samples `metrics stream` publishes come only from the current cluster
 

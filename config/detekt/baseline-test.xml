@@ -14,10 +14,6 @@
     <ID>MapGetWithNotNullAssertionOperator:EC2InstanceServiceTest.kt$EC2InstanceServiceTest$result[ServerType.Cassandra]!!</ID>
     <ID>UnnecessaryAbstractClass:BaseKoinTest.kt$BaseKoinTest$BaseKoinTest</ID>
     <ID>UnnecessaryNotNullOperator:EC2SecurityGroupServiceTest.kt$EC2SecurityGroupServiceTest$result!!</ID>
-    <ID>UnreachableCode:McpSchemaValidationTest.kt$McpSchemaValidationTest$val defaultValue = prop["default"] ?: return</ID>
-    <ID>UnreachableCode:McpSchemaValidationTest.kt$McpSchemaValidationTest$val type = prop["type"]?.jsonPrimitive?.content ?: return</ID>
-    <ID>UnreachableCode:McpSchemaValidationTest.kt$McpSchemaValidationTest$when (type) { "string" -> { if (defaultValue !is JsonPrimitive || !defaultValue.isString) { issues.add("Property '$propName' has non-string default for string type") } } "number" -> { if (defaultValue !is JsonPrimitive || defaultValue.doubleOrNull == null) { issues.add("Property '$propName' has non-number default for number type") } } "boolean" -> { if (defaultValue !is JsonPrimitive || defaultValue.booleanOrNull == null) { issues.add("Property '$propName' has non-boolean default for boolean type") } } }</ID>
     <ID>UnreachableCode:TestPrompter.kt$TestPrompter$responses[question] // Then try partial match (question contains key) ?: responses.entries.find { question.contains(it.key, ignoreCase = true) }?.value // Fall back to default ?: default</ID>
-    <ID>UseOrEmpty:ChannelMessageBufferTest.kt$ChannelMessageBufferTest$timestampRegex.find(it)?.groupValues?.get(1) ?: ""</ID>
   </CurrentIssues>
 </SmellBaseline>

@@ -154,7 +154,7 @@ src/test/kotlin/com/rustyrazorblade/easydblab/
 ├── commands/                # Command tests (mirrors main)
 ├── configuration/           # Configuration tests
 ├── kubernetes/              # K8s tests
-├── mcp/                     # Server tests (MCP, REST, background services)
+├── server/                  # Status cache tests (the REST server itself is tested in src/integrationTest)
 ├── providers/aws/           # AWS provider tests
 ├── services/                # Service tests
 └── ...
@@ -170,6 +170,8 @@ The `K8sServiceIntegrationTest` runs K3s inside Docker via TestContainers. This 
 - **`withLogConsumer(Slf4jLogConsumer(...))`** — Forwards K3s container logs to SLF4J for debugging startup failures.
 
 If K3s fails to start with `ContainerLaunchException` inside a nested container environment (e.g. CI), ensure the outer container is configured with `--privileged`, `--cgroupns=host`, and `/sys/fs/cgroup` mounted read-write.
+
+If K3s logs `too many open files` and then loops on `Waiting for containerd startup: ... unknown service runtime.v1.RuntimeService`, the host has run out of inotify instances (`fs.inotify.max_user_instances`), not time. Each K3s container holds about 23, and the integration tier runs several at once across its forks. `pr-checks.yml` raises the limit to 1280 because the ubuntu-26.04 runner leaves it at 128 (actions/runner-images#15108). Do not raise the Testcontainers timeout for this.
 
 ## Test Data Quality
 

@@ -1,5 +1,7 @@
 package com.rustyrazorblade.easydblab.providers.aws
 
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -245,6 +247,7 @@ val awsModule =
                 get<ClusterStateManager>(),
                 get<LokiQueryService>(),
                 get<EventBus>(),
+                logsDir = get<Context>().workspaceFile(Constants.EMR.LOCAL_LOGS_DIR).toPath(),
             )
         }
 

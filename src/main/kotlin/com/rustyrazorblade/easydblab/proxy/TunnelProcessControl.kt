@@ -113,14 +113,26 @@ class TunnelProcessControl(
      * What the PID [recorded] names is now: the recorded `edl-socks-tunnel` ([isTunnel]), no live
      * process, or a live process that is not the tunnel, because the OS gave the PID to another program.
      */
-    fun status(recorded: Socks5ProxyStateFile): RecordedTunnelStatus {
-        val handle = liveProcess(recorded) ?: return RecordedTunnelStatus.GONE
-        return if (isTunnel(handle, recorded)) RecordedTunnelStatus.RUNNING else RecordedTunnelStatus.PID_REUSED
+    fun status(recorded: Socks5ProxyStateFile): RecordedTunnelStatus = status(recorded.pid.toLong(), recorded.port, recorded.sshConfig)
+
+    /**
+     * What [pid] is now: the `edl-socks-tunnel` serving [port] with [sshConfig], no live process, or a
+     * live process that is not that tunnel.  This is the check for a tunnel recorded in the env file,
+     * which holds only the port and the PID.
+     */
+    fun status(
+        pid: Long,
+        port: Int,
+        sshConfig: String,
+    ): RecordedTunnelStatus {
+        val handle = liveProcess(pid) ?: return RecordedTunnelStatus.GONE
+        return if (isTunnel(handle, port, sshConfig)) RecordedTunnelStatus.RUNNING else RecordedTunnelStatus.PID_REUSED
     }
 
     /** The live process that holds the recorded PID, unless it is this JVM. */
-    private fun liveProcess(recorded: Socks5ProxyStateFile): ProcessHandle? =
-        lookup(recorded.pid.toLong())?.takeIf { it.isAlive && it.pid() != ProcessHandle.current().pid() }
+    private fun liveProcess(recorded: Socks5ProxyStateFile): ProcessHandle? = liveProcess(recorded.pid.toLong())
+
+    private fun liveProcess(pid: Long): ProcessHandle? = lookup(pid)?.takeIf { it.isAlive && it.pid() != ProcessHandle.current().pid() }
 
     /**
      * True when [handle] is the `edl-socks-tunnel` that [recorded] describes: the OS reports the
@@ -129,6 +141,12 @@ class TunnelProcessControl(
     internal fun isTunnel(
         handle: ProcessHandle,
         recorded: Socks5ProxyStateFile,
+    ): Boolean = isTunnel(handle, recorded.port, recorded.sshConfig)
+
+    private fun isTunnel(
+        handle: ProcessHandle,
+        port: Int,
+        sshConfig: String,
     ): Boolean {
         val arguments =
             handle
@@ -138,8 +156,8 @@ class TunnelProcessControl(
                 ?.toList() ?: return false
         val script = arguments.firstOrNull() ?: return false
         return File(script).name == Constants.ToolWrappers.TUNNEL_SCRIPT &&
-            arguments.getOrNull(1) == recorded.port.toString() &&
-            arguments.getOrNull(2) == recorded.sshConfig
+            arguments.getOrNull(1) == port.toString() &&
+            arguments.getOrNull(2) == sshConfig
     }
 
     /**

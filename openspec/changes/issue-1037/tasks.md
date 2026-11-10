@@ -20,9 +20,9 @@
 
 ## 5. Pod logs without a journal
 
-- [ ] 5.1 Integration test (`src/integrationTest/`, K3s TestContainer, which has no journal): deploy the collector and Loki, run a pod that prints a marker line, and assert that Loki returns it.
+- [x] 5.1 Integration test (`src/integrationTest/`, K3s TestContainer, which has no journal): deploy the collector and Loki, run a pod that prints a marker line, and assert that Loki returns it.
 
 ## 6. Docs and verify
 
-- [ ] 6.1 Update `configuration/CLAUDE.md` and the root `CLAUDE.md` observability section: list the gated workloads and the capability each needs.
+- [x] 6.1 Update `configuration/CLAUDE.md` and the root `CLAUDE.md` observability section: list the gated workloads and the capability each needs.
 - [ ] 6.2 Run `./gradlew check` on JDK 21 in a subagent, with no new `@Suppress`, threshold change or baseline entry.

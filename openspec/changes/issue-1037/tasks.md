@@ -1,12 +1,12 @@
 ## 1. Capabilities
 
-- [ ] 1.1 Add `configuration/NodeCapability.kt` (`NodeCapability` with `absentReason`, serializable, plus `NodeCapabilities` with `AWS`, `LOCAL_DOCKER` and `from(ClusterState)`). Write a unit test for `from` returning `AWS`, and keep any environment-name test out of consumers (they ask `in`, never the environment).
+- [x] 1.1 Add `configuration/NodeCapability.kt` (`NodeCapability` with `absentReason`, serializable, plus `NodeCapabilities` with `AWS`, `LOCAL_DOCKER` and `from(ClusterState)`). Write a unit test for `from` returning `AWS`, and keep any environment-name test out of consumers (they ask `in`, never the environment).
 
 ## 2. Stage gating
 
-- [ ] 2.1 Add `Event.Grafana.StageSkipped` and update `events/CLAUDE.md`.
-- [ ] 2.2 Test first: `ObservabilityStackServiceTest` with `LOCAL_DOCKER`. fluent-bit-journald, YACE and s3manager are not applied and not awaited, and there is one `StageSkipped` per stage, with its capability and reason. With `AWS`, the applied set equals today's and no skip is emitted.
-- [ ] 2.3 Give `Stage` a `requires` field in `ObservabilityStackService.buildStages`, and gate the three stages.
+- [x] 2.1 Add `Event.Grafana.StageSkipped` and update `events/CLAUDE.md`.
+- [x] 2.2 Test first: `ObservabilityStackServiceTest` with `LOCAL_DOCKER`. fluent-bit-journald, YACE and s3manager are not applied and not awaited, and there is one `StageSkipped` per stage, with its capability and reason. With `AWS`, the applied set equals today's and no skip is emitted.
+- [x] 2.3 Give `Stage` a `requires` field in `ObservabilityStackService.buildStages`, and gate the three stages.
 
 ## 3. Collector config
 

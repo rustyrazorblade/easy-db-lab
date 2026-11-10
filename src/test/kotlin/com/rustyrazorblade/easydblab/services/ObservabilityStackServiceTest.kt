@@ -8,6 +8,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.CniMode
 import com.rustyrazorblade.easydblab.configuration.InitConfig
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
@@ -172,7 +174,60 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
                 getKoin().get(),
                 ConfigChangeReport(mockK8sService, getKoin().get()),
                 DashboardInstallContextFactory(sharedStoreTenants()),
+                capabilitiesOf = { capabilities },
             )
+    }
+
+    /** The capabilities the service under test sees; AWS unless a test declares otherwise. */
+    private var capabilities: NodeCapabilities = NodeCapabilities.AWS
+
+    private fun collectEvents(): MutableList<Event> {
+        val emitted = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return emitted
+    }
+
+    @Test
+    fun `an environment without capabilities skips the three gated stages and does not await them`() {
+        capabilities = NodeCapabilities.LOCAL_DOCKER
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        val applied = appliedKindNames().map { it.substringAfter("/") }
+        assertThat(applied).doesNotContain("fluent-bit-journald", "yace", "s3manager")
+        assertThat(applied).contains("otel-collector", "ebpf-exporter", "beyla")
+
+        val awaited = argumentCaptor<List<WorkloadRef>>()
+        verify(mockK8sService).waitForRollouts(any(), awaited.capture(), eq("default"), any())
+        assertThat(awaited.firstValue.map { it.toString() }).noneMatch {
+            it.contains("fluent-bit-journald") || it.contains("yace") || it.contains("s3manager")
+        }
+
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>())
+            .containsExactlyInAnyOrder(
+                Event.Grafana.StageSkipped("Fluent Bit Journald", NodeCapability.SYSTEMD_JOURNAL, NodeCapability.SYSTEMD_JOURNAL.absentReason),
+                Event.Grafana.StageSkipped("YACE", NodeCapability.CLOUDWATCH, NodeCapability.CLOUDWATCH.absentReason),
+                Event.Grafana.StageSkipped("S3 Manager", NodeCapability.S3, NodeCapability.S3.absentReason),
+            )
+    }
+
+    @Test
+    fun `AWS applies the gated stages and emits no skip`() {
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        assertThat(appliedKindNames()).contains("DaemonSet/fluent-bit-journald", "Deployment/yace", "Deployment/s3manager")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>()).isEmpty()
     }
 
     /** The shared store holds another cluster's tenant and Mimir's own cluster directory. */

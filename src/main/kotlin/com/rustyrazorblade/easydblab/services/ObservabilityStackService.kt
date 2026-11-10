@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ConfigHashAnnotator
+import com.rustyrazorblade.easydblab.configuration.NodeCapabilities
+import com.rustyrazorblade.easydblab.configuration.NodeCapability
 import com.rustyrazorblade.easydblab.configuration.ObservabilityStore
 import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
@@ -89,16 +91,34 @@ class DefaultObservabilityStackService(
     private val kubeStateMetricsManifestBuilder: KubeStateMetricsManifestBuilder,
     private val configChangeReport: ConfigChangeReport,
     private val installContextFactory: DashboardInstallContextFactory,
+    private val capabilitiesOf: (ClusterState) -> NodeCapabilities = NodeCapabilities::from,
 ) : ObservabilityStackService {
     companion object {
         private const val DEFAULT_NAMESPACE = "default"
     }
 
-    /** One deploy stage: a human label and the resources it applies. */
+    /**
+     * One deploy stage: a human label and the resources it applies. A stage with a [requires]
+     * capability is applied only where the environment provides it.
+     */
     private data class Stage(
         val label: String,
         val resources: List<HasMetadata>,
+        val requires: NodeCapability? = null,
     )
+
+    /** The stages the environment can run; each one it cannot is reported as skipped. */
+    private fun runnableStages(
+        stages: List<Stage>,
+        capabilities: NodeCapabilities,
+    ): List<Stage> {
+        val (runnable, skipped) = stages.partition { it.requires == null || it.requires in capabilities }
+        skipped.forEach { stage ->
+            val capability = checkNotNull(stage.requires)
+            eventBus.emit(Event.Grafana.StageSkipped(stage.label, capability, capability.absentReason))
+        }
+        return runnable
+    }
 
     override fun deploy(controlNode: ClusterHost): Result<Unit> =
         runCatching {
@@ -122,7 +142,7 @@ class DefaultObservabilityStackService(
 
             // The local backends and Grafana are local-mode only. The Pyroscope server directory and
             // dashboard upload hang off those, so they are guarded the same way.
-            val stages = buildStages(telemetryRedirect)
+            val stages = runnableStages(buildStages(telemetryRedirect), capabilitiesOf(clusterState))
 
             // The Pyroscope server, Tempo, Mimir and Loki write to host directories; the agents do
             // not, so prepare them only in local mode.
@@ -193,12 +213,12 @@ class DefaultObservabilityStackService(
     private fun buildStages(telemetryRedirect: TelemetryRedirect?): List<Stage> =
         buildList {
             add(Stage("kube-state-metrics", kubeStateMetricsManifestBuilder.buildAllResources()))
-            add(Stage("Fluent Bit Journald", journaldOtelManifestBuilder.buildAllResources()))
+            add(Stage("Fluent Bit Journald", journaldOtelManifestBuilder.buildAllResources(), NodeCapability.SYSTEMD_JOURNAL))
             add(Stage("ebpf_exporter", ebpfExporterManifestBuilder.buildAllResources()))
             add(Stage("Registry", registryManifestBuilder.buildAllResources()))
-            add(Stage("S3 Manager", s3ManagerManifestBuilder.buildAllResources()))
+            add(Stage("S3 Manager", s3ManagerManifestBuilder.buildAllResources(), NodeCapability.S3))
             add(Stage("Beyla", beylaManifestBuilder.buildAllResources()))
-            add(Stage("YACE", yaceManifestBuilder.buildAllResources()))
+            add(Stage("YACE", yaceManifestBuilder.buildAllResources(), NodeCapability.CLOUDWATCH))
             if (telemetryRedirect == null) {
                 add(Stage("Mimir", mimirManifestBuilder.buildAllResources()))
                 add(Stage("Loki", lokiManifestBuilder.buildAllResources()))

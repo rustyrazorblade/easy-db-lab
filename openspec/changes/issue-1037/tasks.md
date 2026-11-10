@@ -1,6 +1,6 @@
 ## 1. Capabilities
 
-- [ ] 1.1 Add `configuration/NodeCapability.kt` (`NodeCapability` with `absentReason`, serializable, plus `NodeCapabilities` with `AWS`, `LOCAL_DOCKER` and `from(ClusterState)`). Write a unit test for `from` returning `AWS`.
+- [ ] 1.1 Add `configuration/NodeCapability.kt` (`NodeCapability` with `absentReason`, serializable, plus `NodeCapabilities` with `AWS`, `LOCAL_DOCKER` and `from(ClusterState)`). Write a unit test for `from` returning `AWS`, and keep any environment-name test out of consumers (they ask `in`, never the environment).
 
 ## 2. Stage gating
 

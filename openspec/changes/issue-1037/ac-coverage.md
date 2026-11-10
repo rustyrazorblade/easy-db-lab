@@ -7,6 +7,7 @@
 | AC5 | A local node with no journal still gets pod logs into Loki | `node-capabilities: Pod logs reach Loki without a journal` | ✅ |
 | AC6 | AWS deploys every workload deployed today | `node-capabilities: AWS deploy is unchanged`; `cloudwatch-metrics-export: YACE deployed on AWS`; `dynamic-otel-scrape-config: YACE scrape job only with CloudWatch` | ✅ |
 | Scope | Each environment declares its capabilities | `node-capabilities: AWS provides every capability`; `Local Docker provides none` | ✅ |
+| Scope | Capabilities come from the environment, not its name | `node-capabilities: Capabilities come from the environment declaration` | ✅ |
 | Risk | A skipped stage is still awaited | `node-capabilities: Local deploy skips the three workloads` | ✅ |
 | Risk | Deploy and kit sync render different collector configs | `dynamic-otel-scrape-config: YACE scrape job only with CloudWatch` (task 3.1 compares both paths) | ✅ |
 | Risk | YACE scrape job reports `up=0` locally | `dynamic-otel-scrape-config: YACE scrape job only with CloudWatch` | ✅ |

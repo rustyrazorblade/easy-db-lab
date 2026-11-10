@@ -14,7 +14,7 @@ The rollout wait covers only what was applied (`ObservabilityStackService.kt:166
 ## Decisions
 
 **D1. Declared per environment.** Owner, 2026-11-08.
-- AWS nodes always run systemd; a K3s-in-docker node never has a journal.
+- An environment declares what its nodes provide. AWS nodes run systemd and have a journal; the local Docker nodes do not.
 - Rejected:
   - A node label plus affinity: it only helps with mixed nodes, which nothing has.
   - A `DirectoryOrCreate` hostPath: it would deploy a reader with nothing to read and hide a broken AMI.
@@ -25,7 +25,7 @@ The rollout wait covers only what was applied (`ObservabilityStackService.kt:166
 **D3. The type and the decision.**
 ```kotlin
 enum class NodeCapability(val absentReason: String) {
-    SYSTEMD_JOURNAL("the nodes have no systemd journal; pod logs still reach Loki through the collector"),
+    SYSTEMD_JOURNAL("this environment's nodes have no systemd journal; pod logs still reach Loki through the collector"),
     CLOUDWATCH("this environment has no CloudWatch"),
     S3("this environment has no S3 bucket"),
 }
@@ -34,11 +34,14 @@ enum class NodeCapability(val absentReason: String) {
     companion object {
         val AWS = NodeCapabilities(NodeCapability.entries.toSet())
         val LOCAL_DOCKER = NodeCapabilities(emptySet())
-        fun from(state: ClusterState): NodeCapabilities = AWS   // #1040 switches on the recorded target
+        fun from(state: ClusterState): NodeCapabilities = AWS   // #1040: returns the set the recorded execution environment declares
     }
 }
 ```
 - It lives in `configuration/`.
+- `AWS` and `LOCAL_DOCKER` are the sets those environments declare. Once #1040 lands, `from` reads the recorded environment and returns its declared set. Consumers never branch on an environment name.
+- The absent-reasons are facts about the environment, not about local Docker. A bring-your-own environment reuses them unchanged.
+- The enum is not final. Further capabilities (see the proposal's Out of scope) are added when a second implementation needs them.
 - It is a pure function of `ClusterState`, the same pattern as the CNI (`CollectorResources.kt:35-41`). There is no Koin binding and no new constructor parameter, because every consumer already loads `ClusterState`.
 
 **D4. Gating lives in the stage list, not the builders.**

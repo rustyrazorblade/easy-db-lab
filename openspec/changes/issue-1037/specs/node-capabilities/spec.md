@@ -2,13 +2,20 @@
 
 ### Requirement: Each environment declares its node capabilities
 
-Each execution environment SHALL declare which node and account capabilities it provides, from a closed set: a systemd journal on the nodes, CloudWatch, and S3. The capabilities SHALL be decided once from cluster state. AWS SHALL provide all three, and the local Docker environment SHALL provide none. Until the environment is recorded in state, every cluster SHALL be treated as AWS.
+Each execution environment SHALL declare which node and account capabilities it provides, from a closed set: a systemd journal on the nodes, CloudWatch, and S3. The capabilities SHALL be derived once from the execution environment recorded in cluster state, and SHALL NOT be decided by testing an environment name. AWS SHALL provide all three, and the local Docker environment SHALL provide none. Until the environment is recorded in state, every cluster SHALL be treated as AWS.
 
 #### Scenario: AWS provides every capability
 
 - **GIVEN** a cluster on AWS
 - **WHEN** its capabilities are decided
 - **THEN** they include the systemd journal, CloudWatch and S3
+
+#### Scenario: Capabilities come from the environment declaration
+
+- **GIVEN** an environment that declares only CloudWatch
+- **WHEN** its capabilities are decided
+- **THEN** they include CloudWatch and no other capability
+- **AND** no code path asked which environment it is
 
 #### Scenario: Local Docker provides none
 
@@ -37,7 +44,7 @@ A workload that needs a capability SHALL be deployed only where the environment 
 
 #### Scenario: Pod logs reach Loki without a journal
 
-- **GIVEN** a K3s node with no systemd journal
+- **GIVEN** a node with no systemd journal
 - **WHEN** a pod writes a line to stdout
 - **THEN** that line reaches Loki through the collector's container-log pipeline
 

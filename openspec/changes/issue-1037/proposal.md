@@ -6,7 +6,7 @@ Owner decision, 2026-11-08: this issue is the capability gating only. The other 
 
 ## What Changes
 
-- New `NodeCapability` (`SYSTEMD_JOURNAL`, `CLOUDWATCH`, `S3`), and `NodeCapabilities.from(ClusterState)`, which returns AWS (all three) until #1040 records the environment. `LOCAL_DOCKER` provides none.
+- New `NodeCapability` (`SYSTEMD_JOURNAL`, `CLOUDWATCH`, `S3`), and `NodeCapabilities.from(ClusterState)`, which returns the set the #1040 execution environment declares. AWS declares all three and local Docker declares none. Until #1040 records the environment, `from` returns AWS. No consumer tests an environment name.
 - `ObservabilityStackService` stages declare the capability they need. A stage whose capability is absent is not built, is not awaited, and emits `Event.Grafana.StageSkipped(stage, capability, reason)`. The manifest builders do not change.
   - fluent-bit-journald needs `SYSTEMD_JOURNAL`.
   - YACE needs `CLOUDWATCH`.
@@ -43,3 +43,4 @@ Owner decision, 2026-11-08: this issue is the capability gating only. The other 
 - Probing capabilities per node (owner chose declared per environment).
 - Deriving `S3` from #1035's storage choice (owner chose a separate capability).
 - Recording the environment in state (#1040).
+- Future capabilities a bring-your-own Kubernetes environment will need: `PRIVILEGED_NODE_AGENTS` (ebpf, Beyla), `HOST_PATH` (Fluent Bit and collector log mounts) and `NODE_SSH`. They are not added now, because no second implementation exists. The enum is not final.

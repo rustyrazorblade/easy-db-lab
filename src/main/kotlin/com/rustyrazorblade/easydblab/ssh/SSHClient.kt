@@ -59,6 +59,9 @@ class SSHClient(
 
         /** Where [RemoteException]'s message starts repeating its cause. */
         private const val NESTED_EXCEPTION = "; nested exception is:"
+
+        /** The status in MINA's `Remote command failed (N): <command>`; anchored so a command that quotes the phrase cannot match. */
+        private val EXIT_STATUS_IN_MESSAGE = Regex("^Remote command failed \\((-?\\d+)\\)")
     }
 
     // Serializes operations on this session (one host) while other SSHClient instances run in
@@ -135,14 +138,17 @@ class SSHClient(
         stderrStream: ByteArrayOutputStream,
         failure: RemoteException,
     ): RemoteCommandFailedException {
+        val exitStatus = exitStatusOf(failure)
         if (secret) {
             // A secret command routinely echoes its own argument back on failure — a usage line,
-            // an error naming the key — so none of its output can be repeated.
+            // an error naming the key — so none of its output can be repeated. Its exit status
+            // repeats nothing, so it is kept.
             return RemoteCommandFailedException(
                 command = HIDDEN,
                 stdout = HIDDEN,
                 stderr = HIDDEN,
                 summary = "Remote command failed on $remoteAddress: $HIDDEN",
+                exitStatus = exitStatus,
             )
         }
         return RemoteCommandFailedException(
@@ -150,6 +156,7 @@ class SSHClient(
             stdout = tail(stdoutStream.toString(Charset.defaultCharset())),
             stderr = tail(stderrStream.toString(Charset.defaultCharset())),
             summary = "$remoteAddress: ${redact(exitSummary(failure) ?: "Remote command failed: $command")}",
+            exitStatus = exitStatus,
         )
     }
 
@@ -188,6 +195,18 @@ class SSHClient(
         capture: OutputStream,
         lines: OutputStream?,
     ): OutputStream = if (lines == null) capture else TeeOutputStream(capture, lines)
+
+    /**
+     * The exit status inside MINA's "Remote command failed (N): <command>", or null for its "No exit
+     * status returned" failure. MINA 2.18 (`ClientChannel.validateCommandExitStatusCode`) throws a bare
+     * [RemoteException] with the status only in its message, so the message is the one place to read it.
+     */
+    private fun exitStatusOf(failure: RemoteException): Int? =
+        failure.message
+            ?.let { EXIT_STATUS_IN_MESSAGE.find(it) }
+            ?.groupValues
+            ?.get(1)
+            ?.toIntOrNull()
 
     /** Keeps a failure message readable when the command spewed (e.g. a replayed ant build log). */
     private fun tail(text: String): String =

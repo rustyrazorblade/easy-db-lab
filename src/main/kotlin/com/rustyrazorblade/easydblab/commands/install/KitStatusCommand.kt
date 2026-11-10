@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
-import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
 import com.rustyrazorblade.easydblab.services.HelmService
 import com.rustyrazorblade.easydblab.services.K8sService
@@ -40,16 +39,14 @@ class KitStatusCommand(
     private val endpointHost: KitEndpointHost by inject()
 
     override fun execute() {
-        val controlHost =
-            clusterState.getControlHost()
-                ?: run {
-                    println("Status:    Unknown (no control node in cluster state)")
-                    return
-                }
+        if (clusterState.getControlHost() == null) {
+            println("Status:    Unknown (no control node in cluster state)")
+            return
+        }
 
         val state =
             if (installConfig.runtime != null) {
-                checkRuntimeState(installConfig.runtime, kubeService, controlHost)
+                checkRuntimeState(installConfig.runtime, kubeService)
             } else {
                 checkFallbackState(kubeService)
             }
@@ -71,18 +68,12 @@ class KitStatusCommand(
     private fun checkRuntimeState(
         runtime: KitRuntime,
         kubeService: K8sService,
-        controlHost: ClusterHost,
     ): KitRunningState {
         val namespace = runtime.namespace
         return when (runtime.type) {
             KitRuntime.RuntimeType.HELM -> {
                 val release = runtime.release.ifBlank { kitName }
-                if (!helmService.releaseExists(
-                        host = controlHost.toHost(),
-                        release = release,
-                        namespace = namespace,
-                    )
-                ) {
+                if (!helmService.releaseExists(release = release, namespace = namespace)) {
                     return KitRunningState.Stopped
                 }
                 val podSelector = withKitName(runtime.selector, kitName).ifBlank { "app.kubernetes.io/instance=$release" }

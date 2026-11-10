@@ -225,6 +225,19 @@ class ObservabilityStackServiceTest : BaseKoinTest() {
     }
 
     @Test
+    fun `an environment with only CloudWatch skips only the journal and S3 stages`() {
+        capabilities = NodeCapabilities(setOf(NodeCapability.CLOUDWATCH))
+        val emitted = collectEvents()
+
+        service.deploy(controlNode).getOrThrow()
+
+        val applied = appliedKindNames().map { it.substringAfter("/") }
+        assertThat(applied).contains("yace").doesNotContain("fluent-bit-journald", "s3manager")
+        assertThat(emitted.filterIsInstance<Event.Grafana.StageSkipped>().map { it.capability })
+            .containsExactlyInAnyOrder(NodeCapability.SYSTEMD_JOURNAL, NodeCapability.S3)
+    }
+
+    @Test
     fun `AWS applies the gated stages and emits no skip`() {
         val emitted = collectEvents()
 

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab
 
-import java.io.File
 import java.nio.file.Path
 
 /**
@@ -16,8 +15,6 @@ data class Version(
      */
     val versionString: String = path.substringAfterLast("/")
     val conf: String = "$path/conf"
-
-    val file = File(versionString)
 
     companion object {
         /**

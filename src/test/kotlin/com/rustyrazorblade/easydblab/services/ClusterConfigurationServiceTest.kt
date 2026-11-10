@@ -123,7 +123,7 @@ class ClusterConfigurationServiceTest {
 
             service.writeSshAndEnvironmentFiles(tempDir, clusterState, createUserConfig())
 
-            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null))
+            assertThat(ProxyEnvFile(tempDir.toFile()).read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = null, direct = false))
             val bin = File(tempDir.toFile(), Constants.ToolWrappers.DIRECTORY)
             assertThat(bin.list()).containsExactlyInAnyOrderElementsOf(
                 Constants.ToolWrappers.WRAPPED_TOOLS + Constants.ToolWrappers.TUNNEL_SCRIPT + Constants.ToolWrappers.KIT_LIBRARY +
@@ -139,7 +139,7 @@ class ClusterConfigurationServiceTest {
 
             assertThat(
                 ProxyEnvFile(tempDir.toFile()).read(),
-            ).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, ProcessHandle.current().pid())))
+            ).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, ProcessHandle.current().pid()), direct = false))
             assertThat(File(tempDir.toFile(), "${Constants.ToolWrappers.DIRECTORY}/kubectl").canExecute()).isTrue()
         }
 

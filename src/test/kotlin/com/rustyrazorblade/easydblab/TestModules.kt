@@ -327,13 +327,6 @@ object TestModules {
                         // No-op for mock implementation
                     }
 
-                    override fun uploadDirectory(
-                        host: Host,
-                        version: Version,
-                    ) {
-                        // No-op for mock implementation
-                    }
-
                     override fun replaceDirectory(
                         host: Host,
                         localDir: File,

@@ -1,0 +1,58 @@
+# Fixture for LocalClusterToolingIntegrationTest: the ten typed steps that run helm or kubectl,
+# run through WorkloadStepExecutor on the local ClusterTooling form. Every step is served from the
+# test's own MockWebServer or from this directory, and none starts a pod, so no image is needed.
+# The test passes REPO_URL, MANIFEST_URL, KUSTOMIZE_DIR and GREETING as step variables.
+name: typed-steps
+description: Typed helm and kubectl steps for the local form
+
+install:
+  - type: helm-repo
+    name: fixture
+    url: ${REPO_URL}
+  # values: becomes --set arguments
+  - type: helm
+    chart: fixture/cluster-tooling-fixture
+    release: typed-kept
+    version: 0.1.0
+    values:
+      greeting: set by map
+  # values-file: goes to helm on stdin as --values -
+  - type: helm
+    chart: fixture/cluster-tooling-fixture
+    release: typed-removed
+    version: 0.1.0
+    values-file: values.yaml
+  - type: namespace
+    name: typed-steps-extra
+  - type: manifest
+    template: manifest.yaml
+    interpolate: true
+  - type: manifest-url
+    url: ${MANIFEST_URL}
+  - type: kustomize
+    url: ${KUSTOMIZE_DIR}
+  # The CRD the manifest step applied; waiting on it needs no pod and no image.
+  - type: wait
+    kind: crd
+    name: widgets.typedsteps.example.com
+    condition: Established
+    timeout: 60s
+
+stop:
+  - type: delete
+    kind: configmap
+    name: typed-manifest-url
+  # A selector with spaces and parentheses reaches kubectl as one argument, not as shell words.
+  - type: delete
+    kinds: [configmap]
+    selector: "typed-steps in (selected, other)"
+
+uninstall:
+  # Every namespace has a configmap, so this release is kept.
+  - type: helm-uninstall
+    release: typed-kept
+    keep-while-any: configmaps
+  # The CRD has no instances, so this release is removed.
+  - type: helm-uninstall
+    release: typed-removed
+    keep-while-any: widgets.typedsteps.example.com

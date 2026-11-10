@@ -1,0 +1,119 @@
+package com.rustyrazorblade.easydblab.commands
+
+import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.ssh.Response
+import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import org.koin.core.module.Module
+import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.doAnswer
+import org.mockito.kotlin.doReturn
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.Path
+
+/**
+ * `upload-keys` uploads the joined keys from a scratch file that it removes afterwards. The keys
+ * directory is a typed path, so a relative one resolves against the process's current directory.
+ */
+class UploadAuthorizedKeysTest : BaseKoinTest() {
+    @TempDir
+    lateinit var keysParent: File
+
+    private val uploadedContents = mutableListOf<String>()
+    private val uploadedTargets = mutableListOf<String>()
+    private val uploadedSources = mutableListOf<Path>()
+    private var failUpload = false
+
+    private val remote: RemoteOperationsService =
+        mock {
+            on { executeRemotely(any(), any(), any(), any()) } doReturn Response("")
+            on { upload(any(), any(), any()) } doAnswer {
+                uploadedSources.add(it.getArgument<Path>(1))
+                if (failUpload) throw IllegalStateException("upload failed")
+                uploadedContents += Files.readString(it.getArgument<Path>(1))
+                uploadedTargets += it.getArgument<String>(2)
+            }
+        }
+
+    private val state =
+        ClusterState(
+            name = "test",
+            versions = mutableMapOf(),
+            hosts = mapOf(ServerType.Cassandra to listOf(ClusterHost("1.1.1.1", "10.0.0.1", "db0", "us-west-2a", "i-1"))),
+        )
+
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                single<ClusterStateManager> { mock<ClusterStateManager>().also { whenever(it.load()).thenReturn(state) } }
+                single { HostOperationsService(get()) }
+                single<RemoteOperationsService> { remote }
+            },
+        )
+
+    @Test
+    fun `uploads the joined keys and leaves no scratch file behind`() {
+        val keys = File(keysParent, "keys").also { it.mkdirs() }
+        File(keys, "a.pub").writeText("ssh-ed25519 AAA a\n")
+        File(keys, "b.pub").writeText("ssh-ed25519 BBB b\n")
+
+        UploadAuthorizedKeys().apply { localDir = keys.absolutePath }.execute()
+
+        assertThat(uploadedContents).isNotEmpty
+        assertThat(uploadedContents.first()).isEqualTo("ssh-ed25519 AAA a\nssh-ed25519 BBB b\n")
+        assertThat(File("authorized_keys_extra")).doesNotExist()
+        assertThat(File(context.workingDirectory, "authorized_keys_extra")).doesNotExist()
+    }
+
+    @Test
+    fun `uploads to the fixed remote name not the scratch file name`() {
+        val keys = File(keysParent, "keys").also { it.mkdirs() }
+        File(keys, "a.pub").writeText("ssh-ed25519 AAA a\n")
+
+        UploadAuthorizedKeys().apply { localDir = keys.absolutePath }.execute()
+
+        assertThat(uploadedTargets).isNotEmpty.containsOnly("~/.ssh/authorized_keys_extra")
+    }
+
+    @Test
+    fun `a failed upload propagates and still removes the scratch file`() {
+        val keys = File(keysParent, "keys").also { it.mkdirs() }
+        File(keys, "a.pub").writeText("ssh-ed25519 AAA a\n")
+        failUpload = true
+
+        assertThatThrownBy { UploadAuthorizedKeys().apply { localDir = keys.absolutePath }.execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("upload failed")
+
+        assertThat(uploadedSources).isNotEmpty
+        assertThat(uploadedSources.first()).doesNotExist()
+    }
+
+    @Test
+    fun `a relative keys directory resolves against the process current directory not the workspace`() {
+        val relative = "build/tmp/upload-keys-relative-${System.nanoTime()}"
+        val keys = File(relative).also { it.mkdirs() }
+        try {
+            File(keys, "a.pub").writeText("ssh-ed25519 AAA a\n")
+            assertThat(File(context.workingDirectory, relative)).doesNotExist()
+
+            UploadAuthorizedKeys().apply { localDir = relative }.execute()
+
+            assertThat(uploadedContents.first()).isEqualTo("ssh-ed25519 AAA a\n")
+        } finally {
+            keys.deleteRecursively()
+        }
+    }
+}

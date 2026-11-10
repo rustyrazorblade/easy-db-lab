@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.configuration.compactor
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder

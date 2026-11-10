@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.configuration.compactor
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.github.dockerjava.api.model.Bind
 import com.github.dockerjava.api.model.HostConfig

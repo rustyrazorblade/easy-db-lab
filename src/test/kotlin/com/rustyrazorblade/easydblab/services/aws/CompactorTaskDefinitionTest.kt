@@ -1,4 +1,4 @@
-package com.rustyrazorblade.easydblab.configuration.compactor
+package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.YamlTestSupport.keysAt
 import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt

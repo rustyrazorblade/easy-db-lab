@@ -1,6 +1,11 @@
 package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.commands.profile.Profile
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.services.CommandFailureReporter
 import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.HelpTopicService
@@ -43,6 +48,7 @@ class CommandLineParserTest : BaseKoinTest() {
                 single { InstallTemplateResolver(get(), get()) }
                 single<KitCommandScanner> { DefaultKitCommandScanner() }
                 single<HelpTopicService> { DefaultHelpTopicService() }
+                single { CommandFailureReporter(get(), emptyList()) }
             },
         )
 
@@ -74,6 +80,31 @@ class CommandLineParserTest : BaseKoinTest() {
         val output = stdout.toString()
         assertThat(output).contains("clickhouse")
         assertThat(output).doesNotContain("trunk")
+    }
+
+    @Test
+    fun `a failing non-PicoCommand is reported through the failure reporter with a non-zero exit`() {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() {
+                    // Nothing to release.
+                }
+            },
+        )
+        val parser = CommandLineParser()
+        parser.commandLine.addSubcommand("boom", BoomCommand())
+
+        val exitCode = parser.commandLine.execute("boom")
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(events.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("IllegalStateException")
+            .contains("boom happened")
     }
 
     @Test
@@ -186,5 +217,11 @@ class CommandLineParserTest : BaseKoinTest() {
                     .flatMap { undescribed(it) }
 
         assertThat(undescribed(CommandLineParser().commandLine)).isEmpty()
+    }
+
+    /** A plain Picocli command, not a PicoCommand, so the executor never sees it. */
+    @CommandLine.Command(name = "boom")
+    class BoomCommand : Runnable {
+        override fun run(): Unit = throw IllegalStateException("boom happened")
     }
 }

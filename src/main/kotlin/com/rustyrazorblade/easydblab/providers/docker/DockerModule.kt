@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.DefaultUserIdProvider
 import com.rustyrazorblade.easydblab.Docker
 import com.rustyrazorblade.easydblab.UserIdProvider
 import com.rustyrazorblade.easydblab.containers.PackerImage
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import org.koin.core.module.dsl.singleOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
@@ -23,6 +24,9 @@ val dockerModule =
     module {
         // Docker client provider - singleton because Docker client is expensive to create
         singleOf(::DefaultDockerClientProvider) bind DockerClientProvider::class
+
+        // Explains a Docker failure to the command layer; collected with getAll() by CommandFailureReporter
+        single { DockerErrorHandler() } bind ProviderErrorHandler::class
 
         // User ID provider - singleton because it's a stateless utility
         singleOf(::DefaultUserIdProvider) bind UserIdProvider::class

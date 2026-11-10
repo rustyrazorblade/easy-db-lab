@@ -18,13 +18,16 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.kernel.CommandFailedException
+import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
+import com.rustyrazorblade.easydblab.providers.docker.DockerErrorHandler
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
 import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -36,6 +39,7 @@ import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import picocli.CommandLine.Command
 import java.io.File
+import java.rmi.RemoteException
 
 /**
  * Test suite for CommandExecutor.
@@ -71,7 +75,7 @@ class CommandExecutorTest : BaseKoinTest() {
                 single<ResourceManager> { mockResourceManager }
                 single<SocksProxyService> { mockSocksProxyService }
                 single<User> { mockUserConfig }
-                single { CommandFailureReporter(eventBus, emptyList()) }
+                single { CommandFailureReporter(eventBus, listOf(DockerErrorHandler())) }
             },
         )
 
@@ -186,6 +190,59 @@ class CommandExecutorTest : BaseKoinTest() {
         assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
             .contains("IllegalStateException")
             .contains(missing.absolutePath)
+    }
+
+    @Test
+    fun `a docker failure from a command is reported as unavailable with the check-docker remedy`() {
+        val exitCode =
+            commandExecutor.execute {
+                ThrowingCommand(
+                    com.github.dockerjava.api.exception
+                        .DockerException("Cannot connect", 500),
+                )
+            }
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        val event = emitted.filterIsInstance<Event.Command.ProviderError>().single()
+        assertThat(event.kind).isEqualTo(ProviderErrorKind.UNAVAILABLE)
+        assertThat(event.toDisplayString()).contains("Docker is running")
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `an illegal argument shows its message in the execution error`() {
+        commandExecutor.execute { ThrowingCommand(IllegalArgumentException("bad node count 0")) }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("IllegalArgumentException")
+            .contains("bad node count 0")
+    }
+
+    @Test
+    fun `an illegal state shows its message in the execution error`() {
+        commandExecutor.execute { ThrowingCommand(IllegalStateException("cluster is down")) }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("IllegalStateException")
+            .contains("cluster is down")
+    }
+
+    @Test
+    fun `a remote failure shows its message in the execution error`() {
+        commandExecutor.execute { ThrowingCommand(RemoteException("Remote command failed (1): ls")) }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>().single().error)
+            .contains("RemoteException")
+            .contains("Remote command failed (1): ls")
+    }
+
+    @Test
+    fun `an Error in top-level dispatch is rethrown, not reported as an execution error`() {
+        whenever(mockResourceManager.closeAll()).thenThrow(OutOfMemoryError("heap"))
+
+        assertThatThrownBy { commandExecutor.executeTopLevel(TestCommand()) }
+            .isInstanceOf(OutOfMemoryError::class.java)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
     }
 
     // ========== SCHEDULE DEFERRED TESTS ==========
@@ -670,6 +727,14 @@ class CommandExecutorTest : BaseKoinTest() {
     @Command(name = "failing-command")
     inner class FailingCommand : PicoBaseCommand() {
         override fun execute(): Unit = throw RuntimeException("Command failed intentionally")
+    }
+
+    /** Test command that fails with the given throwable */
+    @Command(name = "throwing-command")
+    inner class ThrowingCommand(
+        private val failure: Throwable,
+    ) : PicoBaseCommand() {
+        override fun execute(): Unit = throw failure
     }
 
     /** Test command that loads cluster state from a workspace that has none */

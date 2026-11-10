@@ -31,6 +31,10 @@ enum class ProviderErrorKind {
     /** The identity is valid but lacks permission for the operation. */
     @SerialName("permission-denied")
     PERMISSION_DENIED,
+
+    /** The provider or its local daemon could not be reached or is not running. */
+    @SerialName("unavailable")
+    UNAVAILABLE,
 }
 
 /**

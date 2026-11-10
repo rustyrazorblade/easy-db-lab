@@ -31,7 +31,8 @@ providers/
 ├── docker/                 # Docker client providers
 │   ├── DockerModule.kt
 │   ├── DockerClientProvider.kt
-│   └── DefaultDockerClientProvider.kt
+│   ├── DefaultDockerClientProvider.kt
+│   └── DockerErrorHandler.kt  # Docker daemon failures as a ProviderErrorHandler (kind unavailable)
 ├── ssh/                    # SSH connection providers
 │   ├── SSHModule.kt
 │   ├── SSHConnectionProvider.kt

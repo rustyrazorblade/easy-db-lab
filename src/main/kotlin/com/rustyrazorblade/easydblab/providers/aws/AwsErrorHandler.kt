@@ -71,6 +71,7 @@ class AwsErrorHandler : ProviderErrorHandler {
                 when (kind) {
                     ProviderErrorKind.CREDENTIALS -> CREDENTIALS_REMEDY
                     ProviderErrorKind.PERMISSION_DENIED -> permissionRemedy(policyFor(error))
+                    ProviderErrorKind.UNAVAILABLE -> UNAVAILABLE_REMEDY
                 },
         )
 
@@ -98,6 +99,8 @@ class AwsErrorHandler : ProviderErrorHandler {
         const val CREDENTIALS_REMEDY =
             "For an SSO profile run: aws sso login --profile <profile>. Otherwise run: easy-db-lab profile setup. " +
                 "Check the result with: aws sts get-caller-identity"
+
+        const val UNAVAILABLE_REMEDY = "Check your network connection to AWS, then run the command again."
 
         val ALL_POLICIES =
             listOf(

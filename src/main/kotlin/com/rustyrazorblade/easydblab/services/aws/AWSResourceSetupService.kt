@@ -149,7 +149,7 @@ class AWSResourceSetupService(
         when (errorHandler.describe(e)?.kind) {
             ProviderErrorKind.CREDENTIALS -> handleAuthenticationError(e)
             ProviderErrorKind.PERMISSION_DENIED -> handlePermissionError(e)
-            null -> eventBus.emit(Event.AwsSetup.CredentialValidationFailed)
+            ProviderErrorKind.UNAVAILABLE, null -> eventBus.emit(Event.AwsSetup.CredentialValidationFailed)
         }
     }
 

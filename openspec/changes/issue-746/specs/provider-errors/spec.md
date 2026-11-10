@@ -2,7 +2,7 @@
 
 ### Requirement: Provider failures are reported with a remedy
 
-When a command fails, the system SHALL ask every registered provider error handler to describe the failure, walking the exception's cause chain from the outermost exception inward. A handler SHALL claim an exception by its type alone, not by the active target, so that the classification works before any cluster state exists. On the first match the system SHALL emit `Event.Command.ProviderError` with the provider, the kind (`credentials` or `permission-denied`), the provider's detail message and a remedy. When no handler claims the exception, the system SHALL emit `Event.Command.ExecutionError` exactly as today. In both cases the exit code SHALL be non-zero.
+When a command fails, the system SHALL ask every registered provider error handler to describe the failure, walking the exception's cause chain from the outermost exception inward. A handler SHALL claim an exception by its type alone, not by the active target, so that the classification works before any cluster state exists. On the first match the system SHALL emit `Event.Command.ProviderError` with the provider, the kind (`credentials`, `permission-denied` or `unavailable`), the provider's detail message and a remedy. When no handler claims the exception, the system SHALL emit `Event.Command.ExecutionError` exactly as today. In both cases the exit code SHALL be non-zero.
 
 #### Scenario: Expired credentials
 
@@ -29,6 +29,13 @@ When a command fails, the system SHALL ask every registered provider error handl
 - **GIVEN** the SDK raises an `SdkClientException`, with no status code, because it found no credentials or the SSO session expired
 - **WHEN** the command fails
 - **THEN** the user sees a credentials message
+
+#### Scenario: Docker is not running
+
+- **GIVEN** a command that fails with a Docker `DockerException`, or the project's wrapper of it
+- **WHEN** the command fails
+- **THEN** `Event.Command.ProviderError` is emitted with kind `unavailable`, provider Docker, and a remedy to check that Docker is running
+- **AND** the exit code is non-zero
 
 #### Scenario: Network failure is not misclassified
 

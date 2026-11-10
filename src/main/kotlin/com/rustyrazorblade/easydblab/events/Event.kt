@@ -3873,6 +3873,7 @@ sealed interface Event {
                     when (kind) {
                         ProviderErrorKind.CREDENTIALS -> "$provider credentials are missing, expired or invalid."
                         ProviderErrorKind.PERMISSION_DENIED -> "$provider denied permission for this operation."
+                        ProviderErrorKind.UNAVAILABLE -> "$provider is not available."
                     }
                 return "$headline\n$detail\n$remedy\nFor detailed error information, check the logs (logs/info.log by default)"
             }

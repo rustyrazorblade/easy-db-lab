@@ -37,13 +37,13 @@ Paths below are under `src/main/kotlin/com/rustyrazorblade/easydblab/`.
 
 ```kotlin
 fun interface ProviderErrorHandler { fun describe(error: Throwable): ErrorDescription? }
-@Serializable enum class ProviderErrorKind { @SerialName("credentials") CREDENTIALS, @SerialName("permission-denied") PERMISSION_DENIED }
+@Serializable enum class ProviderErrorKind { @SerialName("credentials") CREDENTIALS, @SerialName("permission-denied") PERMISSION_DENIED, @SerialName("unavailable") UNAVAILABLE }
 data class ErrorDescription(val provider: String, val kind: ProviderErrorKind, val detail: String, val remedy: String)
 ```
 
 - `kernel` depends on nothing in the project, so no cycle is possible.
 - The kernel rule in the root `CLAUDE.md` grows to "types shared by commands, services and providers".
-- Only the two kinds the acceptance criteria need are defined.
+- Only the kinds that have a remedy are defined: the two the acceptance criteria need, plus `UNAVAILABLE` (the provider or its local daemon cannot be reached). `UNAVAILABLE` keeps the "check that Docker is running" hint the deleted `Main` catch gave. Docker is the first non-cloud provider: `DockerErrorHandler` in `providers/docker` takes no dependencies and claims docker-java's `DockerException` and the project's own wrapper. `IllegalArgumentException`, `IllegalStateException` and `RemoteException` need no handler: `ExecutionError` already prints the class name and message.
 
 *Rejected:*
 - `providers/errors`: `providers/` later splits into one subproject per cloud, which leaves no place for a neutral contract.

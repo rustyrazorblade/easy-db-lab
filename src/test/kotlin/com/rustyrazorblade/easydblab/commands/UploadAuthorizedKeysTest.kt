@@ -67,4 +67,20 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
         assertThat(File("authorized_keys_extra")).doesNotExist()
         assertThat(File(context.workingDirectory, "authorized_keys_extra")).doesNotExist()
     }
+
+    @Test
+    fun `a relative keys directory resolves against the process current directory not the workspace`() {
+        val relative = "build/tmp/upload-keys-relative-${System.nanoTime()}"
+        val keys = File(relative).also { it.mkdirs() }
+        try {
+            File(keys, "a.pub").writeText("ssh-ed25519 AAA a\n")
+            assertThat(File(context.workingDirectory, relative)).doesNotExist()
+
+            UploadAuthorizedKeys().apply { localDir = relative }.execute()
+
+            assertThat(uploadedContents.first()).isEqualTo("ssh-ed25519 AAA a\n")
+        } finally {
+            keys.deleteRecursively()
+        }
+    }
 }

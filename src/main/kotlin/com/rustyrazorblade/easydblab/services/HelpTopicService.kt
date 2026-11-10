@@ -6,8 +6,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 /**
  * A single help topic discovered from a packaged markdown resource.
  *
- * This is a distinct type from the MCP `PromptResource` so that help does not inherit MCP-prompt
- * semantics, even though both are loaded by the shared [FrontmatterMarkdownLoader].
+ * This is a distinct type from the loader's feature-neutral `MarkdownDocument`, so help keeps its
+ * own vocabulary while it loads through the shared [FrontmatterMarkdownLoader].
  *
  * @property name The topic key (the frontmatter `name` field), used for lookup and listing.
  * @property description The one-line summary shown in the no-argument listing.

@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.grafana
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -22,7 +21,6 @@ import picocli.CommandLine.Command
  *
  * If no S3 bucket is configured, the backup fails fast with the standard "run up first" message.
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

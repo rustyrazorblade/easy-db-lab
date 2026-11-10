@@ -13,6 +13,8 @@
 #
 # Each call of the other tools reads <workspace>/.socks5-proxy.env, which only the easy-db-lab CLI writes:
 #   - on a Tailscale cluster it runs the real tool with the environment unchanged;
+#   - when the file holds EDL_NETWORK_MODE=direct (the cluster API is reachable from this machine) it
+#     does the same, with no tunnel needed;
 #   - on a SOCKS cluster it routes this one call through the recorded tunnel port;
 #   - with no tunnel recorded, or when the recorded tunnel script (EDL_SOCKS_PID) has exited, it fails
 #     and says to run `easy-db-lab socks start`.
@@ -82,13 +84,18 @@ case $tool in
 esac
 
 # Only the env file decides; values inherited from the caller are ignored.
-unset EDL_TAILSCALE_ACTIVE EDL_SOCKS_PORT EDL_SOCKS_PID
+unset EDL_TAILSCALE_ACTIVE EDL_SOCKS_PORT EDL_SOCKS_PID EDL_NETWORK_MODE
 env_file=$workspace/.socks5-proxy.env
 if [ -f "$env_file" ]; then
     . "$env_file"
 fi
 
 if [ "${EDL_TAILSCALE_ACTIVE:-}" = true ]; then
+    exec "$real" "$@"
+fi
+
+# Direct mode: the cluster API is reachable from this machine, so no tunnel is needed or used.
+if [ "${EDL_NETWORK_MODE:-}" = direct ]; then
     exec "$real" "$@"
 fi
 

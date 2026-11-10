@@ -8,6 +8,8 @@ Manages the full lifecycle of lab environments: initialization, provisioning, te
 
 The system MUST allow users to initialize a cluster configuration specifying a name and node counts.
 
+The workspace's `bin/` directory belongs to easy-db-lab, which writes its tool wrappers there. `init` MUST fail with a clear message, and write nothing, when the directory already has a `bin/` (a file or a directory). The message says that the directory already has a `bin/`, that easy-db-lab needs `bin/` for its tool wrappers, and to use a new, empty directory as the workspace (for example under `clusters/`). This also keeps a source checkout or a project directory from being used as a workspace. With `--clean`, the check runs after the cleanup.
+
 #### Scenario: Initialize a new cluster
 
 - **GIVEN** a configured AWS profile
@@ -19,6 +21,24 @@ The system MUST allow users to initialize a cluster configuration specifying a n
 - **GIVEN** an initialized cluster
 - **WHEN** the user re-initializes with different parameters
 - **THEN** the configuration is updated.
+
+#### Scenario: init refuses a directory that already has bin/
+
+- **GIVEN** a directory that already has a `bin/` file or directory
+- **WHEN** the user runs `init`
+- **THEN** `init` fails with a message that names `bin/` and asks for a new, empty directory
+- **AND** no file is written
+
+#### Scenario: init refuses the source checkout
+
+- **WHEN** the user runs `init` at the root of a source checkout
+- **THEN** `init` fails because the checkout has a `bin/`, and writes nothing
+
+#### Scenario: init --clean in a workspace whose bin/ holds only wrappers
+
+- **GIVEN** a workspace whose `bin/` holds only the tool wrappers and their marker
+- **WHEN** the user runs `init --clean`
+- **THEN** the cleanup removes the wrappers, the marker, and the empty `bin/`, and `init` succeeds
 
 ### Requirement: Infrastructure Provisioning
 
@@ -52,18 +72,29 @@ The system MUST provision EC2 instances in AWS with configurable instance types 
 
 The system MUST clean up all AWS resources on cluster teardown. Teardown MUST NOT set any S3 lifecycle, expiry, or retention rule, on the account bucket or on any data bucket, and MUST NOT delete any object that holds the owner's data. `down` MUST NOT accept a `--retention-days` option.
 
-Before any infrastructure is torn down, the system MUST save everything the cluster still holds that is not yet in S3, in this order: mirror every Grafana annotation inside Loki's accepted window (not older than `Constants.Loki.MAX_ENTRY_AGE_HOURS`, not more than `Constants.Loki.MAX_ENTRY_AHEAD_HOURS` ahead) to Loki, reporting any annotation outside it with the `AnnotationsOutsideLokiWindow` warning and keeping it in Grafana and the S3 JSON backup; flush Loki and verify it; flush Mimir and verify it; back up the Grafana annotations.  The system MUST NOT take any VictoriaMetrics or VictoriaLogs snapshot.
+Before any infrastructure is torn down, the system MUST save everything the cluster still holds that is not yet in S3.  It MUST NOT take any VictoriaMetrics or VictoriaLogs snapshot.  The save runs in two phases.
 
-- The Loki flush MUST stop Loki's ingester with a synchronous flush, then stop the Loki process so it builds and uploads its index, then verify on the control node that no index write-ahead data is left and that every locally built index file exists in S3.
-- The Mimir flush MUST stop Mimir's ingester with a synchronous flush, then verify that the head was compacted into blocks (no failed compaction, and the newest block covers the head's newest sample) and that every block the shipper uploads exists in S3, then stop the Mimir process.
-- Every step MUST have a timeout.  IF any step fails or times out, `down` MUST stop there: it MUST NOT tear down any infrastructure, MUST NOT start, scale up or restart Loki or Mimir, and MUST leave each backend as that step left it.  It MUST report which step failed and why, the state of each backend (running, ingester stopped, or scaled to 0), and that `down --force` tears down without the data not yet in S3, and it MUST exit non-zero.  The write-ahead data and local blocks stay on the control node's disk.
-- `down` MUST NOT retry the flush.
-- `down` MUST NEVER scale Loki or Mimir up or recreate a backend pod.  A teardown that fails after a successful flush MUST restore nothing and MUST report the teardown failure.
-- A successful flush MUST be recorded in the cluster state with the time it completed and what it verified.  A `down` that finds this record MUST skip the flush and go on to the teardown.  `up` MUST clear the record.
-- IF no successful flush is recorded and Loki or Mimir is scaled to 0 or not ready, `down` MUST stop before the flush, report that the tail cannot be flushed without starting that backend again, point at `down --force`, tear nothing down and exit non-zero.
-- The `--force` flag MUST skip all of these steps and proceed with teardown regardless.
-- A cluster that redirects its telemetry MUST skip all of these steps.
-- Teardown is final.  Once `down` has flushed and started the infrastructure teardown, the cluster is done: no operation is supported on it afterwards (no `up`, no `grafana update-config`, no start, scale-up or restart of any backend).  Re-running `down` is the only supported step.  Behavior of any other operation on such a cluster is out of scope.
+**Phase A, in order:**
+1. Mirror every Grafana annotation inside Loki's accepted window (not older than `Constants.Loki.MAX_ENTRY_AGE_HOURS`, not more than `Constants.Loki.MAX_ENTRY_AHEAD_HOURS` ahead) to Loki, reporting any annotation outside it with the `AnnotationsOutsideLokiWindow` warning and keeping it in Grafana and the S3 JSON backup.  This runs only while the logs signal is not yet recorded.
+2. Stop the telemetry senders: delete the OTel collector DaemonSet and wait until its pods are gone, so its last batches reach Loki, Mimir and Tempo while they still accept writes.  The stop MUST succeed when the collector is already gone.
+
+**Phase B, in parallel.**  Every step MUST run to completion, and a failed step MUST NOT stop the others:
+- **Logs:** the Loki flush.  It MUST stop Loki's ingester with a synchronous flush and wait for the flush to finish, then stop the Loki process and wait until it has exited, so it builds and uploads its index.  IF the mirror failed, the Loki flush MUST NOT run, Loki MUST keep running, and the logs signal fails with the cause "not run, the annotation mirror failed".
+- **Metrics:** the Mimir flush.  It MUST stop Mimir's ingester with a synchronous flush and wait for the flush to finish, then stop the Mimir process.
+- **Traces:** the Tempo drain.  It MUST wait until Tempo holds no live traces for any tenant and its count of created traces has not changed across two readings at least 2 seconds apart.  Then it MUST poll the control node's disk until no Tempo write-ahead block holds a `meta.json` and every local complete block that holds a `meta.json` also holds its `flushed` marker.  Tempo MUST NOT be stopped or restarted.
+- **Profiles:** no flush.  `down` MUST report that profiles need no flush, because Pyroscope writes each batch to S3 before it accepts it.
+- **Annotations:** back up the Grafana annotations.
+
+Rules for both phases:
+- Every step MUST have a timeout.  The Tempo drain's timeout is 5 minutes.
+- `down` MUST only flush, wait for the flush to finish, and refuse to tear down if it did not finish.  It MUST NOT run any other check: no check that a backend runs before its flush, and no check of write-ahead data, head compaction, or objects in S3 after it.
+- The logs signal and the metrics signal MUST each be recorded in the cluster state at the moment its flush succeeds, with the time it completed.  One writer MUST make every state write, and each write MUST replace the state file atomically.  A `down` MUST skip a recorded signal.  The annotations backup, the collector stop, the Tempo drain and the profiles report MUST run on every `down` until a save succeeds for every signal.  When every Phase B step succeeds, the record MUST also note that the save is complete, before the infrastructure teardown starts; a later `down` that finds this note MUST skip both phases, open no tunnel, report every signal as already saved, and go straight to the teardown.  `up` MUST clear the record.
+- IF any step fails or times out, `down` MUST stop after every Phase B step has finished: it MUST NOT tear down any infrastructure, MUST NOT start, scale up or restart any backend or the collector, and MUST leave each backend as its step left it.  It MUST report every failed signal with its step and cause, the state of each backend (running, ingester stopped, or scaled to 0), and that `down --force` tears down without the data not yet saved, and it MUST exit non-zero.  The write-ahead data and local blocks stay on the control node's disk.
+- `down` MUST NOT retry a step within one run.
+- `down` MUST NEVER scale Loki or Mimir up or recreate a backend pod.  A teardown that fails after a successful save MUST restore nothing and MUST report the teardown failure.
+- The `--force` flag MUST skip both phases.  It MUST list the signals that will not be saved with the teardown preview, before the confirmation prompt.  The list is every signal not yet recorded among logs and metrics, plus traces and annotations, and it is empty once a complete save is recorded; profiles are never listed.
+- A cluster that redirects its telemetry MUST skip both phases.
+- Teardown is final.  Once `down` has saved the tail and started the infrastructure teardown, the cluster is done: no operation is supported on it afterwards (no `up`, no `grafana update-config`, no start, scale-up or restart of any backend).  Re-running `down` is the only supported step.  Behavior of any other operation on such a cluster is out of scope.
 
 #### Scenario: Teardown removes AWS resources
 
@@ -75,7 +106,7 @@ Before any infrastructure is torn down, the system MUST save everything the clus
 
 - **GIVEN** a running cluster with a data bucket
 - **WHEN** `down` completes
-- **THEN** no lifecycle or expiry rule exists on `clusters/<name>-<id>/`, on `observability/`, on `observabilitymetrics/`, or on the data bucket
+- **THEN** no lifecycle or expiry rule exists on `clusters/<name>-<id>/`, on `mimir/`, `loki/`, `tempo/`, `pyroscope/` or `grafana/`, or on the data bucket
 - **AND** every object in both buckets is still present
 
 #### Scenario: The retention option no longer exists
@@ -87,7 +118,7 @@ Before any infrastructure is torn down, the system MUST save everything the clus
 
 - **GIVEN** multiple clusters
 - **WHEN** the user tears down all clusters
-- **THEN** every tagged VPC and its resources are removed
+- **THEN** every tagged cluster VPC and its resources are removed, and the `easy-db-lab-compactor` VPC is kept
 - **AND** each per-cluster data bucket that is empty is deleted, and each data bucket that still holds objects is kept with no expiry rule
 
 #### Scenario: Teardown requires confirmation
@@ -96,65 +127,118 @@ Before any infrastructure is torn down, the system MUST save everything the clus
 - **WHEN** the command runs
 - **THEN** the user is prompted for approval before proceeding.
 
-#### Scenario: Declining the confirmation stops no backend
+#### Scenario: Declining the confirmation stops nothing
 
 - **GIVEN** a running cluster
 - **WHEN** the user declines the teardown prompt, or runs `down --dry-run`
-- **THEN** no flush step runs, Loki and Mimir keep running, and nothing is torn down
+- **THEN** no save step runs, the collector, Loki and Mimir keep running, and nothing is torn down
 
 #### Scenario: The tail of every signal reaches S3 before teardown
 
-- **GIVEN** a running cluster whose Mimir and Loki hold data not yet in S3
+- **GIVEN** a running cluster whose Mimir, Loki and Tempo hold data not yet in S3
 - **WHEN** the user tears it down
-- **THEN** every Grafana annotation inside Loki's accepted window is mirrored to Loki, Loki's chunks and index are in S3, and Mimir's head is in blocks that are in S3, before any infrastructure is torn down
+- **THEN** the annotations are mirrored to Loki and the collector is stopped before any flush starts
+- **AND** Loki's chunks and index, Mimir's blocks, and every span Tempo received are in S3, and the annotations backup is written, before any infrastructure is torn down
 - **AND** no VictoriaMetrics or VictoriaLogs snapshot is taken
 
-#### Scenario: A failed flush step stops down
+#### Scenario: The Phase B steps run in parallel
 
-- **GIVEN** a teardown whose Mimir S3 check fails after Loki was already scaled to 0
+- **GIVEN** a teardown whose Loki flush, Mimir flush and Tempo drain each take time
+- **WHEN** the command runs
+- **THEN** the steps run at the same time, and the save takes about as long as its slowest step
+
+#### Scenario: One failed signal does not stop the others
+
+- **GIVEN** a teardown whose Tempo drain times out
 - **WHEN** the command runs without `--force`
-- **THEN** `down` stops and reports the Mimir S3 check as the failed step, with its cause
-- **AND** no infrastructure is torn down, Loki stays at 0, Mimir is not restarted, and nothing is scaled up
-- **AND** the report names each backend's state and says `down --force` tears down without the tail, and `down` exits non-zero
+- **THEN** the Loki flush, the Mimir flush and the annotations backup still finish, and the logs and metrics signals are recorded
+- **AND** `down` reports traces as the failed signal with its step and cause, tears nothing down, scales nothing up, names `down --force`, and exits non-zero
 
-#### Scenario: A flush that cannot reach S3 times out and stops down
+#### Scenario: Every failed signal is reported
 
-- **GIVEN** a teardown during which S3 refuses Loki's uploads
-- **WHEN** the Loki shutdown does not finish within its timeout
-- **THEN** `down` stops, reports the Loki shutdown as the failed step, and tears nothing down
-- **AND** the Loki pod is not restarted
+- **GIVEN** a teardown in which two Phase B steps fail
+- **WHEN** the command runs without `--force`
+- **THEN** the report names both failed signals, each with its step and cause
 
-#### Scenario: A failed teardown after a successful flush restores nothing
+#### Scenario: A failed mirror fails only the logs signal
 
-- **GIVEN** a flush that succeeded and left Loki and Mimir at 0
+- **GIVEN** a teardown whose annotation mirror fails
+- **WHEN** the command runs without `--force`
+- **THEN** the Loki flush does not run and Loki keeps running
+- **AND** the Mimir flush, the Tempo drain and the annotations backup still run
+- **AND** `down` reports the logs signal as failed because the mirror failed, and tears nothing down
+
+#### Scenario: The Tempo drain waits for traces still in memory
+
+- **GIVEN** Tempo holds traces in memory that are not yet in a block
+- **WHEN** the Tempo drain runs
+- **THEN** it passes only after those traces are in a block that Tempo has uploaded to S3
+
+#### Scenario: Profiles need no flush
+
+- **WHEN** `down` saves the tail
+- **THEN** it reports that profiles need no flush because Pyroscope writes each batch to S3 before it accepts it
+- **AND** Pyroscope is not stopped
+
+#### Scenario: A failed teardown after a successful save restores nothing
+
+- **GIVEN** a save that succeeded and left Loki and Mimir at 0
 - **WHEN** the infrastructure teardown then fails
 - **THEN** the teardown failure is reported and `down` exits non-zero
 - **AND** neither Loki nor Mimir is scaled up or restarted
 
-#### Scenario: A re-run after a successful flush skips the flush
+#### Scenario: A re-run skips the recorded signals
 
-- **GIVEN** a cluster whose state records a successful flush, with Loki and Mimir at 0
+- **GIVEN** a cluster whose state records the logs and metrics signals, and whose Tempo drain failed
 - **WHEN** the user runs `down` again and confirms
-- **THEN** the flush is skipped and reported as already done
-- **AND** the teardown goes ahead
+- **THEN** the mirror and the Loki and Mimir flushes are skipped and reported as already saved
+- **AND** the collector stop, the Tempo drain, the profiles report and the annotations backup run again
 
-#### Scenario: A re-run after a failed flush with a stopped backend stops
+#### Scenario: A signal is recorded when its flush finishes
 
-- **GIVEN** a cluster with no recorded successful flush whose Loki is scaled to 0
-- **WHEN** the user runs `down` without `--force` and confirms
-- **THEN** `down` stops, reports that the tail cannot be flushed without starting Loki again, and points at `down --force`
-- **AND** no infrastructure is torn down and nothing is scaled up
+- **GIVEN** a teardown whose Loki and Mimir flushes succeed while the Tempo drain still runs
+- **WHEN** the process is interrupted before the Tempo drain ends
+- **THEN** the cluster state already records the logs and metrics signals
+- **AND** the next `down` skips them
 
-#### Scenario: --force skips the flush and tears down anyway
+#### Scenario: A re-run after a complete save goes straight to teardown
 
-- **GIVEN** a teardown request with `--force`
-- **WHEN** the command runs
-- **THEN** the annotation mirror, both flushes and the annotations backup are skipped
-- **AND** teardown proceeds regardless
+- **GIVEN** a cluster whose state records a complete save, and whose infrastructure teardown then failed part-way, with the control node already gone
+- **WHEN** the user runs `down` again and confirms
+- **THEN** no save step runs and no tunnel to the control node is opened
+- **AND** every signal is reported as already saved, and the teardown goes ahead
+
+#### Scenario: down runs no verify check
+
+- **GIVEN** a running cluster
+- **WHEN** the user tears it down
+- **THEN** `down` flushes Loki and Mimir, drains Tempo, and waits for each to finish
+- **AND** it runs no Loki, Mimir or Tempo running check, no Loki index write-ahead check, no Loki index-in-S3 check, no Mimir head-compaction check, and no Mimir block-in-S3 check
+
+#### Scenario: A flush that does not finish stops down
+
+- **GIVEN** a teardown whose Mimir ingester shutdown fails or times out
+- **WHEN** the command runs without `--force`
+- **THEN** the metrics signal fails with its step and cause
+- **AND** no infrastructure is torn down, nothing is scaled up, and the report points at `down --force`
+
+#### Scenario: The collector stop succeeds when the collector is gone
+
+- **GIVEN** a cluster whose collector DaemonSet was already deleted by an earlier `down`
+- **WHEN** `down` runs again
+- **THEN** the collector stop succeeds and the save continues
+
+#### Scenario: --force lists what it will not save before the prompt
+
+- **GIVEN** a cluster whose state records the logs signal only
+- **WHEN** the user runs `down --force`
+- **THEN** the preview lists metrics, traces and annotations as not saved, before the confirmation prompt
+- **AND** profiles are not listed
+- **AND** after confirmation, both phases are skipped and teardown proceeds
 
 #### Scenario: Teardown is final
 
-- **GIVEN** a cluster on which `down` has completed a successful flush and started the infrastructure teardown
+- **GIVEN** a cluster on which `down` has completed a successful save and started the infrastructure teardown
 - **WHEN** the operator continues
 - **THEN** re-running `down` is the only supported operation on that cluster
 - **AND** no `up`, `grafana update-config`, or backend start, scale-up or restart is supported on it
@@ -173,11 +257,26 @@ The system MUST provide comprehensive status of cluster resources including node
 
 The system MUST allow cleanup of locally generated cluster files.
 
+Cleanup MUST remove only what easy-db-lab wrote in `bin/`: the ten tool wrappers, the `edl-socks-tunnel` script, and the marker, by name. It MUST NOT remove any other file in `bin/`, and MUST remove `bin/` itself only when it is then empty.
+
 #### Scenario: Remove local cluster files
 
 - **GIVEN** a previously initialized cluster
 - **WHEN** the user runs local cleanup
-- **THEN** state files, SSH config, and cached configuration are removed.
+- **THEN** state files, SSH config, the proxy env file, and cached configuration are removed.
+
+#### Scenario: Cleanup removes the wrappers
+
+- **GIVEN** a workspace whose `bin/` holds only the tool wrappers, `edl-socks-tunnel`, and their marker
+- **WHEN** the user runs local cleanup
+- **THEN** the wrappers, `edl-socks-tunnel`, the marker, and the `bin/` directory are removed
+
+#### Scenario: Cleanup keeps files it did not write
+
+- **GIVEN** a workspace whose `bin/` holds the tool wrappers, the marker, and another file
+- **WHEN** the user runs local cleanup
+- **THEN** the wrappers and the marker are removed
+- **AND** the other file and `bin/` remain
 
 ### Requirement: Cluster State Backup
 
@@ -197,13 +296,14 @@ The system MUST back up cluster configuration files to S3 for recovery.
 
 ### Requirement: Cluster State Restore
 
-The system MUST support restoring cluster configuration from S3 using VPC identification.
+The system MUST support restoring cluster configuration from S3 using VPC identification. A restored workspace MUST get its tool wrappers and its proxy env file, so wrapped tools and `env.sh` work without running `up`.
 
 #### Scenario: Restore state from VPC ID
 
 - **GIVEN** a VPC ID from a previously provisioned cluster
 - **WHEN** the user restores state
 - **THEN** cluster configuration is recovered from S3 and the local environment is rebuilt.
+- **AND** the tool wrappers, their marker, and the proxy env file are written
 
 #### Scenario: Restore when no backup exists
 
@@ -324,6 +424,76 @@ The system MUST confirm that the control node is accepting SSH connections befor
 - **GIVEN** the control node does not accept SSH connections within the retry window
 - **WHEN** `up` waits for SSH readiness
 - **THEN** `up` SHALL exit non-zero
+
+### Requirement: up makes sure the account compactor runs
+
+`up` SHALL start the account compactor service when it is not running, on every cluster, redirected ones included.  When the service is missing it SHALL create it; when its desired count is 0 it SHALL start it with the current task definition.  When the service already runs, `up` SHALL leave it as it is: it SHALL NOT change its task definition, restart it or scale it.  `up` SHALL NOT wait for the task to reach the running state.
+
+#### Scenario: up starts a missing compactor
+- **WHEN** `up` runs and no compactor service runs in the account
+- **THEN** `up` starts it, and it runs exactly 1 task
+
+#### Scenario: up leaves a running compactor alone
+- **WHEN** `up` runs and the compactor service already runs
+- **THEN** `up` leaves it as it is, with the same task definition and the same task
+
+### Requirement: down stops the account compactor after the last cluster
+
+After its infrastructure teardown succeeds, `down` SHALL count the VPCs tagged `easy_cass_lab=1`, in every enabled region, whose `bucket` tag names the account bucket, leaving out the VPCs this `down` tore down.  When none is left, `down` SHALL stop the compactor service by setting its desired count to 0.  Otherwise it SHALL leave the service running.
+
+#### Scenario: The last cluster stops the compactor
+- **WHEN** `down` runs for the last tagged cluster that names the account bucket, in any region
+- **THEN** `down` stops the compactor service
+
+#### Scenario: Another cluster keeps the compactor running
+- **WHEN** `down` runs and another tagged cluster, in any region, names the account bucket
+- **THEN** the compactor service keeps running
+
+### Requirement: Workspace files resolve against the workspace
+
+Every workspace-owned file the CLI opens SHALL resolve against the workspace directory, never against the process's current directory. This covers `state.json`, `kubeconfig`, `environment.sh`, `setup_instance.sh`, `cassandra-jmx-rules.yaml`, `axonops-workbench.json`, the local Cassandra version conf directories, `profiles/` and `logs/`. The workspace directory SHALL be absolute. A path the user types as an argument SHALL resolve against the process's current directory, as before. A command SHALL create no file in the process's current directory unless that directory is the workspace.
+
+#### Scenario: State is read and written in the workspace
+
+- **GIVEN** a workspace W and a process whose current directory is a different directory D
+- **WHEN** a command saves and then reloads cluster state
+- **THEN** it writes and reads `W/state.json`
+- **AND** nothing is created in D
+
+#### Scenario: Kubernetes client uses the workspace kubeconfig
+
+- **GIVEN** a workspace W holding `kubeconfig`, and a process whose current directory is D
+- **WHEN** a command builds a Kubernetes client
+- **THEN** the client is configured from `W/kubeconfig`
+
+#### Scenario: Other workspace files resolve against the workspace
+
+- **GIVEN** a workspace W and a process whose current directory is D
+- **WHEN** `setup-instance`, `cassandra update-config`, `cassandra start`, the profiling fetch, or Spark log download opens or writes its workspace file
+- **THEN** each path is under W
+
+#### Scenario: Today's normal case is unchanged
+
+- **GIVEN** the process's current directory is the workspace
+- **WHEN** any command runs
+- **THEN** it reads and writes the same files as today
+
+#### Scenario: Missing state names its absolute path
+
+- **GIVEN** a workspace W with no `state.json`
+- **WHEN** a command loads cluster state
+- **THEN** the error names the absolute path of `W/state.json` and tells the user to run the command from the cluster's workspace or run `init` there
+
+#### Scenario: Uploading authorized keys leaves no file behind
+
+- **WHEN** the user runs `upload-keys`
+- **THEN** no `authorized_keys_extra` file remains in the workspace or the current directory
+
+#### Scenario: A typed path resolves where it was typed
+
+- **GIVEN** a process whose current directory is D
+- **WHEN** the user runs `upload-keys keys` with a relative directory
+- **THEN** it reads `D/keys`
 
 ## Success Criteria
 

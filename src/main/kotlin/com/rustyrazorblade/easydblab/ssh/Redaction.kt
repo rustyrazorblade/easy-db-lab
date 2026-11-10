@@ -13,6 +13,6 @@ private val URL_CREDENTIALS = Regex("([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@\\s]+(:[^/@
  *
  * Remote commands can legitimately carry a git URL with an embedded token (the usual way to reach a
  * private fork), and that command — along with whatever the remote side echoes back — ends up in log
- * lines, exception messages, and serialized events that reach MCP and Redis subscribers.
+ * lines, exception messages, and serialized events that reach Redis subscribers.
  */
 fun redactUrlCredentials(text: String): String = URL_CREDENTIALS.replace(text, "$1***@")

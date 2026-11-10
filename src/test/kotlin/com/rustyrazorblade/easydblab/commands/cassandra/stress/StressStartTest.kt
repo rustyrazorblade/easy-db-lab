@@ -5,6 +5,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.services.StartedStressJob
 import com.rustyrazorblade.easydblab.services.StressJobService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -77,6 +82,37 @@ class StressStartTest : BaseKoinTest() {
     fun setupMocks() {
         mockStressJobService = getKoin().get()
         mockClusterStateManager = getKoin().get()
+    }
+
+    @Test
+    fun `the started event carries the host the stress pod runs on`() {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts = mutableMapOf(ServerType.Control to listOf(testControlHost), ServerType.Cassandra to listOf(testCassandraHost)),
+            ),
+        )
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
+        whenever(mockStressJobService.startJob(any(), any())).thenReturn(Result.success(StartedStressJob("stress-kv-1", "app0")))
+
+        StressStart().apply { stressArgs = listOf("KeyValue") }.execute()
+
+        val started = events.filterIsInstance<Event.Stress.JobStarted>().single()
+        assertThat(started.host).isEqualTo("app0")
+        assertThat(started.jobName).isNotBlank()
+        assertThat(started.contactPoint).isEqualTo("10.0.1.6")
+        assertThat(started.args).contains("KeyValue")
     }
 
     @Test
@@ -164,7 +200,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
         whenever(mockStressJobService.startJob(any(), any()))
-            .thenReturn(Result.success("job-created"))
+            .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
         command.stressArgs = listOf("BasicTimeSeries", "-d", "1h", "--threads", "100")
@@ -342,7 +378,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
         whenever(mockStressJobService.startJob(any(), any()))
-            .thenReturn(Result.success("job-created"))
+            .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
         command.stressArgs = listOf("KeyValue")
@@ -372,7 +408,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
         whenever(mockStressJobService.startJob(any(), any()))
-            .thenReturn(Result.success("job-created"))
+            .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
         command.stressArgs = listOf("KeyValue", "-d", "1h")
@@ -401,7 +437,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(3)
         whenever(mockStressJobService.startJob(any(), any()))
-            .thenReturn(Result.success("job-created"))
+            .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
         command.jobName = "my-test"

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
@@ -57,7 +56,6 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import org.koin.core.component.inject
 import picocli.CommandLine
-import java.io.File
 import java.time.Duration
 import kotlin.random.Random
 
@@ -84,7 +82,6 @@ import kotlin.random.Random
  * @param sshRetryInterval How long to wait between SSH readiness attempts. Defaults to
  *   [Constants.Retry.SSH_CONNECTION_RETRY_DELAY_MS]; tests inject a short interval.
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @TriggerBackup
@@ -602,7 +599,7 @@ class Up(
             hosts.hostList,
         ) { clusterHost ->
             val host = clusterHost.toHost()
-            val versionsFile = File(context.workingDirectory, "cassandra_versions.yaml")
+            val versionsFile = context.workspaceFile(Constants.Packer.CASSANDRA_VERSIONS_FILE)
             if (!versionsFile.exists()) {
                 remoteOps.download(
                     host,
@@ -783,7 +780,7 @@ class Up(
                         ServerType.Cassandra to (workingState.hosts[ServerType.Cassandra] ?: emptyList()),
                         ServerType.Stress to (workingState.hosts[ServerType.Stress] ?: emptyList()),
                     ),
-                kubeconfigPath = File(context.workingDirectory, "kubeconfig").toPath(),
+                kubeconfigPath = context.workspaceFile(Constants.K3s.LOCAL_KUBECONFIG).toPath(),
                 hostFilter = hosts.hostList,
                 clusterState = workingState,
                 useCustomCni = ciliumEnabled,

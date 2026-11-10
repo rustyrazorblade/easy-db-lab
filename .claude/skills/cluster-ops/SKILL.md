@@ -1,3 +1,8 @@
+---
+name: cluster-ops
+description: Spin up, configure, test, or tear down an easy-db-lab cluster through the full lifecycle (build, init, up, configure the database, install workloads, tear down).
+---
+
 # Cluster Operations Skill
 
 Use this skill when the user asks to spin up, configure, test, or tear down an easy-db-lab cluster. It covers the full lifecycle: build → init → up → configure Cassandra → install workloads → tear down.

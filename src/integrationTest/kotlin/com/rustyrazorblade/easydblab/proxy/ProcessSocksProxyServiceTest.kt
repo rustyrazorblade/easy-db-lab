@@ -99,7 +99,7 @@ class ProcessSocksProxyServiceTest {
         portSelector: LocalPortSelector = LoopbackPortSelector(),
         clock: Clock = Clock.systemUTC(),
     ) = ProcessSocksProxyService(
-        Context.forCli(tempDir).copy(workingDirectory = tempDir),
+        Context.forCli(easyDbLabUserDirectory = File(tempDir, "edl-user"), workingDirectory = tempDir),
         SocksTunnelReachabilityProbe(Constants.Proxy.PROBE_ATTEMPT_TIMEOUT_MS),
         EventBus(),
         verifyDelay = VERIFY_DELAY,
@@ -199,7 +199,8 @@ class ProcessSocksProxyServiceTest {
 
             service().ensureRunning(testHost)
 
-            assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(port, livePid.toLong())))
+            val expected = ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(port, livePid.toLong()), direct = false)
+            assertThat(envFile.read()).isEqualTo(expected)
         }
     }
 
@@ -268,7 +269,7 @@ class ProcessSocksProxyServiceTest {
         launcher: SshProcessLauncher,
         portSelector: LocalPortSelector,
     ) = ProcessSocksProxyService(
-        Context.forCli(workspace).copy(workingDirectory = workspace),
+        Context.forCli(easyDbLabUserDirectory = File(workspace, "edl-user"), workingDirectory = workspace),
         TunnelReachabilityProbe { _, _, _ -> true },
         EventBus(),
         verifyDelay = VERIFY_DELAY,
@@ -355,7 +356,8 @@ class ProcessSocksProxyServiceTest {
 
                 assertThat(state.reused).isFalse()
                 assertThat(state.localPort).isEqualTo(replacement.port)
-                assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(replacement.port, FAKE_PID)))
+                val expected = ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(replacement.port, FAKE_PID), direct = false)
+                assertThat(envFile.read()).isEqualTo(expected)
                 assertThat(System.getProperty(Constants.Proxy.PORT_PROPERTY)).isEqualTo("${replacement.port}")
             }
         }

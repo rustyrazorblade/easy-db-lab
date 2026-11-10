@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -20,7 +19,6 @@ import picocli.CommandLine.Parameters
  * Runs cassandra-easy-stress list command as a K8s Job and displays output.
  * All arguments are passed through to cassandra-easy-stress list.
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

@@ -20,7 +20,7 @@ internal class ProcessSocksProxyStopTest : ProcessSocksProxyServiceTestBase() {
 
         assertThat(result).isEqualTo(TunnelStopResult.Stopped(FAKE_PID.toInt()))
         assertThat(stateFile()).doesNotExist()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = null, direct = false))
     }
 
     @Test

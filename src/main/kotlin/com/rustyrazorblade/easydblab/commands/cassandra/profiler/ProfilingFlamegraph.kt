@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.profiler
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.events.Event
@@ -22,7 +21,6 @@ import java.io.File
  * `CompactionExecutor:4`): Pyroscope's ingest discards thread identity entirely, so `--threads` here
  * shows something the continuous-profiling path structurally cannot.
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(
@@ -58,8 +56,8 @@ class ProfilingFlamegraph : ProfilingHostCommand() {
     )
     var jfrconvArgs: List<String> = emptyList()
 
-    /** Local destination root, one sub-directory per host. See [ProfilingFetch.outputDir]. */
-    internal var outputDir: File = File(Constants.Profiling.LOCAL_DOWNLOAD_DIR)
+    /** Local destination root in the workspace, one sub-directory per host. */
+    internal val outputDir: File get() = context.workspaceFile(Constants.Profiling.LOCAL_DOWNLOAD_DIR)
 
     override fun execute() {
         validator.validate(jfrconvArgs)?.let { offending ->

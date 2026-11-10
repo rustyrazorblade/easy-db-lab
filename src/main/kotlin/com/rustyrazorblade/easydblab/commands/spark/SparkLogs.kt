@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -23,7 +22,6 @@ import picocli.CommandLine.Option
  * - `spark logs --step-id s-XXXXX` - Query logs for specific job
  * - `spark logs --limit 500` - Limit number of log lines returned
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

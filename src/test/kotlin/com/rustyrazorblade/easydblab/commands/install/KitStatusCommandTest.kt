@@ -20,6 +20,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.verifyNoInteractions
 import org.mockito.kotlin.whenever
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
@@ -120,6 +121,25 @@ class KitStatusCommandTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a cluster with no control node is Unknown, and the kit is not looked up`() {
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts =
+                    mapOf(
+                        ServerType.Cassandra to listOf(host("db0", "10.0.2.1")),
+                    ),
+            ),
+        )
+
+        val output = runStatus(listOf(runningPod))
+
+        assertThat(output.trim()).isEqualTo("Status:    Unknown (no control node in cluster state)")
+        verifyNoInteractions(mockKubeService, mockHelmService)
+    }
+
+    @Test
     fun `a stopped kit lists no endpoints`() {
         val output = runStatus(emptyList())
 
@@ -172,7 +192,7 @@ class KitStatusCommandTest : BaseKoinTest() {
 
     @Test
     fun `a failed pod query for an installed helm release is Unknown with the cause`() {
-        whenever(mockHelmService.releaseExists(any(), any(), any())).thenReturn(true)
+        whenever(mockHelmService.releaseExists(any(), any())).thenReturn(true)
 
         val output =
             runStatus(

@@ -125,9 +125,8 @@ fun requireProfilingBounds(
  *
  * `--last` reaches the node as `head -n <count>`, where a negative value does not mean "none": GNU
  * `head -n -1` means "all but the last line", so `--last -1` quietly fetches or converts the entire
- * profile directory. Zero is the same shape of surprise from the other side. Neither is reachable by
- * typo alone from the CLI, but both are reachable over MCP, where the value arrives as a number
- * nobody typed.
+ * profile directory. Zero is the same shape of surprise from the other side. Both are a typo away on
+ * the command line, so the CLI refuses them before anything reaches the node.
  *
  * @throws IllegalArgumentException naming the option the caller supplied.
  */
@@ -158,7 +157,7 @@ fun requireChunkCount(last: Int) {
  * from async-profiler's own documentation and needs to be told what to use instead, not merely
  * refused.
  *
- * Validated here rather than on the node because the value is also settable over MCP and is carried
+ * Validated here rather than on the node because the value comes only from CLI input and is carried
  * forward by `stop`, so the CLI is the one place every route passes through.
  *
  * @throws IllegalArgumentException naming the option the operator typed.

@@ -5,11 +5,13 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -22,6 +24,7 @@ import org.koin.dsl.module
 import org.koin.test.get
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -110,6 +113,91 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
                 ),
         )
 
+    /** Every string field of a step supports `${VAR}`, the repository's name and url included. */
+    @Test
+    fun `a helm-repo step interpolates its name and url`() {
+        val result =
+            execute(
+                listOf(InstallStep.HelmRepo(name = "\${KIT_NAME}-charts", url = "\${REPO_URL}/charts")),
+                mapOf("KIT_NAME" to "pg", "REPO_URL" to "https://example.com"),
+            )
+
+        assertThat(result.isSuccess).isTrue()
+        verify(helmService).repoAdd("pg-charts", "https://example.com/charts")
+    }
+
+    /** An unset variable stays a literal `${NAME}`, as it does in every other step field. */
+    @Test
+    fun `a helm-repo step passes an unset variable on as the literal placeholder`() {
+        val result =
+            execute(
+                listOf(InstallStep.HelmRepo(name = "\${UNSET_NAME}", url = "\${REPO_URL}/\${UNSET_PATH}")),
+                mapOf("REPO_URL" to "https://example.com"),
+            )
+
+        assertThat(result.isSuccess).isTrue()
+        verify(helmService).repoAdd("\${UNSET_NAME}", "https://example.com/\${UNSET_PATH}")
+    }
+
+    @Test
+    fun `a platform-pvs-delete step interpolates its node-type`() {
+        val remoteOps = mock<RemoteOperationsService>()
+        whenever(k8sService.deleteLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+        val recordingExecutor =
+            WorkloadStepExecutor(
+                k8sService = k8sService,
+                helmService = helmService,
+                kubectlService = kubectlService,
+                remoteOps = remoteOps,
+                eventBus = get<EventBus>(),
+            )
+
+        val result =
+            recordingExecutor.execute(
+                steps = listOf(InstallStep.PlatformPvsDelete(nodeType = "\${POOL}")),
+                phase = "uninstall",
+                context =
+                    StepExecutionContext(
+                        kitName = "testdb",
+                        controlHost = controlHost,
+                        clusterState = clusterState,
+                        variables = mapOf("POOL" to "app"),
+                        kitDir = tempDir,
+                        workspaceDir = workspace,
+                    ),
+            )
+
+        assertThat(result.isSuccess).isTrue()
+        val hosts = argumentCaptor<Host>()
+        verify(remoteOps).executeRemotely(hosts.capture(), eq("sudo rm -rf /mnt/db1/testdb"), any(), any())
+        assertThat(hosts.allValues.map { it.alias }).containsExactly("app0")
+    }
+
+    @Test
+    fun `a label step interpolates its node-type`() {
+        whenever(k8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
+
+        val result =
+            execute(listOf(InstallStep.Label(nodeType = "\${POOL}", labels = mapOf("kit" to "x"))), mapOf("POOL" to "app"))
+
+        assertThat(result.isSuccess).isTrue()
+        verify(k8sService).labelNode(controlHost, "app0", mapOf("kit" to "x"))
+    }
+
+    @Test
+    fun `a label step interpolates the keys of its labels`() {
+        whenever(k8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
+
+        val result =
+            execute(
+                listOf(InstallStep.Label(labels = mapOf("\${LABEL_KEY}" to "bench"))),
+                mapOf("LABEL_KEY" to "workload"),
+            )
+
+        assertThat(result.isSuccess).isTrue()
+        verify(k8sService).labelNode(controlHost, "db0", mapOf("workload" to "bench"))
+    }
+
     /**
      * One operator can serve several kit instances: plain `postgres` and every `postgres-<extension>`
      * share the CNPG operator release. `keep-while-any` keeps the release while any object of that
@@ -123,7 +211,7 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         @Test
         fun `keeps the release, and says what still uses it, while an object of the type is left`() {
-            whenever(kubectlService.listInAllNamespaces(any(), any())).thenReturn(listOf("cluster.postgresql.cnpg.io/postgres-duckdb"))
+            whenever(kubectlService.listInAllNamespaces(any())).thenReturn(listOf("cluster.postgresql.cnpg.io/postgres-duckdb"))
             val events = mutableListOf<Event>()
             get<EventBus>().addListener(
                 object : EventListener {
@@ -137,8 +225,8 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             assertThat(execute(listOf(operatorUninstall)).isSuccess).isTrue()
 
-            verify(helmService, never()).uninstall(any(), any(), any())
-            verify(kubectlService).listInAllNamespaces(any(), org.mockito.kotlin.eq("clusters.postgresql.cnpg.io"))
+            verify(helmService, never()).uninstall(any(), any())
+            verify(kubectlService).listInAllNamespaces(org.mockito.kotlin.eq("clusters.postgresql.cnpg.io"))
             val kept = events.filterIsInstance<Event.Kit.HelmReleaseKept>().single()
             assertThat(kept.release).isEqualTo("cnpg-operator")
             assertThat(kept.usedBy).containsExactly("cluster.postgresql.cnpg.io/postgres-duckdb")
@@ -147,19 +235,19 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
         @Test
         fun `uninstalls the release when no object of the type is left`() {
-            whenever(kubectlService.listInAllNamespaces(any(), any())).thenReturn(emptyList())
+            whenever(kubectlService.listInAllNamespaces(any())).thenReturn(emptyList())
 
             assertThat(execute(listOf(operatorUninstall)).isSuccess).isTrue()
 
-            verify(helmService).uninstall(any(), org.mockito.kotlin.eq("cnpg-operator"), org.mockito.kotlin.eq("cnpg-system"))
+            verify(helmService).uninstall(org.mockito.kotlin.eq("cnpg-operator"), org.mockito.kotlin.eq("cnpg-system"))
         }
 
         @Test
         fun `a release with no keep-while-any is uninstalled without looking in the cluster`() {
             execute(listOf(InstallStep.HelmUninstall(release = "strimzi-operator", namespace = "strimzi")))
 
-            verify(kubectlService, never()).listInAllNamespaces(any(), any())
-            verify(helmService).uninstall(any(), org.mockito.kotlin.eq("strimzi-operator"), org.mockito.kotlin.eq("strimzi"))
+            verify(kubectlService, never()).listInAllNamespaces(any())
+            verify(helmService).uninstall(org.mockito.kotlin.eq("strimzi-operator"), org.mockito.kotlin.eq("strimzi"))
         }
     }
 
@@ -347,6 +435,59 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
         }
 
         @Test
+        fun `node-type accepts a variable`() {
+            val config = createdConfig(InstallStep.PlatformPvs(nodeType = "\${POOL}"), "POOL" to "app")
+
+            assertThat(config.nodeType).isEqualTo("app")
+        }
+
+        @Test
+        fun `storage-class accepts a variable`() {
+            val config = createdConfig(InstallStep.PlatformPvs(storageClass = "\${CLASS}"), "CLASS" to "fast-local")
+
+            assertThat(config.storageClass).isEqualTo("fast-local")
+        }
+
+        /** An unset variable stays a literal `${NAME}`, as it does in every other step field. */
+        @Test
+        fun `an unset variable in storage-class is passed on as the literal placeholder`() {
+            val config = createdConfig(InstallStep.PlatformPvs(storageClass = "\${UNSET}"), "OTHER" to "x")
+
+            assertThat(config.storageClass).isEqualTo("\${UNSET}")
+        }
+
+        /** A literal placeholder is no node pool, so the step fails naming it instead of finding no nodes. */
+        @Test
+        fun `an unset variable in node-type fails the step and names the placeholder`() {
+            val result = execute(listOf(InstallStep.PlatformPvs(nodeType = "\${UNSET}")), mapOf("STORAGE_SIZE" to "1Gi"))
+
+            assertThat(result.exceptionOrNull()).isInstanceOf(IllegalArgumentException::class.java).hasMessageContaining("'\${UNSET}'")
+            verify(k8sService, never()).createLocalPersistentVolumes(any(), any())
+        }
+
+        @Test
+        fun `volume-claim-template-name accepts a variable`() {
+            val config = createdConfig(InstallStep.PlatformPvs(volumeClaimTemplateName = "\${CLAIM}"), "CLAIM" to "scratch")
+
+            assertThat(config.volumeClaimTemplateName).isEqualTo("scratch")
+        }
+
+        /** Runs [step] with [variable] and a storage size, and returns the PV config the step created. */
+        private fun createdConfig(
+            step: InstallStep.PlatformPvs,
+            variable: Pair<String, String>,
+        ): PersistentVolumeConfig {
+            whenever(k8sService.createLocalPersistentVolumes(any(), any())).thenReturn(Result.success(Unit))
+
+            val result = execute(listOf(step), mapOf(variable, "STORAGE_SIZE" to "1Gi"))
+
+            assertThat(result.isSuccess).isTrue()
+            val config = argumentCaptor<PersistentVolumeConfig>()
+            verify(k8sService).createLocalPersistentVolumes(any(), config.capture())
+            return config.firstValue
+        }
+
+        @Test
         fun `a blank STORAGE_SIZE fails the step instead of creating a PV with no capacity`() {
             val result =
                 execute(
@@ -379,12 +520,11 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
 
             assertThat(result.isSuccess).isTrue()
             verify(kubectlService).deleteBySelector(
-                host = controlHost.toHost(),
                 kinds = listOf("deployment", "pod"),
                 selector = "easydblab/kit=memcached",
                 namespace = "cache",
             )
-            verify(kubectlService, never()).delete(any(), any(), any(), any(), any())
+            verify(kubectlService, never()).delete(any(), any(), any(), any())
         }
 
         @Test
@@ -392,18 +532,17 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             execute(listOf(InstallStep.Delete(kind = "Service", name = "\${KIT_NAME}-nodeport")), mapOf("KIT_NAME" to "pg"))
 
             verify(kubectlService).delete(
-                host = controlHost.toHost(),
                 kind = "Service",
                 name = "pg-nodeport",
                 namespace = "default",
                 ignoreNotFound = true,
             )
-            verify(kubectlService, never()).deleteBySelector(any(), any(), any(), any())
+            verify(kubectlService, never()).deleteBySelector(any(), any(), any())
         }
 
         @Test
         fun `a failed selector delete fails the step`() {
-            whenever(kubectlService.deleteBySelector(any(), any(), any(), any())).thenThrow(IllegalStateException("api down"))
+            whenever(kubectlService.deleteBySelector(any(), any(), any())).thenThrow(IllegalStateException("api down"))
 
             val result = execute(listOf(InstallStep.Delete(kinds = listOf("pod"), selector = "a=b")))
 
@@ -434,9 +573,9 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             val manifestFile = File(tempDir, "cluster.yaml").also { it.writeText("imageName: \${IMAGE}") }
             org.mockito.kotlin
                 .doAnswer { inv ->
-                    capturedContent = inv.getArgument(1)
+                    capturedContent = inv.getArgument(0)
                 }.whenever(kubectlService)
-                .applyContent(any(), any())
+                .applyContent(any())
 
             execute(
                 steps = listOf(InstallStep.Manifest(manifestFile.name, interpolate = true)),
@@ -453,9 +592,9 @@ class WorkloadStepExecutorTest : BaseKoinTest() {
             val manifestFile = File(tempDir, "cluster.yaml").also { it.writeText("imageName: \${IMAGE}") }
             org.mockito.kotlin
                 .doAnswer { inv ->
-                    capturedContent = inv.getArgument(1)
+                    capturedContent = inv.getArgument(0)
                 }.whenever(kubectlService)
-                .applyContent(any(), any())
+                .applyContent(any())
 
             execute(
                 steps = listOf(InstallStep.Manifest(manifestFile.name, interpolate = false)),

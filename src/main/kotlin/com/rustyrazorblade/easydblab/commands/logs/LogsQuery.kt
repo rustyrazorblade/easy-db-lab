@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.logs
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -52,7 +51,6 @@ import picocli.CommandLine.Option
  * easy-db-lab logs query -q '{service_name="cassandra"} |= "timed out"'
  * ```
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

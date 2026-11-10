@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.TailFlushRecord
@@ -39,7 +38,6 @@ import java.util.Scanner
  * EMR Clusters -> EC2 Instances -> NAT Gateways -> Security Groups ->
  * Route Tables -> Subnets -> Internet Gateway -> VPC
  */
-@McpCommand
 @RequireProfileSetup
 @CommandLine.Command(
     name = "down",

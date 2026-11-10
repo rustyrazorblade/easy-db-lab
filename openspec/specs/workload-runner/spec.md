@@ -40,8 +40,11 @@ When `easy-db-lab <workload> <script>` is invoked, the CLI SHALL exec the corres
 | `APP_NODE_COUNT` | Count of app/stress nodes |
 | `BUCKET_NAME` | S3 data bucket |
 | `REGION` | AWS region |
-| `KUBECONFIG` | Path to kubeconfig |
+| `KUBECONFIG` | Absolute path to the workspace kubeconfig |
 | `EASY_DB_LAB_EXEC` | Absolute path to the `easy-db-lab` executable |
+| `PATH` | `<workspace>/bin` followed by the inherited `PATH` |
+
+The tool wrappers SHALL be written to `<workspace>/bin` before the script starts. The script SHALL NOT start if the workspace kubeconfig does not exist.
 
 #### Scenario: Env vars injected at exec time
 - **WHEN** `easy-db-lab clickhouse start` is run against a cluster with name `my-cluster`
@@ -54,6 +57,11 @@ When `easy-db-lab <workload> <script>` is invoked, the CLI SHALL exec the corres
 #### Scenario: Script exit code propagated
 - **WHEN** the invoked script exits with a non-zero code
 - **THEN** the CLI process exits with the same code
+
+#### Scenario: Script gets the wrappers and an absolute kubeconfig
+- **WHEN** `easy-db-lab <workload> <script>` runs
+- **THEN** the script's `KUBECONFIG` is an absolute path to a file that exists
+- **AND** the first entry of its `PATH` is `<workspace>/bin`
 
 ### Requirement: WorkloadRunner installs dashboards after start completes
 When the `start` script exits successfully, the runner SHALL scan `<workload>/dashboards/` for `*.json` files and install each one via the Grafana dashboard API. This logic is handled by the runner, not the shell script. The `dashboards/` loop SHALL be removed from `start.sh.template` for all workloads.

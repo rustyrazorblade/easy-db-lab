@@ -4,7 +4,6 @@
 
 Manages Apache Cassandra deployment, version selection, configuration, and cluster operations.
 ## Requirements
-
 ### Requirement: Multi-Version Support
 
 The system MUST support multiple Cassandra versions (3.0 through trunk) on the same AMI.
@@ -39,7 +38,7 @@ The system MUST allow configuration of Cassandra via YAML patch files.
 
 ### Requirement: Cluster Lifecycle
 
-The system MUST support starting, stopping, and restarting Cassandra across cluster nodes. When starting, the system SHALL also deploy the Cassandra sidecar as a K3s DaemonSet after all Cassandra nodes are up.
+The system MUST support starting, stopping, and restarting Cassandra across cluster nodes. When starting, the system SHALL also deploy the Cassandra sidecar as a K3s DaemonSet after all Cassandra nodes are up. A stop of some db nodes SHALL NOT affect the db nodes that still run the database: the sidecar DaemonSet, the running-workload record and the kit post-stop hooks change only when no db node still runs the database.
 
 #### Scenario: Sequential start with delay
 
@@ -57,6 +56,21 @@ The system MUST support starting, stopping, and restarting Cassandra across clus
 
 - **WHEN** the user runs `cassandra start`
 - **THEN** after all Cassandra nodes are up, the sidecar DaemonSet is applied to K3s.
+
+#### Scenario: A stop of some db nodes keeps the sidecar
+
+- **GIVEN** a running cluster with the db nodes db0 and db1
+- **WHEN** the user runs `cassandra stop --hosts db0`
+- **THEN** the database stops on db0 only
+- **AND** the sidecar DaemonSet stays in place, the database stays recorded as a running workload, and the kit post-stop hooks do not run
+- **AND** the output names the db nodes that still run the database and keep the sidecar.
+
+#### Scenario: The last db node to stop removes the sidecar
+
+- **GIVEN** a cluster where db0 is stopped and db1 still runs the database
+- **WHEN** the user runs `cassandra stop --hosts db1`
+- **THEN** no db node still runs the database
+- **AND** the sidecar DaemonSet is removed, the database is no longer recorded as a running workload, and the kit post-stop hooks run.
 
 ### Requirement: Mixed-Version Clusters
 
@@ -283,6 +297,45 @@ build runs under is `cassandra use --java`'s job.
 - **THEN** the tarball is copied directly from that S3 location
 - **AND** the S3 download cache is not read and not written for that tarball
 - **AND** the install log shows one `direct download (not cached): <url>` line for that tarball.
+
+### Requirement: JDK 25 Selection
+
+The system SHALL let an operator run a Cassandra version on JDK 25.  `use-cassandra` SHALL switch the node to JDK 25 when the version's `java` field is `25`.
+
+#### Scenario: Select JDK 25 for a version
+
+- **GIVEN** a node with a Cassandra version installed
+- **WHEN** the operator runs `cassandra use <version> --java 25`
+- **THEN** `use-cassandra` runs `update-java-alternatives -s java-1.25.0-openjdk-<arch>`
+- **AND** it does not exit with "Unknown java version"
+
+#### Scenario: Cassandra runs on JDK 25
+
+- **GIVEN** a Cassandra build that supports JDK 25
+- **WHEN** the operator runs `set-java-version 25` for that version, activates it, and starts Cassandra
+- **THEN** Cassandra runs on JDK 25
+
+### Requirement: GC Log on JDK 17 and Higher
+
+The Cassandra launch environment SHALL write the JVM GC log to `gc.log` for every JDK at 17 or higher, and SHALL read the JDK major version from both `version "N"` and `version "N.x.y"` forms.
+
+#### Scenario: GC log on JDK 25
+
+- **GIVEN** a node whose active JDK is 25
+- **WHEN** Cassandra starts
+- **THEN** the JVM options include `-Xlog:gc` writing to `gc.log` in the Cassandra log directory
+
+#### Scenario: No GC log option on JDK 8 or 11
+
+- **GIVEN** a node whose active JDK is 8 or 11
+- **WHEN** Cassandra starts
+- **THEN** the JVM options do not include the `-Xlog:gc` option
+
+#### Scenario: Version string with no minor part
+
+- **GIVEN** `java -version` prints `openjdk version "25" 2025-09-16`
+- **WHEN** `cassandra.in.sh` parses the Java version
+- **THEN** `ECL_JAVA_VERSION` is `25`
 
 ## Success Criteria
 

@@ -182,6 +182,7 @@ class DefaultK8sJobOperations(
                         ready = "$readyContainers/$totalContainers",
                         restarts = restarts,
                         age = age,
+                        nodeName = pod.spec?.nodeName.orEmpty(),
                     )
                 }
             }

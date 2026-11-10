@@ -2,15 +2,14 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
-import java.io.File
 
 /**
  * Cleans up generated files from the current directory.
@@ -18,7 +17,6 @@ import java.io.File
  * It removes only what easy-db-lab wrote. In `bin/` that is the tool wrappers and their marker, by
  * name; any other file there stays, and so does `bin/` itself while it holds one.
  */
-@McpCommand
 @Command(
     name = "clean",
     description = ["Clean up generated files from the current directory"],
@@ -34,17 +32,17 @@ class Clean :
         val filesToClean =
             listOf(
                 "cassandra.patch.yaml",
-                "sshConfig",
+                DefaultClusterConfigurationService.SSH_CONFIG_FILE,
                 "env.sh",
-                "environment.sh",
-                "setup_instance.sh",
+                DefaultClusterConfigurationService.STRESS_ENV_FILE,
+                Constants.SETUP_INSTANCE_SCRIPT,
                 "state.json",
-                "cassandra_versions.yaml",
+                Constants.Packer.CASSANDRA_VERSIONS_FILE,
                 "axonops-workbench.json",
                 ".socks5-proxy-state",
                 Constants.Proxy.ENV_FILE,
                 Constants.Proxy.ENV_LOCK_FILE,
-                "kubeconfig",
+                Constants.K3s.LOCAL_KUBECONFIG,
             )
 
         val directoriesToClean =
@@ -57,14 +55,14 @@ class Clean :
 
     override fun execute() {
         for (f in filesToClean) {
-            File(context.workingDirectory, f).deleteRecursively()
+            context.workspaceFile(f).deleteRecursively()
         }
 
         for (d in directoriesToClean) {
-            File(context.workingDirectory, d).deleteRecursively()
+            context.workspaceFile(d).deleteRecursively()
         }
         toolWrapperInstaller.remove(context.workingDirectory)
-        val artifacts = File(context.workingDirectory, "artifacts")
+        val artifacts = context.workspaceFile("artifacts")
 
         if (artifacts.isDirectory) {
             if (artifacts.listFiles().isEmpty()) {

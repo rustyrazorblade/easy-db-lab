@@ -234,6 +234,8 @@ Create custom assertions for:
 
 5. **Keep Tests Focused**: Each test should verify one specific behavior
 
+6. **Integration Tier Tools**: `./gradlew integrationTest` needs `helm` and `kubectl` on `PATH`; CI installs pinned versions.
+
 ## Testing Interactive Commands with TestPrompter
 
 Commands that require user input (like `profile setup`) can be tested deterministically using `TestPrompter`. This test utility replaces the real `Prompter` interface and returns predefined responses.

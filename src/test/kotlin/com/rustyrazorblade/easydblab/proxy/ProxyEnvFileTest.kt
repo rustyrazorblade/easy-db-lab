@@ -32,7 +32,7 @@ internal class ProxyEnvFileTest {
 
         envFile.recordTunnel(41234, PID)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(41234, PID)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(41234, PID), direct = false))
     }
 
     @Test
@@ -41,7 +41,63 @@ internal class ProxyEnvFileTest {
 
         envFile.recordTailscale(active = false)
 
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, PID)))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, PID), direct = false))
+    }
+
+    @Test
+    fun `direct mode is one fixed key that recording a tunnel, removing it and recording Tailscale all keep`() {
+        envFile.recordDirect(active = true)
+        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=direct")
+
+        envFile.recordTunnel(41234, PID)
+        assertThat(file.readLines()).contains("EDL_NETWORK_MODE=direct")
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = null, tunnel = RecordedTunnel(41234, PID), direct = true))
+
+        envFile.removeTunnel()
+        assertThat(file.readLines()).containsExactly("EDL_NETWORK_MODE=direct")
+
+        envFile.recordTailscale(active = false)
+        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=false", "EDL_NETWORK_MODE=direct")
+        assertThat(envFile.read().direct).isTrue()
+    }
+
+    @Test
+    fun `recording direct mode keeps the Tailscale flag and the tunnel`() {
+        envFile.recordTailscale(active = false)
+        envFile.recordTunnel(41234, PID)
+
+        envFile.recordDirect(active = true)
+
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = false, tunnel = RecordedTunnel(41234, PID), direct = true))
+    }
+
+    @Test
+    fun `recording direct mode off removes the key and keeps the rest`() {
+        envFile.recordTailscale(active = false)
+        envFile.recordDirect(active = true)
+
+        envFile.recordDirect(active = false)
+
+        assertThat(file.readLines()).containsExactly("EDL_TAILSCALE_ACTIVE=false")
+        assertThat(envFile.read().direct).isFalse()
+    }
+
+    @Test
+    fun `only the value direct turns direct mode on`() {
+        file.writeText("EDL_NETWORK_MODE=tailscale\n")
+        assertThat(envFile.read().direct).isFalse()
+
+        file.writeText("EDL_NETWORK_MODE=\n")
+        assertThat(envFile.read().direct).isFalse()
+    }
+
+    @Test
+    fun `direct mode sources cleanly in sh`() {
+        envFile.recordDirect(active = true)
+
+        val output = sh(". '${file.absolutePath}'; echo \"${'$'}EDL_NETWORK_MODE\"")
+
+        assertThat(output).isEqualTo("direct")
     }
 
     @Test
@@ -167,7 +223,8 @@ internal class ProxyEnvFileTest {
         envFile.recordTailscale(active = true)
 
         assertThat(lost.get()).withFailMessage("a tunnel update was overwritten by a Tailscale update").isZero()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(ROUNDS * WRITERS, PID)))
+        val expected = ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(ROUNDS * WRITERS, PID), direct = false)
+        assertThat(envFile.read()).isEqualTo(expected)
     }
 
     @Test
@@ -192,12 +249,13 @@ internal class ProxyEnvFileTest {
         val output = child.inputStream.bufferedReader().readText()
 
         assertThat(child.exitValue()).withFailMessage("the child's tunnel update was lost: $output").isZero()
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(rounds, ProxyEnvFileWriterMain.PID)))
+        val expected = ProxyEnv(tailscaleActive = true, tunnel = RecordedTunnel(rounds, ProxyEnvFileWriterMain.PID), direct = false)
+        assertThat(envFile.read()).isEqualTo(expected)
     }
 
     @Test
     fun `reads nothing from a workspace with no file`() {
-        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = null, tunnel = null))
+        assertThat(envFile.read()).isEqualTo(ProxyEnv(tailscaleActive = null, tunnel = null, direct = false))
     }
 
     @Test

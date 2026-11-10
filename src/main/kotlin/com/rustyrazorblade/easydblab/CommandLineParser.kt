@@ -32,6 +32,7 @@ import com.rustyrazorblade.easydblab.commands.install.KitInstallCommandFactory
 import com.rustyrazorblade.easydblab.commands.install.KitRunnerCommandFactory
 import com.rustyrazorblade.easydblab.commands.kit.Kit
 import com.rustyrazorblade.easydblab.commands.logs.Logs
+import com.rustyrazorblade.easydblab.commands.metrics.Metrics
 import com.rustyrazorblade.easydblab.commands.observability.Observability
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.platform.Platform
@@ -106,6 +107,7 @@ import kotlin.system.exitProcess
         OpenSearch::class,
         Aws::class,
         Logs::class,
+        Metrics::class,
         Report::class,
         Tailscale::class,
         Platform::class,

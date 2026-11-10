@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -21,7 +20,6 @@ import kotlin.system.exitProcess
 /**
  * Switch the active Cassandra version.
  */
-@McpCommand
 @RequireProfileSetup
 @TriggerBackup
 @Command(

@@ -27,7 +27,6 @@
   "enabledPlugins": {
     "cassandra-expert@rustyrazorblade-plugins": true,
     "easy-db-lab@rustyrazorblade-plugins": true,
-    "spec-flow@rustyrazorblade-plugins": true,
     "dev-skills@rustyrazorblade-plugins": true,
     "mattpocock-skills@claude-plugins-official": true
   },

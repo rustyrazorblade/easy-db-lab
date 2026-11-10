@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.commands.profile.Profile
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.HelpTopicService
@@ -43,7 +42,6 @@ class CommandLineParserTest : BaseKoinTest() {
                 single { KitSourcesProvider(get()) }
                 single { InstallTemplateResolver(get(), get()) }
                 single<KitCommandScanner> { DefaultKitCommandScanner() }
-                single { ClusterStateManager(File(get<Context>().workingDirectory, "state.json")) }
                 single<HelpTopicService> { DefaultHelpTopicService() }
             },
         )

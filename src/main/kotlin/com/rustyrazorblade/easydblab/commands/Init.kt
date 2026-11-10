@@ -2,7 +2,6 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.fasterxml.jackson.annotation.JsonIgnore
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.converters.PicoAZConverter
 import com.rustyrazorblade.easydblab.commands.converters.PicoCniModeConverter
@@ -25,7 +24,6 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
-import java.io.File
 import java.time.LocalDate
 import kotlin.system.exitProcess
 
@@ -54,7 +52,6 @@ import kotlin.system.exitProcess
  * @see Up for infrastructure provisioning
  * @see Down for tearing down infrastructure
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "init",
@@ -412,13 +409,13 @@ class Init : PicoBaseCommand() {
         val existingFiles = mutableListOf<String>()
 
         Clean.filesToClean.forEach { file ->
-            if (File(context.workingDirectory, file).exists()) {
+            if (context.workspaceFile(file).exists()) {
                 existingFiles.add(file)
             }
         }
 
         Clean.directoriesToClean.forEach { dir ->
-            if (File(context.workingDirectory, dir).exists()) {
+            if (context.workspaceFile(dir).exists()) {
                 existingFiles.add("$dir/")
             }
         }
@@ -437,7 +434,7 @@ class Init : PicoBaseCommand() {
      * @throws CommandFailedException after reporting [Event.Setup.WorkspaceHasBinDirectory]
      */
     private fun refuseExistingBin() {
-        if (!File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY).exists()) return
+        if (!context.workspaceFile(Constants.ToolWrappers.DIRECTORY).exists()) return
         eventBus.emit(Event.Setup.WorkspaceHasBinDirectory(context.workingDirectory.absolutePath))
         throw CommandFailedException("${context.workingDirectory.absolutePath} already has a bin/")
     }
@@ -472,7 +469,7 @@ class Init : PicoBaseCommand() {
 
     private fun extractResourceFiles() {
         eventBus.emit(Event.Setup.WritingSetupScript)
-        extractResourceFile("setup_instance.sh", "setup_instance.sh")
+        extractResourceFile(Constants.SETUP_INSTANCE_SCRIPT, Constants.SETUP_INSTANCE_SCRIPT)
         // The OTel agent's JMX rules live in the workspace so an operator can edit them and push
         // them again with `setup-instances`, without a Gradle rebuild.
         extractResourceFile(
@@ -488,7 +485,7 @@ class Init : PicoBaseCommand() {
         this::class.java.getResourceAsStream(resourceName).use { stream ->
             requireNotNull(stream) { "Resource $resourceName not found" }
             // Into the workspace, which is not always the process working directory (Server, Repl).
-            File(context.workingDirectory, targetFileName).outputStream().use { output -> stream.copyTo(output) }
+            context.workspaceFile(targetFileName).outputStream().use { output -> stream.copyTo(output) }
         }
     }
 

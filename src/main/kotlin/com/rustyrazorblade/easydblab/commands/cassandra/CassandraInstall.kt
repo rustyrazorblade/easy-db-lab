@@ -143,7 +143,7 @@ class CassandraInstall : PicoBaseCommand() {
                             host.alias,
                             resolved.version,
                             // a resolved git url can carry a token, and this event reaches
-                            // MCP and Redis subscribers
+                            // Redis subscribers
                             redactUrlCredentials(failure.message ?: failure::class.simpleName ?: "unknown error"),
                         ),
                     )

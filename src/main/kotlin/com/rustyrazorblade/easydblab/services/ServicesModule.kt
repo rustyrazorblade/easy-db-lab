@@ -45,6 +45,7 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.parameter.parametersOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import java.nio.file.Path
 
 /**
  * Koin module for registering business services.
@@ -68,6 +69,11 @@ val servicesModule =
         factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
         factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
         factory { CiliumNodeImageCheck(get()) }
+        // helm and kubectl run on the control node over SSH. A local cluster has no SSH host, so a
+        // harness rebinds this to LocalClusterTooling until #1040 selects the form per environment.
+        // The directory holds the SSH form's local staging copy of stdin; it is injected because the
+        // JVM caches java.io.tmpdir at startup.
+        single<ClusterTooling> { SshClusterTooling(get(), get(), Path.of(System.getProperty("java.io.tmpdir"))) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies
@@ -91,7 +97,7 @@ val servicesModule =
         factoryOf(::EC2RegistryService) bind RegistryService::class
         factoryOf(::DefaultK3sService) bind K3sService::class
         factoryOf(::DefaultK3sAgentService) bind K3sAgentService::class
-        singleOf(::K8sClientProvider)
+        single { K8sClientProvider(get(), get<Context>().workingDirectory) }
         factoryOf(::DefaultK8sService) bind K8sService::class bind K8sPodOperations::class
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
@@ -156,7 +162,6 @@ val servicesModule =
         }
         factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
         singleOf(::DefaultObservabilityHttp) bind ObservabilityHttp::class
-        singleOf(::DefaultMimirQueryService) bind MimirQueryService::class
         singleOf(::DefaultLokiQueryService) bind LokiQueryService::class
         factoryOf(::SidecarManifestBuilder)
         factoryOf(::DefaultSidecarService) bind SidecarService::class

@@ -8,35 +8,31 @@ import java.io.File
 
 data class Context(
     val easyDbLabUserDirectory: File,
-    val isMcp: Boolean = false,
     /**
-     * Indicates if running in an interactive mode (REPL or server) where
+     * Indicates if running in an interactive mode (the REPL) where
      * resources like CQL sessions should be kept open across commands.
      * Mutable so REPL can set this after context creation.
      */
     var isInteractive: Boolean = false,
     /**
      * Working directory for lab operations (cluster state, logs, etc.).
-     * Defaults to the JVM's current working directory.
-     * Can be overridden in tests to use a temp directory.
+     * Must be absolute. Every workspace file resolves against it, never against the JVM's
+     * current directory; only the ContextFactory default reads `user.dir`.
      */
-    val workingDirectory: File = File(System.getProperty("user.dir")),
+    val workingDirectory: File,
 ) : KoinComponent {
     companion object {
         /**
          * Create a Context for regular CLI execution
          */
-        fun forCli(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = false, isInteractive = false)
+        fun forCli(
+            easyDbLabUserDirectory: File,
+            workingDirectory: File,
+        ): Context = Context(easyDbLabUserDirectory, isInteractive = false, workingDirectory = workingDirectory)
+    }
 
-        /**
-         * Create a Context for server execution
-         */
-        fun forMcp(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = true, isInteractive = true)
-
-        /**
-         * Create a Context for REPL execution
-         */
-        fun forRepl(easyDbLabUserDirectory: File): Context = Context(easyDbLabUserDirectory, isMcp = false, isInteractive = true)
+    init {
+        require(workingDirectory.isAbsolute) { "The workspace directory must be absolute: $workingDirectory" }
     }
 
     val log = KotlinLogging.logger {}
@@ -46,16 +42,14 @@ data class Context(
      * Long term, should probably make this something they can do via a command.
      * Will be useful once multiple cloud providers are supported.
      */
-    var profile = System.getenv("EASY_DB_LAB_PROFILE") ?: "default"
+    var profile = (System.getenv("EASY_DB_LAB_PROFILE") ?: "default").ifEmpty { "default" }
     var profilesDir = File(easyDbLabUserDirectory, "profiles")
-    var profileDir = File(profilesDir, profile)
+    var profileDir = File(profilesDir, profile).also { it.mkdirs() }
 
-    init {
-        if (profile.isEmpty()) {
-            profile = "default"
-        }
-        profileDir.mkdirs()
-    }
+    /**
+     * Resolves [name] inside the workspace ([workingDirectory]), never against the JVM current directory.
+     */
+    fun workspaceFile(name: String): File = File(workingDirectory, name)
 
     /**
      * Version is either supplied by the in-repo script,

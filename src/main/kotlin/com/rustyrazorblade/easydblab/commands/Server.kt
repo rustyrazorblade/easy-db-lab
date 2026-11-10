@@ -3,33 +3,25 @@ package com.rustyrazorblade.easydblab.commands
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
-import com.rustyrazorblade.easydblab.events.Event
-import com.rustyrazorblade.easydblab.mcp.McpServer
+import com.rustyrazorblade.easydblab.server.StatusCache
+import com.rustyrazorblade.easydblab.server.StatusServer
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
-import java.io.File
 
 /**
- * Starts the server for AI assistant integration, REST status endpoints, and live metrics.
+ * Starts the REST status server: cluster status at `/status` and `/stress/status`, API docs at
+ * `/swagger`.  It runs until it is stopped.
  *
- * Carries [RequiresProxy]: [McpServer] unconditionally constructs a `StatusCache` whose
- * background refresh loop calls `K3sService`/`K8sService` (Fabric8, via `K8sClientProvider`)
- * on every refresh cycle, and conditionally a `MetricsCollector` that queries
- * `MimirQueryService` (`ObservabilityHttp`) when Redis is configured. Both run inside
- * this command's own execution, not as separate `PicoCommand`s, so the tunnel must be
+ * Carries [RequiresProxy]: the [StatusCache] refresh calls K3s and Kubernetes through Fabric8
+ * (`K8sClientProvider`) every cycle, inside this command's own execution, so the tunnel must be
  * established before [execute] starts the server.
  */
 @RequireProfileSetup
 @RequiresProxy
 @Command(
     name = "server",
-    description = [
-        "Start server for AI assistant integration. " +
-            "Add to claude with: claude mcp add --transport sse easy-db-lab http://127.0.0.1:<port>/sse",
-    ],
+    description = ["Start the REST status server (cluster status at /status, API docs at /swagger)"],
 )
 class Server : PicoBaseCommand() {
     @Option(
@@ -56,61 +48,23 @@ class Server : PicoBaseCommand() {
     )
     var autoShutdown: Boolean = false
 
-    companion object {
-        private val log = KotlinLogging.logger {}
-    }
-
-    @Serializable
-    data class McpServerConfig(
-        val type: String,
-        val url: String,
-    )
-
-    @Serializable
-    data class McpConfiguration(
-        val mcpServers: Map<String, McpServerConfig>,
-    )
-
     override fun execute() {
-        // Mark context as interactive so CQL sessions stay open across commands
-        context.isInteractive = true
-
-        log.info { "Starting easy-db-lab server..." }
-
+        log.info { "Starting easy-db-lab status server..." }
         val vpcName =
             if (autoShutdown && clusterStateManager.exists()) {
                 "easy-db-lab-${clusterStateManager.load().name}"
             } else {
                 null
             }
-
-        try {
-            val server = McpServer(refreshInterval, autoShutdown, vpcName)
-            server.start(port, bind) { actualPort ->
-                // Generate .mcp.json with actual port
-                val config =
-                    McpConfiguration(
-                        mcpServers =
-                            mapOf(
-                                "easy-db-lab" to
-                                    McpServerConfig(
-                                        type = "sse",
-                                        url = "http://$bind:$actualPort/sse",
-                                    ),
-                            ),
-                    )
-                val json = Json { prettyPrint = true }
-                val configFile = File(".mcp.json")
-                configFile.writeText(json.encodeToString(config))
-
-                eventBus.emit(Event.Command.McpConfigSaved(configFile.absolutePath))
-            }
-
-            log.info { "Server stopped." }
-        } catch (e: RuntimeException) {
-            log.error(e) { "Failed to start server" }
-            System.err.println("Failed to start server: ${e.message}")
-            throw e
+        val statusCache = StatusCache(refreshInterval, autoShutdown, vpcName)
+        statusCache.start()
+        StatusServer(statusCache).start(port, bind).use {
+            Thread.currentThread().join()
         }
+        log.info { "Server stopped." }
+    }
+
+    private companion object {
+        private val log = KotlinLogging.logger {}
     }
 }

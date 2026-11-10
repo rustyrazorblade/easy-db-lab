@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
@@ -25,7 +24,6 @@ import software.amazon.awssdk.services.emr.model.StepState
  *
  * To query logs from Loki, use: easy-db-lab spark logs --step-id <step-id>
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "status",

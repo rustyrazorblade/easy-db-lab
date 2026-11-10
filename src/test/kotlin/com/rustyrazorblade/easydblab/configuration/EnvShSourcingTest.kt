@@ -232,6 +232,66 @@ internal class EnvShSourcingTest {
         assertThat(result.stdout).doesNotContain("41234").contains("easy-db-lab socks start")
     }
 
+    @Test
+    fun `with-proxy in direct mode runs the command with inherited proxy variables untouched`() {
+        ProxyEnvFile(workspace).apply {
+            recordTailscale(active = false)
+            recordDirect(active = true)
+        }
+
+        val result = bash("export http_proxy=http://corp:3128; source ./env.sh >/dev/null; with-proxy sh -c '$PRINT_PROXY_VARIABLES'")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.stdout).contains("ALL_PROXY=unset HTTPS_PROXY=unset http_proxy=http://corp:3128")
+    }
+
+    @Test
+    fun `with-proxy in direct mode ignores a recorded tunnel`() {
+        ProxyEnvFile(workspace).apply {
+            recordTailscale(active = false)
+            recordTunnel(41234, ProcessHandle.current().pid())
+            recordDirect(active = true)
+        }
+
+        val result = bash("source ./env.sh >/dev/null; with-proxy sh -c '$PRINT_PROXY_VARIABLES'")
+
+        assertThat(result.exitCode).withFailMessage(result.toString()).isZero()
+        assertThat(result.stdout).contains("ALL_PROXY=unset HTTPS_PROXY=unset").doesNotContain("41234")
+    }
+
+    @Test
+    fun `with-proxy ignores an inherited EDL_NETWORK_MODE`() {
+        ProxyEnvFile(workspace).recordTailscale(active = false)
+
+        val result = bash("export EDL_NETWORK_MODE=direct; source ./env.sh >/dev/null; with-proxy echo ran")
+
+        assertThat(result.exitCode).isNotZero()
+        assertThat(result.stdout).doesNotContain("ran")
+        assertThat(result.stderr).contains("easy-db-lab socks start")
+    }
+
+    @Test
+    fun `socks5-status in direct mode reports that no tunnel is needed`() {
+        ProxyEnvFile(workspace).apply {
+            recordTailscale(active = false)
+            recordDirect(active = true)
+        }
+
+        val result = bash("source ./env.sh >/dev/null; socks5-status")
+
+        assertThat(result.exitCode).isZero()
+        assertThat(result.stdout).contains("direct network mode").doesNotContain("No running SOCKS5 tunnel")
+    }
+
+    @Test
+    fun `socks5-status ignores an inherited EDL_NETWORK_MODE`() {
+        ProxyEnvFile(workspace).recordTailscale(active = false)
+
+        val result = bash("export EDL_NETWORK_MODE=direct; source ./env.sh >/dev/null; socks5-status")
+
+        assertThat(result.stdout).contains("No running SOCKS5 tunnel").doesNotContain("direct network mode")
+    }
+
     /** The PID of a process that has already exited. */
     private fun exitedPid(): Long =
         ProcessBuilder("true").start().let { process ->
@@ -256,5 +316,9 @@ internal class EnvShSourcingTest {
 
     private companion object {
         const val LIMIT_SECONDS = 30L
+
+        /** A `sh -c` body that prints the proxy variables the command sees, `unset` for a missing one. */
+        const val PRINT_PROXY_VARIABLES =
+            "echo \"ALL_PROXY=\${ALL_PROXY-unset} HTTPS_PROXY=\${HTTPS_PROXY-unset} http_proxy=\${http_proxy-unset}\""
     }
 }

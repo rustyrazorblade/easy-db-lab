@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra.stress
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -18,7 +17,6 @@ import picocli.CommandLine.Parameters
  *
  * Retrieves and displays logs from the pod(s) associated with a stress job.
  */
-@McpCommand
 @RequireProfileSetup
 @RequiresProxy
 @Command(

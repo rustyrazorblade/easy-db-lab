@@ -21,6 +21,29 @@ import org.mockito.kotlin.whenever
  * config file loading from classpath resources.
  */
 class PyroscopeManifestBuilderTest : BaseKoinTest() {
+    private companion object {
+        /**
+         * The largest node in use: c8gd.48xlarge, 192 vCPUs. easy-db-lab keeps no instance-type table;
+         * `--db.instance-type` takes any EC2 type, so raise this and the limit together for a larger one.
+         */
+        const val LARGEST_NODE_VCPUS = 192L
+
+        /** The sample count Pyroscope rejected on edbl-ab1172 on 2026-11-07, over the old 16,000 limit. */
+        const val MEASURED_SAMPLES = 18_995L
+
+        /**
+         * The encoded size budget for one sample: its packed location ids, value and share of the
+         * location, function and string tables. A 19,000-sample pprof with 60-frame stacks is 226 bytes
+         * a sample; edbl-ab1172's 18,995-sample profile fit the old 4 MiB limit, so under 221.
+         */
+        const val BYTES_PER_SAMPLE = 256L
+
+        const val MIB = 1024L * 1024L
+
+        /** Pyroscope 2.3.1's single-binary gRPC message cap (`server.grpc-max-recv-msg-size-bytes`). */
+        const val PYROSCOPE_GRPC_MAX_MESSAGE_BYTES = 100L * MIB
+    }
+
     private lateinit var builder: PyroscopeManifestBuilder
     private lateinit var templateService: TemplateService
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -158,6 +181,38 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         assertThat(scalarAt(config, "metastore", "data_dir")).startsWith(mount.mountPath + "/")
         assertThat(scalarAt(config, "metastore", "raft", "dir")).startsWith(mount.mountPath + "/")
         assertThat(scalarAt(config, "metastore", "raft", "snapshots_dir")).startsWith(mount.mountPath + "/")
+    }
+
+    /** The limit at [key] under `limits` in the server config, as a number. */
+    private fun limit(key: String): Long = requireNotNull(scalarAt(serverConfig(), "limits", key)) { "limits.$key is not set" }.toLong()
+
+    /** An integer setting `name = value` in the eBPF agent's config.alloy. */
+    private fun alloySetting(name: String): Long {
+        val alloy = builder.buildEbpfConfigMap().data.getValue("config.alloy")
+        val match = requireNotNull(Regex("""\b$name\s*=\s*"?(\d+)""").find(alloy)) { "config.alloy sets no $name" }
+        return match.groupValues[1].toLong()
+    }
+
+    @Test
+    fun `a profile from a saturated large node fits the sample limit`() {
+        // One eBPF profile holds at most one sample per CPU tick in its window: the agent's
+        // sample_rate times its collect_interval times the node's vCPUs. edbl-ab1172 sent 18,995.
+        val maxSamplesPerProfile = alloySetting("sample_rate") * alloySetting("collect_interval") * LARGEST_NODE_VCPUS
+
+        assertThat(limit("max_profile_stacktrace_samples"))
+            .isGreaterThanOrEqualTo(maxSamplesPerProfile)
+            .isGreaterThanOrEqualTo(MEASURED_SAMPLES * 10)
+    }
+
+    @Test
+    fun `a profile at the sample limit fits the size limit, the burst, and the internal gRPC message`() {
+        val sizeLimit = limit("max_profile_size_bytes")
+
+        assertThat(sizeLimit).isGreaterThanOrEqualTo(limit("max_profile_stacktrace_samples") * BYTES_PER_SAMPLE)
+        // The distributor's token bucket rejects a push bigger than the burst, whatever its rate.
+        assertThat(limit("ingestion_burst_size_mb") * MIB).isGreaterThanOrEqualTo(sizeLimit)
+        // The distributor forwards each profile to the segment writer in one gRPC message.
+        assertThat(sizeLimit).isLessThan(PYROSCOPE_GRPC_MAX_MESSAGE_BYTES)
     }
 
     @Test

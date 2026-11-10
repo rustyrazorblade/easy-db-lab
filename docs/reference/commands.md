@@ -12,6 +12,15 @@ Complete reference for all easy-db-lab commands.
 
 ---
 
+## Workspace Files
+
+Run every command from the cluster's workspace directory. Cluster files (`state.json`, `kubeconfig`,
+`environment.sh`, `setup_instance.sh`, `profiles/`, `logs/`) are read and written in that directory,
+and nothing is created in any other place. A command run where no `state.json` exists fails with
+"No cluster state at <absolute path>. Run the command from the cluster's workspace, or run 'init' there first."
+A path you type as an argument (for example `upload-keys <dir>`) resolves against the directory you ran
+the command from.
+
 ## Profile Commands
 
 Profile inspection and setup. Not to be confused with `cassandra profile`, which controls runtime
@@ -813,13 +822,40 @@ easy-db-lab repl
 
 ### server
 
-Start the server for Claude Code integration, REST status endpoints, and live metrics.
+Start the REST status server: cluster status at `/status` and `/stress/status`, API docs at `/swagger`.
 
 ```bash
-easy-db-lab server
+easy-db-lab server [--port <port>] [--bind <address>] [--refresh <seconds>] [--auto-shutdown]
 ```
 
 See [Server](../integrations/server.md) for details.
+
+---
+
+## Metrics Commands
+
+### metrics stream
+
+Publish chosen metrics to Redis every 5 seconds until stopped.  Each value is one `Metrics.Sample` event on the channel that `EASY_DB_LAB_REDIS_URL` names; the terminal shows one summary line per cycle.
+
+```bash
+export EASY_DB_LAB_REDIS_URL=redis://localhost:6379/easydblab-events
+easy-db-lab metrics stream [--metrics <name>,<name>,...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--metrics` | Comma-separated metric names (see `metrics list`) | The 11 default names |
+
+The command needs `EASY_DB_LAB_REDIS_URL` and a running cluster.  It refuses a cluster whose telemetry is redirected to an external stack.  The first Ctrl-C or SIGTERM stops it with exit status 0.  See [Metrics Stream](../integrations/metrics-stream.md).
+
+### metrics list
+
+Print every name `metrics stream` accepts, one per line.  It needs no cluster.
+
+```bash
+easy-db-lab metrics list
+```
 
 ---
 

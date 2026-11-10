@@ -39,6 +39,7 @@
 # Integrations
 
 - [Server](integrations/server.md)
+- [Metrics Stream](integrations/metrics-stream.md)
 
 # Reference
 

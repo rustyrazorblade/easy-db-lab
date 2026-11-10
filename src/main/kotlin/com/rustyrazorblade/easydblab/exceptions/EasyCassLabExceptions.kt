@@ -60,12 +60,17 @@ class SSHException(
  * failure of the command itself, so the SSH retry policy must not re-run it. Deliberately carries
  * no cause either — the underlying exception's message repeats the unredacted command, which a
  * printed stack trace would then leak.
+ *
+ * [exitStatus] is the command's exit status when the transport reported one, and null when it did
+ * not (the transport raised its "No exit status returned" failure). A secret command hides its
+ * text but not its status.
  */
 class RemoteCommandFailedException(
     val command: String,
     val stdout: String,
     val stderr: String,
     summary: String,
+    val exitStatus: Int? = null,
 ) : EasyDBLabException(
         buildString {
             append(summary)

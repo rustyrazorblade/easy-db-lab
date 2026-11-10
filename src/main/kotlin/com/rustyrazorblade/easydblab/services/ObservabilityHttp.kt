@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.Duration
@@ -22,8 +23,10 @@ data class ObservabilityResponse(
  * Every request goes to the control node's private address, carries the cluster's tenant in
  * `X-Scope-OrgID`, and — unless Tailscale reaches the private address directly — travels through
  * the SOCKS tunnel, which the per-client proxy selector of [HttpClientFactory] uses. The JVM-wide
- * socks properties are never touched. Readers (`logs query`, `spark logs`, MCP metrics) and the
- * teardown flush all go through it, so none of them can forget the tenant.
+ * socks properties are never touched. Readers (`logs query`, `spark logs`, `metrics stream`) and the
+ * teardown flush all go through it, so none of them can forget the tenant.  [DefaultObservabilityHttp]
+ * starts or reuses the tunnel per request; `metrics stream` uses [RoutedObservabilityHttp], which only
+ * reuses the recorded one.
  */
 interface ObservabilityHttp {
     /** GETs [pathAndQuery] from the service on [port], waiting up to [timeout] for the answer. */
@@ -86,19 +89,40 @@ class DefaultObservabilityHttp(
         if (!clusterState.isTailscaleEnabled()) {
             socksProxyService.ensureRunning(controlHost)
         }
-        val request =
-            method(Request.Builder().url("http://${controlHost.privateIp}:$port$pathAndQuery"))
-                .header(Constants.Observability.TENANT_HEADER, clusterState.tenant())
-                .build()
-        val client =
-            httpClientFactory
-                .createClient()
-                .newBuilder()
-                .readTimeout(timeout)
-                .callTimeout(Duration.ZERO)
-                .build()
-        return client.newCall(request).execute().use { response ->
-            ObservabilityResponse(response.code, response.body.string())
-        }
+        return httpClientFactory
+            .createClient()
+            .controlNodeCall(ControlNodeTarget(controlHost.privateIp, clusterState.tenant()), port, pathAndQuery, timeout, method)
+    }
+}
+
+/** Where a control-node request goes: the control node's private address, in a tenant. */
+internal data class ControlNodeTarget(
+    val privateIp: String,
+    val tenant: String,
+)
+
+/**
+ * Sends one request to the service on [port] of [target] with this client, carrying the tenant in
+ * `X-Scope-OrgID`, waiting up to [timeout] for the answer.  Every [ObservabilityHttp] builds its
+ * requests here, so they all send the same URL, header and timeouts.
+ */
+internal fun OkHttpClient.controlNodeCall(
+    target: ControlNodeTarget,
+    port: Int,
+    pathAndQuery: String,
+    timeout: Duration,
+    method: (Request.Builder) -> Request.Builder,
+): ObservabilityResponse {
+    val request =
+        method(Request.Builder().url("http://${target.privateIp}:$port$pathAndQuery"))
+            .header(Constants.Observability.TENANT_HEADER, target.tenant)
+            .build()
+    val client =
+        newBuilder()
+            .readTimeout(timeout)
+            .callTimeout(Duration.ZERO)
+            .build()
+    return client.newCall(request).execute().use { response ->
+        ObservabilityResponse(response.code, response.body.string())
     }
 }

@@ -5,6 +5,7 @@ import com.github.dockerjava.api.model.Volume
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.SharedLocalStack
+import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
@@ -37,7 +38,9 @@ import java.util.UUID
  * binary (its parser rejects unknown keys), that a profile written with the cluster's tenant is
  * stored under `pyroscope/` and is visible only to that tenant, and that the v2
  * metastore index — the only record of where the blocks are — survives a restart on the same data
- * volume, so the profile is still returned afterwards.
+ * volume, so the profile is still returned afterwards. It also proves the rendered per-profile
+ * sample limit is the one the binary enforces: a profile over Pyroscope's default of 16,000 samples
+ * is stored, and one sample over the rendered limit is refused.
  *
  * The data directory is a Docker volume, standing in for the control node's hostPath; a restarted
  * server reuses its volume. The only edit to the rendered configuration points the S3
@@ -57,6 +60,11 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
                     Constants.PyroscopeProbes.STARTUP_FAILURE_THRESHOLD,
             )
         val POLL: Duration = Duration.ofSeconds(2)
+
+        /** Pyroscope's default `max_profile_stacktrace_samples`; edbl-ab1172 sent 18,995 and lost them. */
+        const val DEFAULT_SAMPLE_LIMIT = 16_000
+        const val STACK_DEPTH = 20
+        const val FRAMES_PER_LEVEL = 4
     }
 
     private val s3 = SharedLocalStack.s3Client()
@@ -147,15 +155,52 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
         pyroscope: GenericContainer<*>,
         service: String = SERVICE,
     ) {
+        val response = sendFolded(pyroscope, service, "main;work;compute 100\nmain;work;io 50\n")
+        assertThat(response.statusCode()).describedAs(response.body()).isEqualTo(200)
+    }
+
+    /** Sends [folded] stacks for [service] in the cluster's tenant and returns the server's answer. */
+    private fun sendFolded(
+        pyroscope: GenericContainer<*>,
+        service: String,
+        folded: String,
+    ): HttpResponse<String> {
         val name = URLEncoder.encode("$service{cluster=${state.clusterLabelName()}}", Charsets.UTF_8)
         val request =
             HttpRequest
                 .newBuilder(URI("${baseUrl(pyroscope)}/ingest?name=$name&format=folded"))
                 .header(Constants.Observability.TENANT_HEADER, TENANT)
-                .POST(HttpRequest.BodyPublishers.ofString("main;work;compute 100\nmain;work;io 50\n"))
+                .POST(HttpRequest.BodyPublishers.ofString(folded))
                 .build()
-        val response = http.send(request, HttpResponse.BodyHandlers.ofString())
-        assertThat(response.statusCode()).describedAs(response.body()).isEqualTo(200)
+        return http.send(request, HttpResponse.BodyHandlers.ofString())
+    }
+
+    /**
+     * [count] distinct 20-frame stacks, one sample each. Pyroscope stores one sample per distinct
+     * stack, so the profile holds exactly [count] samples.
+     */
+    private fun distinctStacks(count: Int): String =
+        buildString {
+            repeat(count) { index ->
+                append("main")
+                var rest = index
+                repeat(STACK_DEPTH) {
+                    append(";frame_").append(rest % FRAMES_PER_LEVEL)
+                    rest /= FRAMES_PER_LEVEL
+                }
+                append(" 1\n")
+            }
+        }
+
+    /** The server's `pyroscope_discarded_samples_total` for the cluster's tenant, summed over reasons. */
+    private fun discardedProfiles(pyroscope: GenericContainer<*>): Double {
+        val request = HttpRequest.newBuilder(URI("${baseUrl(pyroscope)}/metrics")).GET().build()
+        return http
+            .send(request, HttpResponse.BodyHandlers.ofString())
+            .body()
+            .lineSequence()
+            .filter { it.startsWith("pyroscope_discarded_samples_total{") && it.contains("tenant=\"$TENANT\"") }
+            .sumOf { it.substringAfterLast(' ').toDouble() }
     }
 
     /** Total CPU samples [tenant] sees for [service] over the last hour. */
@@ -229,5 +274,26 @@ class PyroscopeIndexDurabilityIntegrationTest : BaseKoinTest() {
             .exec()
         val second = startPyroscope(config)
         awaitTicks(second)
+    }
+
+    @Test
+    fun `a profile over Pyroscope's default sample limit is stored, and one over the rendered limit is refused`() {
+        SharedLocalStack.createBucketIfMissing(s3, bucket)
+        Testcontainers.exposeHostPorts(SharedLocalStack.hostPort())
+        docker.createVolumeCmd().withName(dataVolume).exec()
+        val config = testConfig()
+        val renderedLimit = requireNotNull(scalarAt(config, "limits", "max_profile_stacktrace_samples")).toInt()
+        val pyroscope = startPyroscope(config)
+
+        val large = sendFolded(pyroscope, "it-large", distinctStacks(DEFAULT_SAMPLE_LIMIT + 4_000))
+        assertThat(large.statusCode()).describedAs(large.body()).isEqualTo(200)
+        assertThat(discardedProfiles(pyroscope)).describedAs("profiles the server discarded").isZero()
+        awaitTicks(pyroscope, "it-large")
+
+        val over = sendFolded(pyroscope, "it-over", distinctStacks(renderedLimit + 1))
+        assertThat(over.statusCode()).isEqualTo(400)
+        assertThat(over.body()).contains("max_profile_stacktrace_samples", "limit: $renderedLimit")
+        // The refusal must show in the same counter, or the zero above proves nothing.
+        assertThat(discardedProfiles(pyroscope)).describedAs("profiles the server discarded").isEqualTo(1.0)
     }
 }

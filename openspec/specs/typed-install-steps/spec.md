@@ -126,11 +126,54 @@ non-zero exit code.
 - **AND** an error event is emitted identifying the step type, phase, and kit name
 
 ### Requirement: Helm operations execute on the control node via SSH
-`helm-repo`, `helm`, and `helm-uninstall` steps SHALL execute helm commands on the control node
-via `RemoteOperationsService` rather than requiring a local helm binary.
+`helm-repo`, `helm`, and `helm-uninstall` steps SHALL execute helm through `ClusterTooling`.  On AWS the SSH form runs helm on the control node, so the local machine does not need helm installed.  With the local form bound, helm runs as a local process and must be installed on the host, as it already must be for kit shell steps.
 
 #### Scenario: No local helm required
-- **WHEN** a user runs `easy-db-lab install scylladb` with helm steps
+- **WHEN** a user runs `easy-db-lab install scylladb` with helm steps and the SSH form is bound
 - **THEN** the CLI connects to the control node and runs helm there
 - **AND** the local machine does not need helm installed
+
+#### Scenario: Local form runs helm on the host
+- **WHEN** a kit with helm steps is installed with the local form bound
+- **THEN** helm runs on the host in the kit process environment
+- **AND** no SSH connection is attempted
+
+### Requirement: Kit shell steps run with the workspace tool wrappers and an absolute kubeconfig
+
+Every kit `type: shell` step, in `install:` and in lifecycle phases, MUST run with:
+
+- `<workspace>/bin` first on `PATH`, ahead of the `PATH` it inherited, with the tool wrappers written before the step starts;
+- `KUBECONFIG` set to the absolute path of the workspace kubeconfig, replacing any relative value from the cluster state variables.
+
+The step MUST fail before it starts if the workspace kubeconfig does not exist. The workspace kubeconfig MUST be used as it is: no temporary or proxied copy of it is made. The `__KUBECONFIG__` template variable keeps its relative value.
+
+#### Scenario: kubectl in an install shell step
+
+- **GIVEN** a running cluster and a kit whose install shell step runs `kubectl get ns`
+- **WHEN** the user runs `easy-db-lab kit install` for that kit
+- **THEN** the command succeeds and `kit install` exits 0
+
+#### Scenario: KUBECONFIG is absolute in install and phase steps
+
+- **WHEN** any kit shell step runs, in install or in a phase
+- **THEN** its `KUBECONFIG` is an absolute path to a file that exists
+
+#### Scenario: Wrappers come first on PATH
+
+- **WHEN** any kit shell step runs
+- **THEN** the first entry of its `PATH` is `<workspace>/bin`
+- **AND** the rest is the `PATH` the CLI inherited
+
+#### Scenario: Missing kubeconfig fails the step
+
+- **GIVEN** a workspace with no `kubeconfig` file
+- **WHEN** a kit shell step is about to run
+- **THEN** the step fails with a message naming the missing file and does not start
+
+#### Scenario: No temporary kubeconfig
+
+- **GIVEN** a SOCKS cluster with a recorded port
+- **WHEN** a kit phase or install shell step runs
+- **THEN** no temporary kubeconfig copy is created
+- **AND** the workspace kubeconfig is unchanged
 

@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -29,7 +28,6 @@ import picocli.CommandLine.Option
  * - CLI arguments (--client-id, --client-secret)
  * - User configuration (profile setup)
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "start",

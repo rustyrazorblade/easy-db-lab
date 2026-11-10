@@ -457,40 +457,17 @@ https://rustyrazorblade.com/post/2023/2023-11-14-bcc-tools/
 
 ## Server Integration
 
-easy-db-lab includes a server mode that enables AI assistants like Claude Code to interact directly with your database clusters via MCP (Model Context Protocol), and provides REST status endpoints for programmatic access.
-
-### Starting the Server
-
-To start the server:
+easy-db-lab includes a REST status server for programmatic access to the cluster status.
 
 ```shell
 easy-db-lab server --port 8888
 ```
 
-This starts the server on port 8888 (you can use any available port).
+The server answers `GET /status` (the full cluster status as JSON, or one section with `?section=nodes`) and `GET /stress/status`, and serves its API docs at `/swagger`.
 
-### Integrating with Claude Code
+For live metrics, `easy-db-lab metrics stream` publishes chosen metrics to a Redis channel every 5 seconds.
 
-Once the server is running, add it to Claude Code:
-
-```shell
-claude mcp add --transport sse easy-db-lab http://127.0.0.1:8888/sse
-```
-
-This establishes a Server-Sent Events (SSE) connection between Claude Code and the server.
-
-### What You Can Do
-
-With the server integration, Claude Code can:
-
-* Manage and provision clusters directly
-* Configure and deploy Cassandra, ClickHouse, and OpenSearch
-* Run performance tests and analyze results
-* Submit Spark jobs and check their status
-* Troubleshoot issues by analyzing logs and metrics
-* Automate complex multi-step cluster operations
-
-For detailed documentation, see the [Server section in the user manual](https://rustyrazorblade.github.io/easy-db-lab/integrations/server/).
+For detailed documentation, see the [Server](https://rustyrazorblade.github.io/easy-db-lab/integrations/server/) and [Metrics Stream](https://rustyrazorblade.github.io/easy-db-lab/integrations/metrics-stream/) sections in the user manual.
 
 ## Sanity Check Test
 

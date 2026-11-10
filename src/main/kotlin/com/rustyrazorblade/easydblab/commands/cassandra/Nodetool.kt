@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -21,7 +20,6 @@ import picocli.CommandLine.Parameters
  *   easy-db-lab cassandra nt --hosts db0,db2 info
  *   easy-db-lab cassandra nt ring
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(

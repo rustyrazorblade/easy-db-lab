@@ -301,4 +301,32 @@ class KitRunnerCommandCollisionCheckTest : KitRunnerCommandTestBase() {
         assertThat(command("mydb", "start").call()).isNotEqualTo(0)
         assertThat(marker).doesNotExist()
     }
+
+    /**
+     * A collision-checked start needs the control node to know where the cluster is. Without one it
+     * fails with the same message as before, and no step runs.
+     */
+    @Test
+    fun `start fails naming the missing control node, running no step, when the cluster has none`() {
+        writeCollisionCheckedKit()
+        whenever(mockClusterStateManager.load()).thenReturn(clusterState.copy(hosts = emptyMap()))
+
+        assertThatThrownBy { command("mydb", "start").call() }.hasMessageContaining("No control node found in cluster state")
+        verify(mockWorkloadStepExecutor, never()).execute(any(), any(), any())
+        verifyNoInteractions(mockKubeService)
+    }
+
+    /**
+     * `stop` has nothing to wait on when the cluster has no control node: the phase still reports
+     * finished, as before, and no pod lookup is attempted.
+     */
+    @Test
+    fun `a script-driven stop skips the wait and succeeds when the cluster has no control node`() {
+        writeKitYaml("mydb", collisionCheckedHeader)
+        writeScript("mydb", "stop", "exit 0")
+        whenever(mockClusterStateManager.load()).thenReturn(clusterState.copy(hosts = emptyMap()))
+
+        assertThat(command("mydb", "stop").call()).isEqualTo(0)
+        verifyNoInteractions(mockKubeService)
+    }
 }

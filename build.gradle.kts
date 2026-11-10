@@ -231,10 +231,6 @@ dependencies {
     implementation(libs.kaml)
     implementation(libs.kotlinx.coroutines.core)
 
-    // MCP SDK and dependencies
-    implementation(libs.mcp.sdk)
-    implementation(libs.kotlinx.io)
-
     // Kubernetes
     implementation(libs.fabric8.kubernetes.client)
 

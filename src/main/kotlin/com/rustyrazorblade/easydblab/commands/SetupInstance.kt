@@ -8,11 +8,12 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.profiling.ProfilingConfig
 import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.services.CassandraProfilingService
+import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService.Companion.STRESS_ENV_FILE
 import com.rustyrazorblade.easydblab.services.HostOperationsService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
-import java.nio.file.Path
+import java.io.File
 import java.time.Instant
 
 /**
@@ -33,8 +34,8 @@ class SetupInstance : PicoBaseCommand() {
 
     override fun execute() {
         fun setup(host: Host) {
-            remoteOps.upload(host, Path.of("environment.sh"), "environment.sh")
-            remoteOps.executeRemotely(host, "sudo mv environment.sh /etc/profile.d/stress.sh").text
+            remoteOps.upload(host, context.workspaceFile(STRESS_ENV_FILE).toPath(), STRESS_ENV_FILE)
+            remoteOps.executeRemotely(host, "sudo mv $STRESS_ENV_FILE /etc/profile.d/stress.sh").text
         }
 
         // The OTel Java agent reads these JMX rules at Cassandra startup. They live in the cluster
@@ -42,7 +43,7 @@ class SetupInstance : PicoBaseCommand() {
         // and restart Cassandra - no rebake, no Gradle build.
         fun writeJmxRules(host: Host) {
             remoteOps.executeRemotely(host, "sudo mkdir -p ${Constants.Cassandra.NODE_CONFIG_DIR}").text
-            remoteOps.upload(host, Path.of(Constants.Cassandra.JMX_RULES_FILE), Constants.Cassandra.JMX_RULES_FILE)
+            remoteOps.upload(host, context.workspaceFile(Constants.Cassandra.JMX_RULES_FILE).toPath(), Constants.Cassandra.JMX_RULES_FILE)
             remoteOps
                 .executeRemotely(
                     host,
@@ -56,7 +57,7 @@ class SetupInstance : PicoBaseCommand() {
             datacenter: String,
         ) {
             // Create systemd environment file locally
-            val envFile = java.io.File.createTempFile("stress", ".env")
+            val envFile = File.createTempFile("stress", ".env")
             try {
                 envFile.bufferedWriter().use { writer ->
                     writer.write("CASSANDRA_EASY_STRESS_CASSANDRA_HOST=$cassandraHost")
@@ -123,8 +124,8 @@ class SetupInstance : PicoBaseCommand() {
             setup(h)
             setupStressSystemdEnv(h, cassandraHost, datacenter)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
-            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
-            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            remoteOps.upload(h, context.workspaceFile(Constants.SETUP_INSTANCE_SCRIPT).toPath(), Constants.SETUP_INSTANCE_SCRIPT)
+            remoteOps.executeRemotely(h, "sudo bash ${Constants.SETUP_INSTANCE_SCRIPT}").text
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "") { host ->
             val h = host.toHost()
@@ -132,15 +133,15 @@ class SetupInstance : PicoBaseCommand() {
             writeJmxRules(h)
             seedProfilingConfig(h, controlNodeIp, clusterName)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
-            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
-            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            remoteOps.upload(h, context.workspaceFile(Constants.SETUP_INSTANCE_SCRIPT).toPath(), Constants.SETUP_INSTANCE_SCRIPT)
+            remoteOps.executeRemotely(h, "sudo bash ${Constants.SETUP_INSTANCE_SCRIPT}").text
         }
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Control, "") { host ->
             val h = host.toHost()
             setup(h)
             remoteOps.executeRemotely(h, "sudo hostnamectl set-hostname ${h.alias}").text
-            remoteOps.upload(h, Path.of("setup_instance.sh"), "setup_instance.sh")
-            remoteOps.executeRemotely(h, "sudo bash setup_instance.sh").text
+            remoteOps.upload(h, context.workspaceFile(Constants.SETUP_INSTANCE_SCRIPT).toPath(), Constants.SETUP_INSTANCE_SCRIPT)
+            remoteOps.executeRemotely(h, "sudo bash ${Constants.SETUP_INSTANCE_SCRIPT}").text
         }
     }
 }

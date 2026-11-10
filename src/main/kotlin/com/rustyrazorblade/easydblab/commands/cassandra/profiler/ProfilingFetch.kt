@@ -28,11 +28,8 @@ class ProfilingFetch : ProfilingHostCommand() {
     )
     var last: Int = Constants.Profiling.DEFAULT_LAST_CHUNKS
 
-    /**
-     * Local destination root, one sub-directory per host. Not a CLI option: the workspace layout is
-     * fixed, and this exists so tests can point it somewhere temporary.
-     */
-    internal var outputDir: File = File(Constants.Profiling.LOCAL_DOWNLOAD_DIR)
+    /** Local destination root in the workspace, one sub-directory per host. */
+    internal val outputDir: File get() = File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR)
 
     override fun execute() {
         requireChunkCount(last)

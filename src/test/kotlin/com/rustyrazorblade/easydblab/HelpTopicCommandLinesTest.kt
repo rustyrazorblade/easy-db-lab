@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab
 
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.HelpTopicService
@@ -13,7 +12,6 @@ import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import picocli.CommandLine
-import java.io.File
 
 /**
  * Checks every `easy-db-lab ...` command line in the packaged help topics against the real

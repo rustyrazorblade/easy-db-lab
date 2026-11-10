@@ -20,8 +20,8 @@
 
 ## 5. Profiling and EMR logs
 
-- [ ] 5.1 Test first: fetched profile chunks land in `W/profiles/<host>`. Replace the `outputDir` test seam with the workspace path.
-- [ ] 5.2 Bind `EMRSparkService` with `File(workspace, Constants.EMR.LOCAL_LOGS_DIR).toPath()`, with no default.
+- [x] 5.1 Test first: fetched profile chunks land in `W/profiles/<host>`. Replace the `outputDir` test seam with the workspace path.
+- [x] 5.2 Bind `EMRSparkService` with `File(workspace, Constants.EMR.LOCAL_LOGS_DIR).toPath()`, with no default.
 
 ## 6. upload-keys
 

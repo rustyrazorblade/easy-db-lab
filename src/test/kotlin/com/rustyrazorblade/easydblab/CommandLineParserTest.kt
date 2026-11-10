@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab
 
 import com.rustyrazorblade.easydblab.commands.profile.Profile
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.services.DefaultHelpTopicService
 import com.rustyrazorblade.easydblab.services.DefaultKitCommandScanner
 import com.rustyrazorblade.easydblab.services.HelpTopicService

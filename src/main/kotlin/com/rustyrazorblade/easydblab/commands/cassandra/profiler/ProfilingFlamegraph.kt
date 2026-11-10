@@ -56,8 +56,8 @@ class ProfilingFlamegraph : ProfilingHostCommand() {
     )
     var jfrconvArgs: List<String> = emptyList()
 
-    /** Local destination root, one sub-directory per host. See [ProfilingFetch.outputDir]. */
-    internal var outputDir: File = File(Constants.Profiling.LOCAL_DOWNLOAD_DIR)
+    /** Local destination root in the workspace, one sub-directory per host. */
+    internal val outputDir: File get() = File(context.workingDirectory, Constants.Profiling.LOCAL_DOWNLOAD_DIR)
 
     override fun execute() {
         validator.validate(jfrconvArgs)?.let { offending ->

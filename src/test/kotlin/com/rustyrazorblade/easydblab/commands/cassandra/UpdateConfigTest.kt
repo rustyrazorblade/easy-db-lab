@@ -122,7 +122,9 @@ class UpdateConfigTest : BaseKoinTest() {
         UpdateConfig().execute()
 
         val uploaded = org.mockito.kotlin.argumentCaptor<File>()
-        org.mockito.kotlin.verify(mockRemoteOps).uploadDirectory(any(), uploaded.capture(), any())
+        org.mockito.kotlin
+            .verify(mockRemoteOps)
+            .uploadDirectory(any(), uploaded.capture(), any())
         assertThat(uploaded.firstValue).isEqualTo(confDir)
         assertThat(uploaded.firstValue).isAbsolute()
     }

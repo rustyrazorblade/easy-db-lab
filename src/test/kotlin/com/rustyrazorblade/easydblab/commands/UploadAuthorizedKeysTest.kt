@@ -31,11 +31,15 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
     lateinit var keysParent: File
 
     private val uploadedContents = mutableListOf<String>()
+    private val uploadedTargets = mutableListOf<String>()
 
     private val remote: RemoteOperationsService =
         mock {
             on { executeRemotely(any(), any(), any(), any()) } doReturn Response("")
-            on { upload(any(), any(), any()) } doAnswer { uploadedContents += Files.readString(it.getArgument<Path>(1)) }
+            on { upload(any(), any(), any()) } doAnswer {
+                uploadedContents += Files.readString(it.getArgument<Path>(1))
+                uploadedTargets += it.getArgument<String>(2)
+            }
         }
 
     private val state =
@@ -66,6 +70,16 @@ class UploadAuthorizedKeysTest : BaseKoinTest() {
         assertThat(uploadedContents.first()).isEqualTo("ssh-ed25519 AAA a\nssh-ed25519 BBB b\n")
         assertThat(File("authorized_keys_extra")).doesNotExist()
         assertThat(File(context.workingDirectory, "authorized_keys_extra")).doesNotExist()
+    }
+
+    @Test
+    fun `uploads to the fixed remote name not the scratch file name`() {
+        val keys = File(keysParent, "keys").also { it.mkdirs() }
+        File(keys, "a.pub").writeText("ssh-ed25519 AAA a\n")
+
+        UploadAuthorizedKeys().apply { localDir = keys.absolutePath }.execute()
+
+        assertThat(uploadedTargets).isNotEmpty.containsOnly("~/.ssh/authorized_keys_extra")
     }
 
     @Test

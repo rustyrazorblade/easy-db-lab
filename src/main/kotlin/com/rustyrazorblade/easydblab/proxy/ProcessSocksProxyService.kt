@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
+import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService
 import com.rustyrazorblade.easydblab.writeTextAtomically
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
@@ -163,7 +164,7 @@ class ProcessSocksProxyService(
             if (inMemory is TunnelCheck.Reused) return@withLock inMemory.state
 
             val stateFile = context.workspaceFile(Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
-            val sshConfigPath = context.workspaceFile("sshConfig").absolutePath
+            val sshConfigPath = context.workspaceFile(DefaultClusterConfigurationService.SSH_CONFIG_FILE).absolutePath
             val recorded = checkStateFile(stateFile, gatewayHost, sshConfigPath, inMemory as? TunnelCheck.Replaced)
             if (recorded is TunnelCheck.Reused) return@withLock recorded.state
 
@@ -312,7 +313,7 @@ class ProcessSocksProxyService(
             controlIP = current.gatewayHost.privateIp,
             clusterName = context.workingDirectory.name,
             startTime = current.startTime.toString(),
-            sshConfig = context.workspaceFile("sshConfig").absolutePath,
+            sshConfig = context.workspaceFile(DefaultClusterConfigurationService.SSH_CONFIG_FILE).absolutePath,
         )
     }
 

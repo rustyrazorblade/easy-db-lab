@@ -76,7 +76,7 @@ enum class ServerType(val serverType: String) {
 
 ### ClusterStateManager (`ClusterStateManager.kt`)
 
-Handles persistence to `state.json` in the workspace (`File(Context.workingDirectory, "state.json")`, a required constructor argument bound in `ConfigurationModule`; `load()` fails with a `check()` message naming the absolute path when the file is missing):
+Handles persistence to `state.json` in the workspace (`context.workspaceFile("state.json")`, a required constructor argument bound in `ConfigurationModule`; `load()` fails with a `check()` message naming the absolute path when the file is missing):
 - `load(): ClusterState` — read from file
 - `save(state)` — write to file (pretty-printed JSON)
 - `exists(): Boolean` — check if state file exists

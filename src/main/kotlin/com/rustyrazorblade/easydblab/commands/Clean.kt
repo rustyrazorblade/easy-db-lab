@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.services.DefaultClusterConfigurationService
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -31,17 +32,17 @@ class Clean :
         val filesToClean =
             listOf(
                 "cassandra.patch.yaml",
-                "sshConfig",
+                DefaultClusterConfigurationService.SSH_CONFIG_FILE,
                 "env.sh",
-                "environment.sh",
-                "setup_instance.sh",
+                DefaultClusterConfigurationService.STRESS_ENV_FILE,
+                Constants.SETUP_INSTANCE_SCRIPT,
                 "state.json",
-                "cassandra_versions.yaml",
+                Constants.Packer.CASSANDRA_VERSIONS_FILE,
                 "axonops-workbench.json",
                 ".socks5-proxy-state",
                 Constants.Proxy.ENV_FILE,
                 Constants.Proxy.ENV_LOCK_FILE,
-                "kubeconfig",
+                Constants.K3s.LOCAL_KUBECONFIG,
             )
 
         val directoriesToClean =

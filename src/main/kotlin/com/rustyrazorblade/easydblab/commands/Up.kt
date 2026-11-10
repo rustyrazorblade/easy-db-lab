@@ -599,7 +599,7 @@ class Up(
             hosts.hostList,
         ) { clusterHost ->
             val host = clusterHost.toHost()
-            val versionsFile = context.workspaceFile("cassandra_versions.yaml")
+            val versionsFile = context.workspaceFile(Constants.Packer.CASSANDRA_VERSIONS_FILE)
             if (!versionsFile.exists()) {
                 remoteOps.download(
                     host,
@@ -780,7 +780,7 @@ class Up(
                         ServerType.Cassandra to (workingState.hosts[ServerType.Cassandra] ?: emptyList()),
                         ServerType.Stress to (workingState.hosts[ServerType.Stress] ?: emptyList()),
                     ),
-                kubeconfigPath = context.workspaceFile("kubeconfig").toPath(),
+                kubeconfigPath = context.workspaceFile(Constants.K3s.LOCAL_KUBECONFIG).toPath(),
                 hostFilter = hosts.hostList,
                 clusterState = workingState,
                 useCustomCni = ciliumEnabled,

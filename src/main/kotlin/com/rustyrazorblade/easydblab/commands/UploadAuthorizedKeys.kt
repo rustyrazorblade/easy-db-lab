@@ -12,7 +12,6 @@ import picocli.CommandLine.Mixin
 import picocli.CommandLine.Parameters
 import java.io.File
 import java.io.FileFilter
-import java.io.FileWriter
 import java.nio.file.Files
 import java.nio.file.Paths
 import kotlin.io.path.exists
@@ -54,10 +53,7 @@ class UploadAuthorizedKeys : PicoBaseCommand() {
 
         val authorizedKeysExtraFile = Files.createTempFile("authorized_keys_extra", null).toFile()
         try {
-            FileWriter(authorizedKeysExtraFile).use {
-                it.write(keys)
-                it.write("\n")
-            }
+            authorizedKeysExtraFile.writeText(keys + "\n")
 
             println("Uploading the following keys:")
             println(keys)

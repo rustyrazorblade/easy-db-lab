@@ -536,6 +536,18 @@ object Constants {
         const val STOP_WAIT_MAX_POLLS = 150
 
         val SHELL_VAR_PATTERN = Regex("""\$\{(\w+)}""")
+
+        /** The `cassandra-pods` kit: the CQL NodePort, the agent-carrying image and the UN wait bound. */
+        object CassandraPods {
+            /** NodePort and native transport port; no other kit uses it. */
+            const val CQL_NODE_PORT = 30942
+
+            /** Image whose `/javaagent.jar` the init container copies; its tag is the build's agent version. */
+            const val AGENT_IMAGE_REPOSITORY = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java"
+
+            /** How long `start` waits for every requested node to report UN. */
+            const val UN_WAIT_TIMEOUT_SECONDS = 900
+        }
     }
 
     // YACE (Yet Another CloudWatch Exporter) configuration

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cassandra-pods-nodeport
+  namespace: default
+  labels:
+    easydblab/kit: cassandra-pods
+spec:
+  type: NodePort
+  # Local: a connection to a node's IP reaches the pod on that node, never another one. Each pod
+  # advertises its node IP and this port, so every peer address a driver learns is dialable.
+  externalTrafficPolicy: Local
+  selector:
+    app: cassandra-pods
+  ports:
+    - name: cql
+      port: 30942
+      targetPort: 30942
+      nodePort: 30942

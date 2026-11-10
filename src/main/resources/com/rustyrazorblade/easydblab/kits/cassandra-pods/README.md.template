@@ -1,0 +1,25 @@
+# Cassandra pods on __CLUSTER_NAME__ cluster
+
+Image: `--image` if given, else `cassandra:<--version>`
+Nodes: __CASSANDRA_NODES__ (one pod per db node, DB nodes: __DB_NODE_COUNT__)
+Datacenter: __CASSANDRA_DC__, rack `rack1`
+Storage per node: __STORAGE_SIZE__
+Region: __REGION__
+
+## Connect
+
+CQL listens on port 30942 of every db node IP:
+
+```bash
+cqlsh <db-node-ip> 30942
+```
+
+## Lifecycle
+
+```bash
+easy-db-lab cassandra-pods start
+easy-db-lab cassandra-pods stop        # keeps the data volumes
+easy-db-lab kit uninstall cassandra-pods   # deletes the data volumes
+```
+
+Metrics arrive as `job="cassandra"`, so the Cassandra dashboards show these pods.

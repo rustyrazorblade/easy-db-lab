@@ -423,6 +423,7 @@ tasks.register("testScripts") {
         "testCassandraBuildPlan",
         "testCassandraResolveRef",
         "testKitShellLib",
+        "testCassandraPodsStart",
         "testClickhouseBenchmarkReport",
         "testClickhouseBenchmarkStart",
         "testClickhouseBenchmarkPrepare",
@@ -976,4 +977,30 @@ tasks.named("jib") {
 tasks.named("jibDockerBuild") {
     dependsOn(copyOtelAgent)
     notCompatibleWithConfigurationCache("Jib plugin doesn't fully support configuration cache yet")
+}
+
+// The cassandra-pods kit's JMX rules have one source, the file the AMI path also uses. Copy it
+// into the kit's resources at build time, and stamp the OpenTelemetry agent version from the
+// version catalog into the kit's init-container image tag, so the two cannot drift apart.
+tasks.named<ProcessResources>("processResources") {
+    val kitResources = "com/rustyrazorblade/easydblab/kits/cassandra-pods"
+    from("src/main/resources/com/rustyrazorblade/easydblab/configuration/cassandra/cassandra-jmx-rules.yaml") {
+        into(kitResources)
+    }
+    val agentVersion = libs.versions.opentelemetry.agent.get()
+    filesMatching("$kitResources/statefulset.yaml.template") {
+        filter { it.replace("@OTEL_AGENT_VERSION@", agentVersion) }
+    }
+}
+
+tasks.withType<Test>().configureEach {
+    systemProperty("easydblab.otelAgentVersion", libs.versions.opentelemetry.agent.get())
+}
+
+// Unit-test the cassandra-pods kit's start check and UN wait. curl, ssh and kubectl are stubbed.
+tasks.register<Exec>("testCassandraPodsStart") {
+    group = "Verification"
+    description = "Unit-test the cassandra-pods kit start check and UN wait"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/cassandra-pods-start.test.sh")
 }

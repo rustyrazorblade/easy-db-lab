@@ -1,0 +1,159 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  # platform-pvs names the PV data-<kit>-<ordinal>; the StatefulSet's claim takes the same name
+  # only when the StatefulSet is named after the kit and its claim template is `data`.
+  name: cassandra-pods
+  namespace: default
+  labels:
+    app: cassandra-pods
+    easydblab/kit: cassandra-pods
+spec:
+  replicas: __CASSANDRA_NODES__
+  serviceName: cassandra-pods-gossip
+  # Nodes join one at a time: Cassandra does not support concurrent bootstraps.
+  podManagementPolicy: OrderedReady
+  selector:
+    matchLabels:
+      app: cassandra-pods
+  template:
+    metadata:
+      labels:
+        app: cassandra-pods
+        easydblab/kit: cassandra-pods
+    spec:
+      terminationGracePeriodSeconds: 120
+      nodeSelector:
+        type: db
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app: cassandra-pods
+      # The OpenTelemetry Java agent comes from a pinned, multi-arch image, not from a host path,
+      # so this works on any node. The image tag is stamped from the build's agent version.
+      initContainers:
+        - name: otel-agent
+          image: ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java:@OTEL_AGENT_VERSION@
+          imagePullPolicy: IfNotPresent
+          command: ["cp", "/javaagent.jar", "/otel-agent/opentelemetry-javaagent.jar"]
+          volumeMounts:
+            - name: otel-agent
+              mountPath: /otel-agent
+      containers:
+        - name: cassandra
+          # start resolves --image (or cassandra:<--version>) and writes the resolved manifest.
+          image: "@RESOLVED_IMAGE@"
+          imagePullPolicy: IfNotPresent
+          # The image's entrypoint maps CASSANDRA_* variables onto cassandra.yaml, but not the
+          # native port, so it is set here before the entrypoint runs.
+          command:
+            - sh
+            - -c
+            - |
+              sed -i 's/^native_transport_port:.*/native_transport_port: 30942/' /etc/cassandra/cassandra.yaml
+              if [ -n "$CASSANDRA_HEAP" ]; then
+                size="${CASSANDRA_HEAP%[GgMm]}"
+                unit="${CASSANDRA_HEAP#"$size"}"
+                export MAX_HEAP_SIZE="$CASSANDRA_HEAP" HEAP_NEWSIZE="$((size / 4))$unit"
+              fi
+              exec docker-entrypoint.sh cassandra -f
+          env:
+            - name: CASSANDRA_CLUSTER_NAME
+              value: __CLUSTER_NAME__
+            - name: CASSANDRA_DC
+              value: __CASSANDRA_DC__
+            - name: CASSANDRA_RACK
+              value: rack1
+            - name: CASSANDRA_ENDPOINT_SNITCH
+              value: GossipingPropertyFileSnitch
+            - name: CASSANDRA_HEAP
+              value: "__CASSANDRA_HEAP__"
+            # Pod 0 is the seed, reached by its stable DNS name.
+            - name: CASSANDRA_SEEDS
+              value: cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local
+            # HOST_IP must precede the variables that reference it.
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
+            # Clients dial the node: the node IP, and the native port is the NodePort value.
+            - name: CASSANDRA_BROADCAST_RPC_ADDRESS
+              value: "$(HOST_IP)"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # The flags mirror packer/cassandra/cassandra.in.sh. JVM_EXTRA_OPTS, not JVM_OPTS, so
+            # nodetool does not load the agent.
+            - name: JVM_EXTRA_OPTS
+              value: >-
+                -javaagent:/otel-agent/opentelemetry-javaagent.jar
+                -Dotel.jmx.config=/etc/edl-jmx/cassandra-jmx-rules.yaml
+                -Dotel.jmx.discovery.delay=5000
+                -Dotel.instrumentation.runtime-telemetry.emit-experimental-jfr-metrics=true
+                -Dotel.instrumentation.runtime-telemetry.emit-experimental-telemetry=true
+            - name: OTEL_SERVICE_NAME
+              value: cassandra
+            # host.name names the node, not the pod, so every signal matches the node-keyed
+            # dashboard filters. NODE_NAME and POD_NAME must precede this variable.
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "host.name=$(NODE_NAME),service.instance.id=$(POD_NAME),node_role=db,cassandra_build=@RESOLVED_BUILD@"
+            # Port 4318 is the collector's OTLP http/protobuf receiver, the agent's default protocol.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://$(HOST_IP):4318"
+            - name: OTEL_METRIC_EXPORT_INTERVAL
+              value: "5000"
+          ports:
+            - name: cql
+              containerPort: 30942
+            - name: gossip
+              containerPort: 7000
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - nodetool statusbinary | grep -q running
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 60
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/cassandra
+            - name: otel-agent
+              mountPath: /otel-agent
+              readOnly: true
+            - name: jmx-rules
+              mountPath: /etc/edl-jmx
+              readOnly: true
+      volumes:
+        - name: otel-agent
+          emptyDir: {}
+        - name: jmx-rules
+          configMap:
+            name: cassandra-pods-jmx-rules
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app: cassandra-pods
+          easydblab/kit: cassandra-pods
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: __STORAGE_CLASS_WFC__
+        # Binds only this kit's platform PVs; every kit's PVs share the storage class.
+        selector:
+          matchLabels:
+            app.kubernetes.io/name: __KIT_NAME__
+        resources:
+          requests:
+            storage: __STORAGE_SIZE__

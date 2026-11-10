@@ -7,30 +7,30 @@
 
 ## 2. Constants and build
 
-- [ ] 2.1 Add `Constants.Kit` entries: the CQL NodePort 30942, the `autoinstrumentation-java` image name, and the UN wait timeout.
-- [ ] 2.2 In `build.gradle.kts`, copy `configuration/cassandra/cassandra-jmx-rules.yaml` into the kit's resources at build time, so the rules have one source.
-- [ ] 2.3 Write a test that the agent image tag the kit renders equals `libs.versions.opentelemetry-agent`.
+- [x] 2.1 Add `Constants.Kit` entries: the CQL NodePort 30942, the `autoinstrumentation-java` image name, and the UN wait timeout.
+- [x] 2.2 In `build.gradle.kts`, copy `configuration/cassandra/cassandra-jmx-rules.yaml` into the kit's resources at build time, so the rules have one source.
+- [x] 2.3 Write a test that the agent image tag the kit renders equals `libs.versions.opentelemetry-agent`.
 
 ## 3. Kit resources
 
-- [ ] 3.1 Write a test that parses `kits/cassandra-pods/kit.yaml`: type `db`, the six named args and their defaults, the `CQL` endpoint on 30942, and Java-agent metrics with service name `cassandra`.
-- [ ] 3.2 Add `kits/cassandra-pods/kit.yaml` per the design outline, with `install`, `start`, `stop` and `uninstall`.
-- [ ] 3.3 Write a rendering test for the StatefulSet template:
+- [x] 3.1 Write a test that parses `kits/cassandra-pods/kit.yaml`: type `db`, the six named args and their defaults, the `CQL` endpoint on 30942, and Java-agent metrics with service name `cassandra`.
+- [x] 3.2 Add `kits/cassandra-pods/kit.yaml` per the design outline, with `install`, `start`, `stop` and `uninstall`.
+- [x] 3.3 Write a rendering test for the StatefulSet template:
   - `--nodes` replicas, `OrderedReady`, required anti-affinity on `kubernetes.io/hostname`, node selector `type=db`;
   - `broadcast_rpc_address` from `status.hostIP` and native port 30942;
   - the init container image and an emptyDir;
   - no hostPath under `/usr/local/otel`;
   - the `host.name`, `node_role` and `cassandra_build` attributes;
   - the claim template selecting the kit's PVs.
-- [ ] 3.4 Add the StatefulSet, headless Service and NodePort Service (`externalTrafficPolicy: Local`) templates.
-- [ ] 3.5 Write a shell test for the start check, with a stubbed `curl`:
+- [x] 3.4 Add the StatefulSet, headless Service and NodePort Service (`externalTrafficPolicy: Local`) templates.
+- [x] 3.5 Write a shell test for the start check, with a stubbed `curl`:
   - a known image passes;
   - an unknown image exits 1 and names it;
   - `--image` overrides `--version`;
   - `--nodes` above the db node count exits 1;
   - a running AMI Cassandra exits 1.
-- [ ] 3.6 Write the start-check and UN-wait scripts. They source `EDL_KIT_LIB`, and the UN wait prints recent events on timeout.
-- [ ] 3.7 Add `metrics-catalog.json`, `README.md.template` and the kit's `CLAUDE.md`.
+- [x] 3.6 Write the start-check and UN-wait scripts. They source `EDL_KIT_LIB`, and the UN wait prints recent events on timeout.
+- [x] 3.7 Add `metrics-catalog.json`, `README.md.template` and the kit's `CLAUDE.md`.
 
 ## 4. Integration
 

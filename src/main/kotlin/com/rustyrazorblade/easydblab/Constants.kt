@@ -544,9 +544,6 @@ object Constants {
 
             /** Image whose `/javaagent.jar` the init container copies; its tag is the build's agent version. */
             const val AGENT_IMAGE_REPOSITORY = "ghcr.io/open-telemetry/opentelemetry-operator/autoinstrumentation-java"
-
-            /** How long `start` waits for every requested node to report UN. */
-            const val UN_WAIT_TIMEOUT_SECONDS = 900
         }
     }
 

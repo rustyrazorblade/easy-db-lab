@@ -197,13 +197,6 @@ class CassandraPodsKitTest : BaseKoinTest() {
     }
 
     @Test
-    fun `the UN wait bound in the script is the constant`() {
-        val script = kit.resource("lib/wait-un.sh")
-
-        assertThat(script).contains("${Constants.Kit.CassandraPods.UN_WAIT_TIMEOUT_SECONDS}")
-    }
-
-    @Test
     fun `the JMX rules are packaged from their single source`() {
         val source =
             CassandraPodsKitTest::class.java.classLoader

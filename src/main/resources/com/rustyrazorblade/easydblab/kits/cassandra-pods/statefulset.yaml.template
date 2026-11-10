@@ -55,9 +55,16 @@ spec:
             - |
               sed -i 's/^native_transport_port:.*/native_transport_port: 30942/' /etc/cassandra/cassandra.yaml
               if [ -n "$CASSANDRA_HEAP" ]; then
+                # start has validated --heap as a whole number of G or M; the young generation is
+                # a quarter of the heap, in MiB (a G heap would otherwise divide to 0G).
                 size="${CASSANDRA_HEAP%[GgMm]}"
-                unit="${CASSANDRA_HEAP#"$size"}"
-                export MAX_HEAP_SIZE="$CASSANDRA_HEAP" HEAP_NEWSIZE="$((size / 4))$unit"
+                case "$CASSANDRA_HEAP" in
+                  *[Gg]) heap_mib=$((size * 1024)) ;;
+                  *) heap_mib=$size ;;
+                esac
+                newsize=$((heap_mib / 4))
+                [ "$newsize" -ge 1 ] || newsize=1
+                export MAX_HEAP_SIZE="$CASSANDRA_HEAP" HEAP_NEWSIZE="${newsize}M"
               fi
               exec docker-entrypoint.sh cassandra -f
           env:

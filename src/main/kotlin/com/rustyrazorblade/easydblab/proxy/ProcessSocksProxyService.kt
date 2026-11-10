@@ -162,8 +162,8 @@ class ProcessSocksProxyService(
             val inMemory = state?.let { checkInMemory(it, gatewayHost) } ?: TunnelCheck.Absent
             if (inMemory is TunnelCheck.Reused) return@withLock inMemory.state
 
-            val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
-            val sshConfigPath = File(context.workingDirectory, "sshConfig").absolutePath
+            val stateFile = context.workspaceFile(Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
+            val sshConfigPath = context.workspaceFile("sshConfig").absolutePath
             val recorded = checkStateFile(stateFile, gatewayHost, sshConfigPath, inMemory as? TunnelCheck.Replaced)
             if (recorded is TunnelCheck.Reused) return@withLock recorded.state
 
@@ -224,7 +224,7 @@ class ProcessSocksProxyService(
 
     override fun stop(): TunnelStopResult =
         lock.withLock {
-            val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
+            val stateFile = context.workspaceFile(Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
             // A state file that cannot be read does not mean no tunnel: one this process started is
             // still known in memory, and goes through the same verified stop.
             val recorded = readStateFile(stateFile) ?: inMemoryRecord()
@@ -312,7 +312,7 @@ class ProcessSocksProxyService(
             controlIP = current.gatewayHost.privateIp,
             clusterName = context.workingDirectory.name,
             startTime = current.startTime.toString(),
-            sshConfig = File(context.workingDirectory, "sshConfig").absolutePath,
+            sshConfig = context.workspaceFile("sshConfig").absolutePath,
         )
     }
 
@@ -337,7 +337,7 @@ class ProcessSocksProxyService(
     override fun getLocalPort(): Int =
         lock.withLock {
             state?.localPort ?: run {
-                val stateFile = File(context.workingDirectory, Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
+                val stateFile = context.workspaceFile(Constants.Vpc.SOCKS5_PROXY_STATE_FILE)
                 readStateFile(stateFile)?.port ?: 0
             }
         }
@@ -380,7 +380,7 @@ class ProcessSocksProxyService(
 
         // ProcessBuilder's redirect will NOT create parent dirs; without this, ssh's stderr is
         // silently discarded and the transcript we rely on for diagnosis would be lost.
-        val logDir = File(context.workingDirectory, LOGS_DIR)
+        val logDir = context.workspaceFile(LOGS_DIR)
         logDir.mkdirs()
         val logFile = File(logDir, Constants.Proxy.SOCKS5_PROXY_LOG_FILE)
 
@@ -540,7 +540,7 @@ class ProcessSocksProxyService(
         listOf(
             "nohup",
             Constants.ToolWrappers.TUNNEL_SHELL,
-            File(File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY), Constants.ToolWrappers.TUNNEL_SCRIPT).absolutePath,
+            File(context.workspaceFile(Constants.ToolWrappers.DIRECTORY), Constants.ToolWrappers.TUNNEL_SCRIPT).absolutePath,
             "$port",
             sshConfigPath,
             "${Constants.Proxy.TUNNEL_RESTART_BACKOFF_SECONDS}",

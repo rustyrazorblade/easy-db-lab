@@ -24,7 +24,6 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
-import java.io.File
 import java.time.LocalDate
 import kotlin.system.exitProcess
 
@@ -410,13 +409,13 @@ class Init : PicoBaseCommand() {
         val existingFiles = mutableListOf<String>()
 
         Clean.filesToClean.forEach { file ->
-            if (File(context.workingDirectory, file).exists()) {
+            if (context.workspaceFile(file).exists()) {
                 existingFiles.add(file)
             }
         }
 
         Clean.directoriesToClean.forEach { dir ->
-            if (File(context.workingDirectory, dir).exists()) {
+            if (context.workspaceFile(dir).exists()) {
                 existingFiles.add("$dir/")
             }
         }
@@ -435,7 +434,7 @@ class Init : PicoBaseCommand() {
      * @throws CommandFailedException after reporting [Event.Setup.WorkspaceHasBinDirectory]
      */
     private fun refuseExistingBin() {
-        if (!File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY).exists()) return
+        if (!context.workspaceFile(Constants.ToolWrappers.DIRECTORY).exists()) return
         eventBus.emit(Event.Setup.WorkspaceHasBinDirectory(context.workingDirectory.absolutePath))
         throw CommandFailedException("${context.workingDirectory.absolutePath} already has a bin/")
     }
@@ -486,7 +485,7 @@ class Init : PicoBaseCommand() {
         this::class.java.getResourceAsStream(resourceName).use { stream ->
             requireNotNull(stream) { "Resource $resourceName not found" }
             // Into the workspace, which is not always the process working directory (Server, Repl).
-            File(context.workingDirectory, targetFileName).outputStream().use { output -> stream.copyTo(output) }
+            context.workspaceFile(targetFileName).outputStream().use { output -> stream.copyTo(output) }
         }
     }
 

@@ -9,7 +9,6 @@ import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
-import java.io.File
 
 /**
  * Cleans up generated files from the current directory.
@@ -55,14 +54,14 @@ class Clean :
 
     override fun execute() {
         for (f in filesToClean) {
-            File(context.workingDirectory, f).deleteRecursively()
+            context.workspaceFile(f).deleteRecursively()
         }
 
         for (d in directoriesToClean) {
-            File(context.workingDirectory, d).deleteRecursively()
+            context.workspaceFile(d).deleteRecursively()
         }
         toolWrapperInstaller.remove(context.workingDirectory)
-        val artifacts = File(context.workingDirectory, "artifacts")
+        val artifacts = context.workspaceFile("artifacts")
 
         if (artifacts.isDirectory) {
             if (artifacts.listFiles().isEmpty()) {

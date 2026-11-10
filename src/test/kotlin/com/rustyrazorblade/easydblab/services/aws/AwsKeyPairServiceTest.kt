@@ -22,6 +22,7 @@ import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFilePermissions
 
 /**
  * Key pair generation for profile setup: the private key lands in the profile directory readable
@@ -90,6 +91,44 @@ class AwsKeyPairServiceTest {
         assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionError>()).hasSize(1)
         assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionPolicyDisplay>()).isNotEmpty
         assertThat(emitted).contains(Event.Setup.AwsPermissionPolicyFooter)
+    }
+
+    @Test
+    fun `AccessDenied from EC2 shows the policies once and is rethrown as already reported`(
+        @TempDir profileDir: File,
+    ) {
+        val denied =
+            Ec2Exception
+                .builder()
+                .statusCode(400)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("AccessDenied").build())
+                .message("not allowed")
+                .build()
+        whenever(ec2.createKeyPair(any<CreateKeyPairRequest>())).thenThrow(denied)
+
+        assertThatThrownBy { service.generate(profileDir, ec2) }
+            .isInstanceOf(CommandFailedException::class.java)
+            .hasCause(denied)
+
+        assertThat(emitted.filterIsInstance<Event.Setup.AwsPermissionError>()).hasSize(1)
+        assertThat(File(profileDir, "secret.pem")).doesNotExist()
+    }
+
+    @Test
+    fun `an existing secret file is replaced and ends up owner-only`(
+        @TempDir profileDir: File,
+    ) {
+        val secret = File(profileDir, "secret.pem")
+        secret.writeText("OLD-KEY")
+        Files.setPosixFilePermissions(secret.toPath(), PosixFilePermissions.fromString("rw-r--r--"))
+        whenever(ec2.createKeyPair(any<CreateKeyPairRequest>()))
+            .thenReturn(CreateKeyPairResponse.builder().keyMaterial("NEW-KEY").build())
+
+        service.generate(profileDir, ec2)
+
+        assertThat(secret.readText()).isEqualTo("NEW-KEY")
+        assertThat(PosixFilePermissions.toString(Files.getPosixFilePermissions(secret.toPath())))
+            .isEqualTo("rw-------")
     }
 
     @Test

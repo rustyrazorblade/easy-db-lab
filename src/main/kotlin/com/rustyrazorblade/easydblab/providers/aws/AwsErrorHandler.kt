@@ -37,25 +37,23 @@ class AwsErrorHandler : ProviderErrorHandler {
     private fun describeService(error: AwsServiceException): ErrorDescription? {
         val code = error.awsErrorDetails()?.errorCode()
         val detail = error.awsErrorDetails()?.errorMessage() ?: error.message.orEmpty()
-        val kind =
-            when {
-                code in Constants.AWS.ErrorCodes.CREDENTIALS -> ProviderErrorKind.CREDENTIALS
-                code in Constants.AWS.ErrorCodes.PERMISSION_DENIED -> ProviderErrorKind.PERMISSION_DENIED
-                code == Constants.AWS.ErrorCodes.CLOCK_SKEW -> null
-                error.statusCode() == Constants.HttpStatus.FORBIDDEN -> ProviderErrorKind.PERMISSION_DENIED
-                else -> null
-            }
-        return when (kind) {
-            ProviderErrorKind.CREDENTIALS -> describeAs(kind, detail, CREDENTIALS_REMEDY)
-            ProviderErrorKind.PERMISSION_DENIED -> describeAs(kind, detail, permissionRemedy(policyFor(error)))
+        val permissionDenied = { describeAs(ProviderErrorKind.PERMISSION_DENIED, detail, permissionRemedy(policyFor(error))) }
+        return when {
+            code in Constants.AWS.ErrorCodes.CREDENTIALS -> describeAs(ProviderErrorKind.CREDENTIALS, detail, CREDENTIALS_REMEDY)
+            code in Constants.AWS.ErrorCodes.PERMISSION_DENIED -> permissionDenied()
+            code == Constants.AWS.ErrorCodes.CLOCK_SKEW -> null
+            error.statusCode() == Constants.HttpStatus.FORBIDDEN -> permissionDenied()
             else -> null
         }
     }
 
     private fun describeClient(error: SdkClientException): ErrorDescription? {
         val message = error.message.orEmpty()
-        // The SDK has a type for an expired SSO session; a missing credentials chain is a plain
-        // SdkClientException that only its message tells apart.
+        // The SDK has a type for an expired SSO session. A missing credentials chain is a plain
+        // SdkClientException that only its message tells apart: the DefaultCredentialsProvider chain says
+        // "Unable to load credentials from any of the providers in the chain", and a profile without keys
+        // says "Profile file contained no credentials for profile 'x'"; an older SSO provider says
+        // "The SSO session associated with this profile has expired".
         val isCredentialsProblem =
             error is ExpiredTokenException ||
                 Constants.AWS.ErrorCodes.CREDENTIALS_MESSAGES

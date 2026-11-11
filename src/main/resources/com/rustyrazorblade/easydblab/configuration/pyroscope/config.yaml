@@ -1,18 +1,54 @@
+# Native multi-tenancy: every write and query carries the cluster's tenant in X-Scope-OrgID.
+multitenancy_enabled: true
+
+# Pure v2 storage. The default, v1-v2-dual, writes every profile twice.
+architecture_storage: v2
+
+# The account bucket, under the pyroscope root. Pyroscope v2 lays out its own directories
+# (segments, blocks) under this prefix. Nothing is written to the cluster's data bucket.
 storage:
   backend: s3
-  prefix: __PYROSCOPE_STORAGE_PREFIX__
+  prefix: __PROFILES_S3_PREFIX__
   s3:
-    bucket_name: __BUCKET_NAME__
+    bucket_name: __ACCOUNT_BUCKET__
     endpoint: s3.__AWS_REGION__.amazonaws.com
     region: __AWS_REGION__
+
+# The metastore holds the only index of the blocks this cluster wrote; v2 cannot rebuild it from
+# S3. Its data and Raft state live on the control node's disk (/data is a hostPath), so a pod
+# restart keeps every profile queryable.
+#
+# NEVER delete a profile by age: the index cleanup that drives v2 retention is off. v2 compaction
+# stays on: it merges this cluster's segments into blocks and keeps their data.
+metastore:
+  data_dir: /data/metastore/data
+  raft:
+    dir: /data/metastore/raft
+    snapshots_dir: /data/metastore/raft
+  index:
+    cleanup_interval: 0s
 
 self_profiling:
   disable_push: true
 
 limits:
+  # 0 means data is never deleted (the v2.2+ default is 31 days).
+  retention_period: 0s
   max_label_names_per_series: 30
+  # One eBPF profile holds one sample per distinct stack in its window, so its sample count is at
+  # most sample_rate (97 Hz) x collect_interval (15 s) x vCPUs, from config.alloy: 1,455 per vCPU.
+  # The default of 16,000 is 11 busy vCPUs; edbl-ab1172 (64 vCPUs) sent 18,995 and lost every
+  # data-node profile. 300,000 covers a 192-vCPU node with every tick on a distinct stack.
+  max_profile_stacktrace_samples: 300000
+  # The uncompressed size cap must let a profile at the sample limit through: 256 bytes a sample
+  # (a 60-frame pprof measures 226) gives 80 MiB. It stays under Pyroscope's 100 MiB gRPC message
+  # cap, because the distributor forwards each profile to the segment writer in one message.
+  # Measured on 2.3.1: one 300,000-sample push peaks at about 1.5 GiB of heap, freed after the push.
+  max_profile_size_bytes: 83886080
   ingestion_rate_mb: 16
-  ingestion_burst_size_mb: 32
+  # The distributor's token bucket rejects any push larger than the burst, so the burst must hold
+  # the largest profile allowed above. The sustained rate stays at 16 MB/s.
+  ingestion_burst_size_mb: 128
 
 server:
   http_listen_port: 4040

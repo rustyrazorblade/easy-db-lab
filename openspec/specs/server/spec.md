@@ -3,35 +3,38 @@
 ## Purpose
 
 The server command (`easy-db-lab server`) provides a hybrid HTTP server exposing cluster management capabilities via MCP (Model Context Protocol) for AI assistants, REST endpoints for programmatic access, and background services for status caching and metrics collection.
-
 ## Requirements
+### Requirement: Server Lifecycle
 
-### REQ-SERVER-001: Server Lifecycle
+The system MUST provide a REST status server that HTTP clients can connect to for cluster status.  The server MUST NOT expose an MCP endpoint, register MCP tools, or write `.mcp.json`.  No command carries `@McpCommand`.  When it is ready, the server MUST emit one ready event that names only the status URL and the API docs (swagger) URL.
 
-The system MUST provide a server that AI assistants and HTTP clients can connect to for cluster management.
-
-#### Scenario: Server accepts MCP and REST connections
+#### Scenario: Server serves REST status endpoints
 - **GIVEN** a running cluster
 - **WHEN** the user starts the server on a specified port
-- **THEN** the server accepts SSE connections from MCP clients and HTTP requests on REST endpoints.
+- **THEN** the server answers HTTP requests on `/status` and `/swagger`.
 
-#### Scenario: MCP tools available on connect
+#### Scenario: No MCP endpoint
 - **GIVEN** a running server
-- **WHEN** an AI assistant connects via MCP
-- **THEN** cluster management tools are available for invocation.
+- **WHEN** a client requests `/sse`
+- **THEN** the server does not serve an MCP endpoint there.
 
-### REQ-SERVER-002: Structured Event Streaming
+#### Scenario: No .mcp.json and no /sse URL
+- **WHEN** `easy-db-lab server` starts
+- **THEN** it writes no `.mcp.json`
+- **AND** its ready output names the `/status` and `/swagger` URLs and no `/sse` URL.
 
-The system MUST stream structured events to connected MCP clients.
+#### Scenario: No command carries the MCP annotation
+- **WHEN** the CLI commands are listed
+- **THEN** no command carries `@McpCommand`.
 
-#### Scenario: Structured events streamed to client
-- **GIVEN** a connected MCP client
-- **WHEN** cluster operations produce events
-- **THEN** the client receives structured event data with type information and metadata.
+#### Scenario: Help text describes the REST server
+- **WHEN** the user runs `easy-db-lab server --help`
+- **THEN** the description names the status and API docs endpoints
+- **AND** it does not tell the user to add an MCP server.
 
-### REQ-SERVER-003: REST Status Endpoints
+### Requirement: REST Status Endpoints
 
-The server MUST expose REST HTTP endpoints for programmatic access to cluster status, independent of the MCP protocol.
+The server MUST expose REST HTTP endpoints for programmatic access to cluster status.
 
 #### Scenario: GET /status returns full JSON
 - **GIVEN** a running server
@@ -48,13 +51,13 @@ The server MUST expose REST HTTP endpoints for programmatic access to cluster st
 - **WHEN** a client sends GET /status?live=true
 - **THEN** the server bypasses the cache and fetches fresh data before responding.
 
-#### Scenario: Observability object includes Tempo and Pyroscope
+#### Scenario: Observability object includes every backend
 - **GIVEN** a running cluster with a reachable control node
 - **WHEN** a client sends GET /status
-- **THEN** the `accessInfo.observability` object SHALL include `tempo` and `pyroscope` URL fields alongside `grafana`, `victoriaMetrics`, and `victoriaLogs`
-- **AND** `tempo` is `http://<controlPrivateIp>:3200` and `pyroscope` is `http://<controlPrivateIp>:4040`
+- **THEN** the `accessInfo.observability` object SHALL include `grafana`, `mimir`, `loki`, `tempo` and `pyroscope` URL fields
+- **AND** `mimir` is `http://<controlPrivateIp>:9009`, `loki` is `http://<controlPrivateIp>:3100`, `tempo` is `http://<controlPrivateIp>:3200` and `pyroscope` is `http://<controlPrivateIp>:4040`
 
-### REQ-SERVER-004: Background Status Cache
+### Requirement: Background Status Cache
 
 The server MUST maintain a background cache of cluster status that refreshes periodically.
 
@@ -68,20 +71,6 @@ The server MUST maintain a background cache of cluster status that refreshes per
 - **WHEN** a client queries /status without ?live=true
 - **THEN** the server responds immediately from the in-memory cache.
 
-### REQ-SERVER-005: Optional Metrics Collection
-
-The server MUST optionally collect and publish live metrics when a Redis connection is configured.
-
-#### Scenario: Metrics collected when Redis configured
-- **GIVEN** the EASY_DB_LAB_REDIS_URL environment variable is set
-- **WHEN** the server starts
-- **THEN** the MetricsCollector polls VictoriaMetrics and publishes metric events to Redis pub/sub.
-
-#### Scenario: Server runs without Redis
-- **GIVEN** the EASY_DB_LAB_REDIS_URL environment variable is not set
-- **WHEN** the server starts
-- **THEN** the server runs normally without metrics collection.
-
 ### Requirement: Auto-shutdown CLI option
 The server command SHALL accept an `--auto-shutdown` flag that enables infrastructure watchdog behavior.
 
@@ -92,3 +81,33 @@ The server command SHALL accept an `--auto-shutdown` flag that enables infrastru
 #### Scenario: Flag provided
 - **WHEN** the user starts the server with `--auto-shutdown`
 - **THEN** the infrastructure watchdog service is started as a background service
+
+### Requirement: Status lists the endpoints of each running kit
+
+The `status` command and the server's status (REST `GET /status` and the MCP status) SHALL list, for each installed kit recorded as running, the endpoints that the kit's `kit.yaml` declares.  Each endpoint SHALL be its NodePort on each host of the endpoint's node type, at the host's private IP.  A stopped kit SHALL show no endpoints, even when other pods of the kit still run.  No kit SHALL have a fixed section of its own.  In the server's status, `accessInfo.kits` SHALL hold these endpoints, one entry per running kit, and SHALL replace the fixed `clickhouse` entry.  If a running kit's `kit.yaml` cannot be read, `status` SHALL print `(endpoints unavailable: cannot read kit.yaml)` under the kit and SHALL render the later sections, and the kit's `accessInfo.kits` entry SHALL carry the same reason in `endpointsUnavailable` with an empty endpoint list.
+
+#### Scenario: A running kit shows its NodePort endpoints
+
+- **WHEN** the clickhouse kit is running and the user runs `status`
+- **THEN** the `=== KITS ===` section marks clickhouse as running
+- **AND** under it, `status` prints the NodePort endpoints that its `kit.yaml` declares, on each host of the endpoint's node type
+
+#### Scenario: A stopped kit shows no endpoints
+
+- **WHEN** the clickhouse kit is installed but not running, and its Keeper pods still run
+- **THEN** `status` lists clickhouse as not running, with no endpoints
+- **AND** `status` prints no ClickHouse section
+
+#### Scenario: The server's status lists running kits
+
+- **WHEN** a client sends `GET /status` while one kit is running and another is stopped
+- **THEN** `accessInfo.kits` holds one entry, for the running kit, with its name and each endpoint's name, type and address
+- **AND** `accessInfo` has no `clickhouse` entry
+
+#### Scenario: A running kit's kit.yaml cannot be read
+
+- **WHEN** a kit is recorded as running and its `kit.yaml` cannot be read
+- **THEN** `status` prints `(endpoints unavailable: cannot read kit.yaml)` under the kit
+- **AND** `status` renders the sections after the kits
+- **AND** the kit's `accessInfo.kits` entry has an empty endpoint list and `endpointsUnavailable` set to `cannot read kit.yaml`
+

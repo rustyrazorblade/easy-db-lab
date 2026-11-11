@@ -4,6 +4,18 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import org.koin.core.component.KoinComponent
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * Outcome of running a per-host action against a single host.
+ *
+ * Pairs the host with its [Result] so a caller can report success and failure per host rather than
+ * only learning that "something, somewhere" failed.
+ */
+data class HostResult<T>(
+    val host: ClusterHost,
+    val result: Result<T>,
+)
 
 /**
  * Service for iterating over cluster hosts and executing operations.
@@ -61,15 +73,65 @@ class HostOperationsService(
         val filteredHosts = filteredHosts(hosts, serverType, hostFilter)
 
         if (parallel && filteredHosts.size > 1) {
-            val threads =
-                filteredHosts.map { host ->
-                    kotlin.concurrent.thread(start = true, isDaemon = false) {
-                        action(host)
-                    }
-                }
-            threads.forEach { it.join() }
+            val failures =
+                collectFromHosts(hosts, serverType, hostFilter, parallel = true, action = action)
+                    .mapNotNull { it.result.exceptionOrNull() }
+
+            // Every host ran. Rethrow the first failure with the rest attached, so an operator
+            // fixing a multi-node problem sees all of it at once instead of one host per run.
+            failures.firstOrNull()?.let { first ->
+                failures.drop(1).filter { it !== first }.forEach { first.addSuppressed(it) }
+                throw first
+            }
         } else {
             filteredHosts.forEach(action)
+        }
+    }
+
+    /**
+     * Executes an action on filtered hosts and returns each host's outcome instead of throwing.
+     *
+     * Every host runs regardless of what happens on any other host; a failing action is captured
+     * as a failed [Result] on that host's [HostResult]. Use this when the caller needs to report
+     * per-host success and failure (e.g. installing a version across a cluster); use [withHosts]
+     * when the first failure should simply abort the command.
+     *
+     * @param hosts Map of server types to their hosts
+     * @param serverType The type of server to filter
+     * @param hostFilter Comma-separated list of host aliases to include (empty means all)
+     * @param parallel If true, execute operations in parallel
+     * @param action The action to perform on each host
+     * @return One [HostResult] per targeted host, in declaration order
+     */
+    fun <T> collectFromHosts(
+        hosts: Map<ServerType, List<ClusterHost>>,
+        serverType: ServerType,
+        hostFilter: String = "",
+        parallel: Boolean = false,
+        action: (ClusterHost) -> T,
+    ): List<HostResult<T>> {
+        val filteredHosts = filteredHosts(hosts, serverType, hostFilter)
+
+        if (!parallel || filteredHosts.size <= 1) {
+            return filteredHosts.map { HostResult(it, runCatching { action(it) }) }
+        }
+
+        // Keyed by position, not alias: two hosts sharing an alias would silently overwrite
+        // each other's outcome and misattribute a failure.
+        val results = ConcurrentHashMap<Int, Result<T>>()
+        filteredHosts
+            .mapIndexed { index, host ->
+                kotlin.concurrent.thread(start = true, isDaemon = false) {
+                    results[index] = runCatching { action(host) }
+                }
+            }.forEach { it.join() }
+
+        return filteredHosts.mapIndexed { index, host ->
+            HostResult(
+                host,
+                results[index]
+                    ?: Result.failure(IllegalStateException("No result recorded for host ${host.alias}")),
+            )
         }
     }
 

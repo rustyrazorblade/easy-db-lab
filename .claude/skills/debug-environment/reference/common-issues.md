@@ -162,7 +162,7 @@ kubectl logs -n grafana <grafana-pod>
 3. Verify port forwarding or LoadBalancer
 4. Check firewall/security group rules
 
-### VictoriaMetrics not collecting metrics
+### Mimir not receiving metrics
 
 **Symptoms:**
 - Grafana dashboards show no data
@@ -171,41 +171,45 @@ kubectl logs -n grafana <grafana-pod>
 **Diagnosis:**
 ```bash
 export KUBECONFIG=$(pwd)/kubeconfig
-kubectl get pods -n monitoring
-kubectl logs -n monitoring <victoriametrics-pod>
+kubectl get pods -l app.kubernetes.io/name=mimir
+kubectl logs -l app.kubernetes.io/name=mimir
 
-# Check if OTel collector is running
-kubectl get pods -n opentelemetry
-kubectl logs -n opentelemetry <otel-collector-pod>
+# Check the OTel collector, which remote-writes to Mimir
+kubectl get pods -l app.kubernetes.io/name=otel-collector
+kubectl logs -l app.kubernetes.io/name=otel-collector
+
+# Ask Mimir directly (send the cluster's tenant, `default` unless init set --tenant)
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:9009/prometheus/api/v1/query" \
+  --data-urlencode 'query=up' | jq '.data.result | length'
 ```
 
 **Solutions:**
-1. Verify VictoriaMetrics pod is healthy
-2. Check OTel collector is scraping targets
-3. Verify network connectivity between collector and VictoriaMetrics
-4. Check VictoriaMetrics configuration
+1. Verify the Mimir pod is Ready (`http://<control-ip>:9009/ready`)
+2. Check the OTel collector is scraping targets
+3. Verify the collector's remote-write endpoint and tenant header match Mimir's
+4. Check the Mimir configuration (`MimirManifestBuilder`)
 
-### VictoriaLogs not receiving logs
+### Loki not receiving logs
 
 **Symptoms:**
-- Log queries return no results
+- `logs query` returns no results
 - Logs not visible in Grafana
 
 **Diagnosis:**
 ```bash
 export KUBECONFIG=$(pwd)/kubeconfig
-kubectl get pods -n monitoring
-kubectl logs -n monitoring <victorialogs-pod>
+kubectl get pods -l app.kubernetes.io/name=loki
+kubectl logs -l app.kubernetes.io/name=loki
 
-# Check Fluent Bit collectors
-kubectl get pods -n fluent-bit
-kubectl logs -n fluent-bit <fluent-bit-pod>
+# Ask Loki directly with LogQL
+curl -s -H "X-Scope-OrgID: <tenant>" "http://<control-ip>:3100/loki/api/v1/query_range" \
+  --data-urlencode 'query={cluster="<cluster>"}' --data-urlencode 'limit=5' | jq '.data.result | length'
 ```
 
 **Solutions:**
-1. Verify VictoriaLogs pod is healthy
-2. Check Fluent Bit is running on all nodes
-3. Verify Fluent Bit configuration
+1. Verify the Loki pod is Ready (`http://<control-ip>:3100/ready`)
+2. Check Fluent Bit and the OTel collector are running on all nodes
+3. Verify their Loki endpoint (`/otlp`) and tenant header
 4. Check network connectivity
 
 ### Tempo not receiving traces

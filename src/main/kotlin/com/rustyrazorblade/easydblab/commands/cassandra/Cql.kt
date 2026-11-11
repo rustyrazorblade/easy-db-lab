@@ -1,10 +1,10 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.CqlSessionService
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
@@ -15,12 +15,14 @@ import java.io.File
 /**
  * Execute CQL statements on the Cassandra cluster.
  *
+ * A failed statement or a missing `--file` is reported as an event and then makes the command
+ * exit non-zero through [CommandFailedException].
+ *
  * Examples:
  *   easy-db-lab cassandra cql "SELECT * FROM system.local"
  *   easy-db-lab cassandra cql --file schema.cql
  *   easy-db-lab cassandra cql "CREATE KEYSPACE test WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}"
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(
@@ -44,7 +46,7 @@ class Cql : PicoBaseCommand() {
                 localFile != null -> {
                     if (!localFile.exists()) {
                         eventBus.emit(Event.Cassandra.CqlFileNotFound(localFile.absolutePath))
-                        return
+                        throw CommandFailedException("CQL file not found: ${localFile.absolutePath}")
                     }
                     localFile.readText()
                 }
@@ -69,6 +71,7 @@ class Cql : PicoBaseCommand() {
                 }
             }.onFailure { e ->
                 eventBus.emit(Event.Cassandra.CqlQueryError("${e.message}"))
+                throw CommandFailedException("CQL statement failed")
             }
         // Note: Session cleanup is handled by ResourceManager via CommandExecutor
     }

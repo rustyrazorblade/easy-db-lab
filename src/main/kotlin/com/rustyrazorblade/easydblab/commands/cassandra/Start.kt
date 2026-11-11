@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
@@ -22,7 +21,6 @@ import java.io.File
 /**
  * Start cassandra on all nodes via service command.
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @RequiresProxy
@@ -75,7 +73,7 @@ class Start : PicoBaseCommand() {
         }
 
         // Start axon-agent on Cassandra nodes if configured
-        if (userConfig.axonOpsOrg.isNotBlank() && userConfig.axonOpsKey.isNotBlank()) {
+        if (userConfig.isAxonOpsEnabled()) {
             eventBus.emit(Event.Cassandra.AxonAgentStarting)
             hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, "", parallel = true) { host ->
                 remoteOps.executeRemotely(host.toHost(), "sudo systemctl start axon-agent")

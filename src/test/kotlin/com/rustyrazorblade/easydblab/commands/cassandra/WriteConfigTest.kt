@@ -65,7 +65,7 @@ class WriteConfigTest : BaseKoinTest() {
         assertThat(output).contains("Writing new configuration file")
 
         // Verify the file was written
-        val configFile = File("cassandra.patch.yaml")
+        val configFile = File(context.workingDirectory, "cassandra.patch.yaml")
         assertThat(configFile).exists()
         val content = configFile.readText()
         assertThat(content).contains("test-cluster")
@@ -79,7 +79,7 @@ class WriteConfigTest : BaseKoinTest() {
         command.tokens = 8
         command.execute()
 
-        val configFile = File("cassandra.patch.yaml")
+        val configFile = File(context.workingDirectory, "cassandra.patch.yaml")
         assertThat(configFile).exists()
         val content = configFile.readText()
         assertThat(content).contains("8")

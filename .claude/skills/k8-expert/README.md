@@ -49,8 +49,8 @@ Don't use this skill when you need to:
 - Replication and clustering
 
 ### Observability Stack
-- VictoriaMetrics Deployment
-- VictoriaLogs Deployment
+- Mimir Deployment
+- Loki Deployment
 - Grafana Deployment
 - Tempo Deployment
 - Pyroscope Deployment
@@ -144,8 +144,8 @@ The skill draws from:
 ### Manifest Builders
 - `configuration/clickhouse/ClickhouseManifestBuilder.kt`
 - `configuration/grafana/GrafanaManifestBuilder.kt`
-- `configuration/victoriametrics/VictoriaMetricsManifestBuilder.kt`
-- `configuration/victorialogs/VictoriaLogsManifestBuilder.kt`
+- `configuration/mimir/MimirManifestBuilder.kt`
+- `configuration/loki/LokiManifestBuilder.kt`
 - All other `*ManifestBuilder.kt` files
 
 ### K8s Client Code
@@ -165,7 +165,7 @@ The skill draws from:
 │  - K3s server process                │
 │  - kubectl access                    │
 │  - Observability stack pods          │
-│  - Grafana, VictoriaMetrics, etc.    │
+│  - Grafana, Mimir, Loki, etc.        │
 └──────────────────────────────────────┘
                ▲
                │ K3s token
@@ -231,7 +231,7 @@ Easy-db-lab uses specific K8s resource patterns:
    - Automatic scheduling on new nodes
    - Node-level functionality
 
-3. **Deployment for Stateless Services** (Grafana, VictoriaMetrics)
+3. **Deployment for Stateless Services** (Grafana, Mimir)
    - Replicas for high availability
    - Rolling updates
    - Load balancing
@@ -341,7 +341,7 @@ Then ask your Kubernetes question.
 
 ## Tips
 
-1. **Ask about specific resources:** "How is VictoriaMetrics deployed?"
+1. **Ask about specific resources:** "How is Mimir deployed?"
 2. **Request builder examples:** "Show me a StatefulSet builder"
 3. **Understand patterns:** "Why use DaemonSet for Fluent Bit?"
 4. **Learn debugging:** "How do I debug CrashLoopBackOff?"

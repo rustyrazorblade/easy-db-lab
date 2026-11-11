@@ -1,0 +1,90 @@
+name: clickhouse-benchmark
+type: app
+description: clickhouse-benchmark with ClickBench built in — install with --target to point at a running clickhouse kit
+version: "1.0.0"
+collision-check: true
+
+# The start guard and the stop wait look for the benchmark run pods bin/start.sh creates. A finished
+# run's pod stays behind in Succeeded or Failed; the probe ignores finished pods, so it never refuses
+# the next start.
+runtime:
+  type: pods
+  selector: "easydblab/kit=${KIT_NAME},easydblab/role=benchmark-run"
+  namespace: default
+
+args:
+  - flag: --target
+    variable: TARGET
+    type: kit-ref
+    endpoints: [native, http]
+    description: "Name of the running ClickHouse kit to benchmark (e.g. clickhouse); must expose a native and an http endpoint"
+    required: true
+  - flag: --version
+    variable: VERSION
+    type: string
+    description: "clickhouse/clickhouse-server image version for the benchmark and prepare pods (e.g. 25.4)"
+    default: "latest"
+
+commands:
+  prepare:
+    description: "Create the hits table on every replica and load it from S3"
+    args:
+      - flag: --workload
+        variable: WORKLOAD
+        type: string
+        description: "Dataset to load (clickbench)"
+        default: "clickbench"
+      - flag: --source
+        variable: SOURCE
+        type: string
+        description: "S3 URL of the parquet files to load, read with the cluster's IAM role (default: the public ClickBench dataset, https://clickhouse-public-datasets.s3.amazonaws.com/hits_compatible/athena_partitioned/hits_{0..99}.parquet, read anonymously)"
+      - flag: --storage-policy
+        variable: STORAGE_POLICY
+        type: string
+        description: "Storage policy of the hits table (default, s3_main, s3_tier)"
+        default: "default"
+      - flag: --recreate
+        variable: RECREATE
+        type: boolean
+        description: "Drop an existing hits table and load it again"
+        default: "false"
+  start:
+    description: "Run clickhouse-benchmark against the target"
+    args:
+      - flag: --workload
+        variable: WORKLOAD
+        type: string
+        description: "Packaged query set to run (default clickbench); give this or --queries, not both"
+      - flag: --queries
+        variable: QUERIES
+        type: string
+        description: "Local file of queries to run instead, one query per line; a relative path is relative to the current directory"
+      - flag: --concurrency
+        variable: CONCURRENCY
+        type: int
+        description: "Number of queries run at the same time"
+        default: "4"
+      - flag: --duration
+        variable: DURATION
+        type: int
+        description: "Stop starting queries after this many seconds (0 = no time limit)"
+        default: "60"
+      - flag: --iterations
+        variable: ITERATIONS
+        type: int
+        description: "Stop after this many queries (0 = no limit); with --duration, the first limit reached ends the run"
+        default: "0"
+      - flag: --randomize
+        variable: RANDOMIZE
+        type: boolean
+        description: "Run the queries in random order; --randomize=false runs them in file order"
+        default: "true"
+      - flag: --continue-on-errors
+        variable: CONTINUE_ON_ERRORS
+        type: boolean
+        description: "Keep running when a query fails, instead of stopping the run"
+        default: "false"
+      - flag: --settings
+        variable: SETTINGS
+        type: string
+        description: "Comma-separated ClickHouse settings for every query, as key=value (e.g. max_threads=8,use_query_cache=0); a value cannot hold a comma"

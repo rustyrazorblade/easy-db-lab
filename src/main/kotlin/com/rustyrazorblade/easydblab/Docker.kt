@@ -2,12 +2,15 @@ package com.rustyrazorblade.easydblab
 
 import com.github.dockerjava.api.DockerClient
 import com.github.dockerjava.api.async.ResultCallback
+import com.github.dockerjava.api.command.BuildImageResultCallback
 import com.github.dockerjava.api.command.CreateContainerCmd
 import com.github.dockerjava.api.command.CreateContainerResponse
 import com.github.dockerjava.api.command.InspectContainerResponse
 import com.github.dockerjava.api.command.PullImageResultCallback
+import com.github.dockerjava.api.exception.DockerClientException
 import com.github.dockerjava.api.model.AccessMode
 import com.github.dockerjava.api.model.Bind
+import com.github.dockerjava.api.model.BuildResponseItem
 import com.github.dockerjava.api.model.Frame
 import com.github.dockerjava.api.model.HostConfig
 import com.github.dockerjava.api.model.Image
@@ -22,9 +25,11 @@ import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import java.io.File
 import java.io.IOException
 import java.io.PipedInputStream
 import java.time.Duration
+import kotlin.io.path.createTempDirectory
 
 // Interface for Docker client operations to improve testability
 interface DockerClientInterface {
@@ -38,6 +43,18 @@ interface DockerClientInterface {
         tag: String,
         callback: PullImageResultCallback,
     )
+
+    /**
+     * Builds an image from the Dockerfile in [contextDir], pulling its base first, and tags it [imageTag].
+     *
+     * @param onOutput receives each line of build output, for logging
+     * @return the built image's ID
+     */
+    fun buildImage(
+        contextDir: File,
+        imageTag: String,
+        onOutput: (String) -> Unit,
+    ): String
 
     fun createContainer(imageTag: String): ContainerCreationCommand
 
@@ -79,6 +96,27 @@ class DefaultDockerClient(
             }
         pullCommand.exec(callback)
     }
+
+    override fun buildImage(
+        contextDir: File,
+        imageTag: String,
+        onOutput: (String) -> Unit,
+    ): String =
+        dockerClient
+            .buildImageCmd(contextDir)
+            .withTags(setOf(imageTag))
+            .withPull(true)
+            .exec(
+                object : BuildImageResultCallback() {
+                    override fun onNext(item: BuildResponseItem) {
+                        item.stream
+                            ?.trimEnd()
+                            ?.takeIf { it.isNotEmpty() }
+                            ?.let(onOutput)
+                        super.onNext(item)
+                    }
+                },
+            ).awaitImageId()
 
     override fun createContainer(imageTag: String): ContainerCreationCommand =
         ContainerCreationCommand(dockerClient.createContainerCmd(imageTag))
@@ -238,6 +276,7 @@ class Docker(
 
     companion object {
         private const val CONTAINER_ID_DISPLAY_LENGTH = 12
+        private const val BUILD_OUTPUT_TAIL_LINES = 30
         private val DEFAULT_MAX_WAIT_TIME = Duration.ofMinutes(10)
 
         val log = KotlinLogging.logger {}
@@ -314,6 +353,42 @@ class Docker(
 
         log.info { "Finished pulling $name" }
     }
+
+    /**
+     * Builds [dockerfile] into an image tagged [imageTag], using an otherwise empty build context.
+     *
+     * @throws DockerException if the build fails, carrying the tail of the build output
+     */
+    fun buildImage(
+        dockerfile: String,
+        imageTag: String,
+    ) {
+        require(imageTag.isNotBlank()) { "Image tag cannot be blank" }
+        eventBus.emit(Event.Docker.ImageBuilding(imageTag))
+
+        val contextDir = createTempDirectory("easy-db-lab-image-").toFile()
+        val output = ArrayDeque<String>()
+        try {
+            File(contextDir, "Dockerfile").writeText(dockerfile)
+            dockerClient.buildImage(contextDir, imageTag) { line ->
+                log.debug { "[build $imageTag] $line" }
+                output.addLast(line)
+                if (output.size > BUILD_OUTPUT_TAIL_LINES) output.removeFirst()
+            }
+        } catch (e: com.github.dockerjava.api.exception.DockerException) {
+            throw DockerException(buildFailure(imageTag, output), e)
+        } catch (e: DockerClientException) {
+            throw DockerException(buildFailure(imageTag, output), e)
+        } finally {
+            contextDir.deleteRecursively()
+        }
+        eventBus.emit(Event.Docker.ImageBuilt(imageTag))
+    }
+
+    private fun buildFailure(
+        imageTag: String,
+        output: Collection<String>,
+    ): String = "Error building image $imageTag. Last build output:\n${output.joinToString("\n").ifEmpty { "(none)" }}"
 
     fun runContainer(
         container: Containers,

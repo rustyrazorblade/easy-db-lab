@@ -3,23 +3,21 @@
 ## Purpose
 
 Manages the PostgreSQL kit lifecycle via the CloudNativePG operator and provides SQL execution against a running PostgreSQL cluster.
-
 ## Requirements
+### Requirement: K8s-Based Deployment via CloudNativePG
 
-### REQ-PG-001: K8s-Based Deployment via CloudNativePG
+The system MUST deploy PostgreSQL clusters on K8s db nodes via the CloudNativePG (CNPG) operator. The operator SHALL be installed via Helm (`cloudnative-pg/cloudnative-pg` chart into the `cnpg-system` namespace). The PostgreSQL cluster SHALL be defined as a CNPG `Cluster` custom resource named `postgres`. The container image, shared_preload_libraries, and postInitSQL MAY be configured via extension flags — see the `postgres-extensions` spec.
 
-The system MUST deploy PostgreSQL clusters on K8s db nodes via the CloudNativePG (CNPG) operator. The operator SHALL be installed via Helm (`cloudnative-pg/cloudnative-pg` chart into the `cnpg-system` namespace). The PostgreSQL cluster SHALL be defined as a CNPG `Cluster` custom resource named `postgres`.
-
-#### Scenario: Operator installed and cluster deployed
+#### Scenario: Default deployment uses standard image
 - **GIVEN** a running cluster with K3s
-- **WHEN** the user runs `kit install postgres` and `postgres start`
-- **THEN** the CNPG operator is installed and a PostgreSQL Cluster CR is deployed on db nodes.
+- **WHEN** the user runs `kit install postgres` and `postgres start` with no extension flags
+- **THEN** the CNPG operator is installed and a PostgreSQL Cluster CR is deployed using the default `ghcr.io/cloudnative-pg/postgresql` image with no shared_preload_libraries and no postInitSQL
 
-#### Scenario: Re-install when CNPG already present
+#### Scenario: Install succeeds when CNPG is already installed
 - **WHEN** the user runs `kit install postgres` on a cluster where CNPG is already installed
-- **THEN** the install succeeds without error.
+- **THEN** the install succeeds without error
 
-### REQ-PG-002: Configurable Instance Count
+### Requirement: Configurable Instance Count
 
 The `postgres start` command SHALL accept a `--instances` argument (default: `1`) controlling how many PostgreSQL instances CNPG deploys. When `--instances` is greater than 1, CNPG deploys a primary and read replicas.
 
@@ -31,7 +29,7 @@ The `postgres start` command SHALL accept a `--instances` argument (default: `1`
 - **WHEN** the user runs `postgres start --instances 3`
 - **THEN** CNPG deploys 1 primary and 2 read replicas.
 
-### REQ-PG-003: Data Lifecycle
+### Requirement: Data Lifecycle
 
 Stop MUST preserve data; data is only deleted on uninstall. Starting after a stop MUST resume the existing dataset without any additional user steps.
 
@@ -47,9 +45,9 @@ Stop MUST preserve data; data is only deleted on uninstall. Starting after a sto
 - **WHEN** `postgres start` is run after a fresh install with no prior starts
 - **THEN** PVs are created via `platform-pvs` and the Cluster CR is deployed successfully.
 
-### REQ-PG-004: SQL Execution
+### Requirement: SQL Execution
 
-The `postgres sql` command SHALL execute SQL statements against a running PostgreSQL cluster. SQL execution is provided via the `sql` capability declared in `postgres/kit.yaml` — see REQ-KCAP-002.
+The `postgres sql` command SHALL execute SQL statements against a running PostgreSQL cluster. SQL execution is provided via the `sql` capability declared in `postgres/kit.yaml` — see the `sql capability type` requirement in the `kit-capabilities` spec.
 
 The PostgreSQL JDBC driver (`org.postgresql:postgresql`) auto-registers via ServiceLoader. The `driver-class` field in the `sql` capability SHALL be left empty.
 
@@ -65,7 +63,7 @@ The PostgreSQL JDBC driver (`org.postgresql:postgresql`) auto-registers via Serv
 - **WHEN** no db nodes exist in cluster state
 - **THEN** an error is emitted before any connection is made.
 
-### REQ-PG-005: Presto Integration
+### Requirement: Presto Integration
 
 When both the `postgres` and `presto` kits are running, Presto SHALL automatically expose a `postgres` catalog using the `postgresql` connector, pointing to the CNPG primary service (`postgres-rw.default.svc.cluster.local:5432`).
 
@@ -77,3 +75,4 @@ When both the `postgres` and `presto` kits are running, Presto SHALL automatical
 #### Scenario: No catalog without postgres kit
 - **WHEN** only presto is running (no postgres kit)
 - **THEN** no `postgres` catalog appears in Presto.
+

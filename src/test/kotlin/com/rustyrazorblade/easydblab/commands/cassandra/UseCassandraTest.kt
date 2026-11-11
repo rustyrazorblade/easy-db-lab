@@ -1,12 +1,12 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.CommandExecutor
@@ -75,7 +75,7 @@ class UseCassandraTest : BaseKoinTest() {
         whenever(mockClusterStateManager.exists()).thenReturn(true)
 
         // Some tests chain to UpdateConfig — create a patch file for them.
-        File("cassandra.patch.yaml").writeText(
+        File(context.workingDirectory, "cassandra.patch.yaml").writeText(
             """
             cluster_name: test-cluster
             num_tokens: 4
@@ -85,7 +85,7 @@ class UseCassandraTest : BaseKoinTest() {
 
     @AfterEach
     fun cleanup() {
-        File("cassandra.patch.yaml").delete()
+        File(context.workingDirectory, "cassandra.patch.yaml").delete()
     }
 
     @Test
@@ -97,6 +97,28 @@ class UseCassandraTest : BaseKoinTest() {
         verify(mockClusterStateManager).save(testClusterState)
         val output = outputHandler.messages.joinToString("\n")
         assertThat(output).contains("Using version 4.1")
+    }
+
+    /** The host filter is reported as typed, not as the internal mixin object. */
+    @Test
+    fun `the version announcement reports the host filter`() {
+        val command = UseCassandra()
+        command.version = "4.1"
+        command.hosts.hostList = "db0"
+        command.execute()
+
+        val output = outputHandler.messages.joinToString("\n")
+        assertThat(output).contains("Using version 4.1 on 1 hosts, filter: db0")
+        assertThat(output).doesNotContain("HostsMixin", "Host(", "i-db0")
+    }
+
+    @Test
+    fun `without a host filter the announcement says all hosts`() {
+        val command = UseCassandra()
+        command.version = "4.1"
+        command.execute()
+
+        assertThat(outputHandler.messages.joinToString("\n")).contains("Using version 4.1 on 1 hosts, filter: all hosts")
     }
 
     @Test

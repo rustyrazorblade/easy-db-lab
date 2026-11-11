@@ -1,9 +1,12 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.YamlTestSupport
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
@@ -183,9 +186,11 @@ internal class EMRProvisioningServiceTest {
             .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
             .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
             .contains("-Dpyroscope.server.address=http://10.0.1.5:4040")
+            .contains("-Dpyroscope.tenant.id=default")
         assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"])
             .contains("-javaagent:/opt/otel/opentelemetry-javaagent.jar")
             .contains("-javaagent:/opt/pyroscope/pyroscope.jar")
+            .contains("-Dpyroscope.tenant.id=default")
         assertThat(sparkDefaults.properties["spark.driverEnv.OTEL_SERVICE_NAME"]).isEqualTo("spark")
         assertThat(sparkDefaults.properties["spark.executorEnv.OTEL_LOGS_EXPORTER"]).isEqualTo("otlp")
         assertThat(sparkDefaults.properties["spark.yarn.appMasterEnv.OTEL_TRACES_EXPORTER"]).isEqualTo("otlp")
@@ -194,7 +199,50 @@ internal class EMRProvisioningServiceTest {
         assertThat(sparkEnv.configurations).hasSize(1)
         val exportConfig = sparkEnv.configurations.first()
         assertThat(exportConfig.classification).isEqualTo("export")
-        assertThat(exportConfig.properties).containsKey("PYROSCOPE_LABELS")
+        // Spark's profiles carry the cluster label every other signal carries, so the profiling
+        // dashboards' cluster filter finds them.
+        assertThat(exportConfig.properties["PYROSCOPE_LABELS"])
+            .isEqualTo("hostname=\$(hostname -s),cluster=test-cluster-test-id")
+    }
+
+    @Test
+    fun `spark agent ships profiles to the external Pyroscope on a redirect cluster`() {
+        // On a redirect cluster the local Pyroscope is never deployed, so the Spark Pyroscope agent
+        // must target the external stack. Asserting both the presence of the external endpoint and
+        // the absence of the control-node URL pins the redirect resolution — a producer that ignored
+        // the redirect would keep pointing at http://10.0.1.5:4040 and silently drop every profile.
+        val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
+        val clusterState =
+            createTestClusterState(clusterId = "test-id")
+                .copy(initConfig = InitConfig(telemetryRedirect = redirect, tenant = "acme"))
+
+        val configCaptor = argumentCaptor<EMRClusterConfig>()
+        setupEmrMocks("j-REDIRECT", "myenv-spark", configCaptor)
+
+        service.provisionEmrCluster(
+            EmrClusterProvisioningConfig(
+                clusterName = "myenv",
+                masterInstanceType = "m5.2xlarge",
+                workerInstanceType = "m5.4xlarge",
+                workerCount = 5,
+                subnetId = "subnet-123",
+                securityGroupId = "sg-456",
+                keyName = "my-key",
+                clusterState = clusterState,
+                tags = emptyMap(),
+            ),
+        )
+
+        val sparkDefaults =
+            configCaptor.firstValue.configurations.first { it.classification == "spark-defaults" }
+        assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"])
+            .contains("-Dpyroscope.server.address=${redirect.profiles}")
+            .doesNotContain("http://10.0.1.5:4040")
+        assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"])
+            .contains("-Dpyroscope.server.address=${redirect.profiles}")
+            .doesNotContain("http://10.0.1.5:4040")
+        assertThat(sparkDefaults.properties["spark.driver.extraJavaOptions"]).contains("-Dpyroscope.tenant.id=acme")
+        assertThat(sparkDefaults.properties["spark.executor.extraJavaOptions"]).contains("-Dpyroscope.tenant.id=acme")
     }
 
     @Test
@@ -231,6 +279,48 @@ internal class EMRProvisioningServiceTest {
             .contains("NODE_ROLE=\"spark-master\"")
             .contains("NODE_ROLE=\"spark-worker\"")
             .contains("sed -i \"s/__NODE_ROLE__/\$NODE_ROLE/g\" \"\$COLLECTOR_CONFIG\"")
+    }
+
+    /**
+     * The EMR collector tails the log files EMR and YARN write on the node (container stdout and
+     * stderr, step logs, bootstrap-action logs) into its logs pipeline, which stamps `source=emr`
+     * and the node role; the control node's collector adds the cluster. Before, only OTLP logs from
+     * the Spark agent reached Loki, and a driver that died before logging anything left no trace.
+     */
+    @Test
+    fun `the EMR collector tails the YARN container, step and bootstrap-action logs into its logs pipeline`() {
+        setupEmrMocks("j-LOGS", "myenv-spark")
+        service.provisionEmrCluster(
+            EmrClusterProvisioningConfig(
+                clusterName = "myenv",
+                masterInstanceType = "m5.2xlarge",
+                workerInstanceType = "m5.4xlarge",
+                workerCount = 3,
+                subnetId = "subnet-123",
+                securityGroupId = "sg-456",
+                keyName = "my-key",
+                clusterState = createTestClusterState(clusterId = "test-id"),
+                tags = emptyMap(),
+            ),
+        )
+        val scriptCaptor = argumentCaptor<String>()
+        verify(mockObjectStore).uploadContent(scriptCaptor.capture(), any())
+        val script = scriptCaptor.firstValue
+        val config = script.substringAfter("<< 'CONFIGEOF'\n").substringBefore("\nCONFIGEOF")
+
+        assertThat(YamlTestSupport.listAt(config, "receivers", "file_log/emr", "include")).containsExactlyInAnyOrder(
+            "/var/log/hadoop-yarn/containers/application_*/container_*/*",
+            "/mnt/var/log/hadoop/steps/*/*",
+            "/emr/instance-controller/log/bootstrap-actions/*/*",
+        )
+        assertThat(YamlTestSupport.scalarAt(config, "receivers", "file_log/emr", "start_at")).isEqualTo("beginning")
+        assertThat(YamlTestSupport.scalarAt(config, "receivers", "file_log/emr", "include_file_path")).isEqualTo("true")
+        assertThat(YamlTestSupport.listAt(config, "service", "pipelines", "logs", "receivers")).contains("otlp", "file_log/emr")
+        assertThat(YamlTestSupport.listAt(config, "service", "pipelines", "logs", "processors"))
+            .contains("resource_detection", "resource/role", "resource/source")
+        assertThat(YamlTestSupport.listAt(config, "service", "pipelines", "logs", "exporters")).containsExactly("otlp_grpc/control")
+        // The files belong to EMR and YARN users, so the collector runs as root to read all of them.
+        assertThat(script.substringAfter("[Service]").substringBefore("[Install]")).contains("User=root")
     }
 
     @Test

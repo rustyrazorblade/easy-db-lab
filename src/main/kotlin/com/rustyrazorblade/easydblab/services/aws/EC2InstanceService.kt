@@ -9,8 +9,9 @@ import com.rustyrazorblade.easydblab.providers.aws.EBSConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 import com.rustyrazorblade.easydblab.providers.aws.InstanceDetails
 import com.rustyrazorblade.easydblab.providers.aws.InstanceId
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
+import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
+import com.rustyrazorblade.easydblab.providers.aws.withEc2InstanceRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.BlockDeviceMapping
@@ -118,7 +119,7 @@ class EC2InstanceService(
         subnetId: SubnetId,
         alias: String,
     ): CreatedInstance {
-        val tagSpec = buildTagSpecification(config, alias)
+        val tagSpecs = buildTagSpecifications(config, alias)
         val blockDeviceMappings = buildBlockDeviceMappings(config.ebsConfig)
 
         val requestBuilder =
@@ -136,27 +137,27 @@ class EC2InstanceService(
                         .builder()
                         .name(config.iamInstanceProfile)
                         .build(),
-                ).tagSpecifications(tagSpec)
+                ).tagSpecifications(tagSpecs)
 
         if (blockDeviceMappings.isNotEmpty()) {
             requestBuilder.blockDeviceMappings(blockDeviceMappings)
         }
 
-        // Control nodes need hop limit of 2 so containers (K3s pods) can access IMDS
-        if (config.serverType == ServerType.Control) {
-            requestBuilder.metadataOptions(
-                InstanceMetadataOptionsRequest
-                    .builder()
-                    .httpTokens(HttpTokensState.REQUIRED)
-                    .httpPutResponseHopLimit(2)
-                    .httpEndpoint("enabled")
-                    .build(),
-            )
-        }
+        // All node types need hop limit of 2 so containers (K3s pods) can access IMDS.
+        // In particular the non-hostNetwork cilium-operator pod may schedule on a db/app
+        // node and must reach IMDS to obtain credentials for ENI allocation.
+        requestBuilder.metadataOptions(
+            InstanceMetadataOptionsRequest
+                .builder()
+                .httpTokens(HttpTokensState.REQUIRED)
+                .httpPutResponseHopLimit(2)
+                .httpEndpoint("enabled")
+                .build(),
+        )
 
         val request = requestBuilder.build()
 
-        val response = RetryUtil.withAwsRetry("run-instance-$alias") { ec2Client.runInstances(request) }
+        val response = withAwsRetry("run-instance-$alias") { ec2Client.runInstances(request) }
         val instance = response.instances().first()
 
         return CreatedInstance(
@@ -170,12 +171,14 @@ class EC2InstanceService(
     }
 
     /**
-     * Builds tag specification for the instance.
+     * Builds the tag specifications for the instance and the volumes launched with it. The volumes
+     * carry the instance's tags, so YACE finds a cluster's EBS volumes by `ClusterId` as it finds
+     * its instances.
      */
-    private fun buildTagSpecification(
+    private fun buildTagSpecifications(
         config: InstanceCreationConfig,
         alias: String,
-    ): TagSpecification {
+    ): List<TagSpecification> {
         val allTags =
             config.tags +
                 mapOf(
@@ -193,11 +196,13 @@ class EC2InstanceService(
                     .build()
             }
 
-        return TagSpecification
-            .builder()
-            .resourceType(ResourceType.INSTANCE)
-            .tags(tags)
-            .build()
+        return listOf(ResourceType.INSTANCE, ResourceType.VOLUME).map { type ->
+            TagSpecification
+                .builder()
+                .resourceType(type)
+                .tags(tags)
+                .build()
+        }
     }
 
     /**
@@ -344,7 +349,7 @@ class EC2InstanceService(
                 .build()
 
         val reservations =
-            RetryUtil.withEc2InstanceRetry("describe-instances") {
+            withEc2InstanceRetry("describe-instances") {
                 ec2Client.describeInstances(request).reservations()
             }
 
@@ -426,7 +431,7 @@ class EC2InstanceService(
                     .build()
 
             val response =
-                RetryUtil.withAwsRetry("describe-instance-type-$instanceType") {
+                withAwsRetry("describe-instance-type-$instanceType") {
                     ec2Client.describeInstanceTypes(request)
                 }
 
@@ -473,7 +478,7 @@ class EC2InstanceService(
                 ).build()
 
         val reservations =
-            RetryUtil.withAwsRetry("describe-instances-by-cluster") {
+            withAwsRetry("describe-instances-by-cluster") {
                 ec2Client.describeInstances(request).reservations()
             }
 

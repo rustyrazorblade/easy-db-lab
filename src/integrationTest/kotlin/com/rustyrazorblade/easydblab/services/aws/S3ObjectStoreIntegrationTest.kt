@@ -14,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir
 import software.amazon.awssdk.services.s3.S3Client
 import java.io.File
 import java.nio.file.Path
+import java.time.Instant
 
 /**
  * Integration tests for S3ObjectStore using LocalStack.
@@ -28,6 +29,7 @@ import java.nio.file.Path
 class S3ObjectStoreIntegrationTest {
     private companion object {
         private const val TEST_BUCKET = "s3objectstore-test-bucket"
+        private const val RECENT_UPLOAD_SECONDS = 300L
     }
 
     private lateinit var s3Client: S3Client
@@ -98,6 +100,28 @@ class S3ObjectStoreIntegrationTest {
             assertThat(result.fileSize).isEqualTo(sourceFile.length())
             assertThat(downloadPath.toFile().readText()).isEqualTo("download content")
         }
+
+        /**
+         * EMR re-uploads a step's stderr as the step runs, so a second download of the same key
+         * must replace the local copy. Keeping it printed a truncated stderr on every later run.
+         */
+        @Test
+        fun `should replace a local file that already exists with the object's current content`(
+            @TempDir tempDir: Path,
+        ) {
+            val sourceFile = tempDir.resolve("current.txt").toFile()
+            sourceFile.writeText("current content, uploaded after the local copy was saved")
+            val s3Path = ClusterS3Path.root(TEST_BUCKET).resolve("download/replaced.txt")
+            objectStore.uploadFile(sourceFile, s3Path, showProgress = false)
+            val downloadPath = tempDir.resolve("replaced.txt")
+            downloadPath.toFile().writeText("stale")
+
+            val result = objectStore.downloadFile(s3Path, downloadPath, showProgress = false)
+
+            assertThat(downloadPath.toFile().readText()).isEqualTo(sourceFile.readText())
+            assertThat(result.fileSize).isEqualTo(sourceFile.length())
+            assertThat(tempDir.toFile().list()).containsExactlyInAnyOrder("current.txt", "replaced.txt")
+        }
     }
 
     @Nested
@@ -160,7 +184,8 @@ class S3ObjectStoreIntegrationTest {
             assertThat(fileInfo).isNotNull
             assertThat(fileInfo!!.path).isEqualTo(s3Path)
             assertThat(fileInfo.size).isEqualTo(testFile.length())
-            assertThat(fileInfo.lastModified).isNotEmpty()
+            // StepStderrReadiness compares it with a step's end time, so it must parse as an instant.
+            assertThat(Instant.parse(fileInfo.lastModified)).isAfter(Instant.now().minusSeconds(RECENT_UPLOAD_SECONDS))
         }
 
         @Test

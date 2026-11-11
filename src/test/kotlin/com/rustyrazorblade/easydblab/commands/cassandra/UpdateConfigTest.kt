@@ -78,7 +78,7 @@ class UpdateConfigTest : BaseKoinTest() {
             .doReturn(Version("/usr/local/cassandra/5.0"))
 
         // Create required patch file
-        File("cassandra.patch.yaml").writeText(
+        File(context.workingDirectory, "cassandra.patch.yaml").writeText(
             """
             cluster_name: test-cluster
             num_tokens: 4
@@ -88,7 +88,7 @@ class UpdateConfigTest : BaseKoinTest() {
 
     @AfterEach
     fun cleanup() {
-        File("cassandra.patch.yaml").delete()
+        File(context.workingDirectory, "cassandra.patch.yaml").delete()
     }
 
     @Test
@@ -98,5 +98,20 @@ class UpdateConfigTest : BaseKoinTest() {
 
         val output = outputHandler.messages.joinToString("\n")
         assertThat(output).contains("Uploading cassandra.patch.yaml")
+    }
+
+    /** Hosts are named by alias, as an operator knows them, never as the internal Host object. */
+    @Test
+    fun `progress output names each host by its alias`() {
+        UpdateConfig().execute()
+
+        val output = outputHandler.messages.joinToString("\n")
+        assertThat(output).contains(
+            "Uploading cassandra.patch.yaml to db0",
+            "Patching db0",
+            "Created temporary directory /tmp/easydblab.12345 on db0",
+            "Configuration updated for db0",
+        )
+        assertThat(output).doesNotContain("Host(", "i-db0", "54.1.2.3")
     }
 }

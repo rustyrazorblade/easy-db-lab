@@ -101,9 +101,8 @@ java -jar build/libs/easy-db-lab-*-all.jar <command>
 - `ssh <node>` - SSH into a specific node
 
 ### Service & Observability
-- `logs query` - Query logs from VictoriaLogs
-- `logs ls` - List available log streams
-- `metrics backup` - Backup metrics
+- `logs query` - Query logs from Loki
+- `grafana backup` - Back up Grafana annotations to S3
 - `grafana update-config` - Update Grafana configuration
 
 ### Node Operations
@@ -164,7 +163,7 @@ ss -tlnp | grep <port>
 
 ### Scenario D: Observability Stack Issues
 
-Check observability services (VictoriaMetrics, VictoriaLogs, Grafana, etc.):
+Check observability services (Mimir, Loki, Tempo, Grafana, etc.):
 ```bash
 export KUBECONFIG=$(pwd)/kubeconfig
 kubectl get pods -n monitoring

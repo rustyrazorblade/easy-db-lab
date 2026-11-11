@@ -1,12 +1,18 @@
 package com.rustyrazorblade.easydblab.services
 
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.Context
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardCatalog
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboardTreeWriter
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
@@ -14,23 +20,29 @@ import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuil
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.driver.CqlSessionFactory
 import com.rustyrazorblade.easydblab.driver.DefaultCqlSessionFactory
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.network.SocketTcpReachabilityProbe
+import com.rustyrazorblade.easydblab.network.TcpReachabilityProbe
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.HttpClientFactory
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
-import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
+import com.rustyrazorblade.easydblab.proxy.WorkspaceShellTools
+import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.documents.DefaultTestDocumentService
+import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
 import okhttp3.OkHttpClient
 import org.koin.core.module.dsl.factoryOf
 import org.koin.core.module.dsl.singleOf
+import org.koin.core.parameter.parametersOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
 
@@ -47,12 +59,30 @@ val servicesModule =
         singleOf(::DefaultResourceManager) bind ResourceManager::class
 
         factoryOf(::DefaultCassandraService) bind CassandraService::class
-        factory<CiliumService> { DefaultCiliumService(get(), get()) }
+        factoryOf(::DefaultCassandraProfilingService) bind CassandraProfilingService::class
+        // Singleton: CiliumService records the install window on it during K3s bring-up and `up`
+        // posts the annotations later, after Grafana is deployed, so the state must be shared.
+        single { CiliumInstallAnnotator(get(), get()) }
+        single { LokiPushClient(get()) }
+        single<AnnotationMirror> { DefaultAnnotationMirror(get(), get<GrafanaClient>(), get(), get()) }
+        factory<CiliumService> { DefaultCiliumService(get(), get(), get()) }
+        factory<CiliumInspectionService> { DefaultCiliumInspectionService(get()) }
+        factory { CiliumNodeImageCheck(get()) }
         factory<HelmService> { DefaultHelmService(get()) }
         factory<KubectlService> { DefaultKubectlService(get()) }
         // Explicit factory (not factoryOf) so the daemonStartupDelay constructor default applies
         // instead of Koin trying to resolve a Duration binding.
         factory<TailscaleService> { DefaultTailscaleService(get(), get()) }
+
+        // Reads the Tailscale client on the developer's own machine. Explicit factory so the
+        // constructor defaults (the real CLI runner, the status timeout) apply.
+        factory<LocalTailscaleClient> { DefaultLocalTailscaleClient() }
+        factory { ProvisioningPreflight(get(), get(), get(), get()) }
+        factory<LocalSsmTooling> { DefaultLocalSsmTooling() }
+
+        // Proves this machine has a route to the cluster's private network before `up` relies
+        // on one. Short timeout: this is a fail-fast check, not a wait-for-ready loop.
+        factory<TcpReachabilityProbe> { SocketTcpReachabilityProbe(Constants.Tailscale.REACHABILITY_TIMEOUT_MS) }
 
         // CQL session factory and service - singleton for session caching in REPL/Server mode
         singleOf(::DefaultCqlSessionFactory) bind CqlSessionFactory::class
@@ -65,6 +95,10 @@ val servicesModule =
         factoryOf(::DefaultK8sService) bind K8sService::class bind K8sPodOperations::class
         factoryOf(::BeylaManifestBuilder)
         factoryOf(::EbpfExporterManifestBuilder)
+        // One classpath scan per process: the set of dashboard files cannot change at runtime.
+        single { GrafanaDashboardCatalog.discover() }
+        factoryOf(::GrafanaDashboardTreeWriter)
+        factoryOf(::DefaultGrafanaDashboardTreeUploader) bind GrafanaDashboardTreeUploader::class
         factoryOf(::GrafanaManifestBuilder)
         factoryOf(::JournaldOtelManifestBuilder)
         factoryOf(::OtelManifestBuilder)
@@ -72,36 +106,90 @@ val servicesModule =
         factoryOf(::RegistryManifestBuilder)
         factoryOf(::S3ManagerManifestBuilder)
         factoryOf(::TempoManifestBuilder)
-        factoryOf(::VictoriaManifestBuilder)
+        factoryOf(::MimirManifestBuilder)
+        factoryOf(::LokiManifestBuilder)
         factoryOf(::YaceManifestBuilder)
-        factoryOf(::DefaultGrafanaDashboardService) bind GrafanaDashboardService::class
-        // GrafanaDashboardService calls the Grafana API on the control node's PRIVATE IP, so its
+        factoryOf(::KubeStateMetricsManifestBuilder)
+        factoryOf(::DefaultGrafanaDeployService) bind GrafanaDeployService::class
+        factoryOf(::DefaultGrafanaClient) bind GrafanaClient::class
+        factory { DashboardInstallContextFactory(get()) }
+        // GrafanaClient calls the Grafana API on the control node's PRIVATE IP, so its
         // client must route through the SOCKS tunnel when active. Source it from the proxied factory
         // rather than a bare OkHttpClient (which, without the global socks property, would go direct).
         single<OkHttpClient> { get<HttpClientFactory>().createClient() }
         factoryOf(::TemplateService)
         factoryOf(::InstallTemplateResolver)
+        factoryOf(::KitProcessEnvironment)
         factoryOf(::WorkloadStepExecutor)
-        factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get()) }
+        factory<KitHookExecutor> { DefaultKitHookExecutor(get(), get(), get(), get()) }
+        // Takes the workspace kubeconfig path, which the Fabric8-backed KubernetesService needs.
+        factory { (kubeconfigPath: String) -> KitWorkloadProbe(get { parametersOf(kubeconfigPath) }, get()) }
         singleOf(::DefaultKitEndpointResolver) bind KitEndpointResolver::class
         factoryOf(::DefaultOtelSyncService) bind OtelSyncService::class
+        factory { ConfigChangeReport(get<K8sService>(), get()) }
+        factory { TenantDirectory(get()) }
+        factory<TestDocumentService> { DefaultTestDocumentService(get()) }
+        factoryOf(::DefaultObservabilityStackService) bind ObservabilityStackService::class
         factoryOf(::DefaultMetricsRegistryService) bind MetricsRegistryService::class
-        factory<VictoriaBackupService> { DefaultVictoriaBackupService(get(), get()) }
-        factoryOf(::DefaultVictoriaStreamService) bind VictoriaStreamService::class
-        singleOf(::DefaultVictoriaMetricsQueryService) bind VictoriaMetricsQueryService::class
-        singleOf(::DefaultVictoriaLogsService) bind VictoriaLogsService::class
+        factory<GrafanaAnnotationBackupService> {
+            DefaultGrafanaAnnotationBackupService(get(), get(), get())
+        }
+        // The pre-teardown save `down` runs: annotation mirror and collector stop, then
+        // the Loki and Mimir flushes, the Tempo drain, the profiles report and the annotations backup
+        // in parallel.
+        factory<BackendWorkloads> { K8sBackendWorkloads(get()) }
+        factory<TelemetrySenders> { K8sTelemetrySenders(get()) }
+        factory { LokiTailFlush(get(), get()) }
+        factory { MimirTailFlush(get(), get()) }
+        factory { TempoTailFlush(get(), get()) }
+        factory<TeardownFlushService> {
+            DefaultTeardownFlushService
+                .builder()
+                .lokiFlush(get<LokiTailFlush>())
+                .mimirFlush(get<MimirTailFlush>())
+                .tempoDrain(get<TempoTailFlush>())
+                .telemetrySenders(get())
+                .annotationMirror(get())
+                .annotationBackupService(get())
+                .eventBus(get())
+                .build()
+        }
+        factory<TeardownBackupService> { DefaultTeardownBackupService(get(), get()) }
+        singleOf(::DefaultObservabilityHttp) bind ObservabilityHttp::class
+        singleOf(::DefaultLokiQueryService) bind LokiQueryService::class
         factoryOf(::SidecarManifestBuilder)
         factoryOf(::DefaultSidecarService) bind SidecarService::class
+
+        // Turns the nodes' ECR IAM permission into registry credentials a pod can use
+        singleOf(::EcrPullSecretService)
         // Explicit single (not singleOf) so the jobPollInterval constructor default applies
         // instead of Koin trying to resolve a Duration binding.
-        single<StressJobService> { DefaultStressJobService(get(), get(), get(), get()) }
+        single<StressJobService> { DefaultStressJobService(get(), get(), get(), get(), get()) }
         singleOf(::HostOperationsService)
+
+        // Builds a Cassandra branch checkout on this machine
+        singleOf(::CassandraBuildService)
+
+        // The profile's published Cassandra builds, stored in the account bucket
+        single {
+            CassandraBuildCatalog(
+                get<ObjectStore>(),
+                get<AwsS3BucketService>(),
+                get<User>(),
+            )
+        }
 
         // Kit command scanner — discovers @KitCommand-annotated classes across all JARs
         singleOf(::DefaultKitCommandScanner) bind KitCommandScanner::class
 
+        // Help topic discovery — scans packaged markdown resources for the `help` command
+        single<HelpTopicService> { DefaultHelpTopicService() }
+
         // Kit source registry — persists additional kit parent directories in kit-sources.yaml
         singleOf(::KitSourcesProvider)
+
+        // Kit discovery — the single source of truth for which workspace directories are kits
+        singleOf(::WorkspaceKitScanner)
 
         // Cluster configuration service for writing config files
         factoryOf(::DefaultClusterConfigurationService) bind ClusterConfigurationService::class
@@ -153,6 +241,7 @@ val servicesModule =
                 get<ClusterBackupService>(),
                 get<ClusterStateManager>(),
                 get<EventBus>(),
+                get<WorkspaceShellTools>(),
             )
         }
 
@@ -161,7 +250,7 @@ val servicesModule =
 
         // Command executor for scheduling and executing commands with full lifecycle
         // Note: BackupRestoreService is lazily injected in DefaultCommandExecutor to avoid
-        // triggering the AWS dependency chain during setup-profile (when settings.yaml doesn't exist yet)
+        // triggering the AWS dependency chain during profile setup (when settings.yaml doesn't exist yet)
         single<CommandExecutor> {
             DefaultCommandExecutor(
                 get<Context>(),
@@ -172,8 +261,9 @@ val servicesModule =
                 ),
                 get<ResourceManager>(),
                 get<EventBus>(),
-                get<SocksProxyService>(),
+                get<ProxyPreflight>(),
                 get<ProxyAvailability>(),
+                get<ProfileSetupCommandProvider>(),
             )
         }
     }

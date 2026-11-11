@@ -4,20 +4,22 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesJob
 import com.rustyrazorblade.easydblab.kubernetes.KubernetesPod
+import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
+import com.rustyrazorblade.easydblab.providers.aws.pollUntil
 import io.fabric8.kubernetes.api.model.Container
 import io.fabric8.kubernetes.api.model.ContainerBuilder
 import io.fabric8.kubernetes.api.model.EnvVarBuilder
+import io.fabric8.kubernetes.api.model.LocalObjectReferenceBuilder
 import io.fabric8.kubernetes.api.model.VolumeBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.github.oshai.kotlinlogging.KotlinLogging
-import io.github.resilience4j.retry.Retry
-import io.github.resilience4j.retry.RetryConfig
 import java.time.Duration
 
 /**
@@ -40,6 +42,14 @@ data class StressJobConfig(
 )
 
 /**
+ * A stress job whose pod is running: its name, and the alias of the node the pod runs on.
+ */
+data class StartedStressJob(
+    val jobName: String,
+    val host: String,
+)
+
+/**
  * Service for managing cassandra-easy-stress K8s Jobs.
  *
  * This service encapsulates all K8s operations for stress jobs, providing
@@ -52,12 +62,12 @@ interface StressJobService {
      *
      * @param controlHost The control node running K3s
      * @param config The stress job configuration
-     * @return Result containing the created job name or failure
+     * @return Result containing the job name and the node its pod runs on, or failure
      */
     fun startJob(
         controlHost: ClusterHost,
         config: StressJobConfig,
-    ): Result<String>
+    ): Result<StartedStressJob>
 
     /**
      * Stops and deletes a stress job.
@@ -128,13 +138,17 @@ interface StressJobService {
  *
  * @param jobPollInterval How long to wait between job-completion polls. Defaults to
  *   [JOB_POLL_INTERVAL_MS] so production timing is unchanged; tests inject [Duration.ZERO].
+ * @param podReadyPollInterval How long to wait between polls for a started job's pod to run.
+ *   Defaults to [POD_READY_POLL_INTERVAL_MS]; tests inject [Duration.ZERO].
  */
 class DefaultStressJobService(
     private val k8sService: K8sService,
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
     private val templateService: TemplateService,
+    private val ecrPullSecrets: EcrPullSecretService,
     private val jobPollInterval: Duration = Duration.ofMillis(JOB_POLL_INTERVAL_MS),
+    private val podReadyPollInterval: Duration = Duration.ofMillis(POD_READY_POLL_INTERVAL_MS),
 ) : StressJobService {
     private val log = KotlinLogging.logger {}
 
@@ -145,17 +159,28 @@ class DefaultStressJobService(
         private const val TTL_COMMAND_JOB_SECONDS = 300
         private const val POD_READY_MAX_ATTEMPTS = 10
         private const val POD_READY_POLL_INTERVAL_MS = 3000L
+
+        /** Pod phases that end the wait for a started job's pod. */
+        private val POD_RUNNING_PHASES = setOf("Running", "Succeeded")
         private const val SIDECAR_CONFIG_MAP_NAME = "otel-stress-sidecar-config"
         private const val SIDECAR_CONFIG_FILE_NAME = "otel-stress-sidecar-config.yaml"
         private const val PYROSCOPE_VOLUME_NAME = "pyroscope-agent"
         private const val PYROSCOPE_HOST_PATH = "/usr/local/pyroscope"
         private const val PYROSCOPE_MOUNT_PATH = "/usr/local/pyroscope"
+
+        // The OTel Java agent, reaching the pod the same way the Pyroscope agent does: a hostPath
+        // mount of where the base AMI installs it. The job's nodeSelector pins it to a `type=app`
+        // node, and the base image puts the jar there, so the path resolves on every node this job
+        // can land on.
+        private const val OTEL_AGENT_VOLUME_NAME = "otel-agent"
+        private const val OTEL_AGENT_HOST_PATH = "/usr/local/otel"
+        private const val OTEL_AGENT_MOUNT_PATH = "/usr/local/otel"
     }
 
     override fun startJob(
         controlHost: ClusterHost,
         config: StressJobConfig,
-    ): Result<String> =
+    ): Result<StartedStressJob> =
         runCatching {
             log.info { "Starting stress job: ${config.jobName}" }
 
@@ -172,38 +197,29 @@ class DefaultStressJobService(
         }
 
     /**
-     * Polls until at least one pod for the job is Running or Succeeded.
-     * Throws if no pod reaches a running state within 30 seconds.
+     * Polls until the job's first pod is Running or Succeeded, and returns the job with the node the
+     * pod runs on. No pod yet, another phase, a Failed pod and a failed query are all polled again; if
+     * the pod is not running within [POD_READY_MAX_ATTEMPTS] looks, fails with the last look's outcome.
      */
     private fun waitForPodRunning(
         controlHost: ClusterHost,
         jobName: String,
-    ): String {
-        val retryConfig =
-            RetryConfig
-                .custom<String>()
-                .maxAttempts(POD_READY_MAX_ATTEMPTS)
-                .intervalFunction { _ -> POD_READY_POLL_INTERVAL_MS }
-                .retryOnException { true }
-                .build()
-        val retry = Retry.of("wait-for-stress-pod-$jobName", retryConfig)
-
-        return Retry
-            .decorateSupplier(retry) {
-                val pods = getPodsForJob(controlHost, jobName).getOrThrow()
-                if (pods.isEmpty()) {
-                    error("No pods created yet for job $jobName")
+    ): StartedStressJob {
+        val pods =
+            pollUntil(
+                operationName = "wait-for-stress-pod-$jobName",
+                maxAttempts = POD_READY_MAX_ATTEMPTS,
+                interval = podReadyPollInterval,
+                done = { found -> found.firstOrNull()?.status in POD_RUNNING_PHASES },
+            ) {
+                getPodsForJob(controlHost, jobName).getOrThrow().also { found ->
+                    found.firstOrNull()?.let { pod -> check(pod.status != "Failed") { "Pod ${pod.name} failed" } }
                 }
-                val pod = pods.first()
-                when (pod.status) {
-                    "Running", "Succeeded" -> {
-                        eventBus.emit(Event.Stress.PodStatus(pod.name, pod.status))
-                        jobName
-                    }
-                    "Failed" -> error("Pod ${pod.name} failed")
-                    else -> error("Pod ${pod.name} is ${pod.status}, waiting for Running")
-                }
-            }.get()
+            }
+        val pod = pods.firstOrNull() ?: error("No pods created yet for job $jobName")
+        check(pod.status in POD_RUNNING_PHASES) { "Pod ${pod.name} is ${pod.status}, waiting for Running" }
+        eventBus.emit(Event.Stress.PodStatus(pod.name, pod.status))
+        return StartedStressJob(jobName = jobName, host = pod.nodeName)
     }
 
     /**
@@ -360,6 +376,7 @@ class DefaultStressJobService(
         val labels =
             mapOf(
                 Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+                Constants.Stress.ROLE_LABEL_KEY to Constants.Stress.ROLE_RUN,
                 "job-name" to config.jobName,
             )
 
@@ -367,12 +384,28 @@ class DefaultStressJobService(
             clusterState.getControlHost()?.privateIp
                 ?: error("No control node found. Re-provision the cluster to fix this.")
 
+        // A custom stress image may live in the account's ECR, which containerd cannot read from
+        // the node's IAM role alone. Same treatment the sidecar already gets.
+        val pullSecretName =
+            clusterState
+                .getControlHost()
+                ?.let { control ->
+                    ecrPullSecrets.ensureFor(control, config.image, Constants.Stress.NAMESPACE)
+                }.orEmpty()
+
         val stressContainer =
-            buildStressContainer(config, region, controlNodeIp, clusterState.name)
+            buildStressContainer(
+                config,
+                region,
+                controlNodeIp,
+                clusterState.clusterLabelName(),
+                clusterState.tenant(),
+                clusterState.initConfig?.telemetryRedirect,
+            )
         val otelSidecar =
             buildOtelSidecarContainer(config.jobName, config.tags, config.promPort, clusterState.clusterLabelName())
 
-        return assembleJob(config.jobName, labels, stressContainer, otelSidecar)
+        return assembleJob(config.jobName, labels, stressContainer, otelSidecar, pullSecretName)
     }
 
     private fun buildStressContainer(
@@ -380,11 +413,42 @@ class DefaultStressJobService(
         region: String,
         controlNodeIp: String,
         clusterName: String,
+        tenant: String,
+        telemetryRedirect: TelemetryRedirect?,
     ): Container {
-        val pyroscopeServerAddress = "http://$controlNodeIp:${Constants.K8s.PYROSCOPE_PORT}"
+        val pyroscopeServerAddress = pyroscopeIngestBaseUrl(controlNodeIp, telemetryRedirect)
         val pyroscopeLabels = "cluster=$clusterName,job_name=${config.jobName}"
 
-        val javaToolOptions =
+        // Client spans come from here or from nowhere. Cassandra has no OTel server-side
+        // instrumentation, so the only thing on this cluster that can produce a trace is the driver
+        // in this JVM; without the agent, Tempo receives nothing and every spanmetrics panel is
+        // empty. Two agents in one JVM, exactly as Cassandra runs OTel beside AxonOps.
+        //
+        // Port 4318, not 4317: the agent's default OTLP protocol is http/protobuf, which the
+        // collector serves on 4318. Sent at 4317 - its gRPC port - every export fails with
+        // "HttpExporter - Failed to export" and nothing says why.
+        //
+        // Resource attributes come from the same helper the sidecar uses, so a span and the stress
+        // metrics from the same run carry the same job_name and tags and can be lined up. The
+        // cluster label is NOT added here: the collector's traces pipeline stamps it with
+        // resource/cluster, so every span producer gets it, not just this one.
+        //
+        // Logs are the one signal turned off. The pod's stdout already reaches Loki through
+        // the collector's filelog receiver, so exporting them again from inside the JVM would file
+        // every line twice. Metrics stay ON: the sidecar scrapes only cassandra-easy-stress's own
+        // Prometheus counters, so the agent's JVM metrics are the only view of whether the load
+        // generator itself is the bottleneck.
+        //
+        // JDK_JAVA_OPTIONS, not JAVA_TOOL_OPTIONS: the cassandra-easy-stress image selects ZGC through
+        // JAVA_TOOL_OPTIONS, and a pod env var replaces the image's value, so setting it here ran
+        // stress on G1. The image's entrypoint is the java launcher, which reads JDK_JAVA_OPTIONS as
+        // well, so the agents and the image's GC choice both apply.
+        //
+        // Traces are sampled at Constants.Stress.TRACE_SAMPLE_RATIO: tracing every request sent
+        // Tempo on the control node more spans than it could take in.
+        val otelResourceAttributes = buildResourceAttributes(config.jobName, config.tags)
+
+        val javaOptions =
             listOf(
                 "-javaagent:$PYROSCOPE_MOUNT_PATH/pyroscope.jar",
                 "-Dpyroscope.application.name=cassandra-easy-stress",
@@ -394,6 +458,16 @@ class DefaultStressJobService(
                 "-Dpyroscope.profiler.alloc=512k",
                 "-Dpyroscope.profiler.lock=10ms",
                 "-Dpyroscope.labels=$pyroscopeLabels",
+                // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
+                "-Dpyroscope.tenant.id=$tenant",
+                "-javaagent:$OTEL_AGENT_MOUNT_PATH/opentelemetry-javaagent.jar",
+                "-Dotel.service.name=cassandra-easy-stress",
+                "-Dotel.resource.attributes=$otelResourceAttributes",
+                "-Dotel.exporter.otlp.endpoint=http://$controlNodeIp:${Constants.K8s.OTEL_HTTP_PORT}",
+                "-Dotel.metric.export.interval=5s",
+                "-Dotel.logs.exporter=none",
+                "-Dotel.traces.sampler=parentbased_traceidratio",
+                "-Dotel.traces.sampler.arg=${Constants.Stress.TRACE_SAMPLE_RATIO}",
             ).joinToString(" ")
 
         return ContainerBuilder()
@@ -418,13 +492,18 @@ class DefaultStressJobService(
                     .withValue(config.promPort.toString())
                     .build(),
                 EnvVarBuilder()
-                    .withName("JAVA_TOOL_OPTIONS")
-                    .withValue(javaToolOptions)
+                    .withName("JDK_JAVA_OPTIONS")
+                    .withValue(javaOptions)
                     .build(),
             ).withVolumeMounts(
                 VolumeMountBuilder()
                     .withName(PYROSCOPE_VOLUME_NAME)
                     .withMountPath(PYROSCOPE_MOUNT_PATH)
+                    .withReadOnly(true)
+                    .build(),
+                VolumeMountBuilder()
+                    .withName(OTEL_AGENT_VOLUME_NAME)
+                    .withMountPath(OTEL_AGENT_MOUNT_PATH)
                     .withReadOnly(true)
                     .build(),
             ).build()
@@ -440,7 +519,7 @@ class DefaultStressJobService(
 
         return ContainerBuilder()
             .withName("otel-sidecar")
-            .withImage("otel/opentelemetry-collector-contrib:latest")
+            .withImage("otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}")
             .withArgs("--config=/etc/otel/$SIDECAR_CONFIG_FILE_NAME")
             .withEnv(
                 EnvVarBuilder()
@@ -497,6 +576,7 @@ class DefaultStressJobService(
         labels: Map<String, String>,
         stressContainer: Container,
         otelSidecar: Container,
+        pullSecretName: String = "",
     ): Job =
         JobBuilder()
             .withNewMetadata()
@@ -516,7 +596,11 @@ class DefaultStressJobService(
             .withDnsPolicy("ClusterFirstWithHostNet")
             .withRestartPolicy("Never")
             .withNodeSelector<String, String>(mapOf("type" to ServerType.Stress.serverType))
-            .withInitContainers(otelSidecar)
+            .apply {
+                if (pullSecretName.isNotEmpty()) {
+                    withImagePullSecrets(LocalObjectReferenceBuilder().withName(pullSecretName).build())
+                }
+            }.withInitContainers(otelSidecar)
             .withContainers(stressContainer)
             .withVolumes(
                 VolumeBuilder()
@@ -529,6 +613,13 @@ class DefaultStressJobService(
                     .withName(PYROSCOPE_VOLUME_NAME)
                     .withNewHostPath()
                     .withPath(PYROSCOPE_HOST_PATH)
+                    .withType("Directory")
+                    .endHostPath()
+                    .build(),
+                VolumeBuilder()
+                    .withName(OTEL_AGENT_VOLUME_NAME)
+                    .withNewHostPath()
+                    .withPath(OTEL_AGENT_HOST_PATH)
                     .withType("Directory")
                     .endHostPath()
                     .build(),
@@ -548,6 +639,7 @@ class DefaultStressJobService(
         val labels =
             mapOf(
                 Constants.Stress.LABEL_KEY to Constants.Stress.LABEL_VALUE,
+                Constants.Stress.ROLE_LABEL_KEY to Constants.Stress.ROLE_COMMAND,
                 "job-name" to jobName,
             )
 

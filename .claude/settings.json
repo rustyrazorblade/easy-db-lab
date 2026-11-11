@@ -1,8 +1,34 @@
 {
-  "agent": "project-manager",
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "SPEC_FLOW_SEAM_VIEW": "explain",
+    "SPEC_FLOW_DEVELOPER_AGENT": "kotlin-dev",
+    "SPEC_FLOW_REFACTOR_BREAKER": "ask"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(easy-db-lab:*)",
+      "Bash(bin/easy-db-lab:*)",
+      "Bash(./bin/easy-db-lab:*)",
+      "Bash(ssh control*)",
+      "Bash(aws sts get-caller-identity *)",
+      "Bash(kubectl get *)",
+      "Bash(shellcheck *)",
+      "Bash(aws sts get-caller-identity *)",
+      "Bash(openspec validate *)",
+      "Bash(aws ec2 describe-instances *)",
+      "Bash(kubectl get *)",
+      "Bash(kubectl logs *)",
+      "Bash(docker info *)",
+      "Bash(aws ec2 describe-security-groups *)",
+      "Bash(openspec --version)"
+    ]
+  },
   "enabledPlugins": {
     "cassandra-expert@rustyrazorblade-plugins": true,
     "easy-db-lab@rustyrazorblade-plugins": true,
-    "spec-flow@rustyrazorblade-plugins": true
-  }
+    "dev-skills@rustyrazorblade-plugins": true,
+    "mattpocock-skills@claude-plugins-official": true
+  },
+  "agent": "spec-flow:project-manager"
 }

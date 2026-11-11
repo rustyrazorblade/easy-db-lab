@@ -1,0 +1,59 @@
+# Tempo 3.0.3's backend-scheduler and backend-worker in the account compactor (issue 970).
+#
+# Tempo 3 runs one target per process, so the task runs this file twice: once as the scheduler
+# (-target=backend-scheduler) and once as the worker (-target=backend-worker, with its own ports).
+# The worker compacts every tenant's blocks under the traces root of the account bucket.
+#
+# Compaction is on; retention and every other deletion path are off. Tempo has no "retention off"
+# once compaction runs, and a zero block retention makes every block eligible for deletion at once,
+# so an unreachable retention (100 years) is the off switch. Do not add a per-tenant retention
+# override.
+#
+# Dollar-brace values are read from the environment (-config.expand-env=true); the task definition
+# sets them. Never write a dollar-brace in a comment here: the expansion reads comments too.
+multitenancy_enabled: true
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9096
+
+# The scheduler and the worker are separate processes in one task, so each gossips on its own port.
+memberlist:
+  bind_addr: [127.0.0.1]
+  bind_port: 7948
+
+backend_scheduler:
+  local_work_path: /var/tempo/scheduler
+  provider:
+    retention:
+      # Retention jobs are scheduled at most once every 10 years; the worker's block retention
+      # makes each one a no-op anyway.
+      interval: 87600h
+
+backend_worker:
+  backend_scheduler_addr: 127.0.0.1:9096
+  ring:
+    kvstore:
+      store: inmemory
+    instance_addr: 127.0.0.1
+  compaction:
+    block_retention: 876000h
+
+storage:
+  trace:
+    backend: s3
+    # Never delete a tenant directory, even one that holds no block.
+    empty_tenant_deletion_enabled: false
+    wal:
+      path: /var/tempo/wal
+    s3:
+      bucket: ${S3_BUCKET}
+      endpoint: s3.${AWS_REGION}.amazonaws.com
+      region: ${AWS_REGION}
+      prefix: ${TRACES_S3_PREFIX}
+
+overrides:
+  defaults:
+    global:
+      # 0 = no per-trace size limit, so compaction never drops spans of a large trace.
+      max_bytes_per_trace: 0

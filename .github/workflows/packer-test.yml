@@ -29,6 +29,61 @@ jobs:
       - name: Run ref-resolution unit tests
         run: bash .github/cassandra-image/resolve-ref.test.sh
 
+  test-cassandra-install-scripts:
+    name: Test Cassandra install/use script logic
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # Not `snap install yq`: the snap is strictly confined and gets a private /tmp, so it
+      # cannot read the mktemp -d fixtures these tests build. Installed by the AMI's own
+      # installer (packer/base/install/install_yq.sh, the only place the version is written down)
+      # so CI exercises the same yq the nodes run.
+      - name: Install yq
+        run: ARCH=amd64 bash packer/base/install/install_yq.sh
+
+      - name: Test install-cassandra-version
+        run: bash packer/cassandra/bin/install-cassandra-version.test.sh
+
+      - name: Test the bake-time install loop
+        run: bash packer/cassandra/install/install_cassandra.test.sh
+
+      - name: Test use-cassandra
+        run: bash packer/cassandra/bin/use-cassandra.test.sh
+
+  test-profiling-reconciler:
+    name: Test edl-profiling-reconcile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      # The reconciler parses JSON with mikefarah's Go yq, which is what the node AMI carries. The
+      # python `yq` wrapper answers to the same name and takes different flags, so the version is
+      # pinned and verified rather than assumed — a wrong yq would fail every test for a reason
+      # that has nothing to do with the change under test. The AMI's own installer
+      # (packer/base/install/install_yq.sh, the only place the version is written down) does the
+      # install, so CI runs the yq version the nodes run.
+      - name: Install mikefarah yq
+        run: ARCH=amd64 bash packer/base/install/install_yq.sh
+
+      - name: Verify node tooling
+        run: |
+          yq --version
+          yq --version | grep -q 'mikefarah' || {
+            echo "yq on PATH is not mikefarah's Go implementation; the reconciler needs that one."
+            exit 1
+          }
+          jq --version
+
+      # The reconciler stubs asprof, cassandra-pid and curl and injects the clock, so this is a
+      # pure-bash tier: no Docker, no network, no JVM. It is wired here rather than left as a
+      # `gradle check` dependency because no workflow runs `check` — pr-checks.yml runs
+      # `test integrationTest koverXmlReport` — so the whole decision table had no CI gate at all.
+      - name: Run reconciler unit tests
+        run: bash packer/cassandra/bin/edl-profiling-reconcile.test.sh
+
   test-individual-scripts:
     name: Test Individual Scripts
     runs-on: ubuntu-latest
@@ -54,6 +109,29 @@ jobs:
         run: |
           cd packer
           ./test-script.sh ${{ matrix.script }}
+
+  # The same check as `./gradlew testAxonSudoers`: the baked /etc/sudoers.d/axonops must pass the
+  # image's own visudo (sudo-rs on Ubuntu 26.04 rejects wildcard arguments). It needs the packer
+  # test image, so it is not in pr-checks' Docker-free `testScripts`; this was its only CI gate gap.
+  test-axon-sudoers:
+    name: Test axonops sudoers rules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build test image
+        run: |
+          cd packer
+          docker build -t easy-db-lab-packer-test .
+
+      - name: Validate sudoers rules with the image's visudo
+        run: |
+          docker run --rm -v "$PWD/packer:/packer:ro" --user ubuntu \
+            easy-db-lab-packer-test bash /packer/cassandra/install/install_axon.test.sh
 
   test-changed-scripts:
     name: Test Changed Scripts

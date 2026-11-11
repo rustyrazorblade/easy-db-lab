@@ -248,7 +248,7 @@ class CassandraServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return true when cassandra is active`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active cassandra"
+        val expectedCommand = "sudo systemctl is-active cassandra || true"
         val activeResponse = Response(text = "active", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(activeResponse)
@@ -265,7 +265,7 @@ class CassandraServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return false when cassandra is inactive`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active cassandra"
+        val expectedCommand = "sudo systemctl is-active cassandra || true"
         val inactiveResponse = Response(text = "inactive", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(inactiveResponse)
@@ -282,7 +282,7 @@ class CassandraServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return false when cassandra is in failed state`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active cassandra"
+        val expectedCommand = "sudo systemctl is-active cassandra || true"
         val failedResponse = Response(text = "failed", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(failedResponse)
@@ -299,7 +299,7 @@ class CassandraServiceTest : BaseKoinTest() {
     @Test
     fun `isRunning should return failure when SSH operation throws exception`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active cassandra"
+        val expectedCommand = "sudo systemctl is-active cassandra || true"
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenThrow(RuntimeException("SSH connection lost"))
 

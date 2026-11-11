@@ -1,9 +1,13 @@
 package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
@@ -13,12 +17,15 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
@@ -54,6 +61,82 @@ class InitTest : BaseKoinTest() {
         File("setup_instance.sh").delete()
         File("cassandra").deleteRecursively()
         File("k8s").deleteRecursively()
+    }
+
+    /** The workspace `bin/` belongs to the tool wrappers, so `init` refuses a directory that already has one. */
+    @Nested
+    inner class BinDirectory {
+        private val bin: File get() = File(context.workingDirectory, Constants.ToolWrappers.DIRECTORY)
+
+        @Test
+        fun `a directory with a bin directory is refused and nothing is written`() {
+            bin.mkdirs()
+            val before =
+                context.workingDirectory
+                    .list()
+                    .orEmpty()
+                    .toList()
+
+            assertThatThrownBy { Init().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertRefusedAndUntouched(before)
+        }
+
+        @Test
+        fun `a directory with a bin file is refused and nothing is written`() {
+            bin.writeText("not a directory")
+            val before =
+                context.workingDirectory
+                    .list()
+                    .orEmpty()
+                    .toList()
+
+            assertThatThrownBy { Init().execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertRefusedAndUntouched(before)
+        }
+
+        @Test
+        fun `init --clean in a workspace whose bin holds only the wrappers and the marker succeeds`() {
+            ToolWrapperInstaller().install(context.workingDirectory)
+            val command = Init().apply { clean = true }
+
+            command.execute()
+
+            assertThat(bin).doesNotExist()
+            verify(mockClusterStateManager).save(any())
+        }
+
+        @Test
+        fun `init --clean keeps a kubectl of its own in a bin without the marker, and is refused`() {
+            bin.mkdirs()
+            val own = File(bin, "kubectl").apply { writeText("#!/bin/sh\necho mine\n") }
+            val command = Init().apply { clean = true }
+
+            assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertThat(own).hasContent("#!/bin/sh\necho mine\n")
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        @Test
+        fun `init --clean with a foreign file in bin is refused`() {
+            ToolWrapperInstaller().install(context.workingDirectory)
+            File(bin, "my-script").writeText("#!/bin/sh\n")
+            val command = Init().apply { clean = true }
+
+            assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
+
+            assertThat(File(bin, "my-script")).exists()
+            verify(mockClusterStateManager, never()).save(any())
+        }
+
+        private fun assertRefusedAndUntouched(entriesBefore: List<String>) {
+            assertThat(context.workingDirectory.list()).containsExactlyInAnyOrderElementsOf(entriesBefore)
+            assertThat(File("setup_instance.sh")).doesNotExist()
+            verify(mockClusterStateManager, never()).save(any())
+            assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("already has a bin/").contains("new, empty directory")
+        }
     }
 
     @Nested
@@ -154,14 +237,18 @@ class InitTest : BaseKoinTest() {
         }
 
         @Test
-        fun `execute extracts resource files`() {
+        fun `execute extracts resource files into the workspace, not the process working directory`() {
             val command = Init()
             command.clean = true
             command.execute()
 
             val output = outputHandler.messages.joinToString("\n")
             assertThat(output).contains("Writing setup_instance.sh")
-            assertThat(File("setup_instance.sh")).exists()
+            assertThat(File(context.workingDirectory, "setup_instance.sh")).exists()
+            assertThat(File(context.workingDirectory, Constants.Cassandra.JMX_RULES_FILE)).exists()
+            // The test JVM runs in the source checkout, which is never the workspace.
+            assertThat(File("setup_instance.sh")).doesNotExist()
+            assertThat(File(Constants.Cassandra.JMX_RULES_FILE)).doesNotExist()
         }
 
         @Test
@@ -287,6 +374,147 @@ class InitTest : BaseKoinTest() {
     }
 
     @Nested
+    inner class CniSelection {
+        @Test
+        fun `execute persists Cilium as the default cni when --cni is omitted`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cni == CniMode.Cilium },
+            )
+        }
+
+        @Test
+        fun `--cni flannel selects Flannel`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--cni=flannel")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(
+                argThat { initConfig?.cni == CniMode.Flannel },
+            )
+        }
+    }
+
+    @Nested
+    inner class Tenant {
+        @Test
+        fun `the tenant defaults to default`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs()
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { tenant() == "default" })
+        }
+
+        @Test
+        fun `--tenant is persisted in the init configuration`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", "acme")
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { initConfig?.tenant == "acme" })
+        }
+
+        /** Names at the edges of `^[a-z][a-z0-9_-]{0,62}$` are accepted, not just rejected past them. */
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                // 63 characters: the longest allowed.
+                "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabc",
+                "a_b-c9",
+                "z",
+            ],
+        )
+        fun `a valid tenant at the edge of the rule is saved`(name: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", name)
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { tenant() == name })
+        }
+
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                "Acme",
+                "1acme",
+                "",
+                // 64 characters: one past the limit.
+                "abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcd",
+            ],
+        )
+        fun `an invalid tenant fails before anything is saved, naming the rule`(tenant: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", tenant)
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("^[a-z][a-z0-9_-]{0,62}$")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+
+        /** A Loki tenant named `index` would put its chunks under Loki's index path. */
+        @Test
+        fun `the reserved tenant index fails before anything is saved, naming it`() {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs("--tenant", "index")
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("'index' is reserved")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+    }
+
+    @Nested
+    inner class ClusterName {
+        /** 40 characters is the longest name the rule allows. */
+        @ParameterizedTest
+        @ValueSource(strings = ["abcdefghijabcdefghijabcdefghijabcdefghij", "lab-1", "z"])
+        fun `a valid cluster name at the edge of the rule is saved`(name: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(name)
+            command.clean = true
+            command.execute()
+
+            verify(mockClusterStateManager).save(argThat { this.name == name })
+        }
+
+        @ParameterizedTest
+        @ValueSource(
+            strings = [
+                "My/Cluster",
+                "db:1",
+                "Lab",
+                "1lab",
+                "lab_1",
+                // 41 characters: one past the limit.
+                "abcdefghijabcdefghijabcdefghijabcdefghijk",
+            ],
+        )
+        fun `an invalid cluster name fails before anything is saved, naming the rule`(name: String) {
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(name)
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("^[a-z][a-z0-9-]{0,39}$")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+    }
+
+    @Nested
     inner class ExistingVpc {
         @Test
         fun `execute sets existing VPC ID when provided`() {
@@ -302,6 +530,49 @@ class InitTest : BaseKoinTest() {
             verify(mockClusterStateManager, atLeastOnce()).save(
                 argThat { vpcId == "vpc-existing123" },
             )
+        }
+    }
+
+    @Nested
+    inner class TelemetryRedirectOptions {
+        @Test
+        fun `a per-signal override lands on its own signal and leaves the other three derived`() {
+            // A transposed override — logs written to the traces field, say — would compile and
+            // pass a laxer test. Asserting all four endpoints at once pins each override to its own
+            // signal and the rest to the base-host derivation.
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(
+                "--redirect-telemetry",
+                "10.0.0.9",
+                "--redirect-logs-endpoint",
+                "http://logs.example.com:1234/insert/opentelemetry",
+            )
+
+            val redirect = command.resolvedTelemetryRedirect!!
+            assertThat(redirect.logs).isEqualTo("http://logs.example.com:1234/insert/opentelemetry")
+            assertThat(redirect.metrics).isEqualTo("http://10.0.0.9:9009/api/v1/push")
+            assertThat(redirect.traces).isEqualTo("10.0.0.9:4320")
+            assertThat(redirect.profiles).isEqualTo("http://10.0.0.9:4040")
+        }
+
+        @Test
+        fun `execute fails fast naming a malformed override signal and provisions nothing`() {
+            // The traces endpoint is a bare host:port; a URL with a scheme is malformed. Init must
+            // abort before any cluster state is written, naming the offending signal.
+            val command = Init()
+            picocli.CommandLine(command).parseArgs(
+                "--redirect-telemetry",
+                "10.0.0.9",
+                "--redirect-traces-endpoint",
+                "http://10.0.0.9:4320",
+            )
+            command.clean = true
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("traces")
+
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
         }
     }
 

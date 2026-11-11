@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab
 
-import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
@@ -9,18 +8,28 @@ import com.rustyrazorblade.easydblab.di.prompterModule
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
+import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import com.rustyrazorblade.easydblab.providers.ssh.DefaultSSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConfiguration
 import com.rustyrazorblade.easydblab.providers.ssh.SSHConnectionProvider
+import com.rustyrazorblade.easydblab.proxy.ProcessSocksProxyService
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.SocksProxyService
+import com.rustyrazorblade.easydblab.proxy.SshProcessLauncher
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
+import com.rustyrazorblade.easydblab.services.CassandraBuildCatalog
 import com.rustyrazorblade.easydblab.services.CommandExecutor
+import com.rustyrazorblade.easydblab.services.EcrPullSecretService
 import com.rustyrazorblade.easydblab.services.ExternalIpService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.MockSSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
@@ -29,6 +38,7 @@ import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.ecr.EcrClient
 import software.amazon.awssdk.services.iam.IamClient
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
@@ -90,6 +100,23 @@ object TestModules {
                 val context = get<Context>()
                 UserConfigProvider(context.profileDir)
             }
+
+            // Real: it only writes and removes the packaged tool wrappers in a workspace's bin/.
+            single { ToolWrapperInstaller() }
+
+            // Real, over the test workspace, so stopping a tunnel (`down`, `socks stop`) runs the
+            // real state file and env file code. Its ssh launcher refuses to start anything: a test
+            // that needs a tunnel to start registers its own service with a fake launcher.
+            single { ProxyEnvFile(get<Context>().workingDirectory) }
+            single<SocksProxyService> {
+                ProcessSocksProxyService(
+                    get(),
+                    { _, _, _ -> false },
+                    get(),
+                    processLauncher = SshProcessLauncher { _, _ -> error("tests never launch ssh") },
+                    envFile = get(),
+                )
+            }
         }
     }
 
@@ -145,6 +172,7 @@ object TestModules {
             // Using real AWS class with mocked clients ensures the service logic
             // is tested while preventing actual AWS API calls
             single { AWS(get<IamClient>(), get<S3Client>(), get<StsClient>()) }
+            single { InstanceRolePolicies(get()) }
 
             // Mock AWSClientFactory that returns the injected AWS service
             single<AWSClientFactory> {
@@ -177,8 +205,22 @@ object TestModules {
             // Mock AMIValidator to prevent AMI validation during tests
             single { mock<AMIValidator>() }
 
+            // The account compactor creates ECS, IAM and VPC resources in AWS; tests that care
+            // about what up and down do to it override this mock.
+            single { mock<CompactorService>() }
+
             // AwsS3BucketService using mocked AWS
             single { AwsS3BucketService(get<AWS>()) }
+
+            // Published Cassandra builds. Mocked rather than real: resolving it for real would
+            // create the account bucket. Its defaults (no builds, no match) are what a profile
+            // that has never run `cassandra build` actually looks like.
+            single { mock<CassandraBuildCatalog>() }
+
+            // Real, over a mocked ECR client and K8s service: tests that exercise a custom image
+            // assert on the secret this actually builds, so a mock here would verify nothing.
+            single { mock<EcrClient>() }
+            single { EcrPullSecretService(get(), get()) }
 
             // Fake external IP resolver so tests never make a network call
             single<ExternalIpService> {
@@ -249,6 +291,8 @@ object TestModules {
                 object : SSHConnectionProvider {
                     private val mockClient = MockSSHClient()
 
+                    override fun discard(host: Host) = Unit
+
                     override fun getConnection(host: Host): ISSHClient = mockClient
 
                     override fun stop() {
@@ -286,6 +330,15 @@ object TestModules {
                     override fun uploadDirectory(
                         host: Host,
                         version: Version,
+                    ) {
+                        // No-op for mock implementation
+                    }
+
+                    override fun replaceDirectory(
+                        host: Host,
+                        localDir: File,
+                        remoteDir: String,
+                        owner: String,
                     ) {
                         // No-op for mock implementation
                     }

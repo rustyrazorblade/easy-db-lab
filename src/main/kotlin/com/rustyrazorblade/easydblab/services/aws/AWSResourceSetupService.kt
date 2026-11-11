@@ -6,13 +6,15 @@ import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
+import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 
 /**
  * Service responsible for ensuring AWS IAM resources are set up
  * before any command runs. This runs automatically in CommandLineParser before command execution.
  *
  * Creates and validates the following AWS resources:
- * - EasyDBLabEC2Role: IAM role for EC2 instances (Cassandra, Stress, Control nodes)
+ * - EasyDBLabEC2Role: IAM role for EC2 instances (Cassandra, Stress, Control nodes, AMI builders),
+ *   carrying the [InstanceRolePolicies] set
  * - EasyDBLabEMRServiceRole: IAM role for EMR service
  * - EasyDBLabEMREC2Role: IAM role for EMR EC2 instances (Spark clusters)
  *
@@ -22,6 +24,7 @@ import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 class AWSResourceSetupService(
     private val aws: AWS,
     private val eventBus: EventBus,
+    private val instanceRolePolicies: InstanceRolePolicies,
 ) {
     companion object {
         // Error messages
@@ -57,6 +60,12 @@ class AWSResourceSetupService(
     fun getAccountId(): String = aws.getAccountId()
 
     /**
+     * Re-applies the instance role's inline policies, so `up` always launches instances under the
+     * current permissions, the latest S3 delete denies included. Idempotent.
+     */
+    fun reapplyInstanceRolePolicies() = instanceRolePolicies.apply(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
+
+    /**
      * Ensures all AWS IAM resources are set up before any command runs.
      * Only creates resources if they don't exist or are invalid.
      * Validates credentials first.
@@ -75,8 +84,11 @@ class AWSResourceSetupService(
     fun ensureAWSResources(userConfig: User) {
         val roleName = Constants.AWS.Roles.EC2_INSTANCE_ROLE
 
-        // Early return if resources already exist and are valid
+        // Early return if resources already exist and are valid, once the role carries every
+        // policy in its set. AMI builds reach this path only, so a role created before a policy
+        // joined the set must pick it up here, before a builder instance launches under it.
         if (validateExistingResources(roleName)) {
+            addMissingInstanceRolePolicies(roleName)
             return
         }
 
@@ -105,6 +117,13 @@ class AWSResourceSetupService(
         // Resources exist in config but validation failed - will attempt to fix
         eventBus.emit(Event.AwsSetup.RepairWarning(validation.errorMessage ?: "Unknown validation error"))
         return false
+    }
+
+    private fun addMissingInstanceRolePolicies(roleName: String) {
+        val missing = instanceRolePolicies.missing(roleName)
+        if (missing.isEmpty()) return
+        instanceRolePolicies.apply(roleName)
+        eventBus.emit(Event.AwsSetup.InstanceRolePoliciesAdded(roleName, missing))
     }
 
     /**
@@ -141,6 +160,7 @@ class AWSResourceSetupService(
         try {
             // EC2 role (for Cassandra, Stress, Control nodes) with wildcard S3 policy
             aws.createRoleWithS3Policy(roleName)
+            instanceRolePolicies.apply(roleName)
             eventBus.emit(Event.AwsSetup.Ec2RoleReady(roleName))
 
             // EMR Service role

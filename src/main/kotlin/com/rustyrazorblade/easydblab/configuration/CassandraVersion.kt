@@ -39,6 +39,13 @@ data class CassandraVersion(
     @JsonIgnoreProperties(ignoreUnknown = true)
     @param:JsonProperty("jvm_config")
     val jvmConfig: String? = null,
+    /**
+     * Declared but not baked: the entry ships in every node's /etc/cassandra_versions.yaml so it is
+     * discoverable and installable at runtime, but the AMI bake skips installing it.
+     */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    @get:JsonInclude(JsonInclude.Include.NON_DEFAULT)
+    val lazy: Boolean = false,
 ) {
     companion object {
         private val objectMapper = ObjectMapper(YAMLFactory()).registerKotlinModule()

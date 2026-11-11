@@ -9,13 +9,24 @@ import com.rustyrazorblade.easydblab.commands.mixins.HostsMixin
 import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.HostOperationsService
+import com.rustyrazorblade.easydblab.shellQuote
 import org.koin.core.component.inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
+import java.util.concurrent.ConcurrentLinkedQueue
 
+/**
+ * Runs a command on remote hosts as a transient systemd unit, through `bash -c`.
+ *
+ * A single argument is a shell command line (`exec run "uname -n; uptime"`); several arguments
+ * are quoted one by one, so each keeps its boundaries. The unit is named `edl-exec-<name>`, from
+ * `--name` or from the command's first word, reduced to the characters systemd allows. A run
+ * that fails on any host is reported per host and makes the command exit non-zero.
+ */
 @RequireProfileSetup
 @RequireSSHKey
 @Command(
@@ -60,7 +71,7 @@ class ExecRun : PicoBaseCommand() {
     var parallel: Boolean = false
 
     override fun execute() {
-        val commandString = command.joinToString(" ") { it.shellQuote() }
+        val commandString = command.singleOrNull() ?: command.joinToString(" ") { it.shellQuote() }
 
         if (commandString.isBlank()) {
             eventBus.emit(Event.Command.EmptyCommand)
@@ -73,18 +84,22 @@ class ExecRun : PicoBaseCommand() {
             return
         }
 
+        val failedHosts = ConcurrentLinkedQueue<String>()
         hostOperationsService.withHosts(clusterState.hosts, serverType, hosts.hostList, parallel = parallel) { host ->
-            executeOnHost(host.toHost(), commandString)
+            if (!executeOnHost(host.toHost(), commandString)) failedHosts.add(host.alias)
+        }
+        if (failedHosts.isNotEmpty()) {
+            throw CommandFailedException("exec run failed on: ${failedHosts.sorted().joinToString(", ")}")
         }
     }
 
+    /** Runs [commandString] on [host] and returns whether it succeeded; a failure is reported as an event. */
     @Suppress("TooGenericExceptionCaught")
     private fun executeOnHost(
         host: Host,
         commandString: String,
-    ) {
-        val unitName = deriveUnitName(commandString)
-        val systemdUnit = "edl-exec-$unitName"
+    ): Boolean {
+        val systemdUnit = execUnitName(deriveUnitName(commandString))
 
         val systemdRunCmd = buildSystemdRunCommand(systemdUnit, commandString)
 
@@ -93,17 +108,39 @@ class ExecRun : PicoBaseCommand() {
                 remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false)
                 eventBus.emit(Event.Command.ToolStarted(host.alias, systemdUnit, commandString))
             } else {
-                remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false)
-                // Read output from systemd journal after foreground execution
-                val journalCmd = "sudo journalctl --unit=$systemdUnit --no-pager --output=cat"
-                val logOutput = remoteOps.executeRemotely(host, journalCmd, output = false, secret = false)
-                println("=== ${host.alias} ===")
-                if (logOutput.text.isNotEmpty()) println(logOutput.text)
-                if (logOutput.stderr.isNotEmpty()) println(logOutput.stderr)
+                runInForeground(host, systemdUnit, systemdRunCmd)
             }
+            return true
         } catch (e: Exception) {
             eventBus.emit(Event.Command.HostExecError(host.alias, e.message ?: e::class.simpleName ?: "Unknown error"))
+            return false
         }
+    }
+
+    /**
+     * Runs the unit and waits for it, then prints its output from the journal. `systemd-run --wait`
+     * exits non-zero when the unit fails, so the journal is printed on failure too: the unit's own
+     * output is the reason it failed. The run's failure is rethrown, not the journal's.
+     */
+    private fun runInForeground(
+        host: Host,
+        systemdUnit: String,
+        systemdRunCmd: String,
+    ) {
+        val run = runCatching { remoteOps.executeRemotely(host, systemdRunCmd, output = true, secret = false) }
+        if (run.isFailure) runCatching { printUnitOutput(host, systemdUnit) } else printUnitOutput(host, systemdUnit)
+        run.getOrThrow()
+    }
+
+    private fun printUnitOutput(
+        host: Host,
+        systemdUnit: String,
+    ) {
+        val journalCmd = "sudo journalctl --unit=$systemdUnit --no-pager --output=cat"
+        val logOutput = remoteOps.executeRemotely(host, journalCmd, output = false, secret = false)
+        println("=== ${host.alias} ===")
+        if (logOutput.text.isNotEmpty()) println(logOutput.text)
+        if (logOutput.stderr.isNotEmpty()) println(logOutput.stderr)
     }
 
     internal fun deriveUnitName(commandString: String): String {
@@ -119,18 +156,6 @@ class ExecRun : PicoBaseCommand() {
         return "$toolName-$epoch"
     }
 
-    /**
-     * Shell-quotes a string if it contains characters that need escaping.
-     * Wraps in single quotes with proper escaping of embedded single quotes.
-     */
-    internal fun String.shellQuote(): String {
-        if (isEmpty()) return "''"
-        // If it only contains safe characters, no quoting needed
-        if (matches(Regex("[a-zA-Z0-9_./:=@%+,-]+"))) return this
-        // Wrap in single quotes, escaping any embedded single quotes
-        return "'" + replace("'", "'\\''") + "'"
-    }
-
     internal fun buildSystemdRunCommand(
         unitName: String,
         commandString: String,
@@ -138,6 +163,6 @@ class ExecRun : PicoBaseCommand() {
         val waitFlag = if (background) "" else " --wait"
         return "sudo systemd-run --unit=$unitName" +
             waitFlag +
-            " -- $commandString"
+            " -- bash -c ${commandString.shellQuote()}"
     }
 }

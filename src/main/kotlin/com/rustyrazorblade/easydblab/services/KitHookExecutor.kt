@@ -6,23 +6,34 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.proxy.ToolWrapperInstaller
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.resilience4j.retry.Retry
 import io.github.resilience4j.retry.RetryConfig
 import java.io.File
 
+/**
+ * Runs the hook scripts that running kits declare for another kit's start or stop, such as Presto
+ * refreshing its catalogs when a database kit comes up.
+ */
 interface KitHookExecutor {
     fun firePostKitStart(triggeringKit: String)
 
     fun firePostKitStop(triggeringKit: String)
 }
 
+/**
+ * Runs each matching hook script from the workspace, through [KitProcessEnvironment] so it gets the
+ * tool wrappers and the absolute workspace kubeconfig, and retries a failed one with backoff.
+ */
 class DefaultKitHookExecutor(
     private val context: Context,
     private val clusterStateManager: ClusterStateManager,
     private val eventBus: EventBus,
+    private val kitProcessEnvironment: KitProcessEnvironment = KitProcessEnvironment(ToolWrapperInstaller()),
     private val maxAttempts: Int = MAX_HOOK_ATTEMPTS,
     private val backoffBaseMs: Long = HOOK_BACKOFF_BASE_MS,
+    private val startProcess: (ProcessBuilder) -> Process = { it.start() },
 ) : KitHookExecutor {
     override fun firePostKitStart(triggeringKit: String) {
         val clusterState = clusterStateManager.load()
@@ -95,15 +106,33 @@ class DefaultKitHookExecutor(
             "Hook script path '${hook.script}' in kit '$declaringKit' escapes the kit directory"
         }
 
+        // A missing or non-executable script will not fix itself, so it fails at once and no
+        // process is started. Only what can be transient reaches the retry below.
+        unrunnableReason(scriptFile)?.let { reason ->
+            eventBus.emit(Event.Kit.HookFailed(kit = declaringKit, hook = hook.script, reason = reason))
+            return
+        }
+
+        // A missing workspace kubeconfig will not fix itself either, so it fails before any attempt.
+        val builder =
+            runCatching {
+                kitProcessEnvironment.applyTo(
+                    ProcessBuilder(scriptFile.absolutePath).directory(context.workingDirectory).inheritIO(),
+                    context.workingDirectory,
+                    envVars,
+                )
+            }.getOrElse { e ->
+                eventBus.emit(Event.Kit.HookFailed(kit = declaringKit, hook = hook.script, reason = e.message ?: e.toString()))
+                return
+            }
+
+        // Checked, so a script that exists and is executable but fails to start (a checked
+        // IOException such as "Text file busy") is retried like a non-zero exit. The policy
+        // retries everything but an interrupt.
         runCatching {
             Retry
-                .decorateSupplier(retry) {
-                    val process =
-                        ProcessBuilder(scriptFile.absolutePath)
-                            .directory(context.workingDirectory)
-                            .inheritIO()
-                            .also { pb -> pb.environment().putAll(envVars) }
-                            .start()
+                .decorateCheckedSupplier(retry) {
+                    val process = startProcess(builder)
                     try {
                         val exitCode = process.waitFor()
                         if (exitCode != 0) throw RuntimeException("hook script exited with code $exitCode")
@@ -112,6 +141,7 @@ class DefaultKitHookExecutor(
                     }
                 }.get()
         }.onFailure { e ->
+            if (e is InterruptedException) Thread.currentThread().interrupt()
             val cause = e.cause ?: e
             eventBus.emit(
                 Event.Kit.HookFailed(
@@ -122,6 +152,14 @@ class DefaultKitHookExecutor(
             )
         }
     }
+
+    /** Why [scriptFile] cannot be run at all, or null when it is a regular, executable file. */
+    private fun unrunnableReason(scriptFile: File): String? =
+        when {
+            !scriptFile.isFile -> "hook script not found: ${scriptFile.path}"
+            !scriptFile.canExecute() -> "hook script is not executable: ${scriptFile.path}"
+            else -> null
+        }
 
     companion object {
         private val log = KotlinLogging.logger {}

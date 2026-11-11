@@ -1,32 +1,37 @@
 package com.rustyrazorblade.easydblab.di
 
-import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.events.ConsoleEventListener
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.RedisConfiguration
 import com.rustyrazorblade.easydblab.events.RedisEventListener
-import io.github.oshai.kotlinlogging.KotlinLogging
+import com.rustyrazorblade.easydblab.events.RedisPublisher
 import org.koin.dsl.module
-
-private val log = KotlinLogging.logger {}
 
 /**
  * Koin module for the event bus infrastructure.
  *
- * Registers [EventBus] as a singleton and wires up the [ConsoleEventListener]
- * for backward-compatible console output. Conditionally registers a
- * [RedisEventListener] when the EASY_DB_LAB_REDIS_URL environment variable is set.
+ * Registers [EventBus] as a singleton with the [ConsoleEventListener].  It reads
+ * [RedisConfiguration] from the environment once; when it is [RedisConfiguration.Configured], it
+ * builds the one [RedisPublisher] of the process and adds a [RedisEventListener] on it.  The
+ * publisher is resolved only in that case, so a process with no Redis URL never touches Redis.
  */
 val eventBusModule =
     module {
+        single<RedisConfiguration> { RedisConfiguration.fromEnvironment() }
+
+        single {
+            when (val configuration = get<RedisConfiguration>()) {
+                is RedisConfiguration.Configured -> RedisPublisher(configuration.endpoint)
+                RedisConfiguration.NotConfigured -> error("RedisPublisher requested but EASY_DB_LAB_REDIS_URL is not set")
+            }
+        }
+
         single {
             EventBus().apply {
                 addListener(ConsoleEventListener())
-
-                val redisUrl = System.getenv(Constants.EventBus.REDIS_URL_ENV_VAR)
-                if (!redisUrl.isNullOrBlank()) {
-                    val redisListener = RedisEventListener(redisUrl)
-                    addListener(redisListener)
-                    log.info { "Redis EventListener registered for URL: $redisUrl" }
+                when (get<RedisConfiguration>()) {
+                    is RedisConfiguration.Configured -> addListener(RedisEventListener(get()))
+                    RedisConfiguration.NotConfigured -> Unit
                 }
             }
         }

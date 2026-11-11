@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.commands.Clean
 import com.rustyrazorblade.easydblab.commands.ConfigureAWS
 import com.rustyrazorblade.easydblab.commands.ConfigureAxonOps
 import com.rustyrazorblade.easydblab.commands.Down
+import com.rustyrazorblade.easydblab.commands.Help
 import com.rustyrazorblade.easydblab.commands.Hosts
 import com.rustyrazorblade.easydblab.commands.Init
 import com.rustyrazorblade.easydblab.commands.Ip
@@ -14,7 +15,6 @@ import com.rustyrazorblade.easydblab.commands.PruneAMIs
 import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
-import com.rustyrazorblade.easydblab.commands.SetupProfile
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
 import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.Up
@@ -29,6 +29,11 @@ import com.rustyrazorblade.easydblab.commands.cassandra.Stop
 import com.rustyrazorblade.easydblab.commands.cassandra.UpdateConfig
 import com.rustyrazorblade.easydblab.commands.cassandra.UseCassandra
 import com.rustyrazorblade.easydblab.commands.cassandra.WriteConfig
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingFetch
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingFlamegraph
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStart
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStatus
+import com.rustyrazorblade.easydblab.commands.cassandra.profiler.ProfilingStop
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressFields
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressInfo
 import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressList
@@ -39,14 +44,21 @@ import com.rustyrazorblade.easydblab.commands.cassandra.stress.StressStop
 import com.rustyrazorblade.easydblab.commands.exec.ExecList
 import com.rustyrazorblade.easydblab.commands.exec.ExecRun
 import com.rustyrazorblade.easydblab.commands.exec.ExecStop
+import com.rustyrazorblade.easydblab.commands.grafana.GrafanaAnnotate
+import com.rustyrazorblade.easydblab.commands.grafana.GrafanaBackup
 import com.rustyrazorblade.easydblab.commands.grafana.GrafanaUpdateConfig
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStart
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStatus
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearchStop
+import com.rustyrazorblade.easydblab.commands.profile.ProfileShow
+import com.rustyrazorblade.easydblab.commands.profile.SetupProfile
+import com.rustyrazorblade.easydblab.commands.socks.SocksStart
+import com.rustyrazorblade.easydblab.commands.socks.SocksStop
 import com.rustyrazorblade.easydblab.commands.spark.SparkJobs
 import com.rustyrazorblade.easydblab.commands.spark.SparkLogs
 import com.rustyrazorblade.easydblab.commands.spark.SparkStatus
 import com.rustyrazorblade.easydblab.commands.spark.SparkSubmit
+import com.rustyrazorblade.easydblab.services.ProfileSetupCommandProvider
 import org.koin.dsl.module
 
 /**
@@ -65,6 +77,7 @@ val commandsModule =
         factory { ExecRun() }
         factory { ExecList() }
         factory { ExecStop() }
+        factory { Help() }
         factory { Hosts() }
         factory { Init() }
         factory { Ip() }
@@ -72,8 +85,11 @@ val commandsModule =
         factory { Repl() }
         factory { Server() }
         factory { SetupInstance() }
+        factory { ProfileShow() }
         factory { SetupProfile() }
         factory { ShowIamPolicies() }
+        factory { SocksStart() }
+        factory { SocksStop() }
         factory { Status() }
         factory { Up() }
         factory { UploadAuthorizedKeys() }
@@ -93,6 +109,13 @@ val commandsModule =
         factory { UseCassandra() }
         factory { WriteConfig() }
 
+        // Profiling subcommands
+        factory { ProfilingFetch() }
+        factory { ProfilingFlamegraph() }
+        factory { ProfilingStart() }
+        factory { ProfilingStatus() }
+        factory { ProfilingStop() }
+
         // Stress subcommands
         factory { StressFields() }
         factory { StressInfo() }
@@ -103,6 +126,8 @@ val commandsModule =
         factory { StressStop() }
 
         // Grafana subcommands
+        factory { GrafanaAnnotate() }
+        factory { GrafanaBackup() }
         factory { GrafanaUpdateConfig() }
 
         // OpenSearch subcommands
@@ -115,4 +140,7 @@ val commandsModule =
         factory { SparkLogs() }
         factory { SparkStatus() }
         factory { SparkSubmit() }
+
+        // Supplies the profile setup command to CommandExecutor, which must not name a command class
+        single<ProfileSetupCommandProvider> { ProfileSetupCommandProvider { get<SetupProfile>() } }
     }

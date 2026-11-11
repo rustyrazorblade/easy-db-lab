@@ -4,6 +4,14 @@ description: sysbench SQL benchmarking kit — install with --target to point at
 version: "1.0.0"
 collision-check: true
 
+# The start guard and the stop wait look for the benchmark run pods bin/start.sh creates, one per
+# instance (sysbench-<target>). A finished run's pod stays behind in Succeeded; the probe ignores
+# finished pods, so it never refuses the next start.
+runtime:
+  type: pods
+  selector: "easydblab/kit=${KIT_NAME},easydblab/role=sysbench-run"
+  namespace: default
+
 args:
   - flag: --target
     variable: TARGET
@@ -52,7 +60,7 @@ commands:
       - flag: --rate
         variable: RATE
         type: int
-        description: "Target transactions/sec (0 = unlimited, thread-bound)"
+        description: "Target transactions/sec (0 = unlimited, thread-bound). A rate well above the target's sustainable capacity hard-aborts the run in seconds instead of sustaining an overload window; see the sysbench user guide's 'Rate limiting and overload testing' section"
         default: "0"
       - flag: --skip-trx
         variable: SKIP_TRX

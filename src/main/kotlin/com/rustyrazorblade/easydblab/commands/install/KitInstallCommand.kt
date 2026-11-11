@@ -13,8 +13,11 @@ import com.rustyrazorblade.easydblab.services.StepExecutionContext
 import com.rustyrazorblade.easydblab.services.TemplateVariables
 import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import com.rustyrazorblade.easydblab.services.installConfigYaml
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.inject
 import java.io.File
+
+private val log = KotlinLogging.logger {}
 
 /**
  * Dynamically-created install subcommand backed by a kit.yaml kit descriptor.
@@ -41,32 +44,39 @@ class KitInstallCommand(
      */
     internal val resolvedDefaults: MutableMap<String, String> = mutableMapOf()
 
+    /** Non-zero when [execute] refused the install after reporting why through an error event. */
+    private var exitCode: Int = 0
+
+    override fun call(): Int {
+        val lifecycleExit = super.call()
+        return if (lifecycleExit != 0) lifecycleExit else exitCode
+    }
+
     override fun execute() {
-        // Fail fast if the cluster lacks the required node pool
-        config.type?.let { kitType ->
-            val serverType =
-                when (kitType) {
-                    KitType.DB -> ServerType.Cassandra
-                    KitType.APP -> ServerType.Stress
-                }
-            if (clusterState.getHosts(serverType).isEmpty()) {
-                eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
-                return
-            }
+        if (requiredNodePoolIsMissing()) {
+            exitCode = Constants.ExitCodes.ERROR
+            return
         }
 
         for ((variable, default) in resolvedDefaults) {
             argValues.putIfAbsent(variable, default)
         }
+        // After the defaults, so an unresolved ${VAR} default (never handed to picocli) is kept.
+        // Recording "" for the rest means an exported shell variable of the same name cannot
+        // reach a kit process in its place.
+        for (arg in config.args) {
+            argValues.putIfAbsent(arg.variable, "")
+        }
 
-        validateKitRefCapability()
+        validateKitRefTarget()
 
         val instanceName = resolveInstanceName()
 
-        if (config.collisionCheck && !force) {
+        if (config.collisionCheck.guards(Constants.Kit.PHASE_INSTALL) && !force) {
             val outputDir = File(context.workingDirectory, instanceName)
             if (outputDir.isDirectory && outputDir.listFiles().orEmpty().isNotEmpty()) {
-                eventBus.emit(Event.Install.CollisionDetected(kit = instanceName))
+                eventBus.emit(Event.Install.CollisionDetected(kit = instanceName, outputDir = outputDir.path))
+                exitCode = Constants.ExitCodes.ERROR
                 return
             }
         }
@@ -90,46 +100,65 @@ class KitInstallCommand(
                     .from(state = clusterState, kitName = instanceName, storageSize = storageSize)
                     .toMap() + argValues
 
-            runCatching {
-                workloadStepExecutor
-                    .execute(
-                        steps = config.install,
-                        phase = Constants.Kit.PHASE_INSTALL,
-                        context =
-                            StepExecutionContext(
-                                kitName = instanceName,
-                                controlHost = controlHost,
-                                clusterState = clusterState,
-                                variables = variables,
-                                kitDir = kitDir,
-                            ),
-                    ).getOrThrow()
-            }.onFailure { e ->
-                kitDir.deleteRecursively()
-                throw e
-            }
+            // A failed step is reported by the step executor as a typed event; the install then
+            // exits non-zero rather than rethrowing, which would print the failure a second time
+            // as a raw exception.
+            workloadStepExecutor
+                .execute(
+                    steps = config.install,
+                    phase = Constants.Kit.PHASE_INSTALL,
+                    context =
+                        StepExecutionContext(
+                            kitName = instanceName,
+                            controlHost = controlHost,
+                            clusterState = clusterState,
+                            variables = variables,
+                            kitDir = kitDir,
+                            workspaceDir = context.workingDirectory,
+                        ),
+                ).onFailure { e ->
+                    log.debug(e) { "$instanceName install failed" }
+                    kitDir.deleteRecursively()
+                    exitCode = Constants.ExitCodes.ERROR
+                }
         }
     }
 
     /**
-     * Validates that the target kit declared by a kit-ref arg exposes the required capability.
-     * Fails fast with a clear error rather than letting the bench kit fail at runtime.
+     * Fails fast when the cluster has no node in the pool the kit's `type` declares: reports
+     * [Event.Kit.RequirementNotMet] and returns true. A kit with no `type` needs no pool.
      */
-    private fun validateKitRefCapability() {
+    private fun requiredNodePoolIsMissing(): Boolean {
+        val kitType = config.type ?: return false
+        val serverType =
+            when (kitType) {
+                KitType.DB -> ServerType.Cassandra
+                KitType.APP -> ServerType.Stress
+            }
+        if (clusterState.getHosts(serverType).isNotEmpty()) return false
+        eventBus.emit(Event.Kit.RequirementNotMet(kit = config.name, nodeType = kitType.name.lowercase()))
+        return true
+    }
+
+    /**
+     * Validates that the target kit declared by a kit-ref arg exposes the required capability
+     * and endpoint types. Fails fast with a clear error rather than letting the bench kit fail
+     * at runtime.
+     */
+    private fun validateKitRefTarget() {
         val kitRefArg = config.kitRefArg ?: return
-        val requiredCapability = kitRefArg.capability.takeIf { it.isNotBlank() } ?: return
         val targetName = argValues[kitRefArg.variable]?.takeIf { it.isNotBlank() } ?: return
+        KitRefTargetValidator(::lookUpInstalledKit).validate(config.name, kitRefArg, targetName)
+    }
 
-        val targetKitDir = File(context.workingDirectory, targetName)
-        val configFile = File(targetKitDir, Constants.Kit.CONFIG_FILE)
-        check(configFile.isFile) {
-            "Target kit '$targetName' is not installed (expected $configFile)"
-        }
-
-        val targetConfig = installConfigYaml.decodeFromString(KitConfig.serializer(), configFile.readText())
-        val hasCapability = targetConfig.capabilities.any { it.type == requiredCapability }
-        check(hasCapability) {
-            "Target kit '$targetName' does not have the '$requiredCapability' capability required by ${config.name}"
+    private fun lookUpInstalledKit(targetName: String): KitRefTargetValidator.TargetLookup {
+        val configFile = File(File(context.workingDirectory, targetName), Constants.Kit.CONFIG_FILE)
+        return when {
+            configFile.isFile ->
+                KitRefTargetValidator.TargetLookup.Installed(
+                    installConfigYaml.decodeFromString(KitConfig.serializer(), configFile.readText()),
+                )
+            else -> KitRefTargetValidator.TargetLookup.NotInstalled(configFile.path)
         }
     }
 

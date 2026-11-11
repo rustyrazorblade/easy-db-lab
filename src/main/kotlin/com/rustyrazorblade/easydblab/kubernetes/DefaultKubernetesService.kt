@@ -168,6 +168,7 @@ private fun Pod.toKubernetesPod(): KubernetesPod {
         ready = readyStr,
         restarts = totalRestarts,
         age = age,
+        terminating = metadata?.deletionTimestamp != null,
     )
 }
 

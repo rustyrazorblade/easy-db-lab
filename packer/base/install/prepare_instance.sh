@@ -18,7 +18,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt update
 sudo DEBIAN_FRONTEND=noninteractive apt upgrade -y
 sudo DEBIAN_FRONTEND=noninteractive apt update
 
-sudo DEBIAN_FRONTEND=noninteractive apt install -y wget sysstat unzip ripgrep ant ant-optional tree zfsutils-linux  nicstat
+sudo DEBIAN_FRONTEND=noninteractive apt install -y wget sysstat unzip ripgrep ant ant-optional tree zfsutils-linux  nicstat jq
 
 cpu_arch=$(uname -m)
 # Set ARCH based on the CPU architecture

@@ -236,7 +236,7 @@ Create custom assertions for:
 
 ## Testing Interactive Commands with TestPrompter
 
-Commands that require user input (like `setup-profile`) can be tested deterministically using `TestPrompter`. This test utility replaces the real `Prompter` interface and returns predefined responses.
+Commands that require user input (like `profile setup`) can be tested deterministically using `TestPrompter`. This test utility replaces the real `Prompter` interface and returns predefined responses.
 
 ### Basic Usage
 

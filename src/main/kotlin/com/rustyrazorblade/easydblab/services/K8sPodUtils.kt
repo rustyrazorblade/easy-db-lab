@@ -20,6 +20,34 @@ object K8sPodUtils {
             "ErrImagePull",
         )
 
+    /** The phase of a pod whose containers all exited successfully and will not restart. */
+    const val SUCCEEDED_PHASE = "Succeeded"
+
+    /** The phase of a pod whose containers all exited and at least one of them failed. */
+    const val FAILED_PHASE = "Failed"
+
+    private const val JOB_KIND = "Job"
+
+    /**
+     * Whether a readiness wait should hold out for [pod]. A pod that ran to completion (a Job's
+     * pod, such as a kit's stress run) never becomes Ready again, so waiting on it can only time
+     * out. The same holds for a Job's pod that failed: the Job replaces it or gives up, but that
+     * pod stays terminal. Every other pod is awaited.
+     */
+    fun awaitsReadiness(pod: Pod): Boolean = !isTerminal(pod)
+
+    /** Whether [pod] finished for good: it succeeded, or it is a Job's pod that failed. */
+    private fun isTerminal(pod: Pod): Boolean =
+        when (pod.status?.phase) {
+            SUCCEEDED_PHASE -> true
+            FAILED_PHASE ->
+                pod.metadata
+                    ?.ownerReferences
+                    .orEmpty()
+                    .any { it.kind == JOB_KIND }
+            else -> false
+        }
+
     /**
      * Checks if a pod has any containers in a terminal failure state.
      * Throws IllegalStateException if a failure is detected, causing

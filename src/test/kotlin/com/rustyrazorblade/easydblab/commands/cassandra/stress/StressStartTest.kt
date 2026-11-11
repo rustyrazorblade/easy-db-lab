@@ -5,6 +5,11 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.services.StartedStressJob
 import com.rustyrazorblade.easydblab.services.StressJobService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -16,6 +21,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.argThat
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -76,6 +82,37 @@ class StressStartTest : BaseKoinTest() {
     fun setupMocks() {
         mockStressJobService = getKoin().get()
         mockClusterStateManager = getKoin().get()
+    }
+
+    @Test
+    fun `the started event carries the host the stress pod runs on`() {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        whenever(mockClusterStateManager.load()).thenReturn(
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts = mutableMapOf(ServerType.Control to listOf(testControlHost), ServerType.Cassandra to listOf(testCassandraHost)),
+            ),
+        )
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
+        whenever(mockStressJobService.startJob(any(), any())).thenReturn(Result.success(StartedStressJob("stress-kv-1", "app0")))
+
+        StressStart().apply { stressArgs = listOf("KeyValue") }.execute()
+
+        val started = events.filterIsInstance<Event.Stress.JobStarted>().single()
+        assertThat(started.host).isEqualTo("app0")
+        assertThat(started.jobName).isNotBlank()
+        assertThat(started.contactPoint).isEqualTo("10.0.1.6")
+        assertThat(started.args).contains("KeyValue")
     }
 
     @Test
@@ -163,7 +200,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
         whenever(mockStressJobService.startJob(any(), any()))
-            .thenReturn(Result.success("job-created"))
+            .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
         command.stressArgs = listOf("BasicTimeSeries", "-d", "1h", "--threads", "100")
@@ -223,6 +260,95 @@ class StressStartTest : BaseKoinTest() {
     }
 
     @Test
+    fun `parseTags should reject a value containing whitespace`() {
+        // The regression this guards: JDK_JAVA_OPTIONS is one string the JVM splits on whitespace,
+        // so "note=first run" produced "-Dotel.resource.attributes=...,note=first" followed by a
+        // bare "run", and the JVM exited with "Unrecognized option: run" before cassandra-easy-
+        // stress started. --tags "note=..." invites prose, so this is reachable by ordinary use.
+        val command = StressStart()
+
+        assertThatThrownBy { command.parseTags("note=first run") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("note")
+            .hasMessageContaining("first run")
+            .hasMessageContaining("whitespace")
+    }
+
+    @Test
+    fun `parseTags should reject a key containing whitespace`() {
+        val command = StressStart()
+
+        assertThatThrownBy { command.parseTags("my note=value") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("my note")
+    }
+
+    @Test
+    fun `parseTags should reject a fragment with no equals rather than dropping it`() {
+        // A comma always separates tags, so "note=before,after" cannot mean a value with a comma in
+        // it. The old code filtered "after" out silently and returned {note: before} — half the
+        // value gone, no warning, and a run labelled with something other than what was typed.
+        val command = StressStart()
+
+        assertThatThrownBy { command.parseTags("note=before,after") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("after")
+    }
+
+    @Test
+    fun `parseTags should reject a value containing an equals sign`() {
+        // Reaches two different parsers that need not split on the same '='.
+        val command = StressStart()
+
+        assertThatThrownBy { command.parseTags("query=a=b") }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("query")
+    }
+
+    @Test
+    fun `parseTags should still accept ordinary tags, including spaces around separators`() {
+        // The gate must not be so tight that normal input fails. A space after a comma is a normal
+        // way to type a list and is trimmed, not rejected — only whitespace INSIDE a key or value
+        // breaks anything.
+        val command = StressStart()
+
+        assertThat(command.parseTags("env=production, team=platform"))
+            .containsEntry("env", "production")
+            .containsEntry("team", "platform")
+        assertThat(command.parseTags("build=5.0.9-rrb-j21-20260906-8ba1639-jdk21"))
+            .containsEntry("build", "5.0.9-rrb-j21-20260906-8ba1639-jdk21")
+        assertThat(command.parseTags("note=")).containsEntry("note", "")
+    }
+
+    @Test
+    fun `execute should reject a bad tag before any job is created`() {
+        // Failing at parse time is the requirement: a rejected tag must not leave a half-created
+        // K8s Job behind for someone to clean up.
+        val stateWithNodes =
+            ClusterState(
+                name = "test-cluster",
+                versions = mutableMapOf(),
+                hosts =
+                    mutableMapOf(
+                        ServerType.Control to listOf(testControlHost),
+                        ServerType.Cassandra to listOf(testCassandraHost),
+                    ),
+            )
+        whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
+        whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
+
+        val command = StressStart()
+        command.stressArgs = listOf("KeyValue")
+        command.tags = "note=first run"
+
+        assertThatThrownBy { command.execute() }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("whitespace")
+
+        verify(mockStressJobService, never()).startJob(any(), any())
+    }
+
+    @Test
     fun `parseTags should return empty map for null input`() {
         val command = StressStart()
         val result = command.parseTags(null)
@@ -252,7 +378,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
         whenever(mockStressJobService.startJob(any(), any()))
-            .thenReturn(Result.success("job-created"))
+            .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
         command.stressArgs = listOf("KeyValue")
@@ -282,7 +408,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(1)
         whenever(mockStressJobService.startJob(any(), any()))
-            .thenReturn(Result.success("job-created"))
+            .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
         command.stressArgs = listOf("KeyValue", "-d", "1h")
@@ -311,7 +437,7 @@ class StressStartTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(stateWithNodes)
         whenever(mockClusterStateManager.incrementStressJobCounter()).thenReturn(3)
         whenever(mockStressJobService.startJob(any(), any()))
-            .thenReturn(Result.success("job-created"))
+            .thenReturn(Result.success(StartedStressJob("job-created", "app0")))
 
         val command = StressStart()
         command.jobName = "my-test"

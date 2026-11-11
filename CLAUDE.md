@@ -1,25 +1,26 @@
+- **This is a testing and fast-iteration tool, not a production tool.** easy-db-lab exists to spin up throwaway clusters and iterate quickly on testing Cassandra builds and fixes.  Optimize for iteration speed and simplicity.  Do not gold-plate features with production hardening the tool does not need — credential rotation, key revocation on live hosts, audit trails, and similar — when it adds friction without value; the clusters are ephemeral and single-operator.  This never licenses leaking secrets or disabling functionality (see the rules below); it means not building production concerns this tool does not have.
 - **Clusters are ephemeral by design.** easy-db-lab spins up temporary test clusters that are destroyed after use. There is no production data, no long-lived deployments, and no users who need to migrate. **Do NOT warn about backwards compatibility** when reviewing PRs or planning changes — it is never a concern here.
+- **Do not design for S3 being unavailable.** S3 outages happen about once every two years, and the owner accepts the risk of data loss when one does. Do not write code, checks, retries, tests, spec requirements, or review findings for S3 outages or other failures that do not happen in practice. This covers teardown too: `down` flushes every backend, waits until all the data is flushed, and does not destroy the environment if the flush did not finish. It does nothing else. Never add verify checks to it (for example, "every local file exists in S3", "the backend is running", or "a counter did not move").
 - **Large `storageSize` defaults in kit.yaml (e.g. `10Ti`) are intentional and correct.** Clusters use Local Persistent Volumes via the `local-storage` provisioner, which does not enforce PVC capacity — the declared size is metadata only and does not affect real disk usage. **Never flag large storage defaults as excessive, wasteful, or a bug** during code review or planning.
 - This is a **general purpose database test tool**, not a Cassandra-specific tool. It supports Cassandra, ClickHouse, OpenSearch, TiDB, and more. In user-facing text (docs, error messages, comments), use "database" or "db" instead of "Cassandra" unless referring to Cassandra-specific functionality. The `ServerType.Cassandra` / "db" node type is the generic database node — don't assume it's always Cassandra.
+- **Never assume the source checkout is available.** Most people install this tool with Homebrew. They have no repo, no working tree, and no `build/` directory. Any feature that scaffolds, generates, or reads files must work entirely from resources packaged in the distribution. Never bind-mount a repo directory, read a path inside the repo at runtime, or design a workflow that only works for someone with a clone.
+- **Never encode a personal or machine-specific path.** Any directory outside this repo — where a user keeps a database checkout, a scaffolded workspace, or test output — is a parameter, never a constant. A path named in conversation is an example of usage, not a requirement to hardcode. Take it as an argument and default it to the current directory.
 - This is a command line tool.  The user interacts by reading the output.  Do not suggest replacing print statements with logging, because it breaks the UX.
-- **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt` across 28 domain interfaces. See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If an MCP client or Redis subscriber would have no reason to care, it is not an event.
+- **Structured user-facing output** uses `eventBus.emit(Event.Domain.Type(...))` with domain-specific typed events. Events are defined as sealed data classes in `events/Event.kt`, one sealed sub-interface per domain (listed in `events/CLAUDE.md`). See [`events/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/events/CLAUDE.md). **Events are for things an external system would need to be aware of** — lifecycle transitions, state changes, failures. If a Redis subscriber would have no reason to care, it is not an event.
 - **For pure informational output** with no associated event type (e.g. help text, plain status lines), use Kotlin's `println()`. **Never use `System.out` directly** — `println()` is the idiomatic Kotlin equivalent and writes to stdout.
 - **Read-only display commands** (`info`, `list`, `show`, `describe`, and equivalents) produce pure output — no state changes, no domain facts occurred. Use `println()` directly in `execute()`; do **not** model the output as an event. A useful heuristic: if the command's name is a noun or `show`/`info`/`list`/`describe`, it almost certainly belongs in this category. Examples: `kit info`, `kit list`.
 - **Do NOT use `Event.Message` or `Event.Error`** — these generic types exist only for test convenience. When emitting events, always use domain-specific typed events with structured data fields.
 - Do not add logging frameworks to command classes unless there is a specific internal debugging need separate from user output.
 - When logging is needed, use: `import io.github.oshai.kotlinlogging.KotlinLogging` and create a logger with `private val log = KotlinLogging.logger {}`
 - **Never use Python for JSON parsing in shell scripts.** Use `jq` instead.
-- **ABSOLUTE RULE: NEVER set, clear, or otherwise touch the `socksProxyHost` / `socksProxyPort` JVM system properties.** Not even temporarily with save/restore. These are JVM-global and capture **every** socket in the process — including the AWS SDK — routing it through the SOCKS tunnel. This caused a major incident and was deliberately removed in #725 (see the commit message and the `Socks5ProxySelector` KDoc). The proxy publishes **only** its port under `Constants.Proxy.PORT_PROPERTY`; cluster clients opt into the tunnel **explicitly and per-client** — Fabric8 via `config.httpsProxy = "socks5://127.0.0.1:{port}"` (`KubernetesClientFactory`), cluster HTTP via `Socks5ProxySelector` installed on that client only (`ProxiedHttpClientFactory`), the CQL driver via `SocksProxyNettyOptions`, and the JDBC `sql` command plus local kubectl/helm in kit shell steps via `SocksTcpBridge` (a per-connection localhost→SOCKS TCP forwarder; see `KubeconfigProxyResolver`). To route a **new** client type through the tunnel, give **that connection** an explicit `java.net.Proxy(SOCKS, ...)` / driver-native SOCKS option (or route it through `SocksTcpBridge`) — never a global property. This invariant is also encoded in `openspec/specs/networking/spec.md` REQ-NET-005.
+- **ABSOLUTE RULE: NEVER set, clear, or otherwise touch the `socksProxyHost` / `socksProxyPort` JVM system properties.** Not even temporarily with save/restore. These are JVM-global and capture **every** socket in the process — including the AWS SDK — routing it through the SOCKS tunnel. This caused a major incident and was deliberately removed in #725 (see the commit message and the `Socks5ProxySelector` KDoc). The proxy publishes **only** its port under `Constants.Proxy.PORT_PROPERTY`; cluster clients opt into the tunnel **explicitly and per-client** — Fabric8 via `config.httpsProxy = "socks5://127.0.0.1:{port}"` (`KubernetesClientFactory`), cluster HTTP via `Socks5ProxySelector` installed on that client only (`ProxiedHttpClientFactory`), the CQL driver via `SocksProxyNettyOptions`, and the JDBC `sql` command via `SocksTcpBridge` (a per-connection localhost→SOCKS TCP forwarder). Local shell tools — kit shell steps, phase scripts, hooks and `env.sh` shells — go through the workspace tool wrappers: `<workspace>/bin/{kubectl,helm,cilium,curl,skopeo,k9s,ssh,scp,sftp,rsync}`, one packaged POSIX script (`configuration/tool-wrapper.sh`, written by `ToolWrapperInstaller`) that sets that tool's proxy variables for its own call only, read from the proxy env file; the `ssh`, `scp`, `sftp` and `rsync` copies instead add `-F <workspace>/sshConfig` (rsync: `-ave "ssh -F <workspace>/sshConfig"`), leave proxy variables and `KUBECONFIG` alone, and exit 1 when the workspace has no `sshConfig`. Every kit process is launched through `KitProcessEnvironment`, which puts `<workspace>/bin` first on `PATH` and sets the absolute workspace `KUBECONFIG`. To route a **new** client type through the tunnel, give **that connection** an explicit `java.net.Proxy(SOCKS, ...)` / driver-native SOCKS option (or route it through `SocksTcpBridge`) — never a global property. This invariant is also encoded in the `SOCKS Proxy` requirement in `openspec/specs/networking/spec.md`.
+- **Standing rule: shell-side state comes from the sourceable env file, never from JSON.** Any value a shell-side tool (the tool wrappers, `env.sh`, a kit script) needs is written by Kotlin to `<workspace>/.socks5-proxy.env` (`proxy/ProxyEnvFile`, the file's only writer: fixed `KEY=value` lines, merge-updated under an exclusive lock on `.socks5-proxy.env.lock` and replaced by an atomic rename). Today it holds `EDL_TAILSCALE_ACTIVE`, `EDL_SOCKS_PORT` and `EDL_SOCKS_PID` (the tunnel script's PID; the last two are written after verification and removed together, as one `RecordedTunnel`). A wrapper, `with-proxy` and `socks5-status` use the port only while `kill -0 "$EDL_SOCKS_PID"` succeeds, and otherwise fail with the `socks start` message. Shell code sources it; it never parses `.socks5-proxy-state` or any other JSON, and never needs `jq` for it. The CLI is the only proxy manager: `socks start` / `socks stop` (and every `@RequiresProxy` command, `up` and `down`) start, reuse, or stop the tunnel; `env.sh` and the wrappers never do.
+- **ABSOLUTE RULE: NEVER delete the owner's data automatically.** Test results, observability data (metrics, logs, traces, profiles, annotations), backups, and exports are the owner's work product. No code, default, lifecycle rule, retention setting, compactor setting, TTL, or cleanup step may delete them unless the owner runs an explicit delete. This covers S3 lifecycle and expiry rules, `--retention-days`-style options, backend retention such as Tempo `block_retention` or Mimir and Loki compactor retention, and teardown cleanup. Ephemeral clusters are disposable; the data they produce is not. Never add automatic deletion as a feature, a default, or a "cost" optimization, and flag any existing automatic deletion as a critical bug. Compaction is not deletion. A compactor that writes a merged object holding all of its sources' data, and then removes those sources, loses nothing and is allowed. Retention, expiry, and any removal that is not replaced by a merged copy stay forbidden. Every compactor runs with retention off.
+- When we are working on a PR, and you find a bug, it should generally be fixed in that patch, NOT deferred. I am not interested in separate patches for bug fixes. If you find a bug, tell me about it, the default behavior should be to fix it.
+- During the grilling session, ask one question at a time.
+- During reviews, flag any loosening of detekt rules as MAJOR issues.
 
 ## Project Organization
-
-### Architecture Overview
-
-The project follows a layered architecture:
-
-- **Commands (PicoCLI)** delegate to **Services**, which interact with **External Systems** (K8s, AWS, Filesystem)
-- Commands and Services emit events via the **EventBus**
-- **Listeners** consume events: `ConsoleEventListener` (stdout/stderr), `McpEventListener` (server MCP status), `RedisEventListener` (pub/sub, optional)
 
 ### Project Modules
 
@@ -33,6 +34,8 @@ locally-built Cassandra Analytics SNAPSHOTs and don't belong in the CLI build. T
 `spark` CLI commands (EMR provisioning + job submission) remain in this repo.
 
 ### Layer Responsibilities
+
+- **Listeners** consume events: `ConsoleEventListener` (stdout/stderr), `RedisEventListener` (pub/sub, optional, best effort after startup). `metrics stream` publishes `Metrics.Sample` straight to Redis, not through the bus.
 
 **Commands (`commands/`)**: Lightweight PicoCLI execution units. Commands are thin wrappers that:
 - Parse CLI arguments and options
@@ -50,10 +53,12 @@ See [`commands/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/command
 
 See [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) for AWS/SSH/Docker patterns and retry logic.
 
+**Kernel (`kernel/`)**: The few types both of the layers above share. It holds `PicoCommand`, the interface `services/CommandExecutor` dispatches on and every command implements. Keeping it here is what stops `commands/` and `services/` from depending on each other. Add a type to `kernel/` only when both layers need it, and keep it free of dependencies on either.
+
 ### Server & REPL
 
-Two commands run as long-lived processes instead of the typical run-and-exit pattern:
-- **`Server`** — starts a hybrid HTTP server with MCP protocol support (Ktor + SSE), REST status endpoints, and background services. See [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md).
+Three commands run as long-lived processes instead of the typical run-and-exit pattern (`metrics stream` is the third: it publishes chosen metrics to Redis every 5 seconds until the first Ctrl-C or SIGTERM, which exits 0; see `services/metrics/`):
+- **`Server`** — starts the REST status server (Ktor): `/status`, `/stress/status`, `/swagger`, with the background status cache. See [`server/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/server/CLAUDE.md).
 - **`Repl`** — starts an interactive REPL to reduce typing for repeated commands.
 
 ### Dependency Injection
@@ -65,12 +70,7 @@ Use **Koin** for dependency injection throughout the codebase:
 
 ### Design Principles
 
-Follow **SOLID principles**:
-- **S**ingle Responsibility: Each class has one reason to change
-- **O**pen/Closed: Open for extension, closed for modification
-- **L**iskov Substitution: Subtypes must be substitutable for base types
-- **I**nterface Segregation: Prefer small, focused interfaces
-- **D**ependency Inversion: Depend on abstractions, not concretions
+Follow **SOLID principles**.
 
 ### Testing Approach
 
@@ -85,25 +85,13 @@ Practice **reasonable TDD**:
 - Tests that assert default field values (e.g., `assertThat(command.field).isNull()`) — the compiler already guarantees defaults
 - Tests that verify a method was called but don't assert anything about the outcome or transformation
 - Tests where removing the code under test wouldn't cause the test to fail because the mock does all the work
+- Tests that assert static help or usage text (picocli `usageMessage`, command descriptions, `--help` output). This is a standing rule; a review finding asking for such a test is dropped, not fixed.
 
 A good test exercises a code path where the system under test makes a decision, transforms data, or could fail in a meaningful way.
 
 See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) for test patterns, BaseKoinTest usage, and custom assertions. See also [docs/development/testing.md](docs/development/testing.md) for comprehensive testing guidelines.
 
 **Never mock `TemplateService`** — always use the real instance in tests. It only reads classpath resources and does string substitution with no external side effects.
-
-**Quality tools workflow**:
-```bash
-# Find test coverage gaps
-./gradlew koverHtmlReport
-# Report at build/reports/kover/html/index.html
-
-# Format code before committing
-./gradlew ktlintFormat
-
-# Find potential code issues
-./gradlew detekt
-```
 
 ## Development Rules
 
@@ -118,10 +106,13 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - Constants and magic numbers should be stored in `com.rustyrazorblade.easydblab.Constants`.
 - When outputting multiple lines to the console via `println()`, use a multiline string block instead of multiple `println()` calls. When using events, a single event with structured fields is always preferred over multiple events.
 - When making changes, use the detekt plugin to determine if there are any code quality regressions.
+- **Fix detekt findings with code, never with `@Suppress`, a threshold change, or a baseline entry.**
+- **Prefer composition when it fits.** When a class grows too many responsibilities or functions, split it into small single-purpose classes and compose them, instead of one large class.
+- **Use the builder pattern instead of a long constructor.** When a class needs many constructor fields, give it a builder rather than a long parameter list.
 
 ### Architecture
 
-- Use resilience4j for retry logic instead of custom retry loops. See [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) for RetryUtil factory methods.
+- Use resilience4j for retry logic instead of custom retry loops. See [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) for RetryUtil factory methods. resilience4j's plain `decorateRunnable`/`decorateSupplier` never see a checked exception (`SshException`, OkHttp's `IOException`, `ProcessBuilder.start()`), so a body that can throw one uses the checked decorators with a predicate that names what is transient; never retry an `InterruptedException` (see "Checked Exceptions Need The Checked Decorators" there).
 - NEVER build YAML with strings in Kotlin. If you are building a config in memory to execute with K8s, use fabric8. If it's something that needs to be written to disk, use kotlinx.serialization with data classes. ALWAYS prefer typed objects over big strings.
 - Write new K8s configuration using fabric8. If there are configuration files, store them as a resource and load them with the TemplateService.
 - If you need to modify a K8s configuration, ask if you should migrate it to the new fabric8 based configs in `src/main/kotlin/com/rustyrazorblade/easydblab/configuration/`.
@@ -162,8 +153,17 @@ See [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLA
 - If this document needs to be updated in order to provide more context for future work, do it.
 - When describing directory structure, use normal lists. Don't draw them, I don't find them useful.
 - Do not use remote docker-compose commands, use docker compose, the subcommand version.
-- Activate kotlin and java for context7.
-- Activate the serena MCP server.
+
+### Issue Labels
+
+GitHub issues use the spec-flow label vocabulary.
+
+- **`status:ready`** means the issue is groomed and ready to work on. Pick the next work from the highest-priority `status:ready` issue.
+- The other lifecycle labels, in order: `status:spec-review` (spec waits for owner approval), `status:in-progress` (implementation in progress), `status:in-review` (PR open, waits for owner review), `status:addressing` (fixes for owner review comments). An issue carries one lifecycle label at a time.
+- Priority: `P0` (drop everything), `P1` (high), `P2` (normal), `P3` (low / someday).
+- Do not start an issue that carries `agent:active` (an agent already works on it) or `blocked` (a hard dependency stops it).
+- `requires-aws` and `requires-ami-bake` are repo-specific gates. Their rules are in [`spec-flow/WORKFLOWS.md`](spec-flow/WORKFLOWS.md).
+- The test tiers, local gates, CI, and merge gate are in [`spec-flow/TESTING.md`](spec-flow/TESTING.md).
 
 ### Lab Test Plans
 
@@ -179,18 +179,10 @@ When using the `/easy-db-lab:plan` skill, use `bin/easy-db-lab` in the project d
 
 **CRITICAL:** Every test run must have its own workspace directory under `clusters/`. All `easy-db-lab` commands — `init`, `up`, `cassandra`, `presto`, `down`, everything — must be run from inside that directory. The tool writes `state.json`, `env.sh`, `sshConfig`, `kubeconfig`, and config files into the current directory. Running from the wrong directory will corrupt state or silently target the wrong cluster.
 
-Each workspace gets an `easy-db-lab` wrapper script generated by `bin/create-easy-db-lab-wrapper`. The wrapper sets the correct `JAVA_HOME` (the highest-installed Java 21 via SDKMAN, or the newest JDK >= 21 if no 21 is present) and `cd`s into the workspace directory automatically — no manual `cd` or Java ceremony needed.
-
-**Every test plan written to `test-plans/` must use this pattern as its first step:**
-
-```bash
-CLUSTER_DIR="clusters/<test-name>-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$CLUSTER_DIR"
-bin/create-easy-db-lab-wrapper "$CLUSTER_DIR"
-EDB="$CLUSTER_DIR/easy-db-lab"
-```
-
-All subsequent commands use `$EDB` directly — no `cd`, no path prefix:
+**The `/easy-db-lab:run` skill creates the workspace** — the directory, an `easy-db-lab` wrapper that
+`cd`s into it, and the lab-report scaffold — before it executes any plan step. Test plans must **not**
+create the workspace themselves. A plan's first step is provisioning (`init ... --up`); everything
+after it uses `$EDB`, which `run` sets:
 
 ```bash
 $EDB init ...
@@ -198,16 +190,10 @@ $EDB cassandra start
 $EDB down --auto-approve
 ```
 
-For multi-DC plans, create a wrapper per DC directory:
+For multi-DC plans `run` creates one wrapper per DC and sets `$EDB_DC1`, `$EDB_DC2`, and so on.
 
-```bash
-CLUSTER_BASE="clusters/<test-name>-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$CLUSTER_BASE/dc1" "$CLUSTER_BASE/dc2"
-bin/create-easy-db-lab-wrapper "$CLUSTER_BASE/dc1"
-bin/create-easy-db-lab-wrapper "$CLUSTER_BASE/dc2"
-DC1="$CLUSTER_BASE/dc1/easy-db-lab"
-DC2="$CLUSTER_BASE/dc2/easy-db-lab"
-```
+Plans are executed exclusively through the plugin skills (see **Lab Test Plans** above), so there is
+no supported path where a plan scaffolds its own workspace.
 
 ## Development Setup
 
@@ -223,14 +209,6 @@ run under a JDK 25 runtime, so `./gradlew detekt` and the full `./gradlew check`
 on JDK 21. Compiling, running, and testing the app all work on JDK 25. CI runs `check` on
 JDK 21. Upgrading detekt to the JDK-25-capable 2.0.x line is a separate migration (new
 `dev.detekt` coordinate, K2 engine, baseline regeneration).
-
-```bash
-# Check current Java version
-java -version
-
-# List installed versions
-sdk list java
-```
 
 ### Example Spark Jobs
 
@@ -259,6 +237,11 @@ The project uses Gradle configuration cache for faster builds, enabled via `grad
 - `org.gradle.configuration-cache=true` - Enables configuration caching
 - `org.gradle.caching=true` - Enables build caching
 
+A build that uses it ends with `Configuration cache entry stored.` or `... reused.` A task action
+must not reach `project` (e.g. the script-level `copy {}` in a `doLast`) — Gradle rejects the
+cache entry. The Jib plugin's `jib`/`jibDockerBuild` tasks declare themselves incompatible, so a
+build that runs them discards the entry and runs uncached; every other task caches.
+
 **When to clear the cache**:
 - After modifying `.editorconfig` or ktlint rules
 - After changing Gradle plugins or build scripts
@@ -276,40 +259,7 @@ rm -rf .gradle/configuration-cache
 
 ### Local Validation
 
-Before pushing code, verify it passes all checks:
-
-```bash
-# Run all checks (matches CI)
-./gradlew check
-
-# Run only ktlint check (verify style compliance)
-./gradlew ktlintCheck
-
-# Auto-fix ktlint violations (when possible)
-./gradlew ktlintFormat
-```
-
 **Note**: `ktlintFormat` auto-fixes many violations but can't fix all issues (e.g., line length). Always run `ktlintCheck` after formatting to catch remaining issues.
-
-### Packer Script Testing
-
-Test packer provisioning scripts locally using Docker (no AWS required):
-
-```bash
-# Test base provisioning scripts
-./gradlew testPackerBase
-
-# Test Cassandra provisioning scripts
-./gradlew testPackerCassandra
-
-# Run all packer tests
-./gradlew testPacker
-
-# Test a specific script
-./gradlew testPackerScript -Pscript=cassandra/install/install_cassandra_easy_stress.sh
-```
-
-For more details, see [packer/README.md](packer/README.md) and [packer/TESTING.md](packer/TESTING.md).
 
 ## Documentation & Specifications
 
@@ -325,27 +275,9 @@ If I refer to Kubernetes configs or k8 configs, I am referring to these: `src/ma
 
 The cluster runs a full observability stack on the control node. When modifying any part of this stack, keep the related K8s manifests, Kotlin services, and user docs in sync.
 
-All observability K8s resources are built programmatically using Fabric8 manifest builders in `configuration/` subpackages. No raw YAML files remain in the core observability stack. See [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) for detailed builder documentation.
+The full reference (CNI scrapes, collectors, backends, the `down` tail flush, the account compactor, tenants, Grafana services, dashboard deploy commands) is the `observability-stack` skill in `.claude/skills/observability-stack/`. Load it before changing or debugging the stack.
 
-**CNI**: K3s uses Cilium (not Flannel) with Hubble enabled for L7 network visibility and Prometheus metrics at `localhost:9965`.
-
-**Collectors** (run on cluster nodes): OTel Collector, Fluent Bit (journald), Grafana Alloy (eBPF profiling), Beyla (L7 RED metrics), ebpf_exporter (TCP/block I/O/VFS), YACE (CloudWatch), MAAC agent (Cassandra metrics)
-
-**Dynamic OTel config**: `OtelManifestBuilder.buildConfigMap()` accepts `List<WorkloadScrapeConfig>` and injects one Prometheus scrape job per running kit. Kits register by writing `easydblab-metrics-<kit>` ConfigMaps (label: `easydblab.com/workload-metrics=true`). `MetricsRegistryService` creates/deletes these ConfigMaps; `OtelSyncService` reads them all and regenerates the OTel collector ConfigMap. Both are called automatically by `KitRunnerCommand` on successful `start`/`stop`.
-
-**Storage backends** (control node): VictoriaMetrics (metrics, port 8428), VictoriaLogs (logs, port 9428), Tempo (traces, port 3200), Pyroscope (profiles, port 4040)
-
-**Grafana** (port 3000): Two dashboard sources:
-- **Kit dashboards (new, correct)**: JSON files in `src/main/resources/.../kits/<name>/dashboards/`. `KitRunnerCommand` auto-installs them from that directory after a successful `start`. No `GrafanaDashboard` enum entry needed — adding a JSON file is all that's required.
-- **Core/system dashboards (legacy)**: JSON files in the top-level `dashboards/` directory, registered in the `GrafanaDashboard` enum, loaded by `GrafanaManifestBuilder`. Use this only for non-kit dashboards (system-overview, profiling, etc.). **Do NOT add new kit dashboards here.**
-
-See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md) for datasource UIDs, label conventions, spanmetrics metric names, and the correct pattern for cross-dashboard dataLinks (panes= URL format, TraceQL query strings).
-
-**CLI Tool Instrumentation**: The CLI tool uses the OpenTelemetry Java Agent for automatic instrumentation of AWS SDK calls, HTTP clients, JDBC operations, and JVM metrics. No manual instrumentation exists in the Kotlin code. See `docs/reference/opentelemetry.md`.
-
-**CLI commands**: `grafana update-config`, `logs query/backup/import/ls`, `metrics backup/import/ls`
-
-All builder paths are relative to `src/main/kotlin/com/rustyrazorblade/easydblab/`. Config resources are at corresponding paths under `src/main/resources/com/rustyrazorblade/easydblab/`.
+**Always use the `dashboard-editor` agent for any dashboard change** — editing a panel query, fixing a wrong-looking graph, changing units, adding a panel or a dashboard. The agent enforces the full edit → deploy → read-back-from-Grafana sequence, and knows the metric traps (notably that CPU queries on `system_cpu_time_seconds_total` must not depend on its opt-in per-core label, whose absence made four dashboards render CPU at -190%). See [`dashboards/CLAUDE.md`](dashboards/CLAUDE.md).
 
 ## Subdirectory Documentation
 
@@ -356,6 +288,6 @@ Detailed patterns live in package-level CLAUDE.md files:
 - [`services/aws/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/services/aws/CLAUDE.md) — AWS service classes (AMI, EC2, EMR, OpenSearch, S3)
 - [`providers/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/providers/CLAUDE.md) — AWS SDK wrappers, SSH/Docker patterns, retry logic
 - [`configuration/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/configuration/CLAUDE.md) — cluster state, templates, K8s manifest builders, observability stack details
-- [`mcp/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/mcp/CLAUDE.md) — Server architecture (MCP, REST, background services)
+- [`server/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/server/CLAUDE.md) — The REST status server and status cache
 - [`kubernetes/CLAUDE.md`](src/main/kotlin/com/rustyrazorblade/easydblab/kubernetes/CLAUDE.md) — K8s client patterns
 - [`src/test/.../CLAUDE.md`](src/test/kotlin/com/rustyrazorblade/easydblab/CLAUDE.md) — test infrastructure

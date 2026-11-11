@@ -128,18 +128,25 @@ class InstallTemplateResolver(
     /**
      * Wraps an ad-hoc path (from --from flag) as a [TemplateSource].
      *
-     * @throws IllegalArgumentException if [path] is not an existing directory
+     * Every installed kit directory carries a `kit.yaml`, and that descriptor is the sole marker
+     * the CLI uses to recognise one. A template without it would install a directory that
+     * registers no commands at all, so it is rejected here, before anything reaches the workspace.
+     *
+     * @throws IllegalArgumentException if [path] is not an existing directory, or holds no `kit.yaml`
      */
     fun resolveAdHoc(path: Path): TemplateSource {
         val dir = path.toFile()
         require(dir.isDirectory) { "Template path does not exist or is not a directory: $path" }
+        require(File(dir, Constants.Kit.CONFIG_FILE).isFile) {
+            "Template directory has no ${Constants.Kit.CONFIG_FILE}: $path"
+        }
         return TemplateSource.Directory(dir)
     }
 
     /**
-     * Reads and parses `config.yaml` from [source], returning null if the file is absent.
+     * Reads and parses `kit.yaml` from [source], returning null if the file is absent.
      *
-     * A missing `config.yaml` is not an error — templates without one simply have no
+     * A missing `kit.yaml` is not an error — templates without one simply have no
      * declared args and cannot generate dynamic subcommands.
      */
     fun readInstallYamlContent(source: TemplateSource): String? =

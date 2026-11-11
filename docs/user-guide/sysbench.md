@@ -4,11 +4,15 @@ The `sysbench` kit runs [sysbench](https://github.com/akopytov/sysbench) OLTP be
 against a running database kit. It is a bench kit: it does not deploy a database itself,
 but targets one you've already started, connecting over the MySQL or PostgreSQL wire
 protocol. Benchmark pods run inside the Kubernetes cluster, and per-interval results are
-pushed to VictoriaMetrics so you can watch throughput and latency live in Grafana.
+pushed to Mimir so you can watch throughput and latency live in Grafana.
 
 ## Prerequisites
 
-- Cluster is up (`easy-db-lab up`)
+- Cluster is up (`easy-db-lab up`) and has an app node (`init --app.count 1` or more). Every
+  sysbench pod (the run, prepare, createdb and cleanup pods) runs on an app node (`type=app`), so
+  it does not compete with the database it measures. With no app node, `prepare`, `start` and
+  `stop` fail before they create a pod, with `sysbench needs an app node (type=app); this cluster
+  has none`. A `stop` that fails this way leaves the kit marked as running.
 - A database kit with the `sql` capability is installed and running (e.g. [TiDB](tidb.md))
 - The target kit exposes a MySQL or PostgreSQL wire protocol endpoint — sysbench connects
   over the wire protocol, not JDBC
@@ -44,9 +48,17 @@ cross-kit targeting works.
 | `--workload` | `oltp_read_write` | sysbench built-in workload (`oltp_read_write`, `oltp_read_only`, `oltp_write_only`) |
 | `--scale` | `10` | Number of rows per table, in thousands |
 | `--tables` | `10` | Number of tables |
+| `--rate` | `0` | Target transactions/sec (`0` = unlimited, thread-bound). See [Rate limiting and overload testing](#rate-limiting-and-overload-testing) |
+| `--skip-trx` | `off` | Run statements in autocommit instead of `BEGIN`/`COMMIT` transactions (`on`/`off`) |
+| `--rand-type` | `special` | Key access distribution: `uniform`, `gaussian`, `special`, or `pareto` |
 
-Flags other than `--target` are baked in at install time and apply to every subsequent
-`prepare`/`start`/`stop`. To change them, reinstall the kit.
+`--target` is baked in at install time — to point sysbench at a different database, install
+another instance. Every other flag is passed per invocation, so you can vary them run to run
+without reinstalling:
+
+```bash
+easy-db-lab sysbench-tidb start --threads 32 --duration 300
+```
 
 ## Lifecycle
 
@@ -68,13 +80,24 @@ easy-db-lab sysbench-tidb start
 
 Runs the benchmark for `--duration` seconds, streaming sysbench's interval output to
 your terminal. Each 10-second interval report (TPS, QPS, p99 latency, errors/s) is also
-pushed to VictoriaMetrics.
+pushed to Mimir.
 
 When the run finishes, the final sysbench summary (SQL statistics, throughput, latency
 percentiles, and errors) is written to `last-run.txt` in the kit's workspace directory
-(e.g. `sysbench-tidb/last-run.txt`), prefixed with the run's parameters. Each run
-overwrites the file, so a completed run's numbers survive after the terminal output
-scrolls away.
+(e.g. `sysbench-tidb/last-run.txt`), prefixed with the run's parameters and its exit code. Each
+run overwrites the file, a failed run too, so a run's numbers survive after the terminal output
+scrolls away and the file never shows an older run.
+
+When the run pod ends, `start` reads its exit code. When sysbench exits non-zero (for example after
+`FATAL: event queue is full`), `start` says the run failed, gives the exit code, names
+`last-run.txt` (which then holds the end of the run's log when sysbench printed no summary) and
+exits non-zero, and does not print `Run summary written to ...`. A run pod that cannot pull its image
+fails `start` at once, with the reason and the pod's events; one that stays Pending fails it after
+10 minutes.
+
+Only one run per instance can be in progress. `start` fails with a collision error while a
+run pod for the same instance (e.g. `sysbench-tidb`) is still pending or running; a finished
+run does not block the next one. Instances pointed at different targets run side by side.
 
 ### stop
 
@@ -83,7 +106,45 @@ easy-db-lab sysbench-tidb stop
 ```
 
 Kills any running benchmark pod and runs sysbench cleanup, dropping the test tables from
-the target database.
+the target database. If the target database is already stopped, `stop` still finishes and
+removes its pods; it prints why the cleanup did not finish (the cleanup pod's log, or its events if it never started) and says the test tables were left.
+
+## Rate limiting and overload testing
+
+By default (`--rate=0`) sysbench is thread-bound: each of the `--threads` worker threads
+issues transactions as fast as the target will answer them, so throughput settles at
+whatever the database can sustain. Setting `--rate` to a non-zero value switches sysbench
+to a fixed target rate — it generates events on a schedule of that many transactions per
+second and hands them to the worker threads, regardless of how fast the target is
+actually responding.
+
+That distinction matters when the requested rate exceeds what the target can sustain. The
+generated events queue up faster than the workers can drain them, sysbench's internal
+event queue fills, and the run hard-aborts with:
+
+```
+FATAL: event queue is full
+```
+
+The abort is fast — under 15 seconds into the run in the case that prompted this section,
+regardless of the `--duration` you asked for. A `--rate` set well above capacity does not
+produce a sustained high-latency window; it produces a run that dies almost immediately
+with no useful results.
+
+An aborted run is easy to miss after the fact, because it does not look like a failure
+downstream. `last-run.txt` holds only the seeded parameter header with no `SQL statistics`
+block, and the run's p50/p95/p99 series on the Grafana dashboard flatline at 0 — which
+reads as a suspiciously excellent result rather than a crash. If latency drops to zero and
+the summary is truncated, check the pod output for the `FATAL` line.
+
+For overload and latency testing, drive the target past its limit with concurrency instead
+of with a target rate: leave `--rate=0` and raise `--threads` until latency climbs. A
+thread-bound run applies backpressure naturally — slower responses mean fewer transactions
+issued — so it degrades into a high-latency window instead of overflowing the event queue.
+It is not immune to aborting for other reasons: sysbench still exits on unhandled SQL
+errors, which a heavily overloaded target is more likely to return. If you do want a
+fixed rate, first measure the target's sustainable throughput with a thread-bound run, then
+set `--rate` at or just above that measured number rather than far above it.
 
 ## Comparing Databases
 
@@ -111,7 +172,7 @@ sysbench requires a custom Lua workload with ClickHouse-compatible schemas.
 ## Metrics & Dashboard
 
 The kit ships a **Sysbench Benchmark** Grafana dashboard, installed automatically. During
-a run, these metrics are pushed to VictoriaMetrics, labelled by instance (`kit`):
+a run, these metrics are pushed through the OTel collector to Mimir, labelled by instance (`kit`):
 
 | Metric | Description |
 |--------|-------------|

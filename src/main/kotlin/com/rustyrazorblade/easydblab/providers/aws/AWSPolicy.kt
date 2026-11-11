@@ -78,6 +78,24 @@ sealed class AWSPolicy {
                         ),
                 ).toJson()
         }
+
+        /**
+         * Trust policy allowing ECS tasks to assume the role.
+         * Used by: EasyDBLabCompactorTaskRole, EasyDBLabCompactorExecutionRole
+         */
+        data object ECSTasks : Trust() {
+            override fun toJson() =
+                IamPolicyDocument(
+                    statement =
+                        listOf(
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                principal = IamPolicyPrincipal.service("ecs-tasks.amazonaws.com"),
+                                action = IamPolicyAction.single("sts:AssumeRole"),
+                            ),
+                        ),
+                ).toJson()
+        }
     }
 
     /**
@@ -109,6 +127,7 @@ sealed class AWSPolicy {
                         "iam-policy-iam-s3.json" to "EasyDBLabIAM",
                         "iam-policy-emr.json" to "EasyDBLabEMR",
                         "iam-policy-opensearch.json" to "EasyDBLabOpenSearch",
+                        "iam-policy-compactor.json" to "EasyDBLabCompactor",
                     )
 
                 return policyData.map { (fileName, policyName) ->
@@ -136,7 +155,8 @@ sealed class AWSPolicy {
          * S3 access policy granting full S3 access to all easy-db-lab buckets.
          * Uses wildcard pattern to support per-environment buckets.
          * Attached to IAM roles to allow EC2 instances to access cluster data.
-         * Also includes s3:ListAllMyBuckets for S3Manager web UI.
+         * Also includes s3:ListAllMyBuckets for S3Manager web UI, and denies deleting observability
+         * data (metrics, logs, traces, annotations). `up` re-applies it every time.
          */
         data class S3AccessWildcard(
             val accountId: String,
@@ -190,6 +210,88 @@ sealed class AWSPolicy {
                                     ),
                                 resource = IamPolicyResource.single("arn:aws:ecr:*:$accountId:repository/*"),
                             ),
+                            denyDataDeletes(),
+                        ),
+                ).toJson()
+
+            /**
+             * No code path on a cluster may delete observability data or test documents. An
+             * explicit deny beats the s3:* above; the owner's own deletes from a workstation are
+             * not affected, so `report upload` still replaces a document. pyroscope/ is left out:
+             * Pyroscope v2 compaction writes a merged block and then removes the segments it
+             * merged. Compaction is not deletion.
+             */
+            private fun denyDataDeletes() =
+                IamPolicyStatement(
+                    effect = "Deny",
+                    action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
+                    resource =
+                        IamPolicyResource.multiple(
+                            listOf(
+                                "${Constants.Observability.METRICS_ROOT}/*",
+                                "${Constants.Observability.LOGS_ROOT}/*",
+                                "${Constants.Observability.TRACES_ROOT}/*",
+                                "${Constants.Observability.GRAFANA_ROOT}/*",
+                                "${Constants.Observability.REPORTS_ROOT}/*",
+                            ).map { "arn:aws:s3:::easy-db-lab-*/$it" },
+                        ),
+                )
+        }
+
+        /**
+         * What the SSM agent on an instance needs to register with Systems Manager and serve
+         * Session Manager sessions, and nothing more: AWS's documented minimal Session Manager
+         * instance policy, without the KMS statement, since sessions are not KMS-encrypted. It
+         * replaces the managed `AmazonSSMManagedInstanceCore`, which also grants Parameter Store
+         * reads on every parameter in the account. `ec2messages:*` is left out because SSM Agent
+         * 3.3.40.0 and later uses `ssmmessages:*` instead.
+         *
+         * Every cluster and AMI-builder instance carries it, whichever SSH transport the operator's
+         * profile selects, so any node can be reached over Session Manager.
+         */
+        data object SessionManagerInstance : Inline() {
+            override fun toJson() =
+                IamPolicyDocument(
+                    statement =
+                        listOf(
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                action =
+                                    IamPolicyAction.multiple(
+                                        listOf(
+                                            "ssm:UpdateInstanceInformation",
+                                            "ssmmessages:CreateControlChannel",
+                                            "ssmmessages:CreateDataChannel",
+                                            "ssmmessages:OpenControlChannel",
+                                            "ssmmessages:OpenDataChannel",
+                                        ),
+                                    ),
+                                resource = IamPolicyResource.single("*"),
+                            ),
+                        ),
+                ).toJson()
+        }
+
+        /**
+         * The account compactor's task role policy: list the easy-db-lab buckets, and get, put and
+         * delete objects under the roots it compacts. It has no access to `grafana/` or
+         * `pyroscope/`. The compactor removes a source object only after it wrote a merged copy.
+         */
+        data object CompactorTaskAccess : Inline() {
+            override fun toJson() =
+                IamPolicyDocument(
+                    statement =
+                        listOf(
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                action = IamPolicyAction.multiple(listOf("s3:ListBucket", "s3:GetBucketLocation")),
+                                resource = IamPolicyResource.single("arn:aws:s3:::easy-db-lab-*"),
+                            ),
+                            IamPolicyStatement(
+                                effect = "Allow",
+                                action = IamPolicyAction.multiple(listOf("s3:GetObject", "s3:PutObject", "s3:DeleteObject")),
+                                resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::easy-db-lab-*/$it/*" }),
+                            ),
                         ),
                 ).toJson()
         }
@@ -197,6 +299,9 @@ sealed class AWSPolicy {
         /**
          * S3 bucket policy granting access to all three easy-db-lab IAM roles.
          * Applied to the S3 bucket to allow all roles (EC2, EMR Service, EMR EC2) to access it.
+         * It denies those roles every delete under the roots the account compactor compacts, so only
+         * the compactor's task role deletes there. It names the cluster principals rather than
+         * "everyone but the compactor", so the owner's own deletes from a workstation still work.
          *
          * @param accountId The AWS account ID for constructing role ARNs
          * @param bucketName The S3 bucket name to apply the policy to
@@ -211,14 +316,7 @@ sealed class AWSPolicy {
                         listOf(
                             IamPolicyStatement(
                                 effect = "Allow",
-                                principal =
-                                    IamPolicyPrincipal.aws(
-                                        listOf(
-                                            "arn:aws:iam::$accountId:role/${Constants.AWS.Roles.EC2_INSTANCE_ROLE}",
-                                            "arn:aws:iam::$accountId:role/${Constants.AWS.Roles.EMR_SERVICE_ROLE}",
-                                            "arn:aws:iam::$accountId:role/${Constants.AWS.Roles.EMR_EC2_ROLE}",
-                                        ),
-                                    ),
+                                principal = IamPolicyPrincipal.aws(clusterRoles()),
                                 action = IamPolicyAction.single("s3:*"),
                                 resource =
                                     IamPolicyResource.multiple(
@@ -228,8 +326,31 @@ sealed class AWSPolicy {
                                         ),
                                     ),
                             ),
+                            IamPolicyStatement(
+                                effect = "Deny",
+                                principal = IamPolicyPrincipal.aws(clusterRoles()),
+                                action = IamPolicyAction.multiple(listOf("s3:DeleteObject", "s3:DeleteObjectVersion")),
+                                resource = IamPolicyResource.multiple(COMPACTED_ROOTS.map { "arn:aws:s3:::$bucketName/$it/*" }),
+                            ),
                         ),
                 ).toJson()
+
+            private fun clusterRoles() =
+                listOf(
+                    Constants.AWS.Roles.EC2_INSTANCE_ROLE,
+                    Constants.AWS.Roles.EMR_SERVICE_ROLE,
+                    Constants.AWS.Roles.EMR_EC2_ROLE,
+                ).map { "arn:aws:iam::$accountId:role/$it" }
+        }
+
+        companion object {
+            /** The observability roots the account compactor compacts, and only it may delete under. */
+            val COMPACTED_ROOTS =
+                listOf(
+                    Constants.Observability.METRICS_ROOT,
+                    Constants.Observability.LOGS_ROOT,
+                    Constants.Observability.TRACES_ROOT,
+                )
         }
     }
 
@@ -253,6 +374,10 @@ sealed class AWSPolicy {
          */
         data object EMRForEC2 :
             Managed("arn:aws:iam::aws:policy/service-role/AmazonElasticMapReduceforEC2Role")
+
+        /** AWS managed policy the account compactor's execution role uses to pull images and ship logs. */
+        data object ECSTaskExecution :
+            Managed("arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy")
 
         override fun toJson(): String =
             throw UnsupportedOperationException(

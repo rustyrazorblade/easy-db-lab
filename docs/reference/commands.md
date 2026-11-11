@@ -12,22 +12,54 @@ Complete reference for all easy-db-lab commands.
 
 ---
 
-## Setup Commands
+## Profile Commands
 
-### setup-profile
+Profile inspection and setup. Not to be confused with `cassandra profile`, which controls runtime
+profiling of a running cluster.
+
+### profile
+
+Parent command for the profile group. Run without a subcommand to list what is available.
+
+```bash
+easy-db-lab profile
+```
+
+### profile show
+
+Report the active profile: its name, its directory, and the settings it holds.
+
+```bash
+easy-db-lab profile show
+```
+
+Reads only the profile directory, so it runs from anywhere — no cluster workspace needed. Secret
+values are never printed: AxonOps and Tailscale are reported as `ENABLED` or `DISABLED`, and the
+AWS access key and secret are not shown at all.
+The SSH transport (`direct` or `ssm`) is shown as-is.
+
+The profile reported is the one named by `EASY_DB_LAB_PROFILE`, or `default` when that is unset:
+
+```bash
+EASY_DB_LAB_PROFILE=staging easy-db-lab profile show
+```
+
+If the profile has no `settings.yaml`, the command says so and points at `easy-db-lab profile
+setup`. If the file is present but unreadable, it reports that instead, naming the file.
+
+### profile setup
 
 Set up user profile interactively.
 
 ```bash
-easy-db-lab setup-profile
+easy-db-lab profile setup
 ```
-
-**Aliases:** `setup`
 
 Guides you through:
 
 - Email and AWS credentials collection
 - AWS credential validation
+- SSH transport selection (`direct` or `ssm`; see [SSH over SSM Session Manager](../user-guide/network-connectivity.md#ssh-over-ssm-session-manager))
 - Key pair generation
 - IAM role creation
 - Packer VPC infrastructure setup
@@ -45,7 +77,9 @@ easy-db-lab show-iam-policies [policy-name]
 
 | Argument | Description |
 |----------|-------------|
-| `policy-name` | Optional filter: `ec2`, `iam`, or `emr` |
+| `policy-name` | Optional filter: `ec2`, `iam`, `emr`, `opensearch` or `compactor` |
+
+To create the policies and attach them to an IAM user, group, or role, see [Applying the Policies](../getting-started/setup.md#applying-the-policies).
 
 ### build-image
 
@@ -71,6 +105,12 @@ Initialize a directory for easy-db-lab.
 ```bash
 easy-db-lab init [cluster-name] [options]
 ```
+
+Use a new, empty directory as the workspace, for example under `clusters/`. `init` fails, and
+writes nothing, in a directory that already has a `bin/` file or directory: easy-db-lab writes its
+tool wrappers into the workspace's `bin/`. This also keeps a source checkout from being used as a
+workspace. With `--clean`, the check runs after the cleanup, which removes a `bin/` that holds only
+easy-db-lab's wrappers.
 
 The database and application node groups are configured through a namespaced
 `--db.*` / `--app.*` scheme. Every pre-existing flag continues to work as an
@@ -103,6 +143,9 @@ determined fails at `init`, before any instance is created.
 | `--open` | Unrestricted SSH access | false |
 | `--tag` | Custom tags (key=value, repeatable) | - |
 | `--vpc` | Use existing VPC ID | - |
+| `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
+| `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
+| `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--up` | Auto-provision after init | false |
 | `--clean` | Remove existing config first | false |
 
@@ -118,7 +161,7 @@ easy-db-lab up [options]
 |--------|-------------|
 | `--no-setup`, `-n` | Skip K3s setup and AxonOps configuration |
 
-Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster.
+Creates: VPC, EC2 instances, K3s cluster. Configures the account S3 bucket for this cluster and re-applies its bucket policy. Starts the [account compactor](../user-guide/compactor.md) when it is not running, and leaves it as it is when it runs; `up` does not wait for its task.
 
 `up` fails fast. If any provisioning step fails — EC2 setup, K3s, node labeling, the
 `local-storage`/`local-storage-wfc` StorageClasses, the observability stack, Tailscale, and so
@@ -140,9 +183,40 @@ easy-db-lab down [vpc-id] [options]
 
 | Option | Description |
 |--------|-------------|
-| `--all` | Tear down all VPCs tagged with easy_cass_lab |
+| `--all` | Tear down all VPCs tagged with easy_cass_lab; the account compactor's VPC is kept |
 | `--packer` | Tear down the packer infrastructure VPC |
-| `--retention-days N` | Days to retain S3 data after teardown (default: 1) |
+| `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
+
+**Save before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The save stops Loki, Mimir and the OTel collector, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops nothing. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. The save has two phases.
+
+Phase A runs in order:
+
+1. Every Grafana annotation is mirrored to Loki. Loki accepts only entries from the last 8760 hours to 24 hours ahead; an annotation outside that window is skipped with a warning naming its id, and it stays in the annotations backup.
+2. The OTel collector is stopped: its DaemonSet is deleted and `down` waits until its pods are gone. The collector is the only sender to Tempo, and its shutdown sends its last batches to Loki, Mimir and Tempo while they still accept writes. If the collector is already gone, this step succeeds.
+
+Phase B runs every step at the same time, so the save takes about as long as its slowest step:
+
+- **Logs.** Loki's ingester is stopped with a synchronous flush, which answers only once every open chunk is in S3. Then Loki is scaled to 0 and `down` waits for its pod to go, which builds and uploads its index. If the mirror failed, the Loki flush does not run and Loki keeps running.
+- **Metrics.** Mimir's ingester is stopped, which cuts and ships every block it holds before it answers, and Mimir is scaled to 0.
+- **Traces.** `down` reports that the Tempo drain has started, with its timeout. It waits until Tempo holds no live trace and its count of created traces stops changing, then until every block on the control node's disk carries its `flushed` marker, which Tempo writes only once the block is in S3. Tempo is never stopped or restarted. This step times out after 5 minutes.
+- **Profiles.** Nothing to do: Pyroscope writes each batch to S3 before it accepts it. `down` reports this.
+- **Annotations.** The Grafana annotations are backed up to `grafana/annotations/<tenant>/` in the account bucket.
+
+Every step has a timeout. `down` only flushes, waits for the flush to finish, and refuses to tear down if it did not finish; it runs no other check. A redirect cluster has no local backends, so it skips both phases.
+
+**Stop on failure.** Every Phase B step runs to completion, and a failed step never stops another. If any step failed or timed out, `down` then stops. It removes no infrastructure, because tearing down would destroy the data that is not yet in S3. It does not start Loki, Mimir or the collector again, retry a step, or undo anything: each backend stays as its step left it, and its write-ahead log and local blocks stay on the control node's disk. The report names every failed signal with its step and cause, the state of each workload (running, ingester stopped, scaled to 0, or deleted), and `down --force`. `down` exits with a non-zero status.
+
+**Logs and metrics are recorded as they finish.** The Loki and Mimir flushes stop their backends and cannot run twice, so each is recorded in the cluster state the moment it succeeds, with the time it finished. A `down` that fails or is interrupted keeps these records. Run `down` again and it reports them as already saved, skips them, and runs the collector stop, the Tempo drain, the profiles report and the annotations backup again. `up` clears the record, so the next `down` saves the new data.
+
+**A teardown that fails after the save restores nothing.** If removing the infrastructure fails, `down` reports the failure: Loki and Mimir stay at 0 and the collector stays deleted. A save of every signal is recorded in the cluster state before any infrastructure is removed. Run `down` again to finish: it reports every signal as already saved, skips the whole save without connecting to the control node, and goes straight to the teardown.
+
+**Nothing is deleted.** `down` sets no S3 lifecycle, expiry or retention rule on any bucket and deletes no object that holds your data. With `--all`, a per-cluster data bucket is deleted only when it is already empty. A data bucket that still holds objects is left as it is, and `down` reports it as kept, with S3's reason.
+
+**`--force` skips the save.** Pass `--force` to skip both phases and tear down anyway. With the teardown preview, before the confirmation prompt, `down --force` lists the signals it will not save: logs and metrics unless an earlier `down` saved them, then traces and annotations. After a save of every signal, it lists none. Profiles are never listed. Use it only when the backends are already stopped or gone, or when you do not need the data.
+
+**The account compactor.** After the infrastructure teardown succeeds, `down` counts the VPCs tagged `easy_cass_lab=1`, in every enabled region, whose `bucket` tag names the account bucket, leaving out the ones it just removed. When none is left, it stops the [account compactor](../user-guide/compactor.md); otherwise the compactor keeps running.
+
+**Exit status.** `down` exits 0 only when the teardown succeeds. It exits non-zero when the save stops it, when the teardown completes with errors, and when you decline the confirmation prompt.
 
 ### clean
 
@@ -151,6 +225,69 @@ Clean up generated files from the current directory.
 ```bash
 easy-db-lab clean
 ```
+
+In `bin/` it deletes only the tool wrappers and their marker, and removes `bin/` only when nothing
+else is left in it.
+
+### socks start
+
+Start the SOCKS5 tunnel to the cluster, or reuse the one that runs, record its port for the tool
+wrappers and `env.sh`, and print the port for browser setup.
+
+```bash
+easy-db-lab socks start
+```
+
+On a Tailscale cluster it starts nothing and says that no tunnel is needed. See
+[SOCKS Proxy](../user-guide/network-connectivity.md#socks-proxy-alternative).
+
+### socks stop
+
+Stop the SOCKS5 tunnel and remove its port from the record, without tearing the cluster down.
+Wrapped tools then fail with a pointer to `socks start` until the tunnel starts again.
+
+```bash
+easy-db-lab socks stop
+```
+
+If the tunnel process does not end after `socks stop` asks and then forces it to, `socks stop` prints its PID and exits non-zero.  The PID and port stay recorded, so stop the process with `kill <pid>` and run `socks stop` again.  If no tunnel runs, `socks stop` says so and succeeds.
+
+### ingress allow
+
+Allow SSH (tcp, port 22) to the cluster from an IPv4 address or CIDR.  Run it from the cluster's workspace.  It adds one rule per value to the cluster's security group.
+
+```bash
+easy-db-lab ingress allow                                   # this machine's public IP
+easy-db-lab ingress allow --cidr 203.0.113.7                # one address, as 203.0.113.7/32
+easy-db-lab ingress allow --cidr 203.0.113.7 --cidr 198.51.100.0/24
+```
+
+| Option | Description |
+|--------|-------------|
+| `--cidr` | An IPv4 address or CIDR. A bare address means `/32`. Repeat it for more than one value. With no `--cidr`, the command uses this machine's detected public IP. |
+
+Use it when your public IP changed and SSH and the SOCKS tunnel stopped working, or to let another person in.  It makes only AWS API calls, so it works when SSH does not, and it does not start the SOCKS tunnel.
+
+- The command checks every value before it calls AWS.  If one value is not valid, it names each bad value and its reason, changes nothing, and exits non-zero.  A value with host bits set, such as `198.51.100.7/24`, is not valid; the error names the network form, `198.51.100.0/24`.
+- Values that are the same CIDR, such as `203.0.113.7` and `203.0.113.7/32`, count as one.
+- A rule that already exists is reported and left as it is.
+- If AWS refuses one rule, for example because the security group has too many rules, the command still adds the others, reports AWS's reason, and exits non-zero.
+- If the public IP cannot be detected, the command tells you to give it with `--cidr`.  Detection waits up to 5 seconds to connect to `api.ipify.org` and up to 10 seconds for its answer.
+
+A security group allows a connection that is already open.  After a change, an SSH session or tunnel that is still connected can keep working until it reconnects.
+
+### ingress revoke
+
+Remove the SSH rule (tcp, port 22) for an IPv4 address or CIDR from the cluster's security group.  It takes the same `--cidr` values as `ingress allow`, and with none it uses this machine's detected public IP.
+
+```bash
+easy-db-lab ingress revoke --cidr 203.0.113.7
+easy-db-lab ingress revoke --cidr 0.0.0.0/0                 # the open rule of an init --open cluster
+```
+
+It removes only the exact SSH rule for each CIDR.  Every other rule stays: SSH rules for other CIDRs, the rules for traffic within the VPC, and egress.  It asks for no confirmation, even when the CIDR is your own public IP.
+
+If a CIDR has no SSH rule, the command names it and exits non-zero, but it still removes the rules that do exist.
 
 ### hosts
 
@@ -168,11 +305,13 @@ Display full environment status.
 easy-db-lab status
 ```
 
+The `=== KITS ===` section lists every installed kit, marking the running ones with `✓`. Under each running kit it prints the endpoints that the kit's `kit.yaml` declares: the NodePorts on each host of the endpoint's node type. A stopped kit shows no endpoints.  If a running kit's `kit.yaml` cannot be read, the kit shows `(endpoints unavailable: cannot read kit.yaml)` instead of its endpoints.
+
 `status` is the one command that degrades instead of failing outright when the SOCKS proxy
 tunnel can't be established. It still reports EC2, VPC, security groups, Spark/EMR, OpenSearch,
 S3, kits, observability URLs, and database versions — the last read directly over SSH, which
-never uses the tunnel. Only the sections that require the private Kubernetes API (stress jobs,
-ClickHouse) are marked unavailable, each stating the proxy failure as the reason. `status` still
+never uses the tunnel. Only the section that requires the private Kubernetes API (stress jobs)
+is marked unavailable, stating the proxy failure as the reason. `status` still
 exits non-zero when degraded, so a partial report is never mistaken for a healthy cluster by a
 script. See [Network Connectivity](../user-guide/network-connectivity.md) for how to diagnose a
 tunnel that won't come up.
@@ -185,7 +324,7 @@ All Cassandra commands are available under the `cassandra` subcommand group.
 
 ### cassandra use
 
-Select a Cassandra version.
+Switch the active Cassandra version.
 
 ```bash
 easy-db-lab cassandra use <version> [options]
@@ -193,10 +332,117 @@ easy-db-lab cassandra use <version> [options]
 
 | Option | Description |
 |--------|-------------|
-| `--java` | Java version to use |
+| `--java` | Java version to use: 8, 11, 17, 21 or 25 |
 | `--hosts` | Filter to specific hosts |
 
-Versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, trunk
+The version can be any installed version, including a build published by `cassandra build`.
+Run `cassandra list` to see them.
+
+Fails if the version is not installed on a targeted node — install it first with
+`cassandra install`.
+
+### cassandra build
+
+Build a Cassandra branch checkout on your own machine and publish it to the profile's S3 bucket,
+where `cassandra install` can find it by name.
+
+```bash
+easy-db-lab cassandra build [<dir>] --java <N> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `<dir>` | Cassandra source checkout to build | current directory |
+| `--java`, `-j` | JDK major version to build with. Required — it forms part of the build's name | — |
+| `--jira` | Ticket this build is for, e.g. `CASSANDRA-19000` | none |
+| `--name` | Label folded into the name, to tell your builds apart at a glance | none |
+| `--ant-flags` | Extra flags passed to ant | none |
+
+The build runs `ant realclean` then `ant artifacts` in the checkout, under the JDK you name.
+`JAVA_HOME` is set for ant only — your shell's default JDK is untouched.
+
+The version comes from the `base.version` property in the checkout's `build.xml`. Nothing is ever
+inferred from the branch name — not the version, not the ticket. A branch naming convention is a
+habit, not a contract, and this name is permanent once published, so `--jira` and `--name` are the
+only ways anything gets into it. The result is named for what identifies it:
+
+```
+5.1-CASSANDRA-19000-flushfix-20260905-a1b2c3d-jdk17
+<version>-<JIRA>------<--name>--<date>--<sha>--<jdk>
+```
+
+The ticket and `--name` segments are dropped entirely when absent, giving
+`5.1-20260905-a1b2c3d-jdk17`. `--name` is for the case the rest of the name cannot help with: two
+builds of the same commit that differ in something only you know. It sits after the ticket so the
+version stays the leading segment and a bucket listing still sorts by release. Letters, digits,
+`.`, `_` and `-` only, 40 characters or fewer — anything else is refused rather than quietly
+rewritten, because this name is the build's identity in S3 and on every node.
+That name is the build's S3 directory, the directory it installs into on a node, and the name
+`cassandra install` takes.
+
+A checkout with uncommitted changes builds normally — that is the case this command exists for —
+but you are warned, because the sha then does not fully describe what was built, and the manifest
+records the tree as dirty.
+
+No cluster is needed. Builds belong to the profile, so one made on your desktop installs from your
+laptop.
+
+**Published layout**, under the profile's account bucket:
+
+```
+cassandra-builds/5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17/
+    apache-cassandra-5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17-bin.tar.gz
+    manifest.json
+```
+
+`manifest.json` records the base version, the full and short sha, the branch and remote, whether
+the tree was dirty, the ticket, the ant flags, when it was built and by which profile, and the
+tarball's size and SHA-256.
+
+Then install it on a cluster:
+
+```bash
+easy-db-lab cassandra install 5.1-CASSANDRA-19000-20260905-a1b2c3d-jdk17
+```
+
+Nodes fetch the tarball straight from the bucket with their instance profile.
+
+### cassandra install
+
+Install an additional Cassandra version onto a running cluster, without rebuilding the AMI.
+
+```bash
+easy-db-lab cassandra install <version> [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--url` | Tarball URL (`.tar.gz`) or git repository URL (with `--branch`) | from the declared entry |
+| `--branch` | Git branch to clone and build, requires `--url` | from the declared entry |
+| `--java`, `-j` | Java version to build and run this version with | from the declared entry |
+| `--python` | Python version cqlsh runs under | `3.11.9` |
+| `--ant-flags` | Extra flags passed to ant when building from a branch | from the declared entry |
+| `--hosts` | Filter to specific hosts | all Cassandra nodes |
+
+Each option falls back to the version's `cassandra_versions.yaml` entry when not supplied, so a
+declared version needs no options at all. A name that is not declared locally is looked up among
+the builds published by [`cassandra build`](#cassandra-build), so a build installs by name with no
+options either. Every targeted node is attempted regardless of what
+happens on the others, and each node's outcome is reported individually.
+
+A version already installed on a node is never rebuilt:
+
+- Asking for the parameters it was built with is a no-op.
+- Asking for different `--java`, `--python`, or `--ant-flags` changes nothing on that node, reports
+  which fields disagree, and exits non-zero. To run the existing build under a different JDK, use
+  `cassandra use <version> --java <version>` instead.
+
+A failure on any node also exits non-zero, with the reason reported against that node. A token
+embedded in `--url` is used for the clone but never persisted to the node and never appears in logs,
+errors, or events.
+
+See [Configuring Cassandra](../user-guide/installing-cassandra.md#custom-builds) for the full
+workflow.
 
 ### cassandra write-config
 
@@ -240,6 +486,10 @@ easy-db-lab cassandra download-config [options]
 | Option | Description |
 |--------|-------------|
 | `--version` | Version to download config for |
+
+The files land in a directory named for the version (for example `5.0/`) in the workspace. An
+existing directory is never overwritten: the command reports that it already exists and skips the
+download. Delete the directory to download it again.
 
 ### cassandra start
 
@@ -294,6 +544,105 @@ easy-db-lab cassandra list
 ```
 
 **Aliases:** `ls`
+
+Versions installed on the node are listed first. A version declared with `lazy: true` that is not
+installed on that node is listed too, marked `(declared, not installed)`, as is any build published
+by [`cassandra build`](#cassandra-build) and not yet installed there, marked
+`(build, not installed)`.
+
+---
+
+## Cassandra Profiling Commands
+
+Runtime async-profiler control under `cassandra profile`. Every command applies to all Cassandra
+nodes by default; `--hosts` narrows it to a subset. A cluster profiles CPU automatically from
+cluster-up, so these are for changing what is profiled and for pulling profiles out.
+
+This is not the top-level `profile` group, which manages your easy-db-lab user profile. See
+[Profile Commands](#profile-commands) for that.
+
+See [Profiling](../user-guide/profiling.md) for the full guide.
+
+### cassandra profile start
+
+Enable profiling with a given set of async-profiler arguments. Arguments after `--` are passed to
+`asprof` untouched.
+
+```bash
+easy-db-lab cassandra profile start -- -e cpu
+easy-db-lab cassandra profile start --loop 30s -- -e wall -i 10ms
+easy-db-lab cassandra profile start --hosts db0,db1 -- -e cpu --alloc 512k
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--loop` | `15s` | JFR rotation interval |
+| `--retention` | `60` | Minutes of profile data to keep on each node |
+| `--max-bytes` | `2147483648` | Byte ceiling for each node's profile directory |
+| `--hosts` | all | Comma-separated host aliases |
+
+easy-db-lab supplies async-profiler's output file, output format, rotation, and session duration, so
+`-f`/`--file`, `-o`/`--output`, bare format words, `--loop`, `-d`/`--duration` and `--timeout` are
+rejected at the CLI before any node is contacted. Use `--loop` above to set rotation.
+
+```admonish warning
+Never combine a CPU event with wall-clock sampling in one recording. Switch modes with `stop`/`start`
+instead — see [the cpu+wall hazard](../user-guide/profiling.md#the-cpuwall-hazard).
+```
+
+### cassandra profile stop
+
+Disable profiling. Records an explicit disabled state; the running session is stopped cleanly so its
+in-flight chunk is finalized and still ships.
+
+```bash
+easy-db-lab cassandra profile stop
+easy-db-lab cassandra profile stop --hosts db0
+```
+
+### cassandra profile status
+
+Report per node: enabled state, the process being profiled, session age, your arguments verbatim, the
+full command line as actually invoked, chunks pending/shipped/rejected, bytes on disk, and the last
+shipping error.
+
+```bash
+easy-db-lab cassandra profile status
+```
+
+### cassandra profile fetch
+
+Download completed JFR chunks into `./profiles/<host>/`. The chunk currently being written is never
+offered — it has no constant pool yet and no tool can read it.
+
+```bash
+easy-db-lab cassandra profile fetch
+easy-db-lab cassandra profile fetch --last 20 --hosts db0
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--last` | `5` | How many of the most recent completed chunks to download |
+| `--hosts` | all | Comma-separated host aliases |
+
+### cassandra profile flamegraph
+
+Convert recent chunks into a flame graph on the node and download the result. `jfrconv` arguments
+after `--` pass through untouched; its input and output are reserved.
+
+```bash
+easy-db-lab cassandra profile flamegraph --last 10
+easy-db-lab cassandra profile flamegraph --last 20 -- --threads
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--last` | `5` | How many of the most recent completed chunks to convert |
+| `--format` | `html` | Output format handed to `jfrconv` |
+| `--hosts` | all | Comma-separated host aliases |
+
+`--threads` is the only way to get Cassandra thread-pool attribution: Pyroscope's ingest discards
+thread identity.
 
 ---
 
@@ -365,15 +714,18 @@ easy-db-lab cassandra stress info <workload>
 
 ### exec
 
-Execute commands on remote hosts via `systemd-run`. Tool output is captured by the systemd journal and shipped to VictoriaLogs via a dedicated journald OTel collector, with accurate timestamps for cross-service log correlation.
+Execute commands on remote hosts via `systemd-run`. Tool output is captured by the systemd journal and shipped to Loki through Fluent Bit and the OTel collector, with accurate timestamps for cross-service log correlation.
 
 #### exec run
 
-Run a command on remote hosts (foreground by default).
+Run a command on remote hosts (foreground by default). The command runs through `bash -c`: pass a whole command line as one quoted argument, or pass words after `--`, which are quoted one by one. If the command fails on any host, `exec run` prints that host's output, reports the host, and exits non-zero.
 
 ```bash
 # Foreground (blocks until complete, shows output)
 easy-db-lab exec run -t cassandra -- ls /mnt/db1
+
+# A shell command line, quoted as one argument
+easy-db-lab exec run --hosts db0 "df -h /mnt/db1 | tail -1"
 
 # Background (returns immediately, tool keeps running)
 easy-db-lab exec run --bg -t cassandra -- inotifywait -m /mnt/db1/data
@@ -386,7 +738,7 @@ easy-db-lab exec run --bg --name watch-imports -t cassandra -- inotifywait -m /m
 |--------|-------------|
 | `-t, --type` | Server type: cassandra, stress, control (default: cassandra) |
 | `--bg` | Run in background (returns immediately) |
-| `--name` | Name for the systemd unit (auto-derived if not provided) |
+| `--name` | Name for the systemd unit, `edl-exec-<name>` (default: the command's first word and a timestamp). Characters systemd does not allow become `-`. |
 | `--hosts` | Filter to specific hosts |
 | `-p` | Execute in parallel across hosts |
 
@@ -407,6 +759,33 @@ Stop a named background tool.
 easy-db-lab exec stop watch-imports
 easy-db-lab exec stop watch-imports -t cassandra
 ```
+
+### help
+
+Show task-oriented help topics packaged with the tool. These are short guides to common
+operations, not a listing of command-line flags.
+
+Run with no argument to list every topic and its description:
+
+```bash
+easy-db-lab help
+```
+
+Run with a topic name to print that topic's guide. Matching is case-insensitive:
+
+```bash
+easy-db-lab help provisioning
+```
+
+The seed topics are `provisioning`, `kits`, `stress-testing`, `profiles`, `connecting`, `querying`,
+`observability`, `spark`, `cassandra`, and `cassandra-builds`. The `cassandra` topic covers database
+lifecycle, version selection, and configuration on a running cluster. The `cassandra-builds` topic
+shows how to build a local Cassandra source tree and run it on a cluster. Topics are packaged
+markdown files, so `help` works from a Homebrew install with no source checkout. An unknown topic
+prints an error that names the bad topic, lists the valid ones, and exits non-zero.
+
+The standard `-h`/`--help` output points here too: the root usage carries a footer directing you to
+`help`, and each subcommand that maps to a topic names the related `help <topic>`.
 
 ### ip
 
@@ -434,15 +813,66 @@ easy-db-lab repl
 
 ### server
 
-Start the server for Claude Code integration, REST status endpoints, and live metrics.
+Start the REST status server: cluster status at `/status` and `/stress/status`, API docs at `/swagger`.
 
 ```bash
-easy-db-lab server
+easy-db-lab server [--port <port>] [--bind <address>] [--refresh <seconds>] [--auto-shutdown]
 ```
 
 See [Server](../integrations/server.md) for details.
 
 ---
+
+## Metrics Commands
+
+### metrics stream
+
+Publish chosen metrics to Redis every 5 seconds until stopped.  Each value is one `Metrics.Sample` event on the channel that `EASY_DB_LAB_REDIS_URL` names; the terminal shows one summary line per cycle.
+
+```bash
+export EASY_DB_LAB_REDIS_URL=redis://localhost:6379/easydblab-events
+easy-db-lab metrics stream [--metrics <name>,<name>,...]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--metrics` | Comma-separated metric names (see `metrics list`) | The 11 default names |
+
+The command needs `EASY_DB_LAB_REDIS_URL` and a running cluster.  It refuses a cluster whose telemetry is redirected to an external stack.  The first Ctrl-C or SIGTERM stops it with exit status 0.  See [Metrics Stream](../integrations/metrics-stream.md).
+
+### metrics list
+
+Print every name `metrics stream` accepts, one per line.  It needs no cluster.
+
+```bash
+easy-db-lab metrics list
+```
+
+---
+
+## Logs Commands
+
+### logs query
+
+Read the cluster's logs from Loki.
+
+```bash
+easy-db-lab logs query [options]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--source`, `-s` | Log source: `cassandra` (application logs, selects `service_name="cassandra"`), `cassandra-gc` (JVM GC log), `journald`, `system`, `tool-runner`, `emr` | All sources |
+| `--host`, `-H` | Hostname (`db0`, `app0`, `control0`) | All hosts |
+| `--unit` | systemd unit | All units |
+| `--since` | Time range (`1h`, `30m`, `1d`) | `1h` |
+| `--limit`, `-n` | Most lines to return | 100 |
+| `--grep`, `-g` | Only lines containing this text | None |
+| `--query`, `-q` | Raw LogQL query, sent unchanged | None |
+
+Every option but `--query` is scoped to this cluster; a raw query reads every cluster in the tenant unless it names a `cluster`. A redirect cluster has no local Loki, so the command refuses there. See [Logs (Loki)](../user-guide/loki.md).
+
+Metrics and logs are no longer snapshotted: Mimir and Loki write to S3 themselves, and `down` flushes them. The `metrics backup`, `metrics import`, `metrics ls`, `logs backup`, `logs import` and `logs ls` commands are gone.
 
 ## Kubernetes Commands
 
@@ -454,25 +884,132 @@ Apply observability stack to K8s cluster.
 easy-db-lab k8 apply
 ```
 
+### platform cni
+
+Show the pod-network datapath. Read-only.
+
+```bash
+easy-db-lab platform cni
+```
+
+On a Cilium cluster, prints the routing mode, IPAM mode, kube-proxy replacement, masquerade interfaces, native routing CIDR, and the Hubble UI URL, then one block per node with its ENI count, subnet CIDRs, and IPs allocated, used, and available. The values are read from the `cilium-config` ConfigMap and the `CiliumNode` objects on the control node. On a Flannel cluster, prints one line that names Flannel and exits 0. See [Pod Networking (CNI)](../user-guide/networking.md).
+
 ---
 
-## Dashboard Commands
+## Observability Commands
 
-### dashboards generate
+These commands manage the [account compactor](../user-guide/compactor.md). They work outside a cluster workspace: the account bucket comes from the profile.
 
-Extract all Grafana dashboard manifests (core and ClickHouse) from JAR resources to the local `k8s/` directory. Useful for rapid dashboard iteration without re-running init.
+### observability compactor start
 
-```bash
-easy-db-lab dashboards generate
-```
-
-### dashboards upload
-
-Apply all Grafana dashboard manifests and the datasource ConfigMap to the K8s cluster. Extracts dashboards, creates the `grafana-datasources` ConfigMap with runtime configuration, and applies everything.
+Start the account compactor as `up` does: create it when it is missing, and start it at 1 task when it is stopped. A running compactor is left as it is.
 
 ```bash
-easy-db-lab dashboards upload
+easy-db-lab observability compactor start
 ```
+
+### observability compactor stop
+
+Stop the account compactor by setting its desired count to 0. When the compactor was never created, it says so and changes nothing.
+
+```bash
+easy-db-lab observability compactor stop
+```
+
+### observability compactor status
+
+Print the compactor's state, its desired, running and pending task counts, and its current or last task with its state. It changes nothing.
+
+The state is one of `not created`, `stopped`, `stopping`, `starting`, `running` or `failing`. A compactor that asks for a task but runs none is `starting` while a task is pending or before any task has stopped, and `failing` when none is pending and its latest task stopped, so a task that crashes in a loop never reads as running.
+
+For that task it prints why the task stopped (ECS's stop code and reason) and each container's status, exit code and reason. It also prints the service's 5 newest events and the last 20 log lines of the task's containers. It leaves out the Tempo worker's `no jobs found` line, which an idle worker logs on every poll.
+
+If your IAM user lacks the `EasyDBLabCompactor` policy, `observability compactor start`, `stop` and `status` fail and name the policy. Run `easy-db-lab show-iam-policies compactor` to print it, then attach it.
+
+```bash
+easy-db-lab observability compactor status
+```
+
+## Grafana Commands
+
+### grafana update-config
+
+Build and apply the full observability stack to the K8s cluster, including Grafana and its core dashboards. `up` runs this automatically.
+
+The core dashboards are copied as a file tree onto the control node's Grafana data directory (`/mnt/db1/grafana/dashboards`), one subdirectory per Grafana folder. Grafana's file provider re-reads that directory every 10 seconds and files each dashboard into a folder named after its subdirectory. The command reads the tree from the installed build, so run `./gradlew installDist` after editing a dashboard before running it from a source checkout.
+
+```bash
+easy-db-lab grafana update-config
+```
+
+### grafana install
+
+Upload a single dashboard JSON file to the running Grafana instance through its HTTP API. This is the one-off path for a dashboard that is not part of the core tree; it does not touch the copied tree, and the dashboard is updated in place only if the JSON carries a top-level `uid`. Before the upload, the command applies the same defaults `up` applies, from the workspace's cluster state: each tenant picker selects the cluster's own tenant, and `cluster`, `baseline_cluster` and `candidate_cluster` select the current cluster.
+
+```bash
+easy-db-lab grafana install my-dashboard.json --folder=experiments
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--folder` | Grafana folder to install into; created if it does not exist | `General` |
+
+### grafana annotate
+
+Create a Grafana annotation on the running cluster. Use it to drop an A/B config-change marker on the dashboards' timeline; for example, before and after a Cassandra setting change.
+
+A plain global marker (no `--dashboard` and no `--panel` scope) is automatically tagged `easydblab`, in addition to any `--tags` you pass. Every annotation is also mirrored to Loki as it is created, and the core dashboards read their markers from Loki, so a global marker renders on every core dashboard and is still readable from S3 after the cluster is gone. A scoped marker (`--dashboard` or `--panel`) is not auto-tagged; it renders on its target dashboard. If Grafana creates the annotation but the mirror to Loki fails, the command reports the created annotation and its id, then exits non-zero; the next `grafana backup` or `down` mirrors it. The command reaches Grafana over the SOCKS proxy. If the Grafana API is unreachable, the command exits non-zero and names the endpoint.
+
+```bash
+easy-db-lab grafana annotate --text "raised concurrent_writes to 128" --tags config
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--text` | The annotation body text (required) | - |
+| `--tags` | Tags to attach; repeat the flag or comma-separate | none |
+| `--time` | Start time: `now`, a relative offset like `-30m`/`-2h`/`-1d`, an ISO-8601 instant, or epoch millis | `now` |
+| `--time-end` | Optional end time; produces a region annotation (same formats as `--time`) | none |
+| `--dashboard` | Optional dashboard UID to scope the annotation to one dashboard | all dashboards |
+| `--panel` | Optional panel id to scope the annotation to one panel | all panels |
+
+### grafana backup
+
+Back up the cluster's Grafana annotations to the observability store in the account bucket.
+
+The annotations are the A/B config-change markers worth keeping after the ephemeral cluster is torn down. The artifact lands at `grafana/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json`, so backups from clusters that share a tenant never overwrite each other. The command reports the resulting S3 URI on success. If no S3 bucket is configured, it fails fast with the standard "run `up` first" message.
+
+Before it writes the file, the command mirrors every annotation to Loki (`source="annotation"`), so the annotations can also be read from Loki's store after the cluster is gone; see [Logs (Loki)](../user-guide/loki.md#annotations). An annotation older than 8760 hours or more than 24 hours ahead is outside the window Loki accepts: it is skipped with a warning naming its id, and it is still in the JSON backup.
+
+The backup captures up to 5000 annotations in one call. If the cluster has 5000 or more, the command fails and backs up nothing, rather than persisting the first 5000 as a complete backup. This makes a truncated backup impossible to mistake for a full one.
+
+```bash
+easy-db-lab grafana backup
+```
+
+This backup also runs automatically before teardown; see [`down`](#down).
+
+---
+
+## Report Commands
+
+### report upload
+
+Attach markdown documents to the current test. Each file is stored in the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, with an HTML copy, and the test's `index.html` is rebuilt to hold every document, each under its own heading, in name order. The Tests and comparison dashboards show that index. A file with the name of a stored document replaces it.
+
+The command accepts only `.md` files whose names hold letters, digits, `.`, `_` and `-`, and refuses `index.md` and a name given twice. It checks every file first; if it refuses any, it names each one and uploads nothing. It uses your own AWS credentials and needs only the workspace's `state.json`, so it works before and after `down`.
+
+If an upload fails, the command names the failed file and each document it already stored.  Those documents are in the bucket but not yet in the index.  Run the command again.
+
+```bash
+easy-db-lab report upload results.md notes.md
+```
+
+| Argument | Description |
+|----------|-------------|
+| `FILE...` | One or more markdown files (required) |
+
+Two uploads for one test at the same moment can each rebuild the index without the other's document; the next upload restores it.
 
 ---
 
@@ -516,11 +1053,17 @@ easy-db-lab spark submit [options]
 
 ### spark status
 
-Check status of a Spark job.
+Check status of a Spark job (the most recent job, or the one `--step-id` names).
 
 ```bash
 easy-db-lab spark status [options]
 ```
+
+| Option | Description |
+|--------|-------------|
+| `--step-id` | EMR step ID (defaults to the most recent job) |
+| `--verbose`, `-v` | Show detailed step information (equivalent to `aws emr describe-step`) |
+| `--logs` | Download the step's `stderr.gz` from S3 and print it; if EMR has not uploaded it yet, print the S3 path where it will appear |
 
 ### spark jobs
 
@@ -532,7 +1075,7 @@ easy-db-lab spark jobs
 
 ### spark logs
 
-Download EMR logs from S3.
+Query a Spark job's logs from Loki (the most recent job, or the one `--step-id` names).
 
 ```bash
 easy-db-lab spark logs [options]

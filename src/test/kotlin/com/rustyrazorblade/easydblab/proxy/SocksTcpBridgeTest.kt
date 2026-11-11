@@ -2,12 +2,13 @@ package com.rustyrazorblade.easydblab.proxy
 
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
-import java.net.ConnectException
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
+import kotlin.concurrent.thread
 
 /**
  * Lifecycle tests for [SocksTcpBridge]. The byte round-trip through a real SOCKS5 proxy is
@@ -17,13 +18,27 @@ import java.net.Socket
  */
 class SocksTcpBridgeTest {
     /**
-     * Reserve an ephemeral port, then release it so connecting to it is refused. There is a
-     * theoretical TOCTOU window (the OS could hand the freed port to another process before we
-     * connect), but it cannot flake these tests: the port is only ever used as the bridge's
-     * `socksPort`, and every test needs merely that the SOCKS handshake to it *fails*. Even if
-     * the port were reused, the new listener would not speak SOCKS5, so the handshake still fails.
+     * A loopback port this test holds for its whole run, where every connection is accepted and closed
+     * at once, so a SOCKS handshake to it fails promptly. A port that was closed first could be taken by
+     * another process's listener before the bridge connects. A bound port that never listens is no
+     * substitute: macOS drops a connect to it without a reset, so the handshake would hang, not fail.
      */
-    private fun deadPort(): Int = ServerSocket(0).use { it.localPort }
+    private val dead = ServerSocket(0, 0, InetAddress.getByName("127.0.0.1"))
+
+    init {
+        thread(isDaemon = true, name = "socks-bridge-test-dead-port") {
+            while (!dead.isClosed) {
+                runCatching { dead.accept().close() }
+            }
+        }
+    }
+
+    @AfterEach
+    fun releaseDeadPort() {
+        dead.close()
+    }
+
+    private fun deadPort(): Int = dead.localPort
 
     @Test
     fun `binds an ephemeral loopback port exposed as localPort`() {
@@ -40,18 +55,20 @@ class SocksTcpBridgeTest {
     }
 
     @Test
-    fun `close stops the listener so subsequent connects are refused`() {
+    fun `close stops the listener and releases its port`() {
         val bridge = SocksTcpBridge(socksPort = deadPort(), targetHost = "10.0.0.1", targetPort = 5432)
         bridge.start()
-        val port = bridge.localPort
+        val acceptor =
+            Thread.getAllStackTraces().keys.single { it.name == "socks-bridge-acceptor-${bridge.localPort}" }
 
         bridge.close()
 
-        Socket().use { client ->
-            assertThatCode {
-                client.connect(InetSocketAddress(InetAddress.getLoopbackAddress(), port), 500)
-            }.isInstanceOf(ConnectException::class.java)
-        }
+        // The acceptor blocks in accept() until the listening socket is closed, so its exit
+        // proves close() closed the listener, which is what frees the port. The test watches
+        // the bridge's own thread, not the port number: another process on a shared runner can
+        // take a freed ephemeral port, and a client on Linux can connect to itself on it.
+        acceptor.join(ACCEPTOR_EXIT_TIMEOUT_MS)
+        assertThat(acceptor.isAlive).isFalse()
     }
 
     @Test
@@ -97,5 +114,9 @@ class SocksTcpBridgeTest {
                 assertThat(firstByte).isEqualTo(-1)
             }
         }
+    }
+
+    private companion object {
+        const val ACCEPTOR_EXIT_TIMEOUT_MS = 5_000L
     }
 }

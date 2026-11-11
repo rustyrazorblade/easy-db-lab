@@ -42,11 +42,14 @@ class MyCommand : PicoBaseCommand(context) {
 
 ## Package Organization
 
+The `PicoCommand` interface itself lives in `kernel/`, not here. `services/CommandExecutor` needs
+it, and keeping it in `commands/` made `services` depend on `commands` while `commands` already
+depended on `services`. `PicoBaseCommand` stays in this package.
+
 ```
 commands/
 ├── CLAUDE.md              # This file
 ├── PicoBaseCommand.kt     # Base class for all commands
-├── PicoCommand.kt         # Interface for commands
 ├── cassandra/             # Cassandra-related commands
 │   ├── Cassandra.kt       # Parent command group
 │   ├── stress/            # Stress testing subcommands
@@ -59,6 +62,7 @@ commands/
 ├── aws/                   # AWS-specific commands (e.g., PruneAMIs)
 ├── clickhouse/            # ClickHouse commands
 ├── grafana/               # Grafana commands
+├── ingress/               # ingress allow, ingress revoke — SSH rules on the cluster's security group; EC2 API calls only, never the SOCKS tunnel (@RequireProfileSetup, no @RequiresProxy)
 ├── install/               # Kit install internals (BaseInstallCommand, KitInstallCommand, KitRunnerCommand, KitStatusCommand, factories)
 ├── kit/                   # Kit management commands (kit install, kit list, kit uninstall) + <kit> sql
 │   ├── Kit.kt             # Parent command group
@@ -66,10 +70,14 @@ commands/
 │   ├── KitList.kt         # kit list — lists discoverable templates
 │   ├── KitSqlCommand.kt   # <kit> sql — runs SQL over the kit's JDBC endpoint; SOCKS-bridged when tunnel-only (#740)
 │   └── Uninstall.kt       # kit uninstall — removes an installed kit
-├── logs/                  # Log import/listing commands
-├── metrics/               # Metrics import/listing commands
+├── logs/                  # logs query — reads the cluster's logs from Loki
+├── metrics/               # metrics stream — publishes chosen metrics from Mimir to Redis every 5s until stopped (@RequireProfileSetup, @RequiresProxy; the work is services/metrics/MetricsStreamService); metrics list — prints the 14 accepted names with println
+├── observability/         # observability compactor start|stop|status — the account compactor; no cluster workspace needed (bucket from the profile), status is read-only println
 ├── opensearch/            # OpenSearch commands
-├── platform/              # Platform substrate commands (platform create-pvs, platform info)
+├── platform/              # Platform substrate commands (platform create-pvs, platform info, platform cni)
+├── profile/               # Profile inspection and setup (profile show, profile setup)
+├── report/                # report upload — a test's markdown documents in the account bucket; works after down
+├── socks/                 # socks start, socks stop — the workspace SOCKS5 tunnel for tools outside the CLI
 ├── spark/                 # Spark commands
 ├── tailscale/             # Tailscale VPN commands
 ├── mixins/                # Reusable PicoCLI mixins
@@ -111,7 +119,6 @@ class MyCommand(context: Context) : PicoBaseCommand(context) {
 
 ### 3. Use Annotations
 
-- `@McpCommand` - Expose command as an MCP tool in the server
 - `@RequireProfileSetup` - Require AWS profile configuration
 - `@RequireSSHKey` - Require SSH key to be available
 
@@ -145,18 +152,26 @@ template files (including `bin/start.sh.template`, `bin/stop.sh.template`). No c
 
 ### &lt;kit&gt; start/stop subcommands
 
-`registerDynamicKitSubcommands()` scans `context.workingDirectory` for directories that
-contain a `bin/` subdirectory with at least one executable script. Each such directory becomes a
-top-level subcommand group (`easy-db-lab clickhouse`); each script becomes a subcommand
+`registerDynamicKitSubcommands()` registers the kit directories reported by
+`WorkspaceKitScanner` (`services/`). A working-directory subdirectory qualifies only when it
+contains a `kit.yaml`; a `bin/` directory alone does not, because Cassandra checkouts and
+virtualenvs have one too. Each qualifying directory becomes a top-level subcommand group
+(`easy-db-lab clickhouse`); each script in its `bin/` becomes a subcommand
 (`easy-db-lab clickhouse start`).
+
+`WorkspaceKitScanner` is the single source of truth for that rule, and the `=== KITS ===` section
+of `status` reads the same service, so both apply one discovery rule. Registration drops a
+discovered kit after the scan when its name collides with a core command, or when
+`buildKitGroup` throws, so `status` may list a kit that has no subcommand.
 
 Scripts are run by `KitRunnerCommand` with cluster state variables injected as environment
 variables. Dashboard JSON files in `<kit>/dashboards/` are installed into Grafana
 automatically after a successful `start`.
 
+If the tenant listing or a dashboard file cannot be read, `start` does not fail.  It emits `Event.Grafana.KitDashboardsSkipped`, which names the kit, its dashboards and the reason, and the kit keeps running.
+
 ## Annotations
 
-- `@McpCommand` — expose command as an MCP tool in the server (must also add to `McpToolRegistry`)
 - `@RequireProfileSetup` — require AWS profile configuration before execution
 - `@RequireSSHKey` — require SSH key to be available
 - `@RequireDocker` — require a Docker daemon to be reachable before execution
@@ -172,7 +187,7 @@ automatically after a successful `start`.
   *on the control node* over SSH — do **not** need this annotation. There is no local client
   making the call, and SSH never traverses the SOCKS tunnel (the tunnel exists only to reach the
   private Kubernetes API from the developer's machine). `Down` is a concrete example: its first
-  actions unpublish the proxy port and kill the ssh process, so it must not carry `@RequiresProxy`
+  actions unpublish the proxy port and stop the `edl-socks-tunnel` process and its ssh, so it must not carry `@RequiresProxy`
   or it would start a tunnel it exists to tear down.
 
   The annotation takes one parameter, `tolerateFailure: Boolean = false`. When `true`, a proxy
@@ -195,10 +210,9 @@ automatically after a successful `start`.
 
 ## Special Long-Running Commands
 
-- **`Server`** — starts the server (MCP + REST + background services via Ktor). Does not exit until stopped.
-- **`Repl`** — starts interactive REPL. Does not exit until user quits.
-
-Both set `context.isInteractive = true` to keep resources (like CQL sessions) alive across invocations.
+- **`Server`** — starts the REST status server (`server/StatusServer`: `/status`, `/stress/status`, `/swagger`, with the background `StatusCache`). Does not exit until stopped.
+- **`Repl`** — starts interactive REPL. Does not exit until user quits. It sets `context.isInteractive = true` to keep resources (like CQL sessions) alive across invocations.
+- **`metrics stream`** — runs cycles on the command thread until the first Ctrl-C or SIGTERM, then returns normally (exit 0).
 
 ## Available Services
 
@@ -211,16 +225,24 @@ Commands should delegate to these services:
 | `K8sService` | Kubernetes operations |
 | `K3sService` | K3s cluster management |
 | `StressJobService` | Stress testing jobs on K8s |
-| `HostOperationsService` | Parallel operations across hosts |
+| `HostOperationsService` | Parallel operations across hosts (see below) |
 | `ClusterProvisioningService` | EC2 instance provisioning |
 | `ClusterConfigurationService` | Cluster configuration management |
 | `AWSResourceSetupService` | IAM roles, security groups, VPC setup (`services.aws`) |
-| `AwsS3BucketService` | S3 bucket admin: lifecycle, metrics, policies (`services.aws`) |
+| `AwsS3BucketService` | S3 bucket admin: creation, request metrics, policies (`services.aws`); never sets lifecycle rules |
 | `OpenSearchService` | OpenSearch domain management (`services.aws`) |
-| `GrafanaDashboardService` | Grafana dashboard deployment |
-| `VictoriaStreamService` | Stream metrics/logs to external Victoria instances |
-| `VictoriaBackupService` | Backup/restore VictoriaMetrics and VictoriaLogs |
-| `VictoriaLogsService` | VictoriaLogs query and ingestion |
+| `SshIngressService` | SSH ingress rules on the workspace cluster's security group (`services.aws`), for `ingress allow` / `ingress revoke`: validates every `--cidr` with `network/Ipv4Cidr` before any AWS call (or uses the detected public IP), changes one exact tcp/22 rule per CIDR, and returns a sealed `IngressResult`; it emits no events |
+| `GrafanaDeployService` | Grafana deployment: datasources, the dashboard tree, the Grafana K8s resources |
+| `GrafanaClient` | The running Grafana's HTTP API: dashboard install, folders, annotations |
+| `TestDocumentService` | A test's documents under `reports/<tenant>/<name>-<id>/` (`services/documents/`), used by `report upload` and `up` |
+| `ObservabilityHttp` | The one tenant-aware HTTP path to Mimir and Loki on the control node (SOCKS unless Tailscale) |
+| `MimirQueryService` | PromQL instant queries against Mimir |
+| `LokiQueryService` | LogQL queries against Loki; build them with `LogQl` (scoped to the current cluster) |
+| `AnnotationMirror` | Copies Grafana annotations into Loki (`push` one, `syncAll`) |
+| `AccountBucketSetup` | The bucket step of `up` (`services.aws`): account and data buckets, the instance role's inline policies (`S3Access` + `SessionManagerInstance`, via `AWSResourceSetupService` and `InstanceRolePolicies`) and the bucket policy, then `CompactorService.ensureRunning` |
+| `ProvisioningPreflight` | The checks `up` runs before provisioning: a control node, a well-formed telemetry redirect, a connected local Tailscale client on a Tailscale cluster, and the AWS CLI plus Session Manager plugin (`LocalSsmTooling`) when the profile's SSH transport is `ssm` |
+| `CompactorService` | The account compactor (`services.aws`): `ensureRunning` on `up`, `stopIfLastCluster` after a successful `down`, `stop` and `status` for `observability compactor` |
+| `TeardownBackupService` | The pre-teardown save `down` runs once, never retried (`TeardownFlushService`: Phase A mirror and collector stop, Phase B flushes, Tempo drain, profiles report and annotations backup in parallel; each flush only flushes and waits, no verify checks); records logs and metrics in `ClusterState.tailFlush` the moment each succeeds, through one writer, and a save of every signal as complete (`saveCompletedAt`), which a re-run of `down` skips whole; `unsavedSignals(state)` is what `down --force` lists before the prompt |
 | `TailscaleService` | Tailscale VPN setup on cluster nodes |
 | `RegistryService` | Container registry management |
 | `ClickHouseConfigService` | ClickHouse configuration |
@@ -230,7 +252,45 @@ Commands should delegate to these services:
 | `ObjectStore` | S3 file operations |
 | `RemoteOperationsService` | SSH execution (use sparingly, prefer domain services) |
 
+## Running Something On Every Host
+
+`HostOperationsService` offers two ways to fan out across a cluster. Pick by what the command needs
+to report, not by convenience:
+
+- **`withHosts`** — the first failure aborts the command. Every host still runs; the remaining
+  failures are attached as suppressed exceptions, so an operator fixing a multi-node problem sees
+  all of them in one run. Use this when a partial result is not a meaningful outcome.
+- **`collectFromHosts`** — returns a `HostResult` per host (`host` + `Result`) and throws nothing.
+  Use this when the command reports per-host outcomes, or when hosts can legitimately end in
+  *different* states — installed here, already present there. `CassandraInstall` is the reference
+  implementation: it emits one event per host, then throws once at the end if anything went wrong.
+
+Results are keyed by position, never by alias — two hosts sharing an alias would otherwise
+misattribute each other's failure.
+
+## Invoking AMI-Baked Scripts At Runtime
+
+Some scripts under `packer/` are not bake-time-only. The AMI build installs `packer/cassandra/bin/install-cassandra-version`
+and `use-cassandra` onto the node's `PATH`. At runtime, `CassandraInstall` (`cassandra install`) runs
+`install-cassandra-version` over SSH, and `UseCassandra` (`cassandra use`) runs `use-cassandra`. This is deliberate: one install code path
+serves both the bake and a running cluster, instead of two that have to be kept in sync by hand.
+
+Consequences when editing those scripts:
+
+- They are a **contract with Kotlin callers**, not just with the packer provisioner. Changing their
+  flags or output breaks a command.
+- Build the remote command with `String.shellQuote()` (`ShellQuoting.kt`, root package) — arguments can
+  carry URLs, branch names, and ant flags.
+- They have shell unit tests (`*.test.sh` next to each script) run by `./gradlew testCassandraScripts`
+  and in CI. Update them with the script.
+
 ## Output
 
 See the root `CLAUDE.md` for output conventions (events vs `println()`).
+
+A command that fails must exit non-zero: scripts and test plans read the exit code, not the text.
+When the command has already told the user what went wrong through its own typed event (a query
+error, a per-host failure), throw `kernel/CommandFailedException` after emitting it. The executor
+returns the error exit code and does not print the failure a second time. Any other exception is
+reported as `Command.ExecutionError` with its cause chain.
 See [`events/CLAUDE.md`](../events/CLAUDE.md) for the event hierarchy and how to add new events.

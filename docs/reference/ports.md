@@ -16,26 +16,59 @@ This page documents the ports used by easy-db-lab and the services it provisions
 | Port | Service |
 |------|---------|
 | 3000 | Grafana |
+| 3080 | Test documents web server (read-only, in the Grafana pod) |
+| 3081 | Test documents signing proxy (loopback only, in the Grafana pod) |
+| 8081 | Grafana image renderer (in the Grafana pod) |
 | 4040 | Pyroscope (continuous profiling) |
-| 8428 | VictoriaMetrics (metrics storage) |
-| 9428 | VictoriaLogs (log storage) |
+| 9009 | Mimir HTTP (metrics storage; Prometheus API under `/prometheus`) |
+| 9097 | Mimir gRPC |
+| 7947 | Mimir memberlist (loopback only) |
+| 11211 | Mimir's memcached caches (loopback only, in the Mimir pod) |
+| 3100 | Loki HTTP (log storage) |
+| 9098 | Loki gRPC |
 | 3200 | Tempo (trace storage) |
 | 5001 | YACE CloudWatch exporter (Prometheus) |
-
-## Cassandra Agent Ports
-
-| Port | Service |
-|------|---------|
-| 9000 | MAAC metrics agent (Prometheus) — Cassandra 4.0, 4.1, 5.0 only |
+| 8080 | kube-state-metrics (Prometheus; ClusterIP Service, pod network) |
 
 ## Observability Ports (All Nodes — DaemonSets)
 
 | Port | Service |
 |------|---------|
 | 4317 | OTel Collector gRPC |
-| 4318 | OTel Collector HTTP |
+| 4318 | OTel Collector HTTP — the Cassandra JVM agent exports here |
 | 9400 | Beyla eBPF metrics (Prometheus) |
 | 9435 | ebpf_exporter metrics (Prometheus) |
+
+## Cilium Ports (Cilium clusters only; the default CNI)
+
+| Port | Service |
+|------|---------|
+| 9962 | Cilium agent metrics (Prometheus, every node) |
+| 9963 | Cilium operator metrics (Prometheus, the node that runs the operator) |
+| 9965 | Hubble metrics (Prometheus, every node) |
+| 31234 | Hubble UI (NodePort, any node's private IP) |
+
+## Kit Ports
+
+Kits publish client ports through NodePort Services, reachable on any node's private IP.
+
+| Port | Kit | Service |
+|------|-----|---------|
+| 31211 | memcached | memcached client port (NodePort → 11211) |
+| 9150 | memcached | memcached-exporter metrics (pod port, scraped by pod discovery) |
+| 30687 | neo4j | Bolt (NodePort → 7687) |
+| 30474 | neo4j | HTTP (NodePort → 7474) |
+| 30432 | postgres | PostgreSQL (NodePort → 5432) |
+| 30987 | postgres | metrics (NodePort → 9187, for manual inspection; scraped by pod discovery) |
+| 30435 | postgres-duckdb | PostgreSQL (NodePort → 5432) |
+| 30990 | postgres-duckdb | metrics (NodePort → 9187) |
+| 30433 | postgres-postgis | PostgreSQL (NodePort → 5432) |
+| 30988 | postgres-postgis | metrics (NodePort → 9187) |
+| 30434 | postgres-timescaledb | PostgreSQL (NodePort → 5432) |
+| 30989 | postgres-timescaledb | metrics (NodePort → 9187) |
+
+Every built-in kit's NodePorts, each postgres instance's, and the Hubble UI's 31234 are distinct,
+so any combination of kits can run at once.
 
 ## Server
 

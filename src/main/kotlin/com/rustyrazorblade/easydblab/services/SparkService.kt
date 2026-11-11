@@ -118,6 +118,21 @@ interface SparkService {
     ): Result<String>
 
     /**
+     * Fetches a step's stderr from S3, if EMR has uploaded it.
+     *
+     * When the log is in S3, downloads it the way [getStepLogs] does and returns its text.
+     * When it is not, returns the S3 path where EMR will upload it.
+     *
+     * @param clusterId The EMR cluster ID
+     * @param stepId The EMR step ID
+     * @return Result containing the log text or its future S3 path, or error on failure
+     */
+    fun fetchStepStderr(
+        clusterId: String,
+        stepId: String,
+    ): Result<StepStderr>
+
+    /**
      * Downloads all EMR logs to a local directory organized by step ID.
      *
      * Downloads the complete log directory structure from S3 to logs/emr/{stepId}/,
@@ -295,6 +310,21 @@ interface SparkService {
                 failureLogFile = failureLogFile,
             )
         }
+    }
+
+    /**
+     * A step's stderr as [fetchStepStderr] found it: downloaded, or not in S3 yet.
+     */
+    sealed interface StepStderr {
+        /** EMR has uploaded the log; [content] is its decompressed text. */
+        data class Available(
+            val content: String,
+        ) : StepStderr
+
+        /** EMR has not uploaded the log yet; it will appear at [s3Uri]. */
+        data class NotUploaded(
+            val s3Uri: String,
+        ) : StepStderr
     }
 
     /**

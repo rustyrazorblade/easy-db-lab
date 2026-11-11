@@ -3,7 +3,7 @@
 This tutorial walks you through creating a database cluster from scratch, covering initialization, infrastructure provisioning, and database configuration. The examples below use Cassandra, but the same infrastructure supports [ClickHouse](clickhouse.md), [OpenSearch](opensearch.md), and [Spark](spark.md).
 
 ```admonish note title="Prerequisites"
-Before starting, ensure you've completed the [Setup](../getting-started/setup.md) process by running `easy-db-lab setup-profile`.
+Before starting, ensure you've completed the [Setup](../getting-started/setup.md) process by running `easy-db-lab profile setup`.
 ```
 
 ## Part 1: Initialize Your Cluster
@@ -161,7 +161,9 @@ This command:
 - Downloads configuration files to your local directory
 - Applies any existing patch configuration
 
-Available versions: 3.0, 3.11, 4.0, 4.1, 5.0, 5.0-HEAD, 6.0-HEAD, trunk
+`cassandra use` accepts any installed version. Run `easy-db-lab cassandra list` to see them.
+This includes a build published by `cassandra build`. See [Custom Builds](installing-cassandra.md#custom-builds),
+or run `easy-db-lab help cassandra-builds`.
 
 ### Step 2: Customize Configuration (Optional)
 

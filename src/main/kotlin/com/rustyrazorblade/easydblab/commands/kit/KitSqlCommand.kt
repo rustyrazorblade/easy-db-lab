@@ -5,6 +5,7 @@ import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.annotations.RequiresProxy
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.sql.JdbcConnectionFactory
 import com.rustyrazorblade.easydblab.services.sql.KitJdbcSqlService
@@ -24,6 +25,9 @@ import java.io.File
  * If [driverClass] is non-blank, the class is force-loaded before the first connection attempt.
  * This is required for JDBC drivers (e.g. the Facebook Presto driver) that do not auto-register
  * via ServiceLoader in fat-JAR environments.
+ *
+ * A failed statement, a missing `--file`, or a missing driver is reported as an event and then makes
+ * the command exit non-zero through [CommandFailedException].
  *
  * The [connectionFactory] parameter is injectable for testing; production code uses the default
  * [DriverManager.getConnection][java.sql.DriverManager.getConnection]-backed factory.
@@ -53,7 +57,7 @@ class KitSqlCommand(
             runCatching { Class.forName(driverClass) }
                 .onFailure { e ->
                     eventBus.emit(Event.Sql.QueryError("Driver class '$driverClass' not found: ${e.message}"))
-                    return
+                    throw CommandFailedException("JDBC driver $driverClass not found")
                 }
         }
 
@@ -64,7 +68,7 @@ class KitSqlCommand(
                 localFile != null -> {
                     if (!localFile.exists()) {
                         eventBus.emit(Event.Sql.FileNotFound(localFile.absolutePath))
-                        return
+                        throw CommandFailedException("SQL file not found: ${localFile.absolutePath}")
                     }
                     localFile.readText()
                 }
@@ -94,6 +98,7 @@ class KitSqlCommand(
                 eventBus.emit(Event.Sql.QueryOutput(result.columns, result.rows))
             }.onFailure { e ->
                 eventBus.emit(Event.Sql.QueryError(e.message ?: "Unknown error"))
+                throw CommandFailedException("SQL statement failed")
             }
     }
 }

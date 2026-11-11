@@ -2,6 +2,8 @@ package com.rustyrazorblade.easydblab.configuration.otel
 
 import com.charleskorn.kaml.Yaml
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.CniMode
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
@@ -22,13 +24,15 @@ import kotlinx.serialization.builtins.ListSerializer
  * Builds all OpenTelemetry Collector K8s resources as typed Fabric8 objects.
  *
  * Creates a DaemonSet that runs on all nodes with hostNetwork, collecting
- * host metrics, Prometheus scrapes (Beyla, ebpf_exporter, MAAC, YACE, Hubble),
+ * host metrics, Prometheus scrapes (Beyla, ebpf_exporter, YACE, kube-state-metrics),
+ * the Cilium agent/operator/Hubble scrapes when the cluster's CNI is Cilium,
  * plus dynamic per-workload scrape jobs from the metrics registry ConfigMaps,
  * file-based logs (system, Cassandra, ClickHouse), and OTLP.
- * Exports to VictoriaMetrics, VictoriaLogs, and Tempo.
+ * Exports metrics to Mimir, logs to Loki and traces to Tempo, each with the cluster's tenant.
  *
- * Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:CLUSTER_NAME}`),
- * not `__KEY__` template substitution.
+ * Config uses OTel runtime env expansion (`${env:HOSTNAME}`, `${env:CLUSTER_NAME}`,
+ * `${env:TENANT}`), not `__KEY__` template substitution. `CLUSTER_NAME` and `TENANT` come from the
+ * cluster-config ConfigMap.
  *
  * @property templateService Used for loading config files from classpath resources
  */
@@ -38,10 +42,10 @@ class OtelManifestBuilder(
     companion object {
         private val log = KotlinLogging.logger {}
         private val NAMESPACE = Constants.K8s.NAMESPACE
-        private const val APP_LABEL = "otel-collector"
+        private const val APP_LABEL = Constants.K8s.OTEL_COLLECTOR_APP_LABEL
         private const val CONFIGMAP_NAME = "otel-collector-config"
         private const val CONFIG_DATA_KEY = "otel-collector-config.yaml"
-        private const val IMAGE = "otel/opentelemetry-collector-contrib:latest"
+        private const val IMAGE = "otel/opentelemetry-collector-contrib:${Constants.OtelCollector.VERSION}"
         private const val SERVICE_ACCOUNT_NAME = "otel-collector"
         private const val CLUSTER_ROLE_NAME = "otel-collector"
         private const val LIVENESS_INITIAL_DELAY = 10
@@ -50,6 +54,24 @@ class OtelManifestBuilder(
         private const val READINESS_PERIOD = 10
         private val WORKLOAD_METRICS_LABEL = Constants.K8s.WORKLOAD_METRICS_LABEL
         private const val SCRAPE_INTERVAL = "15s"
+
+        /** Volume carrying the node's root filesystem into the collector container. */
+        const val HOST_ROOT_VOLUME = "host-root"
+
+        /**
+         * Where [HOST_ROOT_VOLUME] is mounted. Must match `root_path` in
+         * `otel-collector-config.yaml`, or the host_metrics scrapers describe the container instead
+         * of the node.
+         */
+        const val HOST_ROOT_MOUNT_PATH = "/hostfs"
+
+        /** In-cluster export endpoints used in local mode: Mimir's remote write and Loki's OTLP base. */
+        private val LOCAL_METRICS_ENDPOINT =
+            "http://${Constants.K8s.MIMIR_APP_LABEL}.default.svc.cluster.local:${Constants.K8s.MIMIR_HTTP_PORT}/api/v1/push"
+        private val LOCAL_LOGS_ENDPOINT =
+            "http://${Constants.K8s.LOKI_APP_LABEL}.default.svc.cluster.local:${Constants.K8s.LOKI_HTTP_PORT}/otlp"
+        private val LOCAL_TEMPO_ENDPOINT =
+            "tempo.default.svc.cluster.local:${Constants.K8s.TEMPO_OTLP_GRPC_PORT}"
     }
 
     /**
@@ -90,21 +112,29 @@ class OtelManifestBuilder(
      *
      * @param scrapeConfigs Dynamic per-workload scrape targets from the metrics registry.
      *   Pass the result of [listWorkloadScrapeConfigs] to include currently-running workloads.
+     * @param telemetryRedirect When non-null, the collector exports to this external stack's
+     *   endpoints instead of the in-cluster backends.
+     * @param cni The cluster's pod-network datapath. Cilium adds the agent, operator, and Hubble
+     *   scrape jobs; Flannel renders none of them.
      * @return List of: ServiceAccount, ClusterRole, ClusterRoleBinding, ConfigMap, DaemonSet, Service
      */
-    fun buildAllResources(scrapeConfigs: List<WorkloadScrapeConfig> = emptyList()): List<HasMetadata> =
+    fun buildAllResources(
+        scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
+        telemetryRedirect: TelemetryRedirect? = null,
+        cni: CniMode = CniMode.Flannel,
+    ): List<HasMetadata> =
         listOf(
             buildServiceAccount(),
             buildClusterRole(),
             buildClusterRoleBinding(),
-            buildConfigMap(scrapeConfigs),
+            buildConfigMap(scrapeConfigs, telemetryRedirect, cni),
             buildDaemonSet(),
             buildService(),
         )
 
     /**
      * Builds the ServiceAccount for OTel Collector pods.
-     * Required by k8sattributes processor for K8s API access.
+     * Required by the k8s_attributes processor for K8s API access.
      */
     fun buildServiceAccount() =
         ServiceAccountBuilder()
@@ -117,7 +147,7 @@ class OtelManifestBuilder(
 
     /**
      * Builds the ClusterRole granting read access to pods and nodes.
-     * Required by k8sattributes processor to extract node labels as resource attributes.
+     * Required by the k8s_attributes processor to extract node labels as resource attributes.
      */
     fun buildClusterRole() =
         ClusterRoleBuilder()
@@ -158,29 +188,200 @@ class OtelManifestBuilder(
      * with dynamic per-workload scrape jobs from the metrics registry.
      *
      * @param scrapeConfigs Workload scrape targets to inject (from [listWorkloadScrapeConfigs])
+     * @param telemetryRedirect When non-null, the three export endpoints resolve to this external
+     *   stack; when null they resolve to the in-cluster service addresses (local mode, unchanged).
+     * @param cni The cluster's pod-network datapath; only Cilium renders the CNI scrape jobs.
      */
-    fun buildConfigMap(scrapeConfigs: List<WorkloadScrapeConfig> = emptyList()) =
-        ConfigMapBuilder()
-            .withNewMetadata()
-            .withName(CONFIGMAP_NAME)
-            .withNamespace(NAMESPACE)
-            .addToLabels("app.kubernetes.io/name", APP_LABEL)
-            .endMetadata()
-            .addToData(
-                CONFIG_DATA_KEY,
-                templateService
-                    .fromResource(
-                        OtelManifestBuilder::class.java,
-                        "otel-collector-config.yaml",
-                    ).substitute(mapOf("KIT_SCRAPE_JOBS" to buildDynamicScrapeJobsYaml(scrapeConfigs))),
-            ).build()
+    fun buildConfigMap(
+        scrapeConfigs: List<WorkloadScrapeConfig> = emptyList(),
+        telemetryRedirect: TelemetryRedirect? = null,
+        cni: CniMode = CniMode.Flannel,
+    ) = ConfigMapBuilder()
+        .withNewMetadata()
+        .withName(CONFIGMAP_NAME)
+        .withNamespace(NAMESPACE)
+        .addToLabels("app.kubernetes.io/name", APP_LABEL)
+        .endMetadata()
+        .addToData(
+            CONFIG_DATA_KEY,
+            templateService
+                .fromResource(
+                    OtelManifestBuilder::class.java,
+                    "otel-collector-config.yaml",
+                ).substitute(
+                    mapOf(
+                        "KIT_SCRAPE_JOBS" to renderScrapeJobs(buildDynamicScrapeJobs(scrapeConfigs)),
+                        "INFRA_SCRAPE_JOBS" to
+                            renderScrapeJobs(buildLocalBackendScrapeJobs(telemetryRedirect) + buildInfraScrapeJobs(cni)),
+                        "METRICS_ENDPOINT" to (telemetryRedirect?.metrics ?: LOCAL_METRICS_ENDPOINT),
+                        "LOGS_ENDPOINT" to (telemetryRedirect?.logs ?: LOCAL_LOGS_ENDPOINT),
+                        "TEMPO_ENDPOINT" to (telemetryRedirect?.traces ?: LOCAL_TEMPO_ENDPOINT),
+                    ),
+                ),
+        ).build()
 
-    private fun buildDynamicScrapeJobsYaml(configs: List<WorkloadScrapeConfig>): String {
-        if (configs.isEmpty()) return ""
-        val jobs =
-            configs.map { config ->
-                if (config.podSelector.isNotBlank()) buildPodScrapeJob(config) else buildStaticScrapeJob(config)
-            }
+    private fun buildDynamicScrapeJobs(configs: List<WorkloadScrapeConfig>): List<PrometheusScrapeJob> =
+        configs.map { config ->
+            if (config.podSelector.isNotBlank()) buildPodScrapeJob(config) else buildStaticScrapeJob(config)
+        }
+
+    /**
+     * The infrastructure scrape jobs that carry Prometheus meta-labels in their relabel rules and
+     * so cannot live in the YAML template (a bare `__x__` there is a template placeholder):
+     * kube-state-metrics on every cluster, plus the CNI jobs from [buildCniScrapeJobs].
+     */
+    fun buildInfraScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> = listOf(buildKubeStateMetricsScrapeJob()) + buildCniScrapeJobs(cni)
+
+    /**
+     * The scrape jobs for the local telemetry backends' own metrics: Mimir, Loki, Tempo and the
+     * Pyroscope server, so rejected writes, dropped samples and failed flushes are queryable.
+     * Each is one pod on the control node, while the collector runs on every node, so a static
+     * `localhost` target would leave every other node's collector reporting the job down for the
+     * life of the cluster. Like kube-state-metrics, each is found by node-local pod discovery
+     * (label `app.kubernetes.io/name`, its metrics port), so only the collector on the pod's node
+     * scrapes it; `instance` is the pod name. A redirect cluster deploys neither, so it renders none
+     * of them.
+     */
+    fun buildLocalBackendScrapeJobs(telemetryRedirect: TelemetryRedirect?): List<PrometheusScrapeJob> =
+        when (telemetryRedirect) {
+            null ->
+                listOf(
+                    buildLocalBackendScrapeJob(Constants.K8s.MIMIR_APP_LABEL, Constants.K8s.MIMIR_HTTP_PORT),
+                    buildLocalBackendScrapeJob(Constants.K8s.LOKI_APP_LABEL, Constants.K8s.LOKI_HTTP_PORT),
+                    buildLocalBackendScrapeJob(Constants.K8s.TEMPO_APP_LABEL, Constants.K8s.TEMPO_PORT),
+                    buildLocalBackendScrapeJob(Constants.K8s.PYROSCOPE_APP_LABEL, Constants.K8s.PYROSCOPE_PORT),
+                )
+            else -> emptyList()
+        }
+
+    /** A local backend whose job name is also its pod's `app.kubernetes.io/name` label value. */
+    private fun buildLocalBackendScrapeJob(
+        name: String,
+        port: Int,
+    ) = buildNodeLocalPodScrapeJob(
+        jobName = name,
+        namespace = NAMESPACE,
+        podLabel = "app.kubernetes.io/name",
+        podLabelValue = name,
+        port = port,
+    )
+
+    /**
+     * kube-state-metrics runs as ONE pod on the control node, in the pod network. Every collector
+     * in the DaemonSet could reach it through its ClusterIP Service, but then every node would
+     * scrape the same series under its own `instance`. Pod discovery filtered to the collector's
+     * own node means exactly one collector scrapes it; `instance` is the pod name.
+     */
+    private fun buildKubeStateMetricsScrapeJob() =
+        buildNodeLocalPodScrapeJob(
+            jobName = Constants.KubeStateMetrics.NAME,
+            namespace = NAMESPACE,
+            podLabel = "app.kubernetes.io/name",
+            podLabelValue = Constants.KubeStateMetrics.NAME,
+            port = Constants.KubeStateMetrics.METRICS_PORT,
+        )
+
+    /**
+     * The scrape jobs that exist only when the cluster's CNI is Cilium. Flannel has no agent,
+     * operator, or Hubble endpoint, so rendering these there would have every collector poll
+     * three ports nothing listens on for the life of the cluster.
+     *
+     * The agent and Hubble are per-node hostNetwork endpoints, scraped at `localhost` by the
+     * collector on the same node. The operator runs on exactly one node, so it is found by pod
+     * discovery in `kube-system` (label `io.cilium/app=operator`, its metrics port) and, like every
+     * pod-SD job here, only by the collector on that node.
+     */
+    fun buildCniScrapeJobs(cni: CniMode): List<PrometheusScrapeJob> =
+        when (cni) {
+            CniMode.Flannel -> emptyList()
+            CniMode.Cilium ->
+                listOf(
+                    buildLocalhostScrapeJob("cilium-agent", Constants.Cilium.AGENT_METRICS_PORT),
+                    buildLocalhostScrapeJob("hubble", Constants.Cilium.HUBBLE_METRICS_PORT),
+                    buildCiliumOperatorScrapeJob(),
+                )
+        }
+
+    private fun buildLocalhostScrapeJob(
+        jobName: String,
+        port: Int,
+    ) = PrometheusScrapeJob(
+        jobName = jobName,
+        scrapeInterval = SCRAPE_INTERVAL,
+        staticConfigs = listOf(PrometheusStaticConfig(targets = listOf("localhost:$port"))),
+        metricsPath = "/metrics",
+        relabelConfigs =
+            listOf(
+                PrometheusRelabelConfig(targetLabel = "instance", replacement = "\${env:HOSTNAME}:$port"),
+                PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+            ),
+    )
+
+    private fun buildCiliumOperatorScrapeJob() =
+        buildNodeLocalPodScrapeJob(
+            jobName = "cilium-operator",
+            namespace = Constants.Cilium.NAMESPACE,
+            podLabel = Constants.Cilium.OPERATOR_POD_LABEL,
+            podLabelValue = Constants.Cilium.OPERATOR_POD_LABEL_VALUE,
+            port = Constants.Cilium.OPERATOR_METRICS_PORT,
+        )
+
+    /**
+     * A pod-discovery job for a singleton pod selected by one label, scraped only by the collector
+     * on the pod's own node so one series set exists. Pod SD yields one target per declared
+     * container port, so the job keeps only [port] and then addresses the pod IP on it directly;
+     * `instance` is the pod name.
+     */
+    private fun buildNodeLocalPodScrapeJob(
+        jobName: String,
+        namespace: String,
+        podLabel: String,
+        podLabelValue: String,
+        port: Int,
+    ) = PrometheusScrapeJob(
+        jobName = jobName,
+        scrapeInterval = SCRAPE_INTERVAL,
+        kubernetesSdConfigs =
+            listOf(
+                PrometheusKubernetesSdConfig(
+                    role = "pod",
+                    namespaces = PrometheusSdNamespaces(names = listOf(namespace)),
+                ),
+            ),
+        metricsPath = "/metrics",
+        relabelConfigs =
+            listOf(
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf(podLabelMetaKey(podLabel)),
+                    regex = podLabelValue,
+                    action = "keep",
+                ),
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf("__meta_kubernetes_pod_node_name"),
+                    regex = "\${env:HOSTNAME}",
+                    action = "keep",
+                ),
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf("__meta_kubernetes_pod_container_port_number"),
+                    regex = port.toString(),
+                    action = "keep",
+                ),
+                // OTel expands $$ to a literal $, leaving Prometheus its $1 capture group.
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf("__meta_kubernetes_pod_ip"),
+                    targetLabel = "__address__",
+                    replacement = "\$\$1:$port",
+                ),
+                PrometheusRelabelConfig(
+                    sourceLabels = listOf("__meta_kubernetes_pod_name"),
+                    targetLabel = "instance",
+                ),
+                PrometheusRelabelConfig(targetLabel = "cluster", replacement = "\${env:CLUSTER_NAME}"),
+            ),
+    )
+
+    private fun renderScrapeJobs(jobs: List<PrometheusScrapeJob>): String {
+        if (jobs.isEmpty()) return ""
         // 8-space indent matches the depth of `- job_name:` entries under
         // `receivers.prometheus.config.scrape_configs` in otel-collector-config.yaml.
         // If the scrape_configs indentation changes, this must change too.
@@ -369,6 +570,15 @@ class OtelManifestBuilder(
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()
+            .addNewEnv()
+            .withName("TENANT")
+            .withNewValueFrom()
+            .withNewConfigMapKeyRef()
+            .withName("cluster-config")
+            .withKey("tenant")
+            .endConfigMapKeyRef()
+            .endValueFrom()
+            .endEnv()
             .addToVolumeMounts(
                 VolumeMountBuilder()
                     .withName("config")
@@ -389,6 +599,15 @@ class OtelManifestBuilder(
                 VolumeMountBuilder()
                     .withName("cassandra-logs")
                     .withMountPath("/mnt/db1/cassandra/logs")
+                    .withReadOnly(true)
+                    .build(),
+                // The host root, for the host_metrics receiver's root_path. Without it the
+                // filesystem scraper enumerates the container's own mounts and finds nothing worth
+                // reporting, which is why every filesystem panel was empty. Read-only: nothing here
+                // writes to the node.
+                VolumeMountBuilder()
+                    .withName(HOST_ROOT_VOLUME)
+                    .withMountPath(HOST_ROOT_MOUNT_PATH)
                     .withReadOnly(true)
                     .build(),
             ).withNewLivenessProbe()
@@ -429,6 +648,14 @@ class OtelManifestBuilder(
                 HostPathVolumeSourceBuilder()
                     .withPath("/mnt/db1/container-logs")
                     .withType("DirectoryOrCreate")
+                    .build(),
+            ).endVolume()
+            .addNewVolume()
+            .withName(HOST_ROOT_VOLUME)
+            .withHostPath(
+                HostPathVolumeSourceBuilder()
+                    .withPath("/")
+                    .withType("Directory")
                     .build(),
             ).endVolume()
             .addNewVolume()

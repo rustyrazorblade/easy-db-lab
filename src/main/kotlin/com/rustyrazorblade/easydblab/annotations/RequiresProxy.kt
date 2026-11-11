@@ -4,7 +4,7 @@ package com.rustyrazorblade.easydblab.annotations
  * Marks a command whose execution path reaches the private Kubernetes API (Fabric8, via
  * `K8sClientProvider` or the equivalent `KubernetesClientFactory` used by kit status checks)
  * or a private cluster HTTP endpoint (via `ProxiedHttpClientFactory` / `HttpClientFactory`,
- * e.g. Grafana, VictoriaMetrics, VictoriaLogs on the control node's private IP).
+ * e.g. Grafana, Mimir, Loki on the control node's private IP).
  *
  * `DefaultCommandExecutor.checkRequirements()` starts the SOCKS5 tunnel before executing any
  * command carrying this annotation, when the cluster is provisioned, infrastructure is UP, and

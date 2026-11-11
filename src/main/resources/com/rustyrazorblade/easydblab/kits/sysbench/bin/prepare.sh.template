@@ -1,9 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+
 SYSBENCH_IMAGE="docker.io/severalnines/sysbench"
 POD_NAME="sysbench-prepare-${KIT_NAME}-$(date +%s)"
-PREPARE_LABELS="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-prepare"
+
+# Runs pod $1 with role $2 and image $3 on an app node, the command after `--` in the rest of the
+# arguments, then waits for it to end. Fails, with the pod's log, when it exits non-zero, and
+# deletes the pod when it succeeds.
+run_to_completion() {
+  local pod="$1" role="$2" image="$3" code
+  shift 3
+  kubectl --kubeconfig="${KUBECONFIG}" run "${pod}" \
+    --image="${image}" \
+    --restart=Never \
+    --labels="$(edl_labels "${role}")" \
+    --overrides="$(edl_pod_overrides)" \
+    --override-type=strategic \
+    --command -- "$@"
+  edl_wait_for_pod_running "${pod}"
+  code="$(edl_wait_for_pod_exit "${pod}")"
+  if [ "${code}" != 0 ]; then
+    kubectl --kubeconfig="${KUBECONFIG}" logs "${pod}" >&2 || true
+    edl_fail "pod ${pod} failed with exit code ${code}"
+  fi
+  kubectl --kubeconfig="${KUBECONFIG}" delete pod "${pod}" --ignore-not-found
+}
 
 if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
   DB_ARGS="--db-driver=mysql \
@@ -11,25 +34,6 @@ if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
     --mysql-port=${TARGET_MYSQL_PORT} \
     --mysql-user=${TARGET_MYSQL_USER} \
     --mysql-db=${TARGET_MYSQL_DATABASE}"
-
-  # TiDB and MySQL do not ship with the sbtest database — create it before sysbench prepare.
-  CREATE_POD="sysbench-createdb-${KIT_NAME}-$(date +%s)"
-  echo "Creating database ${TARGET_MYSQL_DATABASE} on ${TARGET_MYSQL_HOST}:${TARGET_MYSQL_PORT}..."
-  kubectl --kubeconfig="${KUBECONFIG}" run "${CREATE_POD}" \
-    --image="mysql:8.0" \
-    --restart=Never \
-    --labels="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-createdb" \
-    --command -- mysql \
-      -h "${TARGET_MYSQL_HOST}" \
-      -P "${TARGET_MYSQL_PORT}" \
-      -u "${TARGET_MYSQL_USER}" \
-      -e "CREATE DATABASE IF NOT EXISTS \`${TARGET_MYSQL_DATABASE}\`;"
-  kubectl --kubeconfig="${KUBECONFIG}" wait \
-    --for=jsonpath='{.status.phase}'=Succeeded \
-    --timeout=60s \
-    pod/"${CREATE_POD}"
-  kubectl --kubeconfig="${KUBECONFIG}" delete pod "${CREATE_POD}" --ignore-not-found
-
 elif [ -n "${TARGET_PG_HOST:-}" ]; then
   DB_ARGS="--db-driver=pgsql \
     --pgsql-host=${TARGET_PG_HOST} \
@@ -41,45 +45,33 @@ else
   exit 1
 fi
 
+edl_require_app_node sysbench
+
+if [ -n "${TARGET_MYSQL_HOST:-}" ]; then
+  # TiDB and MySQL do not ship with the sbtest database — create it before sysbench prepare.
+  echo "Creating database ${TARGET_MYSQL_DATABASE} on ${TARGET_MYSQL_HOST}:${TARGET_MYSQL_PORT}..."
+  run_to_completion "sysbench-createdb-${KIT_NAME}-$(date +%s)" sysbench-createdb "mysql:8.0" \
+    mysql \
+    -h "${TARGET_MYSQL_HOST}" \
+    -P "${TARGET_MYSQL_PORT}" \
+    -u "${TARGET_MYSQL_USER}" \
+    -e "CREATE DATABASE IF NOT EXISTS \`${TARGET_MYSQL_DATABASE}\`;"
+fi
+
 # Drop any pre-existing sbtest tables before preparing. sysbench prepare issues a
 # plain CREATE TABLE, so re-preparing an existing dataset at a different --scale or
 # --tables fails with "error 1050: Table 'sbtest.sbtest1' already exists". sysbench
 # cleanup uses DROP TABLE IF EXISTS, so this is idempotent and safe on a fresh
 # cluster with no existing tables. It runs for whichever driver (mysql/pgsql) was
 # selected above via the shared ${DB_ARGS}.
-CLEANUP_POD="sysbench-cleanup-${KIT_NAME}-$(date +%s)"
 echo "Cleaning up any existing sysbench data before prepare..."
-kubectl --kubeconfig="${KUBECONFIG}" run "${CLEANUP_POD}" \
-  --image="${SYSBENCH_IMAGE}" \
-  --restart=Never \
-  --labels="easydblab/kit=${KIT_NAME},easydblab/role=sysbench-cleanup" \
-  --command -- sysbench \
-    ${DB_ARGS} \
-    --tables="${TABLES}" \
-    "${WORKLOAD}" cleanup
-kubectl --kubeconfig="${KUBECONFIG}" wait \
-  --for=jsonpath='{.status.phase}'=Succeeded \
-  --timeout=120s \
-  pod/"${CLEANUP_POD}"
-kubectl --kubeconfig="${KUBECONFIG}" delete pod "${CLEANUP_POD}" --ignore-not-found
+# shellcheck disable=SC2086 # DB_ARGS is a list of flags, split on purpose
+run_to_completion "sysbench-cleanup-${KIT_NAME}-$(date +%s)" sysbench-cleanup "${SYSBENCH_IMAGE}" \
+  sysbench ${DB_ARGS} --tables="${TABLES}" "${WORKLOAD}" cleanup
 
 echo "Preparing sysbench data: ${TABLES} tables, ${SCALE}000 rows each..."
+# shellcheck disable=SC2086 # DB_ARGS is a list of flags, split on purpose
+run_to_completion "${POD_NAME}" sysbench-prepare "${SYSBENCH_IMAGE}" \
+  sysbench ${DB_ARGS} --tables="${TABLES}" --table-size="${SCALE}000" "${WORKLOAD}" prepare
 
-kubectl --kubeconfig="${KUBECONFIG}" run "${POD_NAME}" \
-  --image="${SYSBENCH_IMAGE}" \
-  --restart=Never \
-  --labels="${PREPARE_LABELS}" \
-  --command -- sysbench \
-    ${DB_ARGS} \
-    --tables="${TABLES}" \
-    --table-size="${SCALE}000" \
-    "${WORKLOAD}" prepare
-
-echo "Waiting for prepare pod to complete..."
-kubectl --kubeconfig="${KUBECONFIG}" wait \
-  --for=jsonpath='{.status.phase}'=Succeeded \
-  --timeout=600s \
-  pod/"${POD_NAME}"
-
-kubectl --kubeconfig="${KUBECONFIG}" delete pod "${POD_NAME}" --ignore-not-found
 echo "Data preparation complete."

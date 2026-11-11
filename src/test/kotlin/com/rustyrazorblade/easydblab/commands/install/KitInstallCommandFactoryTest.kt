@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.install
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.services.CollisionCheck
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
@@ -79,7 +81,7 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         KitConfig(
             name = "mydb",
             description = "My kit",
-            collisionCheck = false,
+            collisionCheck = CollisionCheck.NONE,
             args = args.toList(),
         )
 
@@ -105,11 +107,63 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
     }
 
     @Test
+    fun `a declared value arg shows a value placeholder and a boolean arg shows an optional one`() {
+        val cl =
+            factory.build(
+                config(arg("--size", "STORAGE_SIZE"), arg("--cache-on-write", "CACHE_ON_WRITE", KitArgSpec.ArgType.BOOLEAN)),
+                directorySource,
+            )
+
+        assertThat(cl.usageMessage).contains("--size=<storage-size>")
+        assertThat(cl.usageMessage).contains("--cache-on-write[=<cache-on-write>]")
+    }
+
+    private fun parsedBoolean(
+        default: String,
+        vararg args: String,
+    ): String? {
+        val cl =
+            factory.build(
+                config(arg("--s3-cache-on-write", "S3_CACHE_ON_WRITE", KitArgSpec.ArgType.BOOLEAN, default)),
+                directorySource,
+            )
+        cl.parseArgs(*args)
+        return (cl.commandSpec.userObject() as KitInstallCommand).argValues["S3_CACHE_ON_WRITE"]
+    }
+
+    @Test
+    fun `a boolean install arg given false as a separate value records false`() {
+        assertThat(parsedBoolean("true", "--s3-cache-on-write", "false")).isEqualTo("false")
+    }
+
+    @Test
+    fun `a boolean install arg given false with an equals sign records false`() {
+        assertThat(parsedBoolean("true", "--s3-cache-on-write=false")).isEqualTo("false")
+    }
+
+    @Test
+    fun `a bare boolean install arg records true over a false default`() {
+        assertThat(parsedBoolean("false", "--s3-cache-on-write")).isEqualTo("true")
+    }
+
+    @Test
     fun `force option is added when collisionCheck is true`() {
-        val cfg = KitConfig(name = "mydb", collisionCheck = true)
+        val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck.ENABLED)
         val cl = factory.build(cfg, directorySource)
         val optionNames = cl.commandSpec.options().map { it.longestName() }
         assertThat(optionNames).contains("--force")
+    }
+
+    @Test
+    fun `force option is absent when only start is collision-checked`() {
+        val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck(setOf(Constants.Kit.PHASE_START)))
+        val optionNames =
+            factory
+                .build(cfg, directorySource)
+                .commandSpec
+                .options()
+                .map { it.longestName() }
+        assertThat(optionNames).doesNotContain("--force")
     }
 
     @Test
@@ -143,7 +197,7 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
 
     @Test
     fun `force flag sets command force to true when passed`() {
-        val cfg = KitConfig(name = "mydb", collisionCheck = true)
+        val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck.ENABLED)
         val cl = factory.build(cfg, directorySource)
         val command = cl.commandSpec.userObject() as KitInstallCommand
         cl.parseArgs("--force")
@@ -152,7 +206,7 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
 
     @Test
     fun `force flag leaves command force false when not passed`() {
-        val cfg = KitConfig(name = "mydb", collisionCheck = true)
+        val cfg = KitConfig(name = "mydb", collisionCheck = CollisionCheck.ENABLED)
         val cl = factory.build(cfg, directorySource)
         val command = cl.commandSpec.userObject() as KitInstallCommand
         cl.parseArgs()
@@ -196,10 +250,11 @@ class KitInstallCommandFactoryTest : BaseKoinTest() {
         // that has no default. Stringifying that null recorded the literal "null" in argValues,
         // which then passed isNotBlank() downstream and was treated as a real value — e.g. the
         // postgres kit looked it up as the extension alias "null" and aborted the install.
+        // The install itself records the empty string after it applies the defaults
+        // (KitInstallCommandTest), so an unresolved ${VAR} default is not lost at parse time.
         val cl = factory.build(config(arg("--extension", "EXTENSION")), directorySource)
         val command = cl.commandSpec.userObject() as KitInstallCommand
         cl.parseArgs()
-        assertThat(command.argValues["EXTENSION"]).isNull()
         assertThat(command.argValues).doesNotContainValue("null")
     }
 

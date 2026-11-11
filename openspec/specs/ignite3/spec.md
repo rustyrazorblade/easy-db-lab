@@ -1,9 +1,9 @@
 # Ignite 3
 
+## Purpose
+
 Manages Apache Ignite 3 deployment on K3s with configurable storage profiles and OTLP metrics integration.
-
-## ADDED Requirements
-
+## Requirements
 ### Requirement: Kit Lifecycle
 
 The system MUST support installing, starting, stopping, and uninstalling Ignite 3 via the kit mechanism.
@@ -75,15 +75,15 @@ The kit SHALL configure Ignite 3 to push metrics to the cluster's OTel Collector
 - **WHEN** `ignite3 start` completes cluster initialization
 - **THEN** the system configures Ignite's OTLP exporter pointing to `http://${CONTROL_HOST_PRIVATE}:4318/v1/metrics` using the `http/protobuf` protocol
 
-#### Scenario: Metrics flow into VictoriaMetrics
+#### Scenario: Metrics flow into Mimir
 
 - **WHEN** the OTLP exporter is configured and Ignite is running
-- **THEN** Ignite metrics appear in VictoriaMetrics and are visible in Grafana
+- **THEN** Ignite metrics appear in Mimir and are visible in Grafana
 
 ### Requirement: SQL Execution
 
 The `ignite3 sql` command SHALL execute SQL statements against a running Ignite 3 cluster via the thin client JDBC driver.
-SQL execution is provided via the `sql` capability declared in `ignite3/kit.yaml` — see REQ-KCAP-002.
+SQL execution is provided via the `sql` capability declared in `ignite3/kit.yaml` — see the `sql capability type` requirement in the `kit-capabilities` spec.
 
 #### Scenario: SQL query executes successfully
 
@@ -108,3 +108,4 @@ The kit SHALL support configuring the number of Ignite server nodes via `--repli
 
 - **WHEN** the user runs `ignite3 start --replicas 3`
 - **THEN** the StatefulSet is created with 3 replicas
+

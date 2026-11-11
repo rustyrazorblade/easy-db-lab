@@ -45,6 +45,11 @@ spec:
   storage:
     storageClass: __STORAGE_CLASS_WFC__
     size: __STORAGE_SIZE__
+    # Binds only this instance's platform PVs; every kit's PVs share the storage class.
+    pvcTemplate:
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: __KIT_NAME__
   postgresql:
     shared_preload_libraries: __SHARED_PRELOAD_LIBRARIES__
     pg_hba:
@@ -59,5 +64,5 @@ spec:
   superuserSecret:
     name: __KIT_NAME__-credentials
   monitoring:
-    # OTel collector scrapes metrics via NodePort — PodMonitor is not needed
+    # OTel collector scrapes the primary by pod discovery (kit.yaml) — PodMonitor is not needed
     enablePodMonitor: false

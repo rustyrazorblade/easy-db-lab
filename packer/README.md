@@ -20,6 +20,46 @@ This directory contains packer configurations and testing tools for building eas
 ./gradlew testPackerScript -Pscript=cassandra/install/install_cassandra_easy_stress.sh
 ```
 
+## Shell Unit Tests (no Docker)
+
+Scripts whose value is in their *decisions* rather than their side effects have unit tests that
+stub `sudo`/`curl`/`git`/`dpkg` and assert on what would have run. They need no Docker and no
+network:
+
+```shell
+# Run them all
+./gradlew testCassandraScripts
+
+# Or individually
+./gradlew testCassandraInstallScript   # bin/install-cassandra-version
+./gradlew testCassandraInstallLoop     # the bake-time version loop in install_cassandra.sh
+./gradlew testCassandraUseScript       # bin/use-cassandra
+
+# The base AMI JDK install (base/install/install_jdks.sh); not part of testCassandraScripts
+./gradlew testBaseJdkInstall
+
+# The base AMI chrony poll (base/install/configure_chrony_poll.sh)
+./gradlew testBaseChronyPoll
+```
+
+Each test lives next to its script as `<script>.test.sh` and also runs in CI
+(`.github/workflows/packer-test.yml`). This is the tier to extend when changing argument handling,
+already-installed short-circuits, or JDK selection — the Docker tiers above are for scripts that
+must actually install something.
+
+## Scripts Invoked At Runtime, Not Just At Bake Time
+
+`cassandra/bin/` holds scripts the AMI build puts on the node's `PATH` and which the CLI then
+invokes over SSH against a *running* cluster:
+
+- `install-cassandra-version` — one install code path shared by the bake-time loop and
+  `easy-db-lab cassandra install <version>`
+- `use-cassandra` — selects the active version, called by `easy-db-lab cassandra use`
+
+Their flags and output are a contract with Kotlin callers in
+`src/main/kotlin/com/rustyrazorblade/easydblab/commands/cassandra/`. Changing them without updating
+the caller breaks a CLI command, not just a build.
+
 ### Using test-script.sh Directly
 
 ```shell
@@ -67,6 +107,26 @@ To manually rebuild:
 docker build -t easy-db-lab-packer-test .
 ```
 
+## Base AMI networking (Cilium ENI mode)
+
+Cilium ENI native-routing requires the OS to leave Cilium's runtime-attached secondary ENIs
+alone. `base/install/configure_cilium_eni_networkd.sh` bakes three files into the image:
+`05-cilium-eni-primary.network` keeps the primary interface (`ens5`) OS-managed via DHCP;
+`06-cilium-eni-unmanaged.network` matches `Driver=ena`, so every other ENA interface, under its
+pre-rename `eth0` name or its final `ens6`, is `Unmanaged=yes` and Cilium owns it; and
+`/etc/cloud/cloud.cfg.d/90-easydblab-no-network-hotplug.cfg` removes `hotplug` from cloud-init's
+`updates.network.when`, so an ENI attach no longer re-renders `/etc/netplan/50-cloud-init.yaml`
+(which would list every pod IP as a static address on `ens5` and DHCP the new ENI). Without these
+the OS DHCPs the new ENI and adds a competing default route, multi-homing the host and breaking
+IMDS/egress/kubelet. The files are inert on Flannel (no secondary ENIs are ever attached) and are
+covered by `./gradlew testPackerBase`.
+
+## Base AMI clock sync
+
+Ubuntu's EC2 image polls the Amazon Time Sync Service every 16 s (`minpoll 4 maxpoll 4` in `/etc/chrony/conf.d/00-cpc.conf`). Between polls the kernel's clock error bound (`maxerror`) grows at 500 ppm, so it reaches about 8 ms before each update.  That is too much for databases that use the bound for correctness.
+
+`base/install/configure_chrony_poll.sh` sets `minpoll 3 maxpoll 3` (8 s) on every Time Sync source line (`169.254.169.123` and `fd00:ec2::123`) and keeps the other options on the line.  The bake fails if the image has no Time Sync source.  The script is covered by `./gradlew testBaseChronyPoll`.
+
 ## Documentation
 
 See [TESTING.md](TESTING.md) for comprehensive testing documentation including:
@@ -84,6 +144,7 @@ packer/
 │   └── install/            # Base installation scripts
 ├── cassandra/              # Cassandra AMI configuration
 │   ├── cassandra.pkr.hcl  # Packer config for Cassandra image
+│   ├── bin/                # Scripts placed on the node's PATH, also called at runtime
 │   └── install/            # Cassandra installation scripts
 ├── Dockerfile              # Test environment (mimics Ubuntu 24.04 AMI)
 ├── docker-compose.yml      # Test orchestration

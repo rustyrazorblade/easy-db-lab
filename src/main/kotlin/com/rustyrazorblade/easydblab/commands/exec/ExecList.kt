@@ -41,7 +41,7 @@ class ExecList : PicoBaseCommand() {
                     val result =
                         remoteOps.executeRemotely(
                             h,
-                            "systemctl list-units 'edl-exec-*' --no-pager --plain --no-legend",
+                            "systemctl list-units '$EXEC_UNIT_PREFIX*' --no-pager --plain --no-legend",
                             output = false,
                             secret = false,
                         )

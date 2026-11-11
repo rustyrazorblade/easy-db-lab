@@ -3,17 +3,26 @@ package com.rustyrazorblade.easydblab.providers.aws
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.services.ExternalIpService
+import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.ObjectStore
 import com.rustyrazorblade.easydblab.services.SparkService
-import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import com.rustyrazorblade.easydblab.services.aws.AMIResolver
 import com.rustyrazorblade.easydblab.services.aws.AMIService
 import com.rustyrazorblade.easydblab.services.aws.AMIValidator
 import com.rustyrazorblade.easydblab.services.aws.AWSResourceSetupService
+import com.rustyrazorblade.easydblab.services.aws.AccountBucketSetup
 import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
+import com.rustyrazorblade.easydblab.services.aws.BucketRegion
+import com.rustyrazorblade.easydblab.services.aws.ClusterCensus
+import com.rustyrazorblade.easydblab.services.aws.CompactorIam
+import com.rustyrazorblade.easydblab.services.aws.CompactorNetwork
+import com.rustyrazorblade.easydblab.services.aws.CompactorService
 import com.rustyrazorblade.easydblab.services.aws.DefaultAMIResolver
+import com.rustyrazorblade.easydblab.services.aws.DefaultCompactorService
 import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
+import com.rustyrazorblade.easydblab.services.aws.DefaultSshIngressService
 import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
 import com.rustyrazorblade.easydblab.services.aws.EC2VpcService
 import com.rustyrazorblade.easydblab.services.aws.EMRService
@@ -21,6 +30,7 @@ import com.rustyrazorblade.easydblab.services.aws.EMRSparkService
 import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
 import com.rustyrazorblade.easydblab.services.aws.S3ObjectStore
+import com.rustyrazorblade.easydblab.services.aws.SshIngressService
 import org.koin.dsl.module
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials
 import software.amazon.awssdk.auth.credentials.AwsCredentialsProvider
@@ -196,11 +206,23 @@ val awsModule =
             )
         }
 
+        // SSH ingress rules on the workspace cluster's security group (ingress allow / revoke)
+        single<SshIngressService> {
+            DefaultSshIngressService(
+                get<ClusterStateManager>(),
+                get<ExternalIpService>(),
+                get<VpcService>(),
+            )
+        }
+
         // Provide AWSResourceSetupService as singleton
+        single { InstanceRolePolicies(get()) }
+
         single {
             AWSResourceSetupService(
                 get<AWS>(),
                 get<EventBus>(),
+                get<InstanceRolePolicies>(),
             )
         }
 
@@ -221,7 +243,7 @@ val awsModule =
                 get<EmrClient>(),
                 get<ObjectStore>(),
                 get<ClusterStateManager>(),
-                get<VictoriaLogsService>(),
+                get<LokiQueryService>(),
                 get<EventBus>(),
             )
         }
@@ -253,4 +275,13 @@ val awsModule =
 
         // Provide InstanceSpecFactory as singleton
         single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
+
+        // The account compactor: clients for the account bucket's region and every enabled region.
+        single<RegionalClients> { DefaultRegionalClients(get()) }
+        single { CompactorIam(get()) }
+        single { CompactorNetwork(get(), get(), get(), get()) }
+        single { ClusterCensus(get(), get()) }
+        single<CompactorService> { DefaultCompactorService(get(), get(), get(), get(), get(), get()) }
+        factory { BucketRegion(get()) }
+        factory { AccountBucketSetup(get(), get(), get(), get(), get(), get()) }
     }

@@ -1,20 +1,36 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Version
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
+import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.File
 
+/**
+ * Tests for [DownloadConfig]: it downloads a version's config into the workspace once, and says
+ * so when it skips because the directory is already there.
+ */
 class DownloadConfigTest : BaseKoinTest() {
     private lateinit var mockClusterStateManager: ClusterStateManager
+    private val remoteOps = mock<RemoteOperationsService>()
+    private lateinit var outputHandler: BufferedOutputHandler
 
     private val testCassandraHost =
         ClusterHost(
@@ -40,6 +56,7 @@ class DownloadConfigTest : BaseKoinTest() {
         listOf(
             module {
                 single<ClusterStateManager> { mockClusterStateManager }
+                factory<RemoteOperationsService> { remoteOps }
             },
         )
 
@@ -47,15 +64,27 @@ class DownloadConfigTest : BaseKoinTest() {
     fun setupMocks() {
         mockClusterStateManager = mock()
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
+        whenever(remoteOps.getRemoteVersion(any(), eq("current"))).thenReturn(Version("/usr/local/cassandra/5.0"))
+        outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
     }
 
     @Test
-    fun `execute downloads config from first cassandra host`() {
-        // The mock RemoteOperationsService returns Version("5.0") for "current"
-        // and has no-op download methods
-        val command = DownloadConfig()
-        command.execute()
+    fun `downloads the version's config into the workspace when it is not there yet`() {
+        DownloadConfig().execute()
 
-        // Command runs without error - remote ops are no-op mocks
+        val localDir = File(context.workingDirectory, "5.0")
+        assertThat(localDir).isDirectory()
+        verify(remoteOps).downloadDirectory(any(), eq("/usr/local/cassandra/5.0/conf"), eq(localDir), any(), any())
+    }
+
+    /** An existing directory is never overwritten, and the operator is told why nothing changed. */
+    @Test
+    fun `an existing config directory is reported and nothing is downloaded`() {
+        File(context.workingDirectory, "5.0").mkdirs()
+
+        DownloadConfig().execute()
+
+        assertThat(outputHandler.messages.joinToString("\n")).contains("5.0 already exists", "skipping the download")
+        verify(remoteOps, never()).downloadDirectory(any(), any(), any(), any(), any())
     }
 }

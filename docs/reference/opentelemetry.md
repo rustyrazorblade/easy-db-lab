@@ -16,13 +16,21 @@ The easy-db-lab CLI tool runs with the OpenTelemetry Java Agent, which automatic
 Set the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable to your OTLP collector endpoint:
 
 ```bash
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 easy-db-lab up
 ```
 
 When this environment variable is:
-- **Set**: Traces and metrics are exported via gRPC to the specified endpoint
-- **Not set**: The agent is still loaded but no telemetry is exported (minimal overhead)
+- **Set**: Traces, metrics and logs are exported to the specified endpoint. The agent's default protocol is `http/protobuf`, which collectors serve on port 4318. To use a gRPC endpoint (port 4317), also set `OTEL_EXPORTER_OTLP_PROTOCOL=grpc`.
+- **Not set**: The agent is still loaded, but it exports nothing and prints nothing.
+
+The `easy-db-lab` launcher decides this before the JVM starts. The agent's own default is to export to `localhost:4318`, so without a collector there every export fails and prints a stack trace to stderr. When none of the following variables is set, the launcher passes `-Dotel.traces.exporter=none`, `-Dotel.metrics.exporter=none` and `-Dotel.logs.exporter=none`, plus `-Dotel.javaagent.logging=none` unless `OTEL_JAVAAGENT_LOGGING` is set:
+
+- `OTEL_EXPORTER_OTLP_ENDPOINT`
+- `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`, `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`, `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`
+- `OTEL_TRACES_EXPORTER`, `OTEL_METRICS_EXPORTER`, `OTEL_LOGS_EXPORTER`
+
+Setting any of them leaves every export setting to the agent, including its error reporting, so a misconfigured collector still shows up as export errors. The check has to happen in the launcher because the agent gives system properties priority over environment variables: an unconditional `-D` would override the user's `OTEL_*` settings.
 
 The agent uses automatic instrumentation only - there is no custom manual instrumentation in the CLI tool code.
 
@@ -32,36 +40,160 @@ The following instrumentation applies to cluster nodes (Cassandra, stress, Spark
 
 ### Node Role Labeling
 
-The OTel Collector on cluster nodes uses the `k8sattributes` processor to read the K8s node label `type` and set it as the `node_role` resource attribute. This label is used by Grafana dashboards (e.g., System Overview) for hostname and service filtering.
+The OTel Collector (0.161.0) on cluster nodes sets the `node_role` resource attribute of host metrics and host log files from the node's host name: `db<N>` is `db`, `app<N>` is `app`, and `control<N>` is `control` (`transform/node_role_from_host`). A `node_role` that is already set is kept. This label is used by Grafana dashboards (e.g., System Overview) for hostname and service filtering.
 
 | Node Type | K8s Label | `node_role` Value | Source |
 |-----------|-----------|-------------------|--------|
-| Cassandra | `type=db` | `db` | K3s agent config |
-| Stress | `type=app` | `app` | K3s agent config |
-| Control | `type=control` | `control` | `Up` command node labeling |
+| Cassandra host metrics | N/A | `db` | Host name `db<N>` |
+| Cassandra JVM | N/A | `db` | `otel.resource.attributes` in `cassandra.in.sh` |
+| Stress host metrics | N/A | `app` | Host name `app<N>` |
+| Control host metrics | N/A | `control` | Host name `control<N>` |
 | Spark/EMR | N/A | `spark` | EMR OTel Collector `resource/role` processor |
 
-The `k8sattributes` processor runs in the `metrics/local` and `logs/local` pipelines only. Remote metrics arriving via OTLP (e.g., from Spark nodes) already carry `node_role` and are not modified.
+The host-name rule runs in the `metrics/local` and `logs/local` pipelines only. Host metrics and host log files carry no pod, so the `k8s_attributes` processor cannot find the node's `type` label for them. It still runs in `metrics/local`, before the host-name rule, for the kit metrics scraped by pod discovery: the Prometheus receiver sets each target's pod and namespace, and `k8s_attributes` adds the pod's labels (`k8s_app_instance`, which the kit dashboards select on) and the node's `type` as `node_role`. It also runs on container logs (`logs/containers`). Metrics arriving over OTLP take the `metrics/otlp` pipeline, which runs neither, so each OTLP source sets `node_role` itself: the Cassandra JVM agent and the stress sidecar declare it as a resource attribute, and Spark nodes set it in their own collector.
 
 The processor requires RBAC access to the K8s API. The OTel Collector DaemonSet runs with a dedicated ServiceAccount (`otel-collector`) that has read-only access to pods and nodes.
 
 ### Stress Job Metrics
 
-When running cassandra-easy-stress as K8s Jobs, metrics are automatically collected via an OTel collector sidecar container. The sidecar scrapes the stress process's Prometheus endpoint (`localhost:9500`) and forwards metrics via OTLP to the node's OTel DaemonSet, which then exports them to VictoriaMetrics.
+When running cassandra-easy-stress as K8s Jobs, metrics are automatically collected via an OTel collector sidecar container. The sidecar scrapes the stress process's Prometheus endpoint (`localhost:9500`) and forwards metrics via OTLP to the node's OTel DaemonSet, which then exports them to Mimir.
 
 The Prometheus scrape job is named `cassandra-easy-stress`. The following labels are available in Grafana:
 
 | Label | Source | Description |
 |-------|--------|-------------|
-| `host_name` | DaemonSet `resourcedetection` processor | K8s node name where the pod runs |
+| `host_name` | DaemonSet `resource_detection` processor | K8s node name where the pod runs |
 | `instance` | Sidecar `relabel_configs` | Node name with port (e.g., `ip-10-0-1-50:9500`) |
 | `cluster` | Sidecar `relabel_configs` | Cluster name from `cluster-config` ConfigMap |
 
 Short-lived stress commands (`list`, `info`, `fields`) do not include the sidecar since they complete quickly and don't produce meaningful metrics.
 
+### Cassandra JVM Instrumentation
+
+The Cassandra JVM runs the OpenTelemetry Java Agent (v2.31.1).  Its JMX Metric Insight module reads Cassandra's own MBeans in process and exports them over OTLP.  The agent replaces the k8ssandra management-api (MCAC/MAAC) agent, which is removed.
+
+`packer/cassandra/cassandra.in.sh` adds the agent flags at JVM start.  Cassandra's `bin/cassandra` sources that file under `/bin/sh` (dash), so it must stay POSIX sh.  A bashism there does not degrade to "no metrics": dash fails to parse the file, and Cassandra does not start.
+
+Key configuration:
+- **OTel Agent JAR**: installed by Packer to `/usr/local/otel/opentelemetry-javaagent.jar`
+- **Service name**: `cassandra`, which the collector turns into the Prometheus label `job="cassandra"`
+- **Export endpoint**: `http://localhost:4318` (local OTel Collector DaemonSet)
+- **Export interval**: 5 seconds
+- **JMX discovery delay**: 5 seconds.  The agent default is 60 seconds, which holds the first metrics back for about a minute and delays picking up a new table by as much again.
+- **Rule file**: `/etc/easy-db-lab/cassandra-jmx-rules.yaml`, written by `setup-instances`
+
+Use port 4318, not 4317.  The agent's default OTLP protocol is `http/protobuf`, which the collector serves on 4318.  Port 4317 is the collector's gRPC port, and every export fails there.
+
+The agent goes on `JVM_EXTRA_OPTS`, never on `JVM_OPTS`.  `bin/nodetool` sources `cassandra.in.sh` and puts `$JVM_OPTS` on its own command line, so an agent on `JVM_OPTS` starts again for every `nodetool`, `sstableloader` and `cassandra-stress` run.  `nodetool` discards `JVM_EXTRA_OPTS`, which is what an agent wants.
+
+#### How a node labels its own metrics
+
+`cassandra.in.sh` derives one value at JVM start and interpolates it into an OTel resource attribute:
+
+```sh
+EDL_CASSANDRA_BUILD=$(basename "$(readlink -f /usr/local/cassandra/current 2>/dev/null)" 2>/dev/null)
+
+edl_add_jvm_extra_opt \
+    "-javaagent:${EDL_OTEL_AGENT_JAR}" \
+    "-Dotel.service.name=cassandra" \
+    "-Dotel.resource.attributes=service.instance.id=$(hostname),node_role=db,cassandra_build=${EDL_CASSANDRA_BUILD}" \
+    "-Dotel.exporter.otlp.endpoint=http://localhost:4318" \
+    "-Dotel.metric.export.interval=5s" \
+    "-Dotel.jmx.discovery.delay=5000"
+```
+
+`otel.resource.attributes` declares the SDK's **Resource**: comma-separated `key=value` pairs that the agent attaches once, at startup.  The Resource is stamped on every metric, span and log that JVM exports.  It is identity attached at the source, not bookkeeping added per metric.
+
+The collector turns Resource attributes into Prometheus labels.  The `prometheus_remote_write` exporter sets `resource_to_telemetry_conversion: enabled: true` in `otel-collector-config.yaml`.  That step is what makes `sum by (cassandra_build)` work.
+
+The value is read at JVM start from the symlink that `cassandra use` moves, so a node describes itself.  Run `cassandra use --hosts=db2 <version>` and restart that node, and it reports its new build.  Nothing is pushed, and no other node is touched.  This is what makes a mixed-version comparison work when the split changes between runs.
+
+An info metric carrying the version was rejected.  Such a metric sits on its own series, so `sum by (cassandra_build) (<any other metric>)` returns nothing and every panel needs a `group_left` join.  A resource attribute lands on every series instead.
+
+`ReleaseVersion` from the `StorageService` MBean was also rejected.  It reports `5.0.9` against a `5.0.9-SNAPSHOT` build, which separates a stock release from a branch but collapses every branch build into one value.  Two branches under test would be indistinguishable.  The symlink target carries the commit sha.
+
+The same hook is open for anything else the node knows about itself: instance type, availability zone, disk layout, or a test-run identifier.  Add a shell variable, interpolate it into the same list, and it becomes a dimension you can group and filter by across every metric that JVM emits.
+
+Two rules protect the value:
+
+- Keep the whole attribute value as one shell word.  It contains `=` and `,`, so it must stay quoted.
+- Keep the file POSIX sh, for the dash reason above.
+
+If the symlink cannot be read, the value falls back to `cassandra_build=unknown` and the script warns on stderr.  The attribute is never dropped.  Dropping it would silently merge that node into another variant's series.
+
+#### The JMX rule file
+
+The agent reads every rule from `/etc/easy-db-lab/cassandra-jmx-rules.yaml`.  `otel.jmx.target.system` is deliberately not set, so the built-in `experimental-cassandra` target supplies nothing.  That target is experimental upstream: its metric names can move between agent releases and empty every panel that reads them.  Owning the rules pins each name to this repo.
+
+The file ships from the CLI, not from the AMI.  It is a Kotlin classpath resource at `src/main/resources/com/rustyrazorblade/easydblab/configuration/cassandra/cassandra-jmx-rules.yaml`.  `init` extracts it into the cluster workspace, and `setup-instances` uploads it to each Cassandra node.  Changing a rule therefore costs `./gradlew installDist` and a Cassandra restart, never an AMI rebake.
+
+The rules define these families:
+
+| Metric | Attributes | Source MBean |
+|--------|-----------|--------------|
+| `cassandra.client.request.latency.{p50,p99,p999,max}` | `cassandra.operation` | `type=ClientRequest,scope={Read,Write,RangeSlice,CASRead,CASWrite},name=Latency` |
+| `cassandra.client.request.count` | `cassandra.operation` | the same five beans, `Count` |
+| `cassandra.client.request.error` | `cassandra.operation`, `cassandra.status` | `name={Unavailables,Timeouts,Failures}` |
+| `cassandra.compaction.tasks.{completed,pending}` | — | `type=Compaction` |
+| `cassandra.storage.{load,hints.count,hints.in_progress}` | — | `type=Storage` |
+| `cassandra.table.disk.space.{live,total}` | `keyspace`, `table` | `type=Table` |
+| `cassandra.table.sstable.count.live` | `keyspace`, `table` | `type=Table,name=LiveSSTableCount` |
+| `cassandra.table.compaction.pending` | `keyspace`, `table` | `type=Table,name=PendingCompactions` |
+| `cassandra.table.{read,write}.latency.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name={Read,Write}Latency` |
+| `cassandra.table.sstables.per.read.{p50,p99,max}` | `keyspace`, `table` | `type=Table,name=SSTablesPerReadHistogram` |
+| `cassandra.thread_pool.tasks.{active,pending,blocked}` | `pool`, `pool_path` | `type=ThreadPools` |
+| `cassandra.messages.dropped` | `message_type` | `type=DroppedMessage` |
+| `cassandra.table.range.latency.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name=RangeLatency` |
+| `cassandra.table.live_rows.scanned.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name=LiveScannedHistogram` |
+| `cassandra.table.read_repair.requests` | `keyspace`, `table` | `type=Table,name=ReadRepairRequests` |
+| `cassandra.table.short_read_protection.requests` | `keyspace`, `table` | `type=Table,name=ShortReadProtectionRequests` |
+| `cassandra.table.replica_filtering_protection.requests` | `keyspace`, `table` | `type=Table,name=ReplicaFilteringProtectionRequests` |
+| `cassandra.table.replica_filtering_protection.rows_cached.{p50,p99,max}` | `keyspace`, `table` | `type=Table,name=ReplicaFilteringProtectionRowsCachedPerQuery` |
+| `cassandra.table.repaired_data.inconsistencies.{confirmed,unconfirmed}` | `keyspace`, `table` | `type=Table,name=RepairedDataInconsistencies{Confirmed,Unconfirmed}` |
+| `cassandra.table.repaired_data.overread.rows.{p50,p99,max}` | `keyspace`, `table` | `type=Table,name=RepairedDataTrackingOverreadRows` |
+| `cassandra.table.repaired_data.overread.time.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name=RepairedDataTrackingOverreadTime` |
+| `cassandra.read_repair.{blocking,reconcile_reads}` | — | `type=ReadRepair,name={RepairedBlocking,ReconcileRead}` |
+| `cassandra.buffer_pool.{hits,misses}` | `pool` | `type=BufferPool,name={Hits,Misses}` |
+| `cassandra.buffer_pool.{capacity,size,used,overflow}` | `pool` | `type=BufferPool,name={Capacity,Size,UsedSize,OverflowSize}` |
+| `cassandra.client.request.cas.contention.{p50,p99,p999,max}` | `cassandra.operation` | `type=ClientRequest,scope={CASRead,CASWrite},name=ContentionHistogram` |
+| `cassandra.client.request.cas.contended` | `cassandra.operation` | the same beans, `Count` |
+| `cassandra.client.request.cas.unfinished_commits` | `cassandra.operation` | `type=ClientRequest,scope={CASRead,CASWrite},name=UnfinishedCommit` |
+| `cassandra.client.request.cas.condition_not_met` | `cassandra.operation` | `type=ClientRequest,scope=CASWrite,name=ConditionNotMet` |
+| `cassandra.paxos.linearizability_violations` | — | `type=Paxos,name=LinearizabilityViolations` |
+| `cassandra.client.request.consistency.latency.{p50,p99,p999,max}` | `cassandra.operation`, `cassandra.consistency_level` | `type=ClientRequest,scope={Read-QUORUM,Write-QUORUM},name=Latency` |
+| `cassandra.table.cas.{prepare,propose,commit}.latency.{p50,p99,p999,max}` | `keyspace`, `table` | `type=Table,name=Cas{Prepare,Propose,Commit}Latency` |
+
+Latency is reported in microseconds.  The rules set `unit: us` and no `sourceUnit`, so the raw MBean value passes through unconverted.  That is the unit `nodetool proxyhistograms` and `nodetool tablehistograms` print, so a dashboard and the oracle compare directly: 86 against 86, not 86 against 0.000086.  The Prometheus suffix follows the unit, so these series end `_microseconds`, for example `cassandra_client_request_latency_p99_microseconds`.
+
+Lightweight transactions use the client request families as `cassandra_operation="casread"` and `"caswrite"`.  Cassandra also records a serial read in `scope=Read`, so a request total summed over every operation counts a serial read twice; filter `cassandra_operation!="casread"` for a total that counts each request once.  A CAS write is not recorded in `scope=Write`.  To see regular read latency without serial reads, read `cassandra_client_request_consistency_latency_*` with `cassandra_operation="read", cassandra_consistency_level="quorum"`.
+
+#### Latency is a percentile gauge, not a histogram
+
+The MAAC agent emitted Prometheus histogram buckets.  Every bucket carried the same cumulative count, so the histogram held no distribution and `histogram_quantile()` returned a constant.
+
+The rules read Cassandra's own `EstimatedHistogram` instead, the same reservoir `nodetool proxyhistograms` prints, and report each percentile as a gauge.  Two consequences follow:
+
+- `histogram_quantile()` does not apply to these series.  There are no `_bucket` series to give it.
+- A pre-aggregated percentile cannot be re-aggregated, so there is no true cluster-wide p99.  Show the spread across nodes with `max by (cluster)` and `min by (cluster)` instead.
+
+#### Migrating from MAAC
+
+Metric names and the job label both change, and nothing translates between them.
+
+| | Before | After |
+|---|---|---|
+| Metric prefix | `org_apache_cassandra_metrics_*` | `cassandra_*` |
+| Job label | `job="cassandra-maac"` | `job="cassandra"` |
+| Transport | Prometheus scrape of `localhost:9000` | OTLP to `localhost:4318` |
+| Latency shape | histogram buckets | percentile gauges |
+
+A query that spans the change returns two disjoint sets of series.  Metrics stored before the change are not comparable with metrics stored after it.
+
+An agent version bump is a dashboard-affecting change.  Re-verify every Cassandra panel under load after one.
+
 ### Spark JVM Instrumentation
 
-EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.25.0) and Pyroscope Java Agent (v2.3.0), both installed via an EMR bootstrap action. The OTel agent is activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
+EMR Spark jobs are auto-instrumented with the OpenTelemetry Java Agent (v2.31.1) and Pyroscope Java Agent (v2.3.0), both installed via an EMR bootstrap action. The OTel agent is activated through `spark.driver.extraJavaOptions` and `spark.executor.extraJavaOptions`.
 
 Each EMR node also runs an OTel Collector as a systemd service, collecting host metrics (CPU, memory, disk, network) and receiving OTLP from the Java agents. The collector forwards all telemetry to the control node's OTel Collector via OTLP gRPC.
 
@@ -88,19 +220,19 @@ Key configuration:
 
 ### Tool Runner Log Collection
 
-Commands run via `exec run` are executed through `systemd-run`, which captures stdout and stderr to log files under `/var/log/easydblab/tools/`. The OTel Collector's `filelog/tools` receiver watches this directory and ships log entries to VictoriaLogs with the attribute `source: tool-runner`.
+Commands run via `exec run` are executed through `systemd-run`, which captures stdout and stderr to log files under `/var/log/easydblab/tools/`. The OTel Collector's `file_log/tools` receiver watches this directory and ships log entries to Loki with the label `source="tool-runner"`.
 
-This provides automatic log capture for ad-hoc debugging tools (e.g., `inotifywait`, `tcpdump`, `strace`) run during investigations. Logs are queryable in VictoriaLogs and preserved in S3 backups via `logs backup`.
+This provides automatic log capture for ad-hoc debugging tools (e.g., `inotifywait`, `tcpdump`, `strace`) run during investigations. Logs are queryable in Loki, which writes them to S3, so they outlive the cluster.
 
 Key details:
 - **Log directory**: `/var/log/easydblab/tools/`
-- **Source attribute**: `tool-runner` (for filtering in VictoriaLogs queries)
+- **Source attribute**: `tool-runner` (for filtering Loki queries: `{source="tool-runner"}`)
 - **Foreground commands**: Output displayed after completion, also logged to file
 - **Background commands** (`--bg`): Output logged to file only, tool runs as a systemd transient unit
 
 ### YACE CloudWatch Scrape
 
-YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag to find relevant resources.
+YACE (Yet Another CloudWatch Exporter) runs on the control node and scrapes AWS CloudWatch metrics for services used by the cluster. It uses tag-based auto-discovery with the `easy_cass_lab=1` tag. For EC2 instances, EBS volumes and OpenSearch domains it also requires the cluster's own `ClusterId` tag, so each cluster reports only its own resources. The S3 job finds every bucket tagged `easy_cass_lab=1`, because the account bucket is shared by every cluster.
 
 YACE scrapes metrics for:
 - **S3** — bucket request/byte counts
@@ -110,14 +242,19 @@ YACE scrapes metrics for:
 
 EMR metrics are collected directly via OTel Collectors on Spark nodes (see Spark JVM Instrumentation above).
 
-YACE exposes scraped metrics as Prometheus-compatible metrics on port 5001, which are then scraped by the OTel Collector and forwarded to VictoriaMetrics. This replaces the previous CloudWatch datasource in Grafana with a Prometheus-based approach, giving dashboards access to CloudWatch metrics through VictoriaMetrics queries.
+YACE exposes scraped metrics as Prometheus-compatible metrics on port 5001, which are then scraped by the OTel Collector and forwarded to Mimir. This replaces the previous CloudWatch datasource in Grafana with a Prometheus-based approach, giving dashboards access to CloudWatch metrics through PromQL queries against Mimir.
 
 ## Resource Attributes
 
-Traces from the CLI tool and cluster nodes include the following resource attributes:
-- `service.name`: Service identifier (e.g., `easy-db-lab`, `cassandra-sidecar`, `spark-<job-name>`)
-- `service.version`: Application version (CLI tool only)
-- `host.name`: Hostname
+A resource attribute is declared once, when the SDK starts, and is stamped on every metric, span and log that process exports. The `prometheus_remote_write` exporter sets `resource_to_telemetry_conversion: enabled: true`, so each one also becomes a Prometheus label.
+
+Telemetry from the CLI tool and cluster nodes carries these resource attributes:
+- `service.name`: service identifier (e.g. `easy-db-lab`, `cassandra`, `cassandra-sidecar`, `spark-<job-name>`). The collector maps it to the Prometheus label `job`.
+- `service.instance.id`: instance identifier, mapped to the Prometheus label `instance`. Cassandra pins it to the hostname, because the agent default is a fresh UUID per JVM start and would mint a new series on every restart.
+- `service.version`: application version (CLI tool only)
+- `host.name`: hostname
+- `node_role`: node type — `db`, `app`, `control`, `spark-master` or `spark-worker`
+- `cassandra_build`: the build a Cassandra node is running, read from its own `current` symlink (Cassandra JVM only)
 
 ## Configuration
 
@@ -125,7 +262,8 @@ The following environment variables are supported:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP gRPC endpoint | None (no export) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP endpoint | None (no export) |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` or `grpc` | `http/protobuf` |
 | `OTEL_SERVICE_NAME` | Override service name | `easy-db-lab` |
 | `OTEL_RESOURCE_ATTRIBUTES` | Additional resource attributes | None |
 
@@ -146,6 +284,7 @@ Export traces to Jaeger:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 easy-db-lab up
 ```
 
@@ -157,6 +296,7 @@ If you have Grafana Tempo running with OTLP gRPC ingestion:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
 easy-db-lab up
 ```
 
@@ -164,9 +304,21 @@ easy-db-lab up
 
 ### No Traces Appearing
 
-1. Verify the endpoint is correct and reachable
-2. Check that the collector accepts gRPC OTLP (port 4317 is standard)
-3. Look for OpenTelemetry agent logs on startup (use `-Dotel.javaagent.debug=true` to enable debug logging)
+1. Verify `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Without it the launcher turns every exporter off.
+2. Verify the endpoint is correct and reachable, and that the protocol matches the port: `http/protobuf` (the default) on 4318, `grpc` on 4317
+3. Look for OpenTelemetry agent logs on startup (set `JAVA_OPTS=-Dotel.javaagent.debug=true` to enable debug logging)
+
+### No Traces in a Cluster's Tempo
+
+The cluster's collector forwards spans to Tempo with the cluster's tenant in `X-Scope-OrgID`, and Tempo runs native multi-tenancy, so a query that sends no tenant reads nothing. Query through the cluster's Grafana (its Tempo datasource sends the tenant) or add `-H 'X-Scope-OrgID: <tenant>'` to a direct API call.
+
+The collector scrapes its own telemetry into Mimir (job `otel-collector`, `:8888`). A Tempo exporter that is failing shows up there:
+
+```promql
+sum by (cluster, exporter) (rate(otelcol_exporter_send_failed_spans_total[5m]))
+```
+
+Tempo cuts a block at most every minute, so a trace is in S3 under `tempo/<tenant>/` within about two minutes of arriving; before that Tempo serves it from its live store. At `down`, the collector is stopped first, and `down` then waits until Tempo holds no live trace and has uploaded every block.
 
 ### High Latency
 

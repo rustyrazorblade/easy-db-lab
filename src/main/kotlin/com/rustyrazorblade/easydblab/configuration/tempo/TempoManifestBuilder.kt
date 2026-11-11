@@ -4,8 +4,8 @@ import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.services.TemplateService
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.ConfigMapVolumeSourceBuilder
-import io.fabric8.kubernetes.api.model.EmptyDirVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.HostPathVolumeSourceBuilder
 import io.fabric8.kubernetes.api.model.ServiceBuilder
 import io.fabric8.kubernetes.api.model.VolumeMountBuilder
 import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
@@ -13,9 +13,12 @@ import io.fabric8.kubernetes.api.model.apps.DeploymentBuilder
 /**
  * Builds all Tempo K8s resources as typed Fabric8 objects.
  *
- * Creates a Deployment on the control plane with S3 backend for trace storage.
- * Config uses Tempo runtime env expansion (`${S3_BUCKET}`, `${AWS_REGION}`),
- * not `__KEY__` template substitution. Env vars are injected from cluster-config ConfigMap.
+ * Creates a Deployment on the control plane with S3 backend for trace storage, under
+ * `tempo` in the account bucket. Tempo runs native multi-tenancy and never deletes a
+ * block. Its write-ahead logs live on a hostPath under [DATA_HOST_PATH], so a pod restart keeps
+ * received spans. Config uses Tempo runtime env expansion (`${S3_BUCKET}`, `${AWS_REGION}`,
+ * `${TRACES_S3_PREFIX}`), not `__KEY__` template substitution. Env vars are injected from the
+ * cluster-config ConfigMap.
  *
  * @property templateService Used for loading config files from classpath resources
  */
@@ -24,14 +27,28 @@ class TempoManifestBuilder(
 ) {
     companion object {
         private const val NAMESPACE = "default"
-        private const val APP_LABEL = "tempo"
+        private const val APP_LABEL = Constants.K8s.TEMPO_APP_LABEL
         private const val CONFIGMAP_NAME = "tempo-config"
-        private const val IMAGE = "grafana/tempo:2.10.0"
+        const val IMAGE = "grafana/tempo:3.0.3"
+
+        /** Tempo's data directory on the control node: both write-ahead logs live under it. */
+        const val DATA_HOST_PATH = "/mnt/db1/tempo"
+
+        /** The user the Tempo image runs as; [DATA_HOST_PATH] must be owned by it. */
+        const val TEMPO_UID = 10001L
 
         private const val LIVENESS_INITIAL_DELAY = 30
         private const val LIVENESS_PERIOD = 15
         private const val READINESS_INITIAL_DELAY = 5
         private const val READINESS_PERIOD = 10
+
+        // Tempo is not ready until its first blocklist poll ends, and a shared bucket with many
+        // blocks takes minutes (86 s for 1,394 blocks and 130,692 compacted metas).  The startup
+        // probe holds the liveness probe off for up to 10 minutes.  `/ready` can answer slowly
+        // while the poll runs, so each check waits 5 s instead of the 1 s default.
+        private const val STARTUP_PERIOD = 10
+        private const val STARTUP_TIMEOUT = 5
+        private const val STARTUP_FAILURE_THRESHOLD = 60
     }
 
     /**
@@ -161,11 +178,11 @@ class TempoManifestBuilder(
             .endValueFrom()
             .endEnv()
             .addNewEnv()
-            .withName("CLUSTER_S3_PREFIX")
+            .withName("TRACES_S3_PREFIX")
             .withNewValueFrom()
             .withNewConfigMapKeyRef()
             .withName("cluster-config")
-            .withKey("cluster_s3_prefix")
+            .withKey("traces_s3_prefix")
             .endConfigMapKeyRef()
             .endValueFrom()
             .endEnv()
@@ -202,7 +219,16 @@ class TempoManifestBuilder(
                     .withName("wal")
                     .withMountPath("/var/tempo")
                     .build(),
-            ).withNewLivenessProbe()
+            ).withNewStartupProbe()
+            .withNewHttpGet()
+            .withPath("/ready")
+            .withNewPort(Constants.K8s.TEMPO_PORT)
+            .endHttpGet()
+            .withPeriodSeconds(STARTUP_PERIOD)
+            .withTimeoutSeconds(STARTUP_TIMEOUT)
+            .withFailureThreshold(STARTUP_FAILURE_THRESHOLD)
+            .endStartupProbe()
+            .withNewLivenessProbe()
             .withNewHttpGet()
             .withPath("/ready")
             .withNewPort(Constants.K8s.TEMPO_PORT)
@@ -228,8 +254,10 @@ class TempoManifestBuilder(
             ).endVolume()
             .addNewVolume()
             .withName("wal")
-            .withEmptyDir(
-                EmptyDirVolumeSourceBuilder()
+            .withHostPath(
+                HostPathVolumeSourceBuilder()
+                    .withPath(DATA_HOST_PATH)
+                    .withType("DirectoryOrCreate")
                     .build(),
             ).endVolume()
             .endSpec()

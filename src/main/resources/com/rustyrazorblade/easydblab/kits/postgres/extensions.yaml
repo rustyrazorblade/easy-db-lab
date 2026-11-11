@@ -8,8 +8,9 @@ extensions:
       - pg_duckdb
     postgres_uid: 999
     postgres_gid: 999
-    postgres_port: 30432
-    metrics_port: 30987
+    # Each instance needs its own NodePorts: plain postgres takes 30432 / 30987.
+    postgres_port: 30435
+    metrics_port: 30990
   postgis:
     description: "Geospatial types and functions"
     image: "ghcr.io/cloudnative-pg/postgis:__PG_MAJOR__"

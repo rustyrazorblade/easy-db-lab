@@ -18,6 +18,12 @@ interface SSHConnectionProvider {
     fun getConnection(host: Host): ISSHClient
 
     /**
+     * Forgets the connection to [host] after it failed: closes and drops the cached session, and
+     * tells the route the path failed, so the next [getConnection] dials a fresh one.
+     */
+    fun discard(host: Host)
+
+    /**
      * Stop all SSH connections and clean up resources.
      * This should be called when the application is shutting down.
      */

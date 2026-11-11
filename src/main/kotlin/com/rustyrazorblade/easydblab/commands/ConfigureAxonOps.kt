@@ -45,7 +45,7 @@ class ConfigureAxonOps : PicoBaseCommand() {
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
             val it = host.toHost()
-            eventBus.emit(Event.Setup.AxonOpsConfiguring(it.toString()))
+            eventBus.emit(Event.Setup.AxonOpsConfiguring(it.alias))
 
             remoteOps
                 .executeRemotely(

@@ -172,7 +172,7 @@ class SystemDServiceManagerTest : BaseKoinTest() {
     @Test
     fun `isRunning should return true when service is active`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active test-service"
+        val expectedCommand = "sudo systemctl is-active test-service || true"
         val activeResponse = Response(text = "active", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(activeResponse)
@@ -189,7 +189,7 @@ class SystemDServiceManagerTest : BaseKoinTest() {
     @Test
     fun `isRunning should return false when service is inactive`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active test-service"
+        val expectedCommand = "sudo systemctl is-active test-service || true"
         val inactiveResponse = Response(text = "inactive", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(inactiveResponse)
@@ -206,7 +206,7 @@ class SystemDServiceManagerTest : BaseKoinTest() {
     @Test
     fun `isRunning should return false when service is in failed state`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active test-service"
+        val expectedCommand = "sudo systemctl is-active test-service || true"
         val failedResponse = Response(text = "failed", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(failedResponse)
@@ -223,7 +223,7 @@ class SystemDServiceManagerTest : BaseKoinTest() {
     @Test
     fun `isRunning should handle active status with whitespace`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active test-service"
+        val expectedCommand = "sudo systemctl is-active test-service || true"
         val activeResponse = Response(text = "active\n", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(activeResponse)
@@ -239,7 +239,7 @@ class SystemDServiceManagerTest : BaseKoinTest() {
     @Test
     fun `isRunning should be case insensitive for active status`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active test-service"
+        val expectedCommand = "sudo systemctl is-active test-service || true"
         val activeResponse = Response(text = "ACTIVE", stderr = "")
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenReturn(activeResponse)
@@ -255,7 +255,7 @@ class SystemDServiceManagerTest : BaseKoinTest() {
     @Test
     fun `isRunning should return failure when SSH operation throws exception`() {
         // Given
-        val expectedCommand = "sudo systemctl is-active test-service"
+        val expectedCommand = "sudo systemctl is-active test-service || true"
         whenever(mockRemoteOps.executeRemotely(eq(testHost), eq(expectedCommand), any(), any()))
             .thenThrow(RuntimeException("SSH connection lost"))
 

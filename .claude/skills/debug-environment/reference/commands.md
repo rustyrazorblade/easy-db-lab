@@ -114,89 +114,34 @@ easy-db-lab ssh db-2
 ## Observability Commands
 
 ### `logs query`
-Query logs from VictoriaLogs.
+Query logs from Loki. Without `--query` the query is scoped to this cluster.
 
 ```bash
-# Query all logs
+# Recent logs from every source (default: last hour, 100 lines)
 easy-db-lab logs query
 
-# Query with filter
-easy-db-lab logs query --filter 'service="cassandra"'
+# One source on one host
+easy-db-lab logs query --source cassandra --host db0
 
-# Query with time range
-easy-db-lab logs query --since "1h"
+# A systemd unit, with a text filter and a time range
+easy-db-lab logs query --source journald --unit cassandra.service --grep ERROR --since 30m
 
-# Query specific log stream
-easy-db-lab logs query --stream "systemd"
+# Raw LogQL, sent unchanged (not scoped to this cluster)
+easy-db-lab logs query --query '{cluster="<cluster>", service_name="cassandra"} |= "Exception"'
 ```
 
 **Use when:** Investigating issues through log analysis.
 
 ---
 
-### `logs ls`
-List available log streams.
+### `grafana backup`
+Back up Grafana annotations to S3. Metrics and logs need no backup: Mimir and Loki write to S3 as they run, and `down` flushes both before teardown.
 
 ```bash
-easy-db-lab logs ls
+easy-db-lab grafana backup
 ```
 
-**Use when:** You need to see what log sources are available.
-
----
-
-### `logs backup`
-Backup logs to local storage.
-
-```bash
-easy-db-lab logs backup --output /path/to/backup
-```
-
-**Use when:** Preserving logs before cluster destruction or for offline analysis.
-
----
-
-### `logs import`
-Import previously backed up logs.
-
-```bash
-easy-db-lab logs import --input /path/to/backup
-```
-
-**Use when:** Restoring logs for analysis.
-
----
-
-### `metrics backup`
-Backup metrics from VictoriaMetrics.
-
-```bash
-easy-db-lab metrics backup --output /path/to/backup
-```
-
-**Use when:** Preserving metrics data.
-
----
-
-### `metrics import`
-Import previously backed up metrics.
-
-```bash
-easy-db-lab metrics import --input /path/to/backup
-```
-
-**Use when:** Restoring metrics for analysis.
-
----
-
-### `metrics ls`
-List available metrics.
-
-```bash
-easy-db-lab metrics ls
-```
-
-**Use when:** Exploring what metrics are being collected.
+**Use when:** Preserving annotations before cluster destruction.
 
 ---
 
@@ -444,8 +389,8 @@ kubectl get pods -n monitoring
 kubectl get pods -n grafana
 
 # 3. Check specific service logs
-kubectl logs -n monitoring <victoriametrics-pod>
-kubectl logs -n monitoring <victorialogs-pod>
+kubectl logs -l app.kubernetes.io/name=mimir
+kubectl logs -l app.kubernetes.io/name=loki
 
 # 4. Update Grafana config if needed
 easy-db-lab grafana update-config

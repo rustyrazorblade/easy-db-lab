@@ -14,7 +14,9 @@ import kotlinx.serialization.modules.subclass
  * Declares how a kit's metrics reach the OTel collector.
  *
  * - [Scrape]: kit exposes a Prometheus endpoint; OTel DaemonSet scrapes it via hostPort
- * - [JavaAgent]: JVM kit uses the OTel Java agent JAR at /usr/local/otel/opentelemetry-javaagent.jar
+ * - [JavaAgent]: declarative — the JVM kit loads the OTel Java agent, which pushes OTLP to the
+ *   collector on its node; no OTel ConfigMap changes. The jar is
+ *   `/usr/local/otel/opentelemetry-javaagent.jar`, mounted from the host (baked into the base AMI).
  * - [HelmNative]: kit has built-in telemetry via helm values; no OTel config change needed
  */
 @Serializable
@@ -102,8 +104,10 @@ data class KitEndpoint(
 
     /**
      * Produces TARGET_* environment variables for this endpoint given the resolved [ip]
-     * and the kit's [sqlCap]. Returns an empty map for endpoint types with no TARGET_*
-     * convention (HTTPS, NATIVE, CQL).
+     * and the kit's [sqlCap]. The user variables come from the `sql` capability and are empty
+     * without one. Returns an empty map for endpoint types with no TARGET_* convention (HTTPS,
+     * CQL). The `when` names every type, so a new type does not compile until it states its
+     * variables.
      */
     fun toTargetVars(
         ip: String,
@@ -132,8 +136,15 @@ data class KitEndpoint(
                     "TARGET_MYSQL_DATABASE" to database,
                 )
             EndpointType.HTTP -> mapOf("TARGET_HTTP_URL" to formatUrl(ip))
+            EndpointType.NATIVE ->
+                mapOf(
+                    "TARGET_NATIVE_HOST" to ip,
+                    "TARGET_NATIVE_PORT" to port.toString(),
+                    "TARGET_NATIVE_USER" to sqlUser,
+                    "TARGET_NATIVE_DATABASE" to database,
+                )
             EndpointType.KAFKA -> mapOf("TARGET_KAFKA_BOOTSTRAP" to formatUrl(ip))
-            else -> emptyMap()
+            EndpointType.HTTPS, EndpointType.CQL -> emptyMap()
         }
     }
 }
@@ -230,7 +241,7 @@ data class KitConfig(
     val description: String = "",
     val version: String = "",
     @SerialName("collision-check")
-    val collisionCheck: Boolean = false,
+    val collisionCheck: CollisionCheck = CollisionCheck.NONE,
     val dashboards: List<DashboardRef> = emptyList(),
     val args: List<KitArgSpec> = emptyList(),
     val metrics: List<KitMetrics> = emptyList(),
@@ -266,10 +277,16 @@ data class KitConfig(
         }
 }
 
+/**
+ * A dashboard a kit installs into its Grafana folder after `start`. A dashboard with an
+ * [extension] is installed only by the instance created with that extension (postgres-duckdb
+ * installs `duckdb.json`, not PostGIS's); one with none is installed by every instance.
+ */
 @Serializable
 data class DashboardRef(
     val path: String,
     val name: String = "",
+    val extension: String = "",
 )
 
 @Serializable
@@ -286,6 +303,18 @@ data class KitHooks(
     val postWorkloadStop: KitHook? = null,
 )
 
+/**
+ * One CLI option a kit declares, at install time ([KitConfig.args]) or for one command
+ * ([KitCommandSpec.args]). Its value reaches the kit's scripts as the environment variable
+ * [variable]; an arg the user leaves out that has no [default] reaches them as an empty string.
+ *
+ * A [ArgType.BOOLEAN] arg takes an optional value: a bare `--flag` means `true`, and
+ * `--flag false` or `--flag=false` turns it off, so `--help` shows it as `--flag[=<value>]`.
+ *
+ * A [ArgType.KIT_REF] arg names another installed kit. [capability] and [endpoints] state what
+ * that target must declare; `kit install` refuses a target that lacks either
+ * ([com.rustyrazorblade.easydblab.commands.install.KitRefTargetValidator]).
+ */
 @Serializable
 data class KitArgSpec(
     val flag: String,
@@ -295,7 +324,16 @@ data class KitArgSpec(
     val type: ArgType = ArgType.STRING,
     val default: String = "",
     val capability: String = "",
+    /** Endpoint types a kit-ref target must declare, for example `[native, http]`. */
+    val endpoints: List<KitEndpoint.EndpointType> = emptyList(),
 ) {
+    /**
+     * The value placeholder `--help` and `commands` show for this arg, from its variable name
+     * (`NUM_RECORDS` becomes `<num-records>`). A boolean flag shows it as optional,
+     * `--flag[=<value>]`.
+     */
+    val paramLabel: String get() = "<${variable.lowercase().replace('_', '-')}>"
+
     @Serializable
     enum class ArgType {
         @SerialName("string")

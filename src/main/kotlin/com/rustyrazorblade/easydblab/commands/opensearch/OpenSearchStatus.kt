@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.opensearch
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.OpenSearchClusterState
@@ -19,7 +18,6 @@ import software.amazon.awssdk.services.opensearch.model.ResourceNotFoundExceptio
  *
  * Displays current domain state, endpoints, and configuration.
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "status",

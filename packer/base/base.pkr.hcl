@@ -40,6 +40,13 @@ variable "ssh_private_key_file" {
   default = ""
 }
 
+# "session_manager" when the profile tunnels SSH over SSM Session Manager (its `ssm` SSH transport),
+# so the build needs no inbound port 22 from this machine. Empty keeps Packer's default interface.
+variable "ssh_interface" {
+  type    = string
+  default = ""
+}
+
 locals {
   timestamp = regex_replace(timestamp(), "[- TZ:]", "")
   version = var.release_version != "" ? var.release_version : local.timestamp
@@ -66,6 +73,8 @@ source "amazon-ebs" "ubuntu" {
   ssh_username         = "ubuntu"
   ssh_keypair_name     = var.ssh_keypair_name
   ssh_private_key_file = var.ssh_private_key_file
+  # null leaves the argument unset, so direct-transport builds keep Packer's own default.
+  ssh_interface        = var.ssh_interface != "" ? var.ssh_interface : null
 
   # Use permanent VPC infrastructure created by PackerInfrastructureService
   vpc_filter {
@@ -163,6 +172,16 @@ build {
     script = "install/install_bcc.sh"
   }
 
+  # Compile the ebpf_exporter program overrides against this kernel's BTF and install the
+  # objects under /usr/local/lib/ebpf_exporter/ (see install/ebpf/README.md).
+  provisioner "file" {
+    source      = "install/ebpf"
+    destination = "/tmp/ebpf"
+  }
+  provisioner "shell" {
+    script = "install/install_ebpf_programs.sh"
+  }
+
   # install k3s (disabled, not auto-started)
   provisioner "shell" {
     script = "install/install_k3s.sh"
@@ -191,12 +210,25 @@ build {
     script = "install/install_cilium_cli.sh"
   }
 
+  # Leave Cilium's secondary ENIs (ens6+) unmanaged by systemd-networkd so the OS does not
+  # DHCP them and hijack host routing (see the script header for the full rationale). Inert on
+  # Flannel; must be baked in because the ENIs are attached at runtime.
+  provisioner "shell" {
+    script = "install/configure_cilium_eni_networkd.sh"
+  }
+
+  # Poll the Amazon Time Sync Service every 8 s instead of the image's 16 s, so the kernel's
+  # clock error bound grows half as far between polls (see the script header).
+  provisioner "shell" {
+    script = "install/configure_chrony_poll.sh"
+  }
+
   # install OpenTelemetry Java agent for workload instrumentation
   provisioner "shell" {
     script = "install/install_otel_agent.sh"
   }
 
-  # Installs all supported JDKs (8/11/17/21 + debug symbols) for the Cassandra versions we
+  # Installs all supported JDKs (8/11/17/21/25 + debug symbols) for the Cassandra versions we
   # support. The hundreds of MB of -dbg packages come from the apt archive cache restored above.
   provisioner "shell" {
     environment_vars = [

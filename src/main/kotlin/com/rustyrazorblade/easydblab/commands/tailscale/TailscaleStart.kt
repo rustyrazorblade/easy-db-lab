@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.tailscale
 
 import com.rustyrazorblade.easydblab.Constants
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
@@ -27,9 +26,8 @@ import picocli.CommandLine.Option
  *
  * OAuth credentials can be provided via:
  * - CLI arguments (--client-id, --client-secret)
- * - User configuration (setup-profile)
+ * - User configuration (profile setup)
  */
-@McpCommand
 @RequireProfileSetup
 @Command(
     name = "start",
@@ -57,6 +55,17 @@ class TailscaleStart : PicoBaseCommand() {
     )
     var tag: String? = null
 
+    /**
+     * Non-zero when Tailscale did not start, after an error event said why. `up` runs this command
+     * and reads the exit code to decide whether the tailnet came up.
+     */
+    private var exitCode = 0
+
+    override fun call(): Int {
+        val lifecycleExit = super.call()
+        return if (lifecycleExit != 0) lifecycleExit else exitCode
+    }
+
     override fun execute() {
         val credentials = resolveCredentials() ?: return
         val controlHost = getControlHostOrReturn() ?: return
@@ -74,6 +83,7 @@ class TailscaleStart : PicoBaseCommand() {
 
         if (resolvedClientId.isBlank() || resolvedClientSecret.isBlank()) {
             showMissingCredentialsError()
+            exitCode = Constants.ExitCodes.ERROR
             return null
         }
 
@@ -88,11 +98,11 @@ class TailscaleStart : PicoBaseCommand() {
 
                 Please provide credentials via:
                 1. CLI arguments: --client-id and --client-secret
-                2. Setup profile: easy-db-lab setup-profile
+                2. Setup profile: easy-db-lab profile setup
 
                 To get OAuth credentials:
                 1. Go to https://login.tailscale.com/admin/settings/oauth
-                2. Generate an OAuth client with "Devices: write" scope
+                2. Generate an OAuth client with the '${Constants.Tailscale.AUTH_KEYS_SCOPE}' and '${Constants.Tailscale.DEVICES_SCOPE}' write scopes
                 3. Copy the client ID and secret
                 """.trimIndent(),
             ),
@@ -103,6 +113,7 @@ class TailscaleStart : PicoBaseCommand() {
         val controlHost = clusterState.getControlHost()
         if (controlHost == null) {
             eventBus.emit(Event.Tailscale.NoControlNode)
+            exitCode = Constants.ExitCodes.ERROR
         }
         return controlHost
     }
@@ -141,13 +152,45 @@ class TailscaleStart : PicoBaseCommand() {
             clusterStateManager.save(clusterState)
 
             tailscaleService.startTailscale(host, authKeyResult.key, controlHost.alias, cidr).getOrThrow()
+
+            // Record the device's node ID so `down` removes exactly this cluster's device from
+            // the tailnet; the hostname alone is shared by every cluster's control node.
+            val deviceId = tailscaleService.getDeviceId(host).getOrThrow()
+            removeReplacedDevice(credentials, deviceId)
+            clusterState.tailscaleDeviceId = deviceId
+            clusterStateManager.save(clusterState)
+
             showSuccessMessage(controlHost.alias, cidr)
             showCurrentStatus(host)
         } catch (e: TailscaleApiException) {
+            exitCode = Constants.ExitCodes.ERROR
             eventBus.emit(Event.Tailscale.StartFailed(e.message ?: "unknown error"))
             if (e.message?.contains("tags") == true) {
                 eventBus.emit(Event.Tailscale.TagConfigWarning(credentials.tag))
             }
+        }
+    }
+
+    /**
+     * Removes the device an earlier start recorded when the control node has registered as a new
+     * one, so the old device does not stay in the tailnet once its ID is overwritten. A device
+     * already gone counts as removed. Any other failure is reported, naming the old device so it
+     * can be removed by hand, but does not fail the command: Tailscale is up, and `up` reads a
+     * non-zero exit as Tailscale not starting. The new device is still recorded, because it is the
+     * live one `down` must remove.
+     */
+    private fun removeReplacedDevice(
+        credentials: TailscaleCredentials,
+        newDeviceId: String,
+    ) {
+        val oldDeviceId = clusterState.tailscaleDeviceId
+        if (oldDeviceId.isNullOrBlank() || oldDeviceId == newDeviceId) return
+
+        try {
+            tailscaleService.deleteDevice(credentials.clientId, credentials.clientSecret, oldDeviceId)
+            eventBus.emit(Event.Tailscale.DeviceDeleted(oldDeviceId))
+        } catch (e: TailscaleApiException) {
+            eventBus.emit(Event.Tailscale.DeviceNotRemoved(oldDeviceId, e.message ?: e::class.simpleName.orEmpty()))
         }
     }
 

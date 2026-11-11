@@ -5,6 +5,10 @@ collision-check: false
 metrics:
   - type: scrape
     port: 9090
+    # Pod discovery, so only the collector on the pod's own node scrapes it. A static job
+    # would have every collector scrape localhost:9090, and every node without the pod
+    # would report the job down.
+    pod-selector: "app.kubernetes.io/name=presto,app.kubernetes.io/component=coordinator"
 runtime:
   type: helm
   release: presto

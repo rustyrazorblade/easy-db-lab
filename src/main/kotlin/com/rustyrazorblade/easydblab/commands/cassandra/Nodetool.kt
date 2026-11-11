@@ -1,6 +1,5 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.RequireSSHKey
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -21,7 +20,6 @@ import picocli.CommandLine.Parameters
  *   easy-db-lab cassandra nt --hosts db0,db2 info
  *   easy-db-lab cassandra nt ring
  */
-@McpCommand
 @RequireProfileSetup
 @RequireSSHKey
 @Command(
@@ -46,7 +44,13 @@ class Nodetool : PicoBaseCommand() {
         val command = args.joinToString(" ")
 
         hostOperationsService.withHosts(clusterState.hosts, ServerType.Cassandra, hosts.hostList) { host ->
-            val result = remoteOps.executeRemotely(host.toHost(), "/usr/local/cassandra/current/bin/nodetool $command")
+            // output = false: the NodetoolOutput event prints the output once, under the host's header.
+            val result =
+                remoteOps.executeRemotely(
+                    host.toHost(),
+                    "/usr/local/cassandra/current/bin/nodetool $command",
+                    output = false,
+                )
             eventBus.emit(Event.Cassandra.NodetoolOutput(host.alias, result.text))
         }
     }

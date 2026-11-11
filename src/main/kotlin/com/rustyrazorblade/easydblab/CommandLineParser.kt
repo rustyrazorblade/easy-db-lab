@@ -10,15 +10,14 @@ import com.rustyrazorblade.easydblab.commands.Commands
 import com.rustyrazorblade.easydblab.commands.ConfigureAWS
 import com.rustyrazorblade.easydblab.commands.ConfigureAxonOps
 import com.rustyrazorblade.easydblab.commands.Down
+import com.rustyrazorblade.easydblab.commands.Help
 import com.rustyrazorblade.easydblab.commands.Hosts
 import com.rustyrazorblade.easydblab.commands.Init
 import com.rustyrazorblade.easydblab.commands.Ip
-import com.rustyrazorblade.easydblab.commands.PicoCommand
 import com.rustyrazorblade.easydblab.commands.PruneAMIs
 import com.rustyrazorblade.easydblab.commands.Repl
 import com.rustyrazorblade.easydblab.commands.Server
 import com.rustyrazorblade.easydblab.commands.SetupInstance
-import com.rustyrazorblade.easydblab.commands.SetupProfile
 import com.rustyrazorblade.easydblab.commands.ShowIamPolicies
 import com.rustyrazorblade.easydblab.commands.Status
 import com.rustyrazorblade.easydblab.commands.Up
@@ -28,13 +27,18 @@ import com.rustyrazorblade.easydblab.commands.aws.Aws
 import com.rustyrazorblade.easydblab.commands.cassandra.Cassandra
 import com.rustyrazorblade.easydblab.commands.exec.Exec
 import com.rustyrazorblade.easydblab.commands.grafana.Grafana
+import com.rustyrazorblade.easydblab.commands.ingress.Ingress
 import com.rustyrazorblade.easydblab.commands.install.KitInstallCommandFactory
 import com.rustyrazorblade.easydblab.commands.install.KitRunnerCommandFactory
 import com.rustyrazorblade.easydblab.commands.kit.Kit
 import com.rustyrazorblade.easydblab.commands.logs.Logs
 import com.rustyrazorblade.easydblab.commands.metrics.Metrics
+import com.rustyrazorblade.easydblab.commands.observability.Observability
 import com.rustyrazorblade.easydblab.commands.opensearch.OpenSearch
 import com.rustyrazorblade.easydblab.commands.platform.Platform
+import com.rustyrazorblade.easydblab.commands.profile.Profile
+import com.rustyrazorblade.easydblab.commands.report.Report
+import com.rustyrazorblade.easydblab.commands.socks.Socks
 import com.rustyrazorblade.easydblab.commands.spark.Spark
 import com.rustyrazorblade.easydblab.commands.tailscale.Tailscale
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
@@ -42,12 +46,15 @@ import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
 import com.rustyrazorblade.easydblab.di.KoinCommandFactory
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import com.rustyrazorblade.easydblab.services.CommandExecutor
 import com.rustyrazorblade.easydblab.services.DefaultCommandExecutor
+import com.rustyrazorblade.easydblab.services.HelpTopicService
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitCommandScanner
 import com.rustyrazorblade.easydblab.services.ScannedKitCommand
 import com.rustyrazorblade.easydblab.services.TemplateVariables
+import com.rustyrazorblade.easydblab.services.WorkspaceKitScanner
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.get
@@ -56,7 +63,6 @@ import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Model.CommandSpec
 import picocli.CommandLine.Spec
-import java.io.File
 import kotlin.system.exitProcess
 
 /**
@@ -71,6 +77,7 @@ import kotlin.system.exitProcess
         // Top-level commands
         Commands::class,
         Version::class,
+        Help::class,
         Clean::class,
         Down::class,
         Ip::class,
@@ -88,20 +95,24 @@ import kotlin.system.exitProcess
         Init::class,
         SetupInstance::class,
         Up::class,
-        SetupProfile::class,
+        Socks::class,
+        Ingress::class,
         Repl::class,
         Server::class,
         // Parent command groups
         Spark::class,
         Grafana::class,
+        Observability::class,
         Cassandra::class,
         OpenSearch::class,
         Aws::class,
         Logs::class,
         Metrics::class,
+        Report::class,
         Tailscale::class,
         Platform::class,
         Kit::class,
+        Profile::class,
         Cleanup::class,
     ],
 )
@@ -124,8 +135,13 @@ class EasyDBLabCommand : Runnable {
 class CommandLineParser : KoinComponent {
     private val eventBus: EventBus by inject()
 
-    /** The main PicoCLI CommandLine instance with all subcommands registered. */
-    private val commandLine: CommandLine =
+    /**
+     * The main PicoCLI CommandLine instance with all subcommands registered.
+     *
+     * `internal` rather than private so a test can inspect the registered tree directly. Help
+     * output alone cannot tell a static command group from a kit runner that shadowed its name.
+     */
+    internal val commandLine: CommandLine =
         CommandLine(EasyDBLabCommand::class.java, KoinCommandFactory()).apply {
             // Set exception handler to ensure non-zero exit code on exceptions
             executionExceptionHandler =
@@ -199,11 +215,38 @@ class CommandLineParser : KoinComponent {
         registerDynamicInstallSubcommands()
         registerDynamicKitSubcommands()
         applyHelpOptionsToAll(commandLine)
+        wireHelpFooters()
     }
 
     private fun applyHelpOptionsToAll(cl: CommandLine) {
         cl.commandSpec.mixinStandardHelpOptions(true)
         cl.subcommands.values.forEach { applyHelpOptionsToAll(it) }
+    }
+
+    /**
+     * Wires help topic footers to command usage output.
+     *
+     * The root usage carries a generic footer directing users to run `help` for task guides.
+     * Each subcommand that maps to a topic (by name) carries a footer naming the related
+     * `help <topic>`. The footer text is generated from the discovered topic set, not a
+     * hardcoded list, so adding a topic file keeps the pointers automatically in sync.
+     */
+    private fun wireHelpFooters() {
+        val helpTopicService = get<HelpTopicService>()
+        val topics = helpTopicService.findAll()
+        val topicNames = topics.map { it.name }.toSet()
+
+        // Add generic footer to root command
+        val rootFooter = "Run 'easy-db-lab help' to list task-oriented guides."
+        commandLine.commandSpec.usageMessage().footer(rootFooter)
+
+        // Add per-command footers for commands that map to topics
+        commandLine.subcommands.forEach { (name, subCmd) ->
+            if (name in topicNames) {
+                val footer = "See 'easy-db-lab help $name' for a task-oriented guide."
+                subCmd.commandSpec.usageMessage().footer(footer)
+            }
+        }
     }
 
     /**
@@ -249,34 +292,20 @@ class CommandLineParser : KoinComponent {
     }
 
     /**
-     * Scans the working directory for installed kit directories and registers a top-level
-     * PicoCLI subcommand for each one. A directory qualifies if it contains either:
-     * - a `bin/` subdirectory with at least one executable script, or
-     * - a `kit.yaml` with at least one typed lifecycle phase.
+     * Registers a top-level PicoCLI subcommand for every installed kit directory found by
+     * [WorkspaceKitScanner]. A directory qualifies only when it contains a `kit.yaml`; a `bin/`
+     * directory alone does not, because source checkouts and virtualenvs have one too.
      *
-     * For example, `<cwd>/clickhouse/bin/start.sh` → `easy-db-lab clickhouse start`, or
-     * `<cwd>/clickhouse/kit.yaml` with a `start` phase → `easy-db-lab clickhouse start`.
+     * For example, `<cwd>/clickhouse/kit.yaml` alongside `<cwd>/clickhouse/bin/start.sh` →
+     * `easy-db-lab clickhouse start`.
      */
     @Suppress("TooGenericExceptionCaught")
     private fun registerDynamicKitSubcommands() {
-        val ctx = get<Context>()
         val factory = KitRunnerCommandFactory()
 
-        ctx.workingDirectory
-            .listFiles()
-            .orEmpty()
-            .filter { it.isDirectory }
+        get<WorkspaceKitScanner>()
+            .discover()
             .forEach { kitDir ->
-                val hasBinScripts =
-                    File(kitDir, "bin").isDirectory &&
-                        File(kitDir, "bin")
-                            .listFiles()
-                            .orEmpty()
-                            .any { it.isFile && (it.canExecute() || it.name.endsWith(".sh")) }
-                val hasConfigYaml = File(kitDir, Constants.Kit.CONFIG_FILE).isFile
-
-                if (!hasBinScripts && !hasConfigYaml) return@forEach
-
                 val kitName = kitDir.name
                 if (kitName in commandLine.subcommands.keys) return@forEach
 

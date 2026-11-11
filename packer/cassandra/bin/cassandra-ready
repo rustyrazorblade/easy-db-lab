@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+#
+# cassandra-ready — exit 0 when this node's database can safely be attached to.
+#
+# "Ready" here means one specific thing: the process is far enough into its life that signalling it
+# is safe. async-profiler attaches with jattach, and jattach signals SIGQUIT to make the JVM start
+# its attach listener. A process that has not installed a SIGQUIT handler yet takes the signal's
+# default disposition instead — terminate and dump core — so attaching to a database that is still
+# starting KILLS it. See the header of edl-profiling-reconcile for the incident this came from.
+#
+# Two windows are unsafe, and the readiness signal below is past both:
+#
+#   1. cassandra.service's ExecStart is a shell script that execs the JVM. Until that exec happens
+#      the main PID is bash, whose SIGQUIT disposition in a non-interactive shell is the default.
+#   2. The JVM itself installs its signal handlers during VM init, before main() runs.
+#
+# The signal is the native transport's listening socket, which is bound at the very end of
+# Cassandra's startup — long after both windows close.
+#
+# ## Ask the socket table. Never connect to a guessed address.
+#
+# This probe asks whether anything is LISTENING on the port. It deliberately does NOT open a
+# connection, because a connection needs an address and there is no address to assume: Cassandra
+# binds the native transport to `rpc_address`, which on these nodes is the node's private IP so that
+# other nodes and clients can reach it. It is not on loopback.
+#
+#     $ ss -lntp | grep 9042
+#     LISTEN 0 4096 10.0.1.234:9042 0.0.0.0:*
+#
+# The first version of this probe connected to 127.0.0.1 and therefore answered "not listening" on
+# every healthy node, every time — every node fell through to the uptime backstop below and waited
+# ten minutes to start profiling. Reading the socket table removes the address question entirely
+# rather than trading one hardcoded guess for another. Do not reintroduce a connect() here.
+#
+# What that gives up is proof that the socket *accepts*, as opposed to merely being bound. That is a
+# far narrower failure than the one this guards against, and it is irrelevant to the guard: a bound
+# socket already means startup got past both unsafe windows, which is the whole question.
+#
+# Usage:  cassandra-ready [pid]
+#
+# The pid is only used for the uptime backstop; with no argument it is read from cassandra-pid.
+#
+# Exits 0 when the database is ready to be signalled and 1 when it is not. Either way it prints one
+# line whose first word is the reason code — `listening`, `uptime`, `starting` or `no-process` — so
+# the caller can record WHICH answer it got and a human reading it gets a sentence.
+
+set -uo pipefail
+
+# The port the native transport listens on. Overridable because a node can be configured to run it
+# somewhere else, and because the reconciler's test tier drives this script directly.
+PORT="${EDL_DB_READY_PORT:-9042}"
+
+# The backstop: how old a process must be before it counts as ready with nothing listening.
+#
+# Without it, a node whose native transport is legitimately off — `start_native_transport: false`,
+# `nodetool disablebinary`, or a port this script was not told about — would never be profiled
+# again, which is disabling a feature to work around a probe. Ten minutes is far past both unsafe
+# windows above: Cassandra reaches the JVM in seconds and finishes starting in well under a minute,
+# so anything alive this long has had its signal handlers for minutes.
+#
+# It is the escape hatch, not the normal path. `listening` is the normal path, and the reason codes
+# exist so that a node answering `uptime` every time is visible as the fault it is.
+READY_AFTER_SECONDS="${EDL_DB_READY_AFTER_SECONDS:-600}"
+
+PID="${1:-}"
+if [[ -z "$PID" ]]; then
+  PID="$(cassandra-pid 2>/dev/null | tr -d '[:space:]')"
+fi
+[[ "$PID" =~ ^[0-9]+$ ]] || PID=0
+
+if [[ "$PID" == "0" ]]; then
+  echo "no-process: there is no database process on this node"
+  exit 1
+fi
+
+# Whether anything is listening on PORT, on any address.
+#
+# `ss` is the tool on the nodes; `netstat` is the fallback that keeps this runnable on a macOS
+# developer machine, which has no `ss`. Both are asked for numeric output and matched on the port at
+# the end of the local address, which covers every spelling either prints: `10.0.1.234:9042`,
+# `[::]:9042`, `*:9042` and BSD's `10.0.1.234.9042`.
+#
+# Answers `listening`, `quiet`, or `unknown` when neither tool is present and the socket table
+# cannot be read at all.
+socket_state() {
+  local addresses
+  if command -v ss >/dev/null 2>&1; then
+    addresses="$(ss -lnt 2>/dev/null | awk 'NR > 1 {print $4}')"
+  elif command -v netstat >/dev/null 2>&1; then
+    addresses="$(netstat -an 2>/dev/null | awk '/LISTEN/ {print $4}')"
+  else
+    echo unknown
+    return
+  fi
+  if grep -qE "[:.]${PORT}\$" <<<"$addresses"; then echo listening; else echo quiet; fi
+}
+
+# Seconds since the process started, from /proc alone.
+#
+# Field 22 of /proc/<pid>/stat is starttime, in clock ticks since boot. Field 2 is the executable
+# name in parentheses and can itself contain spaces and parentheses, so the line is cut after its
+# last ')' before being split — after which starttime is field 20 of what remains.
+pid_uptime_seconds() {
+  local stat hertz start_ticks boot_uptime
+  [[ -r "/proc/${PID}/stat" ]] || return 1
+  hertz="$(getconf CLK_TCK 2>/dev/null)"
+  [[ "$hertz" =~ ^[0-9]+$ ]] && ((hertz > 0)) || return 1
+  stat="$(cat "/proc/${PID}/stat" 2>/dev/null)" || return 1
+  stat="${stat##*) }"
+  start_ticks="$(awk '{print $20}' <<<"$stat")"
+  [[ "$start_ticks" =~ ^[0-9]+$ ]] || return 1
+  boot_uptime="$(cut -d' ' -f1 </proc/uptime 2>/dev/null)"
+  [[ "$boot_uptime" =~ ^[0-9]+ ]] || return 1
+  echo $((${boot_uptime%%.*} - start_ticks / hertz))
+}
+
+SOCKET="$(socket_state)"
+if [[ "$SOCKET" == "listening" ]]; then
+  echo "listening: the native transport is listening on port ${PORT}"
+  exit 0
+fi
+
+# Said in the sentence rather than in the reason code: an unreadable socket table is a broken probe
+# environment, not a different readiness state, and it changes nothing about what the backstop does.
+if [[ "$SOCKET" == "unknown" ]]; then
+  observed="neither ss nor netstat is installed, so nothing could be observed on port ${PORT}"
+else
+  observed="nothing is listening on port ${PORT}"
+fi
+
+UPTIME_SECONDS="$(pid_uptime_seconds)"
+if [[ "$UPTIME_SECONDS" =~ ^[0-9]+$ ]] && ((UPTIME_SECONDS >= READY_AFTER_SECONDS)); then
+  echo "uptime: ${observed}, but pid ${PID} has been up ${UPTIME_SECONDS}s"
+  exit 0
+fi
+
+echo "starting: ${observed}, and pid ${PID} is not old enough to assume it never will be"
+exit 1

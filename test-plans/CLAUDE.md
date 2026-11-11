@@ -20,36 +20,21 @@ The skill reads the plan, shows a numbered summary, and executes each step one a
 
 ## Cluster workspace directories
 
-Every plan creates a timestamped workspace under `clusters/` and generates an `easy-db-lab` wrapper in it using `bin/create-easy-db-lab-wrapper`. The wrapper handles the correct `JAVA_HOME` (the highest-installed Java 21 via SDKMAN, or the newest JDK >= 21 if no 21 is present) and `cd` automatically — no manual path or Java setup needed in the plan steps.
+**`/easy-db-lab:run` creates the workspace before executing any plan step** — a timestamped directory
+under `clusters/`, an `easy-db-lab` wrapper that `cd`s into it, and the lab-report scaffold
+(`docs/book.toml`, `SUMMARY.md`, `Makefile`, `journal.md`, `issues.md`). Plans must **not** scaffold
+their own workspace; doing so duplicates what `run` already did and can leave the workspace unable to
+build its report.
 
-Single-DC pattern:
-
-```bash
-CLUSTER_DIR="clusters/<test-name>-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$CLUSTER_DIR"
-bin/create-easy-db-lab-wrapper "$CLUSTER_DIR"
-EDB="$CLUSTER_DIR/easy-db-lab"
-```
-
-Multi-DC pattern:
-
-```bash
-CLUSTER_BASE="clusters/<test-name>-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$CLUSTER_BASE/dc1" "$CLUSTER_BASE/dc2"
-bin/create-easy-db-lab-wrapper "$CLUSTER_BASE/dc1"
-bin/create-easy-db-lab-wrapper "$CLUSTER_BASE/dc2"
-DC1="$CLUSTER_BASE/dc1/easy-db-lab"
-DC2="$CLUSTER_BASE/dc2/easy-db-lab"
-```
-
-All subsequent steps use `$EDB` (or `$DC1`/`$DC2`) directly with no `cd` prefix.
+`run` sets `$EDB` (single DC) or `$EDB_DC1`/`$EDB_DC2`/… (multi-DC) after scaffolding. Plan steps use those
+directly, with no `cd` prefix.
 
 ## Writing a new plan
 
 Use `/easy-db-lab:plan` with a description of what you want to test. The skill will ask questions and write the plan here. Name it `<scenario>.md`.
 
 Every plan must:
-1. Create the workspace directory and run `bin/create-easy-db-lab-wrapper` as its first step
-2. Assign the wrapper path to a variable (`EDB`, `DC1`, `DC2`, etc.)
-3. Use that variable for every subsequent `easy-db-lab` command — never use `bin/easy-db-lab` directly or prefix with `cd`
+1. Begin with provisioning (`$EDB init ... --up`) — **not** with workspace or wrapper creation
+2. Use `$EDB` (or `$EDB_DC1`/`$EDB_DC2`) for every `easy-db-lab` command — never `bin/easy-db-lab` directly, and never prefix with `cd`
+3. Derive any workspace path it needs from the wrapper rather than hardcoding one, e.g. `CLUSTER_DIR=$(dirname "$EDB")`
 4. End with `$EDB down --auto-approve`

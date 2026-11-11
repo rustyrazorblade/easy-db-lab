@@ -75,7 +75,7 @@ Key K8s-related files: !`find /Users/jhaddad/dev/easy-db-lab/src/main/kotlin -pa
 ### Observability Stack Deployment
 
 **Example questions:**
-- "How is VictoriaMetrics deployed?"
+- "How is Mimir deployed?"
 - "What K8s resources are created for Grafana?"
 - "How do collectors find the storage backends?"
 - "What's the networking setup for observability?"
@@ -152,8 +152,8 @@ Control Node (K3s Server)
 ├── kubectl access
 └── Hosts:
     ├── Grafana
-    ├── VictoriaMetrics
-    ├── VictoriaLogs
+    ├── Mimir
+    ├── Loki
     ├── Tempo
     └── Pyroscope
 
@@ -245,8 +245,8 @@ Located in `src/main/kotlin/com/rustyrazorblade/easydblab/configuration/`:
 
 - **`clickhouse/ClickhouseManifestBuilder`** - ClickHouse StatefulSet
 - **`grafana/GrafanaManifestBuilder`** - Grafana Deployment
-- **`victoriametrics/VictoriaMetricsManifestBuilder`** - VictoriaMetrics
-- **`victorialogs/VictoriaLogsManifestBuilder`** - VictoriaLogs
+- **`mimir/MimirManifestBuilder`** - Mimir for metrics
+- **`loki/LokiManifestBuilder`** - Loki for logs
 - **`tempo/TempoManifestBuilder`** - Tempo for traces
 - **`pyroscope/PyroscopeManifestBuilder`** - Pyroscope profiling
 - **`fluentbit/FluentBitManifestBuilder`** - Fluent Bit DaemonSet
@@ -468,9 +468,9 @@ Storage policies defined in ClickHouse config:
 
 ### Observability Storage
 
-VictoriaMetrics/VictoriaLogs use:
-- **Local storage** on control node
-- **S3 backup** via easy-db-lab backup commands
+Mimir and Loki use:
+- **Local storage** on the control node for the write-ahead log and the recent, unflushed data
+- **S3** as their store: both write blocks and chunks to the account bucket as they run, and `down` flushes both before teardown (`TeardownFlushService`)
 
 ## Best Practices
 
@@ -556,7 +556,7 @@ val labels = mapOf(
 - "What's the Fabric8 builder pattern?"
 - "Why is my pod in CrashLoopBackOff?"
 - "How do I create a new DaemonSet?"
-- "What's the storage setup for VictoriaMetrics?"
+- "What's the storage setup for Mimir?"
 - "Can you explain K3s cluster architecture?"
 
 **I'll provide:**

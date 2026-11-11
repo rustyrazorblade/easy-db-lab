@@ -2,17 +2,12 @@
 # Kotlin
 kotlin = "2.4.10"
 
-# MCP SDK
-mcp-sdk = "0.14.0"
-kotlinx-io = "0.9.0"
-
-
 # Logging
 logback = "1.5.32"
 kotlin-logging = "8.0.01"
 
 # Jackson
-jackson-dataformat = "2.21.2"
+jackson-dataformat = "2.22.1"
 jackson-kotlin = "2.21.+"
 
 # Kotlinx Serialization
@@ -64,6 +59,7 @@ jedis = "7.5.3"
 
 # Other
 classgraph = "4.8.184"
+commonmark = "0.24.0"
 presto-jdbc = "0.289"
 trino-jdbc = "474"
 clickhouse-jdbc = "0.7.2"
@@ -145,6 +141,9 @@ awssdk-regions = { module = "software.amazon.awssdk:regions", version.ref = "aws
 awssdk-ecr = { module = "software.amazon.awssdk:ecr", version.ref = "awssdk" }
 awssdk-sso = { module = "software.amazon.awssdk:sso", version.ref = "awssdk" }
 awssdk-ssooidc = { module = "software.amazon.awssdk:ssooidc", version.ref = "awssdk" }
+awssdk-ecs = { module = "software.amazon.awssdk:ecs", version.ref = "awssdk" }
+awssdk-cloudwatchlogs = { module = "software.amazon.awssdk:cloudwatchlogs", version.ref = "awssdk" }
+awssdk-ssm = { module = "software.amazon.awssdk:ssm", version.ref = "awssdk" }
 
 # Docker
 docker-java = { module = "com.github.docker-java:docker-java", version.ref = "docker-java" }
@@ -162,6 +161,8 @@ commons-text = { module = "org.apache.commons:commons-text", version.ref = "comm
 
 # Other
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
+commonmark = { module = "org.commonmark:commonmark", version.ref = "commonmark" }
+commonmark-ext-gfm-tables = { module = "org.commonmark:commonmark-ext-gfm-tables", version.ref = "commonmark" }
 
 # Kotlinx Serialization
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
@@ -170,10 +171,6 @@ kaml = { module = "com.charleskorn.kaml:kaml", version.ref = "kaml" }
 # Kotlinx Coroutines
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinx-coroutines" }
-
-# MCP SDK
-mcp-sdk = { module = "io.modelcontextprotocol:kotlin-sdk", version.ref = "mcp-sdk" }
-kotlinx-io = { module = "org.jetbrains.kotlinx:kotlinx-io-core", version.ref = "kotlinx-io" }
 
 # Redis
 jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
@@ -194,7 +191,6 @@ clickhouse-jdbc = { module = "com.clickhouse:clickhouse-jdbc", version.ref = "cl
 mysql-connector-j = { module = "com.mysql:mysql-connector-j", version.ref = "mysql-connector-j" }
 postgresql-jdbc = { module = "org.postgresql:postgresql", version.ref = "postgresql-jdbc" }
 ignite3-jdbc = { module = "org.apache.ignite:ignite-jdbc", version.ref = "ignite3" }
-
 
 [bundles]
 # Logging bundle
@@ -217,7 +213,7 @@ koin = ["koin-core"]
 koin-test = ["koin-test", "koin-test-junit5"]
 
 # AWS SDK bundle
-awssdk = ["awssdk-ec2", "awssdk-iam", "awssdk-emr", "awssdk-s3", "awssdk-sts", "awssdk-opensearch", "awssdk-ecr", "awssdk-sso", "awssdk-ssooidc"]
+awssdk = ["awssdk-ec2", "awssdk-iam", "awssdk-emr", "awssdk-s3", "awssdk-sts", "awssdk-opensearch", "awssdk-ecr", "awssdk-sso", "awssdk-ssooidc", "awssdk-ecs", "awssdk-cloudwatchlogs", "awssdk-ssm"]
 
 # Docker bundle
 docker = ["docker-java", "docker-java-transport-httpclient5"]
@@ -227,7 +223,6 @@ sshd = ["sshd-core", "sshd-scp"]
 
 # Resilience4j bundle
 resilience4j = ["resilience4j-retry", "resilience4j-kotlin"]
-
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

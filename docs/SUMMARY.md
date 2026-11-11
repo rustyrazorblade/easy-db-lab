@@ -16,28 +16,32 @@
   - [Spark](user-guide/spark.md)
 - [Kits](user-guide/kits.md)
   - [ClickHouse](user-guide/clickhouse.md)
-    - [Backup & Restore](user-guide/clickhouse-backup-restore.md)
   - [Kafka](user-guide/kafka.md)
   - [Apache Ignite 3](user-guide/ignite3.md)
+  - [Neo4j](user-guide/neo4j.md)
   - [Presto](user-guide/install-presto.md)
   - [Trino](user-guide/install-trino.md)
   - [TiDB](user-guide/tidb.md)
   - [Sysbench](user-guide/sysbench.md)
   - [cqlite-flight](user-guide/cqlite-flight.md)
   - [trino-loadtest](user-guide/trino-loadtest.md)
+  - [clickhouse-benchmark](user-guide/clickhouse-benchmark.md)
   - [PostgreSQL](user-guide/install-postgres.md)
   - [Platform Substrate](user-guide/platform-substrate.md)
 - [Monitoring](user-guide/monitoring.md)
   - [Profiling](user-guide/profiling.md)
-  - [Metrics](user-guide/victoria-metrics.md)
-  - [Logging](user-guide/victoria-logs.md)
+  - [Metrics (Mimir)](user-guide/mimir.md)
+  - [Logs (Loki)](user-guide/loki.md)
+  - [Account Compactor](user-guide/compactor.md)
 - [Kubernetes](user-guide/kubernetes.md)
+- [Pod Networking (CNI)](user-guide/networking.md)
 - [Network Connectivity](user-guide/network-connectivity.md)
 - [Shell Aliases](user-guide/shell-aliases.md)
 
 # Integrations
 
 - [Server](integrations/server.md)
+- [Metrics Stream](integrations/metrics-stream.md)
 
 # Reference
 
@@ -53,7 +57,6 @@
 - [Publishing](development/publishing.md)
 - [Building Cassandra Refs](development/building-cassandra-refs.md)
 - [Testing](development/testing.md)
-- [End-to-End Testing](development/end-to-end-testing.md)
 - [Spark](development/spark.md)
 - [Log Infrastructure](reference/log-infrastructure.md)
 - [Pyroscope Configuration](reference/pyroscope-configuration.md)

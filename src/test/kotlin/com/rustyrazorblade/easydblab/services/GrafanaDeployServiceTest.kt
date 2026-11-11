@@ -1,0 +1,235 @@
+package com.rustyrazorblade.easydblab.services
+
+import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.configuration.ClusterHost
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.grafana.DashboardInstallContext
+import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.grafana.TenantSet
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.services.aws.BucketRegion
+import io.fabric8.kubernetes.api.model.ConfigMap
+import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.apps.Deployment
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+import org.koin.core.module.Module
+import org.koin.dsl.module
+import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.doThrow
+import org.mockito.kotlin.eq
+import org.mockito.kotlin.inOrder
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.GetBucketLocationRequest
+import software.amazon.awssdk.services.s3.model.GetBucketLocationResponse
+
+/**
+ * Test suite for [DefaultGrafanaDeployService].
+ *
+ * Tests datasource ConfigMap creation and the upload workflow using the real
+ * GrafanaManifestBuilder, the tree uploader (mocked) and K8sService (mocked).
+ */
+class GrafanaDeployServiceTest : BaseKoinTest() {
+    private lateinit var mockK8sService: K8sService
+    private lateinit var manifestBuilder: GrafanaManifestBuilder
+    private lateinit var mockTreeUploader: GrafanaDashboardTreeUploader
+
+    private val testControlHost =
+        ClusterHost(
+            publicIp = "54.123.45.67",
+            privateIp = "10.0.1.5",
+            alias = "control0",
+            availabilityZone = "us-west-2a",
+            instanceId = "i-test123",
+        )
+
+    override fun additionalTestModules(): List<Module> =
+        listOf(
+            module {
+                single {
+                    mock<K8sService>().also {
+                        mockK8sService = it
+                    }
+                }
+
+                single {
+                    mock<GrafanaDashboardTreeUploader>().also {
+                        mockTreeUploader = it
+                    }
+                }
+            },
+        )
+
+    @BeforeEach
+    fun setupMocks() {
+        mockK8sService = getKoin().get()
+        mockTreeUploader = getKoin().get()
+        val stateManager = mock<ClusterStateManager>()
+        whenever(stateManager.load()).thenReturn(ClusterState(name = "test", versions = mutableMapOf()))
+        manifestBuilder = GrafanaManifestBuilder(TemplateService(stateManager, getKoin().get()))
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.applyResource(any(), any())).thenReturn(Result.success(Unit))
+        whenever(mockK8sService.workloadConfigHashes(any(), any(), any()))
+            .thenReturn(Result.success(mapOf(WorkloadRef(WorkloadKind.Deployment, "grafana") to "running-hash")))
+    }
+
+    private val eventBus = EventBus()
+
+    private fun bucketInRegion(region: String): S3Client =
+        mock<S3Client>().also {
+            whenever(it.getBucketLocation(any<GetBucketLocationRequest>()))
+                .thenReturn(GetBucketLocationResponse.builder().locationConstraint(region).build())
+        }
+
+    private fun context(tenant: String) = DashboardInstallContext("test-abc", TenantSet.of(tenant), "http://10.0.1.5:3080")
+
+    private fun service() =
+        DefaultGrafanaDeployService(
+            mockK8sService,
+            manifestBuilder,
+            mockTreeUploader,
+            eventBus,
+            ConfigChangeReport(mockK8sService, eventBus),
+            BucketRegion(bucketInRegion("eu-west-1")),
+        )
+
+    @Test
+    fun `createDatasourcesConfigMap calls k8sService with correct params`() {
+        val result = service().createDatasourcesConfigMap(testControlHost, TenantSet.of("acme"))
+
+        assertThat(result.isSuccess).isTrue()
+        verify(mockK8sService).createConfigMap(
+            controlHost = eq(testControlHost),
+            namespace = eq("default"),
+            name = eq("grafana-datasources"),
+            data = any(),
+            labels = eq(mapOf("app.kubernetes.io/name" to "grafana")),
+        )
+    }
+
+    @Test
+    fun `deploy builds and applies all resources`() {
+        val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
+
+        assertThat(result.isSuccess).isTrue()
+        verify(mockK8sService).createConfigMap(any(), any(), eq("grafana-datasources"), any(), any())
+    }
+
+    @Test
+    fun `deploy puts the tree on the control node before the Grafana resources are applied`() {
+        service().deploy(testControlHost, context("acme"), "acct-bucket")
+
+        val order = inOrder(mockTreeUploader, mockK8sService)
+        order.verify(mockTreeUploader).upload(eq(testControlHost), any())
+        order.verify(mockK8sService, times(3)).applyResource(any(), any())
+    }
+
+    @Test
+    fun `deploy fails when createDatasourcesConfigMap fails`() {
+        whenever(mockK8sService.createConfigMap(any(), any(), any(), any(), any()))
+            .thenReturn(Result.failure(RuntimeException("ConfigMap creation failed")))
+
+        val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull()?.message).contains("Failed to create Grafana datasources ConfigMap")
+    }
+
+    @Test
+    fun `deploy fails without touching K8s resources when the tree upload fails`() {
+        whenever(mockTreeUploader.upload(any(), any())).doThrow(IllegalStateException("sftp failed"))
+
+        val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull()?.message).contains("Failed to upload Grafana dashboards").contains("sftp failed")
+        verify(mockK8sService, never()).applyResource(any(), any())
+    }
+
+    @Test
+    fun `deploy fails when applyResource fails`() {
+        whenever(mockK8sService.applyResource(any(), any()))
+            .thenReturn(Result.failure(RuntimeException("Apply failed")))
+
+        val result = service().deploy(testControlHost, context("acme"), "acct-bucket")
+
+        assertThat(result.isFailure).isTrue()
+        assertThat(result.exceptionOrNull()?.message).contains("Failed to apply")
+    }
+
+    /**
+     * Grafana reads its datasources from `grafana-datasources` at start. A datasource change — such as
+     * the tenant header the Tempo and Pyroscope datasources send — must roll Grafana, or it keeps
+     * querying with the old provisioning while `up` reports success.
+     */
+    @Test
+    fun `a datasource change rolls Grafana through its config hash`() {
+        val service = service()
+
+        service.deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
+        service.deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
+        service.deploy(testControlHost, context("other"), "acct-bucket").getOrThrow()
+
+        val deployments = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, times(9)).applyResource(any(), deployments.capture())
+        val hashes =
+            deployments.allValues.filterIsInstance<Deployment>().map {
+                it.spec.template.metadata.annotations[Constants.K8s.CONFIG_HASH_ANNOTATION]
+            }
+        assertThat(hashes).hasSize(3).doesNotContainNull()
+        assertThat(hashes[1]).describedAs("same datasources, same hash").isEqualTo(hashes[0])
+        assertThat(hashes[2]).describedAs("a new tenant changes the datasources").isNotEqualTo(hashes[1])
+    }
+
+    @Test
+    fun `deploy reports that Grafana rolls when its configuration differs from the running one`() {
+        val emitted = mutableListOf<Event>()
+        eventBus.addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+
+        service().deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
+
+        assertThat(emitted.filterIsInstance<Event.Grafana.WorkloadConfigCompared>())
+            .containsExactly(Event.Grafana.WorkloadConfigCompared("Deployment/grafana", changed = true))
+    }
+
+    /**
+     * The documents proxy signs for the account bucket's own region, from GetBucketLocation, not the
+     * cluster's (the test user's us-west-2), and the web server reads the account bucket.
+     */
+    @Test
+    fun `the applied Grafana pod reads the account bucket in the bucket's own region`() {
+        service().deploy(testControlHost, context("acme"), "acct-bucket").getOrThrow()
+
+        val applied = argumentCaptor<HasMetadata>()
+        verify(mockK8sService, times(3)).applyResource(any(), applied.capture())
+        val proxy =
+            applied.allValues
+                .filterIsInstance<Deployment>()
+                .single()
+                .spec.template.spec.containers
+                .single { it.name == "documents-sigv4-proxy" }
+        assertThat(proxy.args).containsSequence("--region", "eu-west-1").containsSequence("--host", "s3.eu-west-1.amazonaws.com")
+        val web = applied.allValues.filterIsInstance<ConfigMap>().single { it.metadata.name == "grafana-documents-web" }
+        assertThat(web.data.values.single()).contains("/acct-bucket/reports/;")
+    }
+}

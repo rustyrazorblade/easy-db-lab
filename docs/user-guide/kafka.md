@@ -103,10 +103,14 @@ easy-db-lab kafka create-topic --topic my-topic --partitions 3 --replication-fac
 
 Two Prometheus scrape jobs are registered automatically by `kafka start`:
 
-| Job | NodePort | Description |
-|---|---|---|
-| `kafka-exporter` | 32309 | Consumer lag, topic offsets, partition health |
-| `kafka-jmx` | 32404 | Per-broker throughput, request latency, JVM metrics |
+| Job | Container port | NodePort | Description |
+|---|---|---|---|
+| `kafka-exporter` | 9404 | 32309 | Consumer lag, topic offsets, partition health |
+| `kafka-jmx` | 9404 | 32404 | Per-broker throughput, request latency, JVM metrics |
+
+Both are scraped by pod discovery on the container port: each pod once, by the collector on its
+own node, with `instance` set to the pod name. The NodePorts expose the same endpoints for manual
+inspection.
 
 Metric names are lowercase. See `kafka/METRICS.md` for the full catalog.
 

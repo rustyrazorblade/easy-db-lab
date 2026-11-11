@@ -2,18 +2,33 @@ package com.rustyrazorblade.easydblab.providers.ssh
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
 import com.rustyrazorblade.easydblab.configuration.Host
+import com.rustyrazorblade.easydblab.exceptions.RemoteCommandFailedException
 import com.rustyrazorblade.easydblab.ssh.ISSHClient
 import com.rustyrazorblade.easydblab.ssh.Response
+import io.github.resilience4j.retry.RetryConfig
+import org.apache.sshd.common.SshException
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.koin.core.module.Module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argThat
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.doAnswer
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
+import java.io.File
+import java.io.IOException
+import java.time.Duration
 
 class DefaultRemoteOperationsServiceTest :
     BaseKoinTest(),
@@ -167,5 +182,147 @@ class DefaultRemoteOperationsServiceTest :
         // Then verify the result
         assertThat(result).isNotNull()
         assertThat(result.text).isEqualTo(expectedOutput)
+    }
+
+    @Test
+    fun `a command that exits non-zero is not retried`() {
+        val command = "install-cassandra-version trunk"
+        val failure =
+            RemoteCommandFailedException(
+                command = command,
+                stdout = "",
+                stderr = "ERROR: Ant build failed",
+                summary = "Remote command failed (1): $command",
+            )
+        // doAnswer, not thenThrow: Kotlin emits no `throws` clause, so Mockito rejects stubbing a
+        // checked exception on this method even though it propagates fine at runtime.
+        doAnswer { throw failure }.whenever(mockSSHClient).executeRemoteCommand(eq(command), any(), any())
+
+        assertThatThrownBy { service.executeRemotely(host, command) }
+            .isInstanceOf(RemoteCommandFailedException::class.java)
+            .hasMessageContaining("ERROR: Ant build failed")
+
+        // A deterministic command failure must run once — re-running a failed build wastes minutes
+        verify(mockSSHClient, times(1)).executeRemoteCommand(eq(command), any(), any())
+    }
+
+    @Test
+    fun `a transient transport failure is still retried`() {
+        val command = "echo 1"
+        var attempts = 0
+        doAnswer {
+            attempts++
+            if (attempts < 3) error("connection reset") else Response("1")
+        }.whenever(mockSSHClient).executeRemoteCommand(eq(command), any(), any())
+
+        assertThat(service.executeRemotely(host, command).text).isEqualTo("1")
+        verify(mockSSHClient, times(3)).executeRemoteCommand(eq(command), any(), any())
+    }
+
+    /**
+     * MINA reports a refused or timed-out connection as SshException, a checked IOException that
+     * resilience4j's plain decorators never see. The service must still retry it.
+     */
+    @Test
+    fun `a connection that fails with SshException is retried`() {
+        val command = "echo 1"
+        var attempts = 0
+        doAnswer {
+            attempts++
+            if (attempts < 3) throw SshException("Connection refused") else Response("1")
+        }.whenever(mockSSHClient).executeRemoteCommand(eq(command), any(), any())
+
+        assertThat(fastRetryService().executeRemotely(host, command).text).isEqualTo("1")
+        assertThat(attempts).isEqualTo(3)
+        // Each failed attempt discards the connection and its path, so the retry cannot reuse a
+        // stuck SSM forward.
+        verify(mockSSHConnectionProvider, times(2)).discard(host)
+    }
+
+    /** Any other IOException, an SFTP "no such file" for example, will not clear on a retry. */
+    @Test
+    fun `an IOException that is not an ssh connection failure fails at once`(
+        @TempDir localDir: File,
+    ) {
+        val local = File(localDir, "out.txt").toPath()
+        var attempts = 0
+        doAnswer {
+            attempts++
+            throw IOException("No such file: /etc/cassandra_versions.yaml")
+        }.whenever(mockSSHClient).downloadFile(any(), any())
+
+        assertThatThrownBy { fastRetryService().download(host, "/etc/cassandra_versions.yaml", local) }
+            .isInstanceOf(IOException::class.java)
+            .hasMessageContaining("No such file")
+        assertThat(attempts).isEqualTo(1)
+        verify(mockSSHConnectionProvider, never()).discard(any())
+    }
+
+    /** The production retry policy with a 1ms wait, so retries run without the 2s production pause. */
+    private fun fastRetryService() =
+        DefaultRemoteOperationsService(
+            getKoin().get<SSHConnectionProvider>(),
+            RetryConfig.from<Any>(DefaultRemoteOperationsService.defaultRetryConfig).waitDuration(Duration.ofMillis(1)).build(),
+        )
+
+    /** Stubs the staging command to return a fixed path and every other command to succeed silently. */
+    private fun stubStaging(): String {
+        val staging = "/mnt/db1/grafana/dashboards.staging.k3Xq9z"
+        whenever(mockSSHClient.executeRemoteCommand(any(), any(), any())).thenReturn(Response(""))
+        whenever(mockSSHClient.executeRemoteCommand(argThat { startsWith("d=\$(sudo mktemp") }, any(), any()))
+            .thenReturn(Response("$staging\n"))
+        return staging
+    }
+
+    @Test
+    fun `replaceDirectory stages beside the target, uploads, then renames the tree into place as the owner`(
+        @TempDir localDir: File,
+    ) {
+        // Staging must sit on the same filesystem as the target so the final mv is a rename, and
+        // the old tree is moved aside rather than removed first, so a reader of the target never
+        // sees an empty or half-written directory.
+        val staging = stubStaging()
+
+        service.replaceDirectory(host, localDir, "/mnt/db1/grafana/dashboards", "472:472")
+
+        val commands = argumentCaptor<String>()
+        val order = inOrder(mockSSHClient)
+        order.verify(mockSSHClient).executeRemoteCommand(commands.capture(), any(), any())
+        order.verify(mockSSHClient).uploadDirectory(localDir, staging)
+        order.verify(mockSSHClient).executeRemoteCommand(commands.capture(), any(), any())
+        verify(mockSSHClient, times(2)).executeRemoteCommand(any(), any(), any())
+
+        assertThat(commands.firstValue).isEqualTo(
+            "d=\$(sudo mktemp -d -p /mnt/db1/grafana dashboards.staging.XXXXXX) && " +
+                "sudo chown \"\$(id -un)\" \"\$d\" && echo \"\$d\"",
+        )
+        assertThat(commands.secondValue).isEqualTo(
+            "sudo rm -rf /mnt/db1/grafana/dashboards.old && " +
+                "if sudo test -e /mnt/db1/grafana/dashboards; then " +
+                "sudo mv -T /mnt/db1/grafana/dashboards /mnt/db1/grafana/dashboards.old; fi && " +
+                "sudo mv -T $staging /mnt/db1/grafana/dashboards && " +
+                "sudo chown -R 472:472 /mnt/db1/grafana/dashboards && " +
+                "sudo rm -rf /mnt/db1/grafana/dashboards.old",
+        )
+    }
+
+    @Test
+    fun `replaceDirectory removes the staging directory and never swaps when the upload fails`(
+        @TempDir localDir: File,
+    ) {
+        val staging = stubStaging()
+        doAnswer { error("sftp failed") }.whenever(mockSSHClient).uploadDirectory(localDir, staging)
+        // One attempt: the retry that wraps the upload is exercised elsewhere and only adds waits here.
+        val service =
+            DefaultRemoteOperationsService(
+                mockSSHConnectionProvider,
+                RetryConfig.custom<Any>().maxAttempts(1).build(),
+            )
+
+        assertThatThrownBy { service.replaceDirectory(host, localDir, "/mnt/db1/grafana/dashboards", "472:472") }
+            .hasMessage("sftp failed")
+
+        verify(mockSSHClient).executeRemoteCommand(eq("sudo rm -rf $staging"), any(), any())
+        verify(mockSSHClient, never()).executeRemoteCommand(argThat { contains("mv ") }, any(), any())
     }
 }

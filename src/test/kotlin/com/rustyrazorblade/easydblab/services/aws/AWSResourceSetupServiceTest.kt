@@ -8,12 +8,15 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.events.EventEnvelope
 import com.rustyrazorblade.easydblab.events.EventListener
 import com.rustyrazorblade.easydblab.providers.aws.AWS
+import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.koin.core.component.KoinComponent
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.verify
@@ -27,6 +30,7 @@ import software.amazon.awssdk.services.iam.model.InstanceProfile
 import software.amazon.awssdk.services.iam.model.ListRolePoliciesRequest
 import software.amazon.awssdk.services.iam.model.ListRolePoliciesResponse
 import software.amazon.awssdk.services.iam.model.NoSuchEntityException
+import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
 import software.amazon.awssdk.services.iam.model.Role
 import software.amazon.awssdk.services.s3.S3Client
 import software.amazon.awssdk.services.sts.StsClient
@@ -91,6 +95,7 @@ internal class AWSResourceSetupServiceTest :
             AWSResourceSetupService(
                 aws,
                 eventBus,
+                InstanceRolePolicies(aws),
             )
     }
 
@@ -98,7 +103,10 @@ internal class AWSResourceSetupServiceTest :
      * Configures mockIamClient to make validateRoleSetup return a valid result.
      * The extension function calls getInstanceProfile and listRolePolicies.
      */
-    private fun stubValidRoleSetup(roleName: String) {
+    private fun stubValidRoleSetup(
+        roleName: String,
+        inlinePolicies: List<String> = listOf(Constants.AWS.InlinePolicies.S3_ACCESS, Constants.AWS.InlinePolicies.SESSION_MANAGER),
+    ) {
         val role = Role.builder().roleName(roleName).build()
         val instanceProfile =
             InstanceProfile
@@ -119,7 +127,7 @@ internal class AWSResourceSetupServiceTest :
             .thenReturn(
                 ListRolePoliciesResponse
                     .builder()
-                    .policyNames("S3Access")
+                    .policyNames(inlinePolicies)
                     .build(),
             )
     }
@@ -223,6 +231,57 @@ internal class AWSResourceSetupServiceTest :
         // Then: Should validate but not create any resources
         verify(mockIamClient).getInstanceProfile(any<GetInstanceProfileRequest>())
         verify(mockStsClient, never()).getCallerIdentity(any<software.amazon.awssdk.services.sts.model.GetCallerIdentityRequest>())
+    }
+
+    /**
+     * `build-base` and `build-cassandra` reach the instance role only through [AWSResourceSetupService.ensureAWSResources],
+     * and the AMI builder runs under it. A role made before the Session Manager policy joined the set
+     * still validates, so the early return must not skip adding it.
+     */
+    @Test
+    fun `ensureAWSResources adds the Session Manager policy to a valid role that lacks it`() {
+        stubValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE, inlinePolicies = listOf(Constants.AWS.InlinePolicies.S3_ACCESS))
+
+        service.ensureAWSResources(createUserConfig())
+
+        val put = argumentCaptor<PutRolePolicyRequest>()
+        verify(mockIamClient, atLeastOnce()).putRolePolicy(put.capture())
+        val sessionManager = put.allValues.single { it.policyName() == Constants.AWS.InlinePolicies.SESSION_MANAGER }
+        assertThat(sessionManager.roleName()).isEqualTo(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
+        assertThat(sessionManager.policyDocument())
+            .contains("ssm:UpdateInstanceInformation", "ssmmessages:OpenControlChannel")
+            .doesNotContain("ssm:GetParameter", "AmazonSSMManagedInstanceCore")
+        assertThat(capturedEvents.map { it.event }).contains(
+            Event.AwsSetup.InstanceRolePoliciesAdded(
+                Constants.AWS.Roles.EC2_INSTANCE_ROLE,
+                listOf(Constants.AWS.InlinePolicies.SESSION_MANAGER),
+            ),
+        )
+        // An upgrade, not a repair: the roles are not re-created.
+        verify(mockIamClient, never()).createRole(any<software.amazon.awssdk.services.iam.model.CreateRoleRequest>())
+    }
+
+    @Test
+    fun `ensureAWSResources leaves a role that carries the whole policy set untouched`() {
+        stubValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
+
+        service.ensureAWSResources(createUserConfig())
+
+        verify(mockIamClient, never()).putRolePolicy(any<PutRolePolicyRequest>())
+        verify(mockIamClient, never()).attachRolePolicy(any<software.amazon.awssdk.services.iam.model.AttachRolePolicyRequest>())
+    }
+
+    @Test
+    fun `a newly created instance role gets the Session Manager policy`() {
+        stubInvalidThenValidRoleSetup(Constants.AWS.Roles.EC2_INSTANCE_ROLE)
+        stubSuccessfulRoleCreation()
+
+        service.ensureAWSResources(createUserConfig())
+
+        val put = argumentCaptor<PutRolePolicyRequest>()
+        verify(mockIamClient, atLeastOnce()).putRolePolicy(put.capture())
+        assertThat(put.allValues.filter { it.roleName() == Constants.AWS.Roles.EC2_INSTANCE_ROLE }.map { it.policyName() })
+            .contains(Constants.AWS.InlinePolicies.S3_ACCESS, Constants.AWS.InlinePolicies.SESSION_MANAGER)
     }
 
     @Test

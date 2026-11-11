@@ -8,7 +8,7 @@
     "from": "now-1h",
     "to": "now"
   },
-  "refresh": "15s",
+  "refresh": "",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "liveNow": false,
@@ -16,21 +16,21 @@
     {
       "title": "PostgreSQL Overview",
       "type": "link",
-      "url": "/d/postgres-overview",
+      "url": "/d/postgres-overview?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     },
     {
       "title": "DuckDB Analytics",
       "type": "link",
-      "url": "/d/postgres-duckdb",
+      "url": "/d/postgres-duckdb?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     },
     {
       "title": "TimescaleDB",
       "type": "link",
-      "url": "/d/postgres-timescaledb",
+      "url": "/d/postgres-timescaledb?from=${__from}&to=${__to}&${metrics_datasource:queryparam}&${cluster:queryparam}",
       "targetBlank": false,
       "icon": "external link"
     }
@@ -60,19 +60,58 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "VictoriaMetrics",
-          "value": "VictoriaMetrics"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
-        "label": "Datasource",
+        "label": "Metrics",
         "multi": false,
-        "name": "datasource",
+        "name": "metrics_datasource",
         "options": [],
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${metrics_datasource}"
+        },
+        "definition": "label_values(up, cluster)",
+        "description": "The clusters this dashboard shows. Clusters of one tenant share one store, so every query filters by this variable.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+        "definition": "label_values(cnpg_collector_up{cluster=~\"$cluster\", job=\"postgres\",k8s_app_instance=\"postgres-postgis\"}, instance)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Instance",
+        "multi": false,
+        "name": "instance",
+        "options": [],
+        "query": { "query": "label_values(cnpg_collector_up{cluster=~\"$cluster\", job=\"postgres\",k8s_app_instance=\"postgres-postgis\"}, instance)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
@@ -97,7 +136,7 @@
       "description": "Spatial indexes (GiST, SP-GiST) are memory-intensive. A low hit ratio means spatial queries are thrashing disk.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -145,11 +184,11 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[5m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[5m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[5m])), 1)",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])) / clamp_min(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])) + sum by (cluster) (rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[5m])), 1), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": true,
-          "legendFormat": "__auto"
+          "legendFormat": "{{cluster_name}}"
         }
       ]
     },
@@ -160,7 +199,7 @@
       "description": "Overall transaction rate including spatial query and data-loading transactions.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -200,11 +239,11 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[2m]))",
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": true,
-          "legendFormat": "__auto"
+          "legendFormat": "{{cluster_name}}"
         }
       ]
     },
@@ -215,7 +254,7 @@
       "description": "Complex spatial joins (ST_Within, ST_Intersects over large datasets) may spill to temp files when working memory is exhausted.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -263,11 +302,11 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "max(cnpg_pg_stat_database_temp_files_total{job=\"postgres\",server_port=\"30988\",host_name=\"db0\",datname=\"postgres\"})",
+          "expr": "label_replace(max by (cluster) (cnpg_pg_stat_database_temp_files_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": true,
-          "legendFormat": "__auto"
+          "legendFormat": "{{cluster_name}}"
         }
       ]
     },
@@ -278,7 +317,7 @@
       "description": "Geometry columns and spatial indexes add significant storage overhead compared to plain relational data.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 4,
@@ -318,11 +357,11 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "max(cnpg_pg_database_size_bytes{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"})",
+          "expr": "label_replace(max by (cluster) (cnpg_pg_database_size_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
           "instant": true,
-          "legendFormat": "__auto"
+          "legendFormat": "{{cluster_name}}"
         }
       ]
     },
@@ -333,7 +372,7 @@
       "description": "Spatial GiST index traversal is highly cache-sensitive. Watch for sustained dips below 99%.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -364,10 +403,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[2m])) / clamp_min(sum(rate(cnpg_pg_stat_database_blks_hit_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[2m])) + sum(rate(cnpg_pg_stat_database_blks_read_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[2m])), 1)",
-          "legendFormat": "cache hit ratio"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) / clamp_min(sum by (cluster) (rate(cnpg_pg_stat_database_blks_hit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])) + sum by (cluster) (rate(cnpg_pg_stat_database_blks_read_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), 1), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} cache hit ratio"
         }
       ]
     },
@@ -378,7 +417,7 @@
       "description": "Bytes spilled to disk during spatial query execution. Indicates work_mem pressure.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -409,10 +448,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_pg_stat_database_temp_bytes_total{job=\"postgres\",server_port=\"30988\",host_name=\"db0\",datname=\"postgres\"}[2m])",
-          "legendFormat": "spill bytes/s"
+          "expr": "label_replace(rate(cnpg_pg_stat_database_temp_bytes_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} spill bytes/s"
         }
       ]
     },
@@ -436,7 +475,7 @@
       "description": "PostGIS bulk loads (ST_GeomFromText inserts) generate high WAL volume. Sustained WAL > 10 MB/s suggests geometry-heavy writes.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -467,10 +506,10 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "rate(cnpg_collector_wal_bytes{job=\"postgres\",server_port=\"30988\",host_name=\"db0\"}[2m])",
-          "legendFormat": "WAL bytes/s"
+          "expr": "label_replace(rate(cnpg_collector_wal_bytes{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\"}[2m]), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} WAL bytes/s"
         }
       ]
     },
@@ -481,7 +520,7 @@
       "description": "Commit and rollback rate over time.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -512,18 +551,18 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_commit_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[2m]))",
-          "legendFormat": "commits/s"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_commit_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} commits/s"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_xact_rollback_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[2m]))",
-          "legendFormat": "rollbacks/s"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_xact_rollback_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} rollbacks/s"
         }
       ]
     },
@@ -547,7 +586,7 @@
       "description": "PostGIS spatial predicates often drive sequential scans (bounding-box filter \u2192 refine). A high tup_returned:tup_fetched ratio signals heavy sequential scans.",
       "datasource": {
         "type": "prometheus",
-        "uid": "${datasource}"
+        "uid": "${metrics_datasource}"
       },
       "gridPos": {
         "h": 8,
@@ -578,18 +617,18 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_returned_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[2m]))",
-          "legendFormat": "rows scanned (seqscan)"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_returned_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} rows scanned (seqscan)"
         },
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${datasource}"
+            "uid": "${metrics_datasource}"
           },
-          "expr": "sum(rate(cnpg_pg_stat_database_tup_fetched_total{job=\"postgres\",server_port=\"30988\",datname=\"postgres\"}[2m]))",
-          "legendFormat": "rows fetched (index)"
+          "expr": "label_replace(sum by (cluster) (rate(cnpg_pg_stat_database_tup_fetched_total{cluster=~\"$cluster\", job=\"postgres\",instance=\"$instance\",datname=\"postgres\"}[2m])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} rows fetched (index)"
         }
       ]
     }

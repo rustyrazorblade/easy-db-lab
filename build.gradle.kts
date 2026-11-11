@@ -72,6 +72,10 @@ application {
             // every `$`, so a `$APP_HOME` reference would reach java as a literal path and the
             // VM would abort on a missing agent jar. The agent flag is appended in the
             // `startScripts` doLast below, where `$APP_HOME` is expanded before that pipeline.
+            // Class-data sharing off. The OTel agent appends to the bootstrap classpath, and with
+            // CDS on the JVM prints "Sharing is only supported for boot loader classes because
+            // bootstrap classpath has been appended" on every run.
+            "-Xshare:off",
             "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
             "-Deasydblab.version=$version",
             // Pin logback to our config by a unique name. On the installDist/distribution
@@ -102,12 +106,43 @@ tasks.named<CreateStartScripts>("startScripts") {
         // xargs|sed|eval arg-splitting pipeline runs. Args placed in `applicationDefaultJvmArgs`
         // are treated literally by that pipeline, so `$APP_HOME` cannot be referenced there —
         // both the apphome system property and the OTel java agent path are injected here.
-        val replacement =
-            "\$1 \nDEFAULT_JVM_OPTS=\"\\\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\\\$APP_HOME " +
-                "-javaagent:\\\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+        val agentOpts =
+            "DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Deasydblab.apphome=\$APP_HOME " +
+                "-javaagent:\$APP_HOME/agents/opentelemetry-javaagent.jar\""
+
+        // The agent's exporters default to OTLP on localhost:4318. With no collector there, every
+        // export fails and the agent prints a stack trace to stderr on every run — the normal case
+        // for a Homebrew user. So the exporters stay off unless the user configured an OTLP
+        // endpoint or picked exporters. The agent reads system properties ahead of environment
+        // variables, so this check must run here: an unconditional -D would override a user's
+        // OTEL_* configuration. A user who sets any of these variables gets the agent's own
+        // defaults and its own error reporting.
+        val otelExportVars =
+            listOf(
+                "OTEL_EXPORTER_OTLP_ENDPOINT",
+                "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+                "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+                "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
+                "OTEL_TRACES_EXPORTER",
+                "OTEL_METRICS_EXPORTER",
+                "OTEL_LOGS_EXPORTER",
+            ).joinToString("") { "\${$it}" }
+        val otelExportDefaults =
+            listOf(
+                "# No OTLP endpoint or exporter configured: load the agent but export nothing, and",
+                "# silence its logger (the version banner), instead of failing against localhost:4318.",
+                "if [ -z \"$otelExportVars\" ]; then",
+                "    DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Dotel.traces.exporter=none " +
+                    "-Dotel.metrics.exporter=none -Dotel.logs.exporter=none\"",
+                "    if [ -z \"\$OTEL_JAVAAGENT_LOGGING\" ]; then",
+                "        DEFAULT_JVM_OPTS=\"\$DEFAULT_JVM_OPTS -Dotel.javaagent.logging=none\"",
+                "    fi",
+                "fi",
+            ).joinToString("\n")
+
         val regex = "^(DEFAULT_JVM_OPTS=.*)".toRegex(RegexOption.MULTILINE)
         val body = unixScript.readText()
-        val newBody = regex.replace(body, replacement)
+        val newBody = regex.replace(body) { match -> "${match.value}\n$agentOpts\n$otelExportDefaults" }
         unixScript.writeText(newBody)
 
         // This needs to be updated for windows
@@ -161,6 +196,8 @@ dependencies {
 
     // Utilities
     implementation(libs.classgraph)
+    implementation(libs.commonmark)
+    implementation(libs.commonmark.ext.gfm.tables)
     implementation(libs.commons.io)
     implementation(libs.commons.text)
 
@@ -193,10 +230,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kaml)
     implementation(libs.kotlinx.coroutines.core)
-
-    // MCP SDK and dependencies
-    implementation(libs.mcp.sdk)
-    implementation(libs.kotlinx.io)
 
     // Kubernetes
     implementation(libs.fabric8.kubernetes.client)
@@ -250,13 +283,24 @@ kotlin {
 sourceSets {
     val main by getting {
         java.srcDirs("src/main/kotlin")
-        resources.srcDirs("build/aws", "dashboards")
+        resources.srcDirs("build/aws")
     }
     val test by getting {
         java.srcDirs("src/test/kotlin")
     }
     val integrationTest by getting {
         java.srcDirs("src/integrationTest/kotlin")
+    }
+}
+
+// The core Grafana dashboards live in the top-level `dashboards/` tree, one subdirectory per
+// Grafana folder. They are copied onto the classpath under a `dashboards/` prefix (not merged
+// into the root like a resource srcDir would) so GrafanaDashboardCatalog can discover every
+// folder and file with a single ClassGraph scan of that one path.
+tasks.named<ProcessResources>("processResources") {
+    from("dashboards") {
+        into("dashboards")
+        exclude("CLAUDE.md")
     }
 }
 
@@ -323,9 +367,193 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+// KitFlagsDocumentedTest reads these user-guide pages off the filesystem to check they
+// document every kit.yaml flag. Gradle can't infer that dependency, so without declaring it
+// an edit that drops a flag row would be masked by an up-to-date or cached test result.
+tasks.named<Test>("test") {
+    inputs
+        .file("docs/user-guide/sysbench.md")
+        .withPropertyName("sysbenchUserGuide")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs
+        .file("docs/user-guide/clickhouse-benchmark.md")
+        .withPropertyName("clickhouseBenchmarkUserGuide")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+
+    // DevLauncherTelemetryTest runs the dev wrapper against a stub docker and launcher.
+    inputs
+        .file("bin/easy-db-lab")
+        .withPropertyName("devLauncher")
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+
+    // StartScriptTelemetryTest runs the generated Unix start script, the launcher a Homebrew
+    // user runs, to check which OpenTelemetry exporter settings it hands the JVM.
+    val startScript = layout.buildDirectory.file("scripts/easy-db-lab")
+    dependsOn(tasks.named("startScripts"))
+    inputs
+        .file(startScript)
+        .withPropertyName("unixStartScript")
+        .withPathSensitivity(PathSensitivity.NONE)
+    systemProperty(
+        "easydblab.startScript",
+        startScript
+            .get()
+            .asFile.absolutePath,
+    )
+}
+
 // `./gradlew check` must run BOTH tiers; `./gradlew test` stays UNIT-ONLY (fast, no Docker).
 tasks.named("check") {
     dependsOn(testing.suites.named("integrationTest"))
+    // Pure-bash tiers: no Docker, no network, seconds to run.
+    dependsOn("testScripts")
+}
+
+// Every Docker-free shell-script test, in one task so CI (pr-checks.yml) and `check` run the same
+// set. Needs bash, dash, jq and mikefarah's Go yq on PATH. The Docker-backed script tests
+// (testPacker, testAxonSudoers, testFluentBitFilter) are deliberately not here.
+tasks.register("testScripts") {
+    group = "Verification"
+    description = "Run every Docker-free shell script unit test"
+    dependsOn(
+        "testProfilingReconcile",
+        "testExportWorkloadMetrics",
+        "testSetPolicies",
+        "testCassandraScripts",
+        "testCassandraBuildPlan",
+        "testCassandraResolveRef",
+        "testKitShellLib",
+        "testClickhouseBenchmarkReport",
+        "testClickhouseBenchmarkStart",
+        "testClickhouseBenchmarkPrepare",
+        "testClickhouseBenchmarkStop",
+        "testSysbenchStartScript",
+        "testSysbenchPrepareScript",
+        "testSysbenchStopScript",
+        "testPyroscopeKitLabels",
+        "testBaseJdkInstall",
+        "testBaseChronyPoll",
+        "testTrinoLoadtestDriver",
+    )
+}
+
+// Unit-test the base AMI's chrony change: every Amazon Time Sync source polls every 8 s, other
+// lines are left alone, and a config with no Time Sync source fails the bake. sudo is stubbed.
+tasks.register<Exec>("testBaseChronyPoll") {
+    group = "Verification"
+    description = "Unit-test the base AMI chrony poll script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/base/install/configure_chrony_poll.test.sh")
+}
+
+// Unit-test the base AMI's JDK install: every supported JDK (8, 11, 17, 21, 25) and its debug
+// symbols, with Java 11 as the default. sudo, apt-get and update-java-alternatives are stubbed.
+tasks.register<Exec>("testBaseJdkInstall") {
+    group = "Verification"
+    description = "Unit-test the base AMI JDK install script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/base/install/install_jdks.test.sh")
+}
+
+// Unit-test the Pyroscope labels the presto and trino start scripts put on their profiles: the
+// cluster label from cluster-config, not the bare cluster name. kubectl and helm are stubbed.
+tasks.register<Exec>("testPyroscopeKitLabels") {
+    group = "Verification"
+    description = "Unit-test the Pyroscope labels of the presto and trino kit start scripts"
+    workingDir = file(".")
+    commandLine = listOf("bash", "src/test/shell/pyroscope-kit-labels.test.sh")
+}
+
+// Unit-test the shared kit shell library (configuration/edl-kit-lib.sh): app-node check, pod
+// overrides, labelled ConfigMaps, the pod waits, log following and the gauge push. kubectl, curl,
+// date and sleep are stubbed. Like every kit script test, it also runs under /bin/bash when that is
+// bash 3.x (run-with-bashes.sh), because kit scripts run under the macOS bash 3.2.
+tasks.register<Exec>("testKitShellLib") {
+    group = "Verification"
+    description = "Unit-test the shared kit shell library"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/kit-lib.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's report parser against reports captured from real runs.
+tasks.register<Exec>("testClickhouseBenchmarkReport") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit report parser"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-report.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's start script, its arg checks and the pod-side runner.
+// kubectl, curl, date, sleep and clickhouse-benchmark are stubbed.
+tasks.register<Exec>("testClickhouseBenchmarkStart") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-start.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's prepare script and the pod-side loader. kubectl, curl,
+// date, sleep and clickhouse-client are stubbed.
+tasks.register<Exec>("testClickhouseBenchmarkPrepare") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit prepare script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-prepare.test.sh")
+}
+
+// Unit-test the clickhouse-benchmark kit's stop script: it deletes only the instance's pods and
+// ConfigMaps. kubectl is stubbed.
+tasks.register<Exec>("testClickhouseBenchmarkStop") {
+    group = "Verification"
+    description = "Unit-test the clickhouse-benchmark kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/clickhouse-benchmark-stop.test.sh")
+}
+
+// Unit-test the sysbench kit's start script: it pushes its figures as OTLP JSON to the collector,
+// which labels them with the cluster and sends them to Mimir. kubectl and curl are stubbed.
+tasks.register<Exec>("testSysbenchStartScript") {
+    group = "Verification"
+    description = "Unit-test the sysbench kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-start.test.sh")
+}
+
+// Unit-test the sysbench kit's prepare script: its createdb, cleanup and prepare pods run on an app
+// node, a pod that ends at once does not make it wait, and a failed pod fails it. kubectl is stubbed.
+tasks.register<Exec>("testSysbenchPrepareScript") {
+    group = "Verification"
+    description = "Unit-test the sysbench kit prepare script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-prepare.test.sh")
+}
+
+// Unit-test the sysbench kit's stop script: it finishes and removes its cleanup pod when the target
+// database is already gone. kubectl is stubbed.
+tasks.register<Exec>("testSysbenchStopScript") {
+    group = "Verification"
+    description = "Unit-test the sysbench kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-stop.test.sh")
+}
+
+// Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,
+// in the cluster's tenant. curl is stubbed; no cluster, no network.
+tasks.register<Exec>("testExportWorkloadMetrics") {
+    group = "Verification"
+    description = "Unit-test the export-workload-metrics catalog script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "bin/export-workload-metrics.test.sh")
+}
+
+// Unit-test bin/set-policies: a failed attach shows the AWS error and fails the run, an attached
+// policy is not attached again, and success is reported only once all five policies are attached.
+// aws and easy-db-lab are stubbed. Runs under /bin/bash too when that is bash 3.x (macOS).
+tasks.register<Exec>("testSetPolicies") {
+    group = "Verification"
+    description = "Unit-test the set-policies IAM script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "bin/set-policies.test.sh")
 }
 
 // Packer testing tasks
@@ -344,10 +572,64 @@ tasks.register<Exec>("testPackerCassandra") {
         listOf("docker", "compose", "up", "--force-recreate", "--remove-orphans", "--exit-code-from", "test-cassandra", "test-cassandra")
 }
 
+// (Re)build the packer test image from packer/Dockerfile. Layer caching makes this cheap when
+// nothing changed, and it keeps a stale image (an older Ubuntu, classic sudo) from standing in for
+// the AMI's sudo-rs.
+tasks.register<Exec>("buildPackerTestImage") {
+    group = "Verification"
+    description = "Build the Docker image the packer script tests run in"
+    workingDir = file("packer")
+    commandLine = listOf("docker", "build", "-q", "-t", "easy-db-lab-packer-test", ".")
+}
+
+// Check the baked /etc/sudoers.d/axonops against the AMI's own visudo (sudo-rs on Ubuntu 26.04,
+// which rejects wildcard arguments). Runs in the packer test image; no network.
+tasks.register<Exec>("testAxonSudoers") {
+    group = "Verification"
+    description = "Validate the axonops sudoers rules with the image's visudo"
+    dependsOn("buildPackerTestImage")
+    workingDir = file("packer")
+    commandLine =
+        listOf(
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "${file("packer").absolutePath}:/packer:ro",
+            "--user",
+            "ubuntu",
+            "easy-db-lab-packer-test",
+            "bash",
+            "/packer/cassandra/install/install_axon.test.sh",
+        )
+}
+
+// Unit-test the Fluent Bit journald filter's drop rule: Cassandra's logback lines are duplicates of
+// what the OTel agent already delivers, while its non-logback output (JVM crash, OOM, pre-logback)
+// reaches Loki only through the journal. Runs Lua in Docker; no cluster, no Fluent Bit.
+tasks.register<Exec>("testFluentBitFilter") {
+    group = "Verification"
+    description = "Unit-test the Fluent Bit journald Lua filter"
+    workingDir = file(".")
+    commandLine =
+        listOf(
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            "$projectDir:/w:ro",
+            "-w",
+            "/w",
+            "nickblah/lua:5.4-alpine",
+            "lua",
+            "src/main/resources/com/rustyrazorblade/easydblab/configuration/otel/fluent-bit-severity-mapper.test.lua",
+        )
+}
+
 tasks.register("testPacker") {
     group = "Verification"
     description = "Run all packer provisioning tests"
-    dependsOn("testPackerBase", "testPackerCassandra")
+    dependsOn("testPackerBase", "testPackerCassandra", "testAxonSudoers")
 }
 
 // Unit-test the pure build-plan logic behind the build-cassandra-ref workflow
@@ -392,19 +674,136 @@ tasks.register<Exec>("testTrinoLoadtestDriver") {
         )
 }
 
-tasks.named("check") {
-    dependsOn("testTrinoLoadtestDriver")
+// Unit-test install-cassandra-version's decisions (argument handling, already-installed no-op,
+// source-build guards, JDK selection). sudo/curl/git/dpkg are stubbed; no Docker, no network.
+tasks.register<Exec>("testCassandraInstallScript") {
+    group = "Verification"
+    description = "Unit-test the install-cassandra-version script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/install-cassandra-version.test.sh")
+}
+
+// Unit-test the bake-time loop's version resolution (yq-driven flags, lazy skip). Sources
+// install_cassandra.sh without INSTALL_CASSANDRA, so none of its effects run.
+tasks.register<Exec>("testCassandraInstallLoop") {
+    group = "Verification"
+    description = "Unit-test the bake-time Cassandra version install loop"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/install/install_cassandra.test.sh")
+}
+
+// Unit-test use-cassandra's guard against selecting a version the node never installed.
+tasks.register<Exec>("testCassandraUseScript") {
+    group = "Verification"
+    description = "Unit-test the use-cassandra script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/use-cassandra.test.sh")
+}
+
+// Unit-test wait-for-up-normal: it fails fast when Cassandra dies and at a deadline when it never
+// reaches NORMAL.  cassandra-pid, ss, sjk-mx, systemctl, sleep and the clock are stubbed.
+tasks.register<Exec>("testCassandraWaitScript") {
+    group = "Verification"
+    description = "Unit-test the wait-for-up-normal script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/wait-for-up-normal.test.sh")
+}
+
+// Unit-test the agent selection cassandra.in.sh runs on every Cassandra start: deriving X.Y from
+// the release jar name (every shape, including the unparseable one) and mapping it to the AxonOps
+// agent. Also parses cassandra.in.sh under dash, which is the shell Cassandra actually sources it
+// with. Pure functions; no Docker, no network, no node.
+tasks.register<Exec>("testCassandraAgentSelection") {
+    group = "Verification"
+    description = "Unit-test Cassandra version derivation and agent selection"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/lib/edl-cassandra-agents.test.sh")
+}
+
+// Unit-test cached_fetch, which every provisioning script and install-cassandra-version routes
+// downloads through. Covers the s3:// dispatch (curl has no s3 protocol, and an object already in
+// the account bucket must not be copied into the download cache), plus cache hit, cache miss and
+// no-bucket-configured. aws and curl are stubbed; no network, no credentials, no node.
+tasks.register<Exec>("testCacheLib") {
+    group = "Verification"
+    description = "Unit-test the S3-backed download cache helper"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/base/install/edl-cache-lib.test.sh")
+}
+
+tasks.register("testCassandraScripts") {
+    group = "Verification"
+    description = "Run all Cassandra shell script unit tests"
+    dependsOn(
+        "testCassandraInstallScript",
+        "testCassandraInstallLoop",
+        "testCassandraUseScript",
+        "testCassandraWaitScript",
+        "testCassandraAgentSelection",
+        "testCacheLib",
+    )
+}
+
+// Unit-test the node-resident profiling reconciler (decision table, chunk shipping, retention).
+// `asprof`, `cassandra-pid` and `curl` are stubbed and the clock is injected, so there is no
+// Docker, no network, and no real JVM.
+tasks.register<Exec>("testProfilingReconcile") {
+    group = "Verification"
+    description = "Unit-test the edl-profiling-reconcile node script"
+    workingDir = file(".")
+    commandLine = listOf("bash", "packer/cassandra/bin/edl-profiling-reconcile.test.sh")
 }
 
 tasks.register<Exec>("testPackerScript") {
     group = "Verification"
     description = "Test a specific packer script (use -Pscript=path/to/script.sh)"
     workingDir = file("packer")
-    doFirst {
-        val scriptPath =
-            project.findProperty("script")?.toString()
-                ?: throw GradleException("Please specify script path with -Pscript=path/to/script.sh")
-        commandLine = listOf("./test-script.sh", scriptPath)
+    // Read -Pscript as a Gradle property provider. Looking it up with project.findProperty at
+    // execution time does not see the -P value (it resolved to the literal "false"), so the
+    // script was always "packer/false".
+    val scriptPath = providers.gradleProperty("script")
+    executable = "./test-script.sh"
+    argumentProviders.add(
+        CommandLineArgumentProvider {
+            listOf(
+                scriptPath.orNull
+                    ?: throw GradleException("Please specify script path with -Pscript=path/to/script.sh"),
+            )
+        },
+    )
+}
+
+// Script tests are Exec tasks, which write no JUnit XML, so a failing one never reached the
+// spec-flow-failures artifact pr-checks.yml builds from **/build/test-results/**/*.xml. Each one
+// now records its outcome as a one-testcase report, id `scripts.<task>` (rerun it with
+// `./gradlew <task>`), and then fails the build exactly as before.
+tasks.withType<Exec>().matching { it.name.startsWith("test") }.configureEach {
+    val taskName = name
+    val report = layout.buildDirectory.file("test-results/scripts/TEST-scripts.$taskName.xml")
+    isIgnoreExitValue = true
+    doLast {
+        val exitCode = executionResult.get().exitValue
+        val outcome =
+            if (exitCode == 0) {
+                ""
+            } else {
+                "<failure message=\"$taskName exited with code $exitCode\"/>"
+            }
+        val failures = if (exitCode == 0) 0 else 1
+        report.get().asFile.apply {
+            parentFile.mkdirs()
+            writeText(
+                """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <testsuite name="scripts.$taskName" tests="1" failures="$failures" errors="0" skipped="0">
+                  <testcase classname="scripts" name="$taskName">$outcome</testcase>
+                </testsuite>
+                """.trimIndent() + "\n",
+            )
+        }
+        if (exitCode != 0) {
+            throw GradleException("$taskName failed with exit code $exitCode")
+        }
     }
 }
 
@@ -435,15 +834,10 @@ tasks.distTar {
     archiveExtension.set("tar.gz")
 }
 
+// The OTel agent reaches install/easy-db-lab/agents through the `main` distribution's contents
+// above (`from(copyOtelAgent) { into("agents") }`), which installDist syncs.
 tasks.named("installDist") {
     dependsOn(tasks.named("shadowJar"), copyOtelAgent)
-    doLast {
-        // Copy agent to installDist location
-        copy {
-            from("${project.layout.buildDirectory.get()}/otel-agent")
-            into(layout.buildDirectory.dir("install/easy-db-lab/agents"))
-        }
-    }
 }
 
 tasks.assemble {
@@ -537,7 +931,12 @@ kover {
 // Jib container image configuration
 jib {
     from {
-        image = "eclipse-temurin:21-jre"
+        // Pull the base image from the AWS ECR Public mirror, not Docker Hub.
+        // Docker Hub 401s anonymous manifest requests from shared CI runners.
+        // jib then retries with whatever is in ~/.docker/config.json, which on
+        // the publish workflow is the ghcr.io credential, and Docker Hub
+        // rejects that too. The mirror allows anonymous pulls.
+        image = "public.ecr.aws/docker/library/eclipse-temurin:21-jre"
     }
     to {
         val imageTag = System.getProperty("jib.to.image.tag") ?: "latest"
@@ -553,6 +952,8 @@ jib {
         appRoot = "/app"
         jvmFlags =
             listOf(
+                // CDS off: see applicationDefaultJvmArgs. The agent would trigger the same warning.
+                "-Xshare:off",
                 "-javaagent:/agents/opentelemetry-javaagent.jar",
                 "-Deasydblab.ami.name=rustyrazorblade/images/easy-db-lab-cassandra-amd64-$version",
                 "-Deasydblab.version=$version",

@@ -5,6 +5,8 @@ import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.sidecar.SidecarManifestBuilder
+import io.fabric8.kubernetes.api.model.HasMetadata
+import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -13,6 +15,7 @@ import org.koin.core.module.dsl.factoryOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -145,5 +148,25 @@ class SidecarServiceTest : BaseKoinTest() {
         assertThat(result.isSuccess).isTrue()
         // Secret + ConfigMap + DaemonSet = 3 resources
         verify(mockK8sService, times(3)).applyResource(any(), any())
+    }
+
+    /**
+     * The Pyroscope agent parses `k=v,k=v`; with `k:v` it drops every label, so the sidecar's
+     * profiles had no cluster and no host. The cluster is `<name>-<id>`, as on every other signal.
+     */
+    @Test
+    fun `deploy labels the sidecar's profiles with its host and the cluster label`() {
+        val resources = argumentCaptor<HasMetadata>()
+
+        sidecarService.deploy(testControlHost, "ghcr.io/apache/cassandra-sidecar:latest").getOrThrow()
+
+        verify(mockK8sService, times(2)).applyResource(any(), resources.capture())
+        val daemonSet = resources.allValues.filterIsInstance<DaemonSet>().single()
+        val javaToolOptions =
+            daemonSet.spec.template.spec.containers
+                .flatMap { it.env }
+                .single { it.name == "JAVA_TOOL_OPTIONS" }
+                .value
+        assertThat(javaToolOptions).contains("-Dpyroscope.labels=hostname=\$(NODE_NAME),cluster=${testClusterState.clusterLabelName()} ")
     }
 }

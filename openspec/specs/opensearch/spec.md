@@ -6,7 +6,7 @@ Manages AWS-managed OpenSearch domain deployment within the cluster VPC.
 
 ## Requirements
 
-### REQ-OS-001: OpenSearch Deployment
+### Requirement: OpenSearch Deployment
 
 The system MUST support deploying an AWS-managed OpenSearch domain in the cluster's VPC.
 

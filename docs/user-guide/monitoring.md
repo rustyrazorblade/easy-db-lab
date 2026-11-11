@@ -13,9 +13,60 @@ When running multiple environments side by side, Grafana displays the cluster na
 - **Sidebar org name** - The organization name in the sidebar shows the cluster name
 - **Home dashboard** - The System Overview dashboard is set as the home page instead of the default Grafana welcome page
 
+### Tenant pickers and the current cluster
+
+Every dashboard has a picker for each kind of data it shows: **Metrics**, **Logs** and **Traces**. Each picker lists the cluster's own tenant (the default), every tenant in the shared store by name, and one "all tenants" choice. Change the pickers to read another tenant's tests; every panel, variable, annotation and link on the dashboard follows them, and a link to another dashboard keeps them. Profiles have one datasource only, so there is no profiles picker.
+
+A dashboard with a `cluster` variable opens on the current cluster, so it shows this cluster's data with no selection by hand.  The variable lists every cluster of the tenant the Metrics picker selects.  You can select more than one cluster, or "All".  With the "all tenants" datasource in each picker and "All" in `cluster`, a dashboard shows every cluster of every tenant.  Every place a dashboard shows a cluster names it by its short name: its name and the first 8 characters of its id, for example `test-1a2b3c4d`.  That covers the cluster pickers, legends, panel titles and tables.  The pickers still select the full id, so queries and links read the whole `<name>-<id>`.
+
+### Tests
+
+The **Tests** dashboard (Infrastructure folder) lists every test (cluster) of the tenant the Metrics picker selects, with its start, end and duration: its first and last `up` sample within **Lookback** (default 180 days).  The dashboard opens on the last 24 hours; the list and the **Test** picker still cover the whole **Lookback**.  Torn-down clusters are listed too. Click a cluster for:
+
+- **System Overview** or **Cassandra Overview**, opened on that test's window;
+- **Compare with the current cluster**, which opens Cluster Comparison with that test as the baseline and the current cluster as the candidate;
+- **Show documents**, which selects the test and shows its documents below the list.
+
+### Comparing two tests
+
+Cluster Comparison, A/B Comparison and System A/B Comparison compare two runs of any lengths: pick them in **Baseline** and **Candidate** (any cluster of the tenant within Lookback; both default to the current cluster). Three rows at the top show:
+
+- **Overlay**: both runs on one time axis, from a common start. The axis covers the longer run.
+- **Side by side**: each run on its own time range, at its real times.
+- **Summary and documents**: each figure over each run's whole window, the difference in percent, and both runs' documents.
+
+A/B Comparison compares builds within one cluster, so its deltas are per cluster.  To compare two clusters, use Cluster Comparison.
+
+These rows need the dashboard's relative time range (the default, ending now); an absolute range turns their own time ranges off. In the overlay, annotations sit at their real time, so they line up only with a run that did not move.
+
+### Test documents
+
+Attach notes and results to a test as markdown files:
+
+```bash
+easy-db-lab report upload results.md notes.md
+```
+
+The files go to the test's folder in the account bucket, `reports/<tenant>/<name>-<id>/`, each with an HTML copy, and one `index.html` holds them all, each under its own heading. Only `.md` files named with letters, digits, `.`, `_` and `-` are accepted, and `index.md` is refused.  Each name can occur only one time in a command.  The command names every file it refuses and uploads nothing.  If an upload fails, the command names the failed file and each document it already stored; run the command again. A file with the name of a stored document replaces it. The command uses your own AWS credentials and needs only the workspace, so it works after `down`. `up` writes the index of a new test, which says "No documents yet".
+
+The Tests dashboard and the comparison dashboards show the documents through a read-only web server in the Grafana pod (port 3080 of the control node).  The server answers only `GET` requests for document paths under `/reports/`; it answers 400 for a path with other characters, and it drops the query string.  Pick the tenant folder with **Documents tenant**; it defaults to the cluster's own tenant.
+
+Two `report upload` runs for one test at the same moment can each rebuild the index without the other's document. The document itself is stored; the next upload puts it back in the index.
+
 ### System Dashboard
 
 Shows CPU, memory, disk I/O, network I/O, and load average for all cluster nodes via OpenTelemetry metrics.
+
+System Overview and System A/B Comparison have a **Role** picker.  It selects hosts by the role in their name:
+
+| Role | Hosts |
+|------|-------|
+| db | `db0`, `db1`, ... |
+| app | `app0`, `app1`, ... |
+| control | `control0` |
+| spark | EMR nodes, which EC2 names `ip-...` |
+
+Pick one or more roles to show every host of those roles, with no host selection by hand.  The host pickers list only hosts of the selected roles, and every panel shows only them.  The default is All, which shows every host.  A link from these dashboards to another dashboard keeps the selected roles.
 
 ### AWS CloudWatch Overview
 
@@ -86,25 +137,94 @@ Shows OpenSearch domain metrics via CloudWatch. Available when an OpenSearch dom
 
 Use the `Domain` dropdown to select which OpenSearch domain to view.
 
-### Cassandra Condensed
-
-A single-pane-of-glass summary of the most important Cassandra metrics, powered by the MAAC (Management API for Apache Cassandra) agent. Shows:
-
-- **Cluster Overview:** Nodes up/down, compaction rates, CQL request throughput, dropped messages, connected clients, timeouts, hints, data size, GC time
-- **Condensed Metrics:** Request throughput, coordinator latency percentiles, memtable space, compaction activity, table-level latency, streaming bandwidth
-
-Requires the MAAC agent to be loaded (Cassandra 4.0, 4.1, or 5.0). Metrics are exposed on port 9000 and scraped by the OTel collector.
-
 ### Cassandra Overview
 
-A comprehensive deep-dive into Cassandra cluster health, also powered by the MAAC agent. Shows:
+A deep-dive into Cassandra cluster health. Shows:
 
-- **Request Throughput:** Read/write distribution, latency percentiles (P98-P999), error throughput
-- **Node Status:** Per-node up/down status (polystat panel), node count, status history
-- **Data Status:** Disk space usage, data size, SSTable count, pending compactions
-- **Internals:** Thread pool pending/blocked/active tasks, dropped messages, hinted handoff
-- **Hardware:** CPU, memory, disk I/O, network I/O, load average
-- **JVM/GC:** Application throughput, GC time, heap utilization
+- **Cluster Overview:** Request throughput, errors by status, read and write latency spread across nodes, pending compactions, active tasks by pool
+- **Hardware / Operating System:** CPU, load average, memory, disk throughput, network I/O
+- **Per-Node Latency:** Read and write latency per node
+- **Data Status:** Data size, SSTable count, compaction backlog against completion rate, SSTables per read
+- **Cassandra Internals:** Thread pool pending and blocked tasks, dropped messages, hinted handoff
+- **JVM / Garbage Collection:** Application throughput, GC time and pause percentiles, heap memory
+- **Storage & Capacity:** Live against total disk space per table, storage growth rate per node
+
+The metrics come from the OpenTelemetry Java Agent, which runs inside the Cassandra JVM and reads
+Cassandra's own MBeans. It exports over OTLP to the node's OTel collector on port 4318, so no
+Prometheus scrape port is involved. One agent serves every Cassandra release, and it needs no
+per-release selection: a version installed with `cassandra install --url` or `--branch` reports the
+same metrics as a stock release.
+
+Series carry the Prometheus label `job="cassandra"`, and each node also reports a `cassandra_build`
+label naming the build it is running. That label is what lets a dashboard compare two versions in
+one cluster. See [OpenTelemetry](../reference/opentelemetry.md) for the metric names, the rule file,
+and how a node derives its own labels.
+
+If the agent jar or the rule file is missing, Cassandra says so on stderr at startup — check
+`journalctl -u cassandra` on the node when a dashboard is empty.
+
+Latency arrives as pre-aggregated percentile gauges read from Cassandra's own `EstimatedHistogram`,
+the same reservoir `nodetool proxyhistograms` prints. `histogram_quantile()` does not apply to them,
+and they cannot be re-aggregated into a cluster-wide percentile.
+
+## Annotations
+
+Annotations mark a moment on the dashboards' timeline. Use them as A/B config-change markers; for example, drop one before and one after you change a Cassandra setting, so a latency shift lines up with the change that caused it.
+
+Create an annotation with `grafana annotate`:
+
+```bash
+# A point marker at the current time
+easy-db-lab grafana annotate --text "raised concurrent_writes to 128" --tags config
+
+# A region marker spanning a window
+easy-db-lab grafana annotate --text "load test" --tags test --time -30m --time-end now
+```
+
+A plain global marker (no `--dashboard` and no `--panel` scope) is automatically tagged `easydblab`, in addition to any `--tags` you pass. Every annotation is also mirrored to Loki as it is created (`source="annotation"`), and the core dashboards read their markers from Loki, so a global marker renders on every core dashboard and stays readable from S3 after the cluster is gone. A scoped marker (`--dashboard` or `--panel`) is not auto-tagged; it renders on its target dashboard. See [Command Reference](../reference/commands.md#grafana-annotate) for all options.
+
+### Backing up annotations
+
+The cluster is ephemeral, but the annotations are worth keeping. Back them up to the tenant's annotations directory in the account bucket (`grafana/annotations/<tenant>/`):
+
+```bash
+easy-db-lab grafana backup
+```
+
+This backup also runs automatically before teardown. When you run `easy-db-lab down`, the tool mirrors the annotations to Loki and stops the OTel collector, then flushes Loki and Mimir, waits for Tempo to upload its last traces, and backs up the annotations, all at once, before it removes any infrastructure. If any of that fails, `down` removes nothing and never starts a backend again; the report names every signal that is not saved. Pass `--force` to skip these steps and tear down anyway; it lists what it will not save before the confirmation prompt. See [`down`](../reference/commands.md#down) for details.
+
+## Where observability data is stored
+
+Every cluster belongs to an observability **tenant**, chosen at `init --tenant <name>` (default `default`) and fixed for the life of the cluster. Clusters that share a tenant share one store: their metrics, logs, traces, profiles and annotations sit side by side and can be read together.
+
+All of a cluster's observability data lands in the account bucket. Each backend has its own root at the top level of the bucket, named for the tool whose file format it holds:
+
+| Location | What | Written by |
+|----------|------|------------|
+| `tempo/<tenant>/` | Tempo blocks | Tempo, while the cluster runs |
+| `pyroscope/` | Pyroscope v2 segments and blocks | the Pyroscope server, while the cluster runs |
+| `mimir/<tenant>/` | Mimir blocks | Mimir, while the cluster runs, and its flush at `down` |
+| `loki/` | Loki chunks (under the tenant) and TSDB index (under `index/`) | Loki, while the cluster runs, and its flush at `down` |
+| `grafana/annotations/<tenant>/<yyyyMMdd-HHmmss>_<name>-<clusterId>.json` | Grafana annotations | `grafana backup`, and `down` |
+| `reports/<tenant>/<name>-<id>/` | Test documents: your `.md` files, an HTML copy of each, and `index.html` | `report upload`, and `up` (the index) |
+
+An annotations backup never overwrites another: when one of the same cluster already exists under that second's name (a `grafana backup` just before `down`, say), the new one takes the next free second.
+
+Cluster configuration stays under `clusters/<name>-<id>/config/`. The observability stack writes nothing to the per-cluster data bucket. `easy-db-lab status` shows the tenant and every location.
+
+**Native multi-tenancy.** Mimir, Loki, Tempo and Pyroscope run with multi-tenancy on; the tenant is their tenant ID. Every writer sends it in the `X-Scope-OrgID` header — the OTel collector's metrics, logs and trace exporters, Tempo's metrics generator, the Alloy eBPF profiler, the Pyroscope Java agent (stress jobs, the Cassandra sidecar, EMR Spark, the Trino and Presto kits) and the Cassandra JFR shipper — on redirected clusters too. Every Grafana datasource sends it on every query, so a query from the cluster's Grafana returns its tenant's data. A query that sends no tenant, such as one made directly against a backend's HTTP API, reads nothing; add `-H 'X-Scope-OrgID: <tenant>'`. Pyroscope's own UI on port 4040 asks for the tenant once per browser; see [Profiling](profiling.md#pyroscope-ui).
+
+**Nothing is deleted automatically.** No S3 lifecycle, expiry or retention rule is set on any bucket, and `down` deletes no data. The cluster's IAM role is denied deletes under `mimir/`, `loki/`, `tempo/`, `grafana/` and `reports/`. `pyroscope/` is left out: Pyroscope's own compaction writes a merged block and then removes the segments it merged, which loses nothing. Mimir runs no compactor and no retention. Loki's compactor is idle, its retention is off and its delete API is not served. Tempo runs with compaction — which is also what runs retention in Tempo 3 — turned off for every tenant, so no block is ever deleted. Pyroscope runs pure v2 storage with the metastore's retention cleanup off and no retention period; its v2 compaction merges this cluster's segments into blocks, which keeps their data.
+
+**Uploads within minutes.** Each backend uploads while the cluster runs, so other clusters in the tenant can read the data: a metric sample is in `mimir/` in about 2 minutes, a span in `tempo/` in about 2 minutes, and a log line of a stream that keeps writing in `loki/` in about an hour, with its index file at Loki's next 15-minute index rotation. Profiles are in `pyroscope/` as soon as Pyroscope accepts them.
+
+**Durability across restarts.** Tempo cuts a block at most every minute and uploads it while the cluster runs. Both of its write-ahead logs live on the control node's disk (`/mnt/db1/tempo`), so a restart of the Tempo pod does not lose spans it received but has not yet uploaded. Tempo acknowledges a push while the spans are still in memory and writes them to the WAL about 2 seconds later (10 seconds at most for a trace that is still receiving spans). A graceful restart writes every in-memory trace to the WAL first and loses nothing. A Tempo process killed outright loses only the spans from those last 2 seconds. The WAL is not fsynced, so a crash of the control node itself can also lose WAL data the operating system had not yet written to disk. Tempo keeps every span it receives: its per-tenant limits on live traces and trace size are off, and its ingestion rate limit is 1 GB/s, so a stress load is not thinned out there. The stress job itself traces only 1% of its requests, so request rates for `cassandra-easy-stress` on the Trace RED and Tempo dashboards show 1% of the real rate. It also stores every attribute value in full: the distributor's `max_attribute_bytes` is 0, where Tempo's default of 2048 bytes would truncate long values such as `process.command_line`. Any span Tempo does drop is counted in `tempo_discarded_spans_total`. The Pyroscope metastore index lives on `/mnt/db1/pyroscope`, so profiles written before a Pyroscope restart are still returned after it.
+
+**Known limit: Pyroscope after teardown.** Pyroscope v2 finds blocks only through the cluster's local metastore index and cannot rebuild it from S3. After `down`, the profiles stay in `pyroscope/` but cannot be queried without that index, which `down` does not save.
+
+**Restarts.** `up` and `grafana update-config` restart an observability workload only when its configuration changed: each workload's pod template carries a hash of the pod template itself (image, probes, environment, volumes) and of the ConfigMaps it reads. A dashboard edit no longer restarts Tempo or Pyroscope. Both commands print, for each workload, whether its configuration changed (and it is rolling) or is unchanged (and it is left running). A new image or probe counts as a change, because Kubernetes rolls the workload for it.
+
+**Versions.** Tempo 3.0.3, Pyroscope 2.3.1, Grafana 13.2.2 with image renderer v5.12.4, Alloy v1.20.0, Beyla 3.36.0, Mimir 3.2.1, Loki 3.7.8, the OpenTelemetry collector 0.161.0 (cluster, stress-job sidecar and EMR), and Fluent Bit 5.1.2. No observability image runs `latest`. The collector also scrapes its own telemetry (`:8888`, job `otel-collector`), so exporter send failures are visible in Mimir. In local mode it also scrapes the Mimir (`:9009`, job `mimir`), Loki (`:3100`, job `loki`), Tempo (`:3200`, job `tempo`) and Pyroscope (`:4040`, job `pyroscope`) servers' own metrics. Only the collector on the node running each server scrapes it, so each job has one target, and `instance` is the server's pod name. A redirect cluster runs none of these servers and renders none of these jobs.
 
 ## eBPF Observability
 
@@ -117,7 +237,9 @@ Grafana Beyla uses eBPF to automatically instrument network traffic and provide 
 - **Cassandra** CQL protocol (port 9042) and inter-node communication (port 7000)
 - **ClickHouse** HTTP (port 8123) and native (port 9000) protocols
 
-Metrics are scraped by the OTel collector and stored in VictoriaMetrics.
+Metrics are scraped by the OTel collector and stored in Mimir.
+
+Beyla observes from outside the process only: its Java agent injection is turned off (`javaagent.enabled: false`), so it never attaches an agent to the database JVM.
 
 ### ebpf_exporter (Low-Level Metrics)
 
@@ -127,6 +249,79 @@ Cloudflare's ebpf_exporter provides kernel-level metrics via eBPF:
 - **Block I/O latency** — histogram of block device I/O operation latency
 - **VFS latency** — histogram of filesystem read/write operation latency
 
-These metrics are scraped by the OTel collector and stored in VictoriaMetrics.
+These metrics are scraped by the OTel collector and stored in Mimir.
+
+## kube-state-metrics
+
+kube-state-metrics runs on the control node of every cluster and exposes the state of Kubernetes objects as Prometheus metrics:
+
+- **Pods** — `kube_pod_status_phase`, `kube_pod_container_status_restarts_total`, `kube_pod_container_status_waiting_reason`
+- **Workloads** — `kube_deployment_status_replicas_available`, `kube_daemonset_status_number_ready`, `kube_statefulset_status_replicas_ready`, `kube_job_status_succeeded`
+- **Nodes and storage** — `kube_node_status_condition`, `kube_persistentvolumeclaim_status_phase`
+
+The OTel collector scrapes it once, through pod discovery on the control node, so each series appears one time. The metrics carry the `cluster` label like every other scrape.
+
+## Cilium metrics
+
+On a Cilium cluster (the default CNI), the OTel collector also scrapes the Cilium agent (`localhost:9962` on every node), Hubble (`localhost:9965` on every node), and the Cilium operator (port 9963 on the node that runs it). A Flannel cluster has none of these jobs. See [Pod Networking (CNI)](networking.md) for the job definitions, the Hubble UI NodePort, and `platform cni`.
 
 See [Profiling](profiling.md) for continuous profiling with Pyroscope.
+
+## Redirecting Telemetry to an External Stack
+
+By default each cluster stands up its own local observability backends on the control node: Mimir, Loki, Tempo, the Pyroscope server, and Grafana.  Redirect mode ships all telemetry to an external observability stack instead.  A redirect cluster stands up no local backends and no local Grafana.
+
+Redirect mode is useful when you run several clusters and want one place to view them all.  A common case is a second data center that reports into the first data center's stack.
+
+### Enabling Redirect Mode
+
+Set the redirect target once, at `init`, with `--redirect-telemetry <host>`:
+
+```bash
+easy-db-lab init --redirect-telemetry 10.0.0.9 --up
+```
+
+`<host>` is the hostname or IP of the external stack.  The tool derives the four signal endpoints from that host and the known stack ports:
+
+- Metrics: `http://<host>:9009/api/v1/push` (Mimir remote write)
+- Logs: `http://<host>:3100/otlp` (Loki OTLP ingest)
+- Traces: `<host>:4320` (Tempo OTLP gRPC receiver)
+- Profiles: `http://<host>:4040` (Pyroscope ingest)
+
+The traces endpoint uses the OTLP receiver port 4320, not Tempo's query port 3200.
+
+```admonish info
+Redirect mode is a life-of-cluster choice made at `init`.  All four signals move together; you cannot redirect one signal and keep the rest local.  You cannot switch a running cluster between local and redirect mode.
+```
+
+### Overriding Individual Endpoints
+
+If the external stack does not use the easy-db-lab port layout, override any signal.  An override wins over the derived value; the other signals still derive from the base host.
+
+```bash
+easy-db-lab init --redirect-telemetry 10.0.0.9 \
+  --redirect-metrics-endpoint http://metrics.example.com:9009/api/v1/push \
+  --redirect-traces-endpoint tempo.example.com:4320 \
+  --up
+```
+
+The four override options are `--redirect-metrics-endpoint`, `--redirect-logs-endpoint`, `--redirect-traces-endpoint`, and `--redirect-profiles-endpoint`.
+
+### Origin Identity
+
+Every signal carries the source cluster's name as its origin identifier.  Metrics and traces carry a `cluster` label; logs carry a `cluster` field; profiles carry a `cluster` label.  Use that identifier to tell one cluster's telemetry from another on the shared stack.
+
+### Commands That Need the Local Stack
+
+A redirect cluster has no local backends or Grafana to act on.  These commands refuse to run on a redirect cluster and tell you why:
+
+- `grafana update-config`
+- `logs query`
+
+`down` also skips its pre-teardown save (annotation mirror, collector stop, flushes, Tempo drain and annotations backup) on a redirect cluster.
+
+Run these commands against the external stack instead.  Kit dashboards are not installed on a redirect cluster; the dashboards live on the external stack's Grafana.
+
+### Validation
+
+The tool validates the four endpoints for well-formedness at `init` and again at the start of `up`, before it creates any AWS resource.  If a signal endpoint is missing or malformed, the tool names the offending signal and stops without standing anything up.  Validation checks structure only; it does not probe the external stack for reachability.  An unreachable but well-formed endpoint surfaces later as a collector send failure.

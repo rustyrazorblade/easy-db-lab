@@ -1,0 +1,2 @@
+Loaded 2 queries.
+Code: 60. DB::Exception: Received from localhost:9000. DB::Exception: Unknown table expression identifier 'no_such_table'. In scope SELECT count() FROM no_such_table. (UNKNOWN_TABLE) (version 26.9.19.9 (official build))

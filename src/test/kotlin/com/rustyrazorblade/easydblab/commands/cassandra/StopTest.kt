@@ -19,6 +19,8 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 
@@ -39,6 +41,15 @@ class StopTest : BaseKoinTest() {
             instanceId = "i-db0",
         )
 
+    private val secondCassandraHost =
+        ClusterHost(
+            publicIp = "54.1.2.4",
+            privateIp = "10.0.1.2",
+            alias = "db1",
+            availabilityZone = "us-west-2a",
+            instanceId = "i-db1",
+        )
+
     private val testControlHost =
         ClusterHost(
             publicIp = "54.1.2.5",
@@ -55,7 +66,7 @@ class StopTest : BaseKoinTest() {
             initConfig = InitConfig(region = "us-west-2"),
             hosts =
                 mapOf(
-                    ServerType.Cassandra to listOf(testCassandraHost),
+                    ServerType.Cassandra to listOf(testCassandraHost, secondCassandraHost),
                     ServerType.Control to listOf(testControlHost),
                 ),
         )
@@ -83,6 +94,7 @@ class StopTest : BaseKoinTest() {
         whenever(mockClusterStateManager.load()).thenReturn(testClusterState)
         whenever(mockCassandraService.stop(any())).thenReturn(Result.success(Unit))
         whenever(mockSidecarService.undeploy(any())).thenReturn(Result.success(Unit))
+        whenever(mockCassandraService.isRunning(any())).thenReturn(Result.success(true))
     }
 
     @Test
@@ -90,7 +102,46 @@ class StopTest : BaseKoinTest() {
         val command = Stop()
         command.execute()
 
-        verify(mockCassandraService).stop(any())
+        verify(mockCassandraService, times(2)).stop(any())
+    }
+
+    @Test
+    fun `a stop of some db nodes leaves the sidecar, the running workload and the kit hooks to the nodes still running`() {
+        val command = Stop()
+        command.hosts.hostList = "db0"
+        command.execute()
+
+        verify(mockCassandraService).stop(testCassandraHost.toHost())
+        verify(mockCassandraService, never()).stop(secondCassandraHost.toHost())
+        verify(mockSidecarService, never()).undeploy(any())
+        verify(mockClusterStateManager, never()).removeRunningWorkload(any())
+        verify(mockKitHookExecutor, never()).firePostKitStop(any())
+        assertThat(outputHandler.messages.joinToString("\n")).contains("cassandra-sidecar keeps running").contains("db1")
+    }
+
+    @Test
+    fun `a stop that names every db node removes the sidecar, clears the running workload and fires the stop hooks`() {
+        val command = Stop()
+        command.hosts.hostList = "db0,db1"
+        command.execute()
+
+        verify(mockSidecarService).undeploy(testControlHost)
+        verify(mockClusterStateManager).removeRunningWorkload("cassandra")
+        verify(mockKitHookExecutor).firePostKitStop("cassandra")
+    }
+
+    @Test
+    fun `a second partial stop that leaves no db node running removes the sidecar and clears the workload`() {
+        Stop().apply { hosts.hostList = "db0" }.execute()
+        verify(mockSidecarService, never()).undeploy(any())
+
+        // db0 is down since the first stop; this stop takes db1, the last node still running.
+        whenever(mockCassandraService.isRunning(testCassandraHost.toHost())).thenReturn(Result.success(false))
+        Stop().apply { hosts.hostList = "db1" }.execute()
+
+        verify(mockSidecarService).undeploy(testControlHost)
+        verify(mockClusterStateManager).removeRunningWorkload("cassandra")
+        verify(mockKitHookExecutor).firePostKitStop("cassandra")
     }
 
     @Test

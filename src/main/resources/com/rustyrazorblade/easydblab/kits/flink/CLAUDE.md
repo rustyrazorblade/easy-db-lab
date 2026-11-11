@@ -38,16 +38,16 @@ real plugin dir.)
 
 ## Metrics scrape topology
 
-The Prometheus reporter binds **hostPort 9249** so the OTel DaemonSet (hostNetwork) can scrape
-it on each app node. Because both JobManager and TaskManager expose 9249, two Flink pods on the
-same node would collide on that hostPort, so the podTemplate uses `podAntiAffinity` to spread
-them one-per-node. Validated on a live cluster: with `--taskmanagers 1` on a 2-app-node cluster
-the JM and TM landed on separate nodes and both scraped cleanly.
+The scrape entry in `kit.yaml` uses pod discovery (`pod-selector: "app=flink-session"`): the
+collector on each Flink pod's node scrapes that pod's IP on 9249, and `instance` is the pod name.
+A static `localhost:9249` job would have every collector in the DaemonSet scrape, and every node
+without a Flink pod would report the job down (`up == 0`).
 
-The caveat is capacity: if `--taskmanagers` ≥ app-node count, a JM and a TM must share a node
-and one will fail to bind 9249. Keep TaskManager replicas below the app-node count, or (if a
-denser layout is ever needed) move to distinct hostPorts per role via separate
-`jobManager.podTemplate` / `taskManager.podTemplate`.
+9249 is a container port only: never a `hostPort`. Both the JobManager and the TaskManager
+serve metrics on 9249, and with a hostPort the TaskManager never scheduled on a cluster with one
+app node ("didn't have free ports for the requested pod ports"). Pod discovery scrapes the pod
+IP, so no host port is needed, and any number of Flink pods can share a node. The podTemplate's
+preferred `podAntiAffinity` still spreads them across app nodes where capacity allows.
 
 ## stop cancels running jobs first
 

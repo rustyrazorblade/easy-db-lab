@@ -34,24 +34,32 @@ interface KubernetesClientFactory {
  * stays direct.
  */
 class ProxiedKubernetesClientFactory : KubernetesClientFactory {
-    companion object {
-        private const val CONNECTION_TIMEOUT_MS = 30000
-        private const val REQUEST_TIMEOUT_MS = 60000
-    }
-
     override fun createClient(kubeconfigPath: Path): KubernetesClient {
         val kubeconfigContent = kubeconfigPath.toFile().readText()
         val config = Config.fromKubeconfig(kubeconfigContent)
 
         System.getProperty(Constants.Proxy.PORT_PROPERTY)?.toIntOrNull()?.let { port ->
-            config.httpsProxy = "socks5://127.0.0.1:$port"
+            config.httpsProxy = socksProxyUrl(port)
         }
-
-        config.connectionTimeout = CONNECTION_TIMEOUT_MS
-        config.requestTimeout = REQUEST_TIMEOUT_MS
+        config.applyClusterClientTimeouts()
 
         return KubernetesClientBuilder()
             .withConfig(config)
             .build()
     }
 }
+
+private const val CONNECTION_TIMEOUT_MS = 30000
+private const val REQUEST_TIMEOUT_MS = 60000
+
+/**
+ * Sets the timeouts every client of the cluster's Kubernetes API uses.  They are long enough for a
+ * request that goes through the SOCKS tunnel.
+ */
+fun Config.applyClusterClientTimeouts() {
+    connectionTimeout = CONNECTION_TIMEOUT_MS
+    requestTimeout = REQUEST_TIMEOUT_MS
+}
+
+/** The per-client `httpsProxy` value for the SOCKS tunnel listening on [port]. */
+fun socksProxyUrl(port: Int): String = "socks5://${Constants.Proxy.TUNNEL_LISTEN_ADDRESS}:$port"

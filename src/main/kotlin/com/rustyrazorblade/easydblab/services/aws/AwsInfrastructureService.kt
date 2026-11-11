@@ -6,6 +6,7 @@ import com.rustyrazorblade.easydblab.events.EventBus
 import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.providers.aws.DiscoveredResources
 import com.rustyrazorblade.easydblab.providers.aws.InfrastructureConfig
+import com.rustyrazorblade.easydblab.providers.aws.IngressAuthorization
 import com.rustyrazorblade.easydblab.providers.aws.TeardownResult
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
@@ -103,7 +104,7 @@ class AwsInfrastructureService(
 
         // Configure all security group rules
         config.securityGroupRules.forEach { rule ->
-            vpcService.authorizeSecurityGroupIngress(
+            authorizeIngress(
                 sgId,
                 rule.fromPort,
                 rule.toPort,
@@ -136,13 +137,19 @@ class AwsInfrastructureService(
     fun ensurePackerInfrastructure(
         sshPort: Int,
         sshCidr: String,
-    ): VpcInfrastructure {
-        val config = InfrastructureConfig.forPacker(sshPort, sshCidr)
+    ): VpcInfrastructure = ensureReusableInfrastructure(InfrastructureConfig.forPacker(sshPort, sshCidr))
 
-        // Check for existing packer VPC first
+    /**
+     * Ensures the single-subnet infrastructure [config] names exists, reusing its VPC when one
+     * with that name exists. The packer VPC and the account compactor's VPC are both kept this way.
+     *
+     * @return VpcInfrastructure containing the IDs of all created/found resources
+     */
+    fun ensureReusableInfrastructure(config: InfrastructureConfig): VpcInfrastructure {
+        // Check for an existing VPC first
         val existingVpcId = vpcService.findVpcByName(config.vpcName)
         if (existingVpcId != null) {
-            log.info { "Reusing existing packer VPC: ${config.vpcName} ($existingVpcId)" }
+            log.info { "Reusing existing VPC: ${config.vpcName} ($existingVpcId)" }
             eventBus.emit(Event.Infra.VpcUsing(config.vpcName))
 
             // Find or create remaining resources in existing VPC
@@ -154,6 +161,7 @@ class AwsInfrastructureService(
                     subnetConfig.name,
                     subnetConfig.cidr,
                     config.tags,
+                    subnetConfig.availabilityZone,
                 )
             vpcService.ensureRouteTable(existingVpcId, subnetId, igwId, config.tags)
             val sgId =
@@ -164,7 +172,7 @@ class AwsInfrastructureService(
                     config.tags,
                 )
             config.securityGroupRules.forEach { rule ->
-                vpcService.authorizeSecurityGroupIngress(sgId, rule.fromPort, rule.toPort, rule.cidr, rule.protocol)
+                authorizeIngress(sgId, rule.fromPort, rule.toPort, rule.cidr, rule.protocol)
             }
 
             eventBus.emit(Event.Infra.InfrastructureReady(config.vpcName))
@@ -259,23 +267,7 @@ class AwsInfrastructureService(
 
         // Configure SSH access - either from anywhere or from the user's external IP
         val sshCidr = if (config.isOpen) "0.0.0.0/0" else "${externalIpProvider()}/32"
-        vpcService.authorizeSecurityGroupIngress(securityGroupId, Constants.Network.SSH_PORT, Constants.Network.SSH_PORT, sshCidr)
-
-        // Allow all traffic within the VPC (for Cassandra communication) - both TCP and UDP
-        vpcService.authorizeSecurityGroupIngress(
-            securityGroupId,
-            Constants.Network.MIN_PORT,
-            Constants.Network.MAX_PORT,
-            config.vpcCidr,
-            "tcp",
-        )
-        vpcService.authorizeSecurityGroupIngress(
-            securityGroupId,
-            Constants.Network.MIN_PORT,
-            Constants.Network.MAX_PORT,
-            config.vpcCidr,
-            "udp",
-        )
+        authorizeClusterRules(securityGroupId, sshCidr, config.vpcCidr)
 
         val infrastructure = VpcInfrastructure(config.vpcId, subnetIds, securityGroupId, igwId)
 
@@ -285,6 +277,46 @@ class AwsInfrastructureService(
         eventBus.emit(Event.Infra.VpcNetworkingReady(config.clusterName))
 
         return infrastructure
+    }
+
+    /** The cluster security group's rules: SSH from [sshCidr], and all traffic from within the VPC. */
+    private fun authorizeClusterRules(
+        securityGroupId: String,
+        sshCidr: String,
+        vpcCidr: String,
+    ) {
+        authorizeIngress(securityGroupId, Constants.Network.SSH_PORT, Constants.Network.SSH_PORT, sshCidr)
+
+        // Allow all traffic within the VPC (for Cassandra communication) - both TCP and UDP
+        authorizeIngress(securityGroupId, Constants.Network.MIN_PORT, Constants.Network.MAX_PORT, vpcCidr, "tcp")
+        authorizeIngress(securityGroupId, Constants.Network.MIN_PORT, Constants.Network.MAX_PORT, vpcCidr, "udp")
+        // ICMP (all types/codes) within the VPC: ping between nodes and pods, and Cilium's
+        // health checker, which probes every node with ICMP echo.
+        authorizeIngress(
+            securityGroupId,
+            Constants.Network.ALL_ICMP_TYPES,
+            Constants.Network.ALL_ICMP_TYPES,
+            vpcCidr,
+            Constants.Network.ICMP_PROTOCOL,
+        )
+    }
+
+    /**
+     * Adds one ingress rule and reports it once, only when it was added. The provider emits no
+     * event, so `ingress allow` can report its own rules with its own events.
+     */
+    private fun authorizeIngress(
+        securityGroupId: String,
+        fromPort: Int,
+        toPort: Int,
+        cidr: String,
+        protocol: String = "tcp",
+    ) {
+        when (vpcService.authorizeSecurityGroupIngress(securityGroupId, fromPort, toPort, cidr, protocol)) {
+            IngressAuthorization.ADDED ->
+                eventBus.emit(Event.Infra.SecurityGroupRuleConfigured(describeIngressPorts(fromPort, toPort, protocol)))
+            IngressAuthorization.ALREADY_PRESENT -> Unit
+        }
     }
 
     // ==================== Infrastructure Teardown ====================
@@ -373,14 +405,13 @@ class AwsInfrastructureService(
 
         for (vpcId in vpcIds) {
             val resources = discoverResources(vpcId)
-
-            // Skip packer VPC unless explicitly included
-            if (resources.isPackerVpc() && !includePackerVpc) {
-                eventBus.emit(Event.Infra.PackerVpcSkipping(vpcId))
-                continue
+            when {
+                // Skip packer VPC unless explicitly included
+                resources.isPackerVpc() && !includePackerVpc -> eventBus.emit(Event.Infra.PackerVpcSkipping(vpcId))
+                // The account compactor's VPC outlives every cluster
+                resources.isCompactorVpc() -> eventBus.emit(Event.Infra.CompactorVpcSkipping(vpcId))
+                else -> allResources.add(resources)
             }
-
-            allResources.add(resources)
         }
 
         if (dryRun) {

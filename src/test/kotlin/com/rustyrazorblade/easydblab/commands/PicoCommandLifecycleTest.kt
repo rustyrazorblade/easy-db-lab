@@ -2,6 +2,7 @@ package com.rustyrazorblade.easydblab.commands
 
 import com.rustyrazorblade.easydblab.annotations.PostExecute
 import com.rustyrazorblade.easydblab.annotations.PreExecute
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test

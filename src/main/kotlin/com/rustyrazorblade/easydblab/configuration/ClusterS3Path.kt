@@ -7,6 +7,9 @@ package com.rustyrazorblade.easydblab.configuration
  * All clusters within an account share a single S3 bucket, with each cluster's data
  * isolated under a cluster-specific prefix (clusters/<name>-<id>/). Within each cluster
  * prefix, paths are organized by technology subdirectories (cassandra/, clickhouse/, spark/).
+ * Observability data (traces, profiles, metrics, logs, annotations) does not live here; it lives
+ * under the tool-named roots (`mimir/`, `loki/`, `tempo/`, `pyroscope/`, `grafana/`) in the same
+ * bucket, laid out by [ObservabilityStore].
  *
  * Example usage:
  * ```
@@ -45,11 +48,8 @@ data class ClusterS3Path(
         internal const val ENV_SCRIPT_FILE = "env.sh"
         internal const val ENVIRONMENT_FILE = "environment.sh"
         internal const val SETUP_INSTANCE_FILE = "setup_instance.sh"
-        internal const val TEMPO_DIR = "tempo"
-        internal const val PYROSCOPE_DIR = "pyroscope"
-        internal const val VICTORIA_METRICS_DIR = "victoriametrics"
-        internal const val VICTORIA_LOGS_DIR = "victorialogs"
         internal const val CLICKHOUSE_BACKUPS_DIR = "clickhouse-backups"
+        internal const val CASSANDRA_BUILDS_DIR = "cassandra-builds"
 
         /**
          * Create a ClusterS3Path from ClusterState.
@@ -109,6 +109,14 @@ data class ClusterS3Path(
 
         /** Root path for ClickHouse backups in the account bucket, decoupled from any cluster lifecycle. */
         fun clickhouseBackupsRoot(accountBucket: String): ClusterS3Path = root(accountBucket).resolve(CLICKHOUSE_BACKUPS_DIR)
+
+        /**
+         * Root path for locally-produced Cassandra builds in the account bucket.
+         *
+         * Account-level rather than per-cluster: a build is made before any cluster exists, and is
+         * installed onto whichever clusters the profile later brings up.
+         */
+        fun cassandraBuildsRoot(accountBucket: String): ClusterS3Path = root(accountBucket).resolve(CASSANDRA_BUILDS_DIR)
     }
 
     // Core Path-like methods
@@ -228,18 +236,6 @@ data class ClusterS3Path(
 
     /** Path for general data storage. */
     fun data(): ClusterS3Path = resolve(DATA_DIR)
-
-    /** Path for Tempo trace storage. */
-    fun tempo(): ClusterS3Path = resolve(TEMPO_DIR)
-
-    /** Path for Pyroscope profile storage. */
-    fun pyroscope(): ClusterS3Path = resolve(PYROSCOPE_DIR)
-
-    /** Path for VictoriaMetrics backups. */
-    fun victoriaMetrics(): ClusterS3Path = resolve(VICTORIA_METRICS_DIR)
-
-    /** Path for VictoriaLogs backups. */
-    fun victoriaLogs(): ClusterS3Path = resolve(VICTORIA_LOGS_DIR)
 
     // ── Config file path helpers ────────────────────────────────────────────────
 

@@ -2,27 +2,34 @@ package com.rustyrazorblade.easydblab.services
 
 import com.github.dockerjava.api.model.Ulimit
 import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
+import com.rustyrazorblade.easydblab.K3sPreloadedImages.PAUSE_IMAGE
+import com.rustyrazorblade.easydblab.K3sPreloadedImages.withPreloadedImages
+import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.beyla.BeylaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.ebpfexporter.EbpfExporterManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaDashboard
+import com.rustyrazorblade.easydblab.configuration.grafana.DocumentsBucket
 import com.rustyrazorblade.easydblab.configuration.grafana.GrafanaManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.kubestatemetrics.KubeStateMetricsManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.loki.LokiManifestBuilder
+import com.rustyrazorblade.easydblab.configuration.mimir.MimirManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.JournaldOtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.otel.OtelManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.pyroscope.PyroscopeManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.registry.RegistryManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.s3manager.S3ManagerManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.tempo.TempoManifestBuilder
-import com.rustyrazorblade.easydblab.configuration.victoria.VictoriaManifestBuilder
 import com.rustyrazorblade.easydblab.configuration.yace.YaceManifestBuilder
 import com.rustyrazorblade.easydblab.events.EventBus
 import io.fabric8.kubernetes.api.model.ConfigMapBuilder
 import io.fabric8.kubernetes.api.model.HasMetadata
 import io.fabric8.kubernetes.api.model.PersistentVolumeBuilder
 import io.fabric8.kubernetes.api.model.PersistentVolumeClaimBuilder
+import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.Quantity
 import io.fabric8.kubernetes.api.model.apps.DaemonSet
 import io.fabric8.kubernetes.api.model.apps.Deployment
@@ -30,6 +37,11 @@ import io.fabric8.kubernetes.api.model.apps.StatefulSet
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.fabric8.kubernetes.client.dsl.base.PatchContext
+import io.fabric8.kubernetes.client.dsl.base.PatchType
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.MethodOrderer
@@ -65,14 +77,15 @@ class K8sServiceIntegrationTest {
         @Container
         @JvmStatic
         val k3s: K3sContainer =
-            K3sContainer(DockerImageName.parse("rancher/k3s:v1.30.6-k3s1"))
+            K3sContainer(DockerImageName.parse(SharedK3s.K3S_IMAGE))
                 .withPrivilegedMode(true)
                 .withCreateContainerCmdModifier { cmd ->
                     cmd.hostConfig!!
                         .withCgroupnsMode("host")
                         .withUlimits(listOf(Ulimit("nofile", 65536L, 65536L)))
                 }.withLogConsumer(Slf4jLogConsumer(LoggerFactory.getLogger("k3s")))
-                .withEnv("K3S_SNAPSHOTTER", "native") as K3sContainer
+                .withEnv("K3S_SNAPSHOTTER", "native")
+                .let { (it as K3sContainer).withPreloadedImages() }
     }
 
     private lateinit var client: KubernetesClient
@@ -111,7 +124,7 @@ class K8sServiceIntegrationTest {
                 .addToData("control_node_ip", "10.0.0.1")
                 .addToData("aws_region", "us-west-2")
                 .addToData("s3_bucket", "test-bucket")
-                .addToData("cluster_s3_prefix", "clusters/test-test123")
+                .addToData("traces_s3_prefix", "tempo")
                 .addToData("cluster_name", "test")
                 .build()
         client.resource(clusterConfig).forceConflicts().serverSideApply()
@@ -154,14 +167,7 @@ class K8sServiceIntegrationTest {
                 .first()
                 .metadata
                 .name
-        client
-            .nodes()
-            .withName(nodeName)
-            .edit { node ->
-                node.metadata.labels["type"] = "db"
-                node.metadata.labels[Constants.NODE_ORDINAL_LABEL] = "0"
-                node
-            }
+        labelNode(nodeName, mapOf("type" to "db", Constants.NODE_ORDINAL_LABEL to "0"))
 
         // Registry needs /opt/registry/certs with TLS cert and key (hostPath type: Directory)
         k3s.execInContainer("mkdir", "-p", "/opt/registry/certs")
@@ -221,14 +227,16 @@ class K8sServiceIntegrationTest {
 
     @Test
     @Order(12)
-    fun `should apply VictoriaMetrics and VictoriaLogs resources`() {
-        val resources = VictoriaManifestBuilder().buildAllResources()
-        applyAndVerify(resources)
+    fun `should apply Mimir and Loki resources`() {
+        applyAndVerify(MimirManifestBuilder(templateService).buildAllResources())
+        applyAndVerify(LokiManifestBuilder(templateService).buildAllResources())
 
-        assertServiceExists("victoriametrics")
-        assertDeploymentExists("victoriametrics")
-        assertServiceExists("victorialogs")
-        assertDeploymentExists("victorialogs")
+        assertConfigMapExists("mimir-config", MimirManifestBuilder.CONFIG_FILE)
+        assertServiceExists("mimir")
+        assertDeploymentExists("mimir")
+        assertConfigMapExists("loki-config", LokiManifestBuilder.CONFIG_FILE)
+        assertServiceExists("loki")
+        assertDeploymentExists("loki")
     }
 
     @Test
@@ -297,6 +305,19 @@ class K8sServiceIntegrationTest {
     }
 
     @Test
+    @Order(20)
+    fun `should apply kube-state-metrics resources`() {
+        val resources = KubeStateMetricsManifestBuilder().buildAllResources()
+        applyAndVerify(resources)
+
+        assertServiceAccountExists("kube-state-metrics")
+        assertClusterRoleExists("kube-state-metrics")
+        assertClusterRoleBindingExists("kube-state-metrics")
+        assertServiceExists("kube-state-metrics")
+        assertDeploymentExists("kube-state-metrics")
+    }
+
+    @Test
     @Order(21)
     fun `should apply Grafana resources`() {
         val builder = GrafanaManifestBuilder(templateService)
@@ -305,19 +326,9 @@ class K8sServiceIntegrationTest {
         applyAndVerify(listOf(builder.buildDashboardProvisioningConfigMap()))
         assertConfigMapExists("grafana-dashboards-config", "dashboards.yaml")
 
-        // Apply a dashboard ConfigMap
-        applyAndVerify(listOf(builder.buildDashboardConfigMap(GrafanaDashboard.SYSTEM)))
-        val appliedDashboard =
-            client
-                .configMaps()
-                .inNamespace(DEFAULT_NAMESPACE)
-                .withName(GrafanaDashboard.SYSTEM.configMapName)
-                .get()
-        assertThat(appliedDashboard).isNotNull
-        assertThat(appliedDashboard.data).containsKey(GrafanaDashboard.SYSTEM.jsonFileName)
-
-        // Apply all resources including Deployment
-        applyAndVerify(builder.buildAllResources())
+        // Apply all resources including Deployment. Dashboards are files on the hostPath, not
+        // K8s objects, so nothing per dashboard is expected here.
+        applyAndVerify(builder.buildAllResources(DocumentsBucket("acct", "us-west-2")))
         assertDeploymentExists("grafana")
     }
 
@@ -497,6 +508,176 @@ class K8sServiceIntegrationTest {
         client.persistentVolumes().withName(pvName).delete()
     }
 
+    /**
+     * db and app nodes both carry `easydblab.com/node-ordinal`, so a db PV pinned only by ordinal
+     * was satisfiable on app0: a 3-broker Kafka put a broker there, which then failed to mount
+     * `/mnt/db1/kafka`. A platform PV requires its node pool (`type`) as well as its ordinal.
+     */
+    @Test
+    @Order(25)
+    fun `a db platform PV binds only on a db node with its ordinal, not an app node with the same ordinal`() {
+        val storageOps = createStorageOperations()
+        storageOps.ensureLocalStorageWfcClass(testHost).getOrThrow()
+        val nodeName =
+            client
+                .nodes()
+                .list()
+                .items
+                .single()
+                .metadata.name
+        val kit = "affinitytest"
+        val pvName = "data-$kit-0"
+        k3s.execInContainer("mkdir", "-p", "/tmp/$kit")
+        val labelKeys = listOf(Constants.NODE_ORDINAL_LABEL, Constants.NODE_TYPE_LABEL)
+        val originalLabels =
+            client
+                .nodes()
+                .withName(nodeName)
+                .get()
+                .metadata.labels
+                .filterKeys { it in labelKeys }
+        labelNode(nodeName, mapOf(Constants.NODE_ORDINAL_LABEL to "0", Constants.NODE_TYPE_LABEL to "app"))
+        try {
+            storageOps
+                .createLocalPersistentVolumes(
+                    testHost,
+                    PersistentVolumeConfig(
+                        dbName = kit,
+                        localPath = "/tmp/$kit",
+                        count = 1,
+                        storageSize = "1Gi",
+                        storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
+                        namespace = DEFAULT_NAMESPACE,
+                        nodeType = "db",
+                    ),
+                ).getOrThrow()
+            createClaimAndConsumer(kit, storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS)
+
+            // The only node is an app node with ordinal 0: the scheduler must not place the pod there.
+            Thread.sleep(UNSCHEDULABLE_WAIT_MS)
+            assertThat(pvcPhase(pvName)).isEqualTo("Pending")
+
+            labelNode(nodeName, mapOf(Constants.NODE_TYPE_LABEL to "db"))
+            waitForPvcBound(pvName, timeoutSeconds = 90)
+        } finally {
+            deleteClaimAndConsumer(kit)
+            client.persistentVolumes().withName(pvName).delete()
+            // Restore what the earlier setup test labelled the node with for the tests that follow.
+            unlabelNode(nodeName, labelKeys)
+            labelNode(nodeName, originalLabels)
+        }
+    }
+
+    /**
+     * Every kit's platform PVs share one storage class, so neo4j's PVC bound postgres-duckdb's PV.
+     * A platform PV carries its kit's label, and a kit's PVC selecting that label binds only its
+     * own kit's PV, even when another kit's PV is Available first.
+     */
+    @Test
+    @Order(26)
+    fun `a kit's claim selecting its kit label binds its own PV, not another kit's available PV`() {
+        val storageOps = createStorageOperations()
+        val kits = listOf("reservedother", "reservedown")
+        kits.forEach { kit ->
+            k3s.execInContainer("mkdir", "-p", "/tmp/$kit")
+            storageOps
+                .createLocalPersistentVolumes(
+                    testHost,
+                    PersistentVolumeConfig(
+                        dbName = kit,
+                        localPath = "/tmp/$kit",
+                        count = 1,
+                        storageSize = "1Gi",
+                        namespace = DEFAULT_NAMESPACE,
+                    ),
+                ).getOrThrow()
+        }
+        try {
+            val claim =
+                PersistentVolumeClaimBuilder()
+                    .withNewMetadata()
+                    .withName("claim-reservedown")
+                    .withNamespace(DEFAULT_NAMESPACE)
+                    .endMetadata()
+                    .withNewSpec()
+                    .withAccessModes("ReadWriteOnce")
+                    .withStorageClassName(Constants.K8s.LOCAL_STORAGE_CLASS)
+                    .withNewSelector()
+                    .addToMatchLabels(Constants.PV_KIT_LABEL, "reservedown")
+                    .endSelector()
+                    .withNewResources()
+                    .addToRequests("storage", Quantity("1Gi"))
+                    .endResources()
+                    .endSpec()
+                    .build()
+            client.persistentVolumeClaims().resource(claim).create()
+            waitForPvcBound("claim-reservedown", timeoutSeconds = 30)
+
+            assertThat(
+                client
+                    .persistentVolumeClaims()
+                    .inNamespace(DEFAULT_NAMESPACE)
+                    .withName("claim-reservedown")
+                    .get()
+                    .spec.volumeName,
+            ).isEqualTo("data-reservedown-0")
+            assertThat(
+                client
+                    .persistentVolumes()
+                    .withName("data-reservedother-0")
+                    .get()
+                    .status.phase,
+            ).isEqualTo("Available")
+        } finally {
+            client
+                .persistentVolumeClaims()
+                .inNamespace(DEFAULT_NAMESPACE)
+                .withName("claim-reservedown")
+                .delete()
+            kits.forEach { client.persistentVolumes().withName("data-$it-0").delete() }
+        }
+    }
+
+    /**
+     * `up` labels each node with a merge patch, not a read-then-write `edit()`, so a kubelet
+     * status update between the read and the write cannot fail it with 409 Conflict.
+     */
+    @Test
+    @Order(27)
+    fun `labelling a node adds its labels and keeps the ones it had`() {
+        val nodeName =
+            client
+                .nodes()
+                .list()
+                .items
+                .single()
+                .metadata.name
+        val before =
+            client
+                .nodes()
+                .withName(nodeName)
+                .get()
+                .metadata.labels
+        val clientProvider = mock<K8sClientProvider>()
+        whenever(clientProvider.createClient(any())).thenAnswer {
+            KubernetesClientBuilder().withConfig(Config.fromKubeconfig(k3s.kubeConfigYaml)).build()
+        }
+        val key = "easydblab.test/label-merge"
+        try {
+            DefaultK8sManifestOperations(clientProvider, EventBus()).labelNode(testHost, nodeName, mapOf(key to "yes")).getOrThrow()
+
+            val after =
+                client
+                    .nodes()
+                    .withName(nodeName)
+                    .get()
+                    .metadata.labels
+            assertThat(after).containsAllEntriesOf(before).containsEntry(key, "yes")
+        } finally {
+            unlabelNode(nodeName, listOf(key))
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Phase 3: Resource limits and structural checks
     // -----------------------------------------------------------------------
@@ -648,14 +829,16 @@ class K8sServiceIntegrationTest {
         JournaldOtelManifestBuilder(templateService).buildAllResources() +
             OtelManifestBuilder(templateService).buildAllResources() +
             EbpfExporterManifestBuilder().buildAllResources() +
-            VictoriaManifestBuilder().buildAllResources() +
+            MimirManifestBuilder(templateService).buildAllResources() +
+            LokiManifestBuilder(templateService).buildAllResources() +
             TempoManifestBuilder(templateService).buildAllResources() +
             RegistryManifestBuilder().buildAllResources() +
             S3ManagerManifestBuilder(templateService).buildAllResources() +
             BeylaManifestBuilder(templateService).buildAllResources() +
             PyroscopeManifestBuilder(templateService).buildAllResources() +
             YaceManifestBuilder(templateService).buildAllResources() +
-            GrafanaManifestBuilder(templateService).buildAllResources()
+            KubeStateMetricsManifestBuilder().buildAllResources() +
+            GrafanaManifestBuilder(templateService).buildAllResources(DocumentsBucket("acct", "us-west-2"))
 
     private fun waitForPvcBound(
         pvcName: String,
@@ -679,7 +862,8 @@ class K8sServiceIntegrationTest {
                 .withName(pvcName)
                 .get()
         throw AssertionError(
-            "PVC '$pvcName' did not bind within ${timeoutSeconds}s. Phase: ${pvc?.status?.phase}",
+            "PVC '$pvcName' did not bind within ${timeoutSeconds}s. Phase: ${pvc?.status?.phase}\n" +
+                clusterDiagnostics(client, DEFAULT_NAMESPACE),
         )
     }
 
@@ -698,6 +882,115 @@ class K8sServiceIntegrationTest {
         throw AssertionError(
             "PV '$pvName' did not reach phase '$expectedPhase' within ${timeoutSeconds}s. Phase: ${pv?.status?.phase}",
         )
+    }
+
+    private val testHost =
+        ClusterHost(publicIp = "unused", privateIp = "unused", alias = "test", availabilityZone = "us-west-2a")
+
+    private fun labelNode(
+        nodeName: String,
+        labels: Map<String, String>,
+    ) = patchNodeLabels(nodeName, labels)
+
+    private fun unlabelNode(
+        nodeName: String,
+        keys: List<String>,
+    ) = patchNodeLabels(nodeName, keys.associateWith { null })
+
+    /**
+     * Sets each label, or removes it when its value is null, with a JSON merge patch. The patch
+     * carries no resourceVersion: `edit()` reads the node and patches that version, and a kubelet
+     * status update in between made the API server refuse it with 409 Conflict.
+     */
+    private fun patchNodeLabels(
+        nodeName: String,
+        labels: Map<String, String?>,
+    ) {
+        val patch =
+            buildJsonObject {
+                putJsonObject("metadata") {
+                    putJsonObject("labels") { labels.forEach { (key, value) -> put(key, value) } }
+                }
+            }
+        client.nodes().withName(nodeName).patch(PatchContext.of(PatchType.JSON_MERGE), patch.toString())
+    }
+
+    private fun pvcPhase(pvcName: String): String? =
+        client
+            .persistentVolumeClaims()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName(pvcName)
+            .get()
+            ?.status
+            ?.phase
+
+    /**
+     * A claim `data-<kit>-0` selecting [kit]'s PVs, and a pod that consumes it: with a
+     * WaitForFirstConsumer class the claim binds only when the scheduler places the pod.
+     */
+    private fun createClaimAndConsumer(
+        kit: String,
+        storageClass: String,
+    ) {
+        val claimName = "data-$kit-0"
+        val claim =
+            PersistentVolumeClaimBuilder()
+                .withNewMetadata()
+                .withName(claimName)
+                .withNamespace(DEFAULT_NAMESPACE)
+                .endMetadata()
+                .withNewSpec()
+                .withAccessModes("ReadWriteOnce")
+                .withStorageClassName(storageClass)
+                .withNewSelector()
+                .addToMatchLabels(Constants.PV_KIT_LABEL, kit)
+                .endSelector()
+                .withNewResources()
+                .addToRequests("storage", Quantity("1Gi"))
+                .endResources()
+                .endSpec()
+                .build()
+        client.persistentVolumeClaims().resource(claim).create()
+        val pod =
+            PodBuilder()
+                .withNewMetadata()
+                .withName("consumer-$kit")
+                .withNamespace(DEFAULT_NAMESPACE)
+                .endMetadata()
+                .withNewSpec()
+                .addNewContainer()
+                .withName("pause")
+                .withImage(PAUSE_IMAGE)
+                // Preloaded into K3s; never pulling makes a missing preload fail fast, not flake.
+                .withImagePullPolicy("Never")
+                .addNewVolumeMount()
+                .withName("data")
+                .withMountPath("/data")
+                .endVolumeMount()
+                .endContainer()
+                .addNewVolume()
+                .withName("data")
+                .withNewPersistentVolumeClaim()
+                .withClaimName(claimName)
+                .endPersistentVolumeClaim()
+                .endVolume()
+                .endSpec()
+                .build()
+        client.pods().resource(pod).create()
+    }
+
+    private fun deleteClaimAndConsumer(kit: String) {
+        client
+            .pods()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName("consumer-$kit")
+            .withGracePeriod(0)
+            .delete()
+        client
+            .persistentVolumeClaims()
+            .inNamespace(DEFAULT_NAMESPACE)
+            .withName("data-$kit-0")
+            .delete()
     }
 
     private fun createStorageOperations(): DefaultK8sStorageOperations {
@@ -739,3 +1032,6 @@ class K8sServiceIntegrationTest {
 
 private const val MILLIS_PER_SECOND = 1000L
 private const val POLL_INTERVAL_MS = 2000L
+
+/** How long a pod the scheduler must not place is given before its claim is checked still Pending. */
+private const val UNSCHEDULABLE_WAIT_MS = 15_000L

@@ -1,8 +1,10 @@
 package com.rustyrazorblade.easydblab.configuration.pyroscope
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.YamlTestSupport.scalarAt
 import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
+import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.services.TemplateService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -19,6 +21,29 @@ import org.mockito.kotlin.whenever
  * config file loading from classpath resources.
  */
 class PyroscopeManifestBuilderTest : BaseKoinTest() {
+    private companion object {
+        /**
+         * The largest node in use: c8gd.48xlarge, 192 vCPUs. easy-db-lab keeps no instance-type table;
+         * `--db.instance-type` takes any EC2 type, so raise this and the limit together for a larger one.
+         */
+        const val LARGEST_NODE_VCPUS = 192L
+
+        /** The sample count Pyroscope rejected on edbl-ab1172 on 2026-11-07, over the old 16,000 limit. */
+        const val MEASURED_SAMPLES = 18_995L
+
+        /**
+         * The encoded size budget for one sample: its packed location ids, value and share of the
+         * location, function and string tables. A 19,000-sample pprof with 60-frame stacks is 226 bytes
+         * a sample; edbl-ab1172's 18,995-sample profile fit the old 4 MiB limit, so under 221.
+         */
+        const val BYTES_PER_SAMPLE = 256L
+
+        const val MIB = 1024L * 1024L
+
+        /** Pyroscope 2.3.1's single-binary gRPC message cap (`server.grpc-max-recv-msg-size-bytes`). */
+        const val PYROSCOPE_GRPC_MAX_MESSAGE_BYTES = 100L * MIB
+    }
+
     private lateinit var builder: PyroscopeManifestBuilder
     private lateinit var templateService: TemplateService
     private lateinit var mockClusterStateManager: ClusterStateManager
@@ -43,6 +68,9 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
                 name = "test-cluster",
                 versions = mutableMapOf(),
                 hosts = mutableMapOf(),
+                s3Bucket = "acct-bucket",
+                dataBucket = "easy-db-lab-data-abc",
+                initConfig = InitConfig(tenant = "acme"),
             ),
         )
         templateService = getKoin().get()
@@ -54,6 +82,25 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
         val deployment = builder.buildServerDeployment()
 
         assertThat(deployment.spec.template.spec.initContainers).isNullOrEmpty()
+    }
+
+    @Test
+    fun `the server's startup budget outlasts Pyroscope 2's fixed readiness waits`() {
+        val container =
+            builder
+                .buildServerDeployment()
+                .spec.template.spec.containers
+                .single()
+        val startup = container.startupProbe
+
+        assertThat(startup).isNotNull
+        assertThat(startup.httpGet.path).isEqualTo("/ready")
+        assertThat(startup.httpGet.port.intVal).isEqualTo(PyroscopeManifestBuilder.SERVER_PORT)
+        // Pyroscope 2.3.1 answers /ready with 503 for the metastore's 15 s min-ready wait and then
+        // the segment writer's 30 s one, back to back: 48 s measured on an idle machine. The
+        // kubelet must not kill it inside that window, and a busy control node is slower.
+        val budgetSeconds = (startup.initialDelaySeconds ?: 0) + startup.periodSeconds * startup.failureThreshold
+        assertThat(budgetSeconds).isGreaterThanOrEqualTo(3 * 48)
     }
 
     @Test
@@ -90,5 +137,97 @@ class PyroscopeManifestBuilderTest : BaseKoinTest() {
                 rule.resources.contains("pods")
             }
         assertThat(podRule.verbs).contains("get", "list", "watch")
+    }
+
+    private fun serverConfig(): String = builder.buildServerConfigMap().data.getValue("config.yaml")
+
+    @Test
+    fun `the server runs native multi-tenancy on pure v2 storage`() {
+        val config = serverConfig()
+
+        assertThat(scalarAt(config, "multitenancy_enabled")).isEqualTo("true")
+        assertThat(scalarAt(config, "architecture_storage")).isEqualTo("v2")
+    }
+
+    @Test
+    fun `nothing is ever deleted by age`() {
+        val config = serverConfig()
+
+        assertThat(scalarAt(config, "metastore", "index", "cleanup_interval")).isEqualTo("0s")
+        assertThat(scalarAt(config, "limits", "retention_period")).isEqualTo("0s")
+    }
+
+    @Test
+    fun `profiles are stored under the observability profiles prefix of the account bucket, not the data bucket`() {
+        val config = serverConfig()
+
+        assertThat(scalarAt(config, "storage", "backend")).isEqualTo("s3")
+        assertThat(scalarAt(config, "storage", "s3", "bucket_name")).isEqualTo("acct-bucket")
+        assertThat(scalarAt(config, "storage", "prefix")).isEqualTo("pyroscope")
+        assertThat(config).doesNotContain("easy-db-lab-data-abc")
+    }
+
+    @Test
+    fun `the metastore index lives on the control node's disk`() {
+        val config = serverConfig()
+        val pod =
+            builder
+                .buildServerDeployment()
+                .spec.template.spec
+        val volume = pod.volumes.single { it.name == "data" }
+        val mount = pod.containers[0].volumeMounts.single { it.name == "data" }
+
+        assertThat(volume.hostPath.path).isEqualTo(PyroscopeManifestBuilder.DATA_HOST_PATH)
+        assertThat(scalarAt(config, "metastore", "data_dir")).startsWith(mount.mountPath + "/")
+        assertThat(scalarAt(config, "metastore", "raft", "dir")).startsWith(mount.mountPath + "/")
+        assertThat(scalarAt(config, "metastore", "raft", "snapshots_dir")).startsWith(mount.mountPath + "/")
+    }
+
+    /** The limit at [key] under `limits` in the server config, as a number. */
+    private fun limit(key: String): Long = requireNotNull(scalarAt(serverConfig(), "limits", key)) { "limits.$key is not set" }.toLong()
+
+    /** An integer setting `name = value` in the eBPF agent's config.alloy. */
+    private fun alloySetting(name: String): Long {
+        val alloy = builder.buildEbpfConfigMap().data.getValue("config.alloy")
+        val match = requireNotNull(Regex("""\b$name\s*=\s*"?(\d+)""").find(alloy)) { "config.alloy sets no $name" }
+        return match.groupValues[1].toLong()
+    }
+
+    @Test
+    fun `a profile from a saturated large node fits the sample limit`() {
+        // One eBPF profile holds at most one sample per CPU tick in its window: the agent's
+        // sample_rate times its collect_interval times the node's vCPUs. edbl-ab1172 sent 18,995.
+        val maxSamplesPerProfile = alloySetting("sample_rate") * alloySetting("collect_interval") * LARGEST_NODE_VCPUS
+
+        assertThat(limit("max_profile_stacktrace_samples"))
+            .isGreaterThanOrEqualTo(maxSamplesPerProfile)
+            .isGreaterThanOrEqualTo(MEASURED_SAMPLES * 10)
+    }
+
+    @Test
+    fun `a profile at the sample limit fits the size limit, the burst, and the internal gRPC message`() {
+        val sizeLimit = limit("max_profile_size_bytes")
+
+        assertThat(sizeLimit).isGreaterThanOrEqualTo(limit("max_profile_stacktrace_samples") * BYTES_PER_SAMPLE)
+        // The distributor's token bucket rejects a push bigger than the burst, whatever its rate.
+        assertThat(limit("ingestion_burst_size_mb") * MIB).isGreaterThanOrEqualTo(sizeLimit)
+        // The distributor forwards each profile to the segment writer in one gRPC message.
+        assertThat(sizeLimit).isLessThan(PYROSCOPE_GRPC_MAX_MESSAGE_BYTES)
+    }
+
+    @Test
+    fun `the eBPF agent sends the cluster's tenant on every write`() {
+        val alloy = builder.buildEbpfConfigMap().data.getValue("config.alloy")
+        val env =
+            builder
+                .buildEbpfDaemonSet()
+                .spec.template.spec.containers[0]
+                .env
+
+        assertThat(alloy).contains("headers = {")
+        assertThat(alloy).contains("\"X-Scope-OrgID\" = sys.env(\"TENANT\")")
+        val tenant = env.single { it.name == "TENANT" }.valueFrom.configMapKeyRef
+        assertThat(tenant.name).isEqualTo("cluster-config")
+        assertThat(tenant.key).isEqualTo("tenant")
     }
 }

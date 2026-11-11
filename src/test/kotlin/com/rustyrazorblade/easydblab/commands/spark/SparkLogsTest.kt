@@ -1,11 +1,13 @@
 package com.rustyrazorblade.easydblab.commands.spark
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.configuration.ClusterState
+import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.EMRClusterInfo
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
+import com.rustyrazorblade.easydblab.services.LokiQueryService
 import com.rustyrazorblade.easydblab.services.SparkService
-import com.rustyrazorblade.easydblab.services.VictoriaLogsService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
@@ -26,7 +28,7 @@ import java.time.Instant
 
 class SparkLogsTest : BaseKoinTest() {
     private lateinit var mockSparkService: SparkService
-    private lateinit var mockVictoriaLogsService: VictoriaLogsService
+    private lateinit var mockLokiQueryService: LokiQueryService
     private lateinit var outputHandler: BufferedOutputHandler
     private val stdout = ByteArrayOutputStream()
     private val originalOut = System.out
@@ -43,19 +45,46 @@ class SparkLogsTest : BaseKoinTest() {
         listOf(
             module {
                 single<SparkService> { mockSparkService }
-                single<VictoriaLogsService> { mockVictoriaLogsService }
+                single<ClusterStateManager> {
+                    mock<ClusterStateManager>().also {
+                        whenever(it.load()).thenReturn(ClusterState(name = "test-cluster", clusterId = "c1", versions = mutableMapOf()))
+                    }
+                }
+                single<LokiQueryService> { mockLokiQueryService }
             },
         )
 
     @BeforeEach
     fun setupMocks() {
         mockSparkService = mock()
-        mockVictoriaLogsService = mock()
+        mockLokiQueryService = mock()
         outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
         System.setOut(PrintStream(stdout))
 
         whenever(mockSparkService.validateCluster()).thenReturn(Result.success(testClusterInfo))
+        whenever(mockSparkService.getStepDetails(any(), any()))
+            .thenReturn(Result.success(stepDetails("s-TEST", name = "named-job")))
     }
+
+    private fun stepDetails(
+        stepId: String,
+        name: String,
+    ) = SparkService.StepDetails(
+        stepId = stepId,
+        name = name,
+        state = StepState.COMPLETED,
+        stateChangeReasonCode = null,
+        stateChangeReasonMessage = null,
+        failureReason = null,
+        failureMessage = null,
+        failureLogFile = null,
+        creationTime = null,
+        startTime = null,
+        endTime = null,
+        jarPath = null,
+        mainClass = null,
+        args = emptyList(),
+    )
 
     @AfterEach
     fun restoreStdout() {
@@ -93,23 +122,25 @@ class SparkLogsTest : BaseKoinTest() {
     @Nested
     inner class SuccessfulQuery {
         @Test
-        fun `execute queries logs with provided step ID`() {
-            whenever(mockVictoriaLogsService.query(any(), any(), any()))
+        fun `execute queries the logs of the provided step's job`() {
+            whenever(mockSparkService.getStepDetails(eq("j-TESTCLUSTER"), eq("s-TESTSTEP")))
+                .thenReturn(Result.success(stepDetails("s-TESTSTEP", name = "BulkWriter")))
+            whenever(mockLokiQueryService.query(any(), any(), any()))
                 .thenReturn(Result.success(listOf("log line 1")))
 
             val command = SparkLogs()
             command.stepId = "s-TESTSTEP"
             command.execute()
 
-            verify(mockVictoriaLogsService).query(
-                eq("source:emr AND \"s-TESTSTEP\""),
+            verify(mockLokiQueryService).query(
+                eq("""{cluster="test-cluster-c1", service_name="spark-BulkWriter"}"""),
                 eq("1d"),
                 eq(100),
             )
         }
 
         @Test
-        fun `execute uses most recent step ID when not provided`() {
+        fun `execute queries the most recent job's logs when no step is given`() {
             val job =
                 SparkService.JobInfo(
                     stepId = "s-RECENT",
@@ -119,14 +150,14 @@ class SparkLogsTest : BaseKoinTest() {
                 )
             whenever(mockSparkService.listJobs(eq("j-TESTCLUSTER"), eq(1)))
                 .thenReturn(Result.success(listOf(job)))
-            whenever(mockVictoriaLogsService.query(any(), any(), any()))
+            whenever(mockLokiQueryService.query(any(), any(), any()))
                 .thenReturn(Result.success(listOf("log line")))
 
             val command = SparkLogs()
             command.execute()
 
-            verify(mockVictoriaLogsService).query(
-                eq("source:emr AND \"s-RECENT\""),
+            verify(mockLokiQueryService).query(
+                eq("""{cluster="test-cluster-c1", service_name="spark-recent-job"}"""),
                 any(),
                 any(),
             )
@@ -135,7 +166,7 @@ class SparkLogsTest : BaseKoinTest() {
         @Test
         fun `execute displays log entries`() {
             val logs = listOf("2024-01-01 Step started", "2024-01-01 Step completed")
-            whenever(mockVictoriaLogsService.query(any(), any(), any()))
+            whenever(mockLokiQueryService.query(any(), any(), any()))
                 .thenReturn(Result.success(logs))
 
             val command = SparkLogs()
@@ -149,7 +180,7 @@ class SparkLogsTest : BaseKoinTest() {
 
         @Test
         fun `execute shows no logs message with tips`() {
-            whenever(mockVictoriaLogsService.query(any(), any(), any()))
+            whenever(mockLokiQueryService.query(any(), any(), any()))
                 .thenReturn(Result.success(emptyList()))
 
             val command = SparkLogs()
@@ -163,7 +194,7 @@ class SparkLogsTest : BaseKoinTest() {
 
         @Test
         fun `execute uses custom limit and time range`() {
-            whenever(mockVictoriaLogsService.query(any(), eq("30m"), eq(500)))
+            whenever(mockLokiQueryService.query(any(), eq("30m"), eq(500)))
                 .thenReturn(Result.success(emptyList()))
 
             val command = SparkLogs()
@@ -172,15 +203,28 @@ class SparkLogsTest : BaseKoinTest() {
             command.limit = 500
             command.execute()
 
-            verify(mockVictoriaLogsService).query(any(), eq("30m"), eq(500))
+            verify(mockLokiQueryService).query(any(), eq("30m"), eq(500))
         }
     }
 
     @Nested
     inner class ErrorHandling {
         @Test
+        fun `execute fails when the given step cannot be found`() {
+            whenever(mockSparkService.getStepDetails(eq("j-TESTCLUSTER"), eq("s-MISSING")))
+                .thenReturn(Result.failure(RuntimeException("Step s-MISSING does not exist")))
+
+            val command = SparkLogs()
+            command.stepId = "s-MISSING"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalStateException::class.java)
+                .hasMessageContaining("s-MISSING does not exist")
+        }
+
+        @Test
         fun `execute handles query failure`() {
-            whenever(mockVictoriaLogsService.query(any(), any(), any()))
+            whenever(mockLokiQueryService.query(any(), any(), any()))
                 .thenReturn(Result.failure(RuntimeException("Connection refused")))
 
             val command = SparkLogs()

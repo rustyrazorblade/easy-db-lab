@@ -7,10 +7,13 @@ This package contains AWS service classes that implement business logic on top o
 ```
 services/aws/
 ├── CLAUDE.md                  # This file
-├── AwsS3BucketService.kt     # S3 bucket administration (lifecycle, metrics, policies)
+├── AwsS3BucketService.kt     # S3 bucket administration (creation, request metrics, policies, tags)
 ├── AWSResourceSetupService.kt # IAM resource setup (roles, instance profiles)
 ├── AwsInfrastructureService.kt # VPC infrastructure creation and teardown orchestration
-├── EC2VpcService.kt           # VPC resource management (implements VpcService)
+├── EC2VpcService.kt           # VPC resource management (implements VpcService; delegates SecurityGroupOperations to EC2SecurityGroupService)
+├── EC2SecurityGroupService.kt # Security groups: find/create, authorize, exact revoke, revoke-all, describe, delete (implements SecurityGroupOperations)
+├── Ec2TagSpecification.kt     # The tag specification both EC2 services put on what they create
+├── SshIngressService.kt       # SSH ingress for ingress allow / revoke: IngressResult, AllowOutcome, RevokeOutcome
 ├── EC2InstanceService.kt      # Instance lifecycle management
 ├── AMIService.kt              # AMI lifecycle: CRUD, pruning, validation (implements AMIValidator)
 ├── AMIValidationService.kt    # AMI validation types and exceptions
@@ -19,6 +22,13 @@ services/aws/
 ├── EMRSparkService.kt         # Spark job execution (implements SparkService)
 ├── OpenSearchService.kt       # OpenSearch domain management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
+├── CompactorService.kt        # The account compactor on ECS Fargate (ensureRunning, stop, stopIfLastCluster, status); composes the classes below
+├── CompactorStatusReader.kt   # Read-only status: counts, service events, the latest task and why it stopped, its log lines
+├── CompactorTaskRegistrar.kt  # Registers the task definition, or reuses the latest revision with the same config hash
+├── CompactorIam.kt            # Its task and execution roles and ECS's service-linked role
+├── CompactorNetwork.kt        # Its VPC easy-db-lab-compactor, found or created like the packer VPC, in a Fargate zone
+├── ClusterCensus.kt           # Tagged VPCs naming the account bucket in every region; CompactorShutdownPolicy
+├── BucketRegion.kt            # A bucket's region from GetBucketLocation; the compactor and the Grafana documents proxy sign for it
 └── InstanceSpecFactory.kt     # Instance spec creation
 ```
 
@@ -67,7 +77,13 @@ Services are organized by resource, not by operation type:
 - **AMIService** — all AMI operations (list, deregister, prune, validate) in one class
 - **EMRService** — all EMR operations (create, terminate, find, wait) in one class
 - **AwsInfrastructureService** — all VPC infrastructure (create and teardown) in one class
-- **EC2VpcService** — all VPC resource operations including security group describe
+- **EC2VpcService** — all VPC resource operations; it delegates the security group half of `VpcService` to **EC2SecurityGroupService** by interface delegation, so callers inject one `VpcService`
+
+## Security Group Rules
+
+- `authorizeSecurityGroupIngress` returns `IngressAuthorization` (`ADDED` / `ALREADY_PRESENT`) and `revokeSecurityGroupIngress` returns `IngressRevocation` (`REMOVED` / `NOT_FOUND`); both describe the group first, and the revoke removes only the one exact permission. Both throw `SecurityGroupNotFoundException` for `InvalidGroup.NotFound`. Every describe runs under `withAwsRetry`.
+- The provider emits no event for a rule. `AwsInfrastructureService` emits `Infra.SecurityGroupRuleConfigured` on `ADDED` (cluster, Packer and compactor paths, one `authorizeIngress` helper), and the `ingress` commands emit their own `Event.Ingress` events, so each rule is reported once.
+- `SshIngressService` owns the SSH binding (tcp, 22-22). Mock only `VpcService` in its tests; the rule round trips run against LocalStack in `EC2SecurityGroupServiceIntegrationTest`.
 
 ## Koin Registration
 
@@ -86,3 +102,16 @@ Integration tests live in the slow tier under `src/integrationTest/kotlin/.../se
 - Test the full behavior end-to-end: upload data, call the service method, assert on results
 
 Services that call S3 indirectly (via `ObjectStore`) also need integration tests — see `ClusterBackupServiceS3IntegrationTest` as an example of testing a higher-level service against LocalStack.
+
+## Account compactor
+
+- **Region.** Everything runs in the account bucket's region (`GetBucketLocation`), which can differ from the profile's. `providers/aws/RegionalClients` builds ECS, CloudWatch Logs and EC2 clients for a region named at call time; callers close them.
+- **Network.** `CompactorNetwork` finds or creates VPC `easy-db-lab-compactor` through `AwsInfrastructureService.ensureReusableInfrastructure` (the packer VPC's path) with a regional EC2 client: one public subnet, an internet gateway, a security group with no ingress. The subnet goes in the first available zone by name whose zone ID is not in `Constants.Compactor.NON_FARGATE_ZONE_IDS` (`CompactorNetwork.fargateZone`). It is tagged `easy_cass_lab=1` with no `bucket` tag; `teardownAllTagged` always skips it (`Event.Infra.CompactorVpcSkipping`).
+- **IAM.** `CompactorIam` ensures `EasyDBLabCompactorTaskRole` (inline `AWSPolicy.Inline.CompactorTaskAccess`: list the buckets, get/put/delete only under `mimir/`, `loki/`, `tempo/`), `EasyDBLabCompactorExecutionRole` (managed `AmazonECSTaskExecutionRolePolicy`) and ECS's service-linked role (created only when `GetRole` answers `NoSuchEntity`). The account bucket policy (`S3BucketPolicy`) denies `s3:DeleteObject`/`s3:DeleteObjectVersion` under those roots to the EC2 instance, EMR service and EMR EC2 roles; `up` re-applies it every time. User policy `iam-policy-compactor.json` (`EasyDBLabCompactor`).
+- **Service.** `CompactorService.ensureRunning`: missing or `INACTIVE` → register and `CreateService` (`FARGATE`, desired 1, max 100%, min 0%, public IP); desired 0 → reuse the latest revision if its `easydblab.com/config-hash` tag matches, else register, then `UpdateService(desired 1)`; running → leave it (`AlreadyRunning`); none running but one pending, or no task stopped yet → leave it (`Starting`); none running or pending and the latest task stopped → leave it and report `NoTaskRunning`, an error. Both it and `status` decide this with `StartedState`. `RegisterTaskDefinition` and `CreateService` run under `withEcsRoleRetry`, because ECS cannot assume roles IAM has just created for a few seconds. The config hash covers every field of the untagged `RegisterTaskDefinition` request (`CompactorTaskDefinition.hashOf`). `stop` emits `Compactor.Stopped` only after `UpdateService`, and `Compactor.NotCreated` when there is no service. `status` is `CompactorStatusReader`: its state label comes from the desired, running and pending counts (`starting` when a task is asked for, none runs, and one is pending or none has stopped; `failing` when none runs or is pending and the latest task stopped). ECS's `AccessDeniedException` in `ensureRunning`, `stop` or `status` becomes `Compactor.AccessDenied` and an `IllegalStateException` naming the `EasyDBLabCompactor` policy (`withEcsAccess`); other ECS errors pass through. `status` leaves out the idle Tempo worker's `no jobs found` log line (`Constants.Compactor.TEMPO_WORKER_IDLE_LOG`). Nothing is stored in `state.json`; every resource is found by name.
+- **Census.** `ClusterCensus.clusterVpcs(bucket)` runs `DescribeRegions`, then `DescribeVpcs` in every region at once (`tag:easy_cass_lab=1`, `tag:bucket=<bucket>`); the pure `CompactorShutdownPolicy` stops the compactor when nothing is left once the VPCs `down` removed are left out.
+
+## S3 data handling
+
+- **Nothing sets a lifecycle, expiry or retention rule.** `down` only disables the data bucket's request metrics (`teardownDataBucket`); with `--all` it deletes a data bucket only when it is empty (`deleteEmptyBucket`, a `Result` carrying S3's error), and emits `Event.S3.DataBucketKept(bucket, reason)` for one it leaves in place. The IAM policy grants no lifecycle actions.
+- **Observability data lives in the account bucket** under the tool-named roots `mimir/`, `loki/`, `tempo/`, `pyroscope/` and `grafana/annotations/<tenant>/`, and the test documents under `reports/<tenant>/<name>-<id>/` (see `configuration/ObservabilityStore`). The instance role's delete deny (`AWSPolicy.Inline.S3AccessWildcard`) covers `mimir/`, `loki/`, `tempo/`, `grafana/` and `reports/`; it denies no `PutObject`, and `report upload` runs with the operator's credentials. The per-cluster data bucket holds database data (ClickHouse S3 storage, Cassandra artifacts, Spark); the observability stack writes nothing to it.

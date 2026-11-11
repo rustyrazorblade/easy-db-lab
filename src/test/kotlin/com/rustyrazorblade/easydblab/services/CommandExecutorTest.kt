@@ -13,10 +13,16 @@ import com.rustyrazorblade.easydblab.configuration.InfrastructureStatus
 import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.User
 import com.rustyrazorblade.easydblab.configuration.UserConfigProvider
+import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.providers.docker.DockerClientProvider
 import com.rustyrazorblade.easydblab.proxy.DefaultProxyAvailability
 import com.rustyrazorblade.easydblab.proxy.ProxyAvailability
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
@@ -67,6 +73,22 @@ class CommandExecutorTest : BaseKoinTest() {
             },
         )
 
+    private val emitted = mutableListOf<Event>()
+    private val eventBus =
+        EventBus().also {
+            it.addListener(
+                object : EventListener {
+                    override fun onEvent(envelope: EventEnvelope) {
+                        emitted.add(envelope.event)
+                    }
+
+                    override fun close() {
+                        // Nothing to release.
+                    }
+                },
+            )
+        }
+
     @BeforeEach
     fun setupMocks() {
         executionOrder.clear()
@@ -92,9 +114,10 @@ class CommandExecutorTest : BaseKoinTest() {
                         dockerClientProvider = mockDockerClientProvider,
                     ),
                 resourceManager = mockResourceManager,
-                eventBus = EventBus(),
-                socksProxyService = mockSocksProxyService,
+                eventBus = eventBus,
+                proxyPreflight = ProxyPreflight(mockClusterStateManager, mockSocksProxyService, ProxyEnvFile(context.workingDirectory)),
                 proxyAvailability = proxyAvailability,
+                profileSetupProvider = ProfileSetupCommandProvider { error("profile setup must not run here") },
             )
     }
 
@@ -123,6 +146,21 @@ class CommandExecutorTest : BaseKoinTest() {
 
         // Then
         assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+    }
+
+    @Test
+    fun `a command that already reported its failure exits non-zero without a second error report`() {
+        val exitCode = commandExecutor.execute { ReportedFailureCommand() }
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `an unexpected failure is reported as an execution error`() {
+        commandExecutor.execute { FailingCommand() }
+
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).hasSize(1)
     }
 
     // ========== SCHEDULE DEFERRED TESTS ==========
@@ -398,6 +436,8 @@ class CommandExecutorTest : BaseKoinTest() {
 
         // Then
         verify(mockSocksProxyService, never()).ensureRunning(any())
+        // The shell-side tool wrappers learn from the env file that this cluster needs no tunnel.
+        assertThat(ProxyEnvFile(context.workingDirectory).read().tailscaleActive).isTrue()
     }
 
     @Test
@@ -551,34 +591,16 @@ class CommandExecutorTest : BaseKoinTest() {
     }
 
     @Test
-    fun `executeTopLevel does not start proxy for Down even when infra is UP and Tailscale is disabled`() {
-        // Given - Down is never annotated with @RequiresProxy: it tears down the tunnel itself
-        // as its first action (clearProxySystemProperties + cleanupSocks5Proxy), so a pre-flight
-        // proxy start would only start a tunnel Down immediately destroys.
-        val controlHost =
-            ClusterHost(
-                publicIp = "1.2.3.4",
-                privateIp = "10.0.0.1",
-                alias = "control0",
-                availabilityZone = "us-west-2a",
-            )
-        val state =
-            ClusterState(
-                name = "test",
-                versions = mutableMapOf(),
-                infrastructureStatus = InfrastructureStatus.UP,
-                tailscaleActive = false,
-                hosts = mapOf(ServerType.Control to listOf(controlHost)),
-            )
-        whenever(mockClusterStateManager.exists()).thenReturn(true)
-        whenever(mockClusterStateManager.load()).thenReturn(state)
-
-        // When - Down's own execute() may fail against this test's minimal AWS mocks; that is
-        // irrelevant here, only whether the proxy pre-flight ran is under test.
-        commandExecutor.execute { Down() }
-
-        // Then
-        verify(mockSocksProxyService, never()).ensureRunning(any())
+    fun `Down carries no RequiresProxy so the executor never pre-flights a tunnel it would tear down`() {
+        // Down must NOT carry @RequiresProxy. Its teardown path kills the tunnel, so an executor
+        // pre-flight would only start a tunnel Down immediately destroys. Down does establish a
+        // short-lived tunnel inside its own execute() to flush logs and metrics first
+        // (design D3), so this invariant is asserted on the annotation directly rather than on
+        // ensureRunning calls, which Down's own backup path now makes.
+        //
+        // The executor's "no pre-flight without @RequiresProxy" mechanism is covered separately by
+        // `executeTopLevel does not start proxy for a command without RequiresProxy even when infra is UP`.
+        assertThat(Down::class.java.getAnnotation(RequiresProxy::class.java)).isNull()
     }
 
     // ========== TEST COMMAND HELPERS ==========
@@ -623,6 +645,12 @@ class CommandExecutorTest : BaseKoinTest() {
     @Command(name = "failing-command")
     inner class FailingCommand : PicoBaseCommand() {
         override fun execute(): Unit = throw RuntimeException("Command failed intentionally")
+    }
+
+    /** Test command that reports its own failure, then signals it through the exit code only */
+    @Command(name = "reported-failure-command")
+    inner class ReportedFailureCommand : PicoBaseCommand() {
+        override fun execute(): Unit = throw CommandFailedException("query failed")
     }
 
     /** Test command with @TriggerBackup annotation */

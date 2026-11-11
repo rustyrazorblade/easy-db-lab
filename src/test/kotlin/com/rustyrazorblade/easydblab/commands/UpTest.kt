@@ -1,57 +1,54 @@
 package com.rustyrazorblade.easydblab.commands
 
-import com.rustyrazorblade.easydblab.BaseKoinTest
-import com.rustyrazorblade.easydblab.Version
+import com.rustyrazorblade.easydblab.Constants
+import com.rustyrazorblade.easydblab.commands.tailscale.TailscaleStart
 import com.rustyrazorblade.easydblab.configuration.Arch
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.configuration.ClusterState
-import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
-import com.rustyrazorblade.easydblab.configuration.Host
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.configuration.SshTransport
+import com.rustyrazorblade.easydblab.configuration.TelemetryRedirect
 import com.rustyrazorblade.easydblab.configuration.User
-import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
-import com.rustyrazorblade.easydblab.output.OutputHandler
-import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
-import com.rustyrazorblade.easydblab.providers.aws.VpcService
-import com.rustyrazorblade.easydblab.providers.ssh.RemoteOperationsService
+import com.rustyrazorblade.easydblab.events.Event
+import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.events.EventEnvelope
+import com.rustyrazorblade.easydblab.events.EventListener
+import com.rustyrazorblade.easydblab.kernel.PicoCommand
+import com.rustyrazorblade.easydblab.providers.ssm.SsmForwardNotReadyException
+import com.rustyrazorblade.easydblab.proxy.ProxyPreflight
 import com.rustyrazorblade.easydblab.proxy.SocksProxyService
-import com.rustyrazorblade.easydblab.services.CiliumService
-import com.rustyrazorblade.easydblab.services.ClusterConfigurationService
-import com.rustyrazorblade.easydblab.services.ClusterProvisioningService
-import com.rustyrazorblade.easydblab.services.CommandExecutor
-import com.rustyrazorblade.easydblab.services.HostOperationsService
-import com.rustyrazorblade.easydblab.services.K3sClusterService
+import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
-import com.rustyrazorblade.easydblab.services.K8sService
+import com.rustyrazorblade.easydblab.services.LocalTailscaleState
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
-import com.rustyrazorblade.easydblab.services.RegistryService
-import com.rustyrazorblade.easydblab.services.aws.AMIResolver
-import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
-import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
-import com.rustyrazorblade.easydblab.services.aws.DefaultInstanceSpecFactory
-import com.rustyrazorblade.easydblab.services.aws.EC2InstanceService
-import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
-import com.rustyrazorblade.easydblab.services.aws.InstanceTypeCapabilities
-import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
-import com.rustyrazorblade.easydblab.ssh.Response
+import com.rustyrazorblade.easydblab.services.SsmTool
+import com.rustyrazorblade.easydblab.services.SsmToolFault
+import com.rustyrazorblade.easydblab.services.TailscaleApiException
+import com.rustyrazorblade.easydblab.services.TailscaleAuthKey
+import com.rustyrazorblade.easydblab.services.TailscaleService
+import com.rustyrazorblade.easydblab.services.aws.CompactorService
+import org.apache.sshd.common.SshException
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.mockito.kotlin.any
+import org.mockito.kotlin.argumentCaptor
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.eq
+import org.mockito.kotlin.inOrder
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.never
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
-import java.io.File
-import java.nio.file.Path
-import java.time.Duration
+import software.amazon.awssdk.services.iam.IamClient
+import software.amazon.awssdk.services.iam.model.IamException
+import software.amazon.awssdk.services.iam.model.PutRolePolicyRequest
+import java.io.IOException
+import java.time.Instant
 
 /**
  * Tests for [Up], the command that provisions and configures the complete cluster.
@@ -62,232 +59,7 @@ import java.time.Duration
  * single collaborator overridden per test to induce the failure under test — proving the
  * behavior actually aborts `up`, not merely that a mock was called.
  */
-class UpTest : BaseKoinTest() {
-    private lateinit var mockClusterStateManager: ClusterStateManager
-    private lateinit var mockS3BucketService: AwsS3BucketService
-    private lateinit var mockVpcService: VpcService
-    private lateinit var mockAwsInfrastructureService: AwsInfrastructureService
-    private lateinit var mockEc2InstanceService: EC2InstanceService
-    private lateinit var mockAmiResolver: AMIResolver
-    private lateinit var mockClusterProvisioningService: ClusterProvisioningService
-    private lateinit var mockClusterConfigurationService: ClusterConfigurationService
-    private lateinit var mockK3sClusterService: K3sClusterService
-    private lateinit var mockK8sService: K8sService
-    private lateinit var mockCommandExecutor: CommandExecutor
-    private lateinit var outputHandler: BufferedOutputHandler
-
-    /** exit code returned by the fake CommandExecutor for a nested command, keyed by simple class name */
-    private val nestedCommandExitCodes = mutableMapOf<String, Int>()
-
-    /** simple class names of every nested command routed through the fake CommandExecutor, in order */
-    private val invokedCommandNames = mutableListOf<String>()
-
-    /** when non-null, remoteOps.executeRemotely throws this for the given host alias */
-    private var sshFailureAlias: String? = null
-    private var sshFailureException: Exception? = null
-    private val sshCheckedAliases = mutableListOf<String>()
-
-    private val testControlHost =
-        ClusterHost(
-            publicIp = "54.1.1.1",
-            privateIp = "10.0.0.1",
-            alias = "control0",
-            availabilityZone = "us-west-2a",
-            instanceId = "i-control0",
-        )
-    private val testDbHost =
-        ClusterHost(publicIp = "54.1.1.2", privateIp = "10.0.0.2", alias = "db0", availabilityZone = "us-west-2a", instanceId = "i-db0")
-    private val testAppHost =
-        ClusterHost(publicIp = "54.1.1.3", privateIp = "10.0.0.3", alias = "app0", availabilityZone = "us-west-2a", instanceId = "i-app0")
-
-    override fun additionalTestModules(): List<Module> =
-        listOf(
-            module {
-                single<ClusterStateManager> { mock<ClusterStateManager>().also { mockClusterStateManager = it } }
-                single<AwsS3BucketService> { mock<AwsS3BucketService>().also { mockS3BucketService = it } }
-                single<OpenSearchService> { mock<OpenSearchService>() }
-                single<VpcService> { mock<VpcService>().also { mockVpcService = it } }
-                single<AwsInfrastructureService> { mock<AwsInfrastructureService>().also { mockAwsInfrastructureService = it } }
-                single<EC2InstanceService> { mock<EC2InstanceService>().also { mockEc2InstanceService = it } }
-                single<HostOperationsService> { HostOperationsService(get()) }
-                single<AMIResolver> { mock<AMIResolver>().also { mockAmiResolver = it } }
-                single<InstanceSpecFactory> { DefaultInstanceSpecFactory() }
-                single<ClusterProvisioningService> { mock<ClusterProvisioningService>().also { mockClusterProvisioningService = it } }
-                single<ClusterConfigurationService> { mock<ClusterConfigurationService>().also { mockClusterConfigurationService = it } }
-                single<K3sClusterService> { mock<K3sClusterService>().also { mockK3sClusterService = it } }
-                single<CiliumService> { mock<CiliumService>() }
-                single<K8sService> { mock<K8sService>().also { mockK8sService = it } }
-                single<RegistryService> { mock<RegistryService>() }
-                single<SocksProxyService> { mock<SocksProxyService>() }
-                single<CommandExecutor> { mock<CommandExecutor>().also { mockCommandExecutor = it } }
-
-                factory<RemoteOperationsService> {
-                    object : RemoteOperationsService {
-                        override fun executeRemotely(
-                            host: Host,
-                            command: String,
-                            output: Boolean,
-                            secret: Boolean,
-                        ): Response {
-                            if (command == "echo 1") sshCheckedAliases.add(host.alias)
-                            val failingAlias = sshFailureAlias
-                            val failure = sshFailureException
-                            if (failingAlias != null && failure != null && host.alias == failingAlias) {
-                                throw failure
-                            }
-                            return Response("")
-                        }
-
-                        override fun upload(
-                            host: Host,
-                            local: Path,
-                            remote: String,
-                        ) = Unit
-
-                        override fun uploadDirectory(
-                            host: Host,
-                            localDir: File,
-                            remoteDir: String,
-                        ) = Unit
-
-                        override fun uploadDirectory(
-                            host: Host,
-                            version: Version,
-                        ) = Unit
-
-                        override fun download(
-                            host: Host,
-                            remote: String,
-                            local: Path,
-                        ) = Unit
-
-                        override fun downloadDirectory(
-                            host: Host,
-                            remoteDir: String,
-                            localDir: File,
-                            includeFilters: List<String>,
-                            excludeFilters: List<String>,
-                        ) = Unit
-
-                        override fun getRemoteVersion(
-                            host: Host,
-                            inputVersion: String,
-                        ): Version = Version.fromString("5.0")
-                    }
-                }
-            },
-        )
-
-    @BeforeEach
-    fun setupMocks() {
-        mockClusterStateManager = getKoin().get()
-        mockS3BucketService = getKoin().get()
-        mockVpcService = getKoin().get()
-        mockAwsInfrastructureService = getKoin().get()
-        mockEc2InstanceService = getKoin().get()
-        mockAmiResolver = getKoin().get()
-        mockClusterProvisioningService = getKoin().get()
-        mockClusterConfigurationService = getKoin().get()
-        mockK3sClusterService = getKoin().get()
-        mockK8sService = getKoin().get()
-        mockCommandExecutor = getKoin().get()
-        outputHandler = getKoin().get<OutputHandler>() as BufferedOutputHandler
-
-        nestedCommandExitCodes.clear()
-        invokedCommandNames.clear()
-        sshFailureAlias = null
-        sshFailureException = null
-        sshCheckedAliases.clear()
-
-        whenever(mockClusterStateManager.load()).thenReturn(happyState())
-
-        whenever(mockS3BucketService.ensureAccountBucket(any())).thenReturn("easy-db-lab-test-bucket")
-
-        whenever(mockVpcService.createVpc(any(), any(), any())).thenReturn("vpc-123")
-
-        whenever(mockAwsInfrastructureService.setupVpcNetworking(any(), any())).thenReturn(
-            VpcInfrastructure(
-                vpcId = "vpc-123",
-                subnetIds = listOf("subnet-1"),
-                securityGroupId = "sg-1",
-                internetGatewayId = "igw-1",
-            ),
-        )
-
-        whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(emptyMap())
-        whenever(mockEc2InstanceService.describeInstanceType(any()))
-            .thenReturn(InstanceTypeCapabilities(hasInstanceStore = true, supportedArchitectures = listOf("x86_64")))
-
-        whenever(mockAmiResolver.resolveAmiId(any(), any())).thenReturn(Result.success("ami-123"))
-
-        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenReturn(
-            ProvisioningResult(hosts = happyHosts(), errors = emptyMap()),
-        )
-
-        whenever(mockClusterConfigurationService.writeAllConfigurationFiles(any(), any(), any()))
-            .thenReturn(Result.success(Unit))
-
-        whenever(mockK3sClusterService.setupCluster(any())).thenReturn(K3sSetupResult(serverStarted = true))
-
-        whenever(mockK8sService.labelNode(any(), any(), any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageClass(any())).thenReturn(Result.success(Unit))
-        whenever(mockK8sService.ensureLocalStorageWfcClass(any())).thenReturn(Result.success(Unit))
-
-        whenever(mockCommandExecutor.execute<PicoCommand>(any())).thenAnswer { invocation ->
-            @Suppress("UNCHECKED_CAST")
-            val factory = invocation.arguments[0] as () -> PicoCommand
-            val command = factory()
-            invokedCommandNames.add(command::class.simpleName ?: "unknown")
-            nestedCommandExitCodes[command::class.simpleName] ?: 0
-        }
-    }
-
-    private fun happyHosts(): Map<ServerType, List<ClusterHost>> =
-        mapOf(
-            ServerType.Control to listOf(testControlHost),
-            ServerType.Cassandra to listOf(testDbHost),
-            ServerType.Stress to listOf(testAppHost),
-        )
-
-    /**
-     * A ClusterState with everything `up` needs already present, and Tailscale marked active
-     * so [Up.startProxyIfNeeded] and [Up.startTailscaleIfConfigured]'s inner body are both
-     * skipped (the test User has blank Tailscale credentials) — keeping the happy-path fixture
-     * from needing to model the SOCKS tunnel at all.
-     */
-    private fun happyState(
-        controlInstances: Int = 1,
-        cassandraInstances: Int = 1,
-        stressInstances: Int = 1,
-    ): ClusterState =
-        ClusterState(
-            name = "test-cluster",
-            versions = mutableMapOf(),
-            tailscaleActive = true,
-            initConfig =
-                InitConfig(
-                    cassandraInstances = cassandraInstances,
-                    stressInstances = stressInstances,
-                    controlInstances = controlInstances,
-                    cidr = "10.0.0.0/16",
-                    name = "test-cluster",
-                ),
-        )
-
-    private fun tailscaleUser(): User =
-        User(
-            email = "test@example.com",
-            region = "us-west-2",
-            keyName = "test-key",
-            awsProfile = "",
-            awsAccessKey = "test-access-key",
-            awsSecret = "test-secret",
-            axonOpsOrg = "",
-            axonOpsKey = "",
-            tailscaleClientId = "tailscale-client-id",
-            tailscaleClientSecret = "tailscale-client-secret",
-        )
-
+class UpTest : UpTestFixture() {
     // =========================================================================
     // Baseline: the happy-path fixture itself must succeed end to end
     // =========================================================================
@@ -304,6 +76,31 @@ class UpTest : BaseKoinTest() {
         verify(mockK8sService).ensureLocalStorageWfcClass(eq(testControlHost))
     }
 
+    /** Every `up` re-applies the bucket policy's delete deny, then makes sure the compactor runs, once. */
+    @Test
+    fun `up re-applies the bucket policy and then ensures the account compactor once`() {
+        val compactor = getKoin().get<CompactorService>()
+
+        newUp().execute()
+
+        val order = inOrder(mockS3BucketService, compactor)
+        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
+        order.verify(compactor).ensureRunning("easy-db-lab-test-bucket")
+        verify(compactor).ensureRunning(any())
+    }
+
+    /** The test's document index is rebuilt with the operator's credentials once the account bucket is configured. */
+    @Test
+    fun `up rebuilds the test's document index after the account bucket is configured`() {
+        newUp().execute()
+
+        val state = argumentCaptor<ClusterState>()
+        val order = inOrder(mockS3BucketService, mockDocumentService)
+        order.verify(mockS3BucketService, atLeastOnce()).putBucketPolicy("easy-db-lab-test-bucket")
+        order.verify(mockDocumentService).rebuildIndex(state.capture())
+        assertThat(state.firstValue.s3Bucket).isEqualTo("easy-db-lab-test-bucket")
+    }
+
     // =========================================================================
     // Group 4: cluster shape invariants
     // =========================================================================
@@ -318,6 +115,34 @@ class UpTest : BaseKoinTest() {
 
         verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
         verify(mockEc2InstanceService, never()).findInstancesByClusterId(any())
+    }
+
+    @Test
+    fun `up fails before any EC2 instance is launched when a redirect endpoint is malformed`() {
+        val state = happyState()
+        val redirect =
+            TelemetryRedirect.fromBaseHost("10.9.9.9").copy(traces = "http://10.9.9.9:4320")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            state.copy(initConfig = state.initConfig?.copy(telemetryRedirect = redirect)),
+        )
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("traces")
+
+        verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
+        verify(mockEc2InstanceService, never()).findInstancesByClusterId(any())
+    }
+
+    @Test
+    fun `up provisions successfully when a redirect target is well-formed`() {
+        val state = happyState()
+        val redirect = TelemetryRedirect.fromBaseHost("10.9.9.9")
+        whenever(mockClusterStateManager.load()).thenReturn(
+            state.copy(initConfig = state.initConfig?.copy(telemetryRedirect = redirect)),
+        )
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
     }
 
     @Test
@@ -422,12 +247,16 @@ class UpTest : BaseKoinTest() {
     }
 
     @Test
-    fun `up aborts when the nested GrafanaUpdateConfig command fails`() {
-        nestedCommandExitCodes["GrafanaUpdateConfig"] = 1
+    fun `up aborts when the observability stack deployment fails`() {
+        // Bring-up drives ObservabilityStackService.deploy directly rather than nesting the
+        // GrafanaUpdateConfig command, so a deploy failure must surface as an aborted `up`.
+        whenever(mockObservabilityStackService.deploy(any()))
+            .thenReturn(Result.failure(RuntimeException("dashboard upload rejected")))
 
         assertThatThrownBy { newUp().execute() }
             .isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("GrafanaUpdateConfig")
+            .hasMessageContaining("Observability stack deployment failed")
+            .hasMessageContaining("dashboard upload rejected")
     }
 
     @Test
@@ -464,7 +293,9 @@ class UpTest : BaseKoinTest() {
             .hasMessageContaining("apply failed")
 
         verify(mockK8sService, never()).ensureLocalStorageWfcClass(any())
-        assertThat(invokedCommandNames).doesNotContain("GrafanaUpdateConfig")
+        // Storage classes are set up before the observability stack, so aborting here means the
+        // stack deploy is never reached.
+        verify(mockObservabilityStackService, never()).deploy(any())
     }
 
     @Test
@@ -514,12 +345,34 @@ class UpTest : BaseKoinTest() {
         assertThat(outputHandler.messages.count { it == "Node labeling complete" }).isEqualTo(1)
     }
 
+    /** A role made by an older version must carry the Session Manager policy before any node launches under it. */
     @Test
-    fun `up aborts before provisioning when reapplying the S3 policy fails`() {
-        whenever(mockS3BucketService.attachS3Policy(any())).thenThrow(RuntimeException("access denied"))
+    fun `up puts the Session Manager policy on the instance role before provisioning`() {
+        val iam = getKoin().get<IamClient>()
+
+        newUp().execute()
+
+        val put = argumentCaptor<PutRolePolicyRequest>()
+        val order = inOrder(iam, mockClusterProvisioningService)
+        order.verify(iam, atLeastOnce()).putRolePolicy(put.capture())
+        order.verify(mockClusterProvisioningService).provisionAll(any(), any(), any(), any())
+        assertThat(put.allValues.map { it.roleName() to it.policyName() })
+            .contains(Constants.AWS.Roles.EC2_INSTANCE_ROLE to Constants.AWS.InlinePolicies.SESSION_MANAGER)
+    }
+
+    @Test
+    fun `up aborts before provisioning when reapplying the instance role policies fails`() {
+        // 403 because the IAM retry config does not retry permission errors, so the test fails fast.
+        val denied =
+            IamException
+                .builder()
+                .message("access denied")
+                .statusCode(403)
+                .build()
+        whenever(getKoin().get<IamClient>().putRolePolicy(any<PutRolePolicyRequest>())).thenThrow(denied)
 
         assertThatThrownBy { newUp().execute() }
-            .isInstanceOf(RuntimeException::class.java)
+            .isInstanceOf(IamException::class.java)
             .hasMessageContaining("access denied")
 
         verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
@@ -535,6 +388,39 @@ class UpTest : BaseKoinTest() {
             .hasMessageContaining("easy-db-lab tailscale start")
 
         verify(mockK3sClusterService, never()).setupCluster(any())
+    }
+
+    /**
+     * Runs the real [TailscaleStart] under `up`, against a tailnet that refuses to delete the
+     * device an earlier start recorded. Tailscale itself came up, so `up` carries on; only the
+     * stale device is left for the user to remove by hand.
+     */
+    @Test
+    fun `up continues when Tailscale starts but the previously recorded device cannot be removed`() {
+        overrideUser(tailscaleUser())
+        val state = happyState().apply { tailscaleDeviceId = "nOldCNTRL" }
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        val tailscaleService = mock<TailscaleService>()
+        whenever(tailscaleService.isConnected(any())).thenReturn(Result.success(false))
+        whenever(tailscaleService.generateAuthKey(any(), any(), any()))
+            .thenReturn(TailscaleAuthKey(key = "auth-key", id = "key-id"))
+        whenever(tailscaleService.startTailscale(any(), any(), any(), any())).thenReturn(Result.success(Unit))
+        whenever(tailscaleService.getDeviceId(any())).thenReturn(Result.success("nNewCNTRL"))
+        whenever(tailscaleService.getStatus(any())).thenReturn(Result.success("Connected"))
+        whenever(tailscaleService.deleteDevice(any(), any(), any()))
+            .thenThrow(TailscaleApiException("not allowed to delete device nOldCNTRL"))
+        getKoin().loadModules(listOf(module { single<TailscaleService> { tailscaleService } }), allowOverride = true)
+        whenever(mockCommandExecutor.execute<PicoCommand>(any())).thenAnswer { invocation ->
+            @Suppress("UNCHECKED_CAST")
+            val command = (invocation.arguments[0] as () -> PicoCommand)()
+            if (command is TailscaleStart) command.call() else 0
+        }
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(state.tailscaleDeviceId).isEqualTo("nNewCNTRL")
+        assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("nOldCNTRL")
+        verify(mockK3sClusterService).setupCluster(any())
     }
 
     @Test
@@ -574,14 +460,68 @@ class UpTest : BaseKoinTest() {
         assertThat(sshCheckedAliases).contains("control0", "db0")
     }
 
+    /**
+     * A fresh node's SSM agent registers some time after the instance boots, and until then every
+     * port forward fails with `TargetNotConnected`. `up` must keep waiting through that, not abort
+     * on the first failure, and it must say why it is still waiting.
+     */
+    @Test
+    fun `up keeps waiting while the control node's ssm agent has not registered yet`() {
+        sshFailureAlias = "control0"
+        sshFailuresRemaining = 3
+        sshFailureException =
+            SsmForwardNotReadyException(
+                "i-control0",
+                "An error occurred (TargetNotConnected) when calling the StartSession operation",
+                "SSM port forward to i-control0:22 exited (exit code 254) before it was ready.",
+            )
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(sshCheckedAliases.count { it == "control0" }).isEqualTo(4)
+        val retries = outputHandler.messages.filter { it.startsWith("SSH still not up yet") }
+        assertThat(retries).hasSize(3).allMatch { it.contains("exited (exit code 254) before it was ready") }
+        verify(mockK3sClusterService).setupCluster(any())
+    }
+
+    /**
+     * Under the direct transport, MINA reports a node whose sshd is not up yet as SshException,
+     * a checked exception. `up` must retry it rather than abort on the first refused connection.
+     */
+    @Test
+    fun `up keeps waiting while a direct-transport node refuses ssh connections`() {
+        sshFailureAlias = "control0"
+        sshFailuresRemaining = 3
+        sshFailureException = SshException("Failed (ConnectException) to execute: Connection refused")
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(sshCheckedAliases.count { it == "control0" }).isEqualTo(4)
+        assertThat(outputHandler.messages.filter { it.startsWith("SSH still not up yet") })
+            .hasSize(3)
+            .allMatch { it.contains("Connection refused") }
+        verify(mockK3sClusterService).setupCluster(any())
+    }
+
+    /** An IOException that is not a connection failure will not clear by waiting, so `up` stops at once. */
+    @Test
+    fun `up fails at once on an IOException that is not an ssh connection failure`() {
+        sshFailureAlias = "control0"
+        sshFailureException = IOException("No such file or directory")
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IOException::class.java)
+            .hasMessageContaining("No such file or directory")
+
+        assertThat(sshCheckedAliases.count { it == "control0" }).isEqualTo(1)
+        verify(mockK3sClusterService, never()).setupCluster(any())
+    }
+
     @Test
     fun `up aborts when the control node never accepts ssh`() {
         sshFailureAlias = "control0"
-        // A non-retryable exception type: RetryUtil's SSH retry config only retries
-        // SshException/IOException, so this fails on the first attempt instead of exhausting
-        // the real 30-attempt / 10s-interval retry window, which would make this test take
-        // minutes. The behavior under test — that a control-node SSH failure aborts `up` — is
-        // exercised either way; only the wait time differs.
+        // A non-retryable exception type, so this fails on the first attempt: the behavior under
+        // test is that a control-node SSH failure aborts `up`, not the length of the retry window.
         sshFailureException = IllegalStateException("connection refused")
 
         assertThatThrownBy { newUp().execute() }
@@ -591,15 +531,310 @@ class UpTest : BaseKoinTest() {
         verify(mockK3sClusterService, never()).setupCluster(any())
     }
 
-    /**
-     * Constructs an [Up] with a zero SSH startup delay so tests do not sit through the production
-     * [Up.SSH_STARTUP_DELAY] pause. The delay's only effect is wall-clock timing, so removing it
-     * does not change any behavior under test.
-     */
-    private fun newUp(): Up = Up(sshStartupDelay = Duration.ZERO)
+    // =========================================================================
+    // Group 7: Tailscale routing pre-flight
+    //
+    // A Tailscale cluster starts no SOCKS tunnel, so an operator whose own machine is off the
+    // tailnet has no route at all. These assert on the operator-facing message, not just the
+    // exception type: the message is the whole point of failing early.
+    // =========================================================================
 
-    private fun overrideUser(user: User) {
-        whenever(mockClusterStateManager.load()).thenReturn(happyState())
-        getKoin().loadModules(listOf(module { single<User> { user } }), allowOverride = true)
+    @Test
+    fun `up fails before any EC2 instance is launched when the local Tailscale client is logged out`() {
+        localTailscaleState = LocalTailscaleState.Disconnected("Stopped")
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("local Tailscale client is not connected")
+            .hasMessageContaining("state: Stopped")
+            .hasMessageContaining("Run 'tailscale up' on this machine")
+
+        verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
+        verify(mockEc2InstanceService, never()).findInstancesByClusterId(any())
     }
+
+    @Test
+    fun `up names the missing binary, not a logged-out client, when tailscale is not installed`() {
+        localTailscaleState = LocalTailscaleState.NotInstalled
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("the 'tailscale' command was not found on this machine")
+            .hasMessageContaining("https://tailscale.com/download")
+            // The remedy for an absent binary is to install it, not to run `tailscale up`.
+            .hasMessageNotContaining("local Tailscale client is not connected")
+
+        verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
+    }
+
+    @Test
+    fun `up skips both Tailscale checks entirely when the cluster does not use Tailscale`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        // Both checks would fail outright if they ran; a non-Tailscale cluster must not consult
+        // them at all, and must not pay for a local process invocation or a socket connect.
+        localTailscaleState = LocalTailscaleState.NotInstalled
+        tailnetReachable = false
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(localTailscaleQueries).isZero()
+        assertThat(probedTargets).isEmpty()
+    }
+
+    @Test
+    fun `up reports the SOCKS tunnel it started on a cluster that does not use Tailscale`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        val events = captureEvents()
+
+        newUp().execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `up --no-setup reports the SOCKS tunnel it starts or reuses, once`() {
+        // Under --no-setup the tunnel may already come from the @RequiresProxy preflight, which reports nothing.
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `up --no-setup reports a tunnel the preflight started as started, and checks it again before K3s`() {
+        tunnelFromPreflight(reused = false)
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+        // Once for the preflight, once by up itself, which restarts a tunnel that died in between.
+        verify(getKoin().get<SocksProxyService>(), times(2)).ensureRunning(any())
+    }
+
+    @Test
+    fun `up reports a tunnel the preflight started as started, and checks it again before K3s`() {
+        tunnelFromPreflight(reused = false)
+        val events = captureEvents()
+
+        newUp().execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+        verify(getKoin().get<SocksProxyService>(), times(2)).ensureRunning(any())
+    }
+
+    @Test
+    fun `up --no-setup reports a tunnel the preflight found running as already running`() {
+        tunnelFromPreflight(reused = true)
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = true))
+    }
+
+    @Test
+    fun `a tunnel the preflight reused that died and was restarted on the same port is reported as started`() {
+        // The recheck started a new tunnel; that it landed on the same port does not make it the reused one.
+        tunnelFromPreflight(reused = true, later = { host -> tunnel(host, port = TUNNEL_PORT, reused = false) })
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `a tunnel up's own check replaces on another port is reported as the new one`() {
+        tunnelFromPreflight(reused = false, later = { host -> tunnel(host, port = OTHER_TUNNEL_PORT, reused = false) })
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>())
+            .containsExactly(Event.Proxy.TunnelReady(OTHER_TUNNEL_PORT, reused = false))
+    }
+
+    @Test
+    fun `a preflight tunnel to another control node is not reported, and up asks for one to the current node`() {
+        val oldControl = testControlHost.copy(privateIp = "10.0.9.9")
+        tunnelFromPreflight(reused = false, later = { host ->
+            tunnel(host, port = TUNNEL_PORT, reused = true)
+        }, preflightControl = oldControl)
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        verify(getKoin().get<SocksProxyService>()).ensureRunning(testControlHost)
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).containsExactly(Event.Proxy.TunnelReady(TUNNEL_PORT, reused = true))
+    }
+
+    private fun tunnel(
+        host: ClusterHost,
+        port: Int,
+        reused: Boolean,
+    ) = SocksProxyState(localPort = port, gatewayHost = host, startTime = Instant.EPOCH, reused = reused)
+
+    /**
+     * Plays the executor: the `@RequiresProxy` preflight obtains the tunnel to [preflightControl]
+     * before `up` runs, [reused] as the service returns it; `up`'s own later ask gets [later], by
+     * default that tunnel running in memory.
+     */
+    private fun tunnelFromPreflight(
+        reused: Boolean,
+        later: (ClusterHost) -> SocksProxyState = { host -> tunnel(host, port = TUNNEL_PORT, reused = true) },
+        preflightControl: ClusterHost = testControlHost,
+    ) {
+        val socks = getKoin().get<SocksProxyService>()
+        whenever(socks.ensureRunning(any()))
+            .thenAnswer { invocation -> tunnel(invocation.getArgument(0), port = TUNNEL_PORT, reused = reused) }
+            .thenAnswer { invocation -> later(invocation.getArgument(0)) }
+        // The preflight starts a tunnel only for a cluster whose infrastructure is up.
+        whenever(mockClusterStateManager.exists()).thenReturn(true)
+        whenever(mockClusterStateManager.load()).thenReturn(
+            happyState()
+                .copy(tailscaleActive = false, hosts = happyHosts() + (ServerType.Control to listOf(preflightControl)))
+                .apply { markInfrastructureUp() },
+        )
+        getKoin().get<ProxyPreflight>().ensureTunnel()
+        whenever(mockClusterStateManager.load()).thenReturn(happyState().copy(tailscaleActive = false))
+    }
+
+    @Test
+    fun `the SSH readiness check does not echo what each host printed`() {
+        // `echo 1` proves a host answers; echoing its output put a bare "1" per host on the console.
+        newUp().execute()
+
+        assertThat(sshCheckedAliases).isNotEmpty()
+        assertThat(echoedCommands).doesNotContain("echo 1")
+    }
+
+    @Test
+    fun `up --no-setup reports no SOCKS tunnel on a Tailscale cluster`() {
+        val events = captureEvents()
+
+        newUp().apply { noSetup = true }.execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).isEmpty()
+    }
+
+    @Test
+    fun `up reports no SOCKS tunnel on a Tailscale cluster`() {
+        val events = captureEvents()
+
+        newUp().execute()
+
+        assertThat(events.filterIsInstance<Event.Proxy.TunnelReady>()).isEmpty()
+    }
+
+    private fun captureEvents(): List<Event> {
+        val emitted = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    emitted += envelope.event
+                }
+
+                override fun close() = Unit
+            },
+        )
+        return emitted
+    }
+
+    @Test
+    fun `up probes the control node's private IP over ssh before starting K3s`() {
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        // sshd, not the Kubernetes API: K3s has not started yet at this point in `up`.
+        assertThat(probedTargets).containsExactly("10.0.0.1:22")
+    }
+
+    @Test
+    fun `up waits for the tailnet route and continues once the control node answers`() {
+        // The subnet route reaches this machine some seconds after `tailscale up`; the first
+        // probes fail and a later one succeeds. `up` must keep probing and then carry on to K3s.
+        tailnetProbesBeforeReachable = 2
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(probedTargets).hasSize(3)
+        verify(mockK3sClusterService).setupCluster(any())
+    }
+
+    @Test
+    fun `up aborts before K3s when this machine never reaches the control node over the tailnet`() {
+        tailnetReachable = false
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("cannot reach it at 10.0.0.1:22 over the tailnet")
+            .hasMessageContaining("after ${Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS} attempts")
+            .hasMessageContaining("approve the subnet route 10.0.0.0/16")
+
+        // Every attempt was spent before giving up; one failed connect is not a missing route.
+        assertThat(probedTargets).hasSize(Constants.Tailscale.REACHABILITY_MAX_ATTEMPTS)
+        verify(mockK3sClusterService, never()).setupCluster(any())
+    }
+
+    // =========================================================================
+    // SSM transport pre-flight
+    //
+    // Under the ssm transport every SSH connection, the readiness wait included, is opened by the
+    // AWS CLI and the Session Manager plugin, so a machine without them must stop before AWS is
+    // touched rather than after a five-minute readiness timeout.
+    // =========================================================================
+
+    @Test
+    fun `up fails before touching AWS when the ssm transport's plugin is missing`() {
+        overrideUser(ssmUser())
+        ssmToolFaults = listOf(SsmToolFault.NotFound(SsmTool.SessionManagerPlugin))
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("'session-manager-plugin'")
+            .hasMessageNotContaining("'aws'")
+
+        // SsmToolsMissing is an error event, so the install hint goes to the error stream.
+        assertThat(outputHandler.errors.joinToString("\n") { it.first }).contains("brew install --cask session-manager-plugin")
+        verify(mockS3BucketService, never()).ensureAccountBucket(any())
+        verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
+    }
+
+    /** An installed tool that fails needs its own error read, not an install hint that would send the operator the wrong way. */
+    @Test
+    fun `up shows a failing tool's own output and no install hint`() {
+        overrideUser(ssmUser())
+        ssmToolFaults = listOf(SsmToolFault.Failed(SsmTool.AwsCli, 1, "dyld: Library not loaded: libpython3.11.dylib"))
+
+        assertThatThrownBy { newUp().execute() }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("'aws'")
+
+        val errors = outputHandler.errors.joinToString("\n") { it.first }
+        assertThat(errors).contains("'aws --version' exited 1: dyld: Library not loaded: libpython3.11.dylib")
+        assertThat(errors).doesNotContain("brew install")
+        verify(mockClusterProvisioningService, never()).provisionAll(any(), any(), any(), any())
+    }
+
+    @Test
+    fun `up provisions over ssm when the local tools are present`() {
+        overrideUser(ssmUser())
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(localSsmToolingQueries).isEqualTo(1)
+    }
+
+    @Test
+    fun `up never checks for SSM tools under the direct transport`() {
+        ssmToolFaults = SsmTool.entries.map { SsmToolFault.NotFound(it) }
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        assertThat(localSsmToolingQueries).isZero()
+    }
+
+    private fun ssmUser(): User = getKoin().get<User>().copy(sshTransport = SshTransport.Ssm)
 }

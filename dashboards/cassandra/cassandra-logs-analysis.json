@@ -1,0 +1,1046 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Cassandra logs shipped by the OpenTelemetry Java agent, on the same label space as the metrics (cassandra_build, host.name, node_role, service_name). Logs and metrics share one time range and one set of variables. NOTE: the log records carry no trace_id or span_id, so there is no trace correlation on this dashboard.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": true,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Log Investigation",
+      "tooltip": "Free-form log search across every service",
+      "type": "link",
+      "url": "/d/log-investigation/log-investigation?${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${cluster:queryparam}"
+    },
+    {
+      "asDropdown": false,
+      "icon": "external link",
+      "includeVars": false,
+      "keepTime": true,
+      "tags": [],
+      "targetBlank": false,
+      "title": "Cassandra Overview",
+      "tooltip": "Cassandra metrics for the same time range",
+      "type": "link",
+      "url": "/d/1e7b6436-9a13-44cf-bdae-7528a9a7f537/cassandra-overview?${metrics_datasource:queryparam}&${logs_datasource:queryparam}&${cluster:queryparam}"
+    }
+  ],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "panels": [],
+      "title": "Volume and severity",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Log records per interval, split by build and severity. This is what makes log volume comparable between builds. The panel deliberately ignores $severity so the whole mix stays visible; use $severity on the stream and problem panels.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "none" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, cassandra_build, severity_text) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{severity_text}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Log rate by severity and build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "WARN and ERROR records per interval by build. SEVERE and WARNING are included because the AxonOps and Digitalis agents log through java.util.logging, which uses those names.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 1 },
+      "id": 2,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | severity_text=~\"WARN|WARNING|ERROR|SEVERE\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "WARN and ERROR rate by build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Loggers ranked by record count over the dashboard time range, with WARN and ERROR counts beside them. Sort any column to re-rank.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "errors" },
+            "properties": [{ "id": "custom.cellOptions", "value": { "mode": "gradient", "type": "color-background" } }]
+          }
+        ]
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 9 },
+      "id": 3,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "records" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(topk by (cluster) (25, sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" [$__range]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "records",
+          "queryType": "instant",
+          "refId": "A"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"WARN|WARNING\" [$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "warnings",
+          "queryType": "instant",
+          "refId": "B"
+        },
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"ERROR|SEVERE\" [$__range])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "errors",
+          "queryType": "instant",
+          "refId": "C"
+        }
+      ],
+      "title": "Top loggers by volume, with WARN and ERROR counts",
+      "transformations": [
+        { "id": "labelsToFields", "options": { "mode": "columns" } },
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "cluster": true }, "indexByName": {}, "renameByName": { "cluster_name": "Cluster" } } }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Which loggers are producing WARN and ERROR over time. A small number of loggers carry almost all of the problem records, so this stays readable.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 9 },
+      "id": 4,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, scope_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=~\"${logger}\" | severity_text=~\"WARN|WARNING|ERROR|SEVERE\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{scope_name}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "WARN and ERROR rate by logger",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "The agent attaches exception.type, exception.message and exception.stacktrace to records that carry a throwable. This table counts them by type and logger; open a matching line in the stream panel below to read the stack trace.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "align": "auto", "cellOptions": { "type": "auto" } },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 18 },
+      "id": 5,
+      "options": {
+        "cellHeight": "sm",
+        "footer": { "countRows": false, "fields": "", "reducer": ["sum"], "show": false },
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "occurrences" }]
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(topk by (cluster) (20, sum by (cluster, exception_type, scope_name, cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | exception_type!=\"\" [$__range]))), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "occurrences",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "title": "Exceptions by type, logger and build",
+      "transformations": [
+        { "id": "labelsToFields", "options": { "mode": "columns" } },
+        { "id": "merge", "options": {} },
+        { "id": "convertFieldType", "options": { "conversions": [ { "targetField": "cassandra_build", "destinationType": "string" } ], "fields": {} } },
+        { "id": "organize", "options": { "excludeByName": { "Time": true, "cluster": true }, "indexByName": {}, "renameByName": { "cluster_name": "Cluster" } } }
+      ],
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "id": 101,
+      "panels": [],
+      "title": "GCInspector - pause detail the JVM metrics do not carry",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Duration parsed out of the GCInspector line \"<collector> GC in <n>ms\", split by build and collector. Read the collector name before you compare: a series named \"... Cycles\" is a ZGC CONCURRENT phase, not a stop-the-world pause. The branch build logs those because gc_concurrent_phase_log_threshold and gc_concurrent_phase_warn_threshold are enabled on it, so it reports series the stock build never emits. Compare like with like.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "id": 10,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(max by (cluster, cassandra_build, gc_name) (max_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.service.GCInspector\" |= \"GC in\" | unwrap gc_event_ms | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{gc_name}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "GCInspector reported GC duration, max ms by build and collector",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "How often GCInspector logs at all, by build and collector. GCInspector only logs above its threshold, so this is a count of NOTABLE collections, not of every collection.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "id": 11,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, cassandra_build, gc_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.service.GCInspector\" |= \"GC in\" | gc_name!=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{gc_name}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "GCInspector events by build and collector",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 34 },
+      "id": 102,
+      "panels": [],
+      "title": "CompactionTask - what compacted, how big, how long",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Completed compactions per interval, counted from the CompactionTask \"Compacted (...)\" line. Ground truth against cassandra_compaction_tasks_completed_total.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 35 },
+      "id": 20,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, cassandra_build) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.db.compaction.CompactionTask\" |= \"Compacted (\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Compactions completed by build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Longest compaction in each interval, parsed from \"... in <n>ms.  Read Throughput = ...\". Cassandra prints these durations with thousands separators, so the query strips commas before it aggregates.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 35 },
+      "id": 21,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(max by (cluster, cassandra_build) (max_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.db.compaction.CompactionTask\" |= \"Compacted (\" | unwrap compaction_ms | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Compaction duration, max ms by build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Mean output size as a percentage of input size, parsed from \"(~<n>% of original)\". A rising value means compaction is reclaiming less; a falling value means more overwrite or tombstone removal.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "axisSoftMax": 100,
+            "axisSoftMin": 0,
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 35 },
+      "id": 22,
+      "options": {
+        "legend": { "calcs": ["mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(avg by (cluster, cassandra_build) (avg_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.db.compaction.CompactionTask\" |= \"Compacted (\" | unwrap compaction_ratio_pct | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Compaction output as percent of original, by build",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "id": 103,
+      "panels": [],
+      "title": "Dropped messages - the reason, not just the counter",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Cross-node drops per message type, parsed out of the MessagingMetrics line. cassandra_messages_dropped_total gives the count only; this gives the count split into internal and cross-node, plus the latency below.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 44 },
+      "id": 30,
+      "options": {
+        "legend": { "calcs": ["sum", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, dropped_type) (sum_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\" | unwrap dropped_cross_node | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dropped_type}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped messages by type, cross-node",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Internal drops per message type, from the same MessagingMetrics line. An internal drop means the node timed out its own work; a cross-node drop means a peer did.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 44 },
+      "id": 31,
+      "options": {
+        "legend": { "calcs": ["sum", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, dropped_type) (sum_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\" | unwrap dropped_internal | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dropped_type}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped messages by type, internal",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Mean cross-node latency of the dropped messages, by type. This is the number the metric cannot give you: how late the message already was when it was thrown away.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "points",
+            "fillOpacity": 0,
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "always",
+            "spanNulls": false
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 52 },
+      "id": 32,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(max by (cluster, dropped_type) (max_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\" | unwrap dropped_cross_node_ms | __error__=\"\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{dropped_type}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Mean cross-node latency of dropped messages, by type",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "The raw drop lines, so you can read the exact numbers and the node that reported them.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 52 },
+      "id": 33,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "{cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" |= \"messages were dropped\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped message log lines",
+      "type": "logs"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 60 },
+      "id": 104,
+      "panels": [],
+      "title": "StatusLogger - Cassandra dumping its own state under pressure",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "How often StatusLogger dumps thread-pool and memtable state, counted from its \"Pool Name\" header line. Cassandra only does this when it is unhappy, so the firing rate alone is a pressure signal.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 61 },
+      "id": 40,
+      "options": {
+        "legend": { "calcs": ["sum"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, cassandra_build, host_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.utils.StatusLogger\" |= \"Pool Name\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{host_name}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "StatusLogger dumps by build and node",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "Total StatusLogger lines. One dump is many lines, one per pool, table and cache, so this tracks the volume the dumps add to the log.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 61 },
+      "id": 41,
+      "options": {
+        "legend": { "calcs": ["sum", "max"], "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, cassandra_build, host_name) (count_over_time({cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | scope_name=\"org.apache.cassandra.utils.StatusLogger\" [$__auto])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{host_name}}",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "StatusLogger lines by build and node",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 69 },
+      "id": 105,
+      "panels": [],
+      "title": "Correlation - metrics and logs on one timeline",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+      "description": "Client request latency at ${percentile}, in milliseconds, by build and operation. The metric is emitted in microseconds, so the query divides by 1000 and the panel unit stays short. max by () reports the worst node in each build group, which is correct for any group size.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisLabel": "ms",
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 70 },
+      "id": 50,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(max by (cluster, cassandra_build, cassandra_operation) (cassandra_client_request_latency_${percentile}_microseconds{cluster=~\"$cluster\", host_name=~\"$host\", cassandra_build=~\"$build\"}) / 1000, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{cassandra_operation}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Client request latency ${percentile} (ms) by build",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+      "description": "Dropped messages per second from the metric, by type. The > 0 filter removes the ninety-odd verb types that never drop, so only the types that are actually dropping appear. Read this beside the log panels above, which carry the reason.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": false,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 70 },
+      "id": 51,
+      "options": {
+        "legend": { "calcs": ["max"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(sum by (cluster, message_type) (rate(cassandra_messages_dropped_total{cluster=~\"$cluster\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval])) > 0, \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{message_type}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Dropped messages rate by type (metric)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+      "description": "Stop-the-world GC time as a percentage of wall time, by build. jvm_gc_name!~\".*Cycles\" excludes the ZGC concurrent cycles; without it a ZGC build looks worse than a G1 build, which is backwards.",
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisPlacement": "auto",
+            "axisSoftMax": 1,
+            "axisSoftMin": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 70 },
+      "id": 52,
+      "options": {
+        "legend": { "calcs": ["max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+          "editorMode": "code",
+          "expr": "label_replace(100 * sum by (cluster, cassandra_build, host_name) (rate(jvm_gc_duration_seconds_sum{cluster=~\"$cluster\", jvm_gc_name!~\".*Cycles\", host_name=~\"$host\", cassandra_build=~\"$build\"}[$__rate_interval])), \"cluster_name\", \"$1\", \"cluster\", \"(.+-[0-9a-f]{8})-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\")",
+          "legendFormat": "{{cluster_name}} {{cassandra_build}} {{host_name}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "GC pause overhead, percent of wall time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+      "description": "The log lines for the same window as the three metric panels above, filtered by $build, $host, $severity and $logger. Type a regular expression in the Search box to narrow further, for example: timeout. The records carry no trace_id or span_id, so there is no link to Tempo from here.",
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 78 },
+      "id": 53,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+          "editorMode": "code",
+          "expr": "{cluster=~\"$cluster\", service_name=\"cassandra\", host_name=~\"${host:pipe}\"} | cassandra_build=~\"${build:pipe}\" | severity_text=~\"${severity:pipe}\" | scope_name=~\"${logger}\" |~ \"(?i)${search}\"",
+          "queryType": "range",
+          "refId": "A"
+        }
+      ],
+      "title": "Cassandra log stream",
+      "type": "logs"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["cassandra", "logs", "otel"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Metrics",
+        "multi": false,
+        "name": "metrics_datasource",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "current": {},
+        "hide": 0,
+        "includeAll": false,
+        "label": "Logs",
+        "multi": false,
+        "name": "logs_datasource",
+        "options": [],
+        "query": "loki",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
+        "allValue": ".+",
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+        "definition": "label_values(up, cluster)",
+        "description": "Clusters of this tenant. All is .+ because Loki refuses a stream selector that matches an empty value.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Cluster",
+        "multi": true,
+        "name": "cluster",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(up, cluster)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "/^(?<value>(?<text>.+?)(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$/",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+        "definition": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, cassandra_build)",
+        "description": "Cassandra build. The same label exists on the metrics and on the log records, so this filters both.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Build",
+        "multi": true,
+        "name": "build",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, cassandra_build)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": {},
+        "datasource": { "type": "prometheus", "uid": "${metrics_datasource}" },
+        "definition": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
+        "description": "Database nodes only. No allValue is set on purpose, so All expands to the real node list instead of a wildcard.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Host",
+        "multi": true,
+        "name": "host",
+        "options": [],
+        "query": {
+          "qryType": 1,
+          "query": "label_values(cassandra_storage_load_bytes{cluster=~\"$cluster\"}, host_name)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": ["ERROR", "WARN"],
+          "value": ["ERROR", "WARN"]
+        },
+        "description": "Cassandra logs ERROR, WARN, INFO and DEBUG. The bundled agents log through java.util.logging, which uses SEVERE and WARNING instead.",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Severity",
+        "multi": true,
+        "name": "severity",
+        "options": [
+          { "selected": true, "text": "ERROR", "value": "ERROR" },
+          { "selected": false, "text": "SEVERE", "value": "SEVERE" },
+          { "selected": true, "text": "WARN", "value": "WARN" },
+          { "selected": false, "text": "WARNING", "value": "WARNING" },
+          { "selected": false, "text": "INFO", "value": "INFO" },
+          { "selected": false, "text": "DEBUG", "value": "DEBUG" },
+          { "selected": false, "text": "TRACE", "value": "TRACE" }
+        ],
+        "query": "ERROR,SEVERE,WARN,WARNING,INFO,DEBUG,TRACE",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": ".*",
+          "value": ".*"
+        },
+        "description": "Logger name, as a regular expression over the scope_name of every record, for example .*Compaction.*",
+        "hide": 0,
+        "label": "Logger",
+        "name": "logger",
+        "options": [
+          { "selected": true, "text": ".*", "value": ".*" }
+        ],
+        "query": ".*",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "p99",
+          "value": "p99"
+        },
+        "description": "Latency percentile used by the correlation panel.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Percentile",
+        "multi": false,
+        "name": "percentile",
+        "options": [
+          { "selected": false, "text": "p50", "value": "p50" },
+          { "selected": true, "text": "p99", "value": "p99" },
+          { "selected": false, "text": "p999", "value": "p999" },
+          { "selected": false, "text": "max", "value": "max" }
+        ],
+        "query": "p50,p99,p999,max",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": "",
+          "value": ""
+        },
+        "description": "Case-insensitive regular expression the log stream panel's lines must match, for example timeout",
+        "hide": 0,
+        "label": "Search",
+        "name": "search",
+        "options": [
+          { "selected": true, "text": "", "value": "" }
+        ],
+        "query": "",
+        "skipUrlSync": false,
+        "type": "textbox"
+      },
+      {
+        "datasource": { "type": "loki", "uid": "${logs_datasource}" },
+        "filters": [],
+        "hide": 0,
+        "label": "Ad-hoc filters",
+        "name": "adhoc",
+        "skipUrlSync": false,
+        "type": "adhoc"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Cassandra Log Analysis",
+  "uid": "cassandra-logs-analysis",
+  "version": 1,
+  "weekStart": ""
+}

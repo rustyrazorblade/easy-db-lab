@@ -63,7 +63,10 @@ abstract class BaseInstallCommand : PicoBaseCommand() {
             // defaults. Critical for platform-pvs: without this, STORAGE_SIZE reverts to
             // the kit default (e.g. 10Ti) instead of the installed value (e.g. 100Gi),
             // causing PV capacity to mismatch the PVC request in the rendered manifest.
-            val resolvedArgs = extraVars + ("STORAGE_SIZE" to storageSize)
+            // A kit that declares no storage arg has no storage size, so it gets no entry at
+            // all rather than an empty `STORAGE_SIZE=`.
+            val storageArg = if (storageSize.isBlank()) emptyMap() else mapOf("STORAGE_SIZE" to storageSize)
+            val resolvedArgs = extraVars + storageArg
             File(tempDir, Constants.Kit.RESOLVED_ARGS_FILE).writeText(
                 resolvedArgs.entries.joinToString("\n") { (k, v) -> "$k=$v" } + "\n",
             )

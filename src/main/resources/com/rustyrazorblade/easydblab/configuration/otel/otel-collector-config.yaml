@@ -12,15 +12,47 @@ receivers:
     protocols:
       thrift_compact:
         endpoint: 0.0.0.0:6831
-  hostmetrics:
+  host_metrics:
     collection_interval: 10s
+    # The collector is a container, so without this the scrapers describe the container rather than
+    # the node. filesystem in particular saw nothing at all and reported no series, which is why
+    # every filesystem panel was empty. A receiver-level setting, not a per-scraper one; the host
+    # root is bind-mounted read-only at /hostfs by OtelManifestBuilder.
+    root_path: /hostfs
     scrapers:
+      # The per-core `cpu` attribute is opt-in on this scraper; dashboards break CPU time down by
+      # core, so it is requested explicitly.
       cpu:
+        metrics:
+          system.cpu.time:
+            attributes: [cpu, state]
       disk:
       load:
       filesystem:
+        # Virtual filesystems - overlay, tmpfs, devtmpfs, sysfs, proc, cgroup - are already absent:
+        # include_virtual_filesystems defaults to false, and the scraper passes that straight to
+        # gopsutil, which then lists only filesystems that are not `nodev` in /proc/filesystems.
+        #
+        # squashfs is the exception. It is device-backed, so it is not filtered by that default, and
+        # every snap on an Ubuntu host is a separate read-only squashfs mount at 100% full. Left in,
+        # they crowd out the real disks on any filesystem panel.
+        exclude_fs_types:
+          fs_types:
+            - squashfs
+          match_type: strict
+        # system.filesystem.utilization is an optional metric and is OFF by default - measured, not
+        # assumed. It is the ready-made 0-1 fraction the disk-usage panel wants; without it a panel
+        # has to derive the ratio from the used/free/reserved states itself.
+        metrics:
+          system.filesystem.utilization:
+            enabled: true
       memory:
       network:
+      paging:
+        # Same story: system.paging.utilization is optional and off by default.
+        metrics:
+          system.paging.utilization:
+            enabled: true
       processes:
   prometheus:
     config:
@@ -43,15 +75,6 @@ receivers:
               replacement: '${env:HOSTNAME}:9435'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
-        - job_name: 'cassandra-maac'
-          scrape_interval: 15s
-          static_configs:
-            - targets: ['localhost:9000']
-          relabel_configs:
-            - target_label: instance
-              replacement: '${env:HOSTNAME}:9000'
-            - target_label: cluster
-              replacement: '${env:CLUSTER_NAME}'
         - job_name: 'yace'
           scrape_interval: 5s
           scrape_timeout: 5s
@@ -62,26 +85,26 @@ receivers:
               replacement: '${env:HOSTNAME}:5001'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
-        - job_name: 'hubble'
+        # The collector's own telemetry: exporter send failures, queue sizes, refused points. Without
+        # it a Tempo exporter failing every send looks exactly like a cluster with no traffic.
+        - job_name: 'otel-collector'
           scrape_interval: 15s
           static_configs:
-            - targets: ['localhost:9965']
+            - targets: ['localhost:8888']
           relabel_configs:
             - target_label: instance
-              replacement: '${env:HOSTNAME}:9965'
+              replacement: '${env:HOSTNAME}:8888'
             - target_label: cluster
               replacement: '${env:CLUSTER_NAME}'
-        - job_name: 'tempo'
-          scrape_interval: 15s
-          static_configs:
-            - targets: ['localhost:3200']
-          relabel_configs:
-            - target_label: instance
-              replacement: '${env:HOSTNAME}:3200'
-            - target_label: cluster
-              replacement: '${env:CLUSTER_NAME}'
+        # Built by OtelManifestBuilder: the Mimir, Loki, Tempo and Pyroscope server jobs (local mode
+        # only; a redirect cluster deploys none of them), the kube-state-metrics pod-discovery job (every cluster)
+        # and the Cilium agent/operator/Hubble jobs (Cilium clusters only). The pod-discovery jobs are rendered in
+        # Kotlin rather than written here because their relabel rules name Prometheus meta labels,
+        # whose double-underscore prefix and suffix is the template placeholder syntax of
+        # TemplateService: written in this file they would derail every substitution after them.
+__INFRA_SCRAPE_JOBS__
 __KIT_SCRAPE_JOBS__
-  filelog/system:
+  file_log/system:
     include:
       - /var/log/**/*.log
       - /var/log/messages
@@ -95,9 +118,10 @@ __KIT_SCRAPE_JOBS__
     start_at: end
     include_file_path: true
     include_file_name: true
-    attributes:
+    # On the resource, not the record: Loki indexes `source` only as a resource attribute.
+    resource:
       source: system
-  filelog/containers:
+  file_log/containers:
     include:
       - /var/log/pods/**/*.log
     exclude:
@@ -112,7 +136,7 @@ __KIT_SCRAPE_JOBS__
       - type: container
         id: container_parser
         on_error: send
-  filelog/clickhouse-containers:
+  file_log/clickhouse-containers:
     include:
       - /var/log/pods/default_chi-clickhouse-*/**/*.log
       - /var/log/pods/default_chk-clickhouse-keeper-*/**/*.log
@@ -145,63 +169,292 @@ __KIT_SCRAPE_JOBS__
         from: attributes.ch_message
         to: body
         on_error: send
-  filelog/tools:
+  file_log/tools:
     include:
       - /var/log/easydblab/tools/*.log
     start_at: beginning
     include_file_path: true
     include_file_name: true
-    attributes:
+    resource:
       source: tool-runner
-  filelog/cassandra:
+  # The JVM GC log only. Cassandra's application logs (system.log, debug.log) reach the collector
+  # over OTLP from the OpenTelemetry Java agent (logs/otlp, service_name="cassandra"); tailing the
+  # files too stored every Cassandra line twice. The GC log is written by the JVM itself
+  # (-Xlog:gc in cassandra.in.sh), so the agent never sees it. -Xlog rotation keeps gc.log plus
+  # gc.log.0..9 (filecount=10); the rotated files are included so lines written just before a
+  # rotation are not lost, and the file fingerprint keeps a renamed file from being read twice.
+  # `source: cassandra-gc` keeps it apart from the OTLP Cassandra stream.
+  file_log/cassandra:
     include:
-      - /mnt/db1/cassandra/logs/*.log
+      - /mnt/db1/cassandra/logs/gc.log*
     exclude:
-      - /mnt/db1/cassandra/logs/*.gz
+      - /mnt/db1/cassandra/logs/gc.log*.gz
     start_at: end
     include_file_path: true
     include_file_name: true
-    attributes:
-      source: cassandra
+    resource:
+      source: cassandra-gc
   # NOTE: ClickHouse logs via container stdout/stderr (K8s pod),
-  # collected by filelog/containers. File-based receivers are not used.
+  # collected by file_log/containers. File-based receivers are not used.
 
 processors:
   batch:
     timeout: 10s
     send_batch_size: 1024
+  # Required by the metrics/logs pipeline, and the single most silent failure in this file.
+  #
+  # The count connector emits Sums with AggregationTemporality: Delta, and signal_to_metrics emits
+  # delta histograms. prometheus_remote_write accepts CUMULATIVE ONLY and discards delta points
+  # without an error log, without incrementing send_failed, and without any dropped-points counter.
+  # Every diagnostic surface reports a healthy pipeline while the data goes nowhere.
+  #
+  # That is not a hypothetical: it is exactly how this shipped the first time. The connectors were
+  # producing correct points carrying cassandra_build, host.name and node_role, the OTTL conditions
+  # matched, the pipeline was constructed - and cassandra_log_* never appeared in the metrics store.
+  # It was found only by attaching a debug exporter to the pipeline and reading the descriptor.
+  #
+  # Anything added to metrics/logs later inherits this constraint. A connector-derived metric that
+  # bypasses this processor disappears the same silent way.
+  delta_to_cumulative:
+    max_stale: 5m
   resource/cluster:
     attributes:
       - action: upsert
         key: cluster
         value: '${env:CLUSTER_NAME}'
-  resourcedetection:
+  # Strip the SDK's default resource from OTLP metrics.
+  #
+  # The OTel Java agent stamps every export with its own identity and the JVM's. None of it is
+  # queryable, and process.command_line is actively harmful: it carries the full argv, so it CHANGES
+  # on `cassandra use` and mints a whole new series set, breaking panel continuity across a version
+  # switch. The agent-side property otel.experimental.resource.disabled.keys does not work at
+  # v2.31.1, so the drop happens here.
+  #
+  # process.command_args is the same argv as a list. The agent reports it instead of
+  # process.command_line where it can read the JVM's arguments (a JVM in a container, such as
+  # Neo4j's), so both keys are dropped.
+  #
+  # container.id comes from the same containerised JVMs and is new on every pod restart, so it too
+  # would mint a fresh series set each time; no dashboard selects on it.
+  #
+  # What survives is what a dashboard actually selects on: cluster, host.name, node_role, instance,
+  # job, service.name, service.instance.id, and the rule-supplied keyspace, table,
+  # cassandra.operation and cassandra.status.
+  resource/drop_sdk_metadata:
+    attributes:
+      - action: delete
+        key: process.command_line
+      - action: delete
+        key: process.command_args
+      - action: delete
+        key: process.executable.path
+      - action: delete
+        key: process.pid
+      - action: delete
+        key: container.id
+      - action: delete
+        key: process.runtime.description
+      - action: delete
+        key: process.runtime.name
+      - action: delete
+        key: process.runtime.version
+      - action: delete
+        key: os.description
+      - action: delete
+        key: os.type
+      - action: delete
+        key: os.version
+      - action: delete
+        key: host.arch
+      - action: delete
+        key: telemetry.distro.name
+      - action: delete
+        key: telemetry.distro.version
+      - action: delete
+        key: telemetry.sdk.language
+      - action: delete
+        key: telemetry.sdk.name
+      - action: delete
+        key: telemetry.sdk.version
+  resource_detection:
     detectors: [system]
     system:
       hostname_sources: ["os"]
       resource_attributes:
         host.name:
           enabled: true
+  # An EMR node's collector sends its own host.name (and node_role spark-master or spark-worker)
+  # over OTLP to this collector. resource_detection overwrites host.name with this node's, which is
+  # right for a JVM in a pod (it reports the pod's name) and wrong for EMR: every Spark master and
+  # worker arrived as host_name="control0", collided with the real control node, and made the
+  # host-joined panels fail with "found duplicate series". metrics/otlp sets the EMR host aside
+  # before resource_detection and puts it back after.
+  transform/keep_emr_host:
+    # Fail fast: since the rename the transform processor ignores statement errors by default.
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["easydblab.emr_host_name"], attributes["host.name"]) where IsMatch(attributes["node_role"], "^spark-(master|worker)$")
+  transform/restore_emr_host:
+    # Fail fast: since the rename the transform processor ignores statement errors by default.
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["host.name"], attributes["easydblab.emr_host_name"]) where attributes["easydblab.emr_host_name"] != nil
+          - delete_key(attributes, "easydblab.emr_host_name")
   # Copy k8s.app.instance resource attribute to a log-level service attribute so
   # container logs share the same service field as journald logs.
   transform/add_service:
+    # Fail fast: since the rename the transform processor ignores statement errors by default.
+    error_mode: propagate
     log_statements:
       - context: log
         statements:
           - set(attributes["service"], resource.attributes["k8s.app.instance"]) where resource.attributes["k8s.app.instance"] != ""
 
-  # Copy service.name → service_name on the resource so Grafana's auto-generated log queries
-  # (which use underscore-style label names) match VictoriaLogs fields.
-  transform/add_service_name:
+  # Lift the logger name and severity onto the log record so the count connector can group by them.
+  #
+  # The Java agent puts the logger name in the InstrumentationScope, not in the record's attributes,
+  # and the count connector's `attributes` reads record attributes only. Without this copy, counting
+  # "by logger" silently groups everything into one series.
+  transform/log_metric_labels:
+    # Fail fast: since the rename the transform processor ignores statement errors by default.
+    error_mode: propagate
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["logger"], instrumentation_scope.name) where instrumentation_scope.name != ""
+          - set(attributes["severity"], severity_text) where severity_text != ""
+
+          # EVERY numeric capture below allows a comma and strips it before converting. Cassandra
+          # prints large numbers with thousands separators - "in 520,866ms" is a real line from this
+          # cluster - and a [0-9]+ capture does not fail loudly on one. It either matches nothing,
+          # losing exactly the slowest events, or matches the leading group and is wrong by three
+          # orders of magnitude. Both were measured; neither reports an error.
+
+          # GC events. GCInspector logs one line per collection carrying the duration the JVM
+          # metrics only expose in aggregate. Both collectors use the same shape, so one pattern
+          # serves G1 and ZGC:
+          #   "G1 Young Generation GC in 635ms.  G1 Eden Space: 8220835840 -> 0; ..."
+          #   "ZGC Major Cycles GC in 76,781ms.  ZGC Old Generation: 58720256 -> 167772160; ..."
+          #
+          # gc_name is the label and it is load-bearing, not decoration. A "ZGC Major Cycles" line
+          # times CONCURRENT work - 76 seconds of it - while a "G1 Young Generation" line times a
+          # stop-the-world pause of a few hundred ms. Averaging across the two produces a number
+          # that means nothing, which is why the metric is named for the event's duration rather
+          # than for a pause: a consumer wanting pauses filters gc_name, exactly as on the JMX side.
+          #
+          # The heap before/after figures in the rest of the line are left alone - per-pool, and
+          # already covered by jvm.memory.used.
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body, "^(?P<gc_name>[A-Za-z0-9 ]+?) GC in (?P<gc_event_ms>[0-9,]+)ms"),
+              "upsert")
+            where IsMatch(body, "GC in [0-9,]+ms")
+          - replace_pattern(attributes["gc_event_ms"], ",", "") where attributes["gc_event_ms"] != nil
+          - set(attributes["gc_event_ms"], Double(attributes["gc_event_ms"])) where attributes["gc_event_ms"] != nil
+
+          # Compactions. CompactionTask logs one line per compaction:
+          #   "Compacted (<uuid>) 4 sstables to [<path>,] to level=0.  9.049KiB to 4.033KiB
+          #    (~44% of original) in 520,866ms. ... 7 total partitions merged to 3. ..."
+          #
+          # The ratio is taken straight from the "(~44% of original)" the line already computes -
+          # the one figure here that nothing else exposes. The byte counts on either side of it are
+          # human-formatted ("9.049KiB"), so reading them would mean unit handling for a number the
+          # compaction byte counters already carry; the ratio makes them unnecessary anyway.
+          #
+          # The uuid and the sstable path on this line are unbounded and are labels on nothing.
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body, "^Compacted \\([^)]+\\) (?P<compaction_sstables>[0-9,]+) sstables"),
+              "upsert")
+            where IsMatch(body, "^Compacted \\(")
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body, "\\(~(?P<compaction_ratio_pct>[0-9,]+)% of original\\)"),
+              "upsert")
+            where IsMatch(body, "^Compacted \\(")
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body, "of original\\) in (?P<compaction_ms>[0-9,]+)ms"),
+              "upsert")
+            where IsMatch(body, "^Compacted \\(")
+          # Dropped messages. One line per verb per 5-second window:
+          #   "MUTATION_RSP messages were dropped in last 5000 ms: 0 internal and 33 cross node.
+          #    Mean internal dropped latency: 0 ms and Mean cross-node dropped latency: 4 ms"
+          #
+          # The JMX counter says how many messages dropped. Only this line says of WHAT TYPE, and
+          # splits internal from cross-node - a distinction the counter cannot express and the one
+          # that separates "this node is overloaded" from "the network or a peer is".
+          #
+          # The logger is org.apache.cassandra.metrics.MessagingMetrics. It is neither
+          # MessagingService nor NoSpamLogger, which is what makes this worth pinning: a condition
+          # on the wrong logger matches nothing, forever, without an error.
+          #
+          # dropped_type is a verb name from a bounded set. Every count and latency is a value.
+          - >-
+            merge_maps(attributes,
+              ExtractPatterns(body,
+                "^(?P<dropped_type>[A-Z0-9_]+) messages were dropped in last [0-9,]+ ms: (?P<dropped_internal>[0-9,]+) internal and (?P<dropped_cross_node>[0-9,]+) cross node\\. Mean internal dropped latency: (?P<dropped_internal_ms>[0-9,]+) ms and Mean cross-node dropped latency: (?P<dropped_cross_node_ms>[0-9,]+) ms"),
+              "upsert")
+            where IsMatch(body, "messages were dropped in last")
+          - replace_pattern(attributes["dropped_internal"], ",", "") where attributes["dropped_internal"] != nil
+          - replace_pattern(attributes["dropped_cross_node"], ",", "") where attributes["dropped_cross_node"] != nil
+          - replace_pattern(attributes["dropped_internal_ms"], ",", "") where attributes["dropped_internal_ms"] != nil
+          - replace_pattern(attributes["dropped_cross_node_ms"], ",", "") where attributes["dropped_cross_node_ms"] != nil
+          - set(attributes["dropped_internal"], Double(attributes["dropped_internal"])) where attributes["dropped_internal"] != nil
+          - set(attributes["dropped_cross_node"], Double(attributes["dropped_cross_node"])) where attributes["dropped_cross_node"] != nil
+          - set(attributes["dropped_internal_ms"], Double(attributes["dropped_internal_ms"])) where attributes["dropped_internal_ms"] != nil
+          - set(attributes["dropped_cross_node_ms"], Double(attributes["dropped_cross_node_ms"])) where attributes["dropped_cross_node_ms"] != nil
+
+          - replace_pattern(attributes["compaction_sstables"], ",", "") where attributes["compaction_sstables"] != nil
+          - replace_pattern(attributes["compaction_ratio_pct"], ",", "") where attributes["compaction_ratio_pct"] != nil
+          - replace_pattern(attributes["compaction_ms"], ",", "") where attributes["compaction_ms"] != nil
+          - set(attributes["compaction_sstables"], Double(attributes["compaction_sstables"])) where attributes["compaction_sstables"] != nil
+          - set(attributes["compaction_ratio_pct"], Double(attributes["compaction_ratio_pct"])) where attributes["compaction_ratio_pct"] != nil
+          - set(attributes["compaction_ms"], Double(attributes["compaction_ms"])) where attributes["compaction_ms"] != nil
+
+  # Moves a record's `source` onto its resource, where Loki indexes it as a label. Fluent Bit sets
+  # `source: journald` on each record it forwards over OTLP; every record in one of its batches has
+  # the same source, so the resource takes that one value. Loki derives service_name itself.
+  transform/source_to_resource:
+    # Fail fast: since the rename the transform processor ignores statement errors by default.
+    error_mode: propagate
+    log_statements:
+      - context: log
+        statements:
+          - set(resource.attributes["source"], attributes["source"]) where attributes["source"] != nil
+          - delete_key(attributes, "source") where attributes["source"] != nil
+
+  # The node's role from its host name (owner decision): db<N> is db, app<N> is app, control<N> is
+  # control. Host metrics and host log files carry no pod, so k8s_attributes can never find the
+  # node's `type` label for them, and they reached the store with no node_role at all. A node_role
+  # that is already set, by k8s_attributes for a scraped kit pod or by an EMR node's own collector,
+  # is left alone, so this runs after k8s_attributes.
+  transform/node_role_from_host:
+    # Fail fast: since the rename the transform processor ignores statement errors by default.
+    error_mode: propagate
+    metric_statements:
+      - context: resource
+        statements:
+          - set(attributes["node_role"], "db") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^db[0-9]+$")
+          - set(attributes["node_role"], "app") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^app[0-9]+$")
+          - set(attributes["node_role"], "control") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^control[0-9]+$")
     log_statements:
       - context: resource
         statements:
-          - set(attributes["service_name"], attributes["service.name"]) where attributes["service.name"] != ""
+          - set(attributes["node_role"], "db") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^db[0-9]+$")
+          - set(attributes["node_role"], "app") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^app[0-9]+$")
+          - set(attributes["node_role"], "control") where attributes["node_role"] == nil and IsMatch(attributes["host.name"], "^control[0-9]+$")
 
-  # Extract node_role from K8s node label "type" (db, app) set during K3s agent join.
-  # pod_association enables enrichment of filelog/containers records with pod labels
-  # by matching k8s.pod.name + k8s.namespace.name resource attributes extracted from the log file path.
-  k8sattributes:
+  # Enriches records that carry their pod with the pod's labels (k8s.app.instance, which the kit
+  # dashboards select on) and the node's `type` label (db, app) as node_role, by matching the
+  # k8s.pod.name and k8s.namespace.name resource attributes. Container logs take them from the log
+  # file path; the kit metrics metrics/local scrapes by pod discovery take them from the Prometheus
+  # receiver, which sets them from each target. Host metrics and host log files carry no pod.
+  k8s_attributes:
     passthrough: false
     pod_association:
       - sources:
@@ -221,25 +474,163 @@ processors:
           from: pod
 
 exporters:
-  prometheusremotewrite:
-    endpoint: http://victoriametrics.default.svc.cluster.local:8428/api/v1/write
+  # Export destinations are substituted at build time by OtelManifestBuilder: the in-cluster
+  # service addresses in local mode, the external stack's endpoints under telemetry redirect.
+  # Mimir and Loki run native multi-tenancy: every write carries the cluster's tenant, on a
+  # redirected cluster too. TENANT comes from the cluster-config ConfigMap.
+  prometheus_remote_write:
+    endpoint: __METRICS_ENDPOINT__
     tls:
       insecure: true
+    headers:
+      X-Scope-OrgID: ${env:TENANT}
     resource_to_telemetry_conversion:
       enabled: true
-  otlphttp/victorialogs:
-    endpoint: http://victorialogs.default.svc.cluster.local:9428/insert/opentelemetry
+  otlp_http/logs:
+    endpoint: __LOGS_ENDPOINT__
     tls:
       insecure: true
-  otlp/tempo:
-    endpoint: tempo.default.svc.cluster.local:4320
+    headers:
+      X-Scope-OrgID: ${env:TENANT}
+  # Tempo runs native multi-tenancy: every write carries the cluster's tenant, on a redirected
+  # cluster too. TENANT comes from the cluster-config ConfigMap.
+  otlp_grpc/tempo:
+    endpoint: __TEMPO_ENDPOINT__
     tls:
       insecure: true
+    headers:
+      X-Scope-OrgID: ${env:TENANT}
 
 connectors:
+  # Turns log records into metrics, so what a logger reports can be charted beside the JMX
+  # families and compared across builds instead of being read as text.
+  #
+  # Nothing here parses a log body. Every label comes from the logger name or the severity, both of
+  # which are bounded sets; a body can carry a keyspace, a table, a host or an id, and grouping on
+  # any of those would be unbounded. Values that live only inside a message stay in Loki.
+  #
+  # Resource attributes ride through the connector untouched, so these arrive already carrying
+  # cassandra_build, host.name and node_role - which is what makes them comparable per variant.
+  count:
+    logs:
+      cassandra.log.records:
+        description: Log records at WARN and above, by logger and severity.
+        # severity_number, not severity_text: the text is inconsistent across libraries (Cassandra
+        # logs WARN, the AxonOps agent logs WARNING) and would split one level into two series.
+        conditions:
+          - severity_number >= SEVERITY_NUMBER_WARN
+        attributes:
+          - key: logger
+            default_value: unknown
+          - key: severity
+            default_value: unknown
+      cassandra.log.gc_events:
+        description: GCInspector log events, which carry pause detail the JVM metrics do not.
+        conditions:
+          - IsMatch(instrumentation_scope.name, ".*GCInspector$")
+      cassandra.log.status_dumps:
+        description: StatusLogger dumps, which Cassandra emits under pressure.
+        conditions:
+          - IsMatch(instrumentation_scope.name, ".*StatusLogger$")
+      cassandra.log.dropped_message_reports:
+        description: MessagingMetrics drop reports - one per verb per 5s window in which anything dropped.
+        # MessagingMetrics, verified against real lines. An earlier guess at MessagingService and
+        # NoSpamLogger matched nothing at all, which is the failure this whole file keeps guarding
+        # against: a wrong name here is silent, permanent and looks exactly like "nothing dropped".
+        conditions:
+          - IsMatch(instrumentation_scope.name, ".*MessagingMetrics$")
+
+  # Turns the figures parsed out of a log body into metrics whose VALUE is the number, not the
+  # number of records. The count connector above cannot do this: it only ever emits how many
+  # matched, so a GC pause would arrive as "47 events" rather than "47.3 ms" - a mistake that looks
+  # like it worked.
+  #
+  # Histograms rather than sums, throughout. jvm.gc.duration already gives aggregate time spent in
+  # GC; what no aggregate can give is the distribution of individual events, and a single 400ms
+  # outlier is invisible in a total and obvious in a histogram. The same argument applies to
+  # compaction: the mean compaction tells you much less than the shape.
+  signal_to_metrics:
+    logs:
+      - name: cassandra.log.gc_event_duration_seconds
+        description: Duration of one GCInspector event. See gc_name - Cycles lines are concurrent work, not pauses.
+        unit: s
+        conditions:
+          - attributes["gc_event_ms"] != nil
+        attributes:
+          - key: gc_name
+        histogram:
+          value: Double(attributes["gc_event_ms"]) / 1000
+
+      - name: cassandra.log.compaction_duration_seconds
+        description: Wall time of one compaction, as CompactionTask reports it.
+        unit: s
+        conditions:
+          - attributes["compaction_ms"] != nil
+        histogram:
+          value: Double(attributes["compaction_ms"]) / 1000
+
+      - name: cassandra.log.compaction_ratio
+        description: Compacted size as a fraction of the original. Exposed nowhere else.
+        unit: "1"
+        conditions:
+          - attributes["compaction_ratio_pct"] != nil
+        histogram:
+          value: Double(attributes["compaction_ratio_pct"]) / 100
+
+      - name: cassandra.log.compaction_sstables_merged
+        description: SSTables merged by one compaction.
+        unit: "{sstable}"
+        conditions:
+          - attributes["compaction_sstables"] != nil
+        histogram:
+          value: Double(attributes["compaction_sstables"])
+
+      # Dropped messages. Sums, not histograms: each line reports a count for a 5-second window, so
+      # adding them up is the total dropped. The latencies are means over that window, and their
+      # distribution is what says whether drops were a brief spike or a sustained condition.
+      - name: cassandra.log.dropped_messages_internal
+        description: Messages dropped inside this node, by verb.
+        unit: "{message}"
+        conditions:
+          - attributes["dropped_internal"] != nil
+        attributes:
+          - key: dropped_type
+        sum:
+          value: Double(attributes["dropped_internal"])
+
+      - name: cassandra.log.dropped_messages_cross_node
+        description: Messages dropped in transit from a peer, by verb.
+        unit: "{message}"
+        conditions:
+          - attributes["dropped_cross_node"] != nil
+        attributes:
+          - key: dropped_type
+        sum:
+          value: Double(attributes["dropped_cross_node"])
+
+      - name: cassandra.log.dropped_message_internal_latency_seconds
+        description: Mean latency of internally dropped messages over a 5s window, by verb.
+        unit: s
+        conditions:
+          - attributes["dropped_internal_ms"] != nil
+        attributes:
+          - key: dropped_type
+        histogram:
+          value: Double(attributes["dropped_internal_ms"]) / 1000
+
+      - name: cassandra.log.dropped_message_cross_node_latency_seconds
+        description: Mean latency of cross-node dropped messages over a 5s window, by verb.
+        unit: s
+        conditions:
+          - attributes["dropped_cross_node_ms"] != nil
+        attributes:
+          - key: dropped_type
+        histogram:
+          value: Double(attributes["dropped_cross_node_ms"]) / 1000
+
   # Converts spans to Prometheus metrics (calls_total, latency histograms).
   # Exemplars link metric data points back to individual traces in Tempo.
-  spanmetrics:
+  span_metrics:
     namespace: traces.spanmetrics
     histogram:
       explicit:
@@ -255,7 +646,7 @@ connectors:
     resource_metrics_key_attributes:
       - service.name
   # Derives service-to-service call rate and latency metrics from trace parent/child relationships.
-  servicegraph:
+  service_graph:
     latency_histogram_buckets: [2ms, 4ms, 6ms, 8ms, 10ms, 50ms, 100ms, 200ms, 400ms, 800ms, 1s, 1400ms, 2s, 5s, 10s]
     dimensions:
       - http.method
@@ -263,6 +654,10 @@ connectors:
     store:
       ttl: 2s
       max_items: 1000
+    # Unset, the connector flushes once a minute (its 60s default): a rate() over Grafana's
+    # default $__rate_interval then holds a single sample and the service-graph panels go blank.
+    # 15s is the cadence of span_metrics and the Prometheus scrapes above.
+    metrics_flush_interval: 15s
 
 extensions:
   health_check:
@@ -271,37 +666,73 @@ extensions:
 service:
   extensions: [health_check]
   pipelines:
-    # Local metrics — resourcedetection stamps host.name, k8sattributes adds node_role from node label
+    # Local metrics — resource_detection stamps host.name, k8s_attributes adds the pod labels of
+    # scraped kit pods, and transform/node_role_from_host derives any node_role still unset from the host
     metrics/local:
-      receivers: [hostmetrics, prometheus]
-      processors: [resource/cluster, resourcedetection, k8sattributes, batch]
-      exporters: [prometheusremotewrite]
-    # Remote metrics via OTLP (e.g., Spark nodes) — stamp cluster label to match local metrics
+      receivers: [host_metrics, prometheus]
+      processors: [resource/cluster, resource_detection, k8s_attributes, transform/node_role_from_host, batch]
+      exporters: [prometheus_remote_write]
+    # OTLP metrics — the Cassandra JVM agent, the stress sidecar, Spark nodes. resource/cluster
+    # stamps the cluster label to match local metrics; resource/drop_sdk_metadata removes the SDK's
+    # default resource, which would otherwise ride along as fifteen labels per series. The EMR
+    # nodes' host.name survives resource_detection through transform/keep_emr_host and
+    # transform/restore_emr_host.
     metrics/otlp:
       receivers: [otlp]
-      processors: [resource/cluster, resourcedetection, batch]
-      exporters: [prometheusremotewrite]
+      processors: [resource/cluster, transform/keep_emr_host, resource_detection, transform/restore_emr_host, resource/drop_sdk_metadata, batch]
+      exporters: [prometheus_remote_write]
+    # Host log files: system logs, tool-runner output and the Cassandra JVM GC log. Cassandra's
+    # application logs are not here; they arrive once, over OTLP, in logs/otlp.
     logs/local:
-      receivers: [filelog/system, filelog/tools, filelog/cassandra]
-      processors: [resourcedetection, k8sattributes, transform/add_service_name, batch]
-      exporters: [otlphttp/victorialogs]
+      receivers: [file_log/system, file_log/tools, file_log/cassandra]
+      processors: [resource/cluster, resource_detection, transform/node_role_from_host, batch]
+      exporters: [otlp_http/logs]
     logs/containers:
-      receivers: [filelog/containers, filelog/clickhouse-containers]
-      processors: [k8sattributes, transform/add_service, transform/add_service_name, resource/cluster, batch]
-      exporters: [otlphttp/victorialogs]
+      receivers: [file_log/containers, file_log/clickhouse-containers]
+      processors: [k8s_attributes, transform/add_service, resource/cluster, batch]
+      exporters: [otlp_http/logs]
+    # OTLP logs — the Cassandra JVM agent (the only path for Cassandra's application logs) and
+    # Fluent Bit's journald lines. resource/drop_sdk_metadata
+    # matters even more here than on metrics: process.command_line is kilobytes of argv on EVERY
+    # record, so it would bloat every stored line and change on a `cassandra use`.
+    # transform/source_to_resource lifts journald's `source` onto the resource so Loki indexes it.
+    # transform/log_metric_labels must run before the count connector, which reads the attributes it
+    # writes.
     logs/otlp:
       receivers: [otlp]
-      processors: [transform/add_service_name, batch]
-      exporters: [otlphttp/victorialogs]
+      processors: [resource/cluster, resource/drop_sdk_metadata, transform/source_to_resource, transform/log_metric_labels, batch]
+      exporters: [otlp_http/logs, count, signal_to_metrics]
+    # Metrics derived from those logs. resource/cluster stamps the cluster label, as on every other
+    # metrics pipeline.
+    metrics/logs:
+      receivers: [count, signal_to_metrics]
+      processors: [resource/cluster, delta_to_cumulative, batch]
+      exporters: [prometheus_remote_write]
+    # resource/cluster here rather than in each span producer's own resource attributes. Any
+    # producer gets the cluster label for free — the stress job today, Beyla or a future client
+    # tomorrow — and it is the same mechanism every metrics pipeline already uses.
     traces:
       receivers: [otlp, jaeger]
-      processors: [batch]
-      exporters: [otlp/tempo, spanmetrics, servicegraph]
+      processors: [resource/cluster, batch]
+      exporters: [otlp_grpc/tempo, span_metrics, service_graph]
+    # The span_metrics connector keeps the span's resource on the metrics it derives.
+    # resource_metrics_key_attributes ([service.name]) only chooses which attributes group spans
+    # into one set of derived metrics; that set carries the whole resource of a span in the group
+    # (host.name and argv included, as seen live), not service.name alone. resource/cluster is
+    # re-applied so span-derived metrics are stamped from ${env:CLUSTER_NAME} by the same processor
+    # as every other metrics pipeline, whatever the producer's resource carried.
+    # resource/drop_sdk_metadata because that resource includes the SDK metadata, argv among it;
+    # the traces themselves keep it in Tempo.
     metrics/spanmetrics:
-      receivers: [spanmetrics]
-      processors: [batch]
-      exporters: [prometheusremotewrite]
+      receivers: [span_metrics]
+      processors: [resource/cluster, resource/drop_sdk_metadata, batch]
+      exporters: [prometheus_remote_write]
+    # The service_graph connector emits on an EMPTY resource: it keeps none of the spans'. Every
+    # node runs this collector, and each counts the edges of the spans it receives (a database edge
+    # is complete from one client span, so no edge is split). Without resource_detection's host.name
+    # the db nodes' collectors wrote one series together, and Mimir read the jumps between writers
+    # as counter resets. Dashboards sum by (client, server) across hosts.
     metrics/servicegraph:
-      receivers: [servicegraph]
-      processors: [batch]
-      exporters: [prometheusremotewrite]
+      receivers: [service_graph]
+      processors: [resource/cluster, resource_detection, batch]
+      exporters: [prometheus_remote_write]

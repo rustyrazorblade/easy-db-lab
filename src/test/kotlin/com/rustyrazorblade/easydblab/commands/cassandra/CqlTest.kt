@@ -1,10 +1,12 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.rustyrazorblade.easydblab.BaseKoinTest
+import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.output.BufferedOutputHandler
 import com.rustyrazorblade.easydblab.output.OutputHandler
 import com.rustyrazorblade.easydblab.services.CqlSessionService
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.module.Module
@@ -72,13 +74,14 @@ class CqlTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute outputs error message on failure`() {
+    fun `execute outputs error message and fails the command on failure`() {
         whenever(mockCqlSessionService.execute(eq("bad query")))
             .thenReturn(Result.failure(RuntimeException("Syntax error")))
 
         val command = Cql()
         command.statement = "bad query"
-        command.execute()
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
 
         val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
         assertThat(errorOutput).contains("Syntax error")
@@ -109,10 +112,11 @@ class CqlTest : BaseKoinTest() {
     }
 
     @Test
-    fun `execute handles missing file`() {
+    fun `execute reports a missing file and fails the command`() {
         val command = Cql()
         command.file = File("/nonexistent/file.cql")
-        command.execute()
+
+        assertThatThrownBy { command.execute() }.isInstanceOf(CommandFailedException::class.java)
 
         val errorOutput = outputHandler.errors.joinToString("\n") { it.first }
         assertThat(errorOutput).contains("File not found")

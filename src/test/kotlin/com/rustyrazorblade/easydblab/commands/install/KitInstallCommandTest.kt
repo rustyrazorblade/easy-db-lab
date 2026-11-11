@@ -8,11 +8,15 @@ import com.rustyrazorblade.easydblab.configuration.ClusterState
 import com.rustyrazorblade.easydblab.configuration.ClusterStateManager
 import com.rustyrazorblade.easydblab.configuration.InitConfig
 import com.rustyrazorblade.easydblab.configuration.ServerType
+import com.rustyrazorblade.easydblab.proxy.ProxyEnvFile
+import com.rustyrazorblade.easydblab.services.InstallStep
 import com.rustyrazorblade.easydblab.services.InstallTemplateResolver
 import com.rustyrazorblade.easydblab.services.KitArgSpec
 import com.rustyrazorblade.easydblab.services.KitConfig
+import com.rustyrazorblade.easydblab.services.KitEndpoint
 import com.rustyrazorblade.easydblab.services.TemplateService
 import com.rustyrazorblade.easydblab.services.TemplateVariables
+import com.rustyrazorblade.easydblab.services.WorkloadStepExecutor
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
@@ -41,6 +45,7 @@ class KitInstallCommandTest : BaseKoinTest() {
                 single<ClusterStateManager> { mockClusterStateManager }
                 single { TemplateService(get(), get()) }
                 single<InstallTemplateResolver> { mockResolver }
+                single { WorkloadStepExecutor(mock(), mock(), mock(), get(), get()) }
             },
         )
 
@@ -79,6 +84,7 @@ class KitInstallCommandTest : BaseKoinTest() {
     @BeforeEach
     fun setup() {
         workingDir = get<Context>().workingDirectory
+        File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).writeText("apiVersion: v1\nkind: Config\n")
         whenever(mockClusterStateManager.load()).thenReturn(clusterState)
         whenever(mockResolver.listTemplateFiles(org.mockito.kotlin.any())).thenReturn(emptyList())
         whenever(mockResolver.readInstallYamlContent(org.mockito.kotlin.any())).thenReturn(null)
@@ -165,6 +171,40 @@ class KitInstallCommandTest : BaseKoinTest() {
             .hasMessageContaining("presto")
     }
 
+    @Test
+    fun `kit-ref with endpoints fails before writing when the target lacks one`() {
+        val benchConfig =
+            KitConfig(
+                name = "clickhouse-benchmark",
+                type = null,
+                args =
+                    listOf(
+                        KitArgSpec(
+                            flag = "--target",
+                            variable = "TARGET",
+                            type = KitArgSpec.ArgType.KIT_REF,
+                            endpoints = listOf(KitEndpoint.EndpointType.NATIVE, KitEndpoint.EndpointType.HTTP),
+                        ),
+                    ),
+            )
+        val targetDir = File(workingDir, "tidb").also { it.mkdirs() }
+        File(targetDir, "kit.yaml").writeText(
+            """
+            name: tidb
+            endpoints:
+              - name: HTTP
+                node-type: db
+                port: 10080
+                type: http
+            """.trimIndent(),
+        )
+
+        assertThatThrownBy { buildAndRun(benchConfig, mapOf("TARGET" to "tidb")) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessage("Target kit 'tidb' does not have the 'native' endpoint required by clickhouse-benchmark")
+        assertThat(File(workingDir, "clickhouse-benchmark-tidb")).doesNotExist()
+    }
+
     private val extensionsYaml =
         """
         extensions:
@@ -242,4 +282,189 @@ class KitInstallCommandTest : BaseKoinTest() {
             .hasMessageContaining("doesnotexist")
             .hasMessageContaining("not installed")
     }
+
+    @Test
+    fun `resolved args omit STORAGE_SIZE for a kit that declares no storage arg`() {
+        val config =
+            KitConfig(
+                name = "cache",
+                type = null,
+                args = listOf(KitArgSpec(flag = "--memory", variable = "MEMORY_MB", type = KitArgSpec.ArgType.INT, default = "1024")),
+            )
+
+        buildAndRun(config, emptyMap())
+
+        assertThat(resolvedArgs("cache"))
+            .containsEntry("MEMORY_MB", "1024")
+            .doesNotContainKey("STORAGE_SIZE")
+    }
+
+    @Test
+    fun `resolved args keep the STORAGE_SIZE a kit declares`() {
+        val config =
+            KitConfig(
+                name = "store",
+                type = null,
+                args = listOf(KitArgSpec(flag = "--size", variable = "STORAGE_SIZE", type = KitArgSpec.ArgType.STRING, default = "10Ti")),
+            )
+
+        buildAndRun(config, mapOf("STORAGE_SIZE" to "100Gi"))
+
+        assertThat(resolvedArgs("store")).containsEntry("STORAGE_SIZE", "100Gi")
+    }
+
+    /** Parses [args] as the user would type them, then runs the install. */
+    private fun parseAndRun(
+        config: KitConfig,
+        vararg args: String,
+    ) {
+        val cl = factory.build(config, source)
+        cl.parseArgs(*args)
+        (cl.commandSpec.userObject() as KitInstallCommand).execute()
+    }
+
+    @Test
+    fun `an install arg with no value and no default is recorded as an empty string`() {
+        val config =
+            KitConfig(name = "pg", type = null, args = listOf(KitArgSpec(flag = "--extension", variable = "EXTENSION")))
+
+        parseAndRun(config)
+
+        assertThat(File(workingDir, "pg/${Constants.Kit.RESOLVED_ARGS_FILE}").readLines()).contains("EXTENSION=")
+    }
+
+    @Test
+    fun `an unresolved default is kept rather than replaced by an empty string`() {
+        val config =
+            KitConfig(
+                name = "sized",
+                type = null,
+                args = listOf(KitArgSpec(flag = "--nodes", variable = "NODES", default = "\${NOT_A_CLUSTER_VAR}")),
+            )
+
+        parseAndRun(config)
+
+        assertThat(resolvedArgs("sized")).containsEntry("NODES", "\${NOT_A_CLUSTER_VAR}")
+    }
+
+    private val cacheConfig =
+        KitConfig(
+            name = "cache",
+            type = null,
+            args =
+                listOf(
+                    KitArgSpec(
+                        flag = "--s3-cache-on-write",
+                        variable = "S3_CACHE_ON_WRITE",
+                        type = KitArgSpec.ArgType.BOOLEAN,
+                        default = "true",
+                    ),
+                ),
+        )
+
+    @Test
+    fun `a boolean install arg given false as a separate value records false`() {
+        parseAndRun(cacheConfig, "--s3-cache-on-write", "false")
+
+        assertThat(resolvedArgs("cache")).containsEntry("S3_CACHE_ON_WRITE", "false")
+    }
+
+    @Test
+    fun `a boolean install arg given false with an equals sign records false`() {
+        parseAndRun(cacheConfig, "--s3-cache-on-write=false")
+
+        assertThat(resolvedArgs("cache")).containsEntry("S3_CACHE_ON_WRITE", "false")
+    }
+
+    @Test
+    fun `a bare boolean install arg records true`() {
+        parseAndRun(cacheConfig, "--s3-cache-on-write")
+
+        assertThat(resolvedArgs("cache")).containsEntry("S3_CACHE_ON_WRITE", "true")
+    }
+
+    @Test
+    fun `a failed install step exits non-zero and removes the kit directory instead of throwing`() {
+        val config = KitConfig(name = "broken", type = null, install = listOf(InstallStep.Shell("exit 2")))
+        val cmd = factory.build(config, source).commandSpec.userObject() as KitInstallCommand
+
+        val exitCode = cmd.call()
+
+        assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+        assertThat(File(workingDir, "broken")).doesNotExist()
+    }
+
+    @Test
+    fun `an install shell step gets the absolute workspace kubeconfig and the workspace bin first on PATH`() {
+        val seen = File(workingDir, "seen.txt")
+        val config =
+            KitConfig(
+                name = "envcheck",
+                type = null,
+                install =
+                    listOf(
+                        InstallStep.Shell(
+                            "echo \"\$KUBECONFIG\" > '${seen.absolutePath}'\necho \"\$PATH\" >> '${seen.absolutePath}'\n" +
+                                "echo \"\$${Constants.Kit.LIBRARY_ENV}\" >> '${seen.absolutePath}'",
+                        ),
+                    ),
+            )
+
+        val exitCode = (factory.build(config, source).commandSpec.userObject() as KitInstallCommand).call()
+
+        assertThat(exitCode).isZero()
+        val (kubeconfig, path, library) = seen.readLines()
+        val bin = File(workingDir, Constants.ToolWrappers.DIRECTORY)
+        assertThat(kubeconfig).isEqualTo(File(workingDir, Constants.K3s.LOCAL_KUBECONFIG).absolutePath)
+        assertThat(path.split(File.pathSeparator).first()).isEqualTo(bin.absolutePath)
+        assertThat(library).isEqualTo(File(bin, Constants.ToolWrappers.KIT_LIBRARY).absolutePath)
+    }
+
+    /**
+     * The bug this change fixes: an install shell step got the relative `KUBECONFIG=kubeconfig`,
+     * which resolved against the kit directory, where there is none. The stub `kubectl`, after the
+     * wrappers on `PATH`, fails unless the kubeconfig it is handed exists and it was reached
+     * through the wrapper with the recorded tunnel port.
+     */
+    @Test
+    fun `kubectl get ns in an install shell step succeeds, so kit install exits 0`() {
+        ProxyEnvFile(workingDir).apply {
+            recordTailscale(active = false)
+            recordTunnel(41234, ProcessHandle.current().pid())
+        }
+        val stubs =
+            File(tempDir, "real-bin").apply {
+                mkdirs()
+                File(this, "kubectl").apply {
+                    writeText(
+                        """
+                        |#!/bin/sh
+                        |[ -f "${'$'}KUBECONFIG" ] || { echo "no kubeconfig at ${'$'}KUBECONFIG" >&2; exit 1; }
+                        |[ "${'$'}HTTPS_PROXY" = socks5://127.0.0.1:41234 ] || { echo "not through the tunnel" >&2; exit 1; }
+                        |echo "default Active"
+                        |
+                        """.trimMargin(),
+                    )
+                    setExecutable(true)
+                }
+            }
+        val config =
+            KitConfig(
+                name = "needs-kubectl",
+                type = null,
+                // The stub goes right after the wrappers, ahead of any kubectl installed on this machine.
+                install = listOf(InstallStep.Shell("PATH=\"\${PATH%%:*}:${stubs.absolutePath}:\$PATH\" kubectl get ns")),
+            )
+
+        val exitCode = (factory.build(config, source).commandSpec.userObject() as KitInstallCommand).call()
+
+        assertThat(exitCode).isZero()
+        assertThat(File(workingDir, "needs-kubectl")).isDirectory()
+    }
+
+    private fun resolvedArgs(kitDir: String): Map<String, String> =
+        File(workingDir, "$kitDir/${Constants.Kit.RESOLVED_ARGS_FILE}")
+            .readLines()
+            .filter { it.isNotBlank() }
+            .associate { it.substringBefore('=') to it.substringAfter('=') }
 }

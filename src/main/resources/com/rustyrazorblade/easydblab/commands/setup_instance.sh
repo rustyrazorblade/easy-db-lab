@@ -111,6 +111,10 @@ sudo mkdir -p /mnt/db1/cassandra/import
 sudo mkdir -p /mnt/db1/cassandra/logs/sidecar
 sudo mkdir -p /mnt/db1/cassandra/saved_caches
 
+# JFR chunks from runtime profiling. Deliberately NOT artifacts/, which is 777 and holds
+# operator-dropped heap dumps and jstacks that the profiling auto-pruner must never delete.
+sudo mkdir -p /mnt/db1/cassandra/profiles
+
 sudo chown -R cassandra:cassandra /mnt/db1/cassandra
 
 # Stress directory owned by ubuntu for stress test output
@@ -123,6 +127,14 @@ sudo chown -R 101:101 /mnt/db1/clickhouse
 
 sudo mkdir -p /mnt/db1/cassandra/tmp
 sudo chmod 777 /mnt/db1/cassandra/tmp/
+
+# Start the profiling reconciler's timer. Only the Cassandra AMI carries the unit, so this is a
+# no-op on control and stress nodes. Without it, profiling would only ever run for as long as a
+# CLI command happened to be running.
+if [ -f /etc/systemd/system/edl-profiling-reconcile.timer ]; then
+  sudo systemctl daemon-reload
+  sudo systemctl enable --now edl-profiling-reconcile.timer
+fi
 
 # enable cap_perfmon for all JVMs to allow for off-cpu profiling
 sudo find /usr/lib/jvm/ -type f -name 'java' -exec setcap "cap_perfmon,cap_sys_ptrace,cap_syslog=ep" {} \;

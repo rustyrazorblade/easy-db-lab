@@ -62,37 +62,23 @@ This tool provisions and destroys AWS infrastructure! Using a dedicated account 
 
 ### Setting Up Your Profile
 
-This part is a bit clunky still, but it's a one time event.  You will need a user account and credentials.
+You need an IAM identity with the easy-db-lab policies attached. easy-db-lab needs five customer-managed policies: `EasyDBLabEC2`, `EasyDBLabIAM`, `EasyDBLabEMR`, `EasyDBLabOpenSearch` and `EasyDBLabCompactor`. Attach all five to one IAM user, group, or role.
 
-1. Create a User for easy-db-lab and get the credentials.
-2. Create a group and add the user to the group.
-3. Create 3 managed policies
-4. Attach managed policies to the group
-
-### Viewing Required IAM Policies
-
-To see the IAM policies required for easy-db-lab with your account ID populated:
+To see the policies with your account ID populated:
 
 ```shell
 easy-db-lab show-iam-policies
+easy-db-lab show-iam-policies ec2   # Show one policy: ec2, iam, emr, opensearch or compactor
 ```
 
-You can filter by policy type:
-
-```shell
-easy-db-lab show-iam-policies ec2   # Show only EC2 policy
-easy-db-lab show-iam-policies iam   # Show only IAM policy
-easy-db-lab show-iam-policies emr   # Show only EMR policy
-```
-
-See `bin/set-policies`.
+If you have a source checkout, `bin/set-policies` creates the five policies and attaches them for you. If you installed with Homebrew, create them with the AWS CLI. See [Applying the Policies](https://rustyrazorblade.github.io/easy-db-lab/getting-started/setup.html#applying-the-policies) and [Creating a Dedicated IAM User](https://rustyrazorblade.github.io/easy-db-lab/getting-started/setup.html#creating-a-dedicated-iam-user) for the full procedure.
 
 ### Interactive Setup
 
 Run the interactive setup to configure your AWS credentials and create necessary resources:
 
 ```shell
-easy-db-lab setup-profile
+easy-db-lab profile setup
 ```
 
 This will:
@@ -168,7 +154,7 @@ alias easy-db-lab='docker run --rm \
 Then use it like the native command:
 
 ```shell
-easy-db-lab setup-profile
+easy-db-lab profile setup
 easy-db-lab init my-cluster --cassandra 5.0
 ```
 
@@ -247,7 +233,7 @@ You can skip this if you're using us-west-2
 This can be done once, and reused many times.
 The AMI should be rebuilt when updating easy-db-lab.
 
-If you haven't run `easy-db-lab setup-profile` yet, you'll be prompted to set up your profile before building.
+If you haven't run `easy-db-lab profile setup` yet, you'll be prompted to set up your profile before building.
 
 ```shell
 bin/easy-db-lab build-image
@@ -269,7 +255,7 @@ Run `easy-db-lab` without any parameters to view all the commands and all option
 
 ### Create The Environment
 
-Note: If you haven't run `easy-db-lab setup-profile` yet, you'll be prompted to set up your profile.
+Note: If you haven't run `easy-db-lab profile setup` yet, you'll be prompted to set up your profile.
 
 Important: If you've installed the project via homebrew or downloaded a release,
 please use the `us-west-2` region.  This limitation will be lifted soon.
@@ -471,40 +457,17 @@ https://rustyrazorblade.com/post/2023/2023-11-14-bcc-tools/
 
 ## Server Integration
 
-easy-db-lab includes a server mode that enables AI assistants like Claude Code to interact directly with your database clusters via MCP (Model Context Protocol), and provides REST status endpoints for programmatic access.
-
-### Starting the Server
-
-To start the server:
+easy-db-lab includes a REST status server for programmatic access to the cluster status.
 
 ```shell
 easy-db-lab server --port 8888
 ```
 
-This starts the server on port 8888 (you can use any available port).
+The server answers `GET /status` (the full cluster status as JSON, or one section with `?section=nodes`) and `GET /stress/status`, and serves its API docs at `/swagger`.
 
-### Integrating with Claude Code
+For live metrics, `easy-db-lab metrics stream` publishes chosen metrics to a Redis channel every 5 seconds.
 
-Once the server is running, add it to Claude Code:
-
-```shell
-claude mcp add --transport sse easy-db-lab http://127.0.0.1:8888/sse
-```
-
-This establishes a Server-Sent Events (SSE) connection between Claude Code and the server.
-
-### What You Can Do
-
-With the server integration, Claude Code can:
-
-* Manage and provision clusters directly
-* Configure and deploy Cassandra, ClickHouse, and OpenSearch
-* Run performance tests and analyze results
-* Submit Spark jobs and check their status
-* Troubleshoot issues by analyzing logs and metrics
-* Automate complex multi-step cluster operations
-
-For detailed documentation, see the [Server section in the user manual](https://rustyrazorblade.github.io/easy-db-lab/integrations/server/).
+For detailed documentation, see the [Server](https://rustyrazorblade.github.io/easy-db-lab/integrations/server/) and [Metrics Stream](https://rustyrazorblade.github.io/easy-db-lab/integrations/metrics-stream/) sections in the user manual.
 
 ## Sanity Check Test
 

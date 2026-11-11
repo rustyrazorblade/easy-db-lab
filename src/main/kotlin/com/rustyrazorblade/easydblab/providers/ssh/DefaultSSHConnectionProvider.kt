@@ -16,19 +16,23 @@ import kotlin.io.path.Path
 
 /**
  * Default implementation of SSHConnectionProvider.
- * Manages a pool of SSH connections to multiple hosts.
+ * Manages a pool of SSH connections to multiple hosts. The pool is an [SSHConnectionCache], so
+ * threads that ask for the same host at the same time share one connection.
  *
  * @param config SSH configuration settings
+ * @param route decides the address and port each host is dialed at, which is how the profile's
+ *   SSH transport reaches the in-process client
  */
 class DefaultSSHConnectionProvider(
     private val config: SSHConfiguration,
+    private val route: SshRoute,
 ) : SSHConnectionProvider,
     KoinComponent {
     companion object {
         private val log = KotlinLogging.logger {}
     }
 
-    private val connections = mutableMapOf<Host, ISSHClient>()
+    private val connections = SSHConnectionCache(::createNewConnection)
     private val keyPairs: List<KeyPair>
     private val sshClient: SshClient
 
@@ -56,39 +60,12 @@ class DefaultSSHConnectionProvider(
         log.info { "SSH client initialized successfully with keepalive=${config.keepAliveIntervalSeconds}s" }
     }
 
-    override fun getConnection(host: Host): ISSHClient {
-        // Check if existing connection is still valid
-        val existing = connections[host]
-        if (existing != null) {
-            if (!isSessionValid(existing)) {
-                log.warn { "Session to ${host.alias} is no longer valid, will reconnect" }
-                connections.remove(host)
-                @Suppress("TooGenericExceptionCaught")
-                try {
-                    existing.close()
-                } catch (e: IOException) {
-                    log.debug(e) { "IO error closing stale session to ${host.alias}" }
-                } catch (e: RuntimeException) {
-                    log.debug(e) { "Runtime error closing stale session to ${host.alias}" }
-                }
-            } else {
-                return existing
-            }
-        }
+    override fun getConnection(host: Host): ISSHClient = connections.get(host)
 
-        // Create new connection
-        return connections.getOrPut(host) {
-            createNewConnection(host)
-        }
+    override fun discard(host: Host) {
+        connections.drop(host)
+        route.invalidate(host)
     }
-
-    /**
-     * Check if an SSH client's session is still valid and open.
-     *
-     * @param client The SSH client to check
-     * @return true if the session is open and authenticated, false otherwise
-     */
-    private fun isSessionValid(client: ISSHClient): Boolean = client.isSessionOpen()
 
     /**
      * Create a new SSH connection to a host.
@@ -97,38 +74,46 @@ class DefaultSSHConnectionProvider(
      * @return A new SSH client connected to the host
      */
     private fun createNewConnection(host: Host): ISSHClient {
-        log.info { "Creating new SSH connection to ${host.alias} (${host.public})" }
+        val endpoint = route.endpoint(host)
+        log.info { "Creating new SSH connection to ${host.alias} (${endpoint.address}:${endpoint.port})" }
 
-        val session =
-            sshClient
-                .connect(
-                    config.sshUsername,
-                    host.public,
-                    config.sshPort,
-                ).verify(Duration.ofSeconds(config.connectionTimeoutSeconds))
-                .session
-
-        session.addPublicKeyIdentity(keyPairs.first())
-        session.auth().verify()
-
-        log.info { "SSH connection established to ${host.alias}" }
-        return SSHClient(session)
+        // A path that fails to connect, exchange keys or authenticate is reported to the route,
+        // so a retry does not dial the same one: an SSM forward can accept TCP and then carry
+        // nothing, and every retry through it would wait out the full auth timeout.
+        try {
+            val session =
+                sshClient
+                    .connect(
+                        config.sshUsername,
+                        endpoint.address,
+                        endpoint.port,
+                    ).verify(Duration.ofSeconds(config.connectionTimeoutSeconds))
+                    .session
+            try {
+                session.addPublicKeyIdentity(keyPairs.first())
+                // The route bounds the wait when its transport has a tighter one than MINA's default.
+                val auth = session.auth()
+                route.authTimeout?.let { auth.verify(it) } ?: auth.verify()
+            } catch (e: IOException) {
+                session.close(true)
+                throw e
+            }
+            log.info { "SSH connection established to ${host.alias}" }
+            return SSHClient(session)
+        } catch (e: IOException) {
+            log.warn {
+                "SSH connection to ${host.alias} via ${endpoint.address}:${endpoint.port} failed (${e.message}); retiring that path"
+            }
+            route.invalidate(host)
+            throw e
+        }
     }
 
     @Suppress("TooGenericExceptionCaught")
     override fun stop() {
-        log.info { "Stopping SSH client and closing ${connections.size} connections" }
+        log.info { "Stopping SSH client and closing ${connections.size()} connections" }
 
-        connections.values.forEach { connection ->
-            try {
-                connection.close()
-            } catch (e: IOException) {
-                log.error(e) { "IO error while closing SSH connection" }
-            } catch (e: RuntimeException) {
-                log.error(e) { "Runtime error while closing SSH connection" }
-            }
-        }
-        connections.clear()
+        connections.closeAll()
 
         try {
             sshClient.stop()
@@ -137,6 +122,9 @@ class DefaultSSHConnectionProvider(
         } catch (e: RuntimeException) {
             log.error(e) { "Runtime error while stopping SSH client" }
         }
+
+        // Closed after the sessions above, since a session may be riding a tunnel the route started.
+        route.close()
 
         log.info { "SSH client stopped successfully" }
     }

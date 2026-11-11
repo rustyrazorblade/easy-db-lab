@@ -1,7 +1,6 @@
 package com.rustyrazorblade.easydblab.commands.cassandra
 
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.rustyrazorblade.easydblab.annotations.McpCommand
 import com.rustyrazorblade.easydblab.annotations.RequireProfileSetup
 import com.rustyrazorblade.easydblab.annotations.TriggerBackup
 import com.rustyrazorblade.easydblab.commands.PicoBaseCommand
@@ -19,14 +18,13 @@ import picocli.CommandLine.Parameters
 import kotlin.system.exitProcess
 
 /**
- * Use a Cassandra version (3.0, 3.11, 4.0, 4.1).
+ * Switch the active Cassandra version.
  */
-@McpCommand
 @RequireProfileSetup
 @TriggerBackup
 @Command(
     name = "use",
-    description = ["Use a Cassandra version (3.0, 3.11, 4.0, 4.1)"],
+    description = ["Switch the active Cassandra version"],
 )
 class UseCassandra : PicoBaseCommand() {
     private val hostOperationsService: HostOperationsService by inject()
@@ -42,7 +40,7 @@ class UseCassandra : PicoBaseCommand() {
 
     @Option(
         names = ["--java", "-j"],
-        description = ["Java Version Override, 8, 11 or 17 accepted"],
+        description = ["Java Version Override, 8, 11, 17, 21 or 25 accepted"],
     )
     var javaVersion = ""
 
@@ -58,7 +56,7 @@ class UseCassandra : PicoBaseCommand() {
 
         val cassandraHosts = state.getHosts(ServerType.Cassandra)
         eventBus.emit(
-            Event.Cassandra.UsingVersion(version, cassandraHosts.size, "$hosts"),
+            Event.Cassandra.UsingVersion(version, cassandraHosts.size, hosts.hostList),
         )
 
         hostOperationsService.withHosts(state.hosts, ServerType.Cassandra, hosts.hostList, parallel = true) { host ->

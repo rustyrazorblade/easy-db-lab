@@ -9,12 +9,17 @@ discovery:
       - Name
     AWS/ES:
       - DomainName
+  # Every cluster runs its own YACE and labels what it finds with its own cluster, so the
+  # per-cluster jobs (EBS, EC2, OpenSearch) find only resources tagged with this cluster's
+  # ClusterId; `up` tags instances, their volumes and the OpenSearch domain with it. The S3 job
+  # stays on easy_cass_lab=1: the account bucket is shared and carries no ClusterId.
   jobs:
     - type: AWS/S3
       regions:
         - __AWS_REGION__
       period: 60
-      length: 120
+      length: 600
+      delay: 300
       searchTags:
         - key: easy_cass_lab
           value: "1"
@@ -43,10 +48,13 @@ discovery:
       regions:
         - __AWS_REGION__
       period: 60
-      length: 120
+      length: 600
+      delay: 300
       searchTags:
         - key: easy_cass_lab
           value: "1"
+        - key: ClusterId
+          value: "__CLUSTER_ID__"
       metrics:
         - name: VolumeReadOps
           statistics: [Sum]
@@ -68,10 +76,13 @@ discovery:
       regions:
         - __AWS_REGION__
       period: 60
-      length: 120
+      length: 600
+      delay: 300
       searchTags:
         - key: easy_cass_lab
           value: "1"
+        - key: ClusterId
+          value: "__CLUSTER_ID__"
       metrics:
         - name: CPUUtilization
           statistics: [Average]
@@ -87,10 +98,13 @@ discovery:
       regions:
         - __AWS_REGION__
       period: 60
-      length: 120
+      length: 600
+      delay: 300
       searchTags:
         - key: easy_cass_lab
           value: "1"
+        - key: ClusterId
+          value: "__CLUSTER_ID__"
       metrics:
         - name: ClusterStatus.green
           statistics: [Maximum]
@@ -104,13 +118,25 @@ discovery:
           statistics: [Maximum]
         - name: FreeStorageSpace
           statistics: [Minimum]
+        # The OpenSearch dashboard reads the p99 latencies and the per-minute sums of the rates.
         - name: SearchLatency
-          statistics: [Average]
+          statistics: [Average, p99]
         - name: SearchRate
-          statistics: [Average]
+          statistics: [Average, Sum]
         - name: IndexingLatency
-          statistics: [Average]
+          statistics: [Average, p99]
         - name: IndexingRate
-          statistics: [Average]
+          statistics: [Average, Sum]
         - name: Nodes
           statistics: [Average]
+        - name: ClusterUsedSpace
+          statistics: [Maximum]
+        # Requests by HTTP status class, for the dashboard's status-code panel.
+        - name: 2xx
+          statistics: [Sum]
+        - name: 3xx
+          statistics: [Sum]
+        - name: 4xx
+          statistics: [Sum]
+        - name: 5xx
+          statistics: [Sum]

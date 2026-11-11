@@ -3,9 +3,7 @@
 ## Purpose
 
 Defines a declarative, typed step model for kit lifecycle phases (`install`, `start`, `stop`, `uninstall`) in `kit.yaml`, covering common Kubernetes installation patterns, cluster-state variable interpolation, per-phase collision detection, dashboard registration, and event-reported failure handling.
-
 ## Requirements
-
 ### Requirement: kit.yaml declares lifecycle phases as typed step sequences
 `kit.yaml` SHALL support four optional top-level lifecycle keys (`install`, `start`, `stop`,
 `uninstall`), each containing an ordered list of typed steps. Each step SHALL have a `type`
@@ -89,17 +87,24 @@ successfully, replacing the hardcoded directory scan in `KitRunnerCommand`.
 - **THEN** dashboard installation is skipped and the failure is reported
 
 ### Requirement: Collision detection is configurable per phase
-`collisionCheck` in `kit.yaml` SHALL accept either a boolean (applies to `start` only,
-preserving backward compatibility) or a map of phase names to booleans.
+`collision-check` in `kit.yaml` SHALL accept either a boolean or a map of phase names to booleans. Only the `install` and `start` phases have a collision check; any other key, or a non-boolean value, SHALL be rejected when `kit.yaml` loads. `true` SHALL guard both `install` and `start`; `false` SHALL guard neither; a map SHALL guard exactly the phases set to `true`. The `install` guard SHALL fail the install with a non-zero exit and an error-worded `CollisionDetected` event when the kit's scaffold already exists, unless `--force` is given. The `start` guard SHALL check the cluster for the kit's running workload (selected by its `runtime` block) before any start step runs, and SHALL fail with a non-zero exit and a `Kit.CollisionDetected` event naming what it found. After a successful `stop` of a kit whose `start` is guarded, the CLI SHALL wait until the kit's workload is gone, so an immediate `start` is not refused; if it does not go within the timeout, `stop` SHALL fail with a `Kit.StopIncomplete` event naming what is left.
 
-#### Scenario: Top-level boolean applies to start phase only
-- **WHEN** `collisionCheck: true` is set at the top level
-- **THEN** the CLI checks for an existing K8s resource before executing the `start` phase
-- **AND** the `install` phase is not guarded (idempotent by design)
+#### Scenario: Top-level boolean guards install and start
+- **WHEN** `collision-check: true` is set at the top level and the kit is already installed and running
+- **THEN** a second install fails with a non-zero exit and `CollisionDetected`
+- **AND** `start` fails with a non-zero exit and `Kit.CollisionDetected` before any start step runs
 
 #### Scenario: Per-phase collision check
-- **WHEN** `collisionCheck: {start: true, install: false}` is set
-- **THEN** the `start` phase checks for collision; the `install` phase does not
+- **WHEN** `collision-check: {start: true, install: false}` is set
+- **THEN** the `start` phase checks for collision; a second install succeeds
+
+#### Scenario: Unknown phase is rejected
+- **WHEN** `collision-check: {uninstall: true}` is set
+- **THEN** loading `kit.yaml` fails with an error naming the unsupported phase
+
+#### Scenario: Stop then start
+- **WHEN** a collision-checked kit is stopped and started again immediately
+- **THEN** `stop` returns only after the kit's workload is gone AND the `start` is not refused
 
 ### Requirement: Helm step values support nested YAML structures
 The `values` field of a `helm` step SHALL accept arbitrary nested YAML (not restricted to flat
@@ -128,3 +133,43 @@ via `RemoteOperationsService` rather than requiring a local helm binary.
 - **WHEN** a user runs `easy-db-lab install scylladb` with helm steps
 - **THEN** the CLI connects to the control node and runs helm there
 - **AND** the local machine does not need helm installed
+
+### Requirement: Kit shell steps run with the workspace tool wrappers and an absolute kubeconfig
+
+Every kit `type: shell` step, in `install:` and in lifecycle phases, MUST run with:
+
+- `<workspace>/bin` first on `PATH`, ahead of the `PATH` it inherited, with the tool wrappers written before the step starts;
+- `KUBECONFIG` set to the absolute path of the workspace kubeconfig, replacing any relative value from the cluster state variables.
+
+The step MUST fail before it starts if the workspace kubeconfig does not exist. The workspace kubeconfig MUST be used as it is: no temporary or proxied copy of it is made. The `__KUBECONFIG__` template variable keeps its relative value.
+
+#### Scenario: kubectl in an install shell step
+
+- **GIVEN** a running cluster and a kit whose install shell step runs `kubectl get ns`
+- **WHEN** the user runs `easy-db-lab kit install` for that kit
+- **THEN** the command succeeds and `kit install` exits 0
+
+#### Scenario: KUBECONFIG is absolute in install and phase steps
+
+- **WHEN** any kit shell step runs, in install or in a phase
+- **THEN** its `KUBECONFIG` is an absolute path to a file that exists
+
+#### Scenario: Wrappers come first on PATH
+
+- **WHEN** any kit shell step runs
+- **THEN** the first entry of its `PATH` is `<workspace>/bin`
+- **AND** the rest is the `PATH` the CLI inherited
+
+#### Scenario: Missing kubeconfig fails the step
+
+- **GIVEN** a workspace with no `kubeconfig` file
+- **WHEN** a kit shell step is about to run
+- **THEN** the step fails with a message naming the missing file and does not start
+
+#### Scenario: No temporary kubeconfig
+
+- **GIVEN** a SOCKS cluster with a recorded port
+- **WHEN** a kit phase or install shell step runs
+- **THEN** no temporary kubeconfig copy is created
+- **AND** the workspace kubeconfig is unchanged
+

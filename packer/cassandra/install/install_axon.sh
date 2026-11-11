@@ -1,3 +1,34 @@
+#!/bin/bash
+
+# The sudoers rules the axonops agent needs to drive the Cassandra service. The axon-agent
+# package ships /etc/sudoers.d/axonops with wildcard arguments (`/sbin/service cassandra *`),
+# which Ubuntu 26.04's sudo (sudo-rs) rejects, printing a parse error on every sudo call. This
+# is the only definition of that file in the image.
+axonops_sudoers_rules() {
+  cat << 'EOF'
+axonops ALL=NOPASSWD: /sbin/service cassandra start, /sbin/service cassandra stop, /sbin/service cassandra restart, /sbin/service cassandra status, /usr/bin/systemctl start cassandra, /usr/bin/systemctl stop cassandra, /usr/bin/systemctl restart cassandra, /usr/bin/systemctl status cassandra, /usr/bin/systemctl is-active cassandra, /usr/bin/systemctl enable cassandra, /usr/bin/systemctl disable cassandra
+EOF
+}
+
+# Install sudoers rules read from stdin at <dest>, 0440 root:root. visudo -cf checks the rules
+# first; if they fail, nothing is installed and this returns non-zero.
+install_sudoers_file() {
+  local dest="$1" staged
+  staged="$(mktemp)"
+  cat > "$staged"
+  if ! sudo visudo -cf "$staged"; then
+    rm -f "$staged"
+    return 1
+  fi
+  sudo install -o root -g root -m 0440 "$staged" "$dest"
+  rm -f "$staged"
+}
+
+# install_axon.test.sh sources this file for the functions above; install nothing then.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  return 0
+fi
+
 # setup the axon repo
 sudo apt-get update
 sudo apt-get install -y curl gnupg ca-certificates
@@ -92,8 +123,8 @@ sudo usermod -aG axonops cassandra
 # The service should be manually started via the StartAxonOps command
 sudo systemctl disable axon-agent
 
-# The axon-agent package installs /etc/sudoers.d/axonops with wildcard arguments
-# which are not valid in sudoers and cause parse warnings. Replace with explicit commands.
-sudo tee /etc/sudoers.d/axonops > /dev/null << 'EOF'
-axonops ALL=NOPASSWD: /sbin/service cassandra start, /sbin/service cassandra stop, /sbin/service cassandra restart, /sbin/service cassandra status, /usr/bin/systemctl start cassandra, /usr/bin/systemctl stop cassandra, /usr/bin/systemctl restart cassandra, /usr/bin/systemctl status cassandra, /usr/bin/systemctl is-active cassandra, /usr/bin/systemctl enable cassandra, /usr/bin/systemctl disable cassandra
-EOF
+# Replace the package's invalid /etc/sudoers.d/axonops. A file visudo rejects fails the build.
+axonops_sudoers_rules | install_sudoers_file /etc/sudoers.d/axonops || {
+  echo -e "\e[31mERROR: /etc/sudoers.d/axonops failed visudo -cf\e[0m" >&2
+  exit 1
+}

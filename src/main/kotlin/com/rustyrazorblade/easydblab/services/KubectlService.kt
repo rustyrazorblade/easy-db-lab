@@ -51,6 +51,26 @@ interface KubectlService {
         ignoreNotFound: Boolean,
     )
 
+    /**
+     * Deletes every object of [kinds] in [namespace] that the label [selector] matches. Nothing
+     * matching is not an error and prints nothing; a failed lookup or delete throws.
+     */
+    fun deleteBySelector(
+        host: Host,
+        kinds: List<String>,
+        selector: String,
+        namespace: String,
+    )
+
+    /**
+     * The `kind/name` of every object of [resource] (a resource type such as
+     * `clusters.postgresql.cnpg.io`) in any namespace. A failed lookup throws.
+     */
+    fun listInAllNamespaces(
+        host: Host,
+        resource: String,
+    ): List<String>
+
     companion object {
         /** Prepend KUBECONFIG env var so remote CLI tools (helm, kubectl) find the cluster. */
         fun withKubeconfig(command: String) = "KUBECONFIG=${Constants.K3s.REMOTE_KUBECONFIG} $command"
@@ -133,6 +153,43 @@ class DefaultKubectlService(
             }
         run(host, args)
     }
+
+    override fun deleteBySelector(
+        host: Host,
+        kinds: List<String>,
+        selector: String,
+        namespace: String,
+    ) {
+        // `kubectl delete -l` prints a bare "No resources found" when nothing matches, so look the
+        // objects up without echoing the result and delete only what the selector found.
+        val lookup = listOf("get", kinds.joinToString(","), "-l", shellQuote(selector), "-n", namespace, "-o", "name")
+        val found =
+            remoteOps
+                .executeRemotely(host, KubectlService.withKubeconfig((listOf("kubectl") + lookup).joinToString(" ")), output = false)
+                .text
+                .lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+        if (found.isEmpty()) return
+        run(host, listOf("delete") + found.map(::shellQuote) + listOf("-n", namespace, "--ignore-not-found"))
+    }
+
+    override fun listInAllNamespaces(
+        host: Host,
+        resource: String,
+    ): List<String> =
+        remoteOps
+            .executeRemotely(
+                host,
+                KubectlService.withKubeconfig("kubectl get $resource --all-namespaces -o name"),
+                output = false,
+            ).text
+            .lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+    /** Single-quotes [value] for the remote shell, so a selector like `tier in (a, b)` stays one word. */
+    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
     private fun run(
         host: Host,

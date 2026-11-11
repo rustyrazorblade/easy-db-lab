@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.configuration.ServerType
 import com.rustyrazorblade.easydblab.configuration.emr.OtelBootstrapResource
 import com.rustyrazorblade.easydblab.events.Event
 import com.rustyrazorblade.easydblab.events.EventBus
+import com.rustyrazorblade.easydblab.profiling.pyroscopeIngestBaseUrl
 import com.rustyrazorblade.easydblab.providers.aws.BootstrapAction
 import com.rustyrazorblade.easydblab.providers.aws.EMRClusterConfig
 import com.rustyrazorblade.easydblab.providers.aws.EMRConfiguration
@@ -82,7 +83,7 @@ class DefaultEMRProvisioningService(
         val bootstrapAction = uploadOtelBootstrapScript(s3Path)
 
         val sparkDefaults = buildSparkDefaultsConfiguration(config.clusterState)
-        val sparkEnv = buildSparkEnvConfiguration()
+        val sparkEnv = buildSparkEnvConfiguration(config.clusterState)
 
         val emrConfig =
             EMRClusterConfig(
@@ -189,15 +190,21 @@ class DefaultEMRProvisioningService(
                 ?: error("No control node found in cluster state for spark-defaults configuration")
 
         val otelAgentFlag = "-javaagent:${Constants.OtelJavaAgent.INSTALL_PATH}"
+        // On a redirect cluster the local Pyroscope never exists, so Spark profiles must ship to
+        // the external stack — the same resolution every other profile producer uses.
+        val pyroscopeServerAddress =
+            pyroscopeIngestBaseUrl(controlIp, clusterState.initConfig?.telemetryRedirect)
         val pyroscopeFlags =
             listOf(
-                "-javaagent:${Constants.PyroscopeJavaAgent.INSTALL_PATH}",
+                "-javaagent:${Constants.PyroscopeJavaAgent.EMR_INSTALL_PATH}",
                 "-Dpyroscope.application.name=spark",
-                "-Dpyroscope.server.address=http://$controlIp:${Constants.K8s.PYROSCOPE_PORT}",
+                "-Dpyroscope.server.address=$pyroscopeServerAddress",
                 "-Dpyroscope.format=jfr",
                 "-Dpyroscope.profiler.event=cpu",
                 "-Dpyroscope.profiler.alloc=512k",
                 "-Dpyroscope.profiler.lock=10ms",
+                // Pyroscope runs native multi-tenancy; the agent sends this as X-Scope-OrgID.
+                "-Dpyroscope.tenant.id=${clusterState.tenant()}",
             )
         val extraJavaOptions = "$otelAgentFlag ${pyroscopeFlags.joinToString(" ")}"
 
@@ -230,9 +237,11 @@ class DefaultEMRProvisioningService(
     /**
      * Builds a spark-env EMR classification that exports PYROSCOPE_LABELS with the node hostname.
      * spark-env.sh is sourced by YARN before launching Spark processes, so $(hostname) resolves
-     * per-node at runtime. This allows the Pyroscope Java agent to tag profiles with hostname.
+     * per-node at runtime. This allows the Pyroscope Java agent to tag profiles with hostname,
+     * and with the cluster label every other signal carries, so the dashboards' cluster filter
+     * finds Spark's profiles.
      */
-    private fun buildSparkEnvConfiguration(): EMRConfiguration =
+    private fun buildSparkEnvConfiguration(clusterState: ClusterState): EMRConfiguration =
         EMRConfiguration(
             classification = "spark-env",
             configurations =
@@ -241,7 +250,7 @@ class DefaultEMRProvisioningService(
                         classification = "export",
                         properties =
                             mapOf(
-                                "PYROSCOPE_LABELS" to "hostname=\$(hostname -s)",
+                                "PYROSCOPE_LABELS" to "hostname=\$(hostname -s),cluster=${clusterState.clusterLabelName()}",
                             ),
                     ),
                 ),

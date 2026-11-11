@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+#
+# Creates the hits table on every replica of the target and loads it on the server from S3, from a
+# pod on an app node. Refuses while a benchmark run is active, and refuses to touch an existing hits
+# unless --recreate is given. A failed load is reported and never dropped.
+set -euo pipefail
+
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KIT_DIR="$(dirname "${SCRIPT_DIR}")"
+. "${KIT_DIR}/lib/args.sh"
+. "${KIT_DIR}/lib/clickhouse.sh"
+
+ROLE="prepare"
+IMAGE="clickhouse/clickhouse-server:${VERSION}"
+
+[ -n "${TARGET_NATIVE_HOST:-}" ] || edl_fail "TARGET_NATIVE_HOST is empty: the target kit declares no native endpoint"
+[ -n "${TARGET_NATIVE_PORT:-}" ] || edl_fail "TARGET_NATIVE_PORT is empty: the target kit declares no native endpoint"
+[ -n "${TARGET_HTTP_URL:-}" ] || edl_fail "TARGET_HTTP_URL is empty: the target kit declares no http endpoint, which prepare needs for its checks"
+
+ch_check_workload "${WORKLOAD}"
+ch_check_source "${SOURCE}"
+ch_check_storage_policy "${STORAGE_POLICY}"
+
+ACTIVE_RUNS="$(edl_active_pods benchmark-run)"
+[ -z "${ACTIVE_RUNS}" ] ||
+  edl_fail "A benchmark run is active (pod ${ACTIVE_RUNS//$'\n'/, }); run stop, or wait for it to finish, before prepare"
+
+edl_require_app_node clickhouse-benchmark
+
+HITS_POLICY="$(ch_hits_storage_policy)"
+if [ -n "${HITS_POLICY}" ] && [ "${RECREATE}" != true ]; then
+  edl_fail "Table hits already exists in ${TARGET_NATIVE_DATABASE:-default} with storage policy '${HITS_POLICY}'. Run prepare --recreate to drop it and load it again."
+fi
+
+POD="$(edl_resource_name "${ROLE}")"
+edl_create_configmap "${POD}" "${ROLE}" \
+  "create-hits.sql=${KIT_DIR}/workloads/${WORKLOAD}/create-hits.sql" \
+  "prepare-load.sh=${KIT_DIR}/pod/prepare-load.sh"
+trap 'kubectl delete configmap "${POD}" --ignore-not-found > /dev/null 2>&1 || true' EXIT
+
+echo "Preparing hits on ${TARGET_NATIVE_HOST}:${TARGET_NATIVE_PORT} with storage policy ${STORAGE_POLICY} (${IMAGE})..."
+kubectl run "${POD}" \
+  --image="${IMAGE}" \
+  --restart=Never \
+  --labels="$(edl_labels "${ROLE}")" \
+  --overrides="$(edl_pod_overrides "${POD}" /edl "${POD}")" \
+  --override-type=strategic \
+  --command -- sh /edl/prepare-load.sh \
+  "${TARGET_NATIVE_HOST}" "${TARGET_NATIVE_PORT}" "${TARGET_NATIVE_USER:-}" "${TARGET_NATIVE_DATABASE:-default}" \
+  "${STORAGE_POLICY}" "${RECREATE}" "$(ch_source_expression "${SOURCE}")"
+
+print_line() { printf '%s\n' "$1"; }
+edl_wait_for_pod_running "${POD}"
+edl_follow_pod_logs "${POD}" print_line
+EXIT_CODE="$(edl_wait_for_pod_exit "${POD}")"
+
+[ "${EXIT_CODE}" = 0 ] || edl_fail "prepare failed: pod ${POD} exited with code ${EXIT_CODE}"
+echo "hits is ready."

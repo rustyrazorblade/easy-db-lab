@@ -8,31 +8,26 @@ import com.rustyrazorblade.easydblab.providers.aws.InstanceId
 import com.rustyrazorblade.easydblab.providers.aws.InternetGatewayId
 import com.rustyrazorblade.easydblab.providers.aws.NatGatewayId
 import com.rustyrazorblade.easydblab.providers.aws.NetworkInterfaceId
-import com.rustyrazorblade.easydblab.providers.aws.ResourceDescription
 import com.rustyrazorblade.easydblab.providers.aws.ResourceName
-import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.RouteTableId
-import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupDetails
 import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupId
-import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupRuleInfo
+import com.rustyrazorblade.easydblab.providers.aws.SecurityGroupOperations
 import com.rustyrazorblade.easydblab.providers.aws.SubnetId
 import com.rustyrazorblade.easydblab.providers.aws.VpcId
 import com.rustyrazorblade.easydblab.providers.aws.VpcService
-import com.rustyrazorblade.easydblab.providers.aws.WellKnownPorts
+import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
+import com.rustyrazorblade.easydblab.providers.aws.withVpcTeardownRetry
 import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.AttachInternetGatewayRequest
-import software.amazon.awssdk.services.ec2.model.AuthorizeSecurityGroupIngressRequest
 import software.amazon.awssdk.services.ec2.model.CreateInternetGatewayRequest
 import software.amazon.awssdk.services.ec2.model.CreateRouteRequest
-import software.amazon.awssdk.services.ec2.model.CreateSecurityGroupRequest
 import software.amazon.awssdk.services.ec2.model.CreateSubnetRequest
 import software.amazon.awssdk.services.ec2.model.CreateTagsRequest
 import software.amazon.awssdk.services.ec2.model.CreateVpcRequest
 import software.amazon.awssdk.services.ec2.model.DeleteInternetGatewayRequest
 import software.amazon.awssdk.services.ec2.model.DeleteNatGatewayRequest
 import software.amazon.awssdk.services.ec2.model.DeleteRouteTableRequest
-import software.amazon.awssdk.services.ec2.model.DeleteSecurityGroupRequest
 import software.amazon.awssdk.services.ec2.model.DeleteSubnetRequest
 import software.amazon.awssdk.services.ec2.model.DeleteVpcRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstancesRequest
@@ -48,11 +43,7 @@ import software.amazon.awssdk.services.ec2.model.DisassociateRouteTableRequest
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
 import software.amazon.awssdk.services.ec2.model.Filter
 import software.amazon.awssdk.services.ec2.model.InstanceStateName
-import software.amazon.awssdk.services.ec2.model.IpPermission
-import software.amazon.awssdk.services.ec2.model.IpRange
 import software.amazon.awssdk.services.ec2.model.NatGatewayState
-import software.amazon.awssdk.services.ec2.model.RevokeSecurityGroupEgressRequest
-import software.amazon.awssdk.services.ec2.model.RevokeSecurityGroupIngressRequest
 import software.amazon.awssdk.services.ec2.model.Tag
 import software.amazon.awssdk.services.ec2.model.TerminateInstancesRequest
 import java.time.Duration
@@ -63,31 +54,20 @@ import java.time.Duration
  * This service manages AWS VPC infrastructure with idempotent operations.
  * All resources are tagged with a Name tag and additional custom tags.
  * Operations use find-or-create pattern to ensure idempotency.
+ *
+ * The security group operations live in [EC2SecurityGroupService]; this class delegates
+ * [SecurityGroupOperations] to it, so callers keep one injectable [VpcService].
  */
 @Suppress("TooManyFunctions", "LargeClass")
 class EC2VpcService(
     private val ec2Client: Ec2Client,
     private val eventBus: EventBus,
     private val pollInterval: Duration = Duration.ofMillis(VpcService.POLL_INTERVAL_MS),
-) : VpcService {
+    securityGroups: SecurityGroupOperations = EC2SecurityGroupService(ec2Client, eventBus),
+) : VpcService,
+    SecurityGroupOperations by securityGroups {
     companion object {
         private val log = KotlinLogging.logger {}
-
-        private val PORT_DESCRIPTIONS =
-            mapOf(
-                WellKnownPorts.SSH to "SSH",
-                WellKnownPorts.HTTP to "HTTP",
-                WellKnownPorts.HTTPS to "HTTPS",
-                WellKnownPorts.MYSQL to "MySQL",
-                WellKnownPorts.POSTGRESQL to "PostgreSQL",
-                WellKnownPorts.REDIS to "Redis",
-                WellKnownPorts.CASSANDRA_INTERNODE to "Cassandra Inter-node",
-                WellKnownPorts.CASSANDRA_INTERNODE_SSL to "Cassandra Inter-node SSL",
-                WellKnownPorts.CASSANDRA_CQL to "Cassandra CQL",
-                WellKnownPorts.CASSANDRA_CQL_SSL to "Cassandra CQL SSL",
-                WellKnownPorts.CASSANDRA_THRIFT to "Cassandra Thrift",
-                WellKnownPorts.CASSANDRA_JMX to "Cassandra JMX",
-            )
     }
 
     override fun createVpc(
@@ -109,7 +89,7 @@ class EC2VpcService(
                 .tagSpecifications(tagSpecification)
                 .build()
 
-        val createResponse = RetryUtil.withAwsRetry("create-vpc") { ec2Client.createVpc(createRequest) }
+        val createResponse = withAwsRetry("create-vpc") { ec2Client.createVpc(createRequest) }
         val vpcId = createResponse.vpc().vpcId()
 
         log.info { "Created VPC: $name ($vpcId)" }
@@ -157,7 +137,7 @@ class EC2VpcService(
         val createRequest = createRequestBuilder.build()
 
         log.debug { "CreateSubnet request: vpcId=$vpcId, cidr=$cidr, az=$availabilityZone, tags=${tagSpecification.tags()}" }
-        val createResponse = RetryUtil.withAwsRetry("create-subnet") { ec2Client.createSubnet(createRequest) }
+        val createResponse = withAwsRetry("create-subnet") { ec2Client.createSubnet(createRequest) }
         val subnetId = createResponse.subnet().subnetId()
 
         // Enable auto-assign public IP for instances launched in this subnet
@@ -193,7 +173,7 @@ class EC2VpcService(
                 .tagSpecifications(tagSpecification)
                 .build()
 
-        val createResponse = RetryUtil.withAwsRetry("create-igw") { ec2Client.createInternetGateway(createRequest) }
+        val createResponse = withAwsRetry("create-igw") { ec2Client.createInternetGateway(createRequest) }
         val igwId = createResponse.internetGateway().internetGatewayId()
 
         // Attach to VPC
@@ -204,47 +184,10 @@ class EC2VpcService(
                 .vpcId(vpcId)
                 .build()
 
-        RetryUtil.withAwsRetry("attach-igw") { ec2Client.attachInternetGateway(attachRequest) }
+        withAwsRetry("attach-igw") { ec2Client.attachInternetGateway(attachRequest) }
         log.info { "Created and attached internet gateway: $name ($igwId) to VPC: $vpcId" }
 
         return igwId
-    }
-
-    override fun findOrCreateSecurityGroup(
-        vpcId: VpcId,
-        name: ResourceName,
-        description: ResourceDescription,
-        tags: Map<String, String>,
-    ): SecurityGroupId {
-        // Try to find existing security group by name and VPC ID
-        val existingSgId = findSecurityGroupByNameAndVpc(name, vpcId)
-        if (existingSgId != null) {
-            log.info { "Found existing security group: $name ($existingSgId)" }
-            eventBus.emit(Event.Infra.SecurityGroupUsing(name))
-            return existingSgId
-        }
-
-        // Create new security group
-        log.info { "Creating security group: $name in VPC: $vpcId" }
-        eventBus.emit(Event.Infra.SecurityGroupCreating(name))
-
-        val allTags = tags + ("Name" to name)
-        val tagSpecification = buildTagSpecification("security-group", allTags)
-
-        val createRequest =
-            CreateSecurityGroupRequest
-                .builder()
-                .groupName(name)
-                .description(description)
-                .vpcId(vpcId)
-                .tagSpecifications(tagSpecification)
-                .build()
-
-        val createResponse = RetryUtil.withAwsRetry("create-sg") { ec2Client.createSecurityGroup(createRequest) }
-        val sgId = createResponse.groupId()
-
-        log.info { "Created security group: $name ($sgId)" }
-        return sgId
     }
 
     override fun ensureRouteTable(
@@ -317,75 +260,6 @@ class EC2VpcService(
         }
     }
 
-    override fun authorizeSecurityGroupIngress(
-        securityGroupId: SecurityGroupId,
-        fromPort: Int,
-        toPort: Int,
-        cidr: Cidr,
-        protocol: String,
-    ) {
-        // Check if rule already exists
-        val describeRequest =
-            DescribeSecurityGroupsRequest
-                .builder()
-                .groupIds(securityGroupId)
-                .build()
-
-        val securityGroups = ec2Client.describeSecurityGroups(describeRequest).securityGroups()
-        if (securityGroups.isEmpty()) {
-            log.error { "Security group not found: $securityGroupId" }
-            throw IllegalArgumentException("Security group not found: $securityGroupId")
-        }
-
-        val existingRule =
-            securityGroups[0].ipPermissions().any { permission ->
-                permission.fromPort() == fromPort &&
-                    permission.toPort() == toPort &&
-                    permission.ipProtocol() == protocol &&
-                    permission.ipRanges().any { it.cidrIp() == cidr }
-            }
-
-        if (existingRule) {
-            val portDesc = if (fromPort == toPort) "port $fromPort" else "ports $fromPort-$toPort"
-            log.info { "Ingress rule already exists for $portDesc from $cidr ($protocol)" }
-            return
-        }
-
-        // Add ingress rule
-        try {
-            val ipPermission =
-                IpPermission
-                    .builder()
-                    .ipProtocol(protocol)
-                    .fromPort(fromPort)
-                    .toPort(toPort)
-                    .ipRanges(
-                        IpRange
-                            .builder()
-                            .cidrIp(cidr)
-                            .build(),
-                    ).build()
-
-            val authorizeRequest =
-                AuthorizeSecurityGroupIngressRequest
-                    .builder()
-                    .groupId(securityGroupId)
-                    .ipPermissions(ipPermission)
-                    .build()
-
-            ec2Client.authorizeSecurityGroupIngress(authorizeRequest)
-            val portDesc = if (fromPort == toPort) "port $fromPort" else "ports $fromPort-$toPort"
-            log.info { "Added ingress rule for $portDesc from $cidr ($protocol)" }
-            eventBus.emit(Event.Infra.SecurityGroupRuleConfigured(portDesc))
-        } catch (e: Ec2Exception) {
-            if (e.awsErrorDetails()?.errorCode() == "InvalidPermission.Duplicate") {
-                log.info { "Ingress rule already exists, continuing" }
-            } else {
-                throw e
-            }
-        }
-    }
-
     private fun findSubnetByNameAndVpc(
         name: ResourceName,
         vpcId: VpcId,
@@ -434,30 +308,6 @@ class EC2VpcService(
         return igws.firstOrNull()?.internetGatewayId()
     }
 
-    private fun findSecurityGroupByNameAndVpc(
-        name: ResourceName,
-        vpcId: VpcId,
-    ): SecurityGroupId? {
-        val describeRequest =
-            DescribeSecurityGroupsRequest
-                .builder()
-                .filters(
-                    Filter
-                        .builder()
-                        .name("group-name")
-                        .values(name)
-                        .build(),
-                    Filter
-                        .builder()
-                        .name("vpc-id")
-                        .values(vpcId)
-                        .build(),
-                ).build()
-
-        val sgs = ec2Client.describeSecurityGroups(describeRequest).securityGroups()
-        return sgs.firstOrNull()?.groupId()
-    }
-
     private fun createTags(
         resourceId: String,
         tags: Map<String, String>,
@@ -479,26 +329,6 @@ class EC2VpcService(
                 .build()
 
         ec2Client.createTags(createTagsRequest)
-    }
-
-    private fun buildTagSpecification(
-        resourceType: String,
-        tags: Map<String, String>,
-    ): software.amazon.awssdk.services.ec2.model.TagSpecification {
-        val awsTags =
-            tags.map { (key, value) ->
-                Tag
-                    .builder()
-                    .key(key)
-                    .value(value)
-                    .build()
-            }
-
-        return software.amazon.awssdk.services.ec2.model.TagSpecification
-            .builder()
-            .resourceType(resourceType)
-            .tags(awsTags)
-            .build()
     }
 
     private fun enableAutoAssignPublicIp(subnetId: SubnetId) {
@@ -538,7 +368,7 @@ class EC2VpcService(
                         .build(),
                 ).build()
 
-        val vpcs = RetryUtil.withAwsRetry("find-vpcs-by-tag") { ec2Client.describeVpcs(describeRequest).vpcs() }
+        val vpcs = withAwsRetry("find-vpcs-by-tag") { ec2Client.describeVpcs(describeRequest).vpcs() }
         val vpcIds = vpcs.map { it.vpcId() }
 
         log.info { "Found ${vpcIds.size} VPCs with tag $tagKey=$tagValue" }
@@ -559,7 +389,7 @@ class EC2VpcService(
                         .build(),
                 ).build()
 
-        val vpcs = RetryUtil.withAwsRetry("find-vpc-by-name") { ec2Client.describeVpcs(describeRequest).vpcs() }
+        val vpcs = withAwsRetry("find-vpc-by-name") { ec2Client.describeVpcs(describeRequest).vpcs() }
         return vpcs.firstOrNull()?.vpcId()
     }
 
@@ -572,10 +402,21 @@ class EC2VpcService(
                 .vpcIds(vpcId)
                 .build()
 
-        val vpcs = RetryUtil.withAwsRetry("get-vpc-name") { ec2Client.describeVpcs(describeRequest).vpcs() }
+        val vpcs = withAwsRetry("get-vpc-name") { ec2Client.describeVpcs(describeRequest).vpcs() }
         val vpc = vpcs.firstOrNull() ?: return null
 
         return vpc.tags().firstOrNull { it.key() == "Name" }?.value()
+    }
+
+    override fun getVpcCidr(vpcId: VpcId): String? {
+        val describeRequest =
+            DescribeVpcsRequest
+                .builder()
+                .vpcIds(vpcId)
+                .build()
+
+        val vpcs = withAwsRetry("get-vpc-cidr") { ec2Client.describeVpcs(describeRequest).vpcs() }
+        return vpcs.firstOrNull()?.cidrBlock()
     }
 
     override fun getVpcTags(vpcId: VpcId): Map<String, String> {
@@ -587,7 +428,7 @@ class EC2VpcService(
                 .vpcIds(vpcId)
                 .build()
 
-        val vpcs = RetryUtil.withAwsRetry("get-vpc-tags") { ec2Client.describeVpcs(describeRequest).vpcs() }
+        val vpcs = withAwsRetry("get-vpc-tags") { ec2Client.describeVpcs(describeRequest).vpcs() }
         val vpc =
             vpcs.firstOrNull()
                 ?: error("VPC $vpcId not found")
@@ -626,7 +467,7 @@ class EC2VpcService(
                         ).build(),
                 ).build()
 
-        val reservations = RetryUtil.withAwsRetry("find-instances") { ec2Client.describeInstances(describeRequest).reservations() }
+        val reservations = withAwsRetry("find-instances") { ec2Client.describeInstances(describeRequest).reservations() }
         val instanceIds = reservations.flatMap { it.instances() }.map { it.instanceId() }
 
         log.info { "Found ${instanceIds.size} instances in VPC: $vpcId" }
@@ -647,7 +488,7 @@ class EC2VpcService(
                         .build(),
                 ).build()
 
-        val subnets = RetryUtil.withAwsRetry("find-subnets") { ec2Client.describeSubnets(describeRequest).subnets() }
+        val subnets = withAwsRetry("find-subnets") { ec2Client.describeSubnets(describeRequest).subnets() }
         val subnetIds = subnets.map { it.subnetId() }
 
         log.info { "Found ${subnetIds.size} subnets in VPC: $vpcId" }
@@ -669,7 +510,7 @@ class EC2VpcService(
                 ).build()
 
         val securityGroups =
-            RetryUtil.withAwsRetry("find-security-groups") {
+            withAwsRetry("find-security-groups") {
                 ec2Client.describeSecurityGroups(describeRequest).securityGroups()
             }
 
@@ -703,7 +544,7 @@ class EC2VpcService(
                 ).build()
 
         val natGateways =
-            RetryUtil.withAwsRetry("find-nat-gateways") {
+            withAwsRetry("find-nat-gateways") {
                 ec2Client.describeNatGateways(describeRequest).natGateways()
             }
         val natGatewayIds = natGateways.map { it.natGatewayId() }
@@ -726,7 +567,7 @@ class EC2VpcService(
                         .build(),
                 ).build()
 
-        val igws = RetryUtil.withAwsRetry("find-igw") { ec2Client.describeInternetGateways(describeRequest).internetGateways() }
+        val igws = withAwsRetry("find-igw") { ec2Client.describeInternetGateways(describeRequest).internetGateways() }
         return igws.firstOrNull()?.internetGatewayId()
     }
 
@@ -745,7 +586,7 @@ class EC2VpcService(
                 ).build()
 
         val routeTables =
-            RetryUtil.withAwsRetry("find-route-tables") {
+            withAwsRetry("find-route-tables") {
                 ec2Client.describeRouteTables(describeRequest).routeTables()
             }
 
@@ -782,7 +623,7 @@ class EC2VpcService(
                 ).build()
 
         val networkInterfaces =
-            RetryUtil.withAwsRetry("find-active-enis") {
+            withAwsRetry("find-active-enis") {
                 ec2Client.describeNetworkInterfaces(describeRequest).networkInterfaces()
             }
         val eniIds = networkInterfaces.map { it.networkInterfaceId() }
@@ -794,7 +635,7 @@ class EC2VpcService(
     override fun listAllVpcCidrs(): List<String> {
         log.info { "Listing CIDR blocks for all VPCs in region" }
         val vpcs =
-            RetryUtil.withAwsRetry("list-all-vpc-cidrs") {
+            withAwsRetry("list-all-vpc-cidrs") {
                 ec2Client.describeVpcs(DescribeVpcsRequest.builder().build()).vpcs()
             }
         return vpcs.mapNotNull { it.cidrBlock() }
@@ -850,7 +691,7 @@ class EC2VpcService(
                 .instanceIds(instanceIds)
                 .build()
 
-        RetryUtil.withAwsRetry("terminate-instances") { ec2Client.terminateInstances(terminateRequest) }
+        withAwsRetry("terminate-instances") { ec2Client.terminateInstances(terminateRequest) }
         log.info { "Initiated termination for instances: $instanceIds" }
     }
 
@@ -897,76 +738,6 @@ class EC2VpcService(
         throw AwsTimeoutException("Timeout waiting for instances to terminate after ${timeoutMs}ms")
     }
 
-    /**
-     * Revokes all ingress and egress rules from a security group.
-     * This is necessary to break circular dependencies between security groups
-     * (e.g., EMR master/slave security groups reference each other).
-     */
-    override fun revokeSecurityGroupRules(securityGroupId: SecurityGroupId) {
-        log.info { "Revoking all rules from security group: $securityGroupId" }
-
-        val describeRequest =
-            DescribeSecurityGroupsRequest
-                .builder()
-                .groupIds(securityGroupId)
-                .build()
-
-        val securityGroups = ec2Client.describeSecurityGroups(describeRequest).securityGroups()
-        if (securityGroups.isEmpty()) {
-            return
-        }
-
-        val sg = securityGroups[0]
-
-        // Revoke all ingress rules
-        if (sg.ipPermissions().isNotEmpty()) {
-            val revokeIngressRequest =
-                RevokeSecurityGroupIngressRequest
-                    .builder()
-                    .groupId(securityGroupId)
-                    .ipPermissions(sg.ipPermissions())
-                    .build()
-
-            try {
-                ec2Client.revokeSecurityGroupIngress(revokeIngressRequest)
-                log.info { "Revoked ${sg.ipPermissions().size} ingress rules from $securityGroupId" }
-            } catch (e: Ec2Exception) {
-                log.warn { "Failed to revoke ingress rules from $securityGroupId: ${e.message}" }
-            }
-        }
-
-        // Revoke all egress rules
-        if (sg.ipPermissionsEgress().isNotEmpty()) {
-            val revokeEgressRequest =
-                RevokeSecurityGroupEgressRequest
-                    .builder()
-                    .groupId(securityGroupId)
-                    .ipPermissions(sg.ipPermissionsEgress())
-                    .build()
-
-            try {
-                ec2Client.revokeSecurityGroupEgress(revokeEgressRequest)
-                log.info { "Revoked ${sg.ipPermissionsEgress().size} egress rules from $securityGroupId" }
-            } catch (e: Ec2Exception) {
-                log.warn { "Failed to revoke egress rules from $securityGroupId: ${e.message}" }
-            }
-        }
-    }
-
-    override fun deleteSecurityGroup(securityGroupId: SecurityGroupId) {
-        log.info { "Deleting security group: $securityGroupId" }
-        eventBus.emit(Event.Infra.SecurityGroupDeleting(securityGroupId))
-
-        val deleteRequest =
-            DeleteSecurityGroupRequest
-                .builder()
-                .groupId(securityGroupId)
-                .build()
-
-        RetryUtil.withVpcTeardownRetry("delete-security-group") { ec2Client.deleteSecurityGroup(deleteRequest) }
-        log.info { "Deleted security group: $securityGroupId" }
-    }
-
     override fun detachInternetGateway(
         igwId: InternetGatewayId,
         vpcId: VpcId,
@@ -981,7 +752,7 @@ class EC2VpcService(
                 .vpcId(vpcId)
                 .build()
 
-        RetryUtil.withVpcTeardownRetry("detach-igw") { ec2Client.detachInternetGateway(detachRequest) }
+        withVpcTeardownRetry("detach-igw") { ec2Client.detachInternetGateway(detachRequest) }
         log.info { "Detached internet gateway $igwId from VPC $vpcId" }
     }
 
@@ -995,7 +766,7 @@ class EC2VpcService(
                 .internetGatewayId(igwId)
                 .build()
 
-        RetryUtil.withVpcTeardownRetry("delete-igw") { ec2Client.deleteInternetGateway(deleteRequest) }
+        withVpcTeardownRetry("delete-igw") { ec2Client.deleteInternetGateway(deleteRequest) }
         log.info { "Deleted internet gateway: $igwId" }
     }
 
@@ -1009,7 +780,7 @@ class EC2VpcService(
                 .subnetId(subnetId)
                 .build()
 
-        RetryUtil.withVpcTeardownRetry("delete-subnet") { ec2Client.deleteSubnet(deleteRequest) }
+        withVpcTeardownRetry("delete-subnet") { ec2Client.deleteSubnet(deleteRequest) }
         log.info { "Deleted subnet: $subnetId" }
     }
 
@@ -1023,7 +794,7 @@ class EC2VpcService(
                 .natGatewayId(natGatewayId)
                 .build()
 
-        RetryUtil.withAwsRetry("delete-nat-gateway") { ec2Client.deleteNatGateway(deleteRequest) }
+        withAwsRetry("delete-nat-gateway") { ec2Client.deleteNatGateway(deleteRequest) }
         log.info { "Initiated deletion of NAT gateway: $natGatewayId" }
     }
 
@@ -1083,7 +854,7 @@ class EC2VpcService(
                 .routeTableId(routeTableId)
                 .build()
 
-        RetryUtil.withVpcTeardownRetry("delete-route-table") { ec2Client.deleteRouteTable(deleteRequest) }
+        withVpcTeardownRetry("delete-route-table") { ec2Client.deleteRouteTable(deleteRequest) }
         log.info { "Deleted route table: $routeTableId" }
     }
 
@@ -1099,7 +870,7 @@ class EC2VpcService(
                 .build()
 
         val routeTable =
-            RetryUtil.withAwsRetry("describe-route-table") {
+            withAwsRetry("describe-route-table") {
                 ec2Client.describeRouteTables(describeRequest).routeTables().firstOrNull()
             } ?: return
 
@@ -1114,7 +885,7 @@ class EC2VpcService(
                         .builder()
                         .associationId(association.routeTableAssociationId())
                         .build()
-                RetryUtil.withAwsRetry("disassociate-route-table") {
+                withAwsRetry("disassociate-route-table") {
                     ec2Client.disassociateRouteTable(disassociateRequest)
                 }
             }
@@ -1130,78 +901,7 @@ class EC2VpcService(
                 .vpcId(vpcId)
                 .build()
 
-        RetryUtil.withVpcTeardownRetry("delete-vpc") { ec2Client.deleteVpc(deleteRequest) }
+        withVpcTeardownRetry("delete-vpc") { ec2Client.deleteVpc(deleteRequest) }
         log.info { "Deleted VPC: $vpcId" }
-    }
-
-    // ==================== Security Group Details ====================
-
-    override fun describeSecurityGroup(securityGroupId: String): SecurityGroupDetails {
-        log.debug { "Describing security group: $securityGroupId" }
-
-        val request =
-            DescribeSecurityGroupsRequest
-                .builder()
-                .groupIds(securityGroupId)
-                .build()
-
-        val response =
-            RetryUtil.withAwsRetry("describe-security-group") {
-                ec2Client.describeSecurityGroups(request)
-            }
-
-        val sg =
-            response.securityGroups().firstOrNull()
-                ?: error("Security group $securityGroupId not found")
-
-        val inboundRules =
-            sg.ipPermissions().map { permission ->
-                SecurityGroupRuleInfo(
-                    protocol = formatProtocol(permission.ipProtocol()),
-                    fromPort = permission.fromPort(),
-                    toPort = permission.toPort(),
-                    cidrBlocks = permission.ipRanges().mapNotNull { it.cidrIp() },
-                    description =
-                        permission.ipRanges().firstOrNull()?.description()
-                            ?: getPortDescription(permission.fromPort(), permission.toPort()),
-                )
-            }
-
-        val outboundRules =
-            sg.ipPermissionsEgress().map { permission ->
-                SecurityGroupRuleInfo(
-                    protocol = formatProtocol(permission.ipProtocol()),
-                    fromPort = permission.fromPort(),
-                    toPort = permission.toPort(),
-                    cidrBlocks = permission.ipRanges().mapNotNull { it.cidrIp() },
-                    description =
-                        permission.ipRanges().firstOrNull()?.description()
-                            ?: getPortDescription(permission.fromPort(), permission.toPort()),
-                )
-            }
-
-        return SecurityGroupDetails(
-            securityGroupId = sg.groupId(),
-            name = sg.groupName(),
-            description = sg.description(),
-            vpcId = sg.vpcId(),
-            inboundRules = inboundRules,
-            outboundRules = outboundRules,
-        )
-    }
-
-    private fun formatProtocol(protocol: String): String =
-        when (protocol) {
-            "-1" -> "All"
-            else -> protocol.uppercase()
-        }
-
-    private fun getPortDescription(
-        fromPort: Int?,
-        toPort: Int?,
-    ): String? {
-        if (fromPort == null || toPort == null) return "All traffic"
-        if (fromPort != toPort) return null
-        return PORT_DESCRIPTIONS[fromPort]
     }
 }

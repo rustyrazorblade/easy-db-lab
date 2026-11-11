@@ -82,17 +82,22 @@ class AwsErrorHandler : ProviderErrorHandler {
             // a denial; an organisation-level control is what refuses it.
             STS_REMEDY
         } else {
-            policyRemedy(policyFor(error))
+            policyRemedy(policyFor(error), otherDenials(error))
         }
 
-    private fun policyRemedy(policy: String?): String =
+    private fun policyRemedy(
+        policy: String?,
+        otherDenials: String,
+    ): String =
         if (policy != null) {
             "If this is missing permissions on your AWS user, attach the $policy IAM policy " +
-                "(print it with: easy-db-lab show-iam-policies $policy). $OTHER_DENIALS"
+                "(print it with: easy-db-lab show-iam-policies $policy). $otherDenials"
         } else {
             "If this is missing permissions on your AWS user, attach the lab IAM policies " +
-                "(${ALL_POLICIES.joinToString(", ")}; print them with: easy-db-lab show-iam-policies). $OTHER_DENIALS"
+                "(${ALL_POLICIES.joinToString(", ")}; print them with: easy-db-lab show-iam-policies). $otherDenials"
         }
+
+    private fun otherDenials(error: Throwable): String = if (error is S3Exception) S3_DENIALS else SERVICE_DENIALS
 
     private fun policyFor(error: Throwable): String? =
         when (error) {
@@ -111,7 +116,9 @@ class AwsErrorHandler : ProviderErrorHandler {
             "STS GetCallerIdentity needs no IAM permission, so no lab policy fixes this. " +
                 "A service control policy, permissions boundary or session policy is denying the request."
 
-        const val OTHER_DENIALS = "A bucket policy, SCP or KMS key policy can also deny the request."
+        const val S3_DENIALS = "A bucket policy, SCP or KMS key policy can also deny the request."
+
+        const val SERVICE_DENIALS = "An SCP or permissions boundary can also deny the request."
 
         const val CREDENTIALS_REMEDY =
             "Run: easy-db-lab profile setup. " +

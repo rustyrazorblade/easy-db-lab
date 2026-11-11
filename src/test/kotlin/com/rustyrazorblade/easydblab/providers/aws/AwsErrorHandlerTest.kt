@@ -258,6 +258,19 @@ class AwsErrorHandlerTest {
     }
 
     @Test
+    fun `a non S3 denial mentions an SCP or permissions boundary and no bucket policy`() {
+        for (builder in listOf(Ec2Exception.builder(), EmrException.builder(), IamException.builder())) {
+            val remedy = handler.describe(awsError(builder, "AccessDenied", 403))!!.remedy
+
+            assertThat(remedy)
+                .describedAs(builder.javaClass.name)
+                .contains("An SCP or permissions boundary can also deny the request.")
+                .doesNotContain("bucket policy")
+                .doesNotContain("KMS")
+        }
+    }
+
+    @Test
     fun `an STS denial names no lab policy, since GetCallerIdentity needs no permission`() {
         val description = handler.describe(awsError(StsException.builder(), "AccessDenied", 403))!!
 

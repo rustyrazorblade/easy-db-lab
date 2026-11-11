@@ -124,7 +124,7 @@ The error code is checked first: STS, IAM and S3 return 403 for bad credentials.
 
 **Remedies:**
 - **CREDENTIALS:** "Run: easy-db-lab profile setup. If you use SSO with the AWS CLI, log in again with: aws sso login (add --profile and your profile name if it is not the default), and check with: aws sts get-caller-identity". `profile setup` is the unconditional path because a Homebrew install does not guarantee the AWS CLI; the handler takes no dependencies, so it cannot name the profile.
-- **PERMISSION_DENIED:** "If this is missing permissions on your AWS user, attach `<policy>` (print it with `easy-db-lab show-iam-policies <policy>`). A bucket policy, SCP or KMS key policy can also deny the request." A 403 does not prove the cause, so the remedy does not assert it.
+- **PERMISSION_DENIED:** "If this is missing permissions on your AWS user, attach `<policy>` (print it with `easy-db-lab show-iam-policies <policy>`). For S3: "A bucket policy, SCP or KMS key policy can also deny the request."; for any other service: "An SCP or permissions boundary can also deny the request." A 403 does not prove the cause, so the remedy does not assert it.
 
 The policy comes from the exception class.  The five policy names become constants on `AWSPolicy.UserIAM`.
 

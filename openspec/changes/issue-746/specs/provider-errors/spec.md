@@ -23,7 +23,7 @@ When a command fails, the system SHALL ask every registered provider error handl
 - **WHEN** the command fails
 - **THEN** the user sees a permission-denied message
 - **AND** the message names the lab IAM policy that grants that service, and the command that prints it
-- **AND** the message does not assert that the cause is a missing user permission, and notes that a bucket policy, SCP or KMS key policy can also deny the request
+- **AND** the message does not assert that the cause is a missing user permission, and notes what else can also deny the request: a bucket policy, SCP or KMS key policy for S3, an SCP or permissions boundary for any other service
 
 #### Scenario: STS denial
 

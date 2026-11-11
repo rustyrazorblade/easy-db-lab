@@ -23,7 +23,8 @@ within 15 minutes, it prints the pods' recent events and exits non-zero.
 | `--version` | Cassandra version; the image is `cassandra:<version>` | `5.0` |
 | `--image` | Any image reference; overrides `--version` | empty |
 | `--nodes` | Number of nodes, at most one per db node | the db node count |
-| `--heap` | JVM heap per node, such as `4G` | empty (Cassandra sizes it) |
+| `--memory` | Memory request and limit per node, such as `4Gi` or `2048Mi` | `4Gi` |
+| `--heap` | JVM heap per node, such as `4G`; must be smaller than `--memory` | half of `--memory` |
 | `--dc` | Datacenter name; the rack is always `rack1` | `dc1` |
 | `--storage-size` | Size of each node's data volume | `10Ti` |
 

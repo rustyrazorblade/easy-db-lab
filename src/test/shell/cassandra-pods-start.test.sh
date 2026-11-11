@@ -141,7 +141,7 @@ done
 
 begin "valid --heap values pass"
 for ok in 4G 512M 1g 16G; do
-  run_check CASSANDRA_HEAP=${ok}
+  run_check CASSANDRA_HEAP=${ok} CASSANDRA_MEMORY=32Gi
   [ "${rc}" -eq 0 ] || fail "'${ok}': exit ${rc}: ${out}"
 done
 
@@ -158,25 +158,62 @@ run_check STUB_SSH_ERROR="ssh: connect to host db0 port 22: Connection timed out
 [ "${rc}" -eq 1 ] || fail "exit ${rc}"
 case "${out}" in *"could not check db node db0"*"Connection timed out"*) ;; *) fail "message: ${out}" ;; esac
 
-# The pod's HEAP_NEWSIZE computation, extracted from the shipped template and run through sh (the
-# container's /bin/sh): from `size=` through the `newsize` floor, then the export.
+# The pod's heap computation, extracted from the shipped template and run through sh (the
+# container's /bin/sh): from the `if [ -n "$CASSANDRA_HEAP" ]` through the HEAP_NEWSIZE export.
 TEMPLATE="${KIT}/statefulset.yaml.template"
-sed -n '/^ *size="\${CASSANDRA_HEAP%/,/^ *export MAX_HEAP_SIZE=/p' "${TEMPLATE}" | sed 's/^ *//' > "${WORK}/heap-snippet.sh"
+sed -n '/^ *if \[ -n "\$CASSANDRA_HEAP" \]/,/^ *export MAX_HEAP_SIZE=/p' "${TEMPLATE}" | sed 's/^ *//' > "${WORK}/heap-snippet.sh"
 
-newsize_for() {
-  sh -c 'CASSANDRA_HEAP="$1"; . "$2"; echo "${MAX_HEAP_SIZE} ${HEAP_NEWSIZE}"' sh "$1" "${WORK}/heap-snippet.sh" 2>&1
+# Prints "<MAX_HEAP_SIZE> <HEAP_NEWSIZE>" for --heap $1 (may be empty) in a container limited to $2 MiB.
+heap_for() {
+  sh -c 'CASSANDRA_HEAP="$1"; MEMORY_LIMIT_MIB="$2"; . "$3"; echo "${MAX_HEAP_SIZE} ${HEAP_NEWSIZE}"' sh "$1" "$2" "${WORK}/heap-snippet.sh" 2>&1
 }
 
 begin "the heap snippet was extracted from the template"
-[ -s "${WORK}/heap-snippet.sh" ] || fail "no HEAP_NEWSIZE snippet found in the template"
+[ -s "${WORK}/heap-snippet.sh" ] || fail "no heap snippet found in the template"
 grep -q 'HEAP_NEWSIZE=' "${WORK}/heap-snippet.sh" || fail "snippet lacks HEAP_NEWSIZE"
 
-begin "HEAP_NEWSIZE is a quarter of the heap in MiB, with a 1M floor"
-for pair in "1G:256M" "4G:1024M" "1g:256M" "512M:128M" "16G:4096M" "2M:1M"; do
+begin "--heap sets the heap in MiB and HEAP_NEWSIZE is a quarter of it, with a 1M floor"
+for pair in "1G:1024M 256M" "4G:4096M 1024M" "1g:1024M 256M" "512M:512M 128M" "16G:16384M 4096M" "2M:2M 1M"; do
   heap="${pair%%:*}"
   want="${pair##*:}"
-  got="$(newsize_for "${heap}")"
-  [ "${got}" = "${heap} ${want}" ] || fail "--heap ${heap}: expected '${heap} ${want}', got '${got}'"
+  got="$(heap_for "${heap}" 65536)"
+  [ "${got}" = "${want}" ] || fail "--heap ${heap}: expected '${want}', got '${got}'"
+done
+
+begin "with no --heap the heap is half the container memory limit, never the host memory"
+for pair in "2048:1024M 256M" "4096:2048M 512M" "1024:512M 128M"; do
+  limit="${pair%%:*}"
+  want="${pair##*:}"
+  got="$(heap_for "" "${limit}")"
+  [ "${got}" = "${want}" ] || fail "limit ${limit}Mi: expected '${want}', got '${got}'"
+done
+
+begin "valid --memory values pass"
+for ok in 2Gi 4096Mi 16Gi; do
+  run_check CASSANDRA_MEMORY=${ok}
+  [ "${rc}" -eq 0 ] || fail "'${ok}': exit ${rc}: ${out}"
+done
+
+begin "a malformed --memory fails before any registry lookup"
+for bad in 2G 2 Gi 1.5Gi -2Gi 0Gi 2GiB; do
+  run_check CASSANDRA_MEMORY=${bad}
+  [ "${rc}" -eq 1 ] || fail "'${bad}': exit ${rc}"
+  case "${out}" in *"--memory"*"${bad}"*) ;; *) fail "'${bad}': unclear message: ${out}" ;; esac
+  [ ! -f "${WORK}/curl.calls" ] || fail "'${bad}': registry was queried"
+done
+
+begin "a --heap that does not fit inside --memory fails and names both"
+for pair in "2G:2Gi" "3G:2Gi" "2048M:2Gi" "4G:2048Mi" "8G:4Gi"; do
+  run_check CASSANDRA_HEAP="${pair%%:*}" CASSANDRA_MEMORY="${pair##*:}"
+  [ "${rc}" -eq 1 ] || fail "${pair}: exit ${rc}: ${out}"
+  case "${out}" in *"--heap ${pair%%:*}"*"--memory ${pair##*:}"*) ;; *) fail "${pair}: unclear message: ${out}" ;; esac
+  [ ! -f "${WORK}/curl.calls" ] || fail "${pair}: registry was queried"
+done
+
+begin "a --heap smaller than --memory passes"
+for pair in "1G:2Gi" "1536M:2Gi" "2G:4Gi"; do
+  run_check CASSANDRA_HEAP="${pair%%:*}" CASSANDRA_MEMORY="${pair##*:}"
+  [ "${rc}" -eq 0 ] || fail "${pair}: exit ${rc}: ${out}"
 done
 
 begin "the manifest HEAD accepts OCI index, OCI manifest, Docker manifest list v2 and Docker manifest v2"

@@ -13,7 +13,7 @@
 
 ## 3. Kit resources
 
-- [x] 3.1 Write a test that parses `kits/cassandra-pods/kit.yaml`: type `db`, the six named args and their defaults, the `CQL` endpoint on 30942, and Java-agent metrics with service name `cassandra`.
+- [x] 3.1 Write a test that parses `kits/cassandra-pods/kit.yaml`: type `db`, the seven named args and their defaults, the `CQL` endpoint on 30942, and Java-agent metrics with service name `cassandra`.
 - [x] 3.2 Add `kits/cassandra-pods/kit.yaml` per the design outline, with `install`, `start`, `stop` and `uninstall`.
 - [x] 3.3 Write a rendering test for the StatefulSet template:
   - `--nodes` replicas, `OrderedReady`, required anti-affinity on `kubernetes.io/hostname`, node selector `type=db`;

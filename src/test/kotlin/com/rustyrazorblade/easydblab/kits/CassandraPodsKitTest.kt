@@ -37,14 +37,15 @@ class CassandraPodsKitTest : BaseKoinTest() {
             .single { it.name == "cassandra" }
 
     @Test
-    fun `kit yaml declares a db kit with the six named args, the CQL endpoint and Java agent metrics`() {
+    fun `kit yaml declares a db kit with the seven named args, the CQL endpoint and Java agent metrics`() {
         val args = kit.config.args.associateBy { it.flag }
 
         assertThat(kit.config.type).isEqualTo(KitType.DB)
-        assertThat(args.keys).containsExactlyInAnyOrder("--version", "--image", "--nodes", "--heap", "--dc", "--storage-size")
+        assertThat(args.keys).containsExactlyInAnyOrder("--version", "--image", "--nodes", "--heap", "--memory", "--dc", "--storage-size")
         assertThat(args.getValue("--version").default).isEqualTo("5.0")
         assertThat(args.getValue("--image").default).isEmpty()
         assertThat(args.getValue("--nodes").default).isEqualTo("\${DB_NODE_COUNT}")
+        assertThat(args.getValue("--memory").default).isEqualTo("4Gi")
         assertThat(args.getValue("--dc").default).isEqualTo("dc1")
         assertThat(args.getValue("--storage-size").default).isEqualTo("10Ti")
         val cql = kit.config.endpoints.single { it.name == "CQL" }
@@ -215,6 +216,30 @@ class CassandraPodsKitTest : BaseKoinTest() {
                 .redirectErrorStream(true)
                 .start()
         return process.waitFor() == 0
+    }
+
+    @Test
+    fun `the cassandra container requests and limits the same memory, from --memory`() {
+        val resources =
+            statefulSet(mapOf("CASSANDRA_MEMORY" to "6Gi"))
+                .spec.template.spec.containers
+                .single { it.name == "cassandra" }
+                .resources
+
+        assertThat(resources.requests.getValue("memory").toString()).isEqualTo("6Gi")
+        assertThat(resources.limits.getValue("memory").toString()).isEqualTo("6Gi")
+    }
+
+    @Test
+    fun `the container is given its memory limit in MiB for the default heap`() {
+        val ref =
+            cassandra()
+                .env
+                .single { it.name == "MEMORY_LIMIT_MIB" }
+                .valueFrom.resourceFieldRef
+
+        assertThat(ref.resource).isEqualTo("limits.memory")
+        assertThat(ref.divisor.toString()).isEqualTo("1Mi")
     }
 
     @Test

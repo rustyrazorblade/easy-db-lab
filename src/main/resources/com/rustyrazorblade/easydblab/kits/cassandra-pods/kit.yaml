@@ -39,9 +39,14 @@ args:
     default: "${DB_NODE_COUNT}"
   - flag: --heap
     variable: CASSANDRA_HEAP
-    description: "JVM heap per node, such as 4G; empty lets Cassandra size it"
+    description: "JVM heap per node, such as 4G; must be smaller than --memory; empty is half of --memory"
     type: string
     default: ""
+  - flag: --memory
+    variable: CASSANDRA_MEMORY
+    description: "Memory request and limit per node, such as 4Gi; the default heap is half of it"
+    type: string
+    default: "4Gi"
   - flag: --dc
     variable: CASSANDRA_DC
     description: "Datacenter name"

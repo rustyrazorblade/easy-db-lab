@@ -78,7 +78,7 @@ GossipingPropertyFileSnitch with `dc=--dc` (default `dc1`) and `rack=rack1`.
   - `metrics: [{type: java-agent, service-name: cassandra}]`
   - `runtime: {type: pods, selector: "easydblab/kit=${KIT_NAME}"}`
   - endpoint `CQL`: `node-type: db`, port 30942, type `native`
-- `args`: `--version` (`CASSANDRA_VERSION`, default `5.0`), `--image` (`CASSANDRA_IMAGE`, default empty), `--nodes` (`CASSANDRA_NODES`), `--heap` (`CASSANDRA_HEAP`), `--dc` (`CASSANDRA_DC`, default `dc1`), `--storage-size` (`STORAGE_SIZE`, default `10Ti`). All are named options.
+- `args`: `--version` (`CASSANDRA_VERSION`, default `5.0`), `--image` (`CASSANDRA_IMAGE`, default empty), `--nodes` (`CASSANDRA_NODES`), `--memory` (`CASSANDRA_MEMORY`, default `2Gi`), `--heap` (`CASSANDRA_HEAP`, default half of `--memory`), `--dc` (`CASSANDRA_DC`, default `dc1`), `--storage-size` (`STORAGE_SIZE`, default `10Ti`). All are named options.
 - `install`: `platform-pvs` on db nodes, `count: ${CASSANDRA_NODES}`, `volume-claim-template-name: data`.
 - `start`:
   1. Shell step (sources `EDL_KIT_LIB`):
@@ -106,7 +106,7 @@ The kit creates no ad hoc pods. If a later script must create one, it uses a `<n
 
 ## Risks / Trade-offs
 
-- **Memory per pod.** One pod per node needs real memory requests; `--heap` sizes it on small instances.
+- **Memory per pod.** The cassandra container requests and limits `--memory` (default `4Gi`), so the pod is Guaranteed for memory and the scheduler places it only where it fits. The image's `cassandra-env.sh` sizes the heap from the host's memory, not the cgroup limit, so the pod always sets the heap itself: `--heap` when given, else half the limit, leaving the rest for off-heap memory, metaspace and the agent. `4Gi` gives a 2 GiB heap. Measured: a Cassandra 5.0 container with a 1 GiB heap already used 1.8 GiB of a 2 GiB limit before the OTel agent loaded, and the pod was OOM-killed at 2Gi in K3s, so 2Gi has no headroom for heap pre-touch, metaspace, direct memory and the agent. 4Gi fits a K3s test node on a 7 GB CI runner and is small for a db node. `start` fails when `--heap` is not smaller than `--memory`.
 - **Duplicate series if the kit and the AMI Cassandra both run.** They would mix under `job="cassandra"`. Mitigated: the start step fails when the AMI Cassandra is running.
 - **Slow start.** With `OrderedReady`, start time grows linearly with node count.
 - **Apple Silicon.** GHCR branch images are amd64-only until #1036. Docker Official images work.

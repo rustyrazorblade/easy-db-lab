@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Built-in cassandra-pods kit
-easy-db-lab SHALL ship a built-in `db` kit named `cassandra-pods` that runs a Cassandra cluster as pods. The kit SHALL be packaged as classpath resources, so it installs and starts from a Homebrew install with no source checkout. Every install arg SHALL be a named option: `--version` (default `5.0`), `--image` (default empty), `--nodes` (default the cluster's db node count), `--heap`, `--dc` (default `dc1`) and `--storage-size` (default `10Ti`).
+easy-db-lab SHALL ship a built-in `db` kit named `cassandra-pods` that runs a Cassandra cluster as pods. The kit SHALL be packaged as classpath resources, so it installs and starts from a Homebrew install with no source checkout. Every install arg SHALL be a named option: `--version` (default `5.0`), `--image` (default empty), `--nodes` (default the cluster's db node count), `--memory` (default `4Gi`), `--heap` (default half of `--memory`), `--dc` (default `dc1`) and `--storage-size` (default `10Ti`).
 
 #### Scenario: Install from the classpath
 - **WHEN** `kit install cassandra-pods` runs from an install with no source checkout
@@ -10,7 +10,7 @@ easy-db-lab SHALL ship a built-in `db` kit named `cassandra-pods` that runs a Ca
 
 #### Scenario: kit.yaml parsed
 - **WHEN** the packaged `cassandra-pods/kit.yaml` is parsed
-- **THEN** it declares type `db`, the six named args with their defaults, a `CQL` endpoint of type `native` on port 30942, and Java-agent metrics with service name `cassandra`
+- **THEN** it declares type `db`, the seven named args with their defaults, a `CQL` endpoint of type `native` on port 30942, and Java-agent metrics with service name `cassandra`
 
 ### Requirement: Image selection and check before any resource
 The kit SHALL run the image `cassandra:<--version>`, or the `--image` reference when one is given. Before any Kubernetes resource is created, `start` SHALL check through the workspace `curl` wrapper that the image's manifest exists in its registry. It SHALL exit non-zero, with a message naming the image, when the manifest does not exist or cannot be resolved.
@@ -52,6 +52,21 @@ The kit SHALL run Cassandra as a StatefulSet with `--nodes` replicas, at most on
 #### Scenario: AMI Cassandra already running
 - **WHEN** `start` runs on a cluster where the AMI-based Cassandra service is running
 - **THEN** `start` exits non-zero before any resource is created, with a message saying the two would report under the same metrics job
+
+### Requirement: Memory request, limit and heap
+The cassandra container SHALL request and limit the same memory, taken from `--memory` (default `4Gi`), so each pod is Guaranteed for memory and is scheduled only on a node where it fits. The pod SHALL set the JVM heap itself, because the image's `cassandra-env.sh` sizes it from the host's memory rather than the container limit: `--heap` when given, otherwise half of the memory limit. `start` SHALL exit non-zero, naming both values, when `--memory` is not a whole number of `Gi` or `Mi`, or when `--heap` is not smaller than `--memory`, before any resource is created. A pod SHALL become Ready only while the native transport is running.
+
+#### Scenario: Default memory fits
+- **WHEN** the kit is started with no `--memory` and no `--heap`
+- **THEN** the cassandra container requests and limits `4Gi`, the JVM heap is 2048M, and the pod reaches UN without being OOM-killed on a single K3s node of a 7 GB host
+
+#### Scenario: Heap larger than memory
+- **WHEN** the kit is started with `--heap 3G --memory 2Gi`
+- **THEN** `start` exits non-zero with a message naming `--heap 3G` and `--memory 2Gi`, and creates no resource
+
+#### Scenario: Not Ready while CQL is down
+- **WHEN** `nodetool statusbinary` prints `not running`
+- **THEN** the readiness probe fails
 
 ### Requirement: CQL from the operator's machine
 Each pod SHALL advertise its node's IP as `broadcast_rpc_address` and listen for CQL on port 30942. A NodePort Service SHALL map 30942 to 30942 with `externalTrafficPolicy: Local`. The kit SHALL NOT use `hostNetwork` or `hostPort`.

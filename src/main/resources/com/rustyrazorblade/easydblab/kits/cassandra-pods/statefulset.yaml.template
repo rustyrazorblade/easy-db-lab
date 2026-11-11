@@ -54,18 +54,23 @@ spec:
             - -c
             - |
               sed -i 's/^native_transport_port:.*/native_transport_port: 30942/' /etc/cassandra/cassandra.yaml
+              # The image's cassandra-env.sh sizes the heap from the host's memory (free -m), not the
+              # container limit, so the heap is always set here. --heap, validated at start to fit
+              # inside --memory, wins; otherwise half the limit, leaving the rest for off-heap
+              # memory, metaspace and the agent. The young generation is a quarter of the heap, in
+              # MiB (a G heap would otherwise divide to 0G).
               if [ -n "$CASSANDRA_HEAP" ]; then
-                # start has validated --heap as a whole number of G or M; the young generation is
-                # a quarter of the heap, in MiB (a G heap would otherwise divide to 0G).
                 size="${CASSANDRA_HEAP%[GgMm]}"
                 case "$CASSANDRA_HEAP" in
                   *[Gg]) heap_mib=$((size * 1024)) ;;
                   *) heap_mib=$size ;;
                 esac
-                newsize=$((heap_mib / 4))
-                [ "$newsize" -ge 1 ] || newsize=1
-                export MAX_HEAP_SIZE="$CASSANDRA_HEAP" HEAP_NEWSIZE="${newsize}M"
+              else
+                heap_mib=$((MEMORY_LIMIT_MIB / 2))
               fi
+              newsize=$((heap_mib / 4))
+              [ "$newsize" -ge 1 ] || newsize=1
+              export MAX_HEAP_SIZE="${heap_mib}M" HEAP_NEWSIZE="${newsize}M"
               exec docker-entrypoint.sh cassandra -f
           env:
             - name: CASSANDRA_CLUSTER_NAME
@@ -78,6 +83,13 @@ spec:
               value: GossipingPropertyFileSnitch
             - name: CASSANDRA_HEAP
               value: "__CASSANDRA_HEAP__"
+            # The container's own memory limit in MiB, for the default heap.
+            - name: MEMORY_LIMIT_MIB
+              valueFrom:
+                resourceFieldRef:
+                  containerName: cassandra
+                  resource: limits.memory
+                  divisor: 1Mi
             # Pod 0 is the seed, reached by its stable DNS name.
             - name: CASSANDRA_SEEDS
               value: cassandra-pods-0.cassandra-pods-gossip.default.svc.cluster.local
@@ -122,6 +134,13 @@ spec:
               containerPort: 30942
             - name: gossip
               containerPort: 7000
+          # Request equals limit, so the pod is Guaranteed for memory and the scheduler places it
+          # only on a node where it fits.
+          resources:
+            requests:
+              memory: "__CASSANDRA_MEMORY__"
+            limits:
+              memory: "__CASSANDRA_MEMORY__"
           readinessProbe:
             exec:
               command:

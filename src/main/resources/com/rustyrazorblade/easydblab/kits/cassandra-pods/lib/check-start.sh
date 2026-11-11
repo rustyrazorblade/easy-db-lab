@@ -6,11 +6,12 @@
 #   - --nodes is more than the number of db nodes
 #   - the AMI-based Cassandra is running on a db node (both would report under job="cassandra")
 #   - --nodes is not a whole number >= 1, or --heap is not a whole number of G or M
+#   - --memory is not a whole number of Gi or Mi, or --heap is not smaller than --memory
 #   - a db node cannot be checked over ssh (fail fast: an unchecked node may be running the AMI Cassandra)
 #   - the image's manifest is definitely not in its registry (404). A 401/403 (private image) warns
 #     and continues; any other answer fails with curl's own message.
 #
-# Reads CASSANDRA_VERSION, CASSANDRA_IMAGE, CASSANDRA_NODES, DB_NODE_COUNT.
+# Reads CASSANDRA_VERSION, CASSANDRA_IMAGE, CASSANDRA_NODES, CASSANDRA_HEAP, CASSANDRA_MEMORY, DB_NODE_COUNT.
 set -euo pipefail
 
 fail() {
@@ -38,6 +39,30 @@ if [ -n "${heap}" ]; then
   case "${amount}" in
     '' | *[!0-9]* | 0*) fail "ERROR: --heap '${heap}' is not valid; use a whole number followed by G or M, such as 4G or 512M." ;;
   esac
+fi
+
+# --memory is the container's memory request and limit: a whole number of Gi or Mi. The default
+# heap is half of it, and an explicit --heap must be smaller, leaving room for off-heap memory.
+memory="${CASSANDRA_MEMORY:-4Gi}"
+memory_amount="${memory%[GM]i}"
+case "${memory}:${memory_amount}" in
+  "${memory_amount}:"*) fail "ERROR: --memory '${memory}' is not valid; use a whole number followed by Gi or Mi, such as 4Gi or 2048Mi." ;;
+esac
+case "${memory_amount}" in
+  '' | *[!0-9]* | 0*) fail "ERROR: --memory '${memory}' is not valid; use a whole number followed by Gi or Mi, such as 4Gi or 2048Mi." ;;
+esac
+case "${memory}" in
+  *Gi) memory_mib=$((memory_amount * 1024)) ;;
+  *) memory_mib=${memory_amount} ;;
+esac
+if [ -n "${heap}" ]; then
+  case "${heap}" in
+    *[Gg]) heap_mib=$((amount * 1024)) ;;
+    *) heap_mib=${amount} ;;
+  esac
+  if [ "${heap_mib}" -ge "${memory_mib}" ]; then
+    fail "ERROR: --heap ${heap} does not fit inside --memory ${memory}; the heap must be smaller than the container memory, which also holds off-heap memory. Raise --memory or lower --heap."
+  fi
 fi
 
 if [ -n "${CASSANDRA_IMAGE:-}" ]; then

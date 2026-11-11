@@ -7,6 +7,7 @@ import com.rustyrazorblade.easydblab.kernel.CommandFailedException
 import com.rustyrazorblade.easydblab.providers.aws.RegionalClients
 import com.rustyrazorblade.easydblab.providers.aws.VpcInfrastructure
 import com.rustyrazorblade.easydblab.providers.aws.withEcsRoleRetry
+import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.cloudwatchlogs.CloudWatchLogsClient
 import software.amazon.awssdk.services.cloudwatchlogs.model.CreateLogGroupRequest
 import software.amazon.awssdk.services.cloudwatchlogs.model.ResourceAlreadyExistsException
@@ -22,6 +23,8 @@ import software.amazon.awssdk.services.ecs.model.NetworkConfiguration
 import software.amazon.awssdk.services.ecs.model.Service
 import software.amazon.awssdk.services.ecs.model.UpdateServiceRequest
 import software.amazon.awssdk.services.s3.S3Client
+
+private val log = KotlinLogging.logger {}
 
 /**
  * The account compactor: one ECS Fargate service per AWS account, in the account bucket's region,
@@ -170,6 +173,7 @@ class DefaultCompactorService(
         } catch (e: EcsException) {
             if (e.awsErrorDetails()?.errorCode() != Constants.Compactor.ECS_ACCESS_DENIED) throw e
             eventBus.emit(Event.Compactor.AccessDenied(region, e.awsErrorDetails().errorMessage().orEmpty()))
+            log.error(e) { "ECS denied the account compactor's call" }
             throw CommandFailedException(
                 "ECS denied the account compactor's call: the ${Constants.Compactor.OPERATOR_POLICY} policy is missing. " +
                     "Run `easy-db-lab show-iam-policies compactor` and attach the policy.",

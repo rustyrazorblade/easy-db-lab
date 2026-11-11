@@ -8,6 +8,7 @@ import com.rustyrazorblade.easydblab.kernel.ProviderErrorHandler
 import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWSClientFactory
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
+import io.github.oshai.kotlinlogging.KotlinLogging
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.CreateKeyPairRequest
 import software.amazon.awssdk.services.ec2.model.Ec2Exception
@@ -18,6 +19,8 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.UUID
+
+private val log = KotlinLogging.logger {}
 
 /**
  * Creates the EC2 key pair that gives the operator SSH access to the cluster's instances, and
@@ -100,6 +103,7 @@ class AwsKeyPairService(
         } catch (e: Ec2Exception) {
             if (errorHandler.describe(e)?.kind == ProviderErrorKind.PERMISSION_DENIED) {
                 emitPermissionError(e)
+                log.error(e) { "EC2 denied CreateKeyPair" }
                 throw CommandFailedException("EC2 denied CreateKeyPair: ${e.message}", e)
             }
             throw e

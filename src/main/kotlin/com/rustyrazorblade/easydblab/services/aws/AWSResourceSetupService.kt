@@ -10,6 +10,9 @@ import com.rustyrazorblade.easydblab.kernel.ProviderErrorKind
 import com.rustyrazorblade.easydblab.providers.aws.AWS
 import com.rustyrazorblade.easydblab.providers.aws.AWSPolicy
 import com.rustyrazorblade.easydblab.providers.aws.InstanceRolePolicies
+import io.github.oshai.kotlinlogging.KotlinLogging
+
+private val log = KotlinLogging.logger {}
 
 /**
  * Service responsible for ensuring AWS IAM resources are set up
@@ -139,6 +142,7 @@ class AWSResourceSetupService(
             aws.checkPermissions()
         } catch (e: Exception) {
             emitCredentialError(e)
+            log.error(e) { "AWS credential validation failed" }
             // The detailed message above is the report; the executor must not print a second block.
             // This exception's own message goes to the debug log only, never to the user.
             throw CommandFailedException("AWS credential validation failed: ${e.message}", e)

@@ -25,7 +25,7 @@ The rollout wait covers only what was applied (`ObservabilityStackService.kt:166
 **D3. The type and the decision.**
 ```kotlin
 enum class NodeCapability(val absentReason: String) {
-    SYSTEMD_JOURNAL("this environment's nodes have no systemd journal; pod logs still reach Loki through the collector"),
+    SYSTEMD_JOURNAL("this environment's nodes have no systemd journal"),
     CLOUDWATCH("this environment has no CloudWatch"),
     S3("this environment has no S3 bucket"),
 }

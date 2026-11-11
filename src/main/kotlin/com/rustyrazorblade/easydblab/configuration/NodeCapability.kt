@@ -17,7 +17,7 @@ enum class NodeCapability(
     val absentReason: String,
 ) {
     @SerialName("systemd-journal")
-    SYSTEMD_JOURNAL("this environment's nodes have no systemd journal; pod logs still reach Loki through the collector"),
+    SYSTEMD_JOURNAL("this environment's nodes have no systemd journal"),
 
     @SerialName("cloudwatch")
     CLOUDWATCH("this environment has no CloudWatch"),

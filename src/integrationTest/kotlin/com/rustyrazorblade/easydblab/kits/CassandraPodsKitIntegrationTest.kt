@@ -18,6 +18,7 @@ import io.fabric8.kubernetes.api.model.Pod
 import io.fabric8.kubernetes.client.Config
 import io.fabric8.kubernetes.client.KubernetesClient
 import io.fabric8.kubernetes.client.KubernetesClientBuilder
+import io.fabric8.kubernetes.client.KubernetesClientTimeoutException
 import io.fabric8.kubernetes.client.dsl.ExecListener
 import io.fabric8.kubernetes.client.utils.Serialization
 import org.assertj.core.api.Assertions.assertThat
@@ -83,7 +84,6 @@ class CassandraPodsKitIntegrationTest {
                 n
             }
         k3s.execInContainer("mkdir", "-p", PV_PATH)
-        createPersistentVolume()
         fixture =
             BuiltinKitFixture(
                 "cassandra-pods",
@@ -92,6 +92,7 @@ class CassandraPodsKitIntegrationTest {
                     mock<User>(),
                 ),
             )
+        createPersistentVolume()
         client
             .resource(
                 ConfigMapBuilder()
@@ -230,13 +231,73 @@ class CassandraPodsKitIntegrationTest {
     }
 
     private fun waitForUn() {
+        try {
+            client
+                .pods()
+                .inNamespace("default")
+                .withName("cassandra-pods-0")
+                .waitUntilReady(POD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        } catch (e: KubernetesClientTimeoutException) {
+            throw AssertionError("cassandra-pods-0 never became ready\n${podDiagnostics()}", e)
+        }
+        // Pod Ready only means the readiness probe passed. Like the kit's wait-un.sh, poll until
+        // the node lists itself UN, and keep nodetool's own output if it never does.
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(UN_TIMEOUT_SECONDS)
+        var last: ExecResult
+        do {
+            last = execResult("nodetool", "status")
+            if (last.exitCode == 0 && last.out.lines().count { it.startsWith("UN") } == 1) return
+            Thread.sleep(UN_POLL_MILLIS)
+        } while (System.nanoTime() < deadline)
+        throw AssertionError(
+            "node never listed UN; exit=${last.exitCode}\nstdout=${last.out}\nstderr=${last.err}\n${podDiagnostics()}",
+        )
+    }
+
+    /** Everything needed to see why the pod is not ready: status, container states, events and logs. */
+    private fun podDiagnostics(): String {
+        val sb = StringBuilder()
+        val pod =
+            client
+                .pods()
+                .inNamespace("default")
+                .withName("cassandra-pods-0")
+                .get()
+        if (pod == null) {
+            sb.appendLine("pod cassandra-pods-0 does not exist")
+        } else {
+            sb.appendLine("phase=${pod.status.phase} reason=${pod.status.reason} message=${pod.status.message}")
+            pod.status.conditions.forEach {
+                sb.appendLine("condition ${it.type}=${it.status} reason=${it.reason} message=${it.message}")
+            }
+            (pod.status.initContainerStatuses + pod.status.containerStatuses).forEach {
+                sb.appendLine("container ${it.name} ready=${it.ready} restarts=${it.restartCount}")
+                sb.appendLine("  state=${it.state}")
+                sb.appendLine("  lastState=${it.lastState}")
+            }
+        }
         client
-            .pods()
+            .v1()
+            .events()
             .inNamespace("default")
-            .withName("cassandra-pods-0")
-            .waitUntilReady(POD_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        val status = exec("nodetool", "status")
-        assertThat(status.lines().count { it.startsWith("UN") }).isEqualTo(1)
+            .list()
+            .items
+            .takeLast(EVENT_LINES)
+            .forEach { sb.appendLine("event ${it.involvedObject.name} ${it.reason}: ${it.message}") }
+        listOf("otel-agent", "cassandra").forEach { container ->
+            val log =
+                runCatching {
+                    client
+                        .pods()
+                        .inNamespace("default")
+                        .withName("cassandra-pods-0")
+                        .inContainer(container)
+                        .tailingLines(LOG_LINES)
+                        .log
+                }.getOrElse { "unavailable: ${it.message}" }
+            sb.appendLine("--- last $LOG_LINES log lines of $container ---").appendLine(log)
+        }
+        return sb.toString()
     }
 
     /** Runs a CQL statement with cqlsh against the node IP and NodePort value, from inside the pod. */
@@ -259,7 +320,19 @@ class CassandraPodsKitIntegrationTest {
             .withName("cassandra-pods-0")
             .get()
 
+    private class ExecResult(
+        val exitCode: Int,
+        val out: String,
+        val err: String,
+    )
+
     private fun exec(vararg command: String): String {
+        val result = execResult(*command)
+        assertThat(result.exitCode).describedAs("exit of ${command.toList()}: ${result.err}").isEqualTo(0)
+        return result.out
+    }
+
+    private fun execResult(vararg command: String): ExecResult {
         val out = ByteArrayOutputStream()
         val err = ByteArrayOutputStream()
         val done = CompletableFuture<Int>()
@@ -290,9 +363,8 @@ class CassandraPodsKitIntegrationTest {
             .use { watch ->
                 done.get(EXEC_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 val status = watch.exitCode().get(EXEC_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                assertThat(status).describedAs("exit of ${command.toList()}: $err").isEqualTo(0)
+                return ExecResult(status, out.toString(), err.toString())
             }
-        return out.toString()
     }
 
     private fun createPersistentVolume() {
@@ -310,7 +382,12 @@ class CassandraPodsKitIntegrationTest {
                     dbName = "cassandra-pods",
                     localPath = PV_PATH,
                     count = 1,
-                    storageSize = "10Gi",
+                    // The PV must offer what the kit's claim requests (its STORAGE_SIZE default),
+                    // or the claim never binds and the pod stays Pending.
+                    storageSize =
+                        fixture.config.args
+                            .single { it.variable == "STORAGE_SIZE" }
+                            .default,
                     storageClass = Constants.K8s.LOCAL_STORAGE_WFC_CLASS,
                 ),
             ).getOrThrow()
@@ -321,6 +398,10 @@ class CassandraPodsKitIntegrationTest {
         const val PV_PATH = "/mnt/db1/cassandra-pods"
         const val POD_TIMEOUT_SECONDS = 600L
         const val EXEC_TIMEOUT_SECONDS = 120L
+        const val UN_TIMEOUT_SECONDS = 300L
+        const val UN_POLL_MILLIS = 5_000L
+        const val LOG_LINES = 100
+        const val EVENT_LINES = 40
 
         fun agentImage(): String =
             "${Constants.Kit.CassandraPods.AGENT_IMAGE_REPOSITORY}:${System.getProperty("easydblab.otelAgentVersion")}"

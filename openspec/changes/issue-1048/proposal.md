@@ -14,6 +14,7 @@ Compaction is allowed because it is not deletion: a compactor writes a merged ob
 - **CLI**: `observability compactor start` and `stop` are removed.  `observability compactor status` prints the lease.
 - **Removed (the Fargate path)**: `services/aws/CompactorService.kt`, `CompactorStatusReader.kt`, `CompactorTaskRegistrar.kt`, `CompactorIam.kt`, `CompactorNetwork.kt`, `ClusterCensus.kt`, `configuration/compactor/CompactorTaskDefinition.kt`, `providers/aws/RegionalClients.kt`, the ECS retry helpers, the compactor IAM policy and roles in `AWSPolicy.kt` and `iam-policy-compactor.json`, `InfrastructureConfig.forCompactor`, `TeardownTypes.isCompactorVpc`, the ECS members of `Constants.Compactor`, every `Event.Compactor.*` event and `Event.Infra.CompactorVpcSkipping`, `down`'s `stopCompactorIfLastCluster`, the compactor call in `AccountBucketSetup`, and the `awssdk-ecs` and `awssdk-cloudwatchlogs` dependencies.
 - **`down`** keeps only its flush contract: flush every backend, wait, and refuse to tear down on a failed flush.
+- **Larger subnets and a fallback IP lookup**: `network/CidrBlock` splits the VPC into eight equal subnets of the VPC prefix + 3 (eight `/19`s for the default `/16`), one per availability zone, so a cluster can hold 1,000+ nodes with Cilium ENI IPAM; at most eight zones, and the VPC prefix must be `/25` or larger.  `Constants.Vpc.subnetCidr` is removed and Packer uses `CidrBlock.DEFAULT.subnetCidr(0)`.  `DefaultExternalIpService` asks `checkip.amazonaws.com` first, trims the answer, and falls back to `api.ipify.org` when it fails or is not an IPv4 address.
 - **Docs and agent docs**: `docs/user-guide/compactor.md` (rewrite) and the related user-guide and reference pages, `bin/set-policies`, the package CLAUDE.md files, and the `observability-stack` skill.
 
 ## Capabilities
@@ -27,7 +28,8 @@ None.
 - `account-compactor`: the compactor runs in every cluster behind an object-store lease, with conditional writes on `ObjectStore`; the Fargate service, its roles, its network and its start and stop commands are removed.
 - `observability-store`: the cluster delete deny no longer covers the compacted roots; Tempo on a cluster gets an explicit long block retention.
 - `cluster-lifecycle`: `up` no longer starts a compactor service, `down` no longer stops one, and `down --all` no longer keeps a compactor VPC.
-- `networking`: the account-compactor security group path is removed.
+- `networking`: the account-compactor security group path is removed; `init --cidr` requires `/25` or larger; public IP detection asks checkip.amazonaws.com first and falls back to api.ipify.org.
+- `vpc-cidr-allocation`: the VPC is split into eight equal subnets of the VPC prefix + 3, one per availability zone, with at most eight zones.
 
 ## Impact
 

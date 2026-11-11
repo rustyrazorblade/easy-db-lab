@@ -10,7 +10,9 @@ easy-db-lab clusters run in a private AWS VPC. By default, `up` picks a random `
 easy-db-lab init --cidr 10.14.0.0/20 ...
 ```
 
-The block must be `/20` or larger, and it must name its prefix length and be in network form: `init` rejects `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set; the error names `10.0.0.0/16`) before it calls AWS.
+The block must be `/25` or larger, and it must name its prefix length and be in network form: `init` rejects `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set; the error names `10.0.0.0/16`) before it calls AWS.
+
+The VPC is always split into eight equal subnets, three bits longer than the VPC prefix, and each availability zone gets one. A `/16` gives eight `/19`s (`10.X.0.0/19`, `10.X.32.0/19`, ... `10.X.224.0/19`), about 8,000 addresses per zone. The subnets are this large because Cilium takes pod IPs from the same subnets as the nodes, so a cluster of 1,000 or more nodes needs thousands of addresses per zone. A cluster can use at most eight availability zones; `init --azs` rejects a ninth. The `/25` limit keeps each subnet at least `/28`, the smallest subnet AWS allows. AWS caps a VPC at `/16`.
 
 There are two methods to access your cluster:
 

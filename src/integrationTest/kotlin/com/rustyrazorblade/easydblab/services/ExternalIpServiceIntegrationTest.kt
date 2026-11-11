@@ -39,7 +39,7 @@ class ExternalIpServiceIntegrationTest {
     @Test
     fun `a server that accepts and then sends nothing fails detection after the read timeout`() {
         thread(isDaemon = true) { accepted.add(server.accept()) }
-        val service = DefaultExternalIpService(url = serverUrl(), connectTimeoutMs = 1_000, readTimeoutMs = 300)
+        val service = DefaultExternalIpService(urls = listOf(serverUrl()), connectTimeoutMs = 1_000, readTimeoutMs = 300)
 
         val started = System.nanoTime()
         assertThatThrownBy { service.getExternalIpAddress() }.isInstanceOf(SocketTimeoutException::class.java)
@@ -62,7 +62,7 @@ class ExternalIpServiceIntegrationTest {
             ),
         )
         val vpcService = mock<VpcService>()
-        val externalIp = DefaultExternalIpService(url = serverUrl(), connectTimeoutMs = 1_000, readTimeoutMs = 300)
+        val externalIp = DefaultExternalIpService(urls = listOf(serverUrl()), connectTimeoutMs = 1_000, readTimeoutMs = 300)
 
         val result = DefaultSshIngressService(stateManager, externalIp, vpcService).allow(emptyList())
 
@@ -87,7 +87,7 @@ class ExternalIpServiceIntegrationTest {
                 )
             }
         }
-        val service = DefaultExternalIpService(url = serverUrl(), connectTimeoutMs = 1_000, readTimeoutMs = 2_000)
+        val service = DefaultExternalIpService(urls = listOf(serverUrl()), connectTimeoutMs = 1_000, readTimeoutMs = 2_000)
 
         assertThat(service.getExternalIpAddress()).isEqualTo("203.0.113.10")
     }

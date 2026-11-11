@@ -89,7 +89,7 @@ class CiliumInspectionServiceTest : BaseKoinTest() {
 
         val db0 = nodes[0]
         assertThat(db0.eniCount).isEqualTo(2)
-        assertThat(db0.subnetCidrs).containsExactly("10.0.1.0/24")
+        assertThat(db0.subnetCidrs).containsExactly("10.0.0.0/19")
         assertThat(db0.ipsAllocated).isEqualTo(4)
         assertThat(db0.ipsUsed).isEqualTo(1)
         assertThat(db0.ipsAvailable).isEqualTo(3)
@@ -168,8 +168,8 @@ class CiliumInspectionServiceTest : BaseKoinTest() {
                   "status": {
                     "eni": {
                       "enis": {
-                        "eni-primary": {"id": "eni-primary", "number": 0, "subnet": {"id": "subnet-a", "cidr": "10.0.1.0/24"}},
-                        "eni-secondary": {"id": "eni-secondary", "number": 1, "subnet": {"id": "subnet-a", "cidr": "10.0.1.0/24"}}
+                        "eni-primary": {"id": "eni-primary", "number": 0, "subnet": {"id": "subnet-a", "cidr": "10.0.0.0/19"}},
+                        "eni-secondary": {"id": "eni-secondary", "number": 1, "subnet": {"id": "subnet-a", "cidr": "10.0.0.0/19"}}
                       }
                     },
                     "ipam": {

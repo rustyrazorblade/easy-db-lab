@@ -172,6 +172,17 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
         }
+
+        @Test
+        fun `execute fails with more than eight availability zones`() {
+            val command = Init()
+            command.clean = true
+            command.azs = listOf("a", "b", "c", "d", "e", "f", "g", "h", "i")
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("at most 8 availability zones")
+        }
     }
 
     @Nested

@@ -132,7 +132,7 @@ determined fails at `init`, before any instance is created.
 | `--app.count` (alias `--app`, `--stress`, `-s`) | Number of application instances | 0 |
 | `--db.instance-type` (alias `--instance`, `-i`) | Database instance type | i4i.xlarge |
 | `--app.instance-type` (alias `--stress-instance`, `-si`) | Application instance type | c6id.2xlarge |
-| `--azs`, `-z` | Availability zones (e.g., `a,b,c`) | all |
+| `--azs`, `-z` | Availability zones (e.g., `a,b,c`), at most 8: the VPC is split into eight equal subnets, one per zone | `a,b,c` |
 | `--ebs.type` | EBS volume type (NONE, gp2, gp3, io1, io2) | NONE |
 | `--ebs.size` | EBS volume size in GB | 256 |
 | `--ebs.iops` | EBS IOPS (gp3 only) | 0 |
@@ -143,7 +143,7 @@ determined fails at `init`, before any instance is created.
 | `--open` | Unrestricted SSH access | false |
 | `--tag` | Custom tags (key=value, repeatable) | - |
 | `--vpc` | Use existing VPC ID | - |
-| `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/20` or larger, name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
+| `--cidr` | VPC CIDR block, for example `10.14.0.0/16`. It must be `/25` or larger (it is split into eight equal subnets, `/19` each for a `/16`), name its prefix length, and be in network form: `10.0.0.0` (no prefix) and `10.0.0.5/16` (host bits set) are rejected before any AWS call. See [Network Connectivity](../user-guide/network-connectivity.md) | (a random unused `10.X.0.0/16`) |
 | `--cni` | Pod-network CNI: `flannel` (K3s built-in overlay) or `cilium` (ENI native routing). See [Pod Networking (CNI)](../user-guide/networking.md) | cilium |
 | `--tenant` | Observability tenant the cluster's traces, profiles, metrics, logs and annotations belong to. Must match `^[a-z][a-z0-9_-]{0,62}$`; checked before anything is created. Fixed for the life of the cluster. See [Where observability data is stored](../user-guide/monitoring.md#where-observability-data-is-stored) | default |
 | `--up` | Auto-provision after init | false |
@@ -270,7 +270,7 @@ Use it when your public IP changed and SSH and the SOCKS tunnel stopped working,
 - Values that are the same CIDR, such as `203.0.113.7` and `203.0.113.7/32`, count as one.
 - A rule that already exists is reported and left as it is.
 - If AWS refuses one rule, for example because the security group has too many rules, the command still adds the others, reports AWS's reason, and exits non-zero.
-- If the public IP cannot be detected, the command tells you to give it with `--cidr`.  Detection waits up to 5 seconds to connect to `api.ipify.org` and up to 10 seconds for its answer.
+- If the public IP cannot be detected, the command tells you to give it with `--cidr`.  Detection asks `checkip.amazonaws.com` first and falls back to `api.ipify.org` when that fails or does not answer with an IPv4 address.  Each waits up to 5 seconds to connect and up to 10 seconds for its answer.
 
 A security group allows a connection that is already open.  After a change, an SSH session or tunnel that is still connected can keep working until it reconnects.
 

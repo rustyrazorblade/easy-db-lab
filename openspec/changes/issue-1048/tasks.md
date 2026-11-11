@@ -55,6 +55,14 @@
 - [x] 8.2 Update `bin/set-policies` and `bin/set-policies.test.sh` for four policies
 - [x] 8.3 Update the `services/aws`, `configuration`, `commands`, `events` and `providers` CLAUDE.md files, and the `observability-stack` skill
 
+## 8a. Larger subnets and the public IP fallback
+
+- [x] 8a.1 `CidrBlock.subnetCidr` splits the VPC into eight equal subnets of the VPC prefix + 3 with 32-bit address math; index 0 to 7, a ninth zone fails fast; the VPC prefix must be `/25` or larger
+- [x] 8a.2 Remove `Constants.Vpc.subnetCidr`; Packer uses `CidrBlock.DEFAULT.subnetCidr(0)`; `init --azs` rejects more than `Constants.Vpc.MAX_AVAILABILITY_ZONES`
+- [x] 8a.3 Update `CidrBlockTest`, `InfrastructureConfigTest`, `InitTest`, `PlatformCniTest`, `CiliumInspectionServiceTest` and the LocalStack VPC integration tests for `/19` subnets
+- [x] 8a.4 `DefaultExternalIpService` asks `checkip.amazonaws.com`, trims the answer, and falls back to `api.ipify.org` on a failure or a non-IPv4 answer; the fallback decisions are unit-tested with an injected fetch
+- [x] 8a.5 Update `docs/user-guide/network-connectivity.md` and `docs/reference/commands.md`
+
 ## 9. Verification
 
 - [x] 9.1 Run `./gradlew check` (JDK 21) with detekt and ktlint clean, with no new `@Suppress`, threshold change or baseline entry

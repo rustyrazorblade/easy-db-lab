@@ -137,8 +137,17 @@ object Constants {
         /** EC2 port value meaning "all ICMP types/codes" when used as both fromPort and toPort. */
         const val ALL_ICMP_TYPES = -1
 
-        /** The service that answers with the caller's public IPv4 address as plain text. */
-        const val EXTERNAL_IP_URL = "https://api.ipify.org/"
+        /**
+         * The first service asked for the caller's public IPv4 address; it answers in plain text
+         * with a trailing newline.
+         */
+        const val EXTERNAL_IP_URL = "https://checkip.amazonaws.com/"
+
+        /**
+         * The service asked when [EXTERNAL_IP_URL] fails or answers with something that is not an
+         * IPv4 address.
+         */
+        const val EXTERNAL_IP_FALLBACK_URL = "https://api.ipify.org/"
 
         /** How long public IP detection waits to connect before it fails. */
         const val EXTERNAL_IP_CONNECT_TIMEOUT_MS = 5000
@@ -1310,9 +1319,9 @@ object Constants {
         const val SOCKS5_PROXY_STATE_FILE = ".socks5-proxy-state"
 
         /**
-         * Generates a subnet CIDR block for a given index within the VPC.
-         * Uses the pattern 10.0.{index+1}.0/24
+         * The most availability zones a cluster can span.  The VPC is split into this many equal
+         * subnets (VPC prefix + 3), one per zone; see `network/CidrBlock`.
          */
-        fun subnetCidr(index: Int): String = "10.0.${index + 1}.0/24"
+        const val MAX_AVAILABILITY_ZONES = 8
     }
 }

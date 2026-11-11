@@ -32,7 +32,7 @@ data class VpcNetworkingConfig(
  * Configuration for a subnet to be created within a VPC.
  *
  * @property name Name tag for the subnet
- * @property cidr CIDR block for the subnet (e.g., "10.0.1.0/24")
+ * @property cidr CIDR block for the subnet (e.g., "10.0.32.0/19")
  * @property availabilityZone Optional availability zone for the subnet
  */
 data class SubnetConfig(
@@ -118,7 +118,7 @@ data class InfrastructureConfig(
                     listOf(
                         SubnetConfig(
                             name = "easy-db-lab-packer-subnet",
-                            cidr = Constants.Vpc.subnetCidr(0),
+                            cidr = CidrBlock.DEFAULT.subnetCidr(0),
                         ),
                     ),
                 securityGroupName = "easy-db-lab-packer-sg",

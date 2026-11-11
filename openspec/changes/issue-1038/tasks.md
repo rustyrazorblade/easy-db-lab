@@ -28,7 +28,9 @@
   - an unknown image exits 1 and names it;
   - `--image` overrides `--version`;
   - `--nodes` above the db node count exits 1;
-  - a running AMI Cassandra exits 1.
+  - a running AMI Cassandra exits 1;
+  - with `EDL_NODE_SSH=true`, an inactive AMI Cassandra passes and an unreachable node exits 1;
+  - with `EDL_NODE_SSH=false`, no `ssh` runs, one skip line is printed and start proceeds.
 - [x] 3.6 Write the start-check and UN-wait scripts. They source `EDL_KIT_LIB`, and the UN wait prints recent events on timeout.
 - [x] 3.7 Add `metrics-catalog.json`, `README.md.template` and the kit's `CLAUDE.md`.
 

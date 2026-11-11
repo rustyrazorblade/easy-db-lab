@@ -529,6 +529,13 @@ object Constants {
         /** The variable that holds the absolute path of the workspace's kit shell library, for every kit process. */
         const val LIBRARY_ENV = "EDL_KIT_LIB"
 
+        /**
+         * The variable that tells every kit process whether the environment reaches its nodes over SSH:
+         * `true` or `false`. Today it is `true` when the workspace has an `sshConfig`; a `NODE_SSH`
+         * capability (issue #1096) can feed it later.
+         */
+        const val NODE_SSH_ENV = "EDL_NODE_SSH"
+
         // After the stop of a kit that declares a runtime, how often and how many times to look for its
         // pods before reporting the stop incomplete: 2s x 150 = 5 minutes, enough for a
         // StatefulSet's or operator's cascading delete plus each pod's termination grace period.

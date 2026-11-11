@@ -84,7 +84,7 @@ GossipingPropertyFileSnitch with `dc=--dc` (default `dc1`) and `rack=rack1`.
   1. Shell step (sources `EDL_KIT_LIB`):
      - resolve the image;
      - run the registry manifest check;
-     - check that the AMI Cassandra is not running: `ssh db<N> systemctl is-active cassandra` on every db node, through the workspace `ssh` wrapper (exit 0 fails start; 3 or 4 means inactive; anything else, such as an unreachable node, also fails start, naming the node and the ssh error);
+     - check that the AMI Cassandra is not running, only where the environment has node SSH: easy-db-lab sets `EDL_NODE_SSH` (`Constants.Kit.NODE_SSH_ENV`) on every kit process in `KitProcessEnvironment`, `true` when the workspace has an `sshConfig` and `false` otherwise (a later `NODE_SSH` capability, issue #1096, can feed it). On `false` the check is skipped with one printed line; the `ssh` wrapper would exit 1 there, and a failed `ssh` is never read as "skip". On `true`, `ssh db<N> systemctl is-active cassandra` runs on every db node through the workspace `ssh` wrapper (exit 0 fails start; 3 or 4 means inactive; anything else, such as an unreachable node, also fails start, naming the node and the ssh error). Any other value fails start;
      - fail fast on either.
   2. ConfigMap `cassandra-pods-jmx-rules` from the packaged rules.
   3. Manifests: headless Service, NodePort Service, StatefulSet.
@@ -106,8 +106,8 @@ The kit creates no ad hoc pods. If a later script must create one, it uses a `<n
 
 ## Risks / Trade-offs
 
-- **Memory per pod.** The cassandra container requests and limits `--memory` (default `4Gi`), so the pod is Guaranteed for memory and the scheduler places it only where it fits. The image's `cassandra-env.sh` sizes the heap from the host's memory, not the cgroup limit, so the pod always sets the heap itself: `--heap` when given, else half the limit, leaving the rest for off-heap memory, metaspace and the agent. `4Gi` gives a 2 GiB heap. Measured: a Cassandra 5.0 container with a 1 GiB heap already used 1.8 GiB of a 2 GiB limit before the OTel agent loaded, and the pod was OOM-killed at 2Gi in K3s, so 2Gi has no headroom for heap pre-touch, metaspace, direct memory and the agent. 4Gi fits a K3s test node on a 7 GB CI runner and is small for a db node. `start` fails when `--heap` is not smaller than `--memory`.
-- **Duplicate series if the kit and the AMI Cassandra both run.** They would mix under `job="cassandra"`. Mitigated: the start step fails when the AMI Cassandra is running.
+- **Memory per pod.** The cassandra container requests and limits `--memory` (default `4Gi`), so the memory request equals the limit and the scheduler places the pod only where that memory fits. The image's `cassandra-env.sh` sizes the heap from the host's memory, not the cgroup limit, so the pod always sets the heap itself: `--heap` when given, else half the limit, leaving the rest for off-heap memory, metaspace and the agent. `4Gi` gives a 2 GiB heap. Measured: a Cassandra 5.0 container with a 1 GiB heap already used 1.8 GiB of a 2 GiB limit before the OTel agent loaded, and the pod was OOM-killed at 2Gi in K3s, so 2Gi has no headroom for heap pre-touch, metaspace, direct memory and the agent. 4Gi fits a K3s test node on a 7 GB CI runner and is small for a db node. `start` fails when `--heap` is not smaller than `--memory`.
+- **Duplicate series if the kit and the AMI Cassandra both run.** They would mix under `job="cassandra"`. Mitigated: the start step fails when the AMI Cassandra is running. The check runs only where nodes have SSH (`EDL_NODE_SSH=true`); an environment without node SSH has no AMI Cassandra.
 - **Slow start.** With `OrderedReady`, start time grows linearly with node count.
 - **Apple Silicon.** GHCR branch images are amd64-only until #1036. Docker Official images work.
 - **Registry check needs network access** to the registry; the same is true of the image pull itself.

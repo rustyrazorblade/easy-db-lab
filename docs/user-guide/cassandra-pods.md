@@ -82,7 +82,9 @@ image tag as `cassandra_build`, so the Cassandra dashboards show these pods with
 ## Running next to the AMI Cassandra
 
 Both would report under `job="cassandra"`, so `start` refuses to run while the AMI-based Cassandra
-is running on a db node. Stop it first with `easy-db-lab cassandra stop`.
+is running on a db node. Stop it first with `easy-db-lab cassandra stop`. The check needs SSH to the
+nodes; on an environment without it (a local or bring-your-own Kubernetes cluster, which has no AMI
+Cassandra) `start` skips the check and prints one line saying so.
 
 ## Local clusters
 

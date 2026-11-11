@@ -37,6 +37,7 @@ STUB
 # ssh: db nodes listed in $STUB_AMI_RUNNING have the AMI Cassandra active.
 cat > "${WORK}/stubs/ssh" << 'STUB'
 #!/bin/bash
+echo "$*" >> "${STUB_DIR}/ssh.calls"
 if [ -n "${STUB_SSH_ERROR:-}" ]; then echo "${STUB_SSH_ERROR}" >&2; exit 255; fi
 case " ${STUB_AMI_RUNNING:-} " in *" $1 "*) exit 0 ;; esac
 exit 3
@@ -62,13 +63,13 @@ fail() {
 begin() {
   current_test="$1"
   tests_run=$((tests_run + 1))
-  rm -f "${WORK}/curl.calls" "${WORK}/kit/resolved-image.env"
+  rm -f "${WORK}/curl.calls" "${WORK}/ssh.calls" "${WORK}/kit/resolved-image.env"
 }
 
 run_check() {
   (
     cd "${WORK}/kit" &&
-      env PATH="${WORK}/stubs:${PATH}" DB_NODE_COUNT=3 CASSANDRA_VERSION=5.0 CASSANDRA_IMAGE= CASSANDRA_NODES=3 \
+      env PATH="${WORK}/stubs:${PATH}" EDL_NODE_SSH=true DB_NODE_COUNT=3 CASSANDRA_VERSION=5.0 CASSANDRA_IMAGE= CASSANDRA_NODES=3 \
         "$@" "${BASH}" lib/check-start.sh
   ) > "${WORK}/out" 2>&1
   rc=$?
@@ -204,6 +205,28 @@ begin "an unreachable db node fails start and says which node and why"
 run_check STUB_SSH_ERROR="ssh: connect to host db0 port 22: Connection timed out"
 [ "${rc}" -eq 1 ] || fail "exit ${rc}"
 case "${out}" in *"could not check db node db0"*"Connection timed out"*) ;; *) fail "message: ${out}" ;; esac
+[ ! -f "${WORK}/kit/resolved-image.env" ] || fail "resolved file written although a node was not checked"
+
+begin "with node SSH and the AMI Cassandra inactive, every db node is checked and start proceeds"
+run_check
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+[ "$(grep -c 'systemctl is-active --quiet cassandra' "${WORK}/ssh.calls" 2> /dev/null)" = 3 ] || fail "not every db node checked: $(cat "${WORK}/ssh.calls" 2> /dev/null)"
+
+begin "without node SSH the AMI check is skipped with one line saying why, and start proceeds"
+run_check EDL_NODE_SSH=false STUB_SSH_ERROR="easy-db-lab: sshConfig does not exist"
+[ "${rc}" -eq 0 ] || fail "exit ${rc}: ${out}"
+[ ! -f "${WORK}/ssh.calls" ] || fail "ssh was called: $(cat "${WORK}/ssh.calls")"
+[ "$(printf '%s\n' "${out}" | grep -c 'AMI Cassandra check')" = 1 ] || fail "no single skip line: ${out}"
+case "${out}" in *"no SSH"*) ;; *) fail "skip line does not say why: ${out}" ;; esac
+grep -q '^RESOLVED_IMAGE=cassandra:5.0$' "${WORK}/kit/resolved-image.env" || fail "start did not proceed to resolve the image"
+
+begin "a missing or unknown EDL_NODE_SSH fails start rather than guessing"
+for bad in '' yes; do
+  run_check EDL_NODE_SSH="${bad}"
+  [ "${rc}" -eq 1 ] || fail "'${bad}': exit ${rc}"
+  case "${out}" in *EDL_NODE_SSH*) ;; *) fail "'${bad}': message does not name EDL_NODE_SSH: ${out}" ;; esac
+  [ ! -f "${WORK}/ssh.calls" ] || fail "'${bad}': ssh was called"
+done
 
 # The pod's heap computation, extracted from the shipped template and run through sh (the
 # container's /bin/sh): from the `if [ -n "$CASSANDRA_HEAP" ]` through the HEAP_NEWSIZE export.

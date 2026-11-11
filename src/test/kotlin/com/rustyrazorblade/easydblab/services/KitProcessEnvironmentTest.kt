@@ -84,6 +84,25 @@ internal class KitProcessEnvironmentTest {
     }
 
     @Test
+    fun `EDL_NODE_SSH is true when the workspace has an sshConfig`() {
+        File(workspace, DefaultClusterConfigurationService.SSH_CONFIG_FILE).writeText("Host db0\n")
+        val builder = ProcessBuilder("true")
+
+        environment.applyTo(builder, workspace, mapOf(Constants.Kit.NODE_SSH_ENV to "false"))
+
+        assertThat(builder.environment()[Constants.Kit.NODE_SSH_ENV]).isEqualTo("true")
+    }
+
+    @Test
+    fun `EDL_NODE_SSH is false when the workspace has no sshConfig`() {
+        val builder = ProcessBuilder("true").also { it.environment()[Constants.Kit.NODE_SSH_ENV] = "true" }
+
+        environment.applyTo(builder, workspace, mapOf(Constants.Kit.NODE_SSH_ENV to "true"))
+
+        assertThat(builder.environment()[Constants.Kit.NODE_SSH_ENV]).isEqualTo("false")
+    }
+
+    @Test
     fun `the launched process runs the wrapper when it calls kubectl`() {
         val builder = ProcessBuilder("/bin/sh", "-c", "command -v kubectl")
 

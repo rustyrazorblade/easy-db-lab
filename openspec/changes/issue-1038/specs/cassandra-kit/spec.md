@@ -53,8 +53,24 @@ The kit SHALL run Cassandra as a StatefulSet with `--nodes` replicas, at most on
 - **WHEN** `start` runs on a cluster where the AMI-based Cassandra service is running
 - **THEN** `start` exits non-zero before any resource is created, with a message saying the two would report under the same metrics job
 
+### Requirement: AMI Cassandra check only where nodes have SSH
+`start` SHALL check every db node for the AMI-based Cassandra over SSH only when the environment provides node SSH. easy-db-lab SHALL tell every kit process through `EDL_NODE_SSH` (`Constants.Kit.NODE_SSH_ENV`): `true` when the workspace has an `sshConfig`, otherwise `false`. A later `NODE_SSH` capability (issue #1096) MAY feed the same variable. With `EDL_NODE_SSH=false`, `start` SHALL skip the check, print one line saying why, and continue. With `EDL_NODE_SSH=true`, a node that cannot be checked SHALL fail `start`; a failed `ssh` SHALL never be read as "no node SSH". Any other value SHALL fail `start`, naming the variable.
+
+#### Scenario: No node SSH
+- **WHEN** `start` runs on a workspace with no `sshConfig` (a local or bring-your-own Kubernetes cluster)
+- **THEN** no `ssh` is run, one line says the AMI Cassandra check is skipped because the environment has no SSH to its nodes
+- **AND** `start` continues to the image check
+
+#### Scenario: Node SSH and AMI Cassandra inactive
+- **WHEN** `start` runs with `EDL_NODE_SSH=true` and `systemctl is-active cassandra` reports inactive on every db node
+- **THEN** `start` continues to the image check
+
+#### Scenario: Node SSH and a node unreachable
+- **WHEN** `start` runs with `EDL_NODE_SSH=true` and `ssh` to a db node fails
+- **THEN** `start` exits non-zero before any resource is created, naming the node and the ssh error
+
 ### Requirement: Memory request, limit and heap
-The cassandra container SHALL request and limit the same memory, taken from `--memory` (default `4Gi`), so each pod is Guaranteed for memory and is scheduled only on a node where it fits. The pod SHALL set the JVM heap itself, because the image's `cassandra-env.sh` sizes it from the host's memory rather than the container limit: `--heap` when given, otherwise half of the memory limit. `start` SHALL exit non-zero, naming both values, when `--memory` is not a whole number of `Gi` or `Mi`, or when `--heap` is not smaller than `--memory`, before any resource is created. A pod SHALL become Ready only while the native transport is running.
+The cassandra container SHALL request and limit the same memory, taken from `--memory` (default `4Gi`), so the memory request equals the limit and each pod is scheduled only on a node where that memory fits. The pod SHALL set the JVM heap itself, because the image's `cassandra-env.sh` sizes it from the host's memory rather than the container limit: `--heap` when given, otherwise half of the memory limit. `start` SHALL exit non-zero, naming both values, when `--memory` is not a whole number of `Gi` or `Mi`, or when `--heap` is not smaller than `--memory`, before any resource is created. A pod SHALL become Ready only while the native transport is running.
 
 #### Scenario: Default memory fits
 - **WHEN** the kit is started with no `--memory` and no `--heap`

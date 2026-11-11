@@ -142,7 +142,7 @@ spec:
               containerPort: 30942
             - name: gossip
               containerPort: 7000
-          # Request equals limit, so the pod is Guaranteed for memory and the scheduler places it
+          # Memory request equals limit, so the scheduler places the pod
           # only on a node where it fits.
           resources:
             requests:

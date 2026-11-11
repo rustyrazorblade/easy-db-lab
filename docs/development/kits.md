@@ -343,6 +343,7 @@ All scripts and shell steps receive the following environment variables:
 | `EASY_DB_LAB_EXEC` | Path to the `easy-db-lab` binary |
 | `BACKUP_NAME` | First positional argument (backup and restore phases only) |
 | `EDL_KIT_LIB` | Absolute path of the shared kit shell library, `<workspace>/bin/edl-kit-lib.sh` (see [Shared shell library](#shared-shell-library)) |
+| `EDL_NODE_SSH` | `true` when the environment reaches its nodes over SSH (the workspace has an `sshConfig`), else `false`. Gate any node check over SSH on it; never read a failed `ssh` as "no SSH" |
 
 Args declared in `kit.yaml` under `args:` are also injected using their `variable` name. For
 example, `--workers` with `variable: WORKERS` becomes `$WORKERS`. An arg the user leaves out that

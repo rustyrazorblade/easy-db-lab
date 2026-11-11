@@ -9,7 +9,7 @@
 | AC | Starts from a Homebrew install with no source checkout | cassandra-kit: Install from the classpath | ✅ Covered |
 | AC | Data survives stop and start, or the gap is tracked in #985 | cassandra-kit: Stop then start keeps data; Stop keeps claims | ✅ Covered (D7; no #985 deferral needed) |
 | Risk | Memory per pod on small instances | cassandra-kit: Built-in cassandra-pods kit (`--memory` and `--heap` args) | ✅ Covered: request equals limit, default 4Gi (2Gi was OOM-killed in testing), heap derived from the limit |
-| Risk | Duplicate series when the AMI Cassandra also runs | cassandra-kit: AMI Cassandra already running | ✅ Covered |
+| Risk | Duplicate series when the AMI Cassandra also runs | cassandra-kit: AMI Cassandra already running; No node SSH; Node SSH and AMI Cassandra inactive; Node SSH and a node unreachable | ✅ Covered (checked only where `EDL_NODE_SSH=true`) |
 | Risk | Slow start with OrderedReady | cassandra-kit: Start times out | ✅ Covered (bounded wait with diagnostics) |
 | Risk | Apple Silicon: GHCR images are amd64-only | — | ⏭ Excluded: tracked by #1036 (multi-arch images); Docker Official images work |
 | Risk | Registry check needs network access | — | ✅ Covered: the check needs network access, and the nodes' pull may use credentials the check lacks; a 401/403 warns and continues, a 404 fails, any other failure stops start naming the image (design D6) |

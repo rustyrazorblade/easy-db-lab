@@ -10,10 +10,12 @@
 #     name is substituted into the StatefulSet as a YAML scalar and used as the snitch DC
 #   - --memory is not a whole number of Gi or Mi, or --heap is not smaller than --memory
 #   - a db node cannot be checked over ssh (fail fast: an unchecked node may be running the AMI Cassandra)
+#   - EDL_NODE_SSH is not true or false. With EDL_NODE_SSH=false (no node SSH) the AMI Cassandra
+#     check is skipped with one printed line.
 #   - the image's manifest is definitely not in its registry (404). A 401/403 (private image) warns
 #     and continues; any other answer fails with curl's own message.
 #
-# Reads CASSANDRA_VERSION, CASSANDRA_IMAGE, CASSANDRA_NODES, CASSANDRA_HEAP, CASSANDRA_MEMORY, CASSANDRA_DC, DB_NODE_COUNT.
+# Reads CASSANDRA_VERSION, CASSANDRA_IMAGE, CASSANDRA_NODES, CASSANDRA_HEAP, CASSANDRA_MEMORY, CASSANDRA_DC, DB_NODE_COUNT, EDL_NODE_SSH.
 set -euo pipefail
 
 fail() {
@@ -89,8 +91,19 @@ case "${image}" in
     ;;
 esac
 
+# EDL_NODE_SSH comes from easy-db-lab: true when the workspace can reach its nodes over SSH (it has
+# an sshConfig). Without node SSH there is no AMI Cassandra to collide with, so the check is skipped.
+case "${EDL_NODE_SSH:-}" in
+  true) check_nodes=yes ;;
+  false)
+    check_nodes=no
+    echo "Skipping the AMI Cassandra check: this environment has no SSH to its nodes, so no AMI Cassandra can run on them."
+    ;;
+  *) fail "ERROR: EDL_NODE_SSH is '${EDL_NODE_SSH:-}', not true or false; run this through easy-db-lab, which sets it." ;;
+esac
+
 i=0
-while [ "${i}" -lt "${DB_NODE_COUNT}" ]; do
+while [ "${check_nodes}" = yes ] && [ "${i}" -lt "${DB_NODE_COUNT}" ]; do
   # systemctl is-active exits 0 when active and 3 (or 4) when not; anything else, such as ssh's
   # 255, means the node could not be checked, which fails start rather than assuming it is clear.
   rc=0

@@ -289,11 +289,11 @@ internal class EC2InstanceServiceTest {
         // 3 subnets representing 3 AZs
         val subnets = listOf("subnet-a", "subnet-b", "subnet-c")
 
-        // Config with startIndex=1 (simulating adding to existing cluster with 1 instance)
+        // Config with ordinals 1 and 2 (simulating adding to existing cluster with 1 instance)
         val config =
             InstanceCreationConfig(
                 serverType = ServerType.Cassandra,
-                count = 2,
+                indexes = listOf(1, 2), // Adding instances starting from index 1
                 instanceType = "m5.large",
                 amiId = "ami-123",
                 keyName = "test-key",
@@ -303,7 +303,6 @@ internal class EC2InstanceServiceTest {
                 ebsConfig = null,
                 tags = mapOf("easy_cass_lab" to "1"),
                 clusterName = "test-cluster",
-                startIndex = 1, // Adding instances starting from index 1
             )
 
         // Mock runInstances to return a valid response
@@ -332,7 +331,7 @@ internal class EC2InstanceServiceTest {
 
         val capturedRequests = requestCaptor.allValues
 
-        // With startIndex=1:
+        // With ordinals 1 and 2:
         // - First instance (instanceIndex=1): subnet[1 % 3] = subnet-b
         // - Second instance (instanceIndex=2): subnet[2 % 3] = subnet-c
         assertThat(capturedRequests[0].subnetId()).isEqualTo("subnet-b")
@@ -340,15 +339,15 @@ internal class EC2InstanceServiceTest {
     }
 
     @Test
-    fun `createInstances should wrap around AZs correctly with startIndex`() {
+    fun `createInstances should wrap around AZs correctly from a later ordinal`() {
         // 3 subnets representing 3 AZs
         val subnets = listOf("subnet-a", "subnet-b", "subnet-c")
 
-        // Config with startIndex=3 (simulating adding to cluster with 3 existing instances)
+        // Config with ordinals 3 and 4 (simulating adding to cluster with 3 existing instances)
         val config =
             InstanceCreationConfig(
                 serverType = ServerType.Cassandra,
-                count = 2,
+                indexes = listOf(3, 4), // Adding instances starting from index 3
                 instanceType = "m5.large",
                 amiId = "ami-123",
                 keyName = "test-key",
@@ -358,7 +357,6 @@ internal class EC2InstanceServiceTest {
                 ebsConfig = null,
                 tags = mapOf("easy_cass_lab" to "1"),
                 clusterName = "test-cluster",
-                startIndex = 3, // Adding instances starting from index 3
             )
 
         val mockInstance =
@@ -385,7 +383,7 @@ internal class EC2InstanceServiceTest {
 
         val capturedRequests = requestCaptor.allValues
 
-        // With startIndex=3:
+        // With ordinals 3 and 4:
         // - First instance (instanceIndex=3): subnet[3 % 3] = subnet-a (wraps around)
         // - Second instance (instanceIndex=4): subnet[4 % 3] = subnet-b
         assertThat(capturedRequests[0].subnetId()).isEqualTo("subnet-a")
@@ -401,7 +399,7 @@ internal class EC2InstanceServiceTest {
         val config =
             InstanceCreationConfig(
                 serverType = serverType,
-                count = 1,
+                indexes = listOf(0),
                 instanceType = "m5.large",
                 amiId = "ami-123",
                 keyName = "test-key",
@@ -411,7 +409,6 @@ internal class EC2InstanceServiceTest {
                 ebsConfig = null,
                 tags = mapOf("easy_cass_lab" to "1"),
                 clusterName = "test-cluster",
-                startIndex = 0,
             )
 
         val mockInstance =
@@ -446,7 +443,7 @@ internal class EC2InstanceServiceTest {
         val config =
             InstanceCreationConfig(
                 serverType = ServerType.Cassandra,
-                count = 1,
+                indexes = listOf(0),
                 instanceType = "m5.large",
                 amiId = "ami-123",
                 keyName = "test-key",
@@ -456,7 +453,6 @@ internal class EC2InstanceServiceTest {
                 ebsConfig = null,
                 tags = mapOf("easy_cass_lab" to "1", "ClusterId" to "c-1"),
                 clusterName = "test-cluster",
-                startIndex = 0,
             )
         val instance =
             Instance

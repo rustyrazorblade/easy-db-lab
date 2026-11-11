@@ -18,8 +18,9 @@ import software.amazon.awssdk.services.ec2.model.Filter
 /**
  * The EC2 half of [Ec2AccountCapacity] against LocalStack's EC2: instance type facts, zone
  * offerings, network interface counts, free subnet addresses per zone, and the RunInstances dry
- * run. LocalStack does not serve Service Quotas, so the two quota reads are not exercised here;
- * their client is a mock no test calls.
+ * run, permitted and refused. LocalStack does not serve Service Quotas, so the two quota reads are
+ * not exercised here (their client is a mock no test calls); they, the Spot and family filters of
+ * the vCPUs in use, and the dry run's throttle retry are tested in `Ec2AccountCapacityTest`.
  *
  * The EC2 backend is shared with the other integration tests, so the VPC and its subnets are this
  * class's own, and the network interface count is compared before and after its own interfaces.
@@ -120,7 +121,7 @@ class Ec2AccountCapacityIntegrationTest {
         val config =
             InstanceCreationConfig(
                 serverType = ServerType.Cassandra,
-                count = 3,
+                indexes = listOf(0, 1, 2),
                 instanceType = "m5.xlarge",
                 amiId = ami,
                 keyName = "dry-run-key",
@@ -145,5 +146,35 @@ class Ec2AccountCapacityIntegrationTest {
                     )
                 }.reservations()
         assertThat(launched).isEmpty()
+    }
+
+    /**
+     * A launch AWS would refuse is reported with AWS's own code and message. A subnet that does
+     * not exist is refused by LocalStack as it is by EC2. The service-quota and Spot paths are
+     * covered at the SDK boundary in `Ec2AccountCapacityTest`.
+     */
+    @Test
+    fun `a dry run into a subnet that does not exist is refused with AWS's code and message`() {
+        val config =
+            InstanceCreationConfig(
+                serverType = ServerType.Cassandra,
+                indexes = listOf(0),
+                instanceType = "m5.xlarge",
+                amiId = "ami-00000000000000000",
+                keyName = "dry-run-key",
+                securityGroupId = "sg-dryrun",
+                subnetIds = listOf("subnet-00000000000000000"),
+                iamInstanceProfile = "dry-run-profile",
+                ebsConfig = null,
+                tags = mapOf("ClusterId" to "dry-run-refused"),
+                clusterName = "dry-run",
+            )
+
+        val answer = capacity.dryRunLaunch(config)
+
+        assertThat(answer).isInstanceOf(LaunchDryRun.Refused::class.java)
+        val refused = answer as LaunchDryRun.Refused
+        assertThat(refused.errorCode).isNotBlank().isNotEqualTo("DryRunOperation")
+        assertThat(refused.message).isNotBlank()
     }
 }

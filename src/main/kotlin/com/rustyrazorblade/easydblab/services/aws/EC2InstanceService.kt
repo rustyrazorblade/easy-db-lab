@@ -82,17 +82,18 @@ class EC2InstanceService(
     /**
      * Creates EC2 instances for a cluster based on the provided configuration.
      *
-     * Instance index `startIndex + i` is named `<serverType><index>` and goes to subnet
-     * `index % subnets`, so the round-robin across availability zones continues where an earlier
-     * `up` left off. The instances of one subnet are launched together, in RunInstances calls of
-     * at most [Constants.Scale.RUN_INSTANCES_CHUNK], instead of one call per node; within a call
-     * the instance with launch index `k` takes the call's `k`-th alias. A call's instances carry
-     * the shared tags at launch, and each gets its own `Name` tag right after, in CreateTags
-     * batches.
+     * Each ordinal in [InstanceCreationConfig.indexes] is named `<serverType><ordinal>` and goes to
+     * subnet `ordinal % subnets`, so a re-run fills exactly the ordinals an earlier `up` left
+     * missing, each in its own zone. The instances of one subnet are launched together, in
+     * RunInstances calls of at most [Constants.Scale.RUN_INSTANCES_CHUNK], instead of one call per
+     * node. A call launches an [OrdinalRun]: the instance with launch index `k` takes ordinal
+     * `first + k * stride`, and the call tags its instances with `first` and `stride`, so
+     * discovery knows each instance's alias from launch on. A gap in a subnet's ordinals starts a
+     * new call. Each instance also gets its own `Name` tag right after launch.
      *
      * [onLaunched] is called for each call's instances as soon as that call returns them, before
-     * any later call is made, so an `up` that fails part-way has recorded every instance it
-     * launched.
+     * they are named and before any later call is made, so an `up` that fails part-way, naming
+     * included, has recorded every instance it launched.
      *
      * @param config Instance creation configuration
      * @param onLaunched receives every batch of instances the moment they are launched
@@ -110,8 +111,8 @@ class EC2InstanceService(
         val instances =
             launchPlan(config).flatMap { batch ->
                 launchBatch(config, batch).also { launched ->
-                    nameInstances(launched)
                     onLaunched(launched)
+                    nameInstances(launched)
                 }
             }
 
@@ -120,24 +121,45 @@ class EC2InstanceService(
         return instances.sortedBy { it.alias.removePrefix(config.serverType.serverType).toIntOrNull() ?: 0 }
     }
 
-    /** One RunInstances call: the subnet and the aliases, in launch-index order, it launches. */
+    /** One RunInstances call: the subnet and the ordinals it launches. */
     private data class LaunchBatch(
         val subnetId: SubnetId,
-        val aliases: List<String>,
-    )
+        val run: OrdinalRun,
+        val serverType: ServerType,
+    ) {
+        /** The aliases, in launch-index order. */
+        val aliases: List<String> get() = run.ordinals.map { "${serverType.serverType}$it" }
+    }
 
     /**
-     * Splits the new instances by subnet (index `i` to subnet `i % subnets`), in subnet order of
-     * first use, and each subnet's share into chunks of at most [Constants.Scale.RUN_INSTANCES_CHUNK].
+     * Splits the new instances by subnet (ordinal `i` to subnet `i % subnets`), in subnet order of
+     * first use; each subnet's ordinals into runs `subnets` apart, a gap starting a new run; and
+     * each run into chunks of at most [Constants.Scale.RUN_INSTANCES_CHUNK].
      */
-    private fun launchPlan(config: InstanceCreationConfig): List<LaunchBatch> =
-        (config.startIndex until config.startIndex + config.count)
-            .groupBy { index -> config.subnetIds[index % config.subnetIds.size] }
+    private fun launchPlan(config: InstanceCreationConfig): List<LaunchBatch> {
+        val stride = config.subnetIds.size
+        return config.indexes
+            .sorted()
+            .groupBy { index -> config.subnetIds[index % stride] }
             .flatMap { (subnetId, indexes) ->
-                indexes
-                    .chunked(Constants.Scale.RUN_INSTANCES_CHUNK)
-                    .map { chunk -> LaunchBatch(subnetId, chunk.map { "${config.serverType.serverType}$it" }) }
+                arithmeticRuns(indexes, stride)
+                    .flatMap { it.chunked(Constants.Scale.RUN_INSTANCES_CHUNK) }
+                    .map { chunk -> LaunchBatch(subnetId, OrdinalRun(chunk.first(), stride, chunk.size), config.serverType) }
             }
+    }
+
+    /** [ascending] split wherever two neighbours are not exactly [stride] apart. */
+    private fun arithmeticRuns(
+        ascending: List<Int>,
+        stride: Int,
+    ): List<List<Int>> {
+        val runs = mutableListOf<MutableList<Int>>()
+        ascending.forEach { ordinal ->
+            val last = runs.lastOrNull()
+            if (last != null && ordinal - last.last() == stride) last += ordinal else runs += mutableListOf(ordinal)
+        }
+        return runs
+    }
 
     /**
      * Launches one [batch] with a single RunInstances call that asks for exactly its size. A call
@@ -149,7 +171,7 @@ class EC2InstanceService(
         batch: LaunchBatch,
     ): List<CreatedInstance> {
         val request =
-            RunInstancesRequests.build(config, batch.subnetId, batch.aliases.size, UUID.randomUUID().toString())
+            RunInstancesRequests.build(config, batch.subnetId, batch.run, UUID.randomUUID().toString())
         val response = withThrottleRetry("run-instances-${batch.aliases.first()}") { ec2Client.runInstances(request) }
 
         return response
@@ -463,11 +485,14 @@ class EC2InstanceService(
                     val tags = instance.tags().associate { it.key() to it.value() }
 
                     val serverTypeStr = tags["ServerType"]
-                    val alias = tags["Name"]
+                    // An instance whose Name tag never landed is named from its launch tags.
+                    val alias =
+                        tags["Name"]
+                            ?: OrdinalRun.ordinalOf(tags, instance.amiLaunchIndex())?.let { "$serverTypeStr$it" }
 
                     if (serverTypeStr == null || alias == null) {
                         log.warn {
-                            "Instance ${instance.instanceId()} missing required tags (ServerType=$serverTypeStr, Name=$alias)"
+                            "Instance ${instance.instanceId()} missing required tags (ServerType=$serverTypeStr, alias=$alias)"
                         }
                         return@mapNotNull null
                     }

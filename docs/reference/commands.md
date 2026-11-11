@@ -192,7 +192,7 @@ easy-db-lab down [vpc-id] [options]
 | `--all` | Tear down all VPCs tagged with easy_cass_lab |
 | `--packer` | Tear down the packer infrastructure VPC |
 | `--force` | Skip the pre-teardown save and tear down anyway; the signals not yet in S3 are listed before the confirmation prompt |
-| `--dry-run` | Preview the resources that would be deleted and change nothing: the cluster state, the SOCKS tunnel and the Tailscale device are left as they are, and the command exits 0 |
+| `--dry-run` | Preview the resources that would be deleted and change nothing: the cluster state, the SOCKS tunnel and the Tailscale device are left as they are, and the command exits 0. When the VPC is already gone and only the control node's Tailscale device is left, it reports that the device would be removed |
 
 **Save before teardown.** When you tear down the current cluster, `down` first previews the resources and asks for confirmation. The save stops Loki, Mimir and the OTel collector, so it runs only once the teardown is going ahead: a declined prompt, `--dry-run`, or a VPC with nothing left in it stops nothing. Then `down` saves everything the cluster holds that is not yet in S3, before it removes any infrastructure. The save has two phases.
 

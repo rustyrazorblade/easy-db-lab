@@ -73,12 +73,17 @@
 - [x] 8b.6 K3s runs with `--cluster-cidr=10.224.0.0/12`, `--service-cidr=10.240.0.0/16` and `node-cidr-mask-size=24`; `init --cidr` refuses and VPC auto-selection skips a block overlapping them
 - [x] 8b.7 `BoundedParallel` caps per-host work at `Constants.Scale.HOST_CONCURRENCY` (50) in `HostOperationsService` and K3s `setupAgents`; db instance setup, AxonOps and registry TLS run in parallel
 - [x] 8b.8 `SshReadinessWait` probes in parallel, re-probes only the hosts not ready, within one time budget; `CiliumNodeImageCheck` checks in parallel
-- [x] 8b.9 RunInstances launches one call per subnet with `minCount = maxCount = n`, chunked at 100, with a client token and a `RequestLimitExceeded` retry; aliases stay `<serverType><global index>`; `Name` tags go on after launch with CreateTags
+- [x] 8b.9 RunInstances launches one call per subnet with `minCount = maxCount = n`, chunked at 100, with a client token and a `RequestLimitExceeded` retry; aliases are `<serverType><ordinal>`; `Name` tags go on after launch with CreateTags
 - [x] 8b.10 The observability pod readiness wait lists once per poll under one deadline; the rollout deadline grows with the node count
 - [x] 8b.11 `services/aws/LaunchCapacityPreflight` checks, for the new instances only, the zone count, the zone offerings, the On-Demand standard vCPU quota, the network interface quota and the free subnet addresses, then a RunInstances dry run per server type once the subnets and security group exist; `Ec2AccountCapacity` reads them from EC2 and Service Quotas
 - [x] 8b.12 Add `awssdk-servicequotas`; grant `ec2:DescribeInstanceTypes`, `ec2:DescribeInstanceTypeOfferings`, `ec2:DescribeNetworkInterfaces` and `servicequotas:GetServiceQuota` in `iam-policy-ec2.json`
 - [x] 8b.13 `down --dry-run` changes nothing in any mode, the no-resources path included: no state update, no tunnel stop, no Tailscale removal, exit 0 (`TeardownOutcome.DryRun`)
 - [x] 8b.14 Document the capacity checks and large clusters in `docs/user-guide/large-clusters.md`, `docs/SUMMARY.md` and `docs/reference/commands.md`; update the package CLAUDE.md files
+- [x] 8b.15 Review round 1: `up` launches the ordinals missing from the existing aliases (`missingOrdinals`), in the instance specs, the launch and the capacity plan alike, and keeps hosts in ordinal order (`mergeByAlias`)
+- [x] 8b.16 Review round 1: each RunInstances call tags its instances with its first ordinal and stride; `onLaunched` runs before naming; discovery names an instance without a `Name` tag from those tags and its launch index
+- [x] 8b.17 Review round 1: the pod readiness wait ends at once on a terminal container state (sealed `PodsPoll`), and logs the PVCs only on a timeout
+- [x] 8b.18 Review round 1: `down --dry-run` with the VPC gone and a tailnet device recorded only previews the device removal (`Teardown.DryRunDeviceRemovalPreview`)
+- [x] 8b.19 Review round 1: the RunInstances dry run runs under the EC2 throttle retry
 
 ## 9. Verification
 

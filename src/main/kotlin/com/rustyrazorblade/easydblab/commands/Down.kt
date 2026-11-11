@@ -332,7 +332,8 @@ class Down : PicoBaseCommand() {
      *
      * A cluster whose VPC is already gone but whose tailnet device is still recorded is a previous
      * `down` that removed the infrastructure and failed only the device removal. There is no VPC
-     * left to tear down, so this succeeds with nothing deleted and lets the device removal retry.
+     * left to tear down, so this succeeds with nothing deleted and lets the device removal retry;
+     * under `--dry-run` it only reports that the device would be removed.
      */
     private fun teardownCurrentCluster(): TeardownOutcome {
         // Get the VPC ID from cluster state
@@ -344,7 +345,12 @@ class Down : PicoBaseCommand() {
         val clusterState = clusterStateManager.load()
         val currentVpcId = clusterState.vpcId
 
-        if (currentVpcId == null && !clusterState.tailscaleDeviceId.isNullOrBlank()) {
+        val deviceId = clusterState.tailscaleDeviceId
+        if (currentVpcId == null && !deviceId.isNullOrBlank()) {
+            if (dryRun) {
+                eventBus.emit(Event.Teardown.DryRunDeviceRemovalPreview(deviceId))
+                return TeardownOutcome.DryRun
+            }
             return TeardownOutcome.Finished(TeardownResult.success(emptyList()))
         }
 

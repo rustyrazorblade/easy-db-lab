@@ -14,10 +14,11 @@ services/aws/
 ├── EC2SecurityGroupService.kt # Security groups: find/create, authorize, exact revoke, revoke-all, describe, delete (implements SecurityGroupOperations)
 ├── Ec2TagSpecification.kt     # The tag specification both EC2 services put on what they create
 ├── SshIngressService.kt       # SSH ingress for ingress allow / revoke: IngressResult, AllowOutcome, RevokeOutcome
-├── EC2InstanceService.kt      # Instance lifecycle: per-subnet batched RunInstances (chunks of 100, client token, throttle retry), Name tags, waits in batches of 100, paginated discovery
-├── RunInstancesRequests.kt    # The RunInstances request, shared by the launch and its dry run
+├── EC2InstanceService.kt      # Instance lifecycle: launches the missing ordinals (`InstanceCreationConfig.indexes`), per-subnet batched RunInstances (runs of ordinals `subnets` apart, chunks of 100, client token, throttle retry, ordinal launch tags), reports each batch before naming it, Name tags, waits in batches of 100, paginated discovery that names an untagged instance from its ordinal tags
+├── InstanceSpecFactory.kt     # Instance specs; `missingOrdinals` is the one source of the ordinals to launch, for the launch and the capacity plan
+├── RunInstancesRequests.kt    # The RunInstances request, shared by the launch and its dry run; `OrdinalRun` (first ordinal, stride, count) and its launch tags
 ├── AccountCapacity.kt         # The account facts the pre-launch checks read (port), LaunchDryRun, InstanceFamily
-├── Ec2AccountCapacity.kt      # AccountCapacity from EC2 and Service Quotas
+├── Ec2AccountCapacity.kt      # AccountCapacity from EC2 and Service Quotas; the dry run is on the EC2 throttle retry
 ├── LaunchCapacityPreflight.kt # The pre-launch capacity checks and the launch dry run, for the new instances only
 ├── AMIService.kt              # AMI lifecycle: CRUD, pruning, validation (implements AMIValidator)
 ├── AMIValidationService.kt    # AMI validation types and exceptions
@@ -27,8 +28,7 @@ services/aws/
 ├── OpenSearchService.kt       # OpenSearch domain management
 ├── S3ObjectStore.kt           # S3 object operations (implements ObjectStore)
 ├── CompactorLeaseReader.kt    # Reads the account compactor's lease for `observability compactor status`, in the bucket's region
-├── BucketRegion.kt            # A bucket's region from GetBucketLocation; the compactor and the Grafana documents proxy sign for it
-└── InstanceSpecFactory.kt     # Instance spec creation
+└── BucketRegion.kt            # A bucket's region from GetBucketLocation; the compactor and the Grafana documents proxy sign for it
 ```
 
 ## What Belongs Here vs `providers/aws/`

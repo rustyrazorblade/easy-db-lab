@@ -71,9 +71,10 @@ class EC2InstanceServiceScaleTest {
         count: Int,
         startIndex: Int = 0,
         subnets: List<String> = listOf("subnet-a"),
+        indexes: List<Int> = (startIndex until startIndex + count).toList(),
     ) = InstanceCreationConfig(
         serverType = ServerType.Cassandra,
-        count = count,
+        indexes = indexes,
         instanceType = "i4i.xlarge",
         amiId = "ami-123",
         keyName = "key",
@@ -83,7 +84,6 @@ class EC2InstanceServiceScaleTest {
         ebsConfig = null,
         tags = mapOf("easy_cass_lab" to "1", "ClusterId" to "c-1"),
         clusterName = "lab",
-        startIndex = startIndex,
     )
 
     /** RunInstances answers with exactly the count asked for, each with a fresh id and launch index. */
@@ -158,6 +158,49 @@ class EC2InstanceServiceScaleTest {
         assertThat(requests.allValues.map { it.subnetId() to it.maxCount() })
             .containsExactly("subnet-c" to 3, "subnet-a" to 2, "subnet-b" to 2)
         assertThat(requests.allValues).allSatisfy { assertThat(it.minCount()).isEqualTo(it.maxCount()) }
+    }
+
+    @Test
+    fun `the missing ordinals a partial launch left are launched exactly, each in its own subnet`() {
+        runInstancesLaunchesWhatItIsAsked()
+        val subnets = listOf("subnet-a", "subnet-b", "subnet-c")
+
+        // db0, db3 and db6 exist: subnet a's batch launched and subnet b's failed.
+        val created = service.createInstances(config(count = 0, indexes = listOf(1, 2, 4, 5, 7, 8), subnets = subnets))
+
+        assertThat(created.map { it.alias }).containsExactly("db1", "db2", "db4", "db5", "db7", "db8")
+        assertThat(created.associate { it.alias to it.availabilityZone }).isEqualTo(
+            mapOf(
+                "db1" to "az-subnet-b",
+                "db2" to "az-subnet-c",
+                "db4" to "az-subnet-b",
+                "db5" to "az-subnet-c",
+                "db7" to "az-subnet-b",
+                "db8" to "az-subnet-c",
+            ),
+        )
+    }
+
+    @Test
+    fun `a gap in a subnet's ordinals starts a new call, so every call's ordinal tags name its instances`() {
+        runInstancesLaunchesWhatItIsAsked()
+
+        // Subnet a is missing db0, db3 and db9 (db6 exists): runs [0, 3] and [9].
+        service.createInstances(config(count = 0, indexes = listOf(0, 3, 9), subnets = listOf("a", "b", "c")))
+
+        val requests = argumentCaptor<RunInstancesRequest>()
+        verify(ec2, times(2)).runInstances(requests.capture())
+        val ordinalTags =
+            requests.allValues.map { request ->
+                val tags =
+                    request
+                        .tagSpecifications()
+                        .single { it.resourceType() == ResourceType.INSTANCE }
+                        .tags()
+                        .associate { it.key() to it.value() }
+                Triple(tags[Constants.Scale.FIRST_ORDINAL_TAG], tags[Constants.Scale.ORDINAL_STRIDE_TAG], request.maxCount())
+            }
+        assertThat(ordinalTags).containsExactly(Triple("0", "3", 2), Triple("9", "3", 1))
     }
 
     @Test
@@ -237,6 +280,61 @@ class EC2InstanceServiceScaleTest {
         assertThat(reported.map { it.alias to it.instanceId }).containsExactly("db0" to "i-0")
     }
 
+    /**
+     * CreateTags fails for good after a batch launched. The batch must still reach state, and a
+     * re-run's discovery must still find and name those instances from what RunInstances tagged
+     * them with at launch, so it does not launch a duplicate of any of them.
+     */
+    @Test
+    fun `instances whose Name tag never landed are reported, and discovery names them from their launch tags`() {
+        runInstancesLaunchesWhatItIsAsked()
+        whenever(ec2.createTags(any<CreateTagsRequest>())).thenThrow(
+            Ec2Exception
+                .builder()
+                .statusCode(400)
+                .awsErrorDetails(AwsErrorDetails.builder().errorCode("UnauthorizedOperation").build())
+                .build(),
+        )
+        val reported = mutableListOf<CreatedInstance>()
+
+        assertThatThrownBy {
+            service.createInstances(config(count = 0, indexes = listOf(1, 2, 4, 5, 7, 8), subnets = listOf("a", "b", "c"))) {
+                reported += it
+            }
+        }.isInstanceOf(Ec2Exception::class.java)
+
+        // The first batch launched, then its naming failed: it is in state all the same.
+        assertThat(reported.map { it.alias }).containsExactly("db1", "db4", "db7")
+
+        // What EC2 answers for every launched instance: the launch tags, and no Name tag.
+        val requests = argumentCaptor<RunInstancesRequest>()
+        verify(ec2, atLeastOnce()).runInstances(requests.capture())
+        var id = 0
+        val described =
+            requests.allValues.flatMap { request ->
+                val tags = request.tagSpecifications().single { it.resourceType() == ResourceType.INSTANCE }.tags()
+                (0 until request.maxCount()).map { launchIndex ->
+                    Instance
+                        .builder()
+                        .instanceId("i-${++id}")
+                        .amiLaunchIndex(launchIndex)
+                        .state(InstanceState.builder().name(InstanceStateName.PENDING).build())
+                        .placement(Placement.builder().availabilityZone("az-${request.subnetId()}").build())
+                        .tags(tags)
+                        .build()
+                }
+            }
+        whenever(ec2.describeInstances(any<DescribeInstancesRequest>())).thenReturn(reservation(*described.toTypedArray()))
+
+        val found = service.findInstancesByClusterId("c-1").getValue(ServerType.Cassandra)
+
+        assertThat(found.map { it.alias }).containsExactlyInAnyOrder("db1", "db4", "db7")
+        assertThat(found.associate { it.alias to it.availabilityZone })
+            .containsEntry("db1", "az-b")
+            .containsEntry("db4", "az-b")
+            .containsEntry("db7", "az-b")
+    }
+
     @Test
     fun `a throttled RunInstances is retried with the same client token, so it launches once`() {
         var calls = 0
@@ -261,6 +359,69 @@ class EC2InstanceServiceScaleTest {
         val requests = argumentCaptor<RunInstancesRequest>()
         verify(ec2, times(2)).runInstances(requests.capture())
         assertThat(requests.firstValue.clientToken()).isNotBlank().isEqualTo(requests.secondValue.clientToken())
+    }
+
+    private fun runInstancesFailsSecondCallWith(error: Ec2Exception) {
+        var calls = 0
+        whenever(ec2.runInstances(any<RunInstancesRequest>())).thenAnswer { invocation ->
+            calls++
+            if (calls >= 2) throw error
+            val request = invocation.getArgument<RunInstancesRequest>(0)
+            RunInstancesResponse
+                .builder()
+                .instances(
+                    Instance
+                        .builder()
+                        .instanceId("i-${request.subnetId()}")
+                        .amiLaunchIndex(0)
+                        .placement(Placement.builder().availabilityZone("us-west-2a").build())
+                        .build(),
+                ).build()
+        }
+    }
+
+    private fun ec2Error(
+        status: Int,
+        code: String,
+    ): Ec2Exception =
+        Ec2Exception
+            .builder()
+            .statusCode(status)
+            .awsErrorDetails(AwsErrorDetails.builder().errorCode(code).build())
+            .build() as Ec2Exception
+
+    @Test
+    fun `an InsufficientInstanceCapacity refusal is not retried`() {
+        runInstancesFailsSecondCallWith(ec2Error(400, "InsufficientInstanceCapacity"))
+
+        assertThatThrownBy { service.createInstances(config(count = 2, subnets = listOf("subnet-a", "subnet-b"))) }
+            .isInstanceOf(Ec2Exception::class.java)
+
+        verify(ec2, times(2)).runInstances(any<RunInstancesRequest>())
+    }
+
+    @Test
+    fun `a server error that is not a throttle is retried`() {
+        var calls = 0
+        whenever(ec2.runInstances(any<RunInstancesRequest>())).thenAnswer {
+            calls++
+            if (calls == 1) throw ec2Error(503, "Unavailable")
+            RunInstancesResponse
+                .builder()
+                .instances(
+                    Instance
+                        .builder()
+                        .instanceId("i-1")
+                        .amiLaunchIndex(0)
+                        .placement(Placement.builder().availabilityZone("us-west-2a").build())
+                        .build(),
+                ).build()
+        }
+
+        val created = service.createInstances(config(count = 1))
+
+        assertThat(created.map { it.instanceId }).containsExactly("i-1")
+        verify(ec2, times(2)).runInstances(any<RunInstancesRequest>())
     }
 
     @Test
@@ -319,6 +480,50 @@ class EC2InstanceServiceScaleTest {
         verify(ec2, times(3)).describeInstances(requests.capture())
         // Once i-1 answered running, only i-2 was asked about again.
         assertThat(requests.thirdValue.instanceIds()).containsExactly("i-2")
+    }
+
+    @Test
+    fun `the running wait over 250 instances asks in batches of 100, and later polls only about the ones not running`() {
+        val ids = (0 until 250).map { "i-$it" }
+        val slow = setOf("i-7", "i-150", "i-249")
+        var poll = 0
+        whenever(ec2.describeInstances(any<DescribeInstancesRequest>())).thenAnswer { invocation ->
+            val request = invocation.getArgument<DescribeInstancesRequest>(0)
+            // The first full poll leaves three instances pending; the next one finds them running.
+            val firstPoll = poll++ < 3
+            reservation(
+                *request
+                    .instanceIds()
+                    .filterNot { firstPoll && it in slow }
+                    .map(::running)
+                    .toTypedArray(),
+            )
+        }
+
+        val details = service.waitForInstancesRunning(ids)
+
+        assertThat(details.map { it.instanceId }).containsExactlyElementsOf(ids)
+        val requests = argumentCaptor<DescribeInstancesRequest>()
+        verify(ec2, times(4)).describeInstances(requests.capture())
+        assertThat(requests.allValues.map { it.instanceIds().size }).containsExactly(100, 100, 50, 3)
+        assertThat(requests.allValues.last().instanceIds()).containsExactlyInAnyOrderElementsOf(slow)
+    }
+
+    @Test
+    fun `refreshing the IPs of 250 instances asks in batches of 100`() {
+        whenever(ec2.describeInstances(any<DescribeInstancesRequest>())).thenAnswer { invocation ->
+            val request = invocation.getArgument<DescribeInstancesRequest>(0)
+            reservation(*request.instanceIds().map(::running).toTypedArray())
+        }
+        val created = (0 until 250).map { CreatedInstance("i-$it", "", "10.0.0.1", "db$it", "us-west-2a", ServerType.Cassandra) }
+
+        val updated = service.updateInstanceIps(created)
+
+        val requests = argumentCaptor<DescribeInstancesRequest>()
+        verify(ec2, times(3)).describeInstances(requests.capture())
+        assertThat(requests.allValues.map { it.instanceIds().size }).containsExactly(100, 100, 50)
+        assertThat(requests.allValues.flatMap { it.instanceIds() }).containsExactlyElementsOf(created.map { it.instanceId })
+        assertThat(updated.map { it.publicIp }).containsOnly("54.0.0.1")
     }
 
     @Test

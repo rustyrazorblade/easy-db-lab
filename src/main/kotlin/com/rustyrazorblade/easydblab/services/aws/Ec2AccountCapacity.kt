@@ -2,7 +2,9 @@ package com.rustyrazorblade.easydblab.services.aws
 
 import com.rustyrazorblade.easydblab.Constants
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
+import com.rustyrazorblade.easydblab.providers.aws.RetryUtil
 import com.rustyrazorblade.easydblab.providers.aws.withAwsRetry
+import io.github.resilience4j.retry.Retry
 import software.amazon.awssdk.services.ec2.Ec2Client
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypeOfferingsRequest
 import software.amazon.awssdk.services.ec2.model.DescribeInstanceTypesRequest
@@ -15,15 +17,18 @@ import software.amazon.awssdk.services.ec2.model.InstanceTypeInfo
 import software.amazon.awssdk.services.ec2.model.LocationType
 import software.amazon.awssdk.services.servicequotas.ServiceQuotasClient
 import software.amazon.awssdk.services.servicequotas.model.GetServiceQuotaRequest
+import java.time.Duration
 import java.util.UUID
 
 /**
  * [AccountCapacity] read from EC2 and Service Quotas. Every listing reads all its pages, and
- * every call runs under the standard AWS retry.
+ * every call runs under the standard AWS retry; the RunInstances dry run runs under the EC2
+ * throttle retry ([throttleBackoff] is its first backoff), as the real launch does.
  */
 class Ec2AccountCapacity(
     private val ec2Client: Ec2Client,
     private val serviceQuotasClient: ServiceQuotasClient,
+    private val throttleBackoff: Duration = Duration.ofMillis(Constants.Scale.THROTTLE_BACKOFF_BASE_MS),
 ) : AccountCapacity {
     override fun instanceTypes(instanceTypes: Collection<String>): Map<String, InstanceTypeFacts> {
         if (instanceTypes.isEmpty()) return emptyMap()
@@ -114,9 +119,12 @@ class Ec2AccountCapacity(
     }
 
     override fun dryRunLaunch(config: InstanceCreationConfig): LaunchDryRun {
-        val request = RunInstancesRequests.build(config, config.subnetIds.first(), 1, UUID.randomUUID().toString(), dryRun = true)
+        val run = OrdinalRun(first = config.indexes.firstOrNull() ?: 0, stride = config.subnetIds.size, count = 1)
+        val request = RunInstancesRequests.build(config, config.subnetIds.first(), run, UUID.randomUUID().toString(), dryRun = true)
+        // A throttle or a 5xx is retried; only the final answer is mapped to Permitted or Refused.
+        val retry = Retry.of("dry-run-${config.serverType.serverType}", RetryUtil.createEc2ThrottleRetryConfig<Any>(throttleBackoff))
         return try {
-            ec2Client.runInstances(request)
+            Retry.decorateSupplier(retry) { ec2Client.runInstances(request) }.get()
             // A dry run always answers with an error; a success would mean an instance was launched.
             error("RunInstances with DryRun returned without DryRunOperation; check the instances of ${config.clusterName}.")
         } catch (e: Ec2Exception) {

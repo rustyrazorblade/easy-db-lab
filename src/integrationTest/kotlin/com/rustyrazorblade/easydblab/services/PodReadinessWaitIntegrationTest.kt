@@ -4,6 +4,8 @@ import com.rustyrazorblade.easydblab.K3sDiagnostics.clusterDiagnostics
 import com.rustyrazorblade.easydblab.SharedK3s
 import com.rustyrazorblade.easydblab.configuration.ClusterHost
 import com.rustyrazorblade.easydblab.events.EventBus
+import io.fabric8.kubernetes.api.model.Pod
+import io.fabric8.kubernetes.api.model.PodBuilder
 import io.fabric8.kubernetes.api.model.batch.v1.Job
 import io.fabric8.kubernetes.api.model.batch.v1.JobBuilder
 import io.fabric8.kubernetes.client.KubernetesClient
@@ -33,6 +35,8 @@ class PodReadinessWaitIntegrationTest {
         private const val IMAGE = SharedK3s.BUSYBOX_IMAGE
         private const val JOB_TIMEOUT_SECONDS = 180L
         private const val WAIT_TIMEOUT_SECONDS = 20
+        private const val LONG_WAIT_TIMEOUT_SECONDS = 600
+        private const val FAIL_FAST_LIMIT_SECONDS = 30L
     }
 
     private val controlHost =
@@ -124,6 +128,54 @@ class PodReadinessWaitIntegrationTest {
 
         awaitNamespaceReady()
     }
+
+    /**
+     * A pod stuck pulling an image that does not exist will never become Ready. The wait must
+     * fail within a few polls naming the BackOff, not retry the failure until its deadline: at
+     * 1,000 nodes the deadline is over half an hour.
+     */
+    @Test
+    fun `a pod that cannot pull its image fails the wait at once, long before the deadline`() {
+        val namespace = "readiness-wait-backoff"
+        SharedK3s.createNamespace(namespace)
+        val unpullable =
+            PodBuilder()
+                .withNewMetadata()
+                .withName("unpullable")
+                .withNamespace(namespace)
+                .endMetadata()
+                .withNewSpec()
+                .addNewContainer()
+                .withName("unpullable")
+                .withImage("easy-db-lab.invalid/no-such-image:never")
+                .endContainer()
+                .endSpec()
+                .build()
+        client.resource(unpullable).create()
+        client
+            .pods()
+            .inNamespace(namespace)
+            .withName("unpullable")
+            .waitUntilCondition(::isBackingOff, JOB_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+
+        val started = System.nanoTime()
+        val result = ops.waitForPodsReady(controlHost, LONG_WAIT_TIMEOUT_SECONDS, namespace)
+        val waited = Duration.ofNanos(System.nanoTime() - started)
+
+        assertThat(result.exceptionOrNull())
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("unpullable")
+            .hasMessageFindingMatch("ErrImagePull|ImagePullBackOff")
+        assertThat(waited).isLessThan(Duration.ofSeconds(FAIL_FAST_LIMIT_SECONDS))
+        client.namespaces().withName(namespace).delete()
+    }
+
+    private fun isBackingOff(pod: Pod?): Boolean =
+        pod
+            ?.status
+            ?.containerStatuses
+            .orEmpty()
+            .any { it.state?.waiting?.reason in K8sPodUtils.TERMINAL_FAILURE_REASONS }
 
     @Test
     fun `a Job pod that failed does not hold up the namespace readiness wait`() {

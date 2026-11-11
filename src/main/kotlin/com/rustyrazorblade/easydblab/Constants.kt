@@ -156,6 +156,15 @@ object Constants {
 
         /** Extra observability rollout wait per cluster node; DaemonSets roll one pod per node. */
         const val ROLLOUT_PER_NODE_SECONDS = 2L
+
+        /**
+         * Launch tag: the ordinal of the instance with launch index 0 in its RunInstances call.
+         * With [ORDINAL_STRIDE_TAG] it names an instance whose `Name` tag never landed.
+         */
+        const val FIRST_ORDINAL_TAG = "easydblab/first-ordinal"
+
+        /** Launch tag: how far apart the ordinals of one RunInstances call's instances are. */
+        const val ORDINAL_STRIDE_TAG = "easydblab/ordinal-stride"
     }
 
     /**

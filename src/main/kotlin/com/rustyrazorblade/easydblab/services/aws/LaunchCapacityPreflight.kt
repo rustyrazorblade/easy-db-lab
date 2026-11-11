@@ -9,15 +9,17 @@ import com.rustyrazorblade.easydblab.network.CidrBlock
 import com.rustyrazorblade.easydblab.providers.aws.InstanceCreationConfig
 
 /**
- * The instances of one server type that `up` is about to launch: [newCount] of them, with the
- * indexes `startIndex until startIndex + newCount`. Instances that already exist are not in it.
+ * The instances of one server type that `up` is about to launch: one per ordinal in [indexes],
+ * the same ordinals the launch itself uses. Instances that already exist are not in it.
  */
 data class LaunchGroup(
     val serverType: ServerType,
     val instanceType: String,
-    val newCount: Int,
-    val startIndex: Int,
-)
+    val indexes: List<Int>,
+) {
+    /** How many instances of the group are launched. */
+    val newCount: Int get() = indexes.size
+}
 
 /**
  * Everything the capacity checks need to know about a launch.
@@ -188,7 +190,7 @@ class LaunchCapacityPreflight(
     private fun zoneIndexes(
         group: LaunchGroup,
         plan: CapacityPlan,
-    ): List<Int> = (group.startIndex until group.startIndex + group.newCount).map { it % plan.zones.size }
+    ): List<Int> = group.indexes.map { it % plan.zones.size }
 
     private fun fullZone(
         plan: CapacityPlan,

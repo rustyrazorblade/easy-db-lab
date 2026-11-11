@@ -54,6 +54,7 @@ import com.rustyrazorblade.easydblab.services.aws.InstanceSpecFactory
 import com.rustyrazorblade.easydblab.services.aws.LaunchCapacityPreflight
 import com.rustyrazorblade.easydblab.services.aws.LaunchGroup
 import com.rustyrazorblade.easydblab.services.aws.OpenSearchService
+import com.rustyrazorblade.easydblab.services.aws.missingOrdinals
 import com.rustyrazorblade.easydblab.services.documents.TestDocumentService
 import com.rustyrazorblade.easydblab.services.launches
 import com.rustyrazorblade.easydblab.services.mergeByAlias
@@ -367,9 +368,10 @@ class Up(
     }
 
     /**
-     * What the capacity checks need: each server type's instances still to launch, numbered on
-     * from the ones [existingInstances] found, and where they land. Without a VPC yet the
-     * subnets are sized from the CIDR `up` will use; an auto-selected block is always a /16.
+     * What the capacity checks need: each server type's instances still to launch, the ordinals
+     * none of [existingInstances] holds (the same ones the launch fills), and where they land.
+     * Without a VPC yet the subnets are sized from the CIDR `up` will use; an auto-selected
+     * block is always a /16.
      */
     private fun capacityPlan(
         initConfig: InitConfig,
@@ -379,10 +381,8 @@ class Up(
             serverType: ServerType,
             instanceType: String,
             configured: Int,
-        ): LaunchGroup {
-            val existing = existingInstances[serverType].orEmpty().size
-            return LaunchGroup(serverType, instanceType, (configured - existing).coerceAtLeast(0), existing)
-        }
+        ): LaunchGroup =
+            LaunchGroup(serverType, instanceType, missingOrdinals(serverType, configured, existingInstances[serverType].orEmpty()))
         return CapacityPlan(
             groups =
                 listOf(

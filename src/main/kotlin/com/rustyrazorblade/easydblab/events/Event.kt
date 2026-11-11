@@ -4251,6 +4251,21 @@ sealed interface Event {
             override fun toDisplayString(): String = "\n=== DRY RUN - Resources that would be deleted ===\n$summary\n=== End DRY RUN ===\n"
         }
 
+        /**
+         * `down --dry-run` on a cluster whose VPC is already gone but whose control node is still
+         * a tailnet device: the only thing a real `down` would do is remove [deviceId].
+         */
+        @Serializable
+        @SerialName("Teardown.DryRunDeviceRemovalPreview")
+        data class DryRunDeviceRemovalPreview(
+            val deviceId: String,
+        ) : Teardown {
+            override fun toDisplayString(): String =
+                "\n=== DRY RUN - The VPC is already gone ===\n" +
+                    "Tailscale device $deviceId (the control node) would be removed from the tailnet\n" +
+                    "=== End DRY RUN ===\n"
+        }
+
         @Serializable
         @SerialName("Teardown.ConfirmationPrompt")
         data class ConfirmationPrompt(

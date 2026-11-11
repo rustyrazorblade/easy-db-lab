@@ -24,6 +24,7 @@ import com.rustyrazorblade.easydblab.proxy.SocksProxyState
 import com.rustyrazorblade.easydblab.services.InstanceProvisioningConfig
 import com.rustyrazorblade.easydblab.services.K3sSetupResult
 import com.rustyrazorblade.easydblab.services.LocalTailscaleState
+import com.rustyrazorblade.easydblab.services.ProvisioningCallbacks
 import com.rustyrazorblade.easydblab.services.ProvisioningResult
 import com.rustyrazorblade.easydblab.services.RegistryService
 import com.rustyrazorblade.easydblab.services.SsmTool
@@ -36,6 +37,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import org.koin.dsl.module
 import org.mockito.kotlin.any
 import org.mockito.kotlin.argumentCaptor
@@ -226,6 +229,91 @@ class UpTest : UpTestFixture() {
                 .neededCount,
         ).isEqualTo(2)
         assertThat(existing.firstValue[ServerType.Cassandra]?.map { it.alias }).containsExactly("db0")
+    }
+
+    /**
+     * A partial launch persisted db0, db3 and db6 (subnet a's batch) before subnet b's failed. The
+     * re-run fills exactly the missing ordinals, and the capacity checks count the same ones, in
+     * the zones they land in: only b and c, so a type zone a no longer offers does not stop it.
+     */
+    @Test
+    fun `up fills the ordinals a partial launch left missing, and checks capacity for exactly those`() {
+        whenever(mockClusterStateManager.load()).thenReturn(happyState(cassandraInstances = 9))
+        val existing =
+            listOf(0, 3, 6).map {
+                DiscoveredInstance(
+                    instanceId = "i-db$it",
+                    publicIp = "54.1.1.$it",
+                    privateIp = "10.0.0.$it",
+                    alias = "db$it",
+                    availabilityZone = "us-west-2a",
+                    serverType = ServerType.Cassandra,
+                    state = "running",
+                )
+            }
+        whenever(mockEc2InstanceService.findInstancesByClusterId(any())).thenReturn(mapOf(ServerType.Cassandra to existing))
+        accountCapacity.offeredZones = mapOf("i4i.xlarge" to setOf("us-west-2b", "us-west-2c"))
+        val events = captureEvents()
+
+        assertThatCode { newUp().execute() }.doesNotThrowAnyException()
+
+        val config = argumentCaptor<InstanceProvisioningConfig>()
+        verify(mockClusterProvisioningService).provisionAll(config.capture(), any(), any(), any())
+        assertThat(
+            config.firstValue.specs
+                .single { it.serverType == ServerType.Cassandra }
+                .missingIndexes,
+        ).containsExactly(1, 2, 4, 5, 7, 8)
+        val verified = events.filterIsInstance<Event.Provision.LaunchCapacityVerified>().single()
+        // Six db nodes, plus the control and app node this fixture launches.
+        assertThat(verified.newNodes).isEqualTo(8)
+    }
+
+    /**
+     * Provisioning reports each batch twice: at launch with no public IP, then with its final IPs.
+     * State already holds db0..db2. Each report must merge by alias into what state holds: the
+     * hosts saved are db0..db4, in order, once each, and db3 and db4 end with their final IPs.
+     * The gap case is the same with db1 missing: the hosts fill in by alias, never duplicated.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = ["contiguous", "gap"])
+    fun `hosts reported at launch and again with final IPs are saved once each, by alias`(case: String) {
+        val held = if (case == "gap") listOf(0, 2) else listOf(0, 1, 2)
+        val launched = if (case == "gap") listOf(1, 3, 4) else listOf(3, 4)
+
+        fun host(
+            ordinal: Int,
+            publicIp: String,
+        ) = ClusterHost(publicIp, "10.0.0.$ordinal", "db$ordinal", "us-west-2a", "i-db$ordinal")
+        val state =
+            happyState(cassandraInstances = 5).apply {
+                updateHosts(mapOf(ServerType.Cassandra to held.map { host(it, "54.0.0.$it") }))
+            }
+        whenever(mockClusterStateManager.load()).thenReturn(state)
+        val saves = Collections.synchronizedList(mutableListOf<List<ClusterHost>>())
+        whenever(mockClusterStateManager.save(any())).thenAnswer {
+            saves += it.getArgument<ClusterState>(0).hosts[ServerType.Cassandra].orEmpty()
+            Unit
+        }
+        whenever(mockClusterProvisioningService.provisionAll(any(), any(), any(), any())).thenAnswer { invocation ->
+            val callbacks = invocation.getArgument<ProvisioningCallbacks>(3)
+            callbacks.onHostsCreated(ServerType.Cassandra, launched.map { host(it, "") })
+            callbacks.onHostsCreated(ServerType.Cassandra, launched.map { host(it, "54.9.9.$it") })
+            ProvisioningResult(hosts = happyHosts(), errors = emptyMap())
+        }
+
+        // Only the callbacks are under test; what follows provisioning is the fixture's.
+        runCatching { newUp().execute() }
+
+        val afterLaunch = saves.first { hosts -> hosts.any { it.alias == "db${launched.last()}" } }
+        val afterFinalIps = saves[saves.indexOf(afterLaunch) + 1]
+        val expectedOrder = (held + launched).sorted().map { "db$it" }
+        assertThat(afterLaunch.map { it.alias }).containsExactlyElementsOf(expectedOrder)
+        assertThat(afterFinalIps.map { it.alias }).containsExactlyElementsOf(expectedOrder)
+        assertThat(afterLaunch.filter { it.alias in launched.map { o -> "db$o" } }.map { it.publicIp }).containsOnly("")
+        assertThat(afterFinalIps.associate { it.alias to it.publicIp })
+            .containsAllEntriesOf(launched.associate { "db$it" to "54.9.9.$it" })
+            .containsAllEntriesOf(held.associate { "db$it" to "54.0.0.$it" })
     }
 
     @Test

@@ -6,9 +6,10 @@ once, naming what is short, instead of part-way through the launch.
 
 ## Pre-launch capacity checks
 
-The checks count only the instances `up` is about to launch: the configured count of each node
-type minus the instances of that type already running or pending. A re-run of `up` with a
-larger count checks only the added nodes. When nothing is to be launched, `up` makes no capacity
+The checks count only the instances `up` is about to launch: the node numbers, from 0 up to the
+configured count, that no running or pending instance of that type already has. A re-run of `up`
+with a larger count checks only the added nodes, and a re-run after a partial launch checks only
+the nodes that are missing, in the zones they go to. When nothing is to be launched, `up` makes no capacity
 call.
 
 | Check | What it compares |
@@ -55,9 +56,17 @@ after an upgrade so your user has it.
 
 - Instances are launched with one `RunInstances` call per subnet, at most 100 instances a call.
   A throttled call is retried with the same client token, so a retry cannot launch a second set.
-  Node names stay `db0`, `db1`, and so on, and a re-run continues the numbering.
-- Each instance is written to the cluster state as soon as AWS returns it. If `up` fails later,
-  `down` still finds every instance it launched, and a re-run does not launch them again.
+  Node names stay `db0`, `db1`, and so on, and node `dbN` goes to subnet `N % subnets`. A
+  re-run launches only the numbers that are missing: after a launch that failed part-way (for
+  example `db0`, `db3` and `db6` of 9), it fills in `db1`, `db2`, `db4`, `db5`, `db7` and `db8`.
+- Each instance is written to the cluster state as soon as AWS returns it, before it is named.
+  If `up` fails later, even while naming the instances, `down` still finds every instance it
+  launched, and a re-run does not launch them again. Each instance carries launch tags
+  (`easydblab/first-ordinal`, `easydblab/ordinal-stride`) from which its name is known even if
+  its `Name` tag was never set.
+- The pod readiness wait fails as soon as a pod's container is in `CrashLoopBackOff`,
+  `ImagePullBackOff`, `ErrImagePull` or `Error`, naming the pod and the reason, instead of
+  waiting out the deadline.
 - Per-node work (setup, the SSH readiness wait, K3s agents, registry TLS) runs on at most 50
   nodes at once.
 - After K3s starts, `up` waits until every node is registered. The wait grows with the node

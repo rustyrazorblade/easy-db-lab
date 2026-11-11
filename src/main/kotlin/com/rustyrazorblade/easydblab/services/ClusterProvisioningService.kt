@@ -44,13 +44,13 @@ data class InfrastructureContext(
 )
 
 /**
- * The launch of [InstanceSpec]'s missing instances: [InstanceSpec.neededCount] of them, numbered
- * on from the ones that exist. `up`'s pre-launch dry run asks AWS about exactly this request.
+ * The launch of [InstanceSpec]'s missing instances: the ordinals in [InstanceSpec.missingIndexes].
+ * `up`'s pre-launch dry run asks AWS about exactly this request.
  */
 fun InstanceSpec.creationConfig(infraContext: InfrastructureContext): InstanceCreationConfig =
     InstanceCreationConfig(
         serverType = serverType,
-        count = neededCount,
+        indexes = missingIndexes,
         instanceType = instanceType,
         amiId = amiId,
         keyName = infraContext.keyName,
@@ -60,7 +60,6 @@ fun InstanceSpec.creationConfig(infraContext: InfrastructureContext): InstanceCr
         ebsConfig = ebsConfig,
         tags = infraContext.tags,
         clusterName = infraContext.clusterName,
-        startIndex = existingCount,
     )
 
 /** The launches of every server type that has instances missing, as provisioning will make them. */
@@ -195,9 +194,11 @@ interface ClusterProvisioningService {
 }
 
 /**
- * [existing] with [updates] applied by alias: a host already present is replaced by its update in
- * place, and a new one is appended. A host is reported once at launch and again with its final
- * IPs, so merging by alias keeps one entry per instance.
+ * [existing] with [updates] applied by alias: a host already present is replaced by its update,
+ * and a new one is added. A host is reported once at launch and again with its final IPs, so
+ * merging by alias keeps one entry per instance. The result is in ordinal order (the number
+ * after the alias's letters), so a host that fills a gap a partial launch left (`db1` between
+ * `db0` and `db2`) takes its place instead of going last.
  */
 internal fun mergeByAlias(
     existing: List<ClusterHost>?,
@@ -206,7 +207,8 @@ internal fun mergeByAlias(
     val byAlias = updates.associateBy { it.alias }
     val replaced = existing.orEmpty().map { byAlias[it.alias] ?: it }
     val known = replaced.map { it.alias }.toSet()
-    return replaced + updates.filter { it.alias !in known }
+    return (replaced + updates.filter { it.alias !in known })
+        .sortedBy { host -> host.alias.dropWhile { it.isLetter() }.toIntOrNull() ?: Int.MAX_VALUE }
 }
 
 /**

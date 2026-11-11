@@ -40,7 +40,7 @@ class LaunchCapacityPreflightTest {
         newCount: Int,
         startIndex: Int = 0,
         instanceType: String = "i4i.xlarge",
-    ) = LaunchGroup(ServerType.Cassandra, instanceType, newCount, startIndex)
+    ) = LaunchGroup(ServerType.Cassandra, instanceType, (startIndex until startIndex + newCount).toList())
 
     private fun plan(
         vararg groups: LaunchGroup,
@@ -61,7 +61,7 @@ class LaunchCapacityPreflightTest {
 
     @Test
     fun `a cluster the account can hold passes every check`() {
-        preflight.verifyCapacity(plan(db(3), LaunchGroup(ServerType.Control, "m5d.xlarge", 1, 0)))
+        preflight.verifyCapacity(plan(db(3), LaunchGroup(ServerType.Control, "m5d.xlarge", listOf(0))))
 
         assertThat(events.filter { it.isError() }).isEmpty()
         assertThat(eventsOf<Event.Provision.LaunchCapacityVerified>().single().newNodes).isEqualTo(4)
@@ -232,7 +232,7 @@ class LaunchCapacityPreflightTest {
 
             // db0, db3 and app0 land in zone a: 3 x 17 = 51.
             assertThatThrownBy {
-                preflight.verifyCapacity(plan(db(4), LaunchGroup(ServerType.Stress, "c6id.2xlarge", 1, 0)))
+                preflight.verifyCapacity(plan(db(4), LaunchGroup(ServerType.Stress, "c6id.2xlarge", listOf(0))))
             }.hasMessageContaining("us-west-2a")
         }
 
@@ -284,7 +284,7 @@ class LaunchCapacityPreflightTest {
             count: Int,
         ) = InstanceCreationConfig(
             serverType = serverType,
-            count = count,
+            indexes = (0 until count).toList(),
             instanceType = "i4i.xlarge",
             amiId = "ami-real",
             keyName = "key",

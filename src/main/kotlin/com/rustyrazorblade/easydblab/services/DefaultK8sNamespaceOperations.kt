@@ -375,13 +375,13 @@ class DefaultK8sNamespaceOperations(
         log.info { "Waiting for ${awaited.size} pods: ${awaited.joinToString(", ")}" }
 
         var lastStates = emptyMap<String, String>()
-        val notReady =
-            pollUntil(
+        val outcome =
+            pollUntil<PodsPoll>(
                 operationName = "pods-ready-$namespace",
                 maxAttempts = Int.MAX_VALUE,
                 interval = podPollInterval,
                 deadline = Instant.now().plusSeconds(timeoutSeconds.toLong()),
-                done = { it.isEmpty() },
+                done = { it is PodsPoll.Failed || (it is PodsPoll.Pending && it.states.isEmpty()) },
             ) {
                 val pods =
                     client
@@ -390,23 +390,47 @@ class DefaultK8sNamespaceOperations(
                         .list()
                         .items
                         .filter { it.metadata?.name in awaited }
-                pods.forEach(K8sPodUtils::checkForPodFailure)
-                val pending = pods.filter { K8sPodUtils.awaitsReadiness(it) && !isReady(it) }
-                val states = pending.associate { (it.metadata?.name ?: "unknown") to describePodState(it) }
-                states.filter { (name, state) -> lastStates[name] != state }.forEach { (name, state) ->
-                    log.info { "Pod $name: $state" }
+                val failure = pods.firstNotNullOfOrNull(K8sPodUtils::failureOf)
+                if (failure != null) {
+                    PodsPoll.Failed(failure)
+                } else {
+                    val pending = pods.filter { K8sPodUtils.awaitsReadiness(it) && !isReady(it) }
+                    val states = pending.associate { (it.metadata?.name ?: "unknown") to describePodState(it) }
+                    states.filter { (name, state) -> lastStates[name] != state }.forEach { (name, state) ->
+                        log.info { "Pod $name: $state" }
+                    }
+                    lastStates = states
+                    PodsPoll.Pending(states)
                 }
-                lastStates = states
-                states
             }
 
-        if (notReady.isNotEmpty()) {
-            logPvcStatus(client, namespace)
-            error(
-                "Timed out waiting for [$timeoutSeconds] seconds for ${notReady.size} pod(s): " +
-                    notReady.entries.joinToString("; ") { (name, state) -> "$name ($state)" },
-            )
+        when (outcome) {
+            is PodsPoll.Failed -> error(outcome.reason)
+            is PodsPoll.Pending ->
+                if (outcome.states.isNotEmpty()) {
+                    logPvcStatus(client, namespace)
+                    error(
+                        "Timed out waiting for [$timeoutSeconds] seconds for ${outcome.states.size} pod(s): " +
+                            outcome.states.entries.joinToString("; ") { (name, state) -> "$name ($state)" },
+                    )
+                }
         }
+    }
+
+    /**
+     * One look at a namespace's awaited pods: a pod failed for good, which ends the wait at once,
+     * or the state of each pod not Ready yet (none left means the wait is done).
+     */
+    private sealed interface PodsPoll {
+        /** A container is in a terminal failure state; [reason] names the pod, container and why. */
+        data class Failed(
+            val reason: String,
+        ) : PodsPoll
+
+        /** The pods not Ready yet, by name, with their state. */
+        data class Pending(
+            val states: Map<String, String>,
+        ) : PodsPoll
     }
 
     private fun isReady(pod: Pod): Boolean = pod.status?.conditions?.any { it.type == "Ready" && it.status == "True" } == true

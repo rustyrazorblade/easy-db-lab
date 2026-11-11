@@ -16,6 +16,7 @@ import com.rustyrazorblade.easydblab.services.aws.AwsInfrastructureService
 import com.rustyrazorblade.easydblab.services.aws.AwsS3BucketService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.ValueSource
 import org.koin.core.module.Module
@@ -24,6 +25,8 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.doReturn
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.never
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.io.File
 
@@ -100,7 +103,7 @@ class DownDryRunTest : BaseKoinTest() {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = ["current", "all", "packer"])
+    @ValueSource(strings = ["current", "vpc", "all", "packer"])
     fun `a dry run that finds nothing to remove changes nothing`(mode: String) {
         val empty = TeardownResult(success = true, resourcesDeleted = emptyList())
         whenever(teardownService.teardownVpc(eq("vpc-123"), any())).thenReturn(empty)
@@ -111,6 +114,7 @@ class DownDryRunTest : BaseKoinTest() {
             Down()
                 .apply {
                     dryRun = true
+                    if (mode == "vpc") vpcId = "vpc-123"
                     teardownAll = mode == "all"
                     teardownPacker = mode == "packer"
                 }.call()
@@ -121,6 +125,30 @@ class DownDryRunTest : BaseKoinTest() {
         assertThat(state.vpcId).isEqualTo("vpc-123")
         assertThat(state.infrastructureStatus).isEqualTo(InfrastructureStatus.UP)
         assertThat(state.tailscaleDeviceId).isEqualTo("nControl0CNTRL")
+    }
+
+    @Test
+    fun `a dry run whose VPC is gone but whose tailnet device is recorded only previews the device removal`() {
+        stateManager.save(
+            ClusterState(name = "test-cluster", versions = mutableMapOf(), vpcId = null).apply {
+                markInfrastructureUp()
+                tailscaleDeviceId = "nControl0CNTRL"
+            },
+        )
+
+        val exitCode = Down().apply { dryRun = true }.call()
+
+        val state = stateManager.load()
+        assertThat(exitCode).isEqualTo(0)
+        assertThat(output())
+            .contains("DRY RUN")
+            .contains("nControl0CNTRL")
+            .doesNotContain("Stopped SOCKS5 proxy")
+            .doesNotContain("marked as DOWN")
+        assertThat(state.tailscaleDeviceId).isEqualTo("nControl0CNTRL")
+        assertThat(state.infrastructureStatus).isEqualTo(InfrastructureStatus.UP)
+        verify(getKoin().get<SocksProxyService>(), never()).stop()
+        verify(getKoin().get<TailscaleService>(), never()).deleteDevice(any(), any(), any())
     }
 
     private companion object {

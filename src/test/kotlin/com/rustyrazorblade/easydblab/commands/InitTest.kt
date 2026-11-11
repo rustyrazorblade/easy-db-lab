@@ -182,6 +182,20 @@ class InitTest : BaseKoinTest() {
             assertThatThrownBy { command.execute() }
                 .isInstanceOf(IllegalArgumentException::class.java)
                 .hasMessageContaining(Constants.K3s.CLUSTER_CIDR)
+                .hasMessageContaining(Constants.K3s.SERVICE_CIDR)
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
+        }
+
+        @Test
+        fun `execute fails with a CIDR smaller than a 25, before anything is saved`() {
+            val command = Init()
+            command.clean = true
+            command.cidr = "10.0.0.0/26"
+
+            assertThatThrownBy { command.execute() }
+                .isInstanceOf(IllegalArgumentException::class.java)
+                .hasMessageContaining("/25 or larger")
+            verify(mockClusterStateManager, org.mockito.kotlin.never()).save(any())
         }
 
         @Test

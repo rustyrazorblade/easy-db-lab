@@ -73,6 +73,13 @@ Rules for both phases:
 - **AND** the cluster state is not changed: it is not marked down, and its VPC and Tailscale device are kept
 - **AND** the SOCKS tunnel is not stopped and no Tailscale device is removed
 
+#### Scenario: A dry run after the VPC is gone only previews the device removal
+
+- **GIVEN** a cluster whose VPC an earlier `down` removed, but whose control node is still recorded as a Tailscale device
+- **WHEN** the user runs `down --dry-run`
+- **THEN** it reports that the device would be removed from the tailnet and exits zero
+- **AND** the device stays recorded, the cluster state is not marked down, and the SOCKS tunnel is not stopped
+
 #### Scenario: The tail of every signal reaches S3 before teardown
 
 - **GIVEN** a running cluster whose Mimir, Loki and Tempo hold data not yet in S3
@@ -211,16 +218,16 @@ Work that exists solely to serve database nodes MUST be skipped without warning 
 
 ### Requirement: up checks the account can hold the new instances before it launches any
 
-Before its first RunInstances, `up` MUST check that the account can hold the instances it is about to launch, and MUST fail without launching any instance when it cannot.  Every check counts only the instances to be launched: the configured count of each server type minus the instances of that type that already run or are pending.  When nothing is to be launched, `up` MUST make no capacity call and the checks pass.
+Before its first RunInstances, `up` MUST check that the account can hold the instances it is about to launch, and MUST fail without launching any instance when it cannot.  Every check counts only the instances to be launched: the ordinals in `0` to the configured count of each server type that no running or pending instance of that type holds, the same ordinals the launch fills.  When nothing is to be launched, `up` MUST make no capacity call and the checks pass.
 
 The checks are:
 
 1. The configured availability zones number at most `Constants.Vpc.MAX_AVAILABILITY_ZONES`.
-2. Each instance type is offered in every zone its new instances land in (instance `i` lands in zone `i % zones`).
+2. Each instance type is offered in every zone its new instances land in (ordinal `i` lands in zone `i % zones`).
 3. The On-Demand standard vCPU quota (`L-1216C47A`) minus the vCPUs of the running and pending On-Demand standard-family instances covers the new instances' vCPUs.  An instance type outside the standard families (A, C, D, H, I, M, R, T, Z) is not counted against it; `up` reports that its family's quota is not checked.
 4. The network interface quota (`L-DF5E4CA3`) minus the network interfaces in the region covers the new nodes' interfaces: one per node under Flannel; under Cilium, the interfaces its node address and `Constants.Capacity.POD_ADDRESSES_PER_NODE` pod addresses fill, at most the type's maximum.
 5. Each zone's subnet has free addresses for the node address of each new node landing in it, and under Cilium its pod addresses.  Without a VPC yet, the subnet size comes from the VPC CIDR.
-6. Once the subnets and the security group exist, a RunInstances dry run of each server type's launch, with the real AMI, instance type, subnet, security group, instance profile and key, answers `DryRunOperation`.
+6. Once the subnets and the security group exist, a RunInstances dry run of each server type's launch, with the real AMI, instance type, subnet, security group, instance profile and key, answers `DryRunOperation`.  A throttled (`RequestLimitExceeded`) or 5xx answer is retried; only the final answer decides.
 
 Every shortfall MUST be reported with a typed event naming what is short and by how much, and all of them MUST be reported before `up` stops.
 
@@ -265,18 +272,32 @@ Every shortfall MUST be reported with a typed event naming what is short and by 
 `up` MUST provision and set up a cluster of 1,000 database nodes, and a re-run of `up` with a larger count MUST launch only the missing nodes.
 
 - Discovery MUST read every page of DescribeInstances, count running and pending instances, and run once per `up`.
-- RunInstances MUST launch one call per subnet with `minCount = maxCount = n`, in chunks of at most `Constants.Scale.RUN_INSTANCES_CHUNK`, with a client token, and retry a throttled call (`RequestLimitExceeded`) with the same token.  Instance `i` (the global index, continuing after the existing instances) is named `<serverType><i>` and lands in subnet `i % subnets`; each instance gets its `Name` tag after launch.
-- Each launched instance MUST be recorded in the cluster state as soon as RunInstances returns it.
+- The instances to launch MUST be the ordinals in `0` to the configured count that no existing instance's alias holds, so a re-run fills the gaps an interrupted `up` left and never reuses the alias of a running instance.  Ordinal `i` is named `<serverType><i>` and lands in subnet `i % subnets`.
+- RunInstances MUST launch one call per subnet, with `minCount = maxCount = n`, in chunks of at most `Constants.Scale.RUN_INSTANCES_CHUNK`, with a client token, and retry a throttled call (`RequestLimitExceeded`) with the same token.  The ordinals of one call are `subnets` apart, a gap starting a new call, and the call tags its instances with its first ordinal and that stride (`Constants.Scale.FIRST_ORDINAL_TAG`, `Constants.Scale.ORDINAL_STRIDE_TAG`), so the instance with launch index `k` is `first + k * stride`.  Each instance also gets its `Name` tag after launch.
+- Each launched instance MUST be recorded in the cluster state as soon as RunInstances returns it, before it is named.
+- Discovery MUST name an instance from its `Name` tag, or, when that tag never landed, from its launch ordinal tags and launch index.  The hosts in the cluster state MUST be one per alias, in ordinal order.
 - The running wait MUST wait for every instance ID, tolerate `InvalidInstanceID.NotFound` while EC2 catches up, and ask only about the instances not yet running.  DescribeInstanceStatus and DescribeInstances requests MUST name at most 100 IDs.
 - Per-host work (instance setup, AxonOps, registry TLS, K3s agents, the SSH readiness wait, the Cilium node image check) MUST run in parallel on at most `Constants.Scale.HOST_CONCURRENCY` hosts at once.  The SSH readiness wait MUST re-probe only the hosts not yet ready, within one time budget.
 - After the K3s agents start, `up` MUST wait until every node is registered.  The node type and ordinal labels MUST be set in each agent's K3s configuration, not by a later per-node label call.
-- The observability readiness wait MUST list pods once per poll under one deadline, and the rollout deadline MUST grow with the node count.
+- The observability readiness wait MUST list pods once per poll under one deadline, and the rollout deadline MUST grow with the node count.  A pod with a container in a terminal state (`CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, `Error`) MUST end the wait at the poll that sees it, naming the pod, the container and the reason; it MUST NOT be retried until the deadline.
 
 #### Scenario: Launched instances survive a failure later in up
 
 - **GIVEN** an `up` whose second RunInstances call, running wait, or status check fails
 - **WHEN** `up` stops
 - **THEN** every instance already launched is in the cluster state, and a re-run does not launch it again
+
+#### Scenario: A re-run fills the gaps a partial launch left
+
+- **GIVEN** a cluster of 9 configured db nodes in 3 subnets whose db0, db3 and db6 run, because the launch into the second subnet failed
+- **WHEN** `up` runs again
+- **THEN** it launches exactly db1, db2, db4, db5, db7 and db8, each in subnet `ordinal % 3`, and the capacity checks count those six in those zones
+
+#### Scenario: An instance whose name tag failed is still found
+
+- **GIVEN** an `up` whose CreateTags call fails after RunInstances returned the instances
+- **WHEN** `up` stops, and a later `up` discovers the cluster
+- **THEN** the instances are in the cluster state, and discovery names them from their launch tags and does not launch them again
 
 #### Scenario: A re-run continues the numbering
 

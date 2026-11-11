@@ -104,7 +104,7 @@ class LeaseLoop(
     private fun renew(holding: State.Holding): Duration {
         val sentAt = clock.monotonic()
         val sentWall = clock.wall()
-        val record = holding.record.next(holder, sentWall)
+        val record = holding.record.next(holder, timing.ttl.inWholeSeconds, sentWall)
         runCatching { objects.replaceIfVersionMatches(LeaseRecord.KEY, record.toJson(), holding.version) }
             .onSuccess { replaced ->
                 when (replaced) {
@@ -224,7 +224,7 @@ class LeaseLoop(
                     return
                 }
         val sentAt = clock.monotonic()
-        val record = previous.next(holder, clock.wall())
+        val record = previous.next(holder, timing.ttl.inWholeSeconds, clock.wall())
         val how =
             when {
                 retryingAcquire -> "retrying after a failed acquire, ${timing.ttl * 2} after it"

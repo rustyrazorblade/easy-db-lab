@@ -37,11 +37,15 @@ data class LeaseRecord(
         require(ttlSeconds >= 0) { "A lease TTL must not be negative" }
     }
 
-    /** The record that follows this one, written by [holder] at [renewedAt]. */
+    /**
+     * The record that follows this one, written by [holder] at [renewedAt]. It names the writer's
+     * own TTL, [ttlSeconds], not the one the previous writer ran with.
+     */
     fun next(
         holder: String,
+        ttlSeconds: Long,
         renewedAt: Instant,
-    ): LeaseRecord = copy(holder = holder, sequence = sequence + 1, renewedAt = renewedAt)
+    ): LeaseRecord = LeaseRecord(holder, sequence + 1, ttlSeconds, renewedAt)
 
     /** This record as the JSON body of the lease object. */
     fun toJson(): String = json.encodeToString(serializer(), this)

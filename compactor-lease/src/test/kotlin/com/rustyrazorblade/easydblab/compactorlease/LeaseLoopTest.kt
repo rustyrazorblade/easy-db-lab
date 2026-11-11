@@ -170,6 +170,22 @@ class LeaseLoopTest {
     }
 
     @Test
+    fun `a node that takes over a lease written with another TTL writes and renews it with its own`() {
+        store.createIfAbsent(LeaseRecord.KEY, LeaseRecord("other/pod", 7, 15, start).toJson())
+        val standby = Node("lab-b/pod-1")
+        standby.step()
+        standby.runFor(timing.ttl + timing.standbyPoll)
+        assertThat(standby.holds()).isTrue()
+        assertThat(lease()?.ttlSeconds).describedAs("after the takeover").isEqualTo(timing.ttl.inWholeSeconds)
+        val taken = checkNotNull(lease()).sequence
+
+        standby.step()
+
+        assertThat(lease()?.sequence).isEqualTo(taken + 1)
+        assertThat(lease()?.ttlSeconds).describedAs("after a renewal").isEqualTo(timing.ttl.inWholeSeconds)
+    }
+
+    @Test
     fun `a holder whose renewal finds another version closes its gate and stands by`() {
         val node = Node("lab-a/pod-1")
         node.step()

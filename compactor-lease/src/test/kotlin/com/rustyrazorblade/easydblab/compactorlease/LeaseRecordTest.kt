@@ -36,12 +36,12 @@ class LeaseRecordTest {
     }
 
     @Test
-    fun `the next record has the next sequence, a new holder and a new renewal time`() {
+    fun `the next record has the next sequence, and the new holder, TTL and renewal time`() {
         val later = Instant.parse("2026-11-07T18:05:00Z")
 
-        val next = record.next(holder = "lab-b-5678/account-compactor-1a2b", renewedAt = later)
+        val next = record.next(holder = "lab-b-5678/account-compactor-1a2b", ttlSeconds = 15, renewedAt = later)
 
-        assertThat(next).isEqualTo(LeaseRecord("lab-b-5678/account-compactor-1a2b", 43, 120, later))
+        assertThat(next).isEqualTo(LeaseRecord("lab-b-5678/account-compactor-1a2b", 43, 15, later))
     }
 
     @Test

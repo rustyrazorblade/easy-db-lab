@@ -379,15 +379,17 @@ class CompactorPodIntegrationTest {
                 stopGracefully(loki)
                 written
             }
-        val traceIds = mutableListOf<String>()
-        listOf("lab-x", "lab-y").forEach { cluster ->
-            val tempo = startTempo(tempoConfig, cluster)
-            repeat(2) { traceIds += pushTrace(tempo) }
-            awaitUntil(UPLOAD, "$cluster's traces in Tempo blocks in the store", { "${traceBlocks().size} blocks" }) {
-                traceBlocks().sumOf { totalObjects(it) } >= traceIds.size
-            }
-            stopGracefully(tempo)
+        // Tempo compacts only blocks in one compaction window (an hour, by each block's end time), so
+        // every span ends at one instant: the two clusters' blocks can never fall either side of an
+        // hour and leave the worker nothing to merge. The instant is taken once both run, as Tempo
+        // clamps a span's time to within 2 minutes of when it arrives.
+        val tempos = listOf("lab-x", "lab-y").associateWith { startTempo(tempoConfig, it) }
+        val spanTime = Instant.now()
+        val traceIds = tempos.values.flatMap { tempo -> List(2) { pushTrace(tempo, spanTime) } }
+        awaitUntil(UPLOAD, "both clusters' traces in Tempo blocks in the store", { "${traceBlocks().size} blocks" }) {
+            traceBlocks().sumOf { totalObjects(it) } >= traceIds.size
         }
+        tempos.values.forEach { stopGracefully(it) }
         val indexFilesBefore = lokiIndexFiles()
         val traceBlocksBefore = traceBlocks()
         assertThat(indexFilesBefore)
@@ -497,10 +499,13 @@ class CompactorPodIntegrationTest {
             }
     }
 
-    /** Pushes one span of a new trace to [tempo] and returns its trace ID, in hex. */
-    private fun pushTrace(tempo: GenericContainer<*>): String {
+    /** Pushes one span of a new trace to [tempo], starting at [at], and returns its trace ID, in hex. */
+    private fun pushTrace(
+        tempo: GenericContainer<*>,
+        at: Instant,
+    ): String {
         val traceId = UUID.randomUUID().toString().replace("-", "")
-        val nowNanos = System.currentTimeMillis() * 1_000_000
+        val nowNanos = at.toEpochMilli() * 1_000_000
         val body =
             """
             {"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"compactor-it"}}]},
@@ -671,6 +676,11 @@ class CompactorPodIntegrationTest {
             }
     }
 
+    /**
+     * Polls [done] until it holds or [within] has passed, and asserts the last result it saw. It
+     * never asks again after the loop: a second check can see something else, and fail a wait that
+     * succeeded.
+     */
     private fun awaitUntil(
         within: Duration,
         what: String,
@@ -678,9 +688,11 @@ class CompactorPodIntegrationTest {
         done: () -> Boolean,
     ) {
         val deadline = System.nanoTime() + within.toNanos()
-        while (!done() && System.nanoTime() < deadline) {
+        var met = done()
+        while (!met && System.nanoTime() < deadline) {
             Thread.sleep(POLL.toMillis())
+            met = done()
         }
-        assertThat(done()).describedAs { "$what within $within: ${detail()}" }.isTrue()
+        assertThat(met).describedAs { "$what within $within: ${detail()}" }.isTrue()
     }
 }

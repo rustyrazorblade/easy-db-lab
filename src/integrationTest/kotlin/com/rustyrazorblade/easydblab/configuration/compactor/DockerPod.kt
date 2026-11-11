@@ -200,15 +200,7 @@ class DockerPod(
     fun exists(
         container: String,
         path: String,
-    ): Boolean {
-        val exec =
-            docker
-                .execCreateCmd(started.getValue(container))
-                .withCmd("test", "-e", path)
-                .exec()
-        docker.execStartCmd(exec.id).start().awaitCompletion()
-        return docker.inspectExecCmd(exec.id).exec().exitCodeLong == 0L
-    }
+    ): Boolean = execExitCode(docker, started.getValue(container), listOf("test", "-e", path)) == 0L
 
     /**
      * Whether `http://127.0.0.1:[port][path]` in the pod answers 200 within [timeoutSeconds]. The
@@ -219,15 +211,12 @@ class DockerPod(
         port: Int,
         path: String,
         timeoutSeconds: Int = 5,
-    ): Boolean {
-        val exec =
-            docker
-                .execCreateCmd(sandbox)
-                .withCmd("/bin/busybox", "wget", "-q", "-T", "$timeoutSeconds", "-O", "/dev/null", "http://127.0.0.1:$port$path")
-                .exec()
-        docker.execStartCmd(exec.id).start().awaitCompletion()
-        return docker.inspectExecCmd(exec.id).exec().exitCodeLong == 0L
-    }
+    ): Boolean =
+        execExitCode(
+            docker,
+            sandbox,
+            listOf("/bin/busybox", "wget", "-q", "-T", "$timeoutSeconds", "-O", "/dev/null", "http://127.0.0.1:$port$path"),
+        ) == 0L
 
     /** Stops the whole pod at once, as a node that goes away does: no SIGTERM grace, no lease release. */
     fun kill() {

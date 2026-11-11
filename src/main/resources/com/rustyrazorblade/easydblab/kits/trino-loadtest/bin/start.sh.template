@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+#
+# Runs the trino-loadtest driver against the target trino kit in a pod on an app node, pushes each
+# interval's figures as gauges to the collector on the control node, and exits non-zero when the
+# driver fails (bad arguments, a failed run, or a cqlite- snapshot leak).
+set -euo pipefail
+
+. "${EDL_KIT_LIB:?run this through easy-db-lab, which sets EDL_KIT_LIB}"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+KIT_DIR="$(dirname "${SCRIPT_DIR}")"
+IMAGE="docker.io/library/python:3.12-slim"
+ROLE="run"
+
+# The trino kit's "Trino UI" http endpoint resolves to TARGET_HTTP_URL (KitEndpointResolver, kit-ref
+# arg --target); it is the coordinator address.
+[ -n "${TARGET_HTTP_URL:-}" ] ||
+  edl_fail "TARGET_HTTP_URL is not set. Install with --target pointing at a running trino kit that exposes an http endpoint."
+TRINO_LOADTEST_HOST_PORT="${TARGET_HTTP_URL#http://}"
+TRINO_LOADTEST_HOST_PORT="${TRINO_LOADTEST_HOST_PORT#https://}"
+TRINO_LOADTEST_HOST="${TRINO_LOADTEST_HOST_PORT%%:*}"
+TRINO_LOADTEST_PORT="${TRINO_LOADTEST_HOST_PORT##*:}"
+TRINO_LOADTEST_USER="${TARGET_JDBC_USER:-cqlite-loadtest}"
+
+# The kit runner passes an unset optional arg whose kit.yaml default is "" as the literal string
+# "null" (issue #2132). Prints 0 (true) when $1 holds a real value.
+is_set() {
+  [ -n "$1" ] && [ "$1" != "null" ]
+}
+
+# The driver's arguments, passed to the pod as separate argv entries, so no value is parsed by a
+# shell a second time. An omitted --ks/--tbl lets driver.py fail fast with its required-arg message.
+ARGV=(--host "${TRINO_LOADTEST_HOST}" --port "${TRINO_LOADTEST_PORT}" --user "${TRINO_LOADTEST_USER}")
+! is_set "${TRINO_LOADTEST_KEYSPACE:-}" || ARGV+=(--ks "${TRINO_LOADTEST_KEYSPACE}")
+! is_set "${TRINO_LOADTEST_TABLE:-}" || ARGV+=(--tbl "${TRINO_LOADTEST_TABLE}")
+CONFIGMAP_FILES=("driver.py=${KIT_DIR}/driver.py")
+if is_set "${TRINO_LOADTEST_QUERIES_FILE:-}"; then
+  CONFIGMAP_FILES+=("queries.txt=${TRINO_LOADTEST_QUERIES_FILE}")
+  ARGV+=(--queries-file /driver/queries.txt)
+fi
+ARGV+=(--threads "${THREADS}" --duration "${DURATION}" --interval "${INTERVAL}")
+[ "${TRACEPARENT}" != "true" ] || ARGV+=(--traceparent)
+# D12 snapshot-leak hygiene (issue #2399). The timeout only matters alongside the command.
+if is_set "${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD:-}"; then
+  ARGV+=(--snapshot-check-cmd "${TRINO_LOADTEST_SNAPSHOT_CHECK_CMD}")
+  if is_set "${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S:-}"; then
+    ARGV+=(--snapshot-check-timeout-s "${TRINO_LOADTEST_SNAPSHOT_CHECK_TIMEOUT_S}")
+  fi
+fi
+
+edl_require_app_node trino-loadtest
+
+POD="$(edl_resource_name "${ROLE}")"
+edl_create_configmap "${POD}" "${ROLE}" "${CONFIGMAP_FILES[@]}"
+trap 'kubectl delete configmap "${POD}" --ignore-not-found > /dev/null 2>&1 || true' EXIT
+
+echo "Starting trino-loadtest: coordinator=${TRINO_LOADTEST_HOST}:${TRINO_LOADTEST_PORT}, threads=${THREADS}, duration=${DURATION}s, interval=${INTERVAL}s, traceparent=${TRACEPARENT}..."
+kubectl run "${POD}" \
+  --image="${IMAGE}" \
+  --restart=Never \
+  --labels="$(edl_labels "${ROLE}")" \
+  --overrides="$(edl_pod_overrides "${POD}" /driver "${POD}")" \
+  --override-type=strategic \
+  --command -- sh -c 'pip install --quiet trino && exec python /driver/driver.py "$@"' sh "${ARGV[@]}"
+
+edl_wait_for_pod_running "${POD}"
+
+# Echoes every line and pushes each interval's figures. Interval lines are driver.py's
+# format_interval_line:
+#   "[ Ns ] threads: N qps: N.NN rows_s: N.NN lat_p50_ms: N.NN lat_p99_ms: N.NN err_s: N.NN"
+# The "[ final ]" summary does not match and is only echoed.
+handle_line() {
+  local line="$1" qps rows p50 p99 errs
+  echo "${line}"
+  if [[ "${line}" =~ ^\[\ [0-9]+s\ \] ]]; then
+    read -r qps rows p50 p99 errs <<< "$(echo "${line}" | awk '{
+      for (i=1; i<=NF; i++) {
+        if ($i == "qps:") qps=$(i+1)
+        if ($i == "rows_s:") rows=$(i+1)
+        if ($i == "lat_p50_ms:") p50=$(i+1)
+        if ($i == "lat_p99_ms:") p99=$(i+1)
+        if ($i == "err_s:") errs=$(i+1)
+      }
+      print qps, rows, p50, p99, errs
+    }')"
+    edl_push_gauges trino-loadtest trino_loadtest_qps "${qps:-0}" trino_loadtest_rows_per_sec "${rows:-0}" \
+      trino_loadtest_lat_p50_ms "${p50:-0}" trino_loadtest_lat_p99_ms "${p99:-0}" \
+      trino_loadtest_errors_per_second "${errs:-0}"
+  fi
+  return 0
+}
+edl_follow_pod_logs "${POD}" handle_line
+EXIT_CODE="$(edl_wait_for_pod_exit "${POD}")"
+
+[ "${EXIT_CODE}" = 0 ] ||
+  edl_fail "The trino-loadtest run failed with exit code ${EXIT_CODE} (pod ${POD}; kubectl logs ${POD})"
+
+echo "trino-loadtest run complete (pod: ${POD}). Run '${KIT_NAME} stop' to remove its pods."

@@ -6,7 +6,15 @@ through lifecycle phases, metrics collection, hooks, and Grafana dashboard provi
 ## What is a Kit?
 
 A kit is a self-contained package of configuration and scripts that installs, starts, stops,
-and optionally backs up a piece of software on the cluster. Examples: ClickHouse, Presto, OpenSearch.
+and optionally backs up a piece of software on the cluster. Examples: ClickHouse, Presto, OpenSearch,
+and the built-in `cqlite-flight` and `trino-loadtest` kits, which form an offline SSTable
+read path (an Arrow Flight data plane and a read-load driver — documented for users in
+[`docs/user-guide/cqlite-flight.md`](../user-guide/cqlite-flight.md)). That read path will
+also gain a `cqlite` Trino catalog: `cqlite` is planned as a catalog of the trino kit (like
+`cassandra`/`clickhouse`), **not** a standalone kit. It is not shipped today — the trino kit
+currently contains no cqlite file — because its connector-plugin delivery is deferred to
+`pmcfadin/cqlite#2869`. When that lands, a `kits/trino/catalogs/cqlite.properties.template`
+will be added.
 
 Each kit lives under `src/main/resources/com/rustyrazorblade/easydblab/kits/<name>/`.
 

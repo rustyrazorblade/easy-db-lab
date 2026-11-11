@@ -433,6 +433,9 @@ tasks.register("testScripts") {
         "testPyroscopeKitLabels",
         "testBaseJdkInstall",
         "testBaseChronyPoll",
+        "testTrinoLoadtestDriver",
+        "testTrinoLoadtestStartScript",
+        "testTrinoLoadtestStopScript",
     )
 }
 
@@ -534,6 +537,24 @@ tasks.register<Exec>("testSysbenchStopScript") {
     description = "Unit-test the sysbench kit stop script"
     workingDir = file(".")
     commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/sysbench-stop.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's start script: its driver pod runs on an app node and its
+// interval figures go to the collector as OTLP JSON gauges. kubectl and curl are stubbed.
+tasks.register<Exec>("testTrinoLoadtestStartScript") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit start script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/trino-loadtest-start.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's stop script: it deletes only this instance's pods and
+// ConfigMaps, by label. kubectl is stubbed.
+tasks.register<Exec>("testTrinoLoadtestStopScript") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit stop script"
+    workingDir = file(".")
+    commandLine = listOf("sh", "src/test/shell/run-with-bashes.sh", "src/test/shell/trino-loadtest-stop.test.sh")
 }
 
 // Unit-test bin/export-workload-metrics: it must export only series live in its window, from Mimir,
@@ -648,6 +669,29 @@ tasks.register<Exec>("testCassandraResolveRef") {
     description = "Unit-test the build-cassandra-ref ref-resolution logic"
     workingDir = file(".")
     commandLine = listOf("bash", ".github/cassandra-image/resolve-ref.test.sh")
+}
+
+// Unit-test the trino-loadtest kit's driver.py pure logic (argument-error
+// contract, percentile math, cumulative-stats separation, snapshot-leak
+// parsing). The driver imports `trino` lazily, so the stdlib `unittest` runner
+// exercises every function under test with no third-party package and no
+// cluster. The tests live OUTSIDE the shipped kit resource dir (the kit ships
+// driver.py only), so this task points the runner at src/test/python.
+tasks.register<Exec>("testTrinoLoadtestDriver") {
+    group = "Verification"
+    description = "Unit-test the trino-loadtest kit driver.py pure logic"
+    workingDir = file(".")
+    commandLine =
+        listOf(
+            "python3",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "src/test/python/trino-loadtest",
+            "-p",
+            "test_*.py",
+        )
 }
 
 // Unit-test install-cassandra-version's decisions (argument handling, already-installed no-op,

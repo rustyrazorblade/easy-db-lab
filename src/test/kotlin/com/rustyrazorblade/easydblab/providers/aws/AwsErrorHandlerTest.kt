@@ -188,11 +188,14 @@ class AwsErrorHandlerTest {
     }
 
     @Test
-    fun `an STS permission error lists every policy`() {
+    fun `an STS denial names no lab policy, since GetCallerIdentity needs no permission`() {
         val description = handler.describe(awsError(StsException.builder(), "AccessDenied", 403))!!
 
+        assertThat(description.kind).isEqualTo(ProviderErrorKind.PERMISSION_DENIED)
         assertThat(description.remedy)
-            .contains("EasyDBLabEC2", "EasyDBLabIAM", "EasyDBLabEMR", "EasyDBLabOpenSearch", "EasyDBLabCompactor")
-            .contains("show-iam-policies")
+            .doesNotContain("show-iam-policies")
+            .doesNotContain("EasyDBLabEC2")
+            .contains("service control policy")
+            .contains("permissions boundary")
     }
 }

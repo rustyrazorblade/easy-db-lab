@@ -348,10 +348,6 @@ tasks.withType<Test>().configureEach {
     maxParallelForks = (processors / 2).coerceAtLeast(1)
     forkEvery = 100
 
-    // Gradle's 512 MB default worker heap is too small for PackageBoundaryTest, which holds every
-    // main class in ArchUnit's graph, alongside up to forkEvery other classes in the same JVM.
-    maxHeapSize = "1536m"
-
     doFirst {
         environment("EASY_DB_LAB_PROFILE", "default")
         environment("TESTCONTAINERS_RYUK_DISABLED", "true")
@@ -375,6 +371,11 @@ tasks.withType<Test>().configureEach {
 // document every kit.yaml flag. Gradle can't infer that dependency, so without declaring it
 // an edit that drops a flag row would be masked by an up-to-date or cached test result.
 tasks.named<Test>("test") {
+    // Unit tier only. Gradle's 512 MB default worker heap is too small for PackageBoundaryTest, which
+    // holds every main class in ArchUnit's graph (without this it fails with "Java heap space"), on
+    // top of up to forkEvery other classes in the same JVM. The integration tier has no such test.
+    maxHeapSize = "1536m"
+
     inputs
         .file("docs/user-guide/sysbench.md")
         .withPropertyName("sysbenchUserGuide")

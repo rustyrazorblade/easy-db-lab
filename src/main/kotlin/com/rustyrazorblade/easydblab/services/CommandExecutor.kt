@@ -127,6 +127,10 @@ class DefaultCommandExecutor(
             // Failures raised outside executeWithLifecycle (state restore, resource cleanup) would
             // otherwise reach Picocli as a raw stack trace. An Error (out of memory) is not ours to report.
             if (failure !is Exception) throw failure
+            if (failure is InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw failure
+            }
             failureReporter.report(failure)
             Constants.ExitCodes.ERROR
         }
@@ -192,6 +196,10 @@ class DefaultCommandExecutor(
             try {
                 checkRequirements(command)
                 command.call()
+            } catch (e: InterruptedException) {
+                // Ctrl-C or SIGTERM in REPL or server mode: cancellation is not a command failure.
+                Thread.currentThread().interrupt()
+                throw e
             } catch (e: Exception) {
                 failureReporter.report(e)
                 Constants.ExitCodes.ERROR

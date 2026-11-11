@@ -111,4 +111,23 @@ class CommandFailureReporterTest {
 
         assertThat(emitted).isEmpty()
     }
+
+    @Test
+    fun `a reported failure wrapped in a CompletionException emits nothing`() {
+        val error = CompletionException(CommandFailedException("already shown", CredentialsProblem("hidden")))
+
+        reporter(handler("AWS")).report(error)
+
+        assertThat(emitted).isEmpty()
+    }
+
+    @Test
+    fun `a reported failure wrapped in an ExecutionException and a SetupProfileException emits nothing`() {
+        val reported = CommandFailedException("already shown", CredentialsProblem("hidden"))
+        val error = SetupProfileException("setup failed", java.util.concurrent.ExecutionException(reported))
+
+        reporter(handler("AWS")).report(error)
+
+        assertThat(emitted).isEmpty()
+    }
 }

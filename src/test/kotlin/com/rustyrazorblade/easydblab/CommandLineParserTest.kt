@@ -108,6 +108,34 @@ class CommandLineParserTest : BaseKoinTest() {
     }
 
     @Test
+    fun `an interrupt reaching the picocli handler keeps the interrupt flag and is not reported`() {
+        val events = mutableListOf<Event>()
+        getKoin().get<EventBus>().addListener(
+            object : EventListener {
+                override fun onEvent(envelope: EventEnvelope) {
+                    events.add(envelope.event)
+                }
+
+                override fun close() {
+                    // Nothing to release.
+                }
+            },
+        )
+        val parser = CommandLineParser()
+        parser.commandLine.addSubcommand("stop", StopCommand())
+
+        try {
+            val exitCode = parser.commandLine.execute("stop")
+
+            assertThat(exitCode).isEqualTo(Constants.ExitCodes.ERROR)
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+        assertThat(events.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
     fun `a workspace directory named profile does not shadow the profile command group`() {
         // registerDynamicKitSubcommands() drops a discovered kit whose name collides with a static
         // top-level command. Without that guard a directory named "profile" replaces the command
@@ -217,6 +245,12 @@ class CommandLineParserTest : BaseKoinTest() {
                     .flatMap { undescribed(it) }
 
         assertThat(undescribed(CommandLineParser().commandLine)).isEmpty()
+    }
+
+    /** A plain Picocli command that is interrupted, as Ctrl-C or SIGTERM does to a REPL or server thread. */
+    @CommandLine.Command(name = "stop")
+    class StopCommand : Runnable {
+        override fun run(): Unit = throw InterruptedException("stopped")
     }
 
     /** A plain Picocli command, not a PicoCommand, so the executor never sees it. */

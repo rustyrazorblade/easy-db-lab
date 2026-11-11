@@ -265,6 +265,35 @@ class CommandExecutorTest : BaseKoinTest() {
         assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
     }
 
+    @Test
+    fun `an interrupt in top-level dispatch keeps the interrupt flag and is not reported`() {
+        // Kotlin does not declare checked exceptions, so Mockito needs an answer to throw one.
+        whenever(mockResourceManager.closeAll()).thenAnswer { throw InterruptedException("stopped") }
+
+        try {
+            assertThatThrownBy { commandExecutor.executeTopLevel(TestCommand()) }
+                .isInstanceOf(InterruptedException::class.java)
+
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
+    @Test
+    fun `an interrupt inside a command keeps the interrupt flag and is not reported`() {
+        try {
+            assertThatThrownBy { commandExecutor.execute { ThrowingCommand(InterruptedException("stopped")) } }
+                .isInstanceOf(InterruptedException::class.java)
+
+            assertThat(Thread.currentThread().isInterrupted).isTrue()
+        } finally {
+            Thread.interrupted()
+        }
+        assertThat(emitted.filterIsInstance<Event.Command.ExecutionError>()).isEmpty()
+    }
+
     // ========== SCHEDULE DEFERRED TESTS ==========
 
     @Test

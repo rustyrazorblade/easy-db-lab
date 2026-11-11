@@ -25,6 +25,12 @@ When a command fails, the system SHALL ask every registered provider error handl
 - **AND** the message names the lab IAM policy that grants that service, and the command that prints it
 - **AND** the message does not assert that the cause is a missing user permission, and notes that a bucket policy, SCP or KMS key policy can also deny the request
 
+#### Scenario: STS denial
+
+- **GIVEN** an STS call (`GetCallerIdentity`) that fails with a permission error
+- **WHEN** the command fails
+- **THEN** the message names no lab IAM policy, because no lab policy grants STS, and points at an organisation-level control (SCP, permissions boundary or session policy)
+
 #### Scenario: No credentials found
 
 - **GIVEN** the SDK raises an `SdkClientException`, with no status code, because it found no credentials or the SSO session expired

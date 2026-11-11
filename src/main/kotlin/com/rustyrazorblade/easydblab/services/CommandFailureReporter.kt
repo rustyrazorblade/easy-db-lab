@@ -29,12 +29,14 @@ class CommandFailureReporter(
 ) {
     /** Reports [error] as one event, unless the command already reported it. */
     fun report(error: Throwable) {
-        if (error is CommandFailedException) {
+        val chain = causeChain(error)
+        // A site that already showed its own block rethrows CommandFailedException; a CompletionException
+        // or ExecutionException around it must not make the user see a second block.
+        if (chain.any { it is CommandFailedException }) {
             log.debug(error) { "Command reported failure" }
             return
         }
         log.error(error) { "Command execution failed" }
-        val chain = causeChain(error)
         val description = chain.firstNotNullOfOrNull { cause -> handlers.firstNotNullOfOrNull { it.describe(cause) } }
         if (description != null) {
             eventBus.emit(

@@ -16,6 +16,7 @@ import software.amazon.awssdk.services.opensearch.model.OpenSearchException
 import software.amazon.awssdk.services.s3.model.S3Exception
 import software.amazon.awssdk.services.ssm.model.SsmException
 import software.amazon.awssdk.services.sso.auth.ExpiredTokenException
+import software.amazon.awssdk.services.sts.model.StsException
 
 /**
  * Tells the command layer which AWS failures are a credentials or a permissions problem, and what
@@ -37,15 +38,19 @@ class AwsErrorHandler : ProviderErrorHandler {
     private fun describeService(error: AwsServiceException): ErrorDescription? {
         val code = error.awsErrorDetails()?.errorCode()
         val detail = error.awsErrorDetails()?.errorMessage() ?: error.message.orEmpty()
-        val permissionDenied = { describeAs(ProviderErrorKind.PERMISSION_DENIED, detail, permissionRemedy(policyFor(error))) }
         return when {
             code in Constants.AWS.ErrorCodes.CREDENTIALS -> describeAs(ProviderErrorKind.CREDENTIALS, detail, CREDENTIALS_REMEDY)
-            code in Constants.AWS.ErrorCodes.PERMISSION_DENIED -> permissionDenied()
+            code in Constants.AWS.ErrorCodes.PERMISSION_DENIED -> permissionDenied(error, detail)
             code == Constants.AWS.ErrorCodes.CLOCK_SKEW -> null
-            error.statusCode() == Constants.HttpStatus.FORBIDDEN -> permissionDenied()
+            error.statusCode() == Constants.HttpStatus.FORBIDDEN -> permissionDenied(error, detail)
             else -> null
         }
     }
+
+    private fun permissionDenied(
+        error: AwsServiceException,
+        detail: String,
+    ): ErrorDescription = describeAs(ProviderErrorKind.PERMISSION_DENIED, detail, permissionRemedy(error))
 
     private fun describeClient(error: SdkClientException): ErrorDescription? {
         val message = error.message.orEmpty()
@@ -71,7 +76,16 @@ class AwsErrorHandler : ProviderErrorHandler {
         remedy: String,
     ): ErrorDescription = ErrorDescription(provider = PROVIDER, kind = kind, detail = detail, remedy = remedy)
 
-    private fun permissionRemedy(policy: String?): String =
+    private fun permissionRemedy(error: Throwable): String =
+        if (error is StsException) {
+            // The only STS call is GetCallerIdentity, which needs no IAM permission, so no lab policy can fix
+            // a denial; an organisation-level control is what refuses it.
+            STS_REMEDY
+        } else {
+            policyRemedy(policyFor(error))
+        }
+
+    private fun policyRemedy(policy: String?): String =
         if (policy != null) {
             "If this is missing permissions on your AWS user, attach the $policy IAM policy " +
                 "(print it with: easy-db-lab show-iam-policies $policy). $OTHER_DENIALS"
@@ -92,6 +106,10 @@ class AwsErrorHandler : ProviderErrorHandler {
 
     private companion object {
         const val PROVIDER = "AWS"
+
+        const val STS_REMEDY =
+            "STS GetCallerIdentity needs no IAM permission, so no lab policy fixes this. " +
+                "A service control policy, permissions boundary or session policy is denying the request."
 
         const val OTHER_DENIALS = "A bucket policy, SCP or KMS key policy can also deny the request."
 

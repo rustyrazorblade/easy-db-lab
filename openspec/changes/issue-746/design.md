@@ -135,6 +135,7 @@ The policy comes from the exception class.  The five policy names become constan
 | `EmrException` | EasyDBLabEMR |
 | `OpenSearchException` | EasyDBLabOpenSearch |
 | `EcsException`, `CloudWatchLogsException` | EasyDBLabCompactor |
+| `StsException` | none: the only STS call is `GetCallerIdentity`, which needs no IAM permission, so the remedy points at an SCP, permissions boundary or session policy |
 | other | all policies |
 
 ## Leak-site routing
